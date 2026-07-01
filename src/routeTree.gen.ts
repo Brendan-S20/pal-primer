@@ -35,6 +35,7 @@ import { Route as AuthenticatedInvoicesInvoiceIdRouteImport } from './routes/_au
 import { Route as AuthenticatedImportsBatchIdRouteImport } from './routes/_authenticated/imports.$batchId'
 import { Route as AuthenticatedClientsNewRouteImport } from './routes/_authenticated/clients.new'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
+import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
 import { Route as ApiPublicHooksTwilioRouteImport } from './routes/api/public/hooks/twilio'
 import { Route as ApiPublicHooksStripeRouteImport } from './routes/api/public/hooks/stripe'
 import { Route as ApiPublicHooksNightlyRouteImport } from './routes/api/public/hooks/nightly'
@@ -180,6 +181,12 @@ const AuthenticatedClientsClientIdRoute =
     path: '/$clientId',
     getParentRoute: () => AuthenticatedClientsRoute,
   } as any)
+const LovableEmailQueueProcessRoute =
+  LovableEmailQueueProcessRouteImport.update({
+    id: '/lovable/email/queue/process',
+    path: '/lovable/email/queue/process',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksTwilioRoute = ApiPublicHooksTwilioRouteImport.update({
   id: '/api/public/hooks/twilio',
   path: '/api/public/hooks/twilio',
@@ -225,6 +232,7 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
+  '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
 }
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
@@ -252,6 +260,7 @@ export interface FileRoutesByTo {
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
+  '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -284,6 +293,7 @@ export interface FileRoutesById {
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
+  '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -316,6 +326,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
+    | '/lovable/email/queue/process'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/auth'
@@ -343,6 +354,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
+    | '/lovable/email/queue/process'
   id:
     | '__root__'
     | '/_authenticated'
@@ -374,6 +386,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
+    | '/lovable/email/queue/process'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -383,6 +396,7 @@ export interface RootRouteChildren {
   ApiPublicHooksNightlyRoute: typeof ApiPublicHooksNightlyRoute
   ApiPublicHooksStripeRoute: typeof ApiPublicHooksStripeRoute
   ApiPublicHooksTwilioRoute: typeof ApiPublicHooksTwilioRoute
+  LovableEmailQueueProcessRoute: typeof LovableEmailQueueProcessRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -569,6 +583,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClientsClientIdRouteImport
       parentRoute: typeof AuthenticatedClientsRoute
     }
+    '/lovable/email/queue/process': {
+      id: '/lovable/email/queue/process'
+      path: '/lovable/email/queue/process'
+      fullPath: '/lovable/email/queue/process'
+      preLoaderRoute: typeof LovableEmailQueueProcessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/twilio': {
       id: '/api/public/hooks/twilio'
       path: '/api/public/hooks/twilio'
@@ -686,6 +707,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksNightlyRoute: ApiPublicHooksNightlyRoute,
   ApiPublicHooksStripeRoute: ApiPublicHooksStripeRoute,
   ApiPublicHooksTwilioRoute: ApiPublicHooksTwilioRoute,
+  LovableEmailQueueProcessRoute: LovableEmailQueueProcessRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
