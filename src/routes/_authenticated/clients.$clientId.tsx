@@ -142,6 +142,7 @@ function ClientDetail() {
           unitCount: accountType === "commercial" ? parseInt(unitCount, 10) : undefined,
           zoneId: zoneId || undefined,
           billingCadence,
+          preferredWeekdays: preferredWeekdays.length ? preferredWeekdays : undefined,
         },
       });
     },
