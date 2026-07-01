@@ -590,6 +590,9 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
             <Button size="sm" variant="outline" onClick={() => setShowAddon((s) => !s)}>
               + Add-on
             </Button>
+            <Button size="sm" variant="outline" onClick={() => setShowStations((s) => !s)}>
+              Stations
+            </Button>
             {visit.clients?.primary_phone && (
               <>
                 <Button size="sm" variant="outline" disabled={sms.isPending} onClick={() => sms.mutate("reminder")}>
