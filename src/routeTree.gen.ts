@@ -22,6 +22,7 @@ import { Route as AuthenticatedInvoicesIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedImportsIndexRouteImport } from './routes/_authenticated/imports.index'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
 import { Route as AuthenticatedInvoicesInvoiceIdRouteImport } from './routes/_authenticated/invoices.$invoiceId'
+import { Route as AuthenticatedImportsBatchIdRouteImport } from './routes/_authenticated/imports.$batchId'
 import { Route as AuthenticatedClientsNewRouteImport } from './routes/_authenticated/clients.new'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
 import { Route as ApiPublicHooksStripeRouteImport } from './routes/api/public/hooks/stripe'
@@ -94,6 +95,12 @@ const AuthenticatedInvoicesInvoiceIdRoute =
     path: '/$invoiceId',
     getParentRoute: () => AuthenticatedInvoicesRoute,
   } as any)
+const AuthenticatedImportsBatchIdRoute =
+  AuthenticatedImportsBatchIdRouteImport.update({
+    id: '/imports/$batchId',
+    path: '/imports/$batchId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedClientsNewRoute = AuthenticatedClientsNewRouteImport.update({
   id: '/new',
   path: '/new',
@@ -122,6 +129,7 @@ export interface FileRoutesByFullPath {
   '/zones': typeof AuthenticatedZonesRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/clients/new': typeof AuthenticatedClientsNewRoute
+  '/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
   '/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
   '/imports/': typeof AuthenticatedImportsIndexRoute
@@ -137,6 +145,7 @@ export interface FileRoutesByTo {
   '/': typeof AuthenticatedIndexRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/clients/new': typeof AuthenticatedClientsNewRoute
+  '/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
   '/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
   '/imports': typeof AuthenticatedImportsIndexRoute
@@ -156,6 +165,7 @@ export interface FileRoutesById {
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/clients/new': typeof AuthenticatedClientsNewRoute
+  '/_authenticated/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
   '/_authenticated/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
   '/_authenticated/imports/': typeof AuthenticatedImportsIndexRoute
@@ -175,6 +185,7 @@ export interface FileRouteTypes {
     | '/zones'
     | '/clients/$clientId'
     | '/clients/new'
+    | '/imports/$batchId'
     | '/invoices/$invoiceId'
     | '/clients/'
     | '/imports/'
@@ -190,6 +201,7 @@ export interface FileRouteTypes {
     | '/'
     | '/clients/$clientId'
     | '/clients/new'
+    | '/imports/$batchId'
     | '/invoices/$invoiceId'
     | '/clients'
     | '/imports'
@@ -208,6 +220,7 @@ export interface FileRouteTypes {
     | '/_authenticated/'
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/clients/new'
+    | '/_authenticated/imports/$batchId'
     | '/_authenticated/invoices/$invoiceId'
     | '/_authenticated/clients/'
     | '/_authenticated/imports/'
@@ -314,6 +327,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedInvoicesInvoiceIdRouteImport
       parentRoute: typeof AuthenticatedInvoicesRoute
     }
+    '/_authenticated/imports/$batchId': {
+      id: '/_authenticated/imports/$batchId'
+      path: '/imports/$batchId'
+      fullPath: '/imports/$batchId'
+      preLoaderRoute: typeof AuthenticatedImportsBatchIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/clients/new': {
       id: '/_authenticated/clients/new'
       path: '/new'
@@ -376,6 +396,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedRoutesRoute: typeof AuthenticatedRoutesRoute
   AuthenticatedZonesRoute: typeof AuthenticatedZonesRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedImportsBatchIdRoute: typeof AuthenticatedImportsBatchIdRoute
   AuthenticatedImportsIndexRoute: typeof AuthenticatedImportsIndexRoute
 }
 
@@ -387,6 +408,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedRoutesRoute: AuthenticatedRoutesRoute,
   AuthenticatedZonesRoute: AuthenticatedZonesRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedImportsBatchIdRoute: AuthenticatedImportsBatchIdRoute,
   AuthenticatedImportsIndexRoute: AuthenticatedImportsIndexRoute,
 }
 

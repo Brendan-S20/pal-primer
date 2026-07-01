@@ -28,7 +28,7 @@ function BatchDetail() {
   if (isLoading || !data) return <p className="text-muted-foreground">Loading…</p>;
 
   const { batch, rows } = data;
-  const stats = batch.stats ?? {};
+  const stats = (batch.stats ?? {}) as Record<string, number>;
   const shown = filter === "all" ? rows : rows.filter((r: any) => r.action === filter);
 
   const doCommit = async () => {
