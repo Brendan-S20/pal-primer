@@ -9,27 +9,189 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated/clients'
+import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
+import { Route as AuthenticatedClientsNewRouteImport } from './routes/_authenticated/clients.new'
+import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
 
-export interface FileRoutesByFullPath {}
-export interface FileRoutesByTo {}
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedClientsRoute = AuthenticatedClientsRouteImport.update({
+  id: '/clients',
+  path: '/clients',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedClientsIndexRoute =
+  AuthenticatedClientsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedClientsRoute,
+  } as any)
+const AuthenticatedClientsNewRoute = AuthenticatedClientsNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => AuthenticatedClientsRoute,
+} as any)
+const AuthenticatedClientsClientIdRoute =
+  AuthenticatedClientsClientIdRouteImport.update({
+    id: '/$clientId',
+    path: '/$clientId',
+    getParentRoute: () => AuthenticatedClientsRoute,
+  } as any)
+
+export interface FileRoutesByFullPath {
+  '/': typeof AuthenticatedIndexRoute
+  '/auth': typeof AuthRoute
+  '/clients': typeof AuthenticatedClientsRouteWithChildren
+  '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
+  '/clients/new': typeof AuthenticatedClientsNewRoute
+  '/clients/': typeof AuthenticatedClientsIndexRoute
+}
+export interface FileRoutesByTo {
+  '/auth': typeof AuthRoute
+  '/': typeof AuthenticatedIndexRoute
+  '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
+  '/clients/new': typeof AuthenticatedClientsNewRoute
+  '/clients': typeof AuthenticatedClientsIndexRoute
+}
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/auth': typeof AuthRoute
+  '/_authenticated/clients': typeof AuthenticatedClientsRouteWithChildren
+  '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
+  '/_authenticated/clients/new': typeof AuthenticatedClientsNewRoute
+  '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: never
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/clients'
+    | '/clients/$clientId'
+    | '/clients/new'
+    | '/clients/'
   fileRoutesByTo: FileRoutesByTo
-  to: never
-  id: '__root__'
+  to: '/auth' | '/' | '/clients/$clientId' | '/clients/new' | '/clients'
+  id:
+    | '__root__'
+    | '/_authenticated'
+    | '/auth'
+    | '/_authenticated/clients'
+    | '/_authenticated/'
+    | '/_authenticated/clients/$clientId'
+    | '/_authenticated/clients/new'
+    | '/_authenticated/clients/'
   fileRoutesById: FileRoutesById
 }
-export interface RootRouteChildren {}
-
-declare module '@tanstack/react-router' {
-  interface FileRoutesByPath {}
+export interface RootRouteChildren {
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AuthRoute: typeof AuthRoute
 }
 
-const rootRouteChildren: RootRouteChildren = {}
+declare module '@tanstack/react-router' {
+  interface FileRoutesByPath {
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/': {
+      id: '/_authenticated/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/clients': {
+      id: '/_authenticated/clients'
+      path: '/clients'
+      fullPath: '/clients'
+      preLoaderRoute: typeof AuthenticatedClientsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/clients/': {
+      id: '/_authenticated/clients/'
+      path: '/'
+      fullPath: '/clients/'
+      preLoaderRoute: typeof AuthenticatedClientsIndexRouteImport
+      parentRoute: typeof AuthenticatedClientsRoute
+    }
+    '/_authenticated/clients/new': {
+      id: '/_authenticated/clients/new'
+      path: '/new'
+      fullPath: '/clients/new'
+      preLoaderRoute: typeof AuthenticatedClientsNewRouteImport
+      parentRoute: typeof AuthenticatedClientsRoute
+    }
+    '/_authenticated/clients/$clientId': {
+      id: '/_authenticated/clients/$clientId'
+      path: '/$clientId'
+      fullPath: '/clients/$clientId'
+      preLoaderRoute: typeof AuthenticatedClientsClientIdRouteImport
+      parentRoute: typeof AuthenticatedClientsRoute
+    }
+  }
+}
+
+interface AuthenticatedClientsRouteChildren {
+  AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
+  AuthenticatedClientsNewRoute: typeof AuthenticatedClientsNewRoute
+  AuthenticatedClientsIndexRoute: typeof AuthenticatedClientsIndexRoute
+}
+
+const AuthenticatedClientsRouteChildren: AuthenticatedClientsRouteChildren = {
+  AuthenticatedClientsClientIdRoute: AuthenticatedClientsClientIdRoute,
+  AuthenticatedClientsNewRoute: AuthenticatedClientsNewRoute,
+  AuthenticatedClientsIndexRoute: AuthenticatedClientsIndexRoute,
+}
+
+const AuthenticatedClientsRouteWithChildren =
+  AuthenticatedClientsRoute._addFileChildren(AuthenticatedClientsRouteChildren)
+
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedClientsRoute: typeof AuthenticatedClientsRouteWithChildren
+  AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+}
+
+const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedClientsRoute: AuthenticatedClientsRouteWithChildren,
+  AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+}
+
+const AuthenticatedRouteRouteWithChildren =
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
+
+const rootRouteChildren: RootRouteChildren = {
+  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AuthRoute: AuthRoute,
+}
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()

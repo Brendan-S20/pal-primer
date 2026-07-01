@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-async function resolveOrgId(supabase: ReturnType<typeof requireSupabaseAuth> extends never ? never : any, userId: string): Promise<string> {
+async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   const { data, error } = await supabase
     .from("user_roles")
     .select("organization_id")

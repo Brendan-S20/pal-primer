@@ -22,8 +22,14 @@ function NewClient() {
   const [primaryEmail, setPrimaryEmail] = useState("");
   const [primaryPhone, setPrimaryPhone] = useState("");
 
+  type CreateInput = {
+    displayName: string;
+    accountType: "residential" | "commercial";
+    primaryEmail?: string;
+    primaryPhone?: string;
+  };
   const mutation = useMutation({
-    mutationFn: (v: Parameters<typeof fn>[0]["data"]) => fn({ data: v }),
+    mutationFn: (v: CreateInput) => fn({ data: v }),
     onSuccess: ({ id }) => {
       qc.invalidateQueries({ queryKey: ["clients"] });
       qc.invalidateQueries({ queryKey: ["my-org"] });
