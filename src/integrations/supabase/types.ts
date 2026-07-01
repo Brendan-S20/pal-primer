@@ -386,6 +386,13 @@ export type Database = {
             referencedRelation: "properties"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "subscriptions_zone_fk"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "zones"
+            referencedColumns: ["id"]
+          },
         ]
       }
       user_roles: {
@@ -420,11 +427,155 @@ export type Database = {
           },
         ]
       }
+      visits: {
+        Row: {
+          assigned_staff_id: string | null
+          client_id: string
+          completed_at: string | null
+          created_at: string
+          id: string
+          organization_id: string
+          property_id: string
+          scheduled_on: string
+          sequence: number | null
+          skip_reason: string | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["visit_status"]
+          subscription_id: string
+          updated_at: string
+          zone_id: string | null
+        }
+        Insert: {
+          assigned_staff_id?: string | null
+          client_id: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          organization_id: string
+          property_id: string
+          scheduled_on: string
+          sequence?: number | null
+          skip_reason?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["visit_status"]
+          subscription_id: string
+          updated_at?: string
+          zone_id?: string | null
+        }
+        Update: {
+          assigned_staff_id?: string | null
+          client_id?: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          organization_id?: string
+          property_id?: string
+          scheduled_on?: string
+          sequence?: number | null
+          skip_reason?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["visit_status"]
+          subscription_id?: string
+          updated_at?: string
+          zone_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "visits_assigned_staff_id_fkey"
+            columns: ["assigned_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visits_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visits_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visits_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visits_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visits_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "zones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      zones: {
+        Row: {
+          account_type: Database["public"]["Enums"]["account_type"] | null
+          created_at: string
+          id: string
+          name: string
+          organization_id: string
+          postal_prefix: string | null
+          price_note: string | null
+        }
+        Insert: {
+          account_type?: Database["public"]["Enums"]["account_type"] | null
+          created_at?: string
+          id?: string
+          name: string
+          organization_id: string
+          postal_prefix?: string | null
+          price_note?: string | null
+        }
+        Update: {
+          account_type?: Database["public"]["Enums"]["account_type"] | null
+          created_at?: string
+          id?: string
+          name?: string
+          organization_id?: string
+          postal_prefix?: string | null
+          price_note?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "zones_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      assign_route_for_day: {
+        Args: {
+          _day: string
+          _org_id: string
+          _reassign?: boolean
+          _staff_id: string
+        }
+        Returns: number
+      }
       bootstrap_organization: {
         Args: { _display_name: string; _org_name: string }
         Returns: string
@@ -432,6 +583,10 @@ export type Database = {
       can_write_org: {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
+      }
+      generate_visits_through: {
+        Args: { _org_id: string; _through: string }
+        Returns: number
       }
       has_role: {
         Args: {
@@ -444,6 +599,13 @@ export type Database = {
       is_org_member: {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
+      }
+      next_visit_date: {
+        Args: {
+          _freq: Database["public"]["Enums"]["service_frequency"]
+          _from: string
+        }
+        Returns: string
       }
       refresh_active_client_count: {
         Args: { _org_id: string }
@@ -463,6 +625,12 @@ export type Database = {
         | "one_time"
       staff_role: "owner" | "office_manager" | "dispatcher" | "tech"
       subscription_status: "active" | "paused" | "canceled"
+      visit_status:
+        | "scheduled"
+        | "in_progress"
+        | "completed"
+        | "skipped"
+        | "canceled"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -603,6 +771,13 @@ export const Constants = {
       ],
       staff_role: ["owner", "office_manager", "dispatcher", "tech"],
       subscription_status: ["active", "paused", "canceled"],
+      visit_status: [
+        "scheduled",
+        "in_progress",
+        "completed",
+        "skipped",
+        "canceled",
+      ],
     },
   },
 } as const
