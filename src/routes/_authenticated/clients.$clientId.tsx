@@ -49,6 +49,22 @@ function ClientDetail() {
     queryFn: () => listSubsFn({ data: { clientId } }),
   });
   const { data: zonesData } = useQuery({ queryKey: ["zones"], queryFn: () => listZonesFn() });
+  const getCreditFn = useServerFn(getClientCredit);
+  const prepayFn = useServerFn(generatePrepaidInvoice);
+  const { data: credit } = useQuery({
+    queryKey: ["credit", clientId],
+    queryFn: () => getCreditFn({ data: { clientId } }),
+  });
+  const prepayMut = useMutation({
+    mutationFn: (v: { subscriptionId: string; visitCount: number }) =>
+      prepayFn({ data: v }),
+    onSuccess: (r) => {
+      toast.success(`Prepaid invoice created`);
+      qc.invalidateQueries({ queryKey: ["credit", clientId] });
+      window.location.href = `/invoices/${r.invoiceId}`;
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
   // property form
   const [street, setStreet] = useState("");
