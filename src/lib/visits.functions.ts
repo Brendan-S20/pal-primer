@@ -60,7 +60,7 @@ export const listVisitsForDay = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("visits")
       .select(
-        "id, scheduled_on, status, sequence, assigned_staff_id, zone_id, property_id, client_id, clients(display_name), properties(street, city, postal_code), zones(name, postal_prefix), staff(display_name)",
+        "id, scheduled_on, status, sequence, assigned_staff_id, zone_id, property_id, client_id, subscription_id, clients(display_name), properties(street, city, postal_code), zones(name, postal_prefix), staff(display_name), subscriptions(price_cents, frequency)",
       )
       .eq("organization_id", orgId)
       .eq("scheduled_on", data.day)
@@ -83,4 +83,37 @@ export const listStaff = createServerFn({ method: "GET" })
       .order("display_name");
     if (error) throw new Error(error.message);
     return { staff: data ?? [] };
+  });
+
+export const reassignVisit = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ visitId: z.string().uuid(), staffId: z.string().uuid().nullable() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase.rpc("reassign_visit", {
+      _visit_id: data.visitId,
+      _staff_id: data.staffId as string,
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const reorderRoute = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      staffId: z.string().uuid(),
+      day: z.string(),
+      orderedIds: z.array(z.string().uuid()),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: count, error } = await context.supabase.rpc("reorder_route", {
+      _staff_id: data.staffId,
+      _day: data.day,
+      _ordered_ids: data.orderedIds,
+    });
+    if (error) throw new Error(error.message);
+    return { updated: (count as number) ?? 0 };
   });

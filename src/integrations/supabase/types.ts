@@ -1367,9 +1367,17 @@ export type Database = {
         }
         Returns: undefined
       }
+      reassign_visit: {
+        Args: { _staff_id: string; _visit_id: string }
+        Returns: undefined
+      }
       refresh_active_client_count: {
         Args: { _org_id: string }
         Returns: undefined
+      }
+      reorder_route: {
+        Args: { _day: string; _ordered_ids: string[]; _staff_id: string }
+        Returns: number
       }
       reschedule_visit: {
         Args: { _new_date: string; _note?: string; _visit_id: string }
