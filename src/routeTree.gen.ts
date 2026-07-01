@@ -17,6 +17,8 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SignupSuccessRouteImport } from './routes/signup.success'
+import { Route as SignupSlugRouteImport } from './routes/signup.$slug'
 import { Route as PortalTokenRouteImport } from './routes/portal.$token'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as AuthenticatedZonesRouteImport } from './routes/_authenticated/zones'
@@ -92,6 +94,16 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignupSuccessRoute = SignupSuccessRouteImport.update({
+  id: '/signup/success',
+  path: '/signup/success',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignupSlugRoute = SignupSlugRouteImport.update({
+  id: '/signup/$slug',
+  path: '/signup/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PortalTokenRoute = PortalTokenRouteImport.update({
@@ -318,6 +330,8 @@ export interface FileRoutesByFullPath {
   '/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/portal/$token': typeof PortalTokenRoute
+  '/signup/$slug': typeof SignupSlugRoute
+  '/signup/success': typeof SignupSuccessRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/clients/new': typeof AuthenticatedClientsNewRoute
   '/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
@@ -361,6 +375,8 @@ export interface FileRoutesByTo {
   '/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/portal/$token': typeof PortalTokenRoute
+  '/signup/$slug': typeof SignupSlugRoute
+  '/signup/success': typeof SignupSuccessRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/clients/new': typeof AuthenticatedClientsNewRoute
   '/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
@@ -409,6 +425,8 @@ export interface FileRoutesById {
   '/_authenticated/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/portal/$token': typeof PortalTokenRoute
+  '/signup/$slug': typeof SignupSlugRoute
+  '/signup/success': typeof SignupSuccessRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/clients/new': typeof AuthenticatedClientsNewRoute
   '/_authenticated/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
@@ -457,6 +475,8 @@ export interface FileRouteTypes {
     | '/zones'
     | '/email/unsubscribe'
     | '/portal/$token'
+    | '/signup/$slug'
+    | '/signup/success'
     | '/clients/$clientId'
     | '/clients/new'
     | '/imports/$batchId'
@@ -500,6 +520,8 @@ export interface FileRouteTypes {
     | '/zones'
     | '/email/unsubscribe'
     | '/portal/$token'
+    | '/signup/$slug'
+    | '/signup/success'
     | '/clients/$clientId'
     | '/clients/new'
     | '/imports/$batchId'
@@ -547,6 +569,8 @@ export interface FileRouteTypes {
     | '/_authenticated/zones'
     | '/email/unsubscribe'
     | '/portal/$token'
+    | '/signup/$slug'
+    | '/signup/success'
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/clients/new'
     | '/_authenticated/imports/$batchId'
@@ -584,6 +608,8 @@ export interface RootRouteChildren {
   UnsubscribeRoute: typeof UnsubscribeRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   PortalTokenRoute: typeof PortalTokenRoute
+  SignupSlugRoute: typeof SignupSlugRoute
+  SignupSuccessRoute: typeof SignupSuccessRoute
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
   ApiPublicHooksNightlyRoute: typeof ApiPublicHooksNightlyRoute
   ApiPublicHooksStripeRoute: typeof ApiPublicHooksStripeRoute
@@ -651,6 +677,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/signup/success': {
+      id: '/signup/success'
+      path: '/signup/success'
+      fullPath: '/signup/success'
+      preLoaderRoute: typeof SignupSuccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/signup/$slug': {
+      id: '/signup/$slug'
+      path: '/signup/$slug'
+      fullPath: '/signup/$slug'
+      preLoaderRoute: typeof SignupSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/portal/$token': {
@@ -1018,6 +1058,8 @@ const rootRouteChildren: RootRouteChildren = {
   UnsubscribeRoute: UnsubscribeRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   PortalTokenRoute: PortalTokenRoute,
+  SignupSlugRoute: SignupSlugRoute,
+  SignupSuccessRoute: SignupSuccessRoute,
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
   ApiPublicHooksNightlyRoute: ApiPublicHooksNightlyRoute,
   ApiPublicHooksStripeRoute: ApiPublicHooksStripeRoute,

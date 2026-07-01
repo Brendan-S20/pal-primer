@@ -1,4 +1,117 @@
 import { createFileRoute } from "@tanstack/react-router";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+async function provisionSignup(
+  supabaseAdmin: SupabaseClient,
+  signupRequestId: string,
+  session: import("stripe").Stripe.Checkout.Session,
+) {
+  const { data: sr, error } = await supabaseAdmin
+    .from("signup_requests")
+    .select("*")
+    .eq("id", signupRequestId)
+    .single();
+  if (error || !sr) {
+    console.error("provisionSignup: signup_request not found", signupRequestId, error);
+    return;
+  }
+  if (sr.status === "provisioned" && sr.provisioned_client_id) return;
+
+  try {
+    // Create client
+    const { data: client, error: cErr } = await supabaseAdmin
+      .from("clients")
+      .insert({
+        organization_id: sr.organization_id,
+        display_name: sr.name,
+        account_type: "residential",
+        primary_email: sr.email,
+        primary_phone: sr.phone,
+      })
+      .select("id, portal_token")
+      .single();
+    if (cErr || !client) throw new Error(cErr?.message || "client insert failed");
+
+    // Create property
+    const { data: property, error: pErr } = await supabaseAdmin
+      .from("properties")
+      .insert({
+        organization_id: sr.organization_id,
+        client_id: client.id,
+        label: "Home",
+        street: sr.street,
+        city: sr.city,
+        region: sr.region,
+        postal_code: sr.postal_code,
+        country: "US",
+      })
+      .select("id")
+      .single();
+    if (pErr || !property) throw new Error(pErr?.message || "property insert failed");
+
+    // Create subscription (prepaid, active)
+    const { error: subErr } = await supabaseAdmin.from("subscriptions").insert({
+      organization_id: sr.organization_id,
+      client_id: client.id,
+      property_id: property.id,
+      account_type: "residential",
+      frequency: sr.frequency,
+      price_cents: sr.recurring_price_cents,
+      billing_cadence: "prepaid",
+      dog_count: sr.dog_count,
+      zone_id: sr.zone_id,
+      status: "active",
+      started_on: new Date().toISOString().slice(0, 10),
+    });
+    if (subErr) throw new Error(subErr.message);
+
+    // Credit the prepay portion to the client's balance
+    const prepay = (session.amount_total ?? 0) - (sr.initial_cleanup_cents ?? 0);
+    if (prepay > 0) {
+      await supabaseAdmin.from("credit_ledger").insert({
+        organization_id: sr.organization_id,
+        client_id: client.id,
+        delta_cents: prepay,
+        kind: "prepayment",
+        note: `Signup prepay via Stripe ${session.id}`,
+      });
+    }
+
+    await supabaseAdmin
+      .from("signup_requests")
+      .update({
+        status: "provisioned",
+        provisioned_client_id: client.id,
+      })
+      .eq("id", signupRequestId);
+
+    // Best-effort welcome email
+    try {
+      const appUrl = process.env.APP_URL || "https://pal-primer.lovable.app";
+      const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+      await enqueueAppEmail({
+        organizationId: sr.organization_id,
+        clientId: client.id,
+        templateName: "welcome",
+        notifyKey: "notify_email_welcome",
+        idempotencyKey: `welcome-signup-${signupRequestId}`,
+        templateData: {
+          portalUrl: client.portal_token ? `${appUrl}/portal/${client.portal_token}` : undefined,
+        },
+      });
+    } catch (e) {
+      console.error("signup welcome email failed", e);
+    }
+  } catch (e) {
+    console.error("provisionSignup failed", e);
+    await supabaseAdmin
+      .from("signup_requests")
+      .update({ status: "failed", error_message: (e as Error).message })
+      .eq("id", signupRequestId);
+  }
+}
+
+
 
 export const Route = createFileRoute("/api/public/hooks/stripe")({
   server: {
@@ -28,6 +141,11 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
         try {
           if (event.type === "checkout.session.completed") {
             const session = event.data.object as import("stripe").Stripe.Checkout.Session;
+            const signupRequestId = session.metadata?.signup_request_id;
+            if (signupRequestId) {
+              await provisionSignup(supabaseAdmin, signupRequestId, session);
+              return new Response("ok", { status: 200 });
+            }
             const invoiceId = session.metadata?.invoice_id || session.client_reference_id;
             const pi = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id ?? null;
             if (invoiceId) {
