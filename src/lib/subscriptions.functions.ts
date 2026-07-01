@@ -46,6 +46,7 @@ export const createSubscription = createServerFn({ method: "POST" })
         dog_count: data.dogCount ?? null,
         unit_count: data.unitCount ?? null,
         zone_id: data.zoneId ?? null,
+        billing_cadence: data.billingCadence ?? "postpaid",
         started_on: data.startedOn ?? undefined,
       })
       .select("id")
