@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as PortalTokenRouteImport } from './routes/portal.$token'
 import { Route as AuthenticatedZonesRouteImport } from './routes/_authenticated/zones'
 import { Route as AuthenticatedRoutesRouteImport } from './routes/_authenticated/routes'
 import { Route as AuthenticatedMyDayRouteImport } from './routes/_authenticated/my-day'
@@ -41,6 +42,11 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const PortalTokenRoute = PortalTokenRouteImport.update({
+  id: '/portal/$token',
+  path: '/portal/$token',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedZonesRoute = AuthenticatedZonesRouteImport.update({
   id: '/zones',
@@ -134,6 +140,7 @@ export interface FileRoutesByFullPath {
   '/my-day': typeof AuthenticatedMyDayRoute
   '/routes': typeof AuthenticatedRoutesRoute
   '/zones': typeof AuthenticatedZonesRoute
+  '/portal/$token': typeof PortalTokenRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/clients/new': typeof AuthenticatedClientsNewRoute
   '/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
@@ -150,6 +157,7 @@ export interface FileRoutesByTo {
   '/my-day': typeof AuthenticatedMyDayRoute
   '/routes': typeof AuthenticatedRoutesRoute
   '/zones': typeof AuthenticatedZonesRoute
+  '/portal/$token': typeof PortalTokenRoute
   '/': typeof AuthenticatedIndexRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/clients/new': typeof AuthenticatedClientsNewRoute
@@ -171,6 +179,7 @@ export interface FileRoutesById {
   '/_authenticated/my-day': typeof AuthenticatedMyDayRoute
   '/_authenticated/routes': typeof AuthenticatedRoutesRoute
   '/_authenticated/zones': typeof AuthenticatedZonesRoute
+  '/portal/$token': typeof PortalTokenRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/clients/new': typeof AuthenticatedClientsNewRoute
@@ -193,6 +202,7 @@ export interface FileRouteTypes {
     | '/my-day'
     | '/routes'
     | '/zones'
+    | '/portal/$token'
     | '/clients/$clientId'
     | '/clients/new'
     | '/imports/$batchId'
@@ -209,6 +219,7 @@ export interface FileRouteTypes {
     | '/my-day'
     | '/routes'
     | '/zones'
+    | '/portal/$token'
     | '/'
     | '/clients/$clientId'
     | '/clients/new'
@@ -229,6 +240,7 @@ export interface FileRouteTypes {
     | '/_authenticated/my-day'
     | '/_authenticated/routes'
     | '/_authenticated/zones'
+    | '/portal/$token'
     | '/_authenticated/'
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/clients/new'
@@ -244,6 +256,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  PortalTokenRoute: typeof PortalTokenRoute
   ApiPublicHooksStripeRoute: typeof ApiPublicHooksStripeRoute
 }
 
@@ -269,6 +282,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/portal/$token': {
+      id: '/portal/$token'
+      path: '/portal/$token'
+      fullPath: '/portal/$token'
+      preLoaderRoute: typeof PortalTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/zones': {
       id: '/_authenticated/zones'
@@ -440,6 +460,7 @@ const AuthenticatedRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  PortalTokenRoute: PortalTokenRoute,
   ApiPublicHooksStripeRoute: ApiPublicHooksStripeRoute,
 }
 export const routeTree = rootRouteImport
