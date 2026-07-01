@@ -7,7 +7,7 @@ export const PRO_PRICE_ID = "price_1ToRCUHJRMTjWv4jF7zBWszG";
 export const PRO_PRODUCT_ID = "prod_Uo3JI79ExIL9Ff";
 export const PRO_PRICE_CENTS = 4900;
 
-async function getOrgForCaller(supabase: NonNullable<Parameters<typeof requireSupabaseAuth>[0]> extends never ? never : any, userId: string) {
+async function getOrgForCaller(supabase: any, userId: string) {
   const { data: role, error } = await supabase
     .from("user_roles")
     .select("organization_id, role")
@@ -26,6 +26,7 @@ async function getOrgForCaller(supabase: NonNullable<Parameters<typeof requireSu
   if (oErr) throw new Error(oErr.message);
   return org;
 }
+
 
 export const getBillingStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
