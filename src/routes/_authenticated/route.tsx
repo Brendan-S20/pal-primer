@@ -51,6 +51,10 @@ function AppShell() {
               <Link to="/imports" activeProps={{ className: "text-foreground font-medium" }}>
                 Import
               </Link>
+              <Link to="/settings/skip-rules" activeProps={{ className: "text-foreground font-medium" }}>
+                Skip rules
+              </Link>
+
 
 
 

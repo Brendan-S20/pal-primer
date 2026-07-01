@@ -12,6 +12,7 @@ import {
   skipVisit,
   recordVisitPhoto,
 } from "@/lib/my-day.functions";
+import { SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
@@ -91,6 +92,68 @@ function statusBadge(status: string) {
   );
 }
 
+type HazardKey =
+  | "do_not_enter_if_dog_out"
+  | "aggressive_dog"
+  | "escape_risk"
+  | "invisible_fence"
+  | "bees_wasps"
+  | "sharp_objects"
+  | "slippery_surfaces"
+  | "dog_in_yard_during_service";
+
+const HAZARD_LABELS: Record<HazardKey, { label: string; severity: "critical" | "warn" }> = {
+  do_not_enter_if_dog_out: { label: "DO NOT ENTER if dog is outside", severity: "critical" },
+  aggressive_dog: { label: "Aggressive dog", severity: "critical" },
+  escape_risk: { label: "Escape risk — close gate immediately", severity: "critical" },
+  invisible_fence: { label: "Invisible fence", severity: "warn" },
+  dog_in_yard_during_service: { label: "Dog in yard during service", severity: "warn" },
+  bees_wasps: { label: "Bees / wasps", severity: "warn" },
+  sharp_objects: { label: "Sharp objects", severity: "warn" },
+  slippery_surfaces: { label: "Slippery surfaces", severity: "warn" },
+};
+
+function HazardBanner({ property }: { property: any }) {
+  if (!property) return null;
+  const active = (Object.keys(HAZARD_LABELS) as HazardKey[]).filter((k) => property[k]);
+  const notes = property.hazard_notes as string | undefined;
+  if (active.length === 0 && !notes) return null;
+
+  const critical = active.filter((k) => HAZARD_LABELS[k].severity === "critical");
+  const warn = active.filter((k) => HAZARD_LABELS[k].severity === "warn");
+
+  return (
+    <div className="mb-3 space-y-2">
+      {critical.length > 0 && (
+        <div className="rounded-md border-2 border-destructive bg-destructive/10 p-3">
+          <div className="text-xs font-bold uppercase tracking-wide text-destructive">
+            ⚠ Safety warnings — read before entering
+          </div>
+          <ul className="mt-1 space-y-0.5 text-sm font-semibold text-destructive">
+            {critical.map((k) => (
+              <li key={k}>• {HAZARD_LABELS[k].label}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {warn.length > 0 && (
+        <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-2">
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+            {warn.map((k) => (
+              <span key={k}>⚠ {HAZARD_LABELS[k].label}</span>
+            ))}
+          </div>
+        </div>
+      )}
+      {notes && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs text-amber-800 dark:text-amber-300">
+          <span className="font-semibold">Hazard notes:</span> {notes}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function VisitCard({ visit, index, day }: { visit: any; index: number; day: string }) {
   const qc = useQueryClient();
   const startFn = useServerFn(startVisit);
@@ -100,6 +163,7 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
 
   const [showSkip, setShowSkip] = useState(false);
   const [reason, setReason] = useState("");
+  const [reasonCode, setReasonCode] = useState<(typeof SKIP_REASON_CODES)[number]>("other");
   const [uploading, setUploading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -124,7 +188,7 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
   });
 
   const skip = useMutation({
-    mutationFn: () => skipFn({ data: { visitId: visit.id, reason } }),
+    mutationFn: () => skipFn({ data: { visitId: visit.id, reason, code: reasonCode } }),
     onSuccess: () => {
       toast.success("Marked skipped");
       setShowSkip(false);
@@ -136,7 +200,6 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
   const uploadPhoto = async (file: File) => {
     setUploading(true);
     try {
-      // Need organization_id for the storage path. Fetch on demand.
       const { data: vRow, error: vErr } = await supabase
         .from("visits")
         .select("organization_id")
@@ -169,9 +232,12 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
   const inProg = visit.status === "in_progress";
   const scheduled = visit.status === "scheduled";
   const finalStatus = done || skipped;
+  const p = visit.properties;
 
   return (
     <li className="rounded-lg border bg-card p-4 shadow-sm">
+      <HazardBanner property={p} />
+
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -183,25 +249,39 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
             {visit.clients?.display_name ?? "Client"}
           </div>
           <div className="text-sm text-muted-foreground">
-            {visit.properties?.street}
-            {visit.properties?.city ? `, ${visit.properties.city}` : ""}
-            {visit.properties?.postal_code ? ` ${visit.properties.postal_code}` : ""}
+            {p?.street}
+            {p?.city ? `, ${p.city}` : ""}
+            {p?.postal_code ? ` ${p.postal_code}` : ""}
           </div>
-          {(visit.properties?.gate_code || visit.properties?.dog_in_yard_during_service) && (
-            <div className="mt-2 space-y-1 text-xs">
-              {visit.properties?.gate_code && (
-                <div>
-                  <span className="text-muted-foreground">Gate:</span>{" "}
-                  <span className="font-mono">{visit.properties.gate_code}</span>
-                </div>
-              )}
-              {visit.properties?.dog_in_yard_during_service && (
-                <div className="text-amber-600 dark:text-amber-400">⚠ Dog in yard during service</div>
-              )}
-            </div>
+          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+            {p?.gate_code && (
+              <div>
+                <span className="text-muted-foreground">Gate:</span>{" "}
+                <span className="font-mono">{p.gate_code}</span>
+              </div>
+            )}
+            {p?.lock_box_code && (
+              <div>
+                <span className="text-muted-foreground">Lock box:</span>{" "}
+                <span className="font-mono">{p.lock_box_code}</span>
+              </div>
+            )}
+            {p?.key_location && (
+              <div className="col-span-2">
+                <span className="text-muted-foreground">Key:</span> {p.key_location}
+              </div>
+            )}
+            {p?.yard_size && (
+              <div>
+                <span className="text-muted-foreground">Yard:</span> {p.yard_size}
+              </div>
+            )}
+          </div>
+          {p?.parking_notes && (
+            <div className="mt-1 text-xs text-muted-foreground">🅿 {p.parking_notes}</div>
           )}
-          {visit.properties?.access_notes && (
-            <div className="mt-1 text-xs text-muted-foreground">{visit.properties.access_notes}</div>
+          {p?.access_notes && (
+            <div className="mt-1 text-xs text-muted-foreground">{p.access_notes}</div>
           )}
           {visit.clients?.primary_phone && (
             <a
@@ -211,9 +291,13 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
               Call {visit.clients.primary_phone}
             </a>
           )}
-          {skipped && visit.skip_reason && (
+          {skipped && (
             <div className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-              Skipped: {visit.skip_reason}
+              Skipped
+              {visit.skip_reason_code
+                ? ` (${SKIP_REASON_LABELS[visit.skip_reason_code as keyof typeof SKIP_REASON_LABELS] ?? visit.skip_reason_code})`
+                : ""}
+              {visit.skip_reason ? `: ${visit.skip_reason}` : ""}
             </div>
           )}
         </div>
@@ -269,10 +353,24 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
 
           {showSkip && (
             <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Reason</label>
+                <select
+                  value={reasonCode}
+                  onChange={(e) => setReasonCode(e.target.value as any)}
+                  className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                >
+                  {SKIP_REASON_CODES.map((c) => (
+                    <option key={c} value={c}>
+                      {SKIP_REASON_LABELS[c]}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <Textarea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="Reason (e.g. gate locked, dog aggressive)…"
+                placeholder="Details (what happened, photos, etc.)"
                 rows={2}
               />
               <div className="flex gap-2">
@@ -288,6 +386,9 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
                   Cancel
                 </Button>
               </div>
+              <p className="text-[11px] text-muted-foreground">
+                Billing rules for each reason are set in Settings → Skip rules.
+              </p>
             </div>
           )}
         </div>
