@@ -6,10 +6,12 @@ import { getClient } from "@/lib/clients.functions";
 import { createProperty, listPropertiesForClient } from "@/lib/properties.functions";
 import { createSubscription, listSubscriptionsForClient } from "@/lib/subscriptions.functions";
 import { listZones } from "@/lib/zones.functions";
+import { getClientCredit, generatePrepaidInvoice } from "@/lib/invoices.functions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/clients/$clientId")({
   component: ClientDetail,
