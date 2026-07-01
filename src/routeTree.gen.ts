@@ -16,17 +16,22 @@ import { Route as PortalTokenRouteImport } from './routes/portal.$token'
 import { Route as AuthenticatedZonesRouteImport } from './routes/_authenticated/zones'
 import { Route as AuthenticatedRoutesRouteImport } from './routes/_authenticated/routes'
 import { Route as AuthenticatedMyDayRouteImport } from './routes/_authenticated/my-day'
+import { Route as AuthenticatedMessagesRouteImport } from './routes/_authenticated/messages'
 import { Route as AuthenticatedInvoicesRouteImport } from './routes/_authenticated/invoices'
 import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated/clients'
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
+import { Route as AuthenticatedMessagesIndexRouteImport } from './routes/_authenticated/messages.index'
 import { Route as AuthenticatedInvoicesIndexRouteImport } from './routes/_authenticated/invoices.index'
 import { Route as AuthenticatedImportsIndexRouteImport } from './routes/_authenticated/imports.index'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
+import { Route as AuthenticatedSettingsSmsRouteImport } from './routes/_authenticated/settings.sms'
 import { Route as AuthenticatedSettingsSkipRulesRouteImport } from './routes/_authenticated/settings.skip-rules'
+import { Route as AuthenticatedMessagesClientIdRouteImport } from './routes/_authenticated/messages.$clientId'
 import { Route as AuthenticatedInvoicesInvoiceIdRouteImport } from './routes/_authenticated/invoices.$invoiceId'
 import { Route as AuthenticatedImportsBatchIdRouteImport } from './routes/_authenticated/imports.$batchId'
 import { Route as AuthenticatedClientsNewRouteImport } from './routes/_authenticated/clients.new'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
+import { Route as ApiPublicHooksTwilioRouteImport } from './routes/api/public/hooks/twilio'
 import { Route as ApiPublicHooksStripeRouteImport } from './routes/api/public/hooks/stripe'
 
 const AuthRoute = AuthRouteImport.update({
@@ -63,6 +68,11 @@ const AuthenticatedMyDayRoute = AuthenticatedMyDayRouteImport.update({
   path: '/my-day',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedMessagesRoute = AuthenticatedMessagesRouteImport.update({
+  id: '/messages',
+  path: '/messages',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedInvoicesRoute = AuthenticatedInvoicesRouteImport.update({
   id: '/invoices',
   path: '/invoices',
@@ -78,6 +88,12 @@ const AuthenticatedBillingRoute = AuthenticatedBillingRouteImport.update({
   path: '/billing',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedMessagesIndexRoute =
+  AuthenticatedMessagesIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedMessagesRoute,
+  } as any)
 const AuthenticatedInvoicesIndexRoute =
   AuthenticatedInvoicesIndexRouteImport.update({
     id: '/',
@@ -96,11 +112,23 @@ const AuthenticatedClientsIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedClientsRoute,
   } as any)
+const AuthenticatedSettingsSmsRoute =
+  AuthenticatedSettingsSmsRouteImport.update({
+    id: '/settings/sms',
+    path: '/settings/sms',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSettingsSkipRulesRoute =
   AuthenticatedSettingsSkipRulesRouteImport.update({
     id: '/settings/skip-rules',
     path: '/settings/skip-rules',
     getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedMessagesClientIdRoute =
+  AuthenticatedMessagesClientIdRouteImport.update({
+    id: '/$clientId',
+    path: '/$clientId',
+    getParentRoute: () => AuthenticatedMessagesRoute,
   } as any)
 const AuthenticatedInvoicesInvoiceIdRoute =
   AuthenticatedInvoicesInvoiceIdRouteImport.update({
@@ -125,6 +153,11 @@ const AuthenticatedClientsClientIdRoute =
     path: '/$clientId',
     getParentRoute: () => AuthenticatedClientsRoute,
   } as any)
+const ApiPublicHooksTwilioRoute = ApiPublicHooksTwilioRouteImport.update({
+  id: '/api/public/hooks/twilio',
+  path: '/api/public/hooks/twilio',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHooksStripeRoute = ApiPublicHooksStripeRouteImport.update({
   id: '/api/public/hooks/stripe',
   path: '/api/public/hooks/stripe',
@@ -137,6 +170,7 @@ export interface FileRoutesByFullPath {
   '/billing': typeof AuthenticatedBillingRoute
   '/clients': typeof AuthenticatedClientsRouteWithChildren
   '/invoices': typeof AuthenticatedInvoicesRouteWithChildren
+  '/messages': typeof AuthenticatedMessagesRouteWithChildren
   '/my-day': typeof AuthenticatedMyDayRoute
   '/routes': typeof AuthenticatedRoutesRoute
   '/zones': typeof AuthenticatedZonesRoute
@@ -145,11 +179,15 @@ export interface FileRoutesByFullPath {
   '/clients/new': typeof AuthenticatedClientsNewRoute
   '/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
   '/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
+  '/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
+  '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
   '/imports/': typeof AuthenticatedImportsIndexRoute
   '/invoices/': typeof AuthenticatedInvoicesIndexRoute
+  '/messages/': typeof AuthenticatedMessagesIndexRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
+  '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
 }
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
@@ -163,11 +201,15 @@ export interface FileRoutesByTo {
   '/clients/new': typeof AuthenticatedClientsNewRoute
   '/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
   '/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
+  '/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
+  '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
   '/imports': typeof AuthenticatedImportsIndexRoute
   '/invoices': typeof AuthenticatedInvoicesIndexRoute
+  '/messages': typeof AuthenticatedMessagesIndexRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
+  '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -176,6 +218,7 @@ export interface FileRoutesById {
   '/_authenticated/billing': typeof AuthenticatedBillingRoute
   '/_authenticated/clients': typeof AuthenticatedClientsRouteWithChildren
   '/_authenticated/invoices': typeof AuthenticatedInvoicesRouteWithChildren
+  '/_authenticated/messages': typeof AuthenticatedMessagesRouteWithChildren
   '/_authenticated/my-day': typeof AuthenticatedMyDayRoute
   '/_authenticated/routes': typeof AuthenticatedRoutesRoute
   '/_authenticated/zones': typeof AuthenticatedZonesRoute
@@ -185,11 +228,15 @@ export interface FileRoutesById {
   '/_authenticated/clients/new': typeof AuthenticatedClientsNewRoute
   '/_authenticated/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
   '/_authenticated/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
+  '/_authenticated/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
   '/_authenticated/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
+  '/_authenticated/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
   '/_authenticated/imports/': typeof AuthenticatedImportsIndexRoute
   '/_authenticated/invoices/': typeof AuthenticatedInvoicesIndexRoute
+  '/_authenticated/messages/': typeof AuthenticatedMessagesIndexRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
+  '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -199,6 +246,7 @@ export interface FileRouteTypes {
     | '/billing'
     | '/clients'
     | '/invoices'
+    | '/messages'
     | '/my-day'
     | '/routes'
     | '/zones'
@@ -207,11 +255,15 @@ export interface FileRouteTypes {
     | '/clients/new'
     | '/imports/$batchId'
     | '/invoices/$invoiceId'
+    | '/messages/$clientId'
     | '/settings/skip-rules'
+    | '/settings/sms'
     | '/clients/'
     | '/imports/'
     | '/invoices/'
+    | '/messages/'
     | '/api/public/hooks/stripe'
+    | '/api/public/hooks/twilio'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/auth'
@@ -225,11 +277,15 @@ export interface FileRouteTypes {
     | '/clients/new'
     | '/imports/$batchId'
     | '/invoices/$invoiceId'
+    | '/messages/$clientId'
     | '/settings/skip-rules'
+    | '/settings/sms'
     | '/clients'
     | '/imports'
     | '/invoices'
+    | '/messages'
     | '/api/public/hooks/stripe'
+    | '/api/public/hooks/twilio'
   id:
     | '__root__'
     | '/_authenticated'
@@ -237,6 +293,7 @@ export interface FileRouteTypes {
     | '/_authenticated/billing'
     | '/_authenticated/clients'
     | '/_authenticated/invoices'
+    | '/_authenticated/messages'
     | '/_authenticated/my-day'
     | '/_authenticated/routes'
     | '/_authenticated/zones'
@@ -246,11 +303,15 @@ export interface FileRouteTypes {
     | '/_authenticated/clients/new'
     | '/_authenticated/imports/$batchId'
     | '/_authenticated/invoices/$invoiceId'
+    | '/_authenticated/messages/$clientId'
     | '/_authenticated/settings/skip-rules'
+    | '/_authenticated/settings/sms'
     | '/_authenticated/clients/'
     | '/_authenticated/imports/'
     | '/_authenticated/invoices/'
+    | '/_authenticated/messages/'
     | '/api/public/hooks/stripe'
+    | '/api/public/hooks/twilio'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -258,6 +319,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   PortalTokenRoute: typeof PortalTokenRoute
   ApiPublicHooksStripeRoute: typeof ApiPublicHooksStripeRoute
+  ApiPublicHooksTwilioRoute: typeof ApiPublicHooksTwilioRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -311,6 +373,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMyDayRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/messages': {
+      id: '/_authenticated/messages'
+      path: '/messages'
+      fullPath: '/messages'
+      preLoaderRoute: typeof AuthenticatedMessagesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/invoices': {
       id: '/_authenticated/invoices'
       path: '/invoices'
@@ -331,6 +400,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/billing'
       preLoaderRoute: typeof AuthenticatedBillingRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/messages/': {
+      id: '/_authenticated/messages/'
+      path: '/'
+      fullPath: '/messages/'
+      preLoaderRoute: typeof AuthenticatedMessagesIndexRouteImport
+      parentRoute: typeof AuthenticatedMessagesRoute
     }
     '/_authenticated/invoices/': {
       id: '/_authenticated/invoices/'
@@ -353,12 +429,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClientsIndexRouteImport
       parentRoute: typeof AuthenticatedClientsRoute
     }
+    '/_authenticated/settings/sms': {
+      id: '/_authenticated/settings/sms'
+      path: '/settings/sms'
+      fullPath: '/settings/sms'
+      preLoaderRoute: typeof AuthenticatedSettingsSmsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/settings/skip-rules': {
       id: '/_authenticated/settings/skip-rules'
       path: '/settings/skip-rules'
       fullPath: '/settings/skip-rules'
       preLoaderRoute: typeof AuthenticatedSettingsSkipRulesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/messages/$clientId': {
+      id: '/_authenticated/messages/$clientId'
+      path: '/$clientId'
+      fullPath: '/messages/$clientId'
+      preLoaderRoute: typeof AuthenticatedMessagesClientIdRouteImport
+      parentRoute: typeof AuthenticatedMessagesRoute
     }
     '/_authenticated/invoices/$invoiceId': {
       id: '/_authenticated/invoices/$invoiceId'
@@ -387,6 +477,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/clients/$clientId'
       preLoaderRoute: typeof AuthenticatedClientsClientIdRouteImport
       parentRoute: typeof AuthenticatedClientsRoute
+    }
+    '/api/public/hooks/twilio': {
+      id: '/api/public/hooks/twilio'
+      path: '/api/public/hooks/twilio'
+      fullPath: '/api/public/hooks/twilio'
+      preLoaderRoute: typeof ApiPublicHooksTwilioRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/public/hooks/stripe': {
       id: '/api/public/hooks/stripe'
@@ -428,16 +525,33 @@ const AuthenticatedInvoicesRouteWithChildren =
     AuthenticatedInvoicesRouteChildren,
   )
 
+interface AuthenticatedMessagesRouteChildren {
+  AuthenticatedMessagesClientIdRoute: typeof AuthenticatedMessagesClientIdRoute
+  AuthenticatedMessagesIndexRoute: typeof AuthenticatedMessagesIndexRoute
+}
+
+const AuthenticatedMessagesRouteChildren: AuthenticatedMessagesRouteChildren = {
+  AuthenticatedMessagesClientIdRoute: AuthenticatedMessagesClientIdRoute,
+  AuthenticatedMessagesIndexRoute: AuthenticatedMessagesIndexRoute,
+}
+
+const AuthenticatedMessagesRouteWithChildren =
+  AuthenticatedMessagesRoute._addFileChildren(
+    AuthenticatedMessagesRouteChildren,
+  )
+
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedBillingRoute: typeof AuthenticatedBillingRoute
   AuthenticatedClientsRoute: typeof AuthenticatedClientsRouteWithChildren
   AuthenticatedInvoicesRoute: typeof AuthenticatedInvoicesRouteWithChildren
+  AuthenticatedMessagesRoute: typeof AuthenticatedMessagesRouteWithChildren
   AuthenticatedMyDayRoute: typeof AuthenticatedMyDayRoute
   AuthenticatedRoutesRoute: typeof AuthenticatedRoutesRoute
   AuthenticatedZonesRoute: typeof AuthenticatedZonesRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedImportsBatchIdRoute: typeof AuthenticatedImportsBatchIdRoute
   AuthenticatedSettingsSkipRulesRoute: typeof AuthenticatedSettingsSkipRulesRoute
+  AuthenticatedSettingsSmsRoute: typeof AuthenticatedSettingsSmsRoute
   AuthenticatedImportsIndexRoute: typeof AuthenticatedImportsIndexRoute
 }
 
@@ -445,12 +559,14 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedBillingRoute: AuthenticatedBillingRoute,
   AuthenticatedClientsRoute: AuthenticatedClientsRouteWithChildren,
   AuthenticatedInvoicesRoute: AuthenticatedInvoicesRouteWithChildren,
+  AuthenticatedMessagesRoute: AuthenticatedMessagesRouteWithChildren,
   AuthenticatedMyDayRoute: AuthenticatedMyDayRoute,
   AuthenticatedRoutesRoute: AuthenticatedRoutesRoute,
   AuthenticatedZonesRoute: AuthenticatedZonesRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedImportsBatchIdRoute: AuthenticatedImportsBatchIdRoute,
   AuthenticatedSettingsSkipRulesRoute: AuthenticatedSettingsSkipRulesRoute,
+  AuthenticatedSettingsSmsRoute: AuthenticatedSettingsSmsRoute,
   AuthenticatedImportsIndexRoute: AuthenticatedImportsIndexRoute,
 }
 
@@ -462,17 +578,8 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   PortalTokenRoute: PortalTokenRoute,
   ApiPublicHooksStripeRoute: ApiPublicHooksStripeRoute,
+  ApiPublicHooksTwilioRoute: ApiPublicHooksTwilioRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

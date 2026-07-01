@@ -42,6 +42,9 @@ function AppShell() {
               <Link to="/my-day" activeProps={{ className: "text-foreground font-medium" }}>
                 My day
               </Link>
+              <Link to="/messages" activeProps={{ className: "text-foreground font-medium" }}>
+                Messages
+              </Link>
               <Link to="/invoices" activeProps={{ className: "text-foreground font-medium" }}>
                 Invoices
               </Link>
@@ -53,6 +56,9 @@ function AppShell() {
               </Link>
               <Link to="/settings/skip-rules" activeProps={{ className: "text-foreground font-medium" }}>
                 Skip rules
+              </Link>
+              <Link to="/settings/sms" activeProps={{ className: "text-foreground font-medium" }}>
+                SMS
               </Link>
 
 
