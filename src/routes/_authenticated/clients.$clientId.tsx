@@ -202,6 +202,10 @@ function ClientDetail() {
         )}
       </div>
 
+      <ReviewsReferralPanel client={client} />
+
+
+
 
       {/* Properties */}
       <section className="rounded-lg border bg-card p-5">
