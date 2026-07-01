@@ -86,15 +86,16 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               else planStatus = "canceled";
             }
             // Locate org by metadata, else by customer id
-            let targetOrgId = orgId ?? null;
+            let targetOrgId: string | null = orgId ?? null;
             if (!targetOrgId && customerId) {
               const { data: found } = await supabaseAdmin
                 .from("organizations")
                 .select("id")
                 .eq("stripe_customer_id", customerId)
                 .maybeSingle();
-              targetOrgId = found?.id ?? null;
+              targetOrgId = (found?.id as string | undefined) ?? null;
             }
+
             if (targetOrgId) {
               await supabaseAdmin.from("organizations").update({
                 plan_status: planStatus,
