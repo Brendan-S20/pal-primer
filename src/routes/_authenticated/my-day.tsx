@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,6 +15,7 @@ import {
 import { sendVisitStatusSms } from "@/lib/messages.functions";
 import { SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
 import { toast } from "sonner";
+import { Navigation, Camera, ChevronDown, ChevronUp } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   component: MyDay,
@@ -35,10 +36,15 @@ function MyDay() {
     queryFn: () => fn({ data: { day } }),
   });
 
-  if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
-
   const visits = data?.visits ?? [];
   const staff = data?.staff;
+
+  const done = visits.filter((v: any) => v.status === "completed" || v.status === "skipped").length;
+  const total = visits.length;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const nextUp = visits.find((v: any) => v.status === "scheduled" || v.status === "in_progress");
+
+  if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
 
   return (
     <div className="space-y-4">
@@ -56,6 +62,36 @@ function MyDay() {
           className="rounded-md border bg-background px-3 py-2 text-sm"
         />
       </div>
+
+      {total > 0 && (
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex items-center justify-between text-sm">
+            <div className="font-medium">
+              {done} of {total} done
+            </div>
+            <div className="text-muted-foreground">{pct}%</div>
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full bg-primary transition-all"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          {nextUp && (
+            <div className="mt-3 flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">
+                Next: <span className="font-medium text-foreground">{nextUp.clients?.display_name}</span>
+              </span>
+              <a
+                href={`#visit-${nextUp.id}`}
+                className="text-primary underline"
+              >
+                Jump →
+              </a>
+            </div>
+          )}
+        </div>
+      )}
 
       {!staff && (
         <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
@@ -119,10 +155,8 @@ function HazardBanner({ property }: { property: any }) {
   const active = (Object.keys(HAZARD_LABELS) as HazardKey[]).filter((k) => property[k]);
   const notes = property.hazard_notes as string | undefined;
   if (active.length === 0 && !notes) return null;
-
   const critical = active.filter((k) => HAZARD_LABELS[k].severity === "critical");
   const warn = active.filter((k) => HAZARD_LABELS[k].severity === "warn");
-
   return (
     <div className="mb-3 space-y-2">
       {critical.length > 0 && (
@@ -155,6 +189,51 @@ function HazardBanner({ property }: { property: any }) {
   );
 }
 
+function ElapsedTimer({ startedAt }: { startedAt: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const secs = Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000));
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return (
+    <span className="font-mono tabular-nums">
+      {m}:{s.toString().padStart(2, "0")}
+    </span>
+  );
+}
+
+function PhotoThumb({ path }: { path: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.storage
+      .from("visit-photos")
+      .createSignedUrl(path, 300)
+      .then(({ data }) => {
+        if (!cancelled && data) setUrl(data.signedUrl);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+  if (!url) return <div className="h-14 w-14 animate-pulse rounded bg-muted" />;
+  return (
+    <a href={url} target="_blank" rel="noreferrer">
+      <img src={url} alt="Visit" className="h-14 w-14 rounded border object-cover" />
+    </a>
+  );
+}
+
+function mapsUrl(p: any): string {
+  const q = encodeURIComponent(
+    [p?.street, p?.city, p?.postal_code].filter(Boolean).join(", "),
+  );
+  return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
+}
+
 function VisitCard({ visit, index, day }: { visit: any; index: number; day: string }) {
   const qc = useQueryClient();
   const startFn = useServerFn(startVisit);
@@ -167,38 +246,26 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
   const [reason, setReason] = useState("");
   const [reasonCode, setReasonCode] = useState<(typeof SKIP_REASON_CODES)[number]>("other");
   const [uploading, setUploading] = useState(false);
+  const [photoKind, setPhotoKind] = useState<"before" | "completion" | "issue">("completion");
   const fileInput = useRef<HTMLInputElement>(null);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["my-day", day] });
 
   const start = useMutation({
     mutationFn: () => startFn({ data: { visitId: visit.id } }),
-    onSuccess: () => {
-      toast.success("Started");
-      invalidate();
-    },
+    onSuccess: () => { toast.success("Started"); invalidate(); },
     onError: (e: Error) => toast.error(e.message),
   });
-
   const complete = useMutation({
     mutationFn: () => completeFn({ data: { visitId: visit.id } }),
-    onSuccess: () => {
-      toast.success("Completed");
-      invalidate();
-    },
+    onSuccess: () => { toast.success("Completed"); invalidate(); },
     onError: (e: Error) => toast.error(e.message),
   });
-
   const skip = useMutation({
     mutationFn: () => skipFn({ data: { visitId: visit.id, reason, code: reasonCode } }),
-    onSuccess: () => {
-      toast.success("Marked skipped");
-      setShowSkip(false);
-      invalidate();
-    },
+    onSuccess: () => { toast.success("Marked skipped"); setShowSkip(false); invalidate(); },
     onError: (e: Error) => toast.error(e.message),
   });
-
   const sms = useMutation({
     mutationFn: (kind: "reminder" | "on_my_way" | "completed") =>
       smsFn({ data: { visitId: visit.id, kind } }),
@@ -210,21 +277,16 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
     setUploading(true);
     try {
       const { data: vRow, error: vErr } = await supabase
-        .from("visits")
-        .select("organization_id")
-        .eq("id", visit.id)
-        .single();
+        .from("visits").select("organization_id").eq("id", visit.id).single();
       if (vErr) throw vErr;
-
       const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
       const path = `${vRow.organization_id}/${visit.id}/${Date.now()}.${ext}`;
       const { error: upErr } = await supabase.storage
         .from("visit-photos")
         .upload(path, file, { contentType: file.type || "image/jpeg", upsert: false });
       if (upErr) throw upErr;
-
-      await photoFn({ data: { visitId: visit.id, storagePath: path, kind: "completion" } });
-      toast.success("Photo uploaded");
+      await photoFn({ data: { visitId: visit.id, storagePath: path, kind: photoKind } });
+      toast.success(`${photoKind[0].toUpperCase() + photoKind.slice(1)} photo uploaded`);
       invalidate();
     } catch (e: any) {
       toast.error(e.message ?? "Upload failed");
@@ -234,7 +296,7 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
     }
   };
 
-  const photos = visit.visit_photos ?? [];
+  const photos = useMemo(() => visit.visit_photos ?? [], [visit.visit_photos]);
   const hasCompletionPhoto = photos.some((p: any) => p.kind === "completion");
   const done = visit.status === "completed";
   const skipped = visit.status === "skipped";
@@ -242,75 +304,106 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
   const scheduled = visit.status === "scheduled";
   const finalStatus = done || skipped;
   const p = visit.properties;
+  const [collapsed, setCollapsed] = useState(finalStatus);
+  useEffect(() => { setCollapsed(finalStatus); }, [finalStatus]);
 
   return (
-    <li className="rounded-lg border bg-card p-4 shadow-sm">
-      <HazardBanner property={p} />
+    <li id={`visit-${visit.id}`} className={`rounded-lg border bg-card p-4 shadow-sm ${inProg ? "ring-2 ring-blue-500/40" : ""}`}>
+      {!collapsed && <HazardBanner property={p} />}
 
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="font-mono">#{visit.sequence ?? index}</span>
             {visit.zones?.name && <span>· {visit.zones.name}</span>}
             {statusBadge(visit.status)}
+            {inProg && visit.started_at && (
+              <span className="text-blue-600 dark:text-blue-400">
+                · <ElapsedTimer startedAt={visit.started_at} />
+              </span>
+            )}
           </div>
           <div className="mt-1 truncate text-base font-semibold">
             {visit.clients?.display_name ?? "Client"}
           </div>
           <div className="text-sm text-muted-foreground">
-            {p?.street}
-            {p?.city ? `, ${p.city}` : ""}
-            {p?.postal_code ? ` ${p.postal_code}` : ""}
+            {p?.street}{p?.city ? `, ${p.city}` : ""}{p?.postal_code ? ` ${p.postal_code}` : ""}
           </div>
-          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-            {p?.gate_code && (
-              <div>
-                <span className="text-muted-foreground">Gate:</span>{" "}
-                <span className="font-mono">{p.gate_code}</span>
+
+          {!collapsed && (
+            <>
+              <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                {p?.gate_code && (
+                  <div><span className="text-muted-foreground">Gate:</span> <span className="font-mono">{p.gate_code}</span></div>
+                )}
+                {p?.lock_box_code && (
+                  <div><span className="text-muted-foreground">Lock box:</span> <span className="font-mono">{p.lock_box_code}</span></div>
+                )}
+                {p?.key_location && (
+                  <div className="col-span-2"><span className="text-muted-foreground">Key:</span> {p.key_location}</div>
+                )}
+                {p?.yard_size && (
+                  <div><span className="text-muted-foreground">Yard:</span> {p.yard_size}</div>
+                )}
               </div>
-            )}
-            {p?.lock_box_code && (
-              <div>
-                <span className="text-muted-foreground">Lock box:</span>{" "}
-                <span className="font-mono">{p.lock_box_code}</span>
-              </div>
-            )}
-            {p?.key_location && (
-              <div className="col-span-2">
-                <span className="text-muted-foreground">Key:</span> {p.key_location}
-              </div>
-            )}
-            {p?.yard_size && (
-              <div>
-                <span className="text-muted-foreground">Yard:</span> {p.yard_size}
-              </div>
-            )}
-          </div>
-          {p?.parking_notes && (
-            <div className="mt-1 text-xs text-muted-foreground">🅿 {p.parking_notes}</div>
+              {p?.parking_notes && (<div className="mt-1 text-xs text-muted-foreground">🅿 {p.parking_notes}</div>)}
+              {p?.access_notes && (<div className="mt-1 text-xs text-muted-foreground">{p.access_notes}</div>)}
+              {skipped && (
+                <div className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                  Skipped
+                  {visit.skip_reason_code
+                    ? ` (${SKIP_REASON_LABELS[visit.skip_reason_code as keyof typeof SKIP_REASON_LABELS] ?? visit.skip_reason_code})`
+                    : ""}
+                  {visit.skip_reason ? `: ${visit.skip_reason}` : ""}
+                </div>
+              )}
+            </>
           )}
-          {p?.access_notes && (
-            <div className="mt-1 text-xs text-muted-foreground">{p.access_notes}</div>
+        </div>
+
+        <div className="flex flex-col items-end gap-1">
+          {p?.street && (
+            <a
+              href={mapsUrl(p)}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-accent"
+            >
+              <Navigation className="h-3 w-3" /> Navigate
+            </a>
           )}
           {visit.clients?.primary_phone && (
             <a
               href={`tel:${visit.clients.primary_phone}`}
-              className="mt-2 inline-block text-xs text-primary underline"
+              className="rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-accent"
             >
-              Call {visit.clients.primary_phone}
+              📞 Call
             </a>
           )}
-          {skipped && (
-            <div className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-              Skipped
-              {visit.skip_reason_code
-                ? ` (${SKIP_REASON_LABELS[visit.skip_reason_code as keyof typeof SKIP_REASON_LABELS] ?? visit.skip_reason_code})`
-                : ""}
-              {visit.skip_reason ? `: ${visit.skip_reason}` : ""}
-            </div>
+          {finalStatus && (
+            <button
+              onClick={() => setCollapsed((c) => !c)}
+              className="text-xs text-muted-foreground hover:text-foreground"
+              aria-label={collapsed ? "Expand" : "Collapse"}
+            >
+              {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </button>
           )}
         </div>
       </div>
+
+      {!collapsed && photos.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {photos.map((ph: any) => (
+            <div key={ph.id} className="relative">
+              <PhotoThumb path={ph.storage_path} />
+              <span className="absolute -bottom-1 -right-1 rounded bg-background px-1 text-[9px] uppercase text-muted-foreground shadow-sm">
+                {ph.kind}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {!finalStatus && (
         <div className="mt-4 space-y-3">
@@ -326,6 +419,16 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
                 if (f) uploadPhoto(f);
               }}
             />
+            <select
+              value={photoKind}
+              onChange={(e) => setPhotoKind(e.target.value as any)}
+              className="h-8 rounded-md border bg-background px-2 text-xs"
+              aria-label="Photo type"
+            >
+              <option value="before">Before</option>
+              <option value="completion">Completion</option>
+              <option value="issue">Issue</option>
+            </select>
             <Button
               type="button"
               variant="outline"
@@ -333,11 +436,9 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
               disabled={uploading}
               onClick={() => fileInput.current?.click()}
             >
-              {uploading ? "Uploading…" : hasCompletionPhoto ? "Add another photo" : "Take completion photo"}
+              <Camera className="mr-1 h-3.5 w-3.5" />
+              {uploading ? "Uploading…" : "Take photo"}
             </Button>
-            {photos.length > 0 && (
-              <span className="text-xs text-muted-foreground">{photos.length} photo(s)</span>
-            )}
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -360,20 +461,10 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
             </Button>
             {visit.clients?.primary_phone && (
               <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={sms.isPending}
-                  onClick={() => sms.mutate("reminder")}
-                >
+                <Button size="sm" variant="outline" disabled={sms.isPending} onClick={() => sms.mutate("reminder")}>
                   Text reminder
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={sms.isPending}
-                  onClick={() => sms.mutate("on_my_way")}
-                >
+                <Button size="sm" variant="outline" disabled={sms.isPending} onClick={() => sms.mutate("on_my_way")}>
                   Text "on my way"
                 </Button>
               </>
@@ -390,9 +481,7 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
                   className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
                 >
                   {SKIP_REASON_CODES.map((c) => (
-                    <option key={c} value={c}>
-                      {SKIP_REASON_LABELS[c]}
-                    </option>
+                    <option key={c} value={c}>{SKIP_REASON_LABELS[c]}</option>
                   ))}
                 </select>
               </div>
