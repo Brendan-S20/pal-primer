@@ -35,10 +35,11 @@ export const getMyOrg = createServerFn({ method: "GET" })
 
     const { data: org, error: orgErr } = await supabase
       .from("organizations")
-      .select("id, name, active_client_count, billing_tier")
+      .select("id, name, active_client_count, billing_tier, plan_status, current_period_end, stripe_customer_id, stripe_subscription_id")
       .eq("id", role.organization_id)
       .single();
     if (orgErr) throw new Error(orgErr.message);
 
     return { organization: { ...org, role: role.role as string } };
   });
+
