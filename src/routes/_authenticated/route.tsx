@@ -33,6 +33,12 @@ function AppShell() {
               <Link to="/clients" activeProps={{ className: "text-foreground font-medium" }}>
                 Clients
               </Link>
+              <Link to="/zones" activeProps={{ className: "text-foreground font-medium" }}>
+                Zones
+              </Link>
+              <Link to="/routes" activeProps={{ className: "text-foreground font-medium" }}>
+                Routes
+              </Link>
             </nav>
           </div>
           <button
