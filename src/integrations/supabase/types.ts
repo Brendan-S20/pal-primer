@@ -427,6 +427,51 @@ export type Database = {
           },
         ]
       }
+      visit_photos: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          organization_id: string
+          storage_path: string
+          uploaded_by: string
+          visit_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind?: string
+          organization_id: string
+          storage_path: string
+          uploaded_by: string
+          visit_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          organization_id?: string
+          storage_path?: string
+          uploaded_by?: string
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "visit_photos_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_photos_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       visits: {
         Row: {
           assigned_staff_id: string | null
@@ -584,6 +629,7 @@ export type Database = {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
       }
+      complete_visit: { Args: { _visit_id: string }; Returns: undefined }
       generate_visits_through: {
         Args: { _org_id: string; _through: string }
         Returns: number
@@ -600,6 +646,10 @@ export type Database = {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
       }
+      is_visit_tech: {
+        Args: { _user_id: string; _visit_id: string }
+        Returns: boolean
+      }
       next_visit_date: {
         Args: {
           _freq: Database["public"]["Enums"]["service_frequency"]
@@ -611,6 +661,11 @@ export type Database = {
         Args: { _org_id: string }
         Returns: undefined
       }
+      skip_visit: {
+        Args: { _reason: string; _visit_id: string }
+        Returns: undefined
+      }
+      start_visit: { Args: { _visit_id: string }; Returns: undefined }
     }
     Enums: {
       account_type: "residential" | "commercial"
