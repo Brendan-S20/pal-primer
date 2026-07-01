@@ -74,7 +74,7 @@ export const getReports = createServerFn({ method: "POST" })
     // Invoices in range (by issued_at)
     const { data: invoices, error: iErr } = await supabase
       .from("invoices")
-      .select("id, client_id, status, total_cents, issued_at, due_at, paid_at, kind")
+      .select("id, client_id, status, total_cents, issued_at, paid_at, kind")
       .eq("organization_id", orgId);
     if (iErr) throw new Error(iErr.message);
 
