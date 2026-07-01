@@ -284,6 +284,17 @@ function ClientDetail() {
                 ))}
               </select>
             </div>
+            <div>
+              <Label>Billing</Label>
+              <select
+                value={billingCadence}
+                onChange={(e) => setBillingCadence(e.target.value as "postpaid" | "prepaid")}
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="postpaid">Postpaid</option>
+                <option value="prepaid">Prepaid</option>
+              </select>
+            </div>
             <div className="sm:col-span-6">
               <Button type="submit" disabled={subMut.isPending || !propertyId}>
                 {subMut.isPending ? "Adding…" : "Add subscription"}
@@ -295,6 +306,65 @@ function ClientDetail() {
           </form>
         )}
       </section>
+
+      {/* Credit balance */}
+      <section className="rounded-lg border bg-card p-5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium">Prepaid credit balance</h2>
+          <span className={`text-lg font-semibold ${((credit?.balanceCents ?? 0) < 0) ? "text-destructive" : ""}`}>
+            ${((credit?.balanceCents ?? 0) / 100).toFixed(2)}
+          </span>
+        </div>
+        {credit && credit.ledger.length > 0 ? (
+          <ul className="mt-3 divide-y text-sm">
+            {credit.ledger.map((l) => (
+              <li key={l.id} className="flex items-center justify-between py-2">
+                <span>
+                  <span className="text-muted-foreground">{new Date(l.created_at).toLocaleDateString()}</span>
+                  <span className="ml-2">{l.note ?? l.kind}</span>
+                </span>
+                <span className={l.delta_cents < 0 ? "text-destructive" : "text-primary"}>
+                  {l.delta_cents < 0 ? "−" : "+"}${Math.abs(l.delta_cents / 100).toFixed(2)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm text-muted-foreground">No credit activity yet.</p>
+        )}
+      </section>
     </div>
+  );
+}
+
+function PrepayInline({
+  disabled,
+  onSubmit,
+}: {
+  disabled: boolean;
+  onSubmit: (n: number) => void;
+}) {
+  const [count, setCount] = useState("4");
+  return (
+    <form
+      className="flex items-center gap-1"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const n = parseInt(count, 10);
+        if (n > 0) onSubmit(n);
+      }}
+    >
+      <Input
+        type="number"
+        min="1"
+        max="52"
+        value={count}
+        onChange={(e) => setCount(e.target.value)}
+        className="h-8 w-16"
+      />
+      <Button type="submit" size="sm" variant="outline" disabled={disabled}>
+        Bill next
+      </Button>
+    </form>
   );
 }
