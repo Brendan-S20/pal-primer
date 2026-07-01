@@ -71,8 +71,37 @@ export const completeVisit = createServerFn({ method: "POST" })
     } catch (e) {
       console.error("visit-completed email failed", e);
     }
+
+    // Best-effort: fire an automated Google review SMS if org enabled it and
+    // this client hasn't been asked recently. Only completed visits qualify.
+    try {
+      const { data: v } = await context.supabase
+        .from("visits")
+        .select("organization_id, client_id, clients(sms_opt_out, primary_phone, review_asked_at), organizations!inner(review_ask_enabled, google_review_url, sms_from_number)")
+        .eq("id", data.visitId)
+        .single();
+      const c: any = v && (Array.isArray((v as any).clients) ? (v as any).clients[0] : (v as any).clients);
+      const o: any = v && (Array.isArray((v as any).organizations) ? (v as any).organizations[0] : (v as any).organizations);
+      const ninetyDaysAgo = Date.now() - 90 * 24 * 3600_000;
+      const eligible =
+        o?.review_ask_enabled &&
+        o?.google_review_url &&
+        o?.sms_from_number &&
+        c?.primary_phone &&
+        !c?.sms_opt_out &&
+        (!c?.review_asked_at || new Date(c.review_asked_at).getTime() < ninetyDaysAgo);
+      if (eligible) {
+        const { sendReviewRequest } = await import("@/lib/reviews.functions");
+        // sendReviewRequest is a createServerFn; call the inner handler by re-issuing as unauthenticated? We're inside a middleware ctx; just inline.
+        // Simpler: call via server fn invocation
+        await (sendReviewRequest as any)({ data: { clientId: (v as any).client_id, visitId: data.visitId } });
+      }
+    } catch (e) {
+      console.error("auto review request failed", e);
+    }
     return { ok: true };
   });
+
 
 export const skipVisit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
