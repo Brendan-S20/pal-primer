@@ -4,6 +4,9 @@ import { createClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 
+const STATUSES = ["new", "contacted", "qualified", "converted", "archived"] as const;
+
+
 const leadSchema = z.object({
   name: z.string().trim().min(1).max(120),
   email: z.string().trim().email().max(255),
@@ -65,7 +68,11 @@ export const updateLeadStatus = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const patch: Record<string, unknown> = { status: data.status };
+    const patch: {
+      status: (typeof STATUSES)[number];
+      contacted_at?: string;
+      converted_at?: string;
+    } = { status: data.status };
     if (data.status === "contacted") patch.contacted_at = new Date().toISOString();
     if (data.status === "converted") patch.converted_at = new Date().toISOString();
     const { error } = await context.supabase.from("leads").update(patch).eq("id", data.id);

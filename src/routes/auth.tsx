@@ -30,7 +30,7 @@ function AuthPage() {
   useEffect(() => {
     // If already signed in, bounce to dashboard.
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user) navigate({ to: "/" });
+      if (data.user) navigate({ to: "/dashboard" });
     });
   }, [navigate]);
 
@@ -41,7 +41,7 @@ function AuthPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) return setError(error.message);
-    navigate({ to: "/" });
+    navigate({ to: "/dashboard" });
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
@@ -63,7 +63,7 @@ function AuthPage() {
       try {
         await bootstrapOrganization({ data: { orgName, displayName } });
         setLoading(false);
-        navigate({ to: "/" });
+        navigate({ to: "/dashboard" });
         return;
       } catch (err) {
         setLoading(false);
