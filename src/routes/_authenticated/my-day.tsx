@@ -12,6 +12,7 @@ import {
   skipVisit,
   recordVisitPhoto,
 } from "@/lib/my-day.functions";
+import { sendVisitStatusSms } from "@/lib/messages.functions";
 import { SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
 import { toast } from "sonner";
 
@@ -160,6 +161,7 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
   const completeFn = useServerFn(completeVisit);
   const skipFn = useServerFn(skipVisit);
   const photoFn = useServerFn(recordVisitPhoto);
+  const smsFn = useServerFn(sendVisitStatusSms);
 
   const [showSkip, setShowSkip] = useState(false);
   const [reason, setReason] = useState("");
@@ -194,6 +196,13 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
       setShowSkip(false);
       invalidate();
     },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const sms = useMutation({
+    mutationFn: (kind: "reminder" | "on_my_way" | "completed") =>
+      smsFn({ data: { visitId: visit.id, kind } }),
+    onSuccess: () => toast.success("SMS sent"),
     onError: (e: Error) => toast.error(e.message),
   });
 
