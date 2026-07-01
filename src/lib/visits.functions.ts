@@ -60,7 +60,7 @@ export const listVisitsForDay = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("visits")
       .select(
-        "id, scheduled_on, status, sequence, assigned_staff_id, zone_id, property_id, client_id, clients(display_name), properties(street, city, postal_code), zones(name, postal_prefix), staff(display_name)",
+        "id, scheduled_on, status, sequence, assigned_staff_id, zone_id, property_id, client_id, subscription_id, clients(display_name), properties(street, city, postal_code), zones(name, postal_prefix), staff(display_name), subscriptions(price_cents, frequency)",
       )
       .eq("organization_id", orgId)
       .eq("scheduled_on", data.day)
