@@ -30,6 +30,7 @@ export type Database = {
           portal_token: string
           primary_email: string | null
           primary_phone: string | null
+          sms_opt_out: boolean
           updated_at: string
         }
         Insert: {
@@ -47,6 +48,7 @@ export type Database = {
           portal_token?: string
           primary_email?: string | null
           primary_phone?: string | null
+          sms_opt_out?: boolean
           updated_at?: string
         }
         Update: {
@@ -64,6 +66,7 @@ export type Database = {
           portal_token?: string
           primary_email?: string | null
           primary_phone?: string | null
+          sms_opt_out?: boolean
           updated_at?: string
         }
         Relationships: [
@@ -486,6 +489,86 @@ export type Database = {
           },
         ]
       }
+      messages: {
+        Row: {
+          body: string
+          client_id: string | null
+          created_at: string
+          direction: Database["public"]["Enums"]["message_direction"]
+          error: string | null
+          from_number: string | null
+          id: string
+          organization_id: string
+          staff_id: string | null
+          status: Database["public"]["Enums"]["message_status"]
+          to_number: string | null
+          twilio_sid: string | null
+          updated_at: string
+          visit_id: string | null
+        }
+        Insert: {
+          body: string
+          client_id?: string | null
+          created_at?: string
+          direction: Database["public"]["Enums"]["message_direction"]
+          error?: string | null
+          from_number?: string | null
+          id?: string
+          organization_id: string
+          staff_id?: string | null
+          status?: Database["public"]["Enums"]["message_status"]
+          to_number?: string | null
+          twilio_sid?: string | null
+          updated_at?: string
+          visit_id?: string | null
+        }
+        Update: {
+          body?: string
+          client_id?: string | null
+          created_at?: string
+          direction?: Database["public"]["Enums"]["message_direction"]
+          error?: string | null
+          from_number?: string | null
+          id?: string
+          organization_id?: string
+          staff_id?: string | null
+          status?: Database["public"]["Enums"]["message_status"]
+          to_number?: string | null
+          twilio_sid?: string | null
+          updated_at?: string
+          visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations: {
         Row: {
           active_client_count: number
@@ -495,6 +578,7 @@ export type Database = {
           id: string
           name: string
           plan_status: Database["public"]["Enums"]["org_plan_status"]
+          sms_from_number: string | null
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
           updated_at: string
@@ -507,6 +591,7 @@ export type Database = {
           id?: string
           name: string
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
+          sms_from_number?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           updated_at?: string
@@ -519,6 +604,7 @@ export type Database = {
           id?: string
           name?: string
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
+          sms_from_number?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           updated_at?: string
@@ -1141,6 +1227,7 @@ export type Database = {
         Returns: string
       }
       org_can_add_client: { Args: { _org_id: string }; Returns: boolean }
+      phone_digits: { Args: { _p: string }; Returns: string }
       portal_get_client: {
         Args: { _token: string }
         Returns: {
@@ -1243,6 +1330,8 @@ export type Database = {
         | "cancelled"
       invoice_kind: "postpaid" | "prepaid_topup"
       invoice_status: "draft" | "open" | "paid" | "void" | "uncollectible"
+      message_direction: "outbound" | "inbound"
+      message_status: "queued" | "sent" | "delivered" | "failed" | "received"
       org_plan_status: "free" | "active" | "past_due" | "canceled"
       payment_status: "pending" | "succeeded" | "failed" | "refunded"
       service_frequency:
@@ -1419,6 +1508,8 @@ export const Constants = {
       ],
       invoice_kind: ["postpaid", "prepaid_topup"],
       invoice_status: ["draft", "open", "paid", "void", "uncollectible"],
+      message_direction: ["outbound", "inbound"],
+      message_status: ["queued", "sent", "delivered", "failed", "received"],
       org_plan_status: ["free", "active", "past_due", "canceled"],
       payment_status: ["pending", "succeeded", "failed", "refunded"],
       service_frequency: [
