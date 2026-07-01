@@ -495,6 +495,7 @@ export type Database = {
           id: string
           issued_at: string | null
           kind: Database["public"]["Enums"]["invoice_kind"]
+          last_email_reminder_at: string | null
           last_reminder_at: string | null
           notes: string | null
           organization_id: string
@@ -517,6 +518,7 @@ export type Database = {
           id?: string
           issued_at?: string | null
           kind?: Database["public"]["Enums"]["invoice_kind"]
+          last_email_reminder_at?: string | null
           last_reminder_at?: string | null
           notes?: string | null
           organization_id: string
@@ -539,6 +541,7 @@ export type Database = {
           id?: string
           issued_at?: string | null
           kind?: Database["public"]["Enums"]["invoice_kind"]
+          last_email_reminder_at?: string | null
           last_reminder_at?: string | null
           notes?: string | null
           organization_id?: string

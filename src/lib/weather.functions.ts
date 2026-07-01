@@ -177,9 +177,19 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
     let moved = 0;
     const errors: string[] = [];
+
+    // Snapshot pre-move dates + client refs for email
+    const { data: preRows } = await supabase
+      .from("visits")
+      .select("id, scheduled_on, client_id")
+      .in("id", data.visitIds);
+    const preMap = new Map<string, { scheduled_on: string; client_id: string }>();
+    (preRows ?? []).forEach((r: any) => preMap.set(r.id, { scheduled_on: r.scheduled_on, client_id: r.client_id }));
+
     for (const id of data.visitIds) {
       const { error } = await supabase.rpc("reschedule_visit", {
         _visit_id: id,
@@ -189,6 +199,35 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
       if (error) errors.push(error.message);
       else moved++;
     }
+
+    // Fire weather-reschedule emails (best-effort)
+    try {
+      const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+      const seen = new Set<string>();
+      for (const id of data.visitIds) {
+        const pre = preMap.get(id);
+        if (!pre) continue;
+        // Dedupe per client+newDate
+        const key = `${pre.client_id}|${data.newDate}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        await enqueueAppEmail({
+          organizationId: orgId,
+          clientId: pre.client_id,
+          templateName: "weather-reschedule",
+          notifyKey: "notify_email_weather_reschedule",
+          idempotencyKey: `weather-${id}-${data.newDate}`,
+          templateData: {
+            originalDate: pre.scheduled_on,
+            newDate: data.newDate,
+            reason: data.note,
+          },
+        });
+      }
+    } catch (e) {
+      console.error("weather reschedule emails failed", e);
+    }
+
     return { moved, errors };
   });
 
