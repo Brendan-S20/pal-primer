@@ -510,6 +510,7 @@ function ClientDetail() {
         )}
       </section>
 
+      <StationsPanel clientId={clientId} properties={properties} />
       <AddonsPanel clientId={clientId} />
     </div>
   );
