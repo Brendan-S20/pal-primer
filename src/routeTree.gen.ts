@@ -19,6 +19,7 @@ import { Route as AuthenticatedInvoicesRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated/clients'
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
 import { Route as AuthenticatedInvoicesIndexRouteImport } from './routes/_authenticated/invoices.index'
+import { Route as AuthenticatedImportsIndexRouteImport } from './routes/_authenticated/imports.index'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
 import { Route as AuthenticatedInvoicesInvoiceIdRouteImport } from './routes/_authenticated/invoices.$invoiceId'
 import { Route as AuthenticatedClientsNewRouteImport } from './routes/_authenticated/clients.new'
@@ -75,6 +76,12 @@ const AuthenticatedInvoicesIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedInvoicesRoute,
   } as any)
+const AuthenticatedImportsIndexRoute =
+  AuthenticatedImportsIndexRouteImport.update({
+    id: '/imports/',
+    path: '/imports/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedClientsIndexRoute =
   AuthenticatedClientsIndexRouteImport.update({
     id: '/',
@@ -117,6 +124,7 @@ export interface FileRoutesByFullPath {
   '/clients/new': typeof AuthenticatedClientsNewRoute
   '/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
+  '/imports/': typeof AuthenticatedImportsIndexRoute
   '/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
 }
@@ -131,6 +139,7 @@ export interface FileRoutesByTo {
   '/clients/new': typeof AuthenticatedClientsNewRoute
   '/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
+  '/imports': typeof AuthenticatedImportsIndexRoute
   '/invoices': typeof AuthenticatedInvoicesIndexRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
 }
@@ -149,6 +158,7 @@ export interface FileRoutesById {
   '/_authenticated/clients/new': typeof AuthenticatedClientsNewRoute
   '/_authenticated/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
+  '/_authenticated/imports/': typeof AuthenticatedImportsIndexRoute
   '/_authenticated/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
 }
@@ -167,6 +177,7 @@ export interface FileRouteTypes {
     | '/clients/new'
     | '/invoices/$invoiceId'
     | '/clients/'
+    | '/imports/'
     | '/invoices/'
     | '/api/public/hooks/stripe'
   fileRoutesByTo: FileRoutesByTo
@@ -181,6 +192,7 @@ export interface FileRouteTypes {
     | '/clients/new'
     | '/invoices/$invoiceId'
     | '/clients'
+    | '/imports'
     | '/invoices'
     | '/api/public/hooks/stripe'
   id:
@@ -198,6 +210,7 @@ export interface FileRouteTypes {
     | '/_authenticated/clients/new'
     | '/_authenticated/invoices/$invoiceId'
     | '/_authenticated/clients/'
+    | '/_authenticated/imports/'
     | '/_authenticated/invoices/'
     | '/api/public/hooks/stripe'
   fileRoutesById: FileRoutesById
@@ -280,6 +293,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedInvoicesIndexRouteImport
       parentRoute: typeof AuthenticatedInvoicesRoute
     }
+    '/_authenticated/imports/': {
+      id: '/_authenticated/imports/'
+      path: '/imports'
+      fullPath: '/imports/'
+      preLoaderRoute: typeof AuthenticatedImportsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/clients/': {
       id: '/_authenticated/clients/'
       path: '/'
@@ -356,6 +376,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedRoutesRoute: typeof AuthenticatedRoutesRoute
   AuthenticatedZonesRoute: typeof AuthenticatedZonesRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedImportsIndexRoute: typeof AuthenticatedImportsIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -366,6 +387,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedRoutesRoute: AuthenticatedRoutesRoute,
   AuthenticatedZonesRoute: AuthenticatedZonesRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedImportsIndexRoute: AuthenticatedImportsIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
