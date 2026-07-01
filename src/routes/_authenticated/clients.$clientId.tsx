@@ -197,11 +197,22 @@ function ClientDetail() {
         <h2 className="text-sm font-medium">Subscriptions</h2>
         <ul className="mt-3 divide-y">
           {subs.map((s: any) => (
-            <li key={s.id} className="flex justify-between py-2 text-sm">
+            <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
               <span>
                 {FREQ_LABELS[s.frequency]} · {s.account_type === "residential" ? `${s.dog_count} dog(s)` : `${s.unit_count} unit(s)`}
+                <Badge variant={s.billing_cadence === "prepaid" ? "default" : "secondary"} className="ml-2">
+                  {s.billing_cadence}
+                </Badge>
               </span>
-              <span className="text-muted-foreground">${(s.price_cents / 100).toFixed(2)} · {s.status}</span>
+              <span className="flex items-center gap-3 text-muted-foreground">
+                <span>${(s.price_cents / 100).toFixed(2)} · {s.status}</span>
+                {s.billing_cadence === "prepaid" && s.status === "active" && (
+                  <PrepayInline
+                    disabled={prepayMut.isPending}
+                    onSubmit={(n) => prepayMut.mutate({ subscriptionId: s.id, visitCount: n })}
+                  />
+                )}
+              </span>
             </li>
           ))}
           {subs.length === 0 && (
