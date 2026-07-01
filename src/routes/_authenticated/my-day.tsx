@@ -304,34 +304,57 @@ function mapsUrl(p: any): string {
 
 function VisitCard({ visit, index, day }: { visit: any; index: number; day: string }) {
   const qc = useQueryClient();
-  const startFn = useServerFn(startVisit);
-  const completeFn = useServerFn(completeVisit);
-  const skipFn = useServerFn(skipVisit);
-  const photoFn = useServerFn(recordVisitPhoto);
   const smsFn = useServerFn(sendVisitStatusSms);
+
+  const actions = useOfflineVisitActions(visit.id, visit.organization_id as string | undefined);
 
   const [showSkip, setShowSkip] = useState(false);
   const [reason, setReason] = useState("");
   const [reasonCode, setReasonCode] = useState<(typeof SKIP_REASON_CODES)[number]>("other");
   const [uploading, setUploading] = useState(false);
   const [photoKind, setPhotoKind] = useState<"before" | "completion" | "issue">("completion");
+  const [pendingLocal, setPendingLocal] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
+
+  // Refresh per-visit pending count so cards can show a subtle "queued" chip.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      countPendingForVisit(visit.id).then((c) => !cancelled && setPendingLocal(c));
+    };
+    refresh();
+    window.addEventListener("offline-queue-change", refresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("offline-queue-change", refresh);
+    };
+  }, [visit.id]);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["my-day", day] });
 
   const start = useMutation({
-    mutationFn: () => startFn({ data: { visitId: visit.id } }),
-    onSuccess: () => { toast.success("Started"); invalidate(); },
+    mutationFn: () => actions.start(),
+    onSuccess: (r) => {
+      toast.success(r.queued ? "Queued — starts when back online" : "Started");
+      if (!r.queued) invalidate();
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const complete = useMutation({
-    mutationFn: () => completeFn({ data: { visitId: visit.id } }),
-    onSuccess: () => { toast.success("Completed"); invalidate(); },
+    mutationFn: () => actions.complete(),
+    onSuccess: (r) => {
+      toast.success(r.queued ? "Queued — completes when back online" : "Completed");
+      if (!r.queued) invalidate();
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const skip = useMutation({
-    mutationFn: () => skipFn({ data: { visitId: visit.id, reason, code: reasonCode } }),
-    onSuccess: () => { toast.success("Marked skipped"); setShowSkip(false); invalidate(); },
+    mutationFn: () => actions.skip(reason, reasonCode),
+    onSuccess: (r) => {
+      toast.success(r.queued ? "Queued — will skip when back online" : "Marked skipped");
+      setShowSkip(false);
+      if (!r.queued) invalidate();
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const sms = useMutation({
@@ -344,18 +367,13 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
   const uploadPhoto = async (file: File) => {
     setUploading(true);
     try {
-      const { data: vRow, error: vErr } = await supabase
-        .from("visits").select("organization_id").eq("id", visit.id).single();
-      if (vErr) throw vErr;
-      const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-      const path = `${vRow.organization_id}/${visit.id}/${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from("visit-photos")
-        .upload(path, file, { contentType: file.type || "image/jpeg", upsert: false });
-      if (upErr) throw upErr;
-      await photoFn({ data: { visitId: visit.id, storagePath: path, kind: photoKind } });
-      toast.success(`${photoKind[0].toUpperCase() + photoKind.slice(1)} photo uploaded`);
-      invalidate();
+      const r = await actions.uploadPhoto(file, photoKind);
+      toast.success(
+        r.queued
+          ? `${photoKind[0].toUpperCase() + photoKind.slice(1)} photo queued — uploads when online`
+          : `${photoKind[0].toUpperCase() + photoKind.slice(1)} photo uploaded`,
+      );
+      if (!r.queued) invalidate();
     } catch (e: any) {
       toast.error(e.message ?? "Upload failed");
     } finally {
@@ -366,6 +384,9 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
 
   const photos = useMemo(() => visit.visit_photos ?? [], [visit.visit_photos]);
   const hasCompletionPhoto = photos.some((p: any) => p.kind === "completion");
+  // If a completion photo is queued locally, allow "Complete" — the sync
+  // driver replays photos first (older ts) then complete (newer ts).
+  const hasQueuedCompletionPhoto = pendingLocal > 0;
   const done = visit.status === "completed";
   const skipped = visit.status === "skipped";
   const inProg = visit.status === "in_progress";
