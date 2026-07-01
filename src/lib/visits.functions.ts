@@ -84,3 +84,36 @@ export const listStaff = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     return { staff: data ?? [] };
   });
+
+export const reassignVisit = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ visitId: z.string().uuid(), staffId: z.string().uuid().nullable() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase.rpc("reassign_visit", {
+      _visit_id: data.visitId,
+      _staff_id: data.staffId,
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const reorderRoute = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      staffId: z.string().uuid(),
+      day: z.string(),
+      orderedIds: z.array(z.string().uuid()),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: count, error } = await context.supabase.rpc("reorder_route", {
+      _staff_id: data.staffId,
+      _day: data.day,
+      _ordered_ids: data.orderedIds,
+    });
+    if (error) throw new Error(error.message);
+    return { updated: (count as number) ?? 0 };
+  });
