@@ -71,6 +71,19 @@ function ClientDetail() {
   const [city, setCity] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [gateCode, setGateCode] = useState("");
+  const [yardSize, setYardSize] = useState<"" | "small" | "medium" | "large" | "xlarge">("");
+  const [hazardNotes, setHazardNotes] = useState("");
+  const [hz, setHz] = useState({
+    do_not_enter_if_dog_out: false,
+    aggressive_dog: false,
+    escape_risk: false,
+    invisible_fence: false,
+    dog_in_yard_during_service: false,
+    bees_wasps: false,
+    sharp_objects: false,
+    slippery_surfaces: false,
+  });
+  const toggleHz = (k: keyof typeof hz) => setHz((s) => ({ ...s, [k]: !s[k] }));
 
   const propMut = useMutation({
     mutationFn: () =>
@@ -81,13 +94,26 @@ function ClientDetail() {
           city,
           postalCode,
           gateCode: gateCode || undefined,
+          yardSize: yardSize || undefined,
+          hazardNotes: hazardNotes || undefined,
+          doNotEnterIfDogOut: hz.do_not_enter_if_dog_out,
+          aggressiveDog: hz.aggressive_dog,
+          escapeRisk: hz.escape_risk,
+          invisibleFence: hz.invisible_fence,
+          dogInYardDuringService: hz.dog_in_yard_during_service,
+          beesWasps: hz.bees_wasps,
+          sharpObjects: hz.sharp_objects,
+          slipperySurfaces: hz.slippery_surfaces,
         },
       }),
     onSuccess: () => {
-      setStreet("");
-      setCity("");
-      setPostalCode("");
-      setGateCode("");
+      setStreet(""); setCity(""); setPostalCode(""); setGateCode("");
+      setYardSize(""); setHazardNotes("");
+      setHz({
+        do_not_enter_if_dog_out: false, aggressive_dog: false, escape_risk: false,
+        invisible_fence: false, dog_in_yard_during_service: false,
+        bees_wasps: false, sharp_objects: false, slippery_surfaces: false,
+      });
       qc.invalidateQueries({ queryKey: ["properties", clientId] });
     },
   });
