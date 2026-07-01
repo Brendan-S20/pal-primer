@@ -50,6 +50,8 @@ export const createZone = createServerFn({ method: "POST" })
         postal_prefix: data.postalPrefix || null,
         account_type: data.accountType ?? null,
         price_note: data.priceNote || null,
+        latitude: data.latitude ?? null,
+        longitude: data.longitude ?? null,
       })
       .select("id")
       .single();
