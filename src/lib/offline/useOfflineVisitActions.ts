@@ -11,6 +11,7 @@ import {
   recordVisitPhoto,
 } from "@/lib/my-day.functions";
 import { enqueueAction, storePhoto } from "@/lib/offline/queue";
+import { compressImage } from "@/lib/offline/compressImage";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface OfflineVisitActions {
