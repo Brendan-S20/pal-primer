@@ -362,24 +362,36 @@ export type Database = {
           active_client_count: number
           billing_tier: string | null
           created_at: string
+          current_period_end: string | null
           id: string
           name: string
+          plan_status: Database["public"]["Enums"]["org_plan_status"]
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
           updated_at: string
         }
         Insert: {
           active_client_count?: number
           billing_tier?: string | null
           created_at?: string
+          current_period_end?: string | null
           id?: string
           name: string
+          plan_status?: Database["public"]["Enums"]["org_plan_status"]
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           updated_at?: string
         }
         Update: {
           active_client_count?: number
           billing_tier?: string | null
           created_at?: string
+          current_period_end?: string | null
           id?: string
           name?: string
+          plan_status?: Database["public"]["Enums"]["org_plan_status"]
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -930,6 +942,7 @@ export type Database = {
         }
         Returns: string
       }
+      org_can_add_client: { Args: { _org_id: string }; Returns: boolean }
       post_credit_entry: {
         Args: {
           _client_id: string
@@ -960,6 +973,7 @@ export type Database = {
       dog_temperament: "friendly" | "nervous" | "aggressive" | "unknown"
       invoice_kind: "postpaid" | "prepaid_topup"
       invoice_status: "draft" | "open" | "paid" | "void" | "uncollectible"
+      org_plan_status: "free" | "active" | "past_due" | "canceled"
       payment_status: "pending" | "succeeded" | "failed" | "refunded"
       service_frequency:
         | "weekly"
@@ -1108,6 +1122,7 @@ export const Constants = {
       dog_temperament: ["friendly", "nervous", "aggressive", "unknown"],
       invoice_kind: ["postpaid", "prepaid_topup"],
       invoice_status: ["draft", "open", "paid", "void", "uncollectible"],
+      org_plan_status: ["free", "active", "past_due", "canceled"],
       payment_status: ["pending", "succeeded", "failed", "refunded"],
       service_frequency: [
         "weekly",
