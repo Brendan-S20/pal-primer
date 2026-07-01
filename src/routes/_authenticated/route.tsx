@@ -2,6 +2,7 @@ import { createFileRoute, Outlet, redirect, Link } from "@tanstack/react-router"
 import { supabase } from "@/integrations/supabase/client";
 import { APP_NAME } from "@/lib/scoop";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
+import { InstallBanner } from "@/components/InstallBanner";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
