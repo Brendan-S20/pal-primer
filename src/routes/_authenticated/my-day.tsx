@@ -358,6 +358,26 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
             <Button size="sm" variant="ghost" onClick={() => setShowSkip((s) => !s)}>
               Skip
             </Button>
+            {visit.clients?.primary_phone && (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={sms.isPending}
+                  onClick={() => sms.mutate("reminder")}
+                >
+                  Text reminder
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={sms.isPending}
+                  onClick={() => sms.mutate("on_my_way")}
+                >
+                  Text "on my way"
+                </Button>
+              </>
+            )}
           </div>
 
           {showSkip && (
