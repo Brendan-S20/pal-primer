@@ -93,7 +93,7 @@ export const getReports = createServerFn({ method: "POST" })
       }
       if (inv.status === "open") {
         outstandingCents += inv.total_cents ?? 0;
-        const ref = inv.due_at ?? inv.issued_at;
+        const ref = inv.issued_at;
         if (ref) {
           const days = Math.floor((today.getTime() - new Date(ref).getTime()) / 86400000);
           if (days <= 0) aging.current += inv.total_cents ?? 0;
