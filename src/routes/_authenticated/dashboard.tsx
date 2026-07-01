@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { getMyOrg } from "@/lib/org.functions";
 import { Button } from "@/components/ui/button";
 
-export const Route = createFileRoute("/_authenticated/")({
+export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
 });
 
