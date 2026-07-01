@@ -406,6 +406,11 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
             <span className="font-mono">#{visit.sequence ?? index}</span>
             {visit.zones?.name && <span>· {visit.zones.name}</span>}
             {statusBadge(visit.status)}
+            {pendingLocal > 0 && (
+              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                {pendingLocal} queued
+              </span>
+            )}
             {inProg && visit.started_at && (
               <span className="text-blue-600 dark:text-blue-400">
                 · <ElapsedTimer startedAt={visit.started_at} />
