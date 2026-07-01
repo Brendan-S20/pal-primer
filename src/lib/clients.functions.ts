@@ -49,9 +49,29 @@ export const createClient = createServerFn({ method: "POST" })
         primary_email: data.primaryEmail || null,
         primary_phone: data.primaryPhone || null,
       })
-      .select("id")
+      .select("id, portal_token")
       .single();
     if (error) throw new Error(error.message);
+
+    // Fire welcome email (best-effort; never block client creation)
+    if (data.primaryEmail) {
+      try {
+        const appUrl = process.env.APP_URL || "https://pal-primer.lovable.app";
+        const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+        await enqueueAppEmail({
+          organizationId: orgId,
+          clientId: row.id as string,
+          templateName: "welcome",
+          notifyKey: "notify_email_welcome",
+          idempotencyKey: `welcome-${row.id}`,
+          templateData: {
+            portalUrl: row.portal_token ? `${appUrl}/portal/${row.portal_token}` : undefined,
+          },
+        });
+      } catch (e) {
+        console.error("welcome email failed", e);
+      }
+    }
     return { id: row.id as string };
   });
 

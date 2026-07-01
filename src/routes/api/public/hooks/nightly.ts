@@ -70,6 +70,14 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             );
           }
 
+          if (org.overdue_reminders_enabled) {
+            perOrg.overdue_emails_sent = await sendOverdueEmails(
+              supabaseAdmin,
+              org.id,
+              org.overdue_reminder_days ?? 7,
+            );
+          }
+
           summary.push(perOrg);
         }
 
