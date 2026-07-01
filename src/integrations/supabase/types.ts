@@ -112,6 +112,136 @@ export type Database = {
           },
         ]
       }
+      invoice_line_items: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          description: string
+          id: string
+          invoice_id: string
+          subscription_id: string | null
+          visit_id: string | null
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          description: string
+          id?: string
+          invoice_id: string
+          subscription_id?: string | null
+          visit_id?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          description?: string
+          id?: string
+          invoice_id?: string
+          subscription_id?: string | null
+          visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_line_items_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_line_items_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_line_items_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          checkout_url: string | null
+          client_id: string
+          created_at: string
+          currency: string
+          id: string
+          issued_at: string | null
+          notes: string | null
+          organization_id: string
+          paid_at: string | null
+          period_end: string
+          period_start: string | null
+          status: Database["public"]["Enums"]["invoice_status"]
+          stripe_checkout_session_id: string | null
+          stripe_payment_intent_id: string | null
+          subtotal_cents: number
+          total_cents: number
+          updated_at: string
+          voided_at: string | null
+        }
+        Insert: {
+          checkout_url?: string | null
+          client_id: string
+          created_at?: string
+          currency?: string
+          id?: string
+          issued_at?: string | null
+          notes?: string | null
+          organization_id: string
+          paid_at?: string | null
+          period_end: string
+          period_start?: string | null
+          status?: Database["public"]["Enums"]["invoice_status"]
+          stripe_checkout_session_id?: string | null
+          stripe_payment_intent_id?: string | null
+          subtotal_cents?: number
+          total_cents?: number
+          updated_at?: string
+          voided_at?: string | null
+        }
+        Update: {
+          checkout_url?: string | null
+          client_id?: string
+          created_at?: string
+          currency?: string
+          id?: string
+          issued_at?: string | null
+          notes?: string | null
+          organization_id?: string
+          paid_at?: string | null
+          period_end?: string
+          period_start?: string | null
+          status?: Database["public"]["Enums"]["invoice_status"]
+          stripe_checkout_session_id?: string | null
+          stripe_payment_intent_id?: string | null
+          subtotal_cents?: number
+          total_cents?: number
+          updated_at?: string
+          voided_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       locations: {
         Row: {
           city: string | null
@@ -182,6 +312,66 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      payments: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          currency: string
+          id: string
+          invoice_id: string
+          organization_id: string
+          paid_at: string | null
+          raw_event: Json | null
+          status: Database["public"]["Enums"]["payment_status"]
+          stripe_checkout_session_id: string | null
+          stripe_payment_intent_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          currency?: string
+          id?: string
+          invoice_id: string
+          organization_id: string
+          paid_at?: string | null
+          raw_event?: Json | null
+          status?: Database["public"]["Enums"]["payment_status"]
+          stripe_checkout_session_id?: string | null
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          currency?: string
+          id?: string
+          invoice_id?: string
+          organization_id?: string
+          paid_at?: string | null
+          raw_event?: Json | null
+          status?: Database["public"]["Enums"]["payment_status"]
+          stripe_checkout_session_id?: string | null
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       properties: {
         Row: {
@@ -630,6 +820,14 @@ export type Database = {
         Returns: boolean
       }
       complete_visit: { Args: { _visit_id: string }; Returns: undefined }
+      generate_invoice_for_client: {
+        Args: { _client_id: string; _through: string }
+        Returns: string
+      }
+      generate_invoices_for_org: {
+        Args: { _org_id: string; _through: string }
+        Returns: number
+      }
       generate_visits_through: {
         Args: { _org_id: string; _through: string }
         Returns: number
@@ -666,12 +864,15 @@ export type Database = {
         Returns: undefined
       }
       start_visit: { Args: { _visit_id: string }; Returns: undefined }
+      void_invoice: { Args: { _invoice_id: string }; Returns: undefined }
     }
     Enums: {
       account_type: "residential" | "commercial"
       app_role: "owner" | "office_manager" | "dispatcher" | "tech"
       billing_cadence: "prepaid" | "postpaid"
       dog_temperament: "friendly" | "nervous" | "aggressive" | "unknown"
+      invoice_status: "draft" | "open" | "paid" | "void" | "uncollectible"
+      payment_status: "pending" | "succeeded" | "failed" | "refunded"
       service_frequency:
         | "weekly"
         | "biweekly"
@@ -817,6 +1018,8 @@ export const Constants = {
       app_role: ["owner", "office_manager", "dispatcher", "tech"],
       billing_cadence: ["prepaid", "postpaid"],
       dog_temperament: ["friendly", "nervous", "aggressive", "unknown"],
+      invoice_status: ["draft", "open", "paid", "void", "uncollectible"],
+      payment_status: ["pending", "succeeded", "failed", "refunded"],
       service_frequency: [
         "weekly",
         "biweekly",

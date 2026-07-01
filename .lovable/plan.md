@@ -1,72 +1,48 @@
+# Session 4 — Stripe billing (split into 3 sub-sessions)
 
-## Session 1 scope (from CLAUDE.md)
+Using **BYOK Stripe** per your choice. You'll paste a `STRIPE_SECRET_KEY` (use a **test-mode** key like `sk_test_…`) after I enable the integration.
 
-Repo scaffolding + Supabase schema for the core relational spine (Organization, Location, Staff, Client, Property, Dog, Subscription with residential/commercial discriminator), basic RLS, and a bare admin shell that can create/list clients. No scheduling, billing, mobile, or AI yet.
+## Session 4a — Postpaid client invoicing (this turn)
 
-## Stack note — one deviation to confirm
+Bill end customers for **completed** visits after the fact. Simplest path, unlocks real money movement.
 
-CLAUDE.md specifies Next.js for the admin web. This Lovable project is scaffolded on **TanStack Start (React 19 + Vite)** with **Lovable Cloud** (Supabase under the hood — same Postgres/Auth/RLS/Edge Functions, no external account needed). Rebuilding as Next.js would mean throwing away the scaffold. I'll build the admin on TanStack Start; the DB, auth, RLS, and Stripe/Twilio/etc. plans are unaffected because the backend is still Supabase. Mobile (Expo RN) stays as planned in later sessions. Flag if you'd rather I swap frameworks.
+**DB migration**
+- `invoices` (org_id, client_id, period_start, period_end, subtotal_cents, total_cents, status: `draft|open|paid|void|uncollectible`, stripe_invoice_id/checkout_session_id, issued_at, paid_at)
+- `invoice_line_items` (invoice_id, visit_id, subscription_id, description, amount_cents)
+- `payments` (org_id, invoice_id, amount_cents, stripe_payment_intent_id, status, paid_at)
+- GRANTs + org-scoped RLS on all three. Writes gated by `can_write_org`; techs read-only.
+- FK `visits.invoice_line_item_id` (nullable) so a completed visit is billed at most once.
 
-## What I'll build this session
+**Server functions (`createServerFn` + `requireSupabaseAuth`)**
+- `generate_invoice_for_client(client_id, through_date)` — SQL fn: sums `subscription.price_cents` for that client's completed, unbilled visits with `completed_at <= through_date`, creates invoice + line items in one tx, links visits.
+- `generate_invoices_for_org(through_date)` — walks all active clients with unbilled completed visits and calls the above.
+- `create_stripe_checkout_for_invoice(invoice_id)` — server-only, uses `STRIPE_SECRET_KEY`, creates a Checkout Session (mode=payment) with `client_reference_id = invoice.id`, stores `stripe_checkout_session_id`, returns URL.
+- `void_invoice(invoice_id)`.
 
-### 1. Enable Lovable Cloud
-Provisions Supabase (Postgres + Auth + RLS). No user action required.
+**Webhook** — server route at `/api/public/hooks/stripe` verifies `Stripe-Signature` with `STRIPE_WEBHOOK_SECRET`, handles `checkout.session.completed` and `payment_intent.succeeded` → sets invoice to `paid`, inserts `payments` row (via admin client after signature verified).
 
-### 2. Database migration — core spine
+**Admin UI**
+- `/invoices` — list with status badges, totals, "Generate invoices" action (pick through-date).
+- `/invoices/$id` — detail: line items (visit date + property + subscription desc), totals, actions: **Send/Pay** (opens Stripe Checkout URL), **Void**.
+- Client detail → "Unbilled visits" panel + one-click "Generate invoice".
 
-Enums:
-- `account_type`: `residential` | `commercial`
-- `staff_role`: `owner` | `office_manager` | `dispatcher` | `tech`
-- `subscription_status`: `active` | `paused` | `canceled`
-- `billing_cadence`: `prepaid` | `postpaid`
-- `dog_temperament`: `friendly` | `nervous` | `aggressive` | `unknown`
-- `app_role` (separate roles table pattern): `owner` | `office_manager` | `dispatcher` | `tech`
+## Session 4b — Prepaid billing (next)
 
-Tables (all in `public`, all with GRANTs + RLS + `has_role`-style scoping via `organization_id`):
+- `subscriptions.billing_cadence` already exists (`prepaid`/`postpaid`); wire it up.
+- For prepaid: charge on subscription start / renewal cycle, credit generates a `prepaid_balance`, visits draw down instead of creating an invoice per period.
+- Optional skip-reason billing rules (spec §7).
 
-- `organizations` — id, name, created_at, `active_client_count int not null default 0` (maintained value, per non-negotiable #3), `billing_tier` (nullable, computed later)
-- `locations` — id, organization_id, name, address fields
-- `staff` — id, organization_id, location_id (nullable), user_id (→ auth.users), role (`staff_role`), display_name, active
-- `user_roles` — id, user_id, organization_id, role (`app_role`), unique(user_id, organization_id, role) — separate from `staff` for the security-definer `has_role(user, org, role)` pattern
-- `clients` — id, organization_id, `account_type` (`residential`|`commercial`, **NOT NULL from day one**), display_name, primary_email, primary_phone, active bool, created_at
-- `properties` — id, client_id, address fields, `gate_code text`, `lock_box_code text`, `key_location text`, `parking_notes text`, `access_notes text`, `invisible_fence bool default false`, `escape_risk bool default false`, `dog_in_yard_during_service bool default false` (structured hazard fields, per non-negotiable #2 — no single free-text dumping ground)
-- `dogs` — id, property_id, name, breed, weight_class, temperament (`dog_temperament`), notes
-- `subscriptions` — id, client_id, property_id, `account_type` (`residential`|`commercial`) discriminator column mirrored here so a CHECK constraint can enforce the right pricing shape, frequency (weekly/biweekly/etc. as text or enum), price_cents int, `billing_cadence`, `dog_count int` (residential), `unit_count int` (commercial), zone_id (nullable — zones land in a later session), status (`subscription_status`), started_on date
+## Session 4c — Org SaaS tier billing (last)
 
-CHECK constraint on `subscriptions`: residential rows require `dog_count`, commercial rows require `unit_count` — enforces the discriminator has teeth from migration #1.
+- Add `billing_tier` computed from `organizations.active_client_count`: free ≤3, paid at 4+ (per-active-client price).
+- Stripe Product/Price in test mode, per-seat quantity = `active_client_count`.
+- Stripe subscription on the org, updated when count changes (trigger already maintains the count).
+- Grace period + block-writes-when-past-due policy.
 
-Trigger: `active_client_count` on `organizations` maintained via insert/update/delete triggers on `clients` (where `active = true`).
+## Immediate action
 
-### 3. RLS + grants
+1. Enable Stripe BYOK — you'll get a form to paste `STRIPE_SECRET_KEY` (use a **test** key).
+2. On approval I run the 4a migration.
+3. Then I write the server fns, webhook route, and admin UI, and add `STRIPE_WEBHOOK_SECRET` via a second secret request.
 
-- `has_role(user_id, org_id, role)` security-definer function reading from `user_roles`.
-- Every table: `GRANT SELECT/INSERT/UPDATE/DELETE ON <table> TO authenticated; GRANT ALL TO service_role;` (no anon — this is an internal admin app).
-- Policies scope all reads/writes to rows where `organization_id = <caller's org via user_roles>`. `clients`/`properties`/`dogs`/`subscriptions` join through their parent for the org check.
-- Owners/office managers can write everything in their org; techs read-only for now (write policies land with the tech app).
-
-### 4. Admin shell (TanStack Start)
-
-- Root layout with app title updated from "Lovable App" → "Scoop CRM" (placeholder, per decision #6 — kept in one config constant `APP_NAME` so it's easy to rebrand).
-- `/auth` — email/password sign in/up (Lovable Cloud auth). First user of a new org becomes `owner`.
-- `_authenticated` layout gates the rest.
-- `/` — dashboard placeholder with org name + active client count.
-- `/clients` — list view (table: name, account type badge, email, phone, active).
-- `/clients/new` — create form: account type (residential/commercial radio), display name, email, phone. Creates `clients` row scoped to caller's org.
-- `/clients/$clientId` — read-only detail with property/dog/subscription sections stubbed as "coming next session" so the routes exist but don't pretend to work.
-
-Data loading via TanStack Query + `createServerFn` with `requireSupabaseAuth`, per the project's server-function rules.
-
-### 5. Not in scope this session (deferred)
-
-Zones, visit generation, routing, Stripe billing, tech mobile app, importers, AI receptionist, weather, cross-sells. All hang off the spine built here.
-
-## Deliverables checklist
-
-- [ ] Lovable Cloud enabled
-- [ ] Migration creating enums, tables, GRANTs, RLS, `has_role`, active-client-count trigger, residential/commercial CHECK
-- [ ] Auth pages + `_authenticated` gate
-- [ ] Clients list + create + detail-stub routes wired to server functions
-- [ ] Placeholder home replaced; head metadata set to real title/description
-- [ ] Build passes
-
-Reply "go" to implement, or push back on the framework note / any schema field first.
+Reply "go" to proceed with 4a.
