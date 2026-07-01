@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,8 +14,12 @@ import {
 } from "@/lib/my-day.functions";
 import { sendVisitStatusSms } from "@/lib/messages.functions";
 import { SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
+import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
+import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
+import { syncQueue } from "@/lib/offline/sync";
+import { countPendingForVisit } from "@/lib/offline/queue";
 import { toast } from "sonner";
-import { Navigation, Camera, ChevronDown, ChevronUp } from "lucide-react";
+import { Navigation, Camera, ChevronDown, ChevronUp, WifiOff, RefreshCw } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   component: MyDay,
@@ -31,10 +35,48 @@ function todayISO() {
 function MyDay() {
   const [day, setDay] = useState(todayISO());
   const fn = useServerFn(getMyDay);
+  const qc = useQueryClient();
+  const online = useOnline();
+  const pending = usePendingCount();
+
   const { data, isLoading } = useQuery({
     queryKey: ["my-day", day],
     queryFn: () => fn({ data: { day } }),
   });
+
+  // Bind server-fn callers once for the sync driver.
+  const startFn = useServerFn(startVisit);
+  const completeFn = useServerFn(completeVisit);
+  const skipFn = useServerFn(skipVisit);
+  const photoFn = useServerFn(recordVisitPhoto);
+  const callers = useMemo(
+    () => ({
+      startVisit: startFn,
+      completeVisit: completeFn,
+      skipVisit: skipFn,
+      recordVisitPhoto: photoFn,
+    }),
+    [startFn, completeFn, skipFn, photoFn],
+  );
+
+  const runSync = useCallback(async () => {
+    const res = await syncQueue(callers);
+    if (res.succeeded > 0) {
+      toast.success(`Synced ${res.succeeded} queued action${res.succeeded === 1 ? "" : "s"}`);
+      qc.invalidateQueries({ queryKey: ["my-day"] });
+    }
+    if (res.failed > 0) {
+      toast.error(`Sync stalled on 1 action — will retry`);
+    }
+  }, [callers, qc]);
+
+  // Auto-sync on load + whenever we come back online.
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && navigator.onLine) runSync();
+    const on = () => runSync();
+    window.addEventListener("online", on);
+    return () => window.removeEventListener("online", on);
+  }, [runSync]);
 
   const visits = data?.visits ?? [];
   const staff = data?.staff;
@@ -48,6 +90,32 @@ function MyDay() {
 
   return (
     <div className="space-y-4">
+      {(!online || pending > 0) && (
+        <div
+          className={`flex items-center justify-between gap-3 rounded-lg border p-3 text-sm ${
+            online
+              ? "border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+              : "border-destructive/50 bg-destructive/10 text-destructive"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {!online && <WifiOff className="h-4 w-4" />}
+            <span className="font-medium">
+              {!online ? "You're offline" : "Back online"}
+              {pending > 0 ? ` · ${pending} pending action${pending === 1 ? "" : "s"}` : ""}
+            </span>
+          </div>
+          {online && pending > 0 && (
+            <button
+              onClick={runSync}
+              className="inline-flex items-center gap-1 rounded border border-current px-2 py-1 text-xs font-medium hover:bg-background/50"
+            >
+              <RefreshCw className="h-3 w-3" /> Sync now
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">My day</h1>
