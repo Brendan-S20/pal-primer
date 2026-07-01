@@ -455,21 +455,21 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
           )}
         </div>
 
-        <div className="flex flex-col items-end gap-1">
+        <div className="flex flex-col items-end gap-1.5">
           {p?.street && (
             <a
               href={mapsUrl(p)}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-accent"
+              className="inline-flex min-h-10 items-center gap-1 rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-accent active:bg-accent"
             >
-              <Navigation className="h-3 w-3" /> Navigate
+              <Navigation className="h-4 w-4" /> Navigate
             </a>
           )}
           {visit.clients?.primary_phone && (
             <a
               href={`tel:${visit.clients.primary_phone}`}
-              className="rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-accent"
+              className="inline-flex min-h-10 items-center rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-accent active:bg-accent"
             >
               📞 Call
             </a>
@@ -477,10 +477,10 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
           {finalStatus && (
             <button
               onClick={() => setCollapsed((c) => !c)}
-              className="text-xs text-muted-foreground hover:text-foreground"
+              className="grid h-10 w-10 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
               aria-label={collapsed ? "Expand" : "Collapse"}
             >
-              {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+              {collapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
             </button>
           )}
         </div>
@@ -516,7 +516,7 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
             <select
               value={photoKind}
               onChange={(e) => setPhotoKind(e.target.value as any)}
-              className="h-8 rounded-md border bg-background px-2 text-xs"
+              className="h-10 rounded-md border bg-background px-3 text-sm"
               aria-label="Photo type"
             >
               <option value="before">Before</option>
@@ -526,11 +526,12 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
             <Button
               type="button"
               variant="outline"
-              size="sm"
+              size="default"
+              className="h-10"
               disabled={uploading}
               onClick={() => fileInput.current?.click()}
             >
-              <Camera className="mr-1 h-3.5 w-3.5" />
+              <Camera className="mr-1.5 h-4 w-4" />
               {uploading ? "Uploading…" : "Take photo"}
             </Button>
           </div>
