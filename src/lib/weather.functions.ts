@@ -253,3 +253,198 @@ export const updateZoneCoords = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+// ---------- Session 13a: dispatch intelligence ----------
+
+function addDays(iso: string, n: number): string {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Auto-rebalance: for each zone with coords, find risky days in the window
+ * that have scheduled visits, and move them to the next non-risky day within
+ * a 14-day lookahead. Skips days that already exceed dailyCap. Returns a
+ * per-zone summary.
+ */
+export const autoRebalanceForecast = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        fromDate: z.string(),
+        toDate: z.string(),
+        dailyCap: z.number().int().min(1).max(500).default(60),
+        dryRun: z.boolean().default(false),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+
+    const { data: zones } = await supabase
+      .from("zones")
+      .select("id, name, latitude, longitude")
+      .eq("organization_id", orgId);
+
+    // Load subscriptions -> zone map (org-scoped)
+    const { data: subs } = await supabase
+      .from("subscriptions")
+      .select("id, zone_id")
+      .eq("organization_id", orgId);
+    const subZone = new Map<string, string | null>();
+    (subs ?? []).forEach((s: any) => subZone.set(s.id, s.zone_id));
+
+    // Load visits in a wider window (window + 14 days lookahead)
+    const searchTo = addDays(data.toDate, 14);
+    const { data: visits } = await supabase
+      .from("visits")
+      .select("id, scheduled_on, subscription_id, status")
+      .eq("organization_id", orgId)
+      .gte("scheduled_on", data.fromDate)
+      .lte("scheduled_on", searchTo)
+      .in("status", ["scheduled"]);
+
+    // Zone|date -> count (for cap enforcement)
+    const dayCounts = new Map<string, number>();
+    (visits ?? []).forEach((v: any) => {
+      const zid = subZone.get(v.subscription_id) ?? null;
+      if (!zid) return;
+      const k = `${zid}|${v.scheduled_on}`;
+      dayCounts.set(k, (dayCounts.get(k) ?? 0) + 1);
+    });
+
+    const summary: Array<{
+      zone_id: string;
+      zone_name: string;
+      moved: number;
+      skipped_no_slot: number;
+      details: Array<{ visit_id: string; from: string; to: string }>;
+    }> = [];
+
+    for (const z of zones ?? []) {
+      if (z.latitude == null || z.longitude == null) continue;
+      let forecast: DayForecast[] = [];
+      try {
+        forecast = await fetchForecast(z.latitude, z.longitude, data.fromDate, searchTo);
+      } catch {
+        continue;
+      }
+      const riskyByDate = new Map(forecast.map((f) => [f.date, f.risky] as const));
+
+      // Zone visits sorted by date
+      const zoneVisits = (visits ?? [])
+        .filter((v: any) => subZone.get(v.subscription_id) === z.id)
+        .filter((v: any) => v.scheduled_on >= data.fromDate && v.scheduled_on <= data.toDate)
+        .filter((v: any) => riskyByDate.get(v.scheduled_on) === true)
+        .sort((a: any, b: any) => a.scheduled_on.localeCompare(b.scheduled_on));
+
+      let moved = 0;
+      let skipped = 0;
+      const details: Array<{ visit_id: string; from: string; to: string }> = [];
+
+      for (const v of zoneVisits) {
+        // Find nearest safe day within 14 days after original
+        let target: string | null = null;
+        for (let i = 1; i <= 14; i++) {
+          const cand = addDays(v.scheduled_on, i);
+          if (riskyByDate.get(cand) === true) continue; // still risky
+          if (riskyByDate.get(cand) === undefined) continue; // outside forecast
+          const cnt = dayCounts.get(`${z.id}|${cand}`) ?? 0;
+          if (cnt >= data.dailyCap) continue;
+          target = cand;
+          break;
+        }
+        if (!target) {
+          skipped++;
+          continue;
+        }
+        if (!data.dryRun) {
+          const { error } = await supabase.rpc("reschedule_visit", {
+            _visit_id: v.id,
+            _new_date: target,
+            _note: "Auto-rebalanced (weather)",
+          });
+          if (error) {
+            skipped++;
+            continue;
+          }
+        }
+        // Update counts to inform subsequent moves
+        dayCounts.set(
+          `${z.id}|${v.scheduled_on}`,
+          Math.max(0, (dayCounts.get(`${z.id}|${v.scheduled_on}`) ?? 1) - 1),
+        );
+        dayCounts.set(`${z.id}|${target}`, (dayCounts.get(`${z.id}|${target}`) ?? 0) + 1);
+        moved++;
+        details.push({ visit_id: v.id, from: v.scheduled_on, to: target });
+      }
+
+      if (moved || skipped) {
+        summary.push({
+          zone_id: z.id,
+          zone_name: z.name,
+          moved,
+          skipped_no_slot: skipped,
+          details,
+        });
+      }
+    }
+
+    return { summary, dryRun: data.dryRun };
+  });
+
+/**
+ * Workload smoothing: per-staff visit counts for a given date, plus a simple
+ * balance metric. UI can flag any staff whose count is > 1.5x the median.
+ */
+export const getStaffWorkload = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ date: z.string() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+
+    const { data: staff } = await supabase
+      .from("staff")
+      .select("id, display_name, active")
+      .eq("organization_id", orgId)
+      .eq("active", true)
+      .order("display_name");
+
+    const { data: visits } = await supabase
+      .from("visits")
+      .select("id, assigned_staff_id, status")
+      .eq("organization_id", orgId)
+      .eq("scheduled_on", data.date)
+      .in("status", ["scheduled", "in_progress"]);
+
+    const counts = new Map<string, number>();
+    let unassigned = 0;
+    (visits ?? []).forEach((v: any) => {
+      if (!v.assigned_staff_id) unassigned++;
+      else counts.set(v.assigned_staff_id, (counts.get(v.assigned_staff_id) ?? 0) + 1);
+    });
+
+    const rows = (staff ?? []).map((s: any) => ({
+      staff_id: s.id,
+      name: s.display_name,
+      visit_count: counts.get(s.id) ?? 0,
+    }));
+
+    const sorted = [...rows].map((r) => r.visit_count).sort((a, b) => a - b);
+    const median = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
+    const threshold = Math.max(median * 1.5, median + 2);
+    const overloaded = rows.filter((r) => r.visit_count > threshold).map((r) => r.staff_id);
+
+    return {
+      date: data.date,
+      staff: rows,
+      unassigned,
+      median,
+      overloaded_staff_ids: overloaded,
+      total: (visits ?? []).length,
+    };
+  });
