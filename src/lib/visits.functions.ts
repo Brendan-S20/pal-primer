@@ -93,7 +93,7 @@ export const reassignVisit = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { error } = await context.supabase.rpc("reassign_visit", {
       _visit_id: data.visitId,
-      _staff_id: data.staffId,
+      _staff_id: data.staffId as string,
     });
     if (error) throw new Error(error.message);
     return { ok: true };
