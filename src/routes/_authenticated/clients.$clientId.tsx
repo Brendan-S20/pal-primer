@@ -126,6 +126,7 @@ function ClientDetail() {
   const [unitCount, setUnitCount] = useState("1");
   const [zoneId, setZoneId] = useState("");
   const [billingCadence, setBillingCadence] = useState<"postpaid" | "prepaid">("postpaid");
+  const [preferredWeekdays, setPreferredWeekdays] = useState<number[]>([]);
 
   const subMut = useMutation({
     mutationFn: () => {
@@ -141,6 +142,7 @@ function ClientDetail() {
           unitCount: accountType === "commercial" ? parseInt(unitCount, 10) : undefined,
           zoneId: zoneId || undefined,
           billingCadence,
+          preferredWeekdays: preferredWeekdays.length ? preferredWeekdays : undefined,
         },
       });
     },
@@ -334,6 +336,11 @@ function ClientDetail() {
                 <Badge variant={s.billing_cadence === "prepaid" ? "default" : "secondary"} className="ml-2">
                   {s.billing_cadence}
                 </Badge>
+                {s.preferred_weekdays?.length ? (
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {s.preferred_weekdays.map((d: number) => ["Su","Mo","Tu","We","Th","Fr","Sa"][d]).join(" ")}
+                  </span>
+                ) : null}
               </span>
               <span className="flex items-center gap-3 text-muted-foreground">
                 <span>${(s.price_cents / 100).toFixed(2)} · {s.status}</span>
@@ -425,6 +432,31 @@ function ClientDetail() {
                 <option value="postpaid">Postpaid</option>
                 <option value="prepaid">Prepaid</option>
               </select>
+            </div>
+            <div className="sm:col-span-6">
+              <Label>Preferred weekdays (optional)</Label>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d, i) => {
+                  const on = preferredWeekdays.includes(i);
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() =>
+                        setPreferredWeekdays(
+                          on ? preferredWeekdays.filter((x) => x !== i) : [...preferredWeekdays, i].sort(),
+                        )
+                      }
+                      className={`rounded-md border px-3 py-1 text-xs ${on ? "border-primary bg-primary text-primary-foreground" : "bg-background"}`}
+                    >
+                      {d}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Weekly/biweekly use the first selected day. Twice-weekly needs two days (e.g. Mon + Thu).
+              </p>
             </div>
             <div className="sm:col-span-6">
               <Button type="submit" disabled={subMut.isPending || !propertyId}>

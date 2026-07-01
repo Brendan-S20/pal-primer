@@ -14,6 +14,7 @@ const createSubSchema = z
     zoneId: z.string().uuid().optional(),
     billingCadence: z.enum(["prepaid", "postpaid"]).optional(),
     startedOn: z.string().optional(), // YYYY-MM-DD
+    preferredWeekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
   })
   .refine(
     (v) =>
@@ -48,6 +49,7 @@ export const createSubscription = createServerFn({ method: "POST" })
         zone_id: data.zoneId ?? null,
         billing_cadence: data.billingCadence ?? "postpaid",
         started_on: data.startedOn ?? undefined,
+        preferred_weekdays: data.preferredWeekdays && data.preferredWeekdays.length ? data.preferredWeekdays : null,
       })
       .select("id")
       .single();
@@ -62,7 +64,7 @@ export const listSubscriptionsForClient = createServerFn({ method: "GET" })
     const { supabase } = context;
     const { data: rows, error } = await supabase
       .from("subscriptions")
-      .select("id, account_type, frequency, price_cents, dog_count, unit_count, zone_id, status, started_on, property_id, billing_cadence")
+      .select("id, account_type, frequency, price_cents, dog_count, unit_count, zone_id, status, started_on, property_id, billing_cadence, preferred_weekdays")
       .eq("client_id", data.clientId)
       .order("created_at");
     if (error) throw new Error(error.message);
