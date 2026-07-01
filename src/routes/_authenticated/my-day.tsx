@@ -312,6 +312,7 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
 
   const [showSkip, setShowSkip] = useState(false);
   const [showAddon, setShowAddon] = useState(false);
+  const [showStations, setShowStations] = useState(false);
   const [addonSvcId, setAddonSvcId] = useState("");
   const [addonQty, setAddonQty] = useState("1");
   const addonListFn = useServerFn(listAddonServices);
