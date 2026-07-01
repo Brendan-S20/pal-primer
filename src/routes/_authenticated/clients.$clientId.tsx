@@ -98,6 +98,7 @@ function ClientDetail() {
           dogCount: accountType === "residential" ? parseInt(dogCount, 10) : undefined,
           unitCount: accountType === "commercial" ? parseInt(unitCount, 10) : undefined,
           zoneId: zoneId || undefined,
+          billingCadence,
         },
       });
     },
