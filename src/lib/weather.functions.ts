@@ -184,7 +184,7 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
       const { error } = await supabase.rpc("reschedule_visit", {
         _visit_id: id,
         _new_date: data.newDate,
-        _note: data.note ?? null,
+        _note: data.note ?? undefined,
       });
       if (error) errors.push(error.message);
       else moved++;
