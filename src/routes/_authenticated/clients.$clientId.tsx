@@ -126,6 +126,7 @@ function ClientDetail() {
   const [unitCount, setUnitCount] = useState("1");
   const [zoneId, setZoneId] = useState("");
   const [billingCadence, setBillingCadence] = useState<"postpaid" | "prepaid">("postpaid");
+  const [preferredWeekdays, setPreferredWeekdays] = useState<number[]>([]);
 
   const subMut = useMutation({
     mutationFn: () => {
