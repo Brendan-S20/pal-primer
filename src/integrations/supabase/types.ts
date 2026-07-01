@@ -22,6 +22,9 @@ export type Database = {
           credit_balance_cents: number
           display_name: string
           id: string
+          import_batch_id: string | null
+          import_external_id: string | null
+          import_source: Database["public"]["Enums"]["import_source"] | null
           notes: string | null
           organization_id: string
           primary_email: string | null
@@ -35,6 +38,9 @@ export type Database = {
           credit_balance_cents?: number
           display_name: string
           id?: string
+          import_batch_id?: string | null
+          import_external_id?: string | null
+          import_source?: Database["public"]["Enums"]["import_source"] | null
           notes?: string | null
           organization_id: string
           primary_email?: string | null
@@ -48,6 +54,9 @@ export type Database = {
           credit_balance_cents?: number
           display_name?: string
           id?: string
+          import_batch_id?: string | null
+          import_external_id?: string | null
+          import_source?: Database["public"]["Enums"]["import_source"] | null
           notes?: string | null
           organization_id?: string
           primary_email?: string | null
@@ -55,6 +64,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "clients_import_batch_id_fkey"
+            columns: ["import_batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "clients_organization_id_fkey"
             columns: ["organization_id"]
@@ -176,6 +192,116 @@ export type Database = {
             columns: ["property_id"]
             isOneToOne: false
             referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      import_batches: {
+        Row: {
+          committed_at: string | null
+          created_at: string
+          created_by: string
+          entity: string
+          error: string | null
+          filename: string | null
+          id: string
+          mapping: Json
+          organization_id: string
+          source: Database["public"]["Enums"]["import_source"]
+          stats: Json
+          status: Database["public"]["Enums"]["import_status"]
+          updated_at: string
+        }
+        Insert: {
+          committed_at?: string | null
+          created_at?: string
+          created_by: string
+          entity?: string
+          error?: string | null
+          filename?: string | null
+          id?: string
+          mapping?: Json
+          organization_id: string
+          source: Database["public"]["Enums"]["import_source"]
+          stats?: Json
+          status?: Database["public"]["Enums"]["import_status"]
+          updated_at?: string
+        }
+        Update: {
+          committed_at?: string | null
+          created_at?: string
+          created_by?: string
+          entity?: string
+          error?: string | null
+          filename?: string | null
+          id?: string
+          mapping?: Json
+          organization_id?: string
+          source?: Database["public"]["Enums"]["import_source"]
+          stats?: Json
+          status?: Database["public"]["Enums"]["import_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_batches_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      import_rows: {
+        Row: {
+          action: Database["public"]["Enums"]["import_row_action"]
+          batch_id: string
+          created_at: string
+          error: string | null
+          id: string
+          mapped: Json | null
+          organization_id: string
+          raw: Json
+          row_num: number
+          target_id: string | null
+        }
+        Insert: {
+          action?: Database["public"]["Enums"]["import_row_action"]
+          batch_id: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          mapped?: Json | null
+          organization_id: string
+          raw: Json
+          row_num: number
+          target_id?: string | null
+        }
+        Update: {
+          action?: Database["public"]["Enums"]["import_row_action"]
+          batch_id?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          mapped?: Json | null
+          organization_id?: string
+          raw?: Json
+          row_num?: number
+          target_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "import_rows_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "import_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "import_rows_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -971,6 +1097,21 @@ export type Database = {
       app_role: "owner" | "office_manager" | "dispatcher" | "tech"
       billing_cadence: "prepaid" | "postpaid"
       dog_temperament: "friendly" | "nervous" | "aggressive" | "unknown"
+      import_row_action: "create" | "update" | "skip" | "error"
+      import_source:
+        | "generic_csv"
+        | "sweepgo"
+        | "jobber"
+        | "housecall_pro"
+        | "time_to_pet"
+        | "gorilla_desk"
+        | "quoteiq_family"
+      import_status:
+        | "draft"
+        | "previewing"
+        | "committed"
+        | "failed"
+        | "cancelled"
       invoice_kind: "postpaid" | "prepaid_topup"
       invoice_status: "draft" | "open" | "paid" | "void" | "uncollectible"
       org_plan_status: "free" | "active" | "past_due" | "canceled"
@@ -1120,6 +1261,23 @@ export const Constants = {
       app_role: ["owner", "office_manager", "dispatcher", "tech"],
       billing_cadence: ["prepaid", "postpaid"],
       dog_temperament: ["friendly", "nervous", "aggressive", "unknown"],
+      import_row_action: ["create", "update", "skip", "error"],
+      import_source: [
+        "generic_csv",
+        "sweepgo",
+        "jobber",
+        "housecall_pro",
+        "time_to_pet",
+        "gorilla_desk",
+        "quoteiq_family",
+      ],
+      import_status: [
+        "draft",
+        "previewing",
+        "committed",
+        "failed",
+        "cancelled",
+      ],
       invoice_kind: ["postpaid", "prepaid_topup"],
       invoice_status: ["draft", "open", "paid", "void", "uncollectible"],
       org_plan_status: ["free", "active", "past_due", "canceled"],
