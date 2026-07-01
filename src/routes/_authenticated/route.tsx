@@ -101,6 +101,7 @@ function AppShell() {
         <Outlet />
       </main>
       <KeyboardShortcuts />
+      <InstallBanner />
     </div>
   );
 }
