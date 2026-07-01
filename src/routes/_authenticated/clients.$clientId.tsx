@@ -429,6 +429,31 @@ function ClientDetail() {
               </select>
             </div>
             <div className="sm:col-span-6">
+              <Label>Preferred weekdays (optional)</Label>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d, i) => {
+                  const on = preferredWeekdays.includes(i);
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() =>
+                        setPreferredWeekdays(
+                          on ? preferredWeekdays.filter((x) => x !== i) : [...preferredWeekdays, i].sort(),
+                        )
+                      }
+                      className={`rounded-md border px-3 py-1 text-xs ${on ? "border-primary bg-primary text-primary-foreground" : "bg-background"}`}
+                    >
+                      {d}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Weekly/biweekly use the first selected day. Twice-weekly needs two days (e.g. Mon + Thu).
+              </p>
+            </div>
+            <div className="sm:col-span-6">
               <Button type="submit" disabled={subMut.isPending || !propertyId}>
                 {subMut.isPending ? "Adding…" : "Add subscription"}
               </Button>
