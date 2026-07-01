@@ -51,7 +51,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                   stripe_checkout_session_id: session.id,
                   stripe_payment_intent_id: pi,
                   paid_at: new Date().toISOString(),
-                  raw_event: event as unknown as Record<string, unknown>,
+                  raw_event: JSON.parse(JSON.stringify(event)),
                 });
               }
             }
@@ -66,7 +66,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 currency: pi.currency,
                 status: "failed",
                 stripe_payment_intent_id: pi.id,
-                raw_event: event as unknown as Record<string, unknown>,
+                raw_event: JSON.parse(JSON.stringify(event)),
               });
             }
           }
