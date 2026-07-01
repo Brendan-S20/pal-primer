@@ -12,6 +12,7 @@ const createSubSchema = z
     dogCount: z.number().int().min(1).optional(),
     unitCount: z.number().int().min(1).optional(),
     zoneId: z.string().uuid().optional(),
+    billingCadence: z.enum(["prepaid", "postpaid"]).optional(),
     startedOn: z.string().optional(), // YYYY-MM-DD
   })
   .refine(
