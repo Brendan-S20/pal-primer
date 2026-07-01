@@ -49,6 +49,7 @@ export const createSubscription = createServerFn({ method: "POST" })
         zone_id: data.zoneId ?? null,
         billing_cadence: data.billingCadence ?? "postpaid",
         started_on: data.startedOn ?? undefined,
+        preferred_weekdays: data.preferredWeekdays && data.preferredWeekdays.length ? data.preferredWeekdays : null,
       })
       .select("id")
       .single();
