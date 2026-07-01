@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getInvoice, createCheckoutForInvoice, voidInvoice } from "@/lib/invoices.functions";
+import { sendInvoiceEmail } from "@/lib/notifications.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -38,6 +39,13 @@ function InvoiceDetail() {
       toast.success("Invoice voided");
       qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
     },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const emailFn = useServerFn(sendInvoiceEmail);
+  const emailM = useMutation({
+    mutationFn: async () => emailFn({ data: { invoiceId } }),
+    onSuccess: () => toast.success("Invoice emailed to client"),
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -95,6 +103,11 @@ function InvoiceDetail() {
               <a href={invoice.checkout_url} target="_blank" rel="noreferrer" className="text-sm text-primary underline self-center">
                 Open existing checkout link
               </a>
+            )}
+            {client?.primary_email && (
+              <Button variant="outline" onClick={() => emailM.mutate()} disabled={emailM.isPending}>
+                {emailM.isPending ? "Sending…" : "Email invoice to client"}
+              </Button>
             )}
             <Button variant="destructive" onClick={() => voidM.mutate()} disabled={voidM.isPending}>Void</Button>
           </>

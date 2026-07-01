@@ -53,6 +53,7 @@ export type Database = {
           created_at: string
           credit_balance_cents: number
           display_name: string
+          email_opt_out: boolean
           id: string
           import_batch_id: string | null
           import_external_id: string | null
@@ -71,6 +72,7 @@ export type Database = {
           created_at?: string
           credit_balance_cents?: number
           display_name: string
+          email_opt_out?: boolean
           id?: string
           import_batch_id?: string | null
           import_external_id?: string | null
@@ -89,6 +91,7 @@ export type Database = {
           created_at?: string
           credit_balance_cents?: number
           display_name?: string
+          email_opt_out?: boolean
           id?: string
           import_batch_id?: string | null
           import_external_id?: string | null
@@ -233,6 +236,93 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      email_send_log: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          message_id: string | null
+          metadata: Json | null
+          recipient_email: string
+          status: string
+          template_name: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message_id?: string | null
+          metadata?: Json | null
+          recipient_email: string
+          status: string
+          template_name: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message_id?: string | null
+          metadata?: Json | null
+          recipient_email?: string
+          status?: string
+          template_name?: string
+        }
+        Relationships: []
+      }
+      email_send_state: {
+        Row: {
+          auth_email_ttl_minutes: number
+          batch_size: number
+          id: number
+          retry_after_until: string | null
+          send_delay_ms: number
+          transactional_email_ttl_minutes: number
+          updated_at: string
+        }
+        Insert: {
+          auth_email_ttl_minutes?: number
+          batch_size?: number
+          id?: number
+          retry_after_until?: string | null
+          send_delay_ms?: number
+          transactional_email_ttl_minutes?: number
+          updated_at?: string
+        }
+        Update: {
+          auth_email_ttl_minutes?: number
+          batch_size?: number
+          id?: number
+          retry_after_until?: string | null
+          send_delay_ms?: number
+          transactional_email_ttl_minutes?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      email_unsubscribe_tokens: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          token: string
+          used_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          token: string
+          used_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          token?: string
+          used_at?: string | null
+        }
+        Relationships: []
       }
       import_batches: {
         Row: {
@@ -405,6 +495,7 @@ export type Database = {
           id: string
           issued_at: string | null
           kind: Database["public"]["Enums"]["invoice_kind"]
+          last_email_reminder_at: string | null
           last_reminder_at: string | null
           notes: string | null
           organization_id: string
@@ -427,6 +518,7 @@ export type Database = {
           id?: string
           issued_at?: string | null
           kind?: Database["public"]["Enums"]["invoice_kind"]
+          last_email_reminder_at?: string | null
           last_reminder_at?: string | null
           notes?: string | null
           organization_id: string
@@ -449,6 +541,7 @@ export type Database = {
           id?: string
           issued_at?: string | null
           kind?: Database["public"]["Enums"]["invoice_kind"]
+          last_email_reminder_at?: string | null
           last_reminder_at?: string | null
           notes?: string | null
           organization_id?: string
@@ -615,6 +708,12 @@ export type Database = {
           current_period_end: string | null
           id: string
           name: string
+          notify_email_invoice_sent: boolean
+          notify_email_overdue: boolean
+          notify_email_payment_received: boolean
+          notify_email_visit_completed: boolean
+          notify_email_weather_reschedule: boolean
+          notify_email_welcome: boolean
           overdue_reminder_days: number
           overdue_reminders_enabled: boolean
           plan_status: Database["public"]["Enums"]["org_plan_status"]
@@ -633,6 +732,12 @@ export type Database = {
           current_period_end?: string | null
           id?: string
           name: string
+          notify_email_invoice_sent?: boolean
+          notify_email_overdue?: boolean
+          notify_email_payment_received?: boolean
+          notify_email_visit_completed?: boolean
+          notify_email_weather_reschedule?: boolean
+          notify_email_welcome?: boolean
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
@@ -651,6 +756,12 @@ export type Database = {
           current_period_end?: string | null
           id?: string
           name?: string
+          notify_email_invoice_sent?: boolean
+          notify_email_overdue?: boolean
+          notify_email_payment_received?: boolean
+          notify_email_visit_completed?: boolean
+          notify_email_weather_reschedule?: boolean
+          notify_email_welcome?: boolean
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
@@ -986,6 +1097,30 @@ export type Database = {
           },
         ]
       }
+      suppressed_emails: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          metadata: Json | null
+          reason: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          metadata?: Json | null
+          reason: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          metadata?: Json | null
+          reason?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -1263,6 +1398,15 @@ export type Database = {
         Args: { _code: Database["public"]["Enums"]["skip_reason_code"] }
         Returns: number
       }
+      delete_email: {
+        Args: { message_id: number; queue_name: string }
+        Returns: boolean
+      }
+      email_queue_dispatch: { Args: never; Returns: undefined }
+      enqueue_email: {
+        Args: { payload: Json; queue_name: string }
+        Returns: number
+      }
       generate_invoice_for_client: {
         Args: { _client_id: string; _through: string }
         Returns: string
@@ -1294,6 +1438,15 @@ export type Database = {
       is_visit_tech: {
         Args: { _user_id: string; _visit_id: string }
         Returns: boolean
+      }
+      move_to_dlq: {
+        Args: {
+          dlq_name: string
+          message_id: number
+          payload: Json
+          source_queue: string
+        }
+        Returns: number
       }
       next_visit_date: {
         Args: {
@@ -1366,6 +1519,14 @@ export type Database = {
           _visit_id: string
         }
         Returns: undefined
+      }
+      read_email_batch: {
+        Args: { batch_size: number; queue_name: string; vt: number }
+        Returns: {
+          message: Json
+          msg_id: number
+          read_ct: number
+        }[]
       }
       reassign_visit: {
         Args: { _staff_id: string; _visit_id: string }

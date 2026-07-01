@@ -44,6 +44,33 @@ export const completeVisit = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { error } = await context.supabase.rpc("complete_visit", { _visit_id: data.visitId });
     if (error) throw new Error(error.message);
+
+    // Fire visit-completed email (best-effort)
+    try {
+      const { data: v } = await context.supabase
+        .from("visits")
+        .select("organization_id, client_id, scheduled_on, properties(street, city)")
+        .eq("id", data.visitId)
+        .single();
+      if (v) {
+        const prop: any = Array.isArray((v as any).properties) ? (v as any).properties[0] : (v as any).properties;
+        const address = prop ? [prop.street, prop.city].filter(Boolean).join(", ") : undefined;
+        const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+        await enqueueAppEmail({
+          organizationId: v.organization_id,
+          clientId: v.client_id,
+          templateName: "visit-completed",
+          notifyKey: "notify_email_visit_completed",
+          idempotencyKey: `visit-done-${data.visitId}`,
+          templateData: {
+            visitDate: v.scheduled_on,
+            address,
+          },
+        });
+      }
+    } catch (e) {
+      console.error("visit-completed email failed", e);
+    }
     return { ok: true };
   });
 

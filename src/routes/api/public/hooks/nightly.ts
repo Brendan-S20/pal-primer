@@ -70,6 +70,14 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             );
           }
 
+          if (org.overdue_reminders_enabled) {
+            perOrg.overdue_emails_sent = await sendOverdueEmails(
+              supabaseAdmin,
+              org.id,
+              org.overdue_reminder_days ?? 7,
+            );
+          }
+
           summary.push(perOrg);
         }
 
@@ -150,4 +158,65 @@ async function sendOverdueReminders(
 
 function appUrl() {
   return process.env.APP_URL || "https://pal-primer.lovable.app";
+}
+
+async function sendOverdueEmails(
+  supabaseAdmin: any,
+  orgId: string,
+  reminderDays: number,
+): Promise<number | string> {
+  const cutoffIso = new Date(Date.now() - reminderDays * 86400000).toISOString();
+  const { data: invoices, error } = await supabaseAdmin
+    .from("invoices")
+    .select("id, client_id, total_cents, issued_at, last_email_reminder_at")
+    .eq("organization_id", orgId)
+    .eq("status", "open")
+    .lte("issued_at", cutoffIso);
+  if (error) return `err: ${error.message}`;
+  if (!invoices?.length) return 0;
+
+  const eligible = invoices.filter((inv: any) => {
+    if (!inv.last_email_reminder_at) return true;
+    const days = (Date.now() - new Date(inv.last_email_reminder_at).getTime()) / 86400000;
+    return days >= reminderDays;
+  });
+  if (!eligible.length) return 0;
+
+  const clientIds = [...new Set(eligible.map((i: any) => i.client_id))];
+  const { data: clients } = await supabaseAdmin
+    .from("clients")
+    .select("id, portal_token")
+    .in("id", clientIds);
+  const byId = new Map((clients ?? []).map((c: any) => [c.id, c]));
+
+  const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+  let sent = 0;
+  for (const inv of eligible) {
+    const client = byId.get(inv.client_id) as any;
+    if (!client) continue;
+    const invoiceUrl = client.portal_token ? `${appUrl()}/portal/${client.portal_token}` : appUrl();
+    const daysPastDue = Math.floor(
+      (Date.now() - new Date(inv.issued_at).getTime()) / 86400000,
+    );
+    const res = await enqueueAppEmail({
+      organizationId: orgId,
+      clientId: inv.client_id,
+      templateName: "overdue-reminder",
+      notifyKey: "notify_email_overdue",
+      idempotencyKey: `overdue-${inv.id}-${new Date().toISOString().slice(0, 10)}`,
+      templateData: {
+        amountCents: inv.total_cents,
+        daysPastDue,
+        invoiceUrl,
+      },
+    });
+    if (res.ok) {
+      await supabaseAdmin
+        .from("invoices")
+        .update({ last_email_reminder_at: new Date().toISOString() })
+        .eq("id", inv.id);
+      sent++;
+    }
+  }
+  return sent;
 }

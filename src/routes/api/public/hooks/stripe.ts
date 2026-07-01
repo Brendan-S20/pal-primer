@@ -53,6 +53,33 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                   paid_at: new Date().toISOString(),
                   raw_event: JSON.parse(JSON.stringify(event)),
                 });
+
+                // Fire payment-received receipt (best-effort)
+                try {
+                  const { data: fullInv } = await supabaseAdmin
+                    .from("invoices")
+                    .select("client_id")
+                    .eq("id", invoiceId)
+                    .single();
+                  if (fullInv) {
+                    const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+                    await enqueueAppEmail({
+                      organizationId: inv.organization_id,
+                      clientId: fullInv.client_id,
+                      templateName: "payment-received",
+                      notifyKey: "notify_email_payment_received",
+                      idempotencyKey: `receipt-${invoiceId}`,
+                      templateData: {
+                        amountCents: session.amount_total ?? inv.total_cents,
+                        paidAt: new Date().toLocaleDateString("en-US", {
+                          month: "short", day: "numeric", year: "numeric",
+                        }),
+                      },
+                    });
+                  }
+                } catch (e) {
+                  console.error("receipt email failed", e);
+                }
               }
             }
           } else if (event.type === "payment_intent.payment_failed") {

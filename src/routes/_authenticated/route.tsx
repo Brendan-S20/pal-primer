@@ -72,6 +72,9 @@ function AppShell() {
               <Link to="/settings/automation" activeProps={{ className: "text-foreground font-medium" }}>
                 Automation
               </Link>
+              <Link to="/settings/emails" activeProps={{ className: "text-foreground font-medium" }}>
+                Emails
+              </Link>
 
 
 
