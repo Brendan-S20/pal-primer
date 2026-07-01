@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as PortalTokenRouteImport } from './routes/portal.$token'
 import { Route as AuthenticatedZonesRouteImport } from './routes/_authenticated/zones'
+import { Route as AuthenticatedWeatherRouteImport } from './routes/_authenticated/weather'
 import { Route as AuthenticatedRoutesRouteImport } from './routes/_authenticated/routes'
 import { Route as AuthenticatedMyDayRouteImport } from './routes/_authenticated/my-day'
 import { Route as AuthenticatedMessagesRouteImport } from './routes/_authenticated/messages'
@@ -56,6 +57,11 @@ const PortalTokenRoute = PortalTokenRouteImport.update({
 const AuthenticatedZonesRoute = AuthenticatedZonesRouteImport.update({
   id: '/zones',
   path: '/zones',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedWeatherRoute = AuthenticatedWeatherRouteImport.update({
+  id: '/weather',
+  path: '/weather',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedRoutesRoute = AuthenticatedRoutesRouteImport.update({
@@ -173,6 +179,7 @@ export interface FileRoutesByFullPath {
   '/messages': typeof AuthenticatedMessagesRouteWithChildren
   '/my-day': typeof AuthenticatedMyDayRoute
   '/routes': typeof AuthenticatedRoutesRoute
+  '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/portal/$token': typeof PortalTokenRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
@@ -194,6 +201,7 @@ export interface FileRoutesByTo {
   '/billing': typeof AuthenticatedBillingRoute
   '/my-day': typeof AuthenticatedMyDayRoute
   '/routes': typeof AuthenticatedRoutesRoute
+  '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/portal/$token': typeof PortalTokenRoute
   '/': typeof AuthenticatedIndexRoute
@@ -221,6 +229,7 @@ export interface FileRoutesById {
   '/_authenticated/messages': typeof AuthenticatedMessagesRouteWithChildren
   '/_authenticated/my-day': typeof AuthenticatedMyDayRoute
   '/_authenticated/routes': typeof AuthenticatedRoutesRoute
+  '/_authenticated/weather': typeof AuthenticatedWeatherRoute
   '/_authenticated/zones': typeof AuthenticatedZonesRoute
   '/portal/$token': typeof PortalTokenRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
@@ -249,6 +258,7 @@ export interface FileRouteTypes {
     | '/messages'
     | '/my-day'
     | '/routes'
+    | '/weather'
     | '/zones'
     | '/portal/$token'
     | '/clients/$clientId'
@@ -270,6 +280,7 @@ export interface FileRouteTypes {
     | '/billing'
     | '/my-day'
     | '/routes'
+    | '/weather'
     | '/zones'
     | '/portal/$token'
     | '/'
@@ -296,6 +307,7 @@ export interface FileRouteTypes {
     | '/_authenticated/messages'
     | '/_authenticated/my-day'
     | '/_authenticated/routes'
+    | '/_authenticated/weather'
     | '/_authenticated/zones'
     | '/portal/$token'
     | '/_authenticated/'
@@ -357,6 +369,13 @@ declare module '@tanstack/react-router' {
       path: '/zones'
       fullPath: '/zones'
       preLoaderRoute: typeof AuthenticatedZonesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/weather': {
+      id: '/_authenticated/weather'
+      path: '/weather'
+      fullPath: '/weather'
+      preLoaderRoute: typeof AuthenticatedWeatherRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/routes': {
@@ -547,6 +566,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedMessagesRoute: typeof AuthenticatedMessagesRouteWithChildren
   AuthenticatedMyDayRoute: typeof AuthenticatedMyDayRoute
   AuthenticatedRoutesRoute: typeof AuthenticatedRoutesRoute
+  AuthenticatedWeatherRoute: typeof AuthenticatedWeatherRoute
   AuthenticatedZonesRoute: typeof AuthenticatedZonesRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedImportsBatchIdRoute: typeof AuthenticatedImportsBatchIdRoute
@@ -562,6 +582,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedMessagesRoute: AuthenticatedMessagesRouteWithChildren,
   AuthenticatedMyDayRoute: AuthenticatedMyDayRoute,
   AuthenticatedRoutesRoute: AuthenticatedRoutesRoute,
+  AuthenticatedWeatherRoute: AuthenticatedWeatherRoute,
   AuthenticatedZonesRoute: AuthenticatedZonesRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedImportsBatchIdRoute: AuthenticatedImportsBatchIdRoute,

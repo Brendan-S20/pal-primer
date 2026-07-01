@@ -20,7 +20,7 @@ export const listZones = createServerFn({ method: "GET" })
     const orgId = await resolveOrgId(supabase, userId);
     const { data, error } = await supabase
       .from("zones")
-      .select("id, name, postal_prefix, account_type, price_note")
+      .select("id, name, postal_prefix, account_type, price_note, latitude, longitude")
       .eq("organization_id", orgId)
       .order("name");
     if (error) throw new Error(error.message);
@@ -32,6 +32,8 @@ const createZoneSchema = z.object({
   postalPrefix: z.string().max(20).optional(),
   accountType: z.enum(["residential", "commercial"]).optional(),
   priceNote: z.string().max(200).optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
 });
 
 export const createZone = createServerFn({ method: "POST" })
@@ -48,6 +50,8 @@ export const createZone = createServerFn({ method: "POST" })
         postal_prefix: data.postalPrefix || null,
         account_type: data.accountType ?? null,
         price_note: data.priceNote || null,
+        latitude: data.latitude ?? null,
+        longitude: data.longitude ?? null,
       })
       .select("id")
       .single();
