@@ -10,9 +10,13 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
+import { Route as ServicesRouteImport } from './routes/services'
+import { Route as PricingRouteImport } from './routes/pricing'
+import { Route as ContactRouteImport } from './routes/contact'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
-import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as PortalTokenRouteImport } from './routes/portal.$token'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as AuthenticatedZonesRouteImport } from './routes/_authenticated/zones'
@@ -21,7 +25,9 @@ import { Route as AuthenticatedRoutesRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedMyDayRouteImport } from './routes/_authenticated/my-day'
 import { Route as AuthenticatedMessagesRouteImport } from './routes/_authenticated/messages'
+import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated/leads'
 import { Route as AuthenticatedInvoicesRouteImport } from './routes/_authenticated/invoices'
+import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated/clients'
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
 import { Route as AuthenticatedMessagesIndexRouteImport } from './routes/_authenticated/messages.index'
@@ -54,19 +60,39 @@ const UnsubscribeRoute = UnsubscribeRouteImport.update({
   path: '/unsubscribe',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ServicesRoute = ServicesRouteImport.update({
+  id: '/services',
+  path: '/services',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
+const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => AuthenticatedRouteRoute,
+  getParentRoute: () => rootRouteImport,
 } as any)
 const PortalTokenRoute = PortalTokenRouteImport.update({
   id: '/portal/$token',
@@ -108,9 +134,19 @@ const AuthenticatedMessagesRoute = AuthenticatedMessagesRouteImport.update({
   path: '/messages',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedLeadsRoute = AuthenticatedLeadsRouteImport.update({
+  id: '/leads',
+  path: '/leads',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedInvoicesRoute = AuthenticatedInvoicesRouteImport.update({
   id: '/invoices',
   path: '/invoices',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedClientsRoute = AuthenticatedClientsRouteImport.update({
@@ -262,12 +298,18 @@ const ApiPublicHooksNightlyRoute = ApiPublicHooksNightlyRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof AuthenticatedIndexRoute
+  '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/auth': typeof AuthRoute
+  '/contact': typeof ContactRoute
+  '/pricing': typeof PricingRoute
+  '/services': typeof ServicesRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/billing': typeof AuthenticatedBillingRoute
   '/clients': typeof AuthenticatedClientsRouteWithChildren
+  '/dashboard': typeof AuthenticatedDashboardRoute
   '/invoices': typeof AuthenticatedInvoicesRouteWithChildren
+  '/leads': typeof AuthenticatedLeadsRoute
   '/messages': typeof AuthenticatedMessagesRouteWithChildren
   '/my-day': typeof AuthenticatedMyDayRoute
   '/reports': typeof AuthenticatedReportsRoute
@@ -302,9 +344,16 @@ export interface FileRoutesByFullPath {
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/auth': typeof AuthRoute
+  '/contact': typeof ContactRoute
+  '/pricing': typeof PricingRoute
+  '/services': typeof ServicesRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/billing': typeof AuthenticatedBillingRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
+  '/leads': typeof AuthenticatedLeadsRoute
   '/my-day': typeof AuthenticatedMyDayRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/routes': typeof AuthenticatedRoutesRoute
@@ -312,7 +361,6 @@ export interface FileRoutesByTo {
   '/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/portal/$token': typeof PortalTokenRoute
-  '/': typeof AuthenticatedIndexRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/clients/new': typeof AuthenticatedClientsNewRoute
   '/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
@@ -340,12 +388,19 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/about': typeof AboutRoute
   '/auth': typeof AuthRoute
+  '/contact': typeof ContactRoute
+  '/pricing': typeof PricingRoute
+  '/services': typeof ServicesRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/_authenticated/billing': typeof AuthenticatedBillingRoute
   '/_authenticated/clients': typeof AuthenticatedClientsRouteWithChildren
+  '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/invoices': typeof AuthenticatedInvoicesRouteWithChildren
+  '/_authenticated/leads': typeof AuthenticatedLeadsRoute
   '/_authenticated/messages': typeof AuthenticatedMessagesRouteWithChildren
   '/_authenticated/my-day': typeof AuthenticatedMyDayRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
@@ -354,7 +409,6 @@ export interface FileRoutesById {
   '/_authenticated/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/portal/$token': typeof PortalTokenRoute
-  '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/clients/new': typeof AuthenticatedClientsNewRoute
   '/_authenticated/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
@@ -384,11 +438,17 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/about'
     | '/auth'
+    | '/contact'
+    | '/pricing'
+    | '/services'
     | '/unsubscribe'
     | '/billing'
     | '/clients'
+    | '/dashboard'
     | '/invoices'
+    | '/leads'
     | '/messages'
     | '/my-day'
     | '/reports'
@@ -423,9 +483,16 @@ export interface FileRouteTypes {
     | '/lovable/email/transactional/send'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/'
+    | '/about'
     | '/auth'
+    | '/contact'
+    | '/pricing'
+    | '/services'
     | '/unsubscribe'
     | '/billing'
+    | '/dashboard'
+    | '/leads'
     | '/my-day'
     | '/reports'
     | '/routes'
@@ -433,7 +500,6 @@ export interface FileRouteTypes {
     | '/zones'
     | '/email/unsubscribe'
     | '/portal/$token'
-    | '/'
     | '/clients/$clientId'
     | '/clients/new'
     | '/imports/$batchId'
@@ -460,12 +526,19 @@ export interface FileRouteTypes {
     | '/lovable/email/transactional/send'
   id:
     | '__root__'
+    | '/'
     | '/_authenticated'
+    | '/about'
     | '/auth'
+    | '/contact'
+    | '/pricing'
+    | '/services'
     | '/unsubscribe'
     | '/_authenticated/billing'
     | '/_authenticated/clients'
+    | '/_authenticated/dashboard'
     | '/_authenticated/invoices'
+    | '/_authenticated/leads'
     | '/_authenticated/messages'
     | '/_authenticated/my-day'
     | '/_authenticated/reports'
@@ -474,7 +547,6 @@ export interface FileRouteTypes {
     | '/_authenticated/zones'
     | '/email/unsubscribe'
     | '/portal/$token'
-    | '/_authenticated/'
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/clients/new'
     | '/_authenticated/imports/$batchId'
@@ -502,8 +574,13 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AboutRoute: typeof AboutRoute
   AuthRoute: typeof AuthRoute
+  ContactRoute: typeof ContactRoute
+  PricingRoute: typeof PricingRoute
+  ServicesRoute: typeof ServicesRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   PortalTokenRoute: typeof PortalTokenRoute
@@ -527,11 +604,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UnsubscribeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/services': {
+      id: '/services'
+      path: '/services'
+      fullPath: '/services'
+      preLoaderRoute: typeof ServicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth': {
       id: '/auth'
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -541,12 +646,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/': {
-      id: '/_authenticated/'
+    '/': {
+      id: '/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof AuthenticatedIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/portal/$token': {
       id: '/portal/$token'
@@ -604,11 +709,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMessagesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/leads': {
+      id: '/_authenticated/leads'
+      path: '/leads'
+      fullPath: '/leads'
+      preLoaderRoute: typeof AuthenticatedLeadsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/invoices': {
       id: '/_authenticated/invoices'
       path: '/invoices'
       fullPath: '/invoices'
       preLoaderRoute: typeof AuthenticatedInvoicesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/dashboard': {
+      id: '/_authenticated/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/clients': {
@@ -844,14 +963,15 @@ const AuthenticatedMessagesRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedBillingRoute: typeof AuthenticatedBillingRoute
   AuthenticatedClientsRoute: typeof AuthenticatedClientsRouteWithChildren
+  AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedInvoicesRoute: typeof AuthenticatedInvoicesRouteWithChildren
+  AuthenticatedLeadsRoute: typeof AuthenticatedLeadsRoute
   AuthenticatedMessagesRoute: typeof AuthenticatedMessagesRouteWithChildren
   AuthenticatedMyDayRoute: typeof AuthenticatedMyDayRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedRoutesRoute: typeof AuthenticatedRoutesRoute
   AuthenticatedWeatherRoute: typeof AuthenticatedWeatherRoute
   AuthenticatedZonesRoute: typeof AuthenticatedZonesRoute
-  AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedImportsBatchIdRoute: typeof AuthenticatedImportsBatchIdRoute
   AuthenticatedSettingsAutomationRoute: typeof AuthenticatedSettingsAutomationRoute
   AuthenticatedSettingsBlackoutsRoute: typeof AuthenticatedSettingsBlackoutsRoute
@@ -865,14 +985,15 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedBillingRoute: AuthenticatedBillingRoute,
   AuthenticatedClientsRoute: AuthenticatedClientsRouteWithChildren,
+  AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedInvoicesRoute: AuthenticatedInvoicesRouteWithChildren,
+  AuthenticatedLeadsRoute: AuthenticatedLeadsRoute,
   AuthenticatedMessagesRoute: AuthenticatedMessagesRouteWithChildren,
   AuthenticatedMyDayRoute: AuthenticatedMyDayRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedRoutesRoute: AuthenticatedRoutesRoute,
   AuthenticatedWeatherRoute: AuthenticatedWeatherRoute,
   AuthenticatedZonesRoute: AuthenticatedZonesRoute,
-  AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedImportsBatchIdRoute: AuthenticatedImportsBatchIdRoute,
   AuthenticatedSettingsAutomationRoute: AuthenticatedSettingsAutomationRoute,
   AuthenticatedSettingsBlackoutsRoute: AuthenticatedSettingsBlackoutsRoute,
@@ -887,8 +1008,13 @@ const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AboutRoute: AboutRoute,
   AuthRoute: AuthRoute,
+  ContactRoute: ContactRoute,
+  PricingRoute: PricingRoute,
+  ServicesRoute: ServicesRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   PortalTokenRoute: PortalTokenRoute,
