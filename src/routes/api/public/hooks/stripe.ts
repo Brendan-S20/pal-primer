@@ -28,6 +28,11 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
         try {
           if (event.type === "checkout.session.completed") {
             const session = event.data.object as import("stripe").Stripe.Checkout.Session;
+            const signupRequestId = session.metadata?.signup_request_id;
+            if (signupRequestId) {
+              await provisionSignup(supabaseAdmin, signupRequestId, session);
+              return new Response("ok", { status: 200 });
+            }
             const invoiceId = session.metadata?.invoice_id || session.client_reference_id;
             const pi = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id ?? null;
             if (invoiceId) {
