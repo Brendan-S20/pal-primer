@@ -70,7 +70,10 @@ function WeatherPage() {
         <Button variant="outline" onClick={() => refetch()} disabled={isFetching}>
           {isFetching ? "Loading…" : "Refresh"}
         </Button>
+        <AutoRebalance fromDate={fromDate} toDate={toDate} />
       </div>
+
+      <WorkloadPanel />
 
       {data?.zones.length === 0 && (
         <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
