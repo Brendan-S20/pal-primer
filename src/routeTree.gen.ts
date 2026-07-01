@@ -31,6 +31,7 @@ import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authent
 import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
 import { Route as AuthenticatedSettingsSmsRouteImport } from './routes/_authenticated/settings.sms'
 import { Route as AuthenticatedSettingsSkipRulesRouteImport } from './routes/_authenticated/settings.skip-rules'
+import { Route as AuthenticatedSettingsReviewsRouteImport } from './routes/_authenticated/settings.reviews'
 import { Route as AuthenticatedSettingsEmailsRouteImport } from './routes/_authenticated/settings.emails'
 import { Route as AuthenticatedSettingsBlackoutsRouteImport } from './routes/_authenticated/settings.blackouts'
 import { Route as AuthenticatedSettingsAutomationRouteImport } from './routes/_authenticated/settings.automation'
@@ -163,6 +164,12 @@ const AuthenticatedSettingsSkipRulesRoute =
     path: '/settings/skip-rules',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedSettingsReviewsRoute =
+  AuthenticatedSettingsReviewsRouteImport.update({
+    id: '/settings/reviews',
+    path: '/settings/reviews',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSettingsEmailsRoute =
   AuthenticatedSettingsEmailsRouteImport.update({
     id: '/settings/emails',
@@ -277,6 +284,7 @@ export interface FileRoutesByFullPath {
   '/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
+  '/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
@@ -313,6 +321,7 @@ export interface FileRoutesByTo {
   '/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
+  '/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
@@ -354,6 +363,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/_authenticated/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/_authenticated/settings/emails': typeof AuthenticatedSettingsEmailsRoute
+  '/_authenticated/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
   '/_authenticated/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/_authenticated/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
@@ -395,6 +405,7 @@ export interface FileRouteTypes {
     | '/settings/automation'
     | '/settings/blackouts'
     | '/settings/emails'
+    | '/settings/reviews'
     | '/settings/skip-rules'
     | '/settings/sms'
     | '/lovable/email/suppression'
@@ -431,6 +442,7 @@ export interface FileRouteTypes {
     | '/settings/automation'
     | '/settings/blackouts'
     | '/settings/emails'
+    | '/settings/reviews'
     | '/settings/skip-rules'
     | '/settings/sms'
     | '/lovable/email/suppression'
@@ -471,6 +483,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/automation'
     | '/_authenticated/settings/blackouts'
     | '/_authenticated/settings/emails'
+    | '/_authenticated/settings/reviews'
     | '/_authenticated/settings/skip-rules'
     | '/_authenticated/settings/sms'
     | '/lovable/email/suppression'
@@ -661,6 +674,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsSkipRulesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/settings/reviews': {
+      id: '/_authenticated/settings/reviews'
+      path: '/settings/reviews'
+      fullPath: '/settings/reviews'
+      preLoaderRoute: typeof AuthenticatedSettingsReviewsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/settings/emails': {
       id: '/_authenticated/settings/emails'
       path: '/settings/emails'
@@ -836,6 +856,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsAutomationRoute: typeof AuthenticatedSettingsAutomationRoute
   AuthenticatedSettingsBlackoutsRoute: typeof AuthenticatedSettingsBlackoutsRoute
   AuthenticatedSettingsEmailsRoute: typeof AuthenticatedSettingsEmailsRoute
+  AuthenticatedSettingsReviewsRoute: typeof AuthenticatedSettingsReviewsRoute
   AuthenticatedSettingsSkipRulesRoute: typeof AuthenticatedSettingsSkipRulesRoute
   AuthenticatedSettingsSmsRoute: typeof AuthenticatedSettingsSmsRoute
   AuthenticatedImportsIndexRoute: typeof AuthenticatedImportsIndexRoute
@@ -856,6 +877,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsAutomationRoute: AuthenticatedSettingsAutomationRoute,
   AuthenticatedSettingsBlackoutsRoute: AuthenticatedSettingsBlackoutsRoute,
   AuthenticatedSettingsEmailsRoute: AuthenticatedSettingsEmailsRoute,
+  AuthenticatedSettingsReviewsRoute: AuthenticatedSettingsReviewsRoute,
   AuthenticatedSettingsSkipRulesRoute: AuthenticatedSettingsSkipRulesRoute,
   AuthenticatedSettingsSmsRoute: AuthenticatedSettingsSmsRoute,
   AuthenticatedImportsIndexRoute: AuthenticatedImportsIndexRoute,
@@ -883,13 +905,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

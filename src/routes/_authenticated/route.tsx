@@ -75,6 +75,9 @@ function AppShell() {
               <Link to="/settings/emails" activeProps={{ className: "text-foreground font-medium" }}>
                 Emails
               </Link>
+              <Link to="/settings/reviews" activeProps={{ className: "text-foreground font-medium" }}>
+                Reviews
+              </Link>
 
 
 

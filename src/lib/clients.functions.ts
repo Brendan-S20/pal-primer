@@ -84,7 +84,7 @@ export const getClient = createServerFn({ method: "GET" })
     const { supabase } = context;
     const { data: client, error } = await supabase
       .from("clients")
-      .select("id, display_name, account_type, primary_email, primary_phone, active, created_at, notes, portal_token")
+      .select("id, display_name, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at")
       .eq("id", data.clientId)
       .single();
     if (error) throw new Error(error.message);

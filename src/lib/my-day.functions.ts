@@ -71,8 +71,57 @@ export const completeVisit = createServerFn({ method: "POST" })
     } catch (e) {
       console.error("visit-completed email failed", e);
     }
+
+    // Best-effort: fire an automated Google review SMS if org enabled it and
+    // this client hasn't been asked recently. Only completed visits qualify.
+    try {
+      const { data: v } = await context.supabase
+        .from("visits")
+        .select("organization_id, client_id, clients(id, display_name, sms_opt_out, primary_phone, review_asked_at), organizations!inner(name, review_ask_enabled, google_review_url, sms_from_number, review_ask_template)")
+        .eq("id", data.visitId)
+        .single();
+      const c: any = v && (Array.isArray((v as any).clients) ? (v as any).clients[0] : (v as any).clients);
+      const o: any = v && (Array.isArray((v as any).organizations) ? (v as any).organizations[0] : (v as any).organizations);
+      const ninetyDaysAgo = Date.now() - 90 * 24 * 3600_000;
+      const eligible =
+        o?.review_ask_enabled &&
+        o?.google_review_url &&
+        o?.sms_from_number &&
+        c?.primary_phone &&
+        !c?.sms_opt_out &&
+        (!c?.review_asked_at || new Date(c.review_asked_at).getTime() < ninetyDaysAgo);
+      if (eligible) {
+        const firstName = (c.display_name ?? "").split(/\s+/)[0] || "there";
+        const template =
+          (o.review_ask_template && String(o.review_ask_template).trim()) ||
+          `Hi {name}, thanks for choosing ${o.name ?? "us"}! If we did a great job, a quick review would mean the world: {link} — Reply STOP to opt out.`;
+        const body = template.replace(/\{name\}/g, firstName).replace(/\{link\}/g, o.google_review_url);
+        const { sendTwilioSms } = await import("@/lib/twilio.server");
+        try {
+          const res = await sendTwilioSms({ from: o.sms_from_number, to: c.primary_phone, body });
+          await context.supabase.from("messages").insert({
+            organization_id: (v as any).organization_id,
+            client_id: c.id,
+            visit_id: data.visitId,
+            direction: "outbound",
+            body,
+            from_number: o.sms_from_number,
+            to_number: c.primary_phone,
+            twilio_sid: res.sid,
+            status: (res.status || "sent") as any,
+          });
+          await context.supabase.rpc("mark_review_asked", { _client_id: c.id });
+        } catch (err) {
+          console.error("auto review SMS failed", err);
+        }
+      }
+    } catch (e) {
+      console.error("auto review request failed", e);
+    }
     return { ok: true };
   });
+
+
 
 export const skipVisit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

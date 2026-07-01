@@ -7,6 +7,7 @@ import { createProperty, listPropertiesForClient } from "@/lib/properties.functi
 import { createSubscription, listSubscriptionsForClient } from "@/lib/subscriptions.functions";
 import { listZones } from "@/lib/zones.functions";
 import { getClientCredit, generatePrepaidInvoice } from "@/lib/invoices.functions";
+import { sendReviewRequest, applyReferralCode } from "@/lib/reviews.functions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -200,6 +201,10 @@ function ClientDetail() {
           </div>
         )}
       </div>
+
+      <ReviewsReferralPanel client={client} />
+
+
 
 
       {/* Properties */}
@@ -531,3 +536,124 @@ function PrepayInline({
     </form>
   );
 }
+
+function ReviewsReferralPanel({ client }: { client: any }) {
+  const qc = useQueryClient();
+  const sendReview = useServerFn(sendReviewRequest);
+  const applyRef = useServerFn(applyReferralCode);
+  const [code, setCode] = useState("");
+
+  const askMut = useMutation({
+    mutationFn: (force: boolean) => sendReview({ data: { clientId: client.id, force } }),
+    onSuccess: () => {
+      toast.success("Review request sent");
+      qc.invalidateQueries({ queryKey: ["client", client.id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const applyMut = useMutation({
+    mutationFn: () => applyRef({ data: { clientId: client.id, code: code.trim() } }),
+    onSuccess: (r) => {
+      toast.success(`Referral applied — $${(r.reward_cents / 100).toFixed(2)} credited to both accounts`);
+      setCode("");
+      qc.invalidateQueries({ queryKey: ["client", client.id] });
+      qc.invalidateQueries({ queryKey: ["credit", client.id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const copy = (text: string, label: string) => {
+    navigator.clipboard.writeText(text).then(
+      () => toast.success(`${label} copied`),
+      () => toast.error("Copy failed"),
+    );
+  };
+
+  const alreadyAsked = client.review_asked_at
+    ? new Date(client.review_asked_at).toLocaleDateString()
+    : null;
+
+  return (
+    <section className="rounded-lg border bg-card p-5">
+      <h2 className="text-sm font-medium">Reviews & referrals</h2>
+
+      <div className="mt-3 grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <div className="text-xs font-medium text-muted-foreground">Referral code</div>
+          <div className="flex items-center gap-2">
+            <code className="rounded bg-muted px-2 py-1 font-mono text-sm">
+              {client.referral_code ?? "—"}
+            </code>
+            {client.referral_code && (
+              <Button size="sm" variant="outline" onClick={() => copy(client.referral_code, "Code")}>
+                Copy
+              </Button>
+            )}
+          </div>
+          {client.referred_by_client_id && (
+            <p className="text-xs text-muted-foreground">
+              Referred by another client on{" "}
+              {client.referral_applied_at
+                ? new Date(client.referral_applied_at).toLocaleDateString()
+                : "—"}
+            </p>
+          )}
+          {!client.referred_by_client_id && (
+            <form
+              className="flex items-center gap-2 pt-1"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (code.trim()) applyMut.mutate();
+              }}
+            >
+              <Input
+                placeholder="Redeem referral code"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                className="h-8 max-w-[180px]"
+              />
+              <Button type="submit" size="sm" variant="outline" disabled={applyMut.isPending}>
+                Apply
+              </Button>
+            </form>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <div className="text-xs font-medium text-muted-foreground">Review request</div>
+          {alreadyAsked ? (
+            <p className="text-xs text-muted-foreground">Last asked {alreadyAsked}</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">Not yet asked.</p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              onClick={() => askMut.mutate(false)}
+              disabled={askMut.isPending || client.sms_opt_out || !client.primary_phone}
+            >
+              Send review SMS
+            </Button>
+            {alreadyAsked && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => askMut.mutate(true)}
+                disabled={askMut.isPending || client.sms_opt_out || !client.primary_phone}
+              >
+                Send anyway
+              </Button>
+            )}
+          </div>
+          {(client.sms_opt_out || !client.primary_phone) && (
+            <p className="text-xs text-amber-600">
+              {client.sms_opt_out ? "Client opted out of SMS." : "No phone number on file."}
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+

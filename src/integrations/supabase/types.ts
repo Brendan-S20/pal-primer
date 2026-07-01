@@ -63,6 +63,11 @@ export type Database = {
           portal_token: string
           primary_email: string | null
           primary_phone: string | null
+          referral_applied_at: string | null
+          referral_code: string | null
+          referred_by_client_id: string | null
+          review_asked_at: string | null
+          review_submitted_at: string | null
           sms_opt_out: boolean
           updated_at: string
         }
@@ -82,6 +87,11 @@ export type Database = {
           portal_token?: string
           primary_email?: string | null
           primary_phone?: string | null
+          referral_applied_at?: string | null
+          referral_code?: string | null
+          referred_by_client_id?: string | null
+          review_asked_at?: string | null
+          review_submitted_at?: string | null
           sms_opt_out?: boolean
           updated_at?: string
         }
@@ -101,6 +111,11 @@ export type Database = {
           portal_token?: string
           primary_email?: string | null
           primary_phone?: string | null
+          referral_applied_at?: string | null
+          referral_code?: string | null
+          referred_by_client_id?: string | null
+          review_asked_at?: string | null
+          review_submitted_at?: string | null
           sms_opt_out?: boolean
           updated_at?: string
         }
@@ -117,6 +132,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clients_referred_by_client_id_fkey"
+            columns: ["referred_by_client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
         ]
@@ -706,6 +728,7 @@ export type Database = {
           billing_tier: string | null
           created_at: string
           current_period_end: string | null
+          google_review_url: string | null
           id: string
           name: string
           notify_email_invoice_sent: boolean
@@ -717,6 +740,9 @@ export type Database = {
           overdue_reminder_days: number
           overdue_reminders_enabled: boolean
           plan_status: Database["public"]["Enums"]["org_plan_status"]
+          referral_reward_cents: number
+          review_ask_enabled: boolean
+          review_ask_template: string | null
           sms_from_number: string | null
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
@@ -730,6 +756,7 @@ export type Database = {
           billing_tier?: string | null
           created_at?: string
           current_period_end?: string | null
+          google_review_url?: string | null
           id?: string
           name: string
           notify_email_invoice_sent?: boolean
@@ -741,6 +768,9 @@ export type Database = {
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
+          referral_reward_cents?: number
+          review_ask_enabled?: boolean
+          review_ask_template?: string | null
           sms_from_number?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
@@ -754,6 +784,7 @@ export type Database = {
           billing_tier?: string | null
           created_at?: string
           current_period_end?: string | null
+          google_review_url?: string | null
           id?: string
           name?: string
           notify_email_invoice_sent?: boolean
@@ -765,6 +796,9 @@ export type Database = {
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
+          referral_reward_cents?: number
+          review_ask_enabled?: boolean
+          review_ask_template?: string | null
           sms_from_number?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
@@ -1376,6 +1410,10 @@ export type Database = {
         Args: { _org_id: string; _through: string }
         Returns: number
       }
+      apply_referral_code: {
+        Args: { _code: string; _new_client_id: string }
+        Returns: Json
+      }
       assign_route_for_day: {
         Args: {
           _day: string
@@ -1439,6 +1477,7 @@ export type Database = {
         Args: { _user_id: string; _visit_id: string }
         Returns: boolean
       }
+      mark_review_asked: { Args: { _client_id: string }; Returns: boolean }
       move_to_dlq: {
         Args: {
           dlq_name: string
