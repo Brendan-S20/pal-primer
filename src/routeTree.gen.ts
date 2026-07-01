@@ -27,6 +27,7 @@ import { Route as AuthenticatedImportsIndexRouteImport } from './routes/_authent
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
 import { Route as AuthenticatedSettingsSmsRouteImport } from './routes/_authenticated/settings.sms'
 import { Route as AuthenticatedSettingsSkipRulesRouteImport } from './routes/_authenticated/settings.skip-rules'
+import { Route as AuthenticatedSettingsBlackoutsRouteImport } from './routes/_authenticated/settings.blackouts'
 import { Route as AuthenticatedMessagesClientIdRouteImport } from './routes/_authenticated/messages.$clientId'
 import { Route as AuthenticatedInvoicesInvoiceIdRouteImport } from './routes/_authenticated/invoices.$invoiceId'
 import { Route as AuthenticatedImportsBatchIdRouteImport } from './routes/_authenticated/imports.$batchId'
@@ -130,6 +131,12 @@ const AuthenticatedSettingsSkipRulesRoute =
     path: '/settings/skip-rules',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedSettingsBlackoutsRoute =
+  AuthenticatedSettingsBlackoutsRouteImport.update({
+    id: '/settings/blackouts',
+    path: '/settings/blackouts',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedMessagesClientIdRoute =
   AuthenticatedMessagesClientIdRouteImport.update({
     id: '/$clientId',
@@ -187,6 +194,7 @@ export interface FileRoutesByFullPath {
   '/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
   '/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
   '/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
+  '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
@@ -210,6 +218,7 @@ export interface FileRoutesByTo {
   '/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
   '/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
   '/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
+  '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
@@ -238,6 +247,7 @@ export interface FileRoutesById {
   '/_authenticated/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
   '/_authenticated/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
   '/_authenticated/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
+  '/_authenticated/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/_authenticated/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/_authenticated/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
@@ -266,6 +276,7 @@ export interface FileRouteTypes {
     | '/imports/$batchId'
     | '/invoices/$invoiceId'
     | '/messages/$clientId'
+    | '/settings/blackouts'
     | '/settings/skip-rules'
     | '/settings/sms'
     | '/clients/'
@@ -289,6 +300,7 @@ export interface FileRouteTypes {
     | '/imports/$batchId'
     | '/invoices/$invoiceId'
     | '/messages/$clientId'
+    | '/settings/blackouts'
     | '/settings/skip-rules'
     | '/settings/sms'
     | '/clients'
@@ -316,6 +328,7 @@ export interface FileRouteTypes {
     | '/_authenticated/imports/$batchId'
     | '/_authenticated/invoices/$invoiceId'
     | '/_authenticated/messages/$clientId'
+    | '/_authenticated/settings/blackouts'
     | '/_authenticated/settings/skip-rules'
     | '/_authenticated/settings/sms'
     | '/_authenticated/clients/'
@@ -462,6 +475,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsSkipRulesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/settings/blackouts': {
+      id: '/_authenticated/settings/blackouts'
+      path: '/settings/blackouts'
+      fullPath: '/settings/blackouts'
+      preLoaderRoute: typeof AuthenticatedSettingsBlackoutsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/messages/$clientId': {
       id: '/_authenticated/messages/$clientId'
       path: '/$clientId'
@@ -570,6 +590,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedZonesRoute: typeof AuthenticatedZonesRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedImportsBatchIdRoute: typeof AuthenticatedImportsBatchIdRoute
+  AuthenticatedSettingsBlackoutsRoute: typeof AuthenticatedSettingsBlackoutsRoute
   AuthenticatedSettingsSkipRulesRoute: typeof AuthenticatedSettingsSkipRulesRoute
   AuthenticatedSettingsSmsRoute: typeof AuthenticatedSettingsSmsRoute
   AuthenticatedImportsIndexRoute: typeof AuthenticatedImportsIndexRoute
@@ -586,6 +607,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedZonesRoute: AuthenticatedZonesRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedImportsBatchIdRoute: AuthenticatedImportsBatchIdRoute,
+  AuthenticatedSettingsBlackoutsRoute: AuthenticatedSettingsBlackoutsRoute,
   AuthenticatedSettingsSkipRulesRoute: AuthenticatedSettingsSkipRulesRoute,
   AuthenticatedSettingsSmsRoute: AuthenticatedSettingsSmsRoute,
   AuthenticatedImportsIndexRoute: AuthenticatedImportsIndexRoute,
