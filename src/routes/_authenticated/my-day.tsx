@@ -677,8 +677,122 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
               </p>
             </div>
           )}
+          {showStations && <StationsSubpanel visitId={visit.id} />}
         </div>
       )}
     </li>
   );
 }
+
+function StationsSubpanel({ visitId }: { visitId: string }) {
+  const qc = useQueryClient();
+  const listFn = useServerFn(getVisitStations);
+  const logFn = useServerFn(logStationService);
+  const { data } = useQuery({
+    queryKey: ["visit-stations", visitId],
+    queryFn: () => listFn({ data: { visitId } }),
+  });
+
+  const mut = useMutation({
+    mutationFn: (v: any) => logFn({ data: v }),
+    onSuccess: () => {
+      toast.success("Station logged");
+      qc.invalidateQueries({ queryKey: ["visit-stations", visitId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const stations: any[] = data?.stations ?? [];
+  const logs: any[] = data?.logs ?? [];
+  const logFor = (sid: string) => logs.find((l) => l.waste_station_id === sid);
+
+  if (stations.length === 0) {
+    return (
+      <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+        No waste stations configured for this property. Add them from the client page.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+      <div className="text-xs font-medium text-muted-foreground">Station service log</div>
+      {stations.map((s) => {
+        const existing = logFor(s.id);
+        return (
+          <StationRow
+            key={s.id}
+            station={s}
+            existing={existing}
+            onSave={(payload) => mut.mutate({ visitId, wasteStationId: s.id, ...payload })}
+            disabled={mut.isPending}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function StationRow({
+  station,
+  existing,
+  onSave,
+  disabled,
+}: {
+  station: any;
+  existing?: any;
+  onSave: (v: { bagsCollected: number; linerReplaced: boolean; refillBagsAdded: number; notes?: string }) => void;
+  disabled: boolean;
+}) {
+  const [bags, setBags] = useState<string>(String(existing?.bags_collected ?? "0"));
+  const [liner, setLiner] = useState<boolean>(existing?.liner_replaced ?? false);
+  const [refill, setRefill] = useState<string>(String(existing?.refill_bags_added ?? "0"));
+  const [notes, setNotes] = useState<string>(existing?.notes ?? "");
+  return (
+    <div className="rounded-md border bg-background p-2">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium">{station.label}</div>
+        {existing && <span className="text-[11px] text-emerald-600">saved</span>}
+      </div>
+      {station.location_description && (
+        <div className="text-[11px] text-muted-foreground">{station.location_description}</div>
+      )}
+      <div className="mt-2 grid grid-cols-6 gap-2 text-xs">
+        <label className="col-span-2">
+          <span className="block text-[11px] text-muted-foreground">Bags collected</span>
+          <input type="number" min="0" value={bags} onChange={(e) => setBags(e.target.value)} className="h-9 w-full rounded-md border bg-background px-2" />
+        </label>
+        <label className="col-span-2">
+          <span className="block text-[11px] text-muted-foreground">Refill bags added</span>
+          <input type="number" min="0" value={refill} onChange={(e) => setRefill(e.target.value)} className="h-9 w-full rounded-md border bg-background px-2" />
+        </label>
+        <label className="col-span-2 flex items-center gap-2 pt-4">
+          <input type="checkbox" checked={liner} onChange={(e) => setLiner(e.target.checked)} className="h-4 w-4" />
+          <span>Liner replaced</span>
+        </label>
+        <input
+          className="col-span-6 h-9 rounded-md border bg-background px-2"
+          placeholder="Notes (optional)"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
+        <Button
+          size="sm"
+          className="col-span-6"
+          disabled={disabled}
+          onClick={() =>
+            onSave({
+              bagsCollected: parseInt(bags, 10) || 0,
+              linerReplaced: liner,
+              refillBagsAdded: parseInt(refill, 10) || 0,
+              notes: notes.trim() || undefined,
+            })
+          }
+        >
+          {existing ? "Update" : "Save"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
