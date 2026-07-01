@@ -1019,6 +1019,7 @@ export type Database = {
           id: string
           organization_id: string
           property_id: string
+          rescheduled_from: string | null
           scheduled_on: string
           sequence: number | null
           skip_billable: boolean
@@ -1031,6 +1032,8 @@ export type Database = {
           status: Database["public"]["Enums"]["visit_status"]
           subscription_id: string
           updated_at: string
+          weather_flagged: boolean
+          weather_note: string | null
           zone_id: string | null
         }
         Insert: {
@@ -1041,6 +1044,7 @@ export type Database = {
           id?: string
           organization_id: string
           property_id: string
+          rescheduled_from?: string | null
           scheduled_on: string
           sequence?: number | null
           skip_billable?: boolean
@@ -1053,6 +1057,8 @@ export type Database = {
           status?: Database["public"]["Enums"]["visit_status"]
           subscription_id: string
           updated_at?: string
+          weather_flagged?: boolean
+          weather_note?: string | null
           zone_id?: string | null
         }
         Update: {
@@ -1063,6 +1069,7 @@ export type Database = {
           id?: string
           organization_id?: string
           property_id?: string
+          rescheduled_from?: string | null
           scheduled_on?: string
           sequence?: number | null
           skip_billable?: boolean
@@ -1075,6 +1082,8 @@ export type Database = {
           status?: Database["public"]["Enums"]["visit_status"]
           subscription_id?: string
           updated_at?: string
+          weather_flagged?: boolean
+          weather_note?: string | null
           zone_id?: string | null
         }
         Relationships: [
@@ -1127,6 +1136,8 @@ export type Database = {
           account_type: Database["public"]["Enums"]["account_type"] | null
           created_at: string
           id: string
+          latitude: number | null
+          longitude: number | null
           name: string
           organization_id: string
           postal_prefix: string | null
@@ -1136,6 +1147,8 @@ export type Database = {
           account_type?: Database["public"]["Enums"]["account_type"] | null
           created_at?: string
           id?: string
+          latitude?: number | null
+          longitude?: number | null
           name: string
           organization_id: string
           postal_prefix?: string | null
@@ -1145,6 +1158,8 @@ export type Database = {
           account_type?: Database["public"]["Enums"]["account_type"] | null
           created_at?: string
           id?: string
+          latitude?: number | null
+          longitude?: number | null
           name?: string
           organization_id?: string
           postal_prefix?: string | null
@@ -1293,6 +1308,10 @@ export type Database = {
       }
       refresh_active_client_count: {
         Args: { _org_id: string }
+        Returns: undefined
+      }
+      reschedule_visit: {
+        Args: { _new_date: string; _note?: string; _visit_id: string }
         Returns: undefined
       }
       skip_visit:
