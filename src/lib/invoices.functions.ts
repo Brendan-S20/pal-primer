@@ -141,3 +141,36 @@ export const listUnbilledForClient = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     return (visits ?? []).filter((v: { invoice_line_items?: unknown[] }) => !v.invoice_line_items || (v.invoice_line_items as unknown[]).length === 0);
   });
+
+export const generatePrepaidInvoice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ subscriptionId: z.string().uuid(), visitCount: z.number().int().min(1).max(52) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: id, error } = await context.supabase.rpc("generate_prepaid_invoice", {
+      _subscription_id: data.subscriptionId,
+      _visit_count: data.visitCount,
+    });
+    if (error) throw new Error(error.message);
+    return { invoiceId: id as string };
+  });
+
+export const getClientCredit = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { data: client, error } = await supabase
+      .from("clients")
+      .select("credit_balance_cents")
+      .eq("id", data.clientId)
+      .single();
+    if (error) throw new Error(error.message);
+    const { data: ledger, error: lErr } = await supabase
+      .from("credit_ledger")
+      .select("id, delta_cents, kind, note, invoice_id, visit_id, created_at")
+      .eq("client_id", data.clientId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (lErr) throw new Error(lErr.message);
+    return { balanceCents: client.credit_balance_cents ?? 0, ledger: ledger ?? [] };
+  });
