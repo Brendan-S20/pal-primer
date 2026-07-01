@@ -336,6 +336,11 @@ function ClientDetail() {
                 <Badge variant={s.billing_cadence === "prepaid" ? "default" : "secondary"} className="ml-2">
                   {s.billing_cadence}
                 </Badge>
+                {s.preferred_weekdays?.length ? (
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {s.preferred_weekdays.map((d: number) => ["Su","Mo","Tu","We","Th","Fr","Sa"][d]).join(" ")}
+                  </span>
+                ) : null}
               </span>
               <span className="flex items-center gap-3 text-muted-foreground">
                 <span>${(s.price_cents / 100).toFixed(2)} · {s.status}</span>
