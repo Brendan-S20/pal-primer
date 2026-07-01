@@ -405,6 +405,7 @@ export type Database = {
           id: string
           issued_at: string | null
           kind: Database["public"]["Enums"]["invoice_kind"]
+          last_reminder_at: string | null
           notes: string | null
           organization_id: string
           paid_at: string | null
@@ -426,6 +427,7 @@ export type Database = {
           id?: string
           issued_at?: string | null
           kind?: Database["public"]["Enums"]["invoice_kind"]
+          last_reminder_at?: string | null
           notes?: string | null
           organization_id: string
           paid_at?: string | null
@@ -447,6 +449,7 @@ export type Database = {
           id?: string
           issued_at?: string | null
           kind?: Database["public"]["Enums"]["invoice_kind"]
+          last_reminder_at?: string | null
           notes?: string | null
           organization_id?: string
           paid_at?: string | null
@@ -604,11 +607,16 @@ export type Database = {
       organizations: {
         Row: {
           active_client_count: number
+          auto_generate_days_ahead: number
+          auto_generate_visits: boolean
+          auto_invoice_enabled: boolean
           billing_tier: string | null
           created_at: string
           current_period_end: string | null
           id: string
           name: string
+          overdue_reminder_days: number
+          overdue_reminders_enabled: boolean
           plan_status: Database["public"]["Enums"]["org_plan_status"]
           sms_from_number: string | null
           stripe_customer_id: string | null
@@ -617,11 +625,16 @@ export type Database = {
         }
         Insert: {
           active_client_count?: number
+          auto_generate_days_ahead?: number
+          auto_generate_visits?: boolean
+          auto_invoice_enabled?: boolean
           billing_tier?: string | null
           created_at?: string
           current_period_end?: string | null
           id?: string
           name: string
+          overdue_reminder_days?: number
+          overdue_reminders_enabled?: boolean
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
           sms_from_number?: string | null
           stripe_customer_id?: string | null
@@ -630,11 +643,16 @@ export type Database = {
         }
         Update: {
           active_client_count?: number
+          auto_generate_days_ahead?: number
+          auto_generate_visits?: boolean
+          auto_invoice_enabled?: boolean
           billing_tier?: string | null
           created_at?: string
           current_period_end?: string | null
           id?: string
           name?: string
+          overdue_reminder_days?: number
+          overdue_reminders_enabled?: boolean
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
           sms_from_number?: string | null
           stripe_customer_id?: string | null
@@ -1215,6 +1233,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_generate_invoices_for_org: {
+        Args: { _org_id: string; _through: string }
+        Returns: number
+      }
+      admin_generate_visits_through: {
+        Args: { _org_id: string; _through: string }
+        Returns: number
+      }
       assign_route_for_day: {
         Args: {
           _day: string
