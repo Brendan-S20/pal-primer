@@ -80,9 +80,12 @@ export function useOfflineVisitActions(
   );
 
   const uploadPhoto = useCallback(
-    async (file: File, kind: "before" | "completion" | "issue") => {
-      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
-      const contentType = file.type || "image/jpeg";
+    async (rawFile: File, kind: "before" | "completion" | "issue") => {
+      // Downscale + re-encode before either upload path so both online and
+      // queued photos benefit (queued blobs sit in IndexedDB — the smaller
+      // the better).
+      const { file, contentType, ext } = await compressImage(rawFile);
+
 
       if (isNavigatorOnline()) {
         try {
