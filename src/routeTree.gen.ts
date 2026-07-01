@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
@@ -30,6 +31,7 @@ import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authent
 import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
 import { Route as AuthenticatedSettingsSmsRouteImport } from './routes/_authenticated/settings.sms'
 import { Route as AuthenticatedSettingsSkipRulesRouteImport } from './routes/_authenticated/settings.skip-rules'
+import { Route as AuthenticatedSettingsEmailsRouteImport } from './routes/_authenticated/settings.emails'
 import { Route as AuthenticatedSettingsBlackoutsRouteImport } from './routes/_authenticated/settings.blackouts'
 import { Route as AuthenticatedSettingsAutomationRouteImport } from './routes/_authenticated/settings.automation'
 import { Route as AuthenticatedMessagesClientIdRouteImport } from './routes/_authenticated/messages.$clientId'
@@ -46,6 +48,11 @@ import { Route as ApiPublicHooksTwilioRouteImport } from './routes/api/public/ho
 import { Route as ApiPublicHooksStripeRouteImport } from './routes/api/public/hooks/stripe'
 import { Route as ApiPublicHooksNightlyRouteImport } from './routes/api/public/hooks/nightly'
 
+const UnsubscribeRoute = UnsubscribeRouteImport.update({
+  id: '/unsubscribe',
+  path: '/unsubscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
@@ -156,6 +163,12 @@ const AuthenticatedSettingsSkipRulesRoute =
     path: '/settings/skip-rules',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedSettingsEmailsRoute =
+  AuthenticatedSettingsEmailsRouteImport.update({
+    id: '/settings/emails',
+    path: '/settings/emails',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSettingsBlackoutsRoute =
   AuthenticatedSettingsBlackoutsRouteImport.update({
     id: '/settings/blackouts',
@@ -244,6 +257,7 @@ const ApiPublicHooksNightlyRoute = ApiPublicHooksNightlyRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/auth': typeof AuthRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/billing': typeof AuthenticatedBillingRoute
   '/clients': typeof AuthenticatedClientsRouteWithChildren
   '/invoices': typeof AuthenticatedInvoicesRouteWithChildren
@@ -262,6 +276,7 @@ export interface FileRoutesByFullPath {
   '/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
   '/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
+  '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
@@ -280,6 +295,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/billing': typeof AuthenticatedBillingRoute
   '/my-day': typeof AuthenticatedMyDayRoute
   '/reports': typeof AuthenticatedReportsRoute
@@ -296,6 +312,7 @@ export interface FileRoutesByTo {
   '/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
   '/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
+  '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
@@ -316,6 +333,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/_authenticated/billing': typeof AuthenticatedBillingRoute
   '/_authenticated/clients': typeof AuthenticatedClientsRouteWithChildren
   '/_authenticated/invoices': typeof AuthenticatedInvoicesRouteWithChildren
@@ -335,6 +353,7 @@ export interface FileRoutesById {
   '/_authenticated/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
   '/_authenticated/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/_authenticated/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
+  '/_authenticated/settings/emails': typeof AuthenticatedSettingsEmailsRoute
   '/_authenticated/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/_authenticated/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
@@ -356,6 +375,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/unsubscribe'
     | '/billing'
     | '/clients'
     | '/invoices'
@@ -374,6 +394,7 @@ export interface FileRouteTypes {
     | '/messages/$clientId'
     | '/settings/automation'
     | '/settings/blackouts'
+    | '/settings/emails'
     | '/settings/skip-rules'
     | '/settings/sms'
     | '/lovable/email/suppression'
@@ -392,6 +413,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/auth'
+    | '/unsubscribe'
     | '/billing'
     | '/my-day'
     | '/reports'
@@ -408,6 +430,7 @@ export interface FileRouteTypes {
     | '/messages/$clientId'
     | '/settings/automation'
     | '/settings/blackouts'
+    | '/settings/emails'
     | '/settings/skip-rules'
     | '/settings/sms'
     | '/lovable/email/suppression'
@@ -427,6 +450,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_authenticated'
     | '/auth'
+    | '/unsubscribe'
     | '/_authenticated/billing'
     | '/_authenticated/clients'
     | '/_authenticated/invoices'
@@ -446,6 +470,7 @@ export interface FileRouteTypes {
     | '/_authenticated/messages/$clientId'
     | '/_authenticated/settings/automation'
     | '/_authenticated/settings/blackouts'
+    | '/_authenticated/settings/emails'
     | '/_authenticated/settings/skip-rules'
     | '/_authenticated/settings/sms'
     | '/lovable/email/suppression'
@@ -466,6 +491,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  UnsubscribeRoute: typeof UnsubscribeRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   PortalTokenRoute: typeof PortalTokenRoute
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
@@ -481,6 +507,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/unsubscribe': {
+      id: '/unsubscribe'
+      path: '/unsubscribe'
+      fullPath: '/unsubscribe'
+      preLoaderRoute: typeof UnsubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth': {
       id: '/auth'
       path: '/auth'
@@ -626,6 +659,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/skip-rules'
       fullPath: '/settings/skip-rules'
       preLoaderRoute: typeof AuthenticatedSettingsSkipRulesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/settings/emails': {
+      id: '/_authenticated/settings/emails'
+      path: '/settings/emails'
+      fullPath: '/settings/emails'
+      preLoaderRoute: typeof AuthenticatedSettingsEmailsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/settings/blackouts': {
@@ -795,6 +835,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedImportsBatchIdRoute: typeof AuthenticatedImportsBatchIdRoute
   AuthenticatedSettingsAutomationRoute: typeof AuthenticatedSettingsAutomationRoute
   AuthenticatedSettingsBlackoutsRoute: typeof AuthenticatedSettingsBlackoutsRoute
+  AuthenticatedSettingsEmailsRoute: typeof AuthenticatedSettingsEmailsRoute
   AuthenticatedSettingsSkipRulesRoute: typeof AuthenticatedSettingsSkipRulesRoute
   AuthenticatedSettingsSmsRoute: typeof AuthenticatedSettingsSmsRoute
   AuthenticatedImportsIndexRoute: typeof AuthenticatedImportsIndexRoute
@@ -814,6 +855,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedImportsBatchIdRoute: AuthenticatedImportsBatchIdRoute,
   AuthenticatedSettingsAutomationRoute: AuthenticatedSettingsAutomationRoute,
   AuthenticatedSettingsBlackoutsRoute: AuthenticatedSettingsBlackoutsRoute,
+  AuthenticatedSettingsEmailsRoute: AuthenticatedSettingsEmailsRoute,
   AuthenticatedSettingsSkipRulesRoute: AuthenticatedSettingsSkipRulesRoute,
   AuthenticatedSettingsSmsRoute: AuthenticatedSettingsSmsRoute,
   AuthenticatedImportsIndexRoute: AuthenticatedImportsIndexRoute,
@@ -825,6 +867,7 @@ const AuthenticatedRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  UnsubscribeRoute: UnsubscribeRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   PortalTokenRoute: PortalTokenRoute,
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
