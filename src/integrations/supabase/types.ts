@@ -595,6 +595,60 @@ export type Database = {
           },
         ]
       }
+      leads: {
+        Row: {
+          company: string | null
+          contacted_at: string | null
+          converted_at: string | null
+          created_at: string
+          dog_count: number | null
+          email: string
+          frequency: string | null
+          id: string
+          location: string | null
+          message: string | null
+          name: string
+          phone: string | null
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          company?: string | null
+          contacted_at?: string | null
+          converted_at?: string | null
+          created_at?: string
+          dog_count?: number | null
+          email: string
+          frequency?: string | null
+          id?: string
+          location?: string | null
+          message?: string | null
+          name: string
+          phone?: string | null
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          company?: string | null
+          contacted_at?: string | null
+          converted_at?: string | null
+          created_at?: string
+          dog_count?: number | null
+          email?: string
+          frequency?: string | null
+          id?: string
+          location?: string | null
+          message?: string | null
+          name?: string
+          phone?: string | null
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       locations: {
         Row: {
           city: string | null
