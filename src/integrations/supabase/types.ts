@@ -585,13 +585,17 @@ export type Database = {
       properties: {
         Row: {
           access_notes: string | null
+          aggressive_dog: boolean
+          bees_wasps: boolean
           city: string
           client_id: string
           country: string | null
           created_at: string
+          do_not_enter_if_dog_out: boolean
           dog_in_yard_during_service: boolean
           escape_risk: boolean
           gate_code: string | null
+          hazard_notes: string | null
           id: string
           invisible_fence: boolean
           key_location: string | null
@@ -601,17 +605,24 @@ export type Database = {
           parking_notes: string | null
           postal_code: string
           region: string | null
+          sharp_objects: boolean
+          slippery_surfaces: boolean
           street: string
+          yard_size: string | null
         }
         Insert: {
           access_notes?: string | null
+          aggressive_dog?: boolean
+          bees_wasps?: boolean
           city: string
           client_id: string
           country?: string | null
           created_at?: string
+          do_not_enter_if_dog_out?: boolean
           dog_in_yard_during_service?: boolean
           escape_risk?: boolean
           gate_code?: string | null
+          hazard_notes?: string | null
           id?: string
           invisible_fence?: boolean
           key_location?: string | null
@@ -621,17 +632,24 @@ export type Database = {
           parking_notes?: string | null
           postal_code: string
           region?: string | null
+          sharp_objects?: boolean
+          slippery_surfaces?: boolean
           street: string
+          yard_size?: string | null
         }
         Update: {
           access_notes?: string | null
+          aggressive_dog?: boolean
+          bees_wasps?: boolean
           city?: string
           client_id?: string
           country?: string | null
           created_at?: string
+          do_not_enter_if_dog_out?: boolean
           dog_in_yard_during_service?: boolean
           escape_risk?: boolean
           gate_code?: string | null
+          hazard_notes?: string | null
           id?: string
           invisible_fence?: boolean
           key_location?: string | null
@@ -641,7 +659,10 @@ export type Database = {
           parking_notes?: string | null
           postal_code?: string
           region?: string | null
+          sharp_objects?: boolean
+          slippery_surfaces?: boolean
           street?: string
+          yard_size?: string | null
         }
         Relationships: [
           {
@@ -653,6 +674,35 @@ export type Database = {
           },
           {
             foreignKeyName: "properties_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      skip_billing_rules: {
+        Row: {
+          billable_pct: number
+          organization_id: string
+          reason_code: Database["public"]["Enums"]["skip_reason_code"]
+          updated_at: string
+        }
+        Insert: {
+          billable_pct?: number
+          organization_id: string
+          reason_code: Database["public"]["Enums"]["skip_reason_code"]
+          updated_at?: string
+        }
+        Update: {
+          billable_pct?: number
+          organization_id?: string
+          reason_code?: Database["public"]["Enums"]["skip_reason_code"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "skip_billing_rules_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -882,7 +932,12 @@ export type Database = {
           property_id: string
           scheduled_on: string
           sequence: number | null
+          skip_billable: boolean
+          skip_charge_cents: number
           skip_reason: string | null
+          skip_reason_code:
+            | Database["public"]["Enums"]["skip_reason_code"]
+            | null
           started_at: string | null
           status: Database["public"]["Enums"]["visit_status"]
           subscription_id: string
@@ -899,7 +954,12 @@ export type Database = {
           property_id: string
           scheduled_on: string
           sequence?: number | null
+          skip_billable?: boolean
+          skip_charge_cents?: number
           skip_reason?: string | null
+          skip_reason_code?:
+            | Database["public"]["Enums"]["skip_reason_code"]
+            | null
           started_at?: string | null
           status?: Database["public"]["Enums"]["visit_status"]
           subscription_id: string
@@ -916,7 +976,12 @@ export type Database = {
           property_id?: string
           scheduled_on?: string
           sequence?: number | null
+          skip_billable?: boolean
+          skip_charge_cents?: number
           skip_reason?: string | null
+          skip_reason_code?:
+            | Database["public"]["Enums"]["skip_reason_code"]
+            | null
           started_at?: string | null
           status?: Database["public"]["Enums"]["visit_status"]
           subscription_id?: string
@@ -1029,6 +1094,10 @@ export type Database = {
         Returns: boolean
       }
       complete_visit: { Args: { _visit_id: string }; Returns: undefined }
+      default_skip_billable_pct: {
+        Args: { _code: Database["public"]["Enums"]["skip_reason_code"] }
+        Returns: number
+      }
       generate_invoice_for_client: {
         Args: { _client_id: string; _through: string }
         Returns: string
@@ -1085,10 +1154,16 @@ export type Database = {
         Args: { _org_id: string }
         Returns: undefined
       }
-      skip_visit: {
-        Args: { _reason: string; _visit_id: string }
-        Returns: undefined
-      }
+      skip_visit:
+        | { Args: { _reason: string; _visit_id: string }; Returns: undefined }
+        | {
+            Args: {
+              _code?: Database["public"]["Enums"]["skip_reason_code"]
+              _reason: string
+              _visit_id: string
+            }
+            Returns: undefined
+          }
       start_visit: { Args: { _visit_id: string }; Returns: undefined }
       void_invoice: { Args: { _invoice_id: string }; Returns: undefined }
     }
@@ -1122,6 +1197,15 @@ export type Database = {
         | "twice_weekly"
         | "monthly"
         | "one_time"
+      skip_reason_code:
+        | "client_cancelled_late"
+        | "gate_locked"
+        | "dog_outside"
+        | "weather"
+        | "our_fault"
+        | "access_blocked"
+        | "unsafe_conditions"
+        | "other"
       staff_role: "owner" | "office_manager" | "dispatcher" | "tech"
       subscription_status: "active" | "paused" | "canceled"
       visit_status:
@@ -1288,6 +1372,16 @@ export const Constants = {
         "twice_weekly",
         "monthly",
         "one_time",
+      ],
+      skip_reason_code: [
+        "client_cancelled_late",
+        "gate_locked",
+        "dog_outside",
+        "weather",
+        "our_fault",
+        "access_blocked",
+        "unsafe_conditions",
+        "other",
       ],
       staff_role: ["owner", "office_manager", "dispatcher", "tech"],
       subscription_status: ["active", "paused", "canceled"],

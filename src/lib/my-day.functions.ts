@@ -19,7 +19,7 @@ export const getMyDay = createServerFn({ method: "GET" })
     const { data: visits, error } = await supabase
       .from("visits")
       .select(
-        "id, scheduled_on, status, sequence, started_at, completed_at, skip_reason, client_id, property_id, clients(display_name, primary_phone), properties(street, city, postal_code, gate_code, access_notes, dog_in_yard_during_service), zones(name), visit_photos(id, storage_path, kind)",
+        "id, scheduled_on, status, sequence, started_at, completed_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone), properties(street, city, postal_code, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes), zones(name), visit_photos(id, storage_path, kind)",
       )
       .eq("assigned_staff_id", staffRow.id)
       .eq("scheduled_on", data.day)
@@ -50,12 +50,30 @@ export const completeVisit = createServerFn({ method: "POST" })
 export const skipVisit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({ visitId: z.string().uuid(), reason: z.string().min(1).max(500) }).parse(d),
+    z
+      .object({
+        visitId: z.string().uuid(),
+        reason: z.string().min(1).max(500),
+        code: z
+          .enum([
+            "client_cancelled_late",
+            "gate_locked",
+            "dog_outside",
+            "weather",
+            "our_fault",
+            "access_blocked",
+            "unsafe_conditions",
+            "other",
+          ])
+          .default("other"),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { error } = await context.supabase.rpc("skip_visit", {
       _visit_id: data.visitId,
       _reason: data.reason,
+      _code: data.code,
     });
     if (error) throw new Error(error.message);
     return { ok: true };

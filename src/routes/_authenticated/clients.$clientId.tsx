@@ -71,6 +71,19 @@ function ClientDetail() {
   const [city, setCity] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [gateCode, setGateCode] = useState("");
+  const [yardSize, setYardSize] = useState<"" | "small" | "medium" | "large" | "xlarge">("");
+  const [hazardNotes, setHazardNotes] = useState("");
+  const [hz, setHz] = useState({
+    do_not_enter_if_dog_out: false,
+    aggressive_dog: false,
+    escape_risk: false,
+    invisible_fence: false,
+    dog_in_yard_during_service: false,
+    bees_wasps: false,
+    sharp_objects: false,
+    slippery_surfaces: false,
+  });
+  const toggleHz = (k: keyof typeof hz) => setHz((s) => ({ ...s, [k]: !s[k] }));
 
   const propMut = useMutation({
     mutationFn: () =>
@@ -81,13 +94,26 @@ function ClientDetail() {
           city,
           postalCode,
           gateCode: gateCode || undefined,
+          yardSize: yardSize || undefined,
+          hazardNotes: hazardNotes || undefined,
+          doNotEnterIfDogOut: hz.do_not_enter_if_dog_out,
+          aggressiveDog: hz.aggressive_dog,
+          escapeRisk: hz.escape_risk,
+          invisibleFence: hz.invisible_fence,
+          dogInYardDuringService: hz.dog_in_yard_during_service,
+          beesWasps: hz.bees_wasps,
+          sharpObjects: hz.sharp_objects,
+          slipperySurfaces: hz.slippery_surfaces,
         },
       }),
     onSuccess: () => {
-      setStreet("");
-      setCity("");
-      setPostalCode("");
-      setGateCode("");
+      setStreet(""); setCity(""); setPostalCode(""); setGateCode("");
+      setYardSize(""); setHazardNotes("");
+      setHz({
+        do_not_enter_if_dog_out: false, aggressive_dog: false, escape_risk: false,
+        invisible_fence: false, dog_in_yard_during_service: false,
+        bees_wasps: false, sharp_objects: false, slippery_surfaces: false,
+      });
       qc.invalidateQueries({ queryKey: ["properties", clientId] });
     },
   });
@@ -148,40 +174,115 @@ function ClientDetail() {
       <section className="rounded-lg border bg-card p-5">
         <h2 className="text-sm font-medium">Properties</h2>
         <ul className="mt-3 divide-y">
-          {properties.map((p: any) => (
-            <li key={p.id} className="py-2 text-sm">
-              <span className="font-medium">{p.street}</span>, {p.city} {p.postal_code}
-              {p.gate_code && <span className="ml-2 text-muted-foreground">gate {p.gate_code}</span>}
-            </li>
-          ))}
+          {properties.map((p: any) => {
+            const chips: string[] = [];
+            if (p.do_not_enter_if_dog_out) chips.push("no-enter/dog");
+            if (p.aggressive_dog) chips.push("aggressive dog");
+            if (p.escape_risk) chips.push("escape risk");
+            if (p.invisible_fence) chips.push("invisible fence");
+            if (p.dog_in_yard_during_service) chips.push("dog in yard");
+            if (p.bees_wasps) chips.push("bees/wasps");
+            if (p.sharp_objects) chips.push("sharp objects");
+            if (p.slippery_surfaces) chips.push("slippery");
+            return (
+              <li key={p.id} className="py-2 text-sm">
+                <span className="font-medium">{p.street}</span>, {p.city} {p.postal_code}
+                {p.gate_code && <span className="ml-2 text-muted-foreground">gate {p.gate_code}</span>}
+                {p.yard_size && <span className="ml-2 text-muted-foreground">· {p.yard_size} yard</span>}
+                {chips.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {chips.map((c) => (
+                      <span key={c} className="rounded bg-destructive/10 px-1.5 py-0.5 text-[11px] font-medium text-destructive">
+                        ⚠ {c}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </li>
+            );
+          })}
           {properties.length === 0 && (
             <li className="py-2 text-sm text-muted-foreground">No properties yet.</li>
           )}
         </ul>
         <form
-          className="mt-4 grid gap-3 sm:grid-cols-5"
+          className="mt-4 space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
             propMut.mutate();
           }}
         >
-          <div className="sm:col-span-2">
-            <Label htmlFor="street">Street</Label>
-            <Input id="street" value={street} onChange={(e) => setStreet(e.target.value)} required />
+          <div className="grid gap-3 sm:grid-cols-6">
+            <div className="sm:col-span-2">
+              <Label htmlFor="street">Street</Label>
+              <Input id="street" value={street} onChange={(e) => setStreet(e.target.value)} required />
+            </div>
+            <div>
+              <Label htmlFor="city">City</Label>
+              <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} required />
+            </div>
+            <div>
+              <Label htmlFor="zip">Postal</Label>
+              <Input id="zip" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} required />
+            </div>
+            <div>
+              <Label htmlFor="gate">Gate code</Label>
+              <Input id="gate" value={gateCode} onChange={(e) => setGateCode(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="yard">Yard size</Label>
+              <select
+                id="yard"
+                value={yardSize}
+                onChange={(e) => setYardSize(e.target.value as any)}
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="">—</option>
+                <option value="small">Small</option>
+                <option value="medium">Medium</option>
+                <option value="large">Large</option>
+                <option value="xlarge">Extra large</option>
+              </select>
+            </div>
           </div>
+
+          <div className="rounded-md border bg-muted/20 p-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Safety & access hazards
+            </div>
+            <div className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
+              {[
+                ["do_not_enter_if_dog_out", "Do NOT enter if dog is outside"],
+                ["aggressive_dog", "Aggressive dog"],
+                ["escape_risk", "Escape risk (close gate)"],
+                ["invisible_fence", "Invisible fence"],
+                ["dog_in_yard_during_service", "Dog in yard during service"],
+                ["bees_wasps", "Bees / wasps"],
+                ["sharp_objects", "Sharp objects"],
+                ["slippery_surfaces", "Slippery surfaces"],
+              ].map(([k, label]) => (
+                <label key={k} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={(hz as any)[k]}
+                    onChange={() => toggleHz(k as any)}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="mt-2">
+              <Label htmlFor="hnotes" className="text-xs">Hazard notes</Label>
+              <Input
+                id="hnotes"
+                value={hazardNotes}
+                onChange={(e) => setHazardNotes(e.target.value)}
+                placeholder="e.g. Pool uncovered in summer; loose board at back gate"
+              />
+            </div>
+          </div>
+
           <div>
-            <Label htmlFor="city">City</Label>
-            <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} required />
-          </div>
-          <div>
-            <Label htmlFor="zip">Postal</Label>
-            <Input id="zip" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} required />
-          </div>
-          <div>
-            <Label htmlFor="gate">Gate code</Label>
-            <Input id="gate" value={gateCode} onChange={(e) => setGateCode(e.target.value)} />
-          </div>
-          <div className="sm:col-span-5">
             <Button type="submit" disabled={propMut.isPending}>
               {propMut.isPending ? "Adding…" : "Add property"}
             </Button>
