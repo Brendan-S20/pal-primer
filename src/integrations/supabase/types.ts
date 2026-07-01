@@ -781,7 +781,9 @@ export type Database = {
           auto_invoice_enabled: boolean
           billing_tier: string | null
           created_at: string
+          currency: string
           current_period_end: string | null
+          frequency_multipliers: Json
           google_review_url: string | null
           id: string
           name: string
@@ -794,9 +796,11 @@ export type Database = {
           overdue_reminder_days: number
           overdue_reminders_enabled: boolean
           plan_status: Database["public"]["Enums"]["org_plan_status"]
+          public_signup_enabled: boolean
           referral_reward_cents: number
           review_ask_enabled: boolean
           review_ask_template: string | null
+          slug: string | null
           sms_from_number: string | null
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
@@ -809,7 +813,9 @@ export type Database = {
           auto_invoice_enabled?: boolean
           billing_tier?: string | null
           created_at?: string
+          currency?: string
           current_period_end?: string | null
+          frequency_multipliers?: Json
           google_review_url?: string | null
           id?: string
           name: string
@@ -822,9 +828,11 @@ export type Database = {
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
+          public_signup_enabled?: boolean
           referral_reward_cents?: number
           review_ask_enabled?: boolean
           review_ask_template?: string | null
+          slug?: string | null
           sms_from_number?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
@@ -837,7 +845,9 @@ export type Database = {
           auto_invoice_enabled?: boolean
           billing_tier?: string | null
           created_at?: string
+          currency?: string
           current_period_end?: string | null
+          frequency_multipliers?: Json
           google_review_url?: string | null
           id?: string
           name?: string
@@ -850,9 +860,11 @@ export type Database = {
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
+          public_signup_enabled?: boolean
           referral_reward_cents?: number
           review_ask_enabled?: boolean
           review_ask_template?: string | null
+          slug?: string | null
           sms_from_number?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
@@ -1015,6 +1027,100 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      signup_requests: {
+        Row: {
+          city: string | null
+          created_at: string
+          currency: string
+          dog_count: number
+          email: string
+          error_message: string | null
+          frequency: string
+          id: string
+          initial_cleanup_cents: number
+          name: string
+          organization_id: string
+          phone: string | null
+          postal_code: string
+          provisioned_client_id: string | null
+          recurring_price_cents: number
+          region: string | null
+          status: string
+          street: string
+          stripe_checkout_session_id: string | null
+          updated_at: string
+          zone_id: string | null
+        }
+        Insert: {
+          city?: string | null
+          created_at?: string
+          currency?: string
+          dog_count: number
+          email: string
+          error_message?: string | null
+          frequency: string
+          id?: string
+          initial_cleanup_cents: number
+          name: string
+          organization_id: string
+          phone?: string | null
+          postal_code: string
+          provisioned_client_id?: string | null
+          recurring_price_cents: number
+          region?: string | null
+          status?: string
+          street: string
+          stripe_checkout_session_id?: string | null
+          updated_at?: string
+          zone_id?: string | null
+        }
+        Update: {
+          city?: string | null
+          created_at?: string
+          currency?: string
+          dog_count?: number
+          email?: string
+          error_message?: string | null
+          frequency?: string
+          id?: string
+          initial_cleanup_cents?: number
+          name?: string
+          organization_id?: string
+          phone?: string | null
+          postal_code?: string
+          provisioned_client_id?: string | null
+          recurring_price_cents?: number
+          region?: string | null
+          status?: string
+          street?: string
+          stripe_checkout_session_id?: string | null
+          updated_at?: string
+          zone_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signup_requests_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "signup_requests_provisioned_client_id_fkey"
+            columns: ["provisioned_client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "signup_requests_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "zones"
             referencedColumns: ["id"]
           },
         ]
@@ -1410,36 +1516,48 @@ export type Database = {
       zones: {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"] | null
+          base_price_cents: number
           created_at: string
           id: string
+          initial_cleanup_cents: number
           latitude: number | null
           longitude: number | null
           name: string
           organization_id: string
+          per_dog_addl_cents: number
           postal_prefix: string | null
           price_note: string | null
+          zip_codes: string[]
         }
         Insert: {
           account_type?: Database["public"]["Enums"]["account_type"] | null
+          base_price_cents?: number
           created_at?: string
           id?: string
+          initial_cleanup_cents?: number
           latitude?: number | null
           longitude?: number | null
           name: string
           organization_id: string
+          per_dog_addl_cents?: number
           postal_prefix?: string | null
           price_note?: string | null
+          zip_codes?: string[]
         }
         Update: {
           account_type?: Database["public"]["Enums"]["account_type"] | null
+          base_price_cents?: number
           created_at?: string
           id?: string
+          initial_cleanup_cents?: number
           latitude?: number | null
           longitude?: number | null
           name?: string
           organization_id?: string
+          per_dog_addl_cents?: number
           postal_prefix?: string | null
           price_note?: string | null
+          zip_codes?: string[]
         }
         Relationships: [
           {
@@ -1612,6 +1730,33 @@ export type Database = {
           _visit_id: string
         }
         Returns: undefined
+      }
+      public_get_org_by_slug: {
+        Args: { _slug: string }
+        Returns: {
+          currency: string
+          id: string
+          name: string
+          public_signup_enabled: boolean
+        }[]
+      }
+      public_quote: {
+        Args: {
+          _dog_count: number
+          _frequency: string
+          _postal_code: string
+          _slug: string
+        }
+        Returns: {
+          base_price_cents: number
+          currency: string
+          initial_cleanup_cents: number
+          organization_id: string
+          per_dog_addl_cents: number
+          recurring_price_cents: number
+          zone_id: string
+          zone_name: string
+        }[]
       }
       read_email_batch: {
         Args: { batch_size: number; queue_name: string; vt: number }
