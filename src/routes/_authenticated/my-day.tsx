@@ -516,7 +516,7 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
             <select
               value={photoKind}
               onChange={(e) => setPhotoKind(e.target.value as any)}
-              className="h-8 rounded-md border bg-background px-2 text-xs"
+              className="h-10 rounded-md border bg-background px-3 text-sm"
               aria-label="Photo type"
             >
               <option value="before">Before</option>
@@ -526,11 +526,12 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
             <Button
               type="button"
               variant="outline"
-              size="sm"
+              size="default"
+              className="h-10"
               disabled={uploading}
               onClick={() => fileInput.current?.click()}
             >
-              <Camera className="mr-1 h-3.5 w-3.5" />
+              <Camera className="mr-1.5 h-4 w-4" />
               {uploading ? "Uploading…" : "Take photo"}
             </Button>
           </div>
