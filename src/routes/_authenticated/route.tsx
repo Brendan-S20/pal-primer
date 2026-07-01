@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, redirect, Link } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { APP_NAME } from "@/lib/scoop";
+import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -98,6 +99,7 @@ function AppShell() {
       <main className="mx-auto max-w-6xl px-6 py-8">
         <Outlet />
       </main>
+      <KeyboardShortcuts />
     </div>
   );
 }

@@ -2,7 +2,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
-import { getWeatherForZones, getZoneVisitsOnDay, rescheduleVisits } from "@/lib/weather.functions";
+import {
+  getWeatherForZones,
+  getZoneVisitsOnDay,
+  rescheduleVisits,
+  autoRebalanceForecast,
+  getStaffWorkload,
+} from "@/lib/weather.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -64,7 +70,10 @@ function WeatherPage() {
         <Button variant="outline" onClick={() => refetch()} disabled={isFetching}>
           {isFetching ? "Loading…" : "Refresh"}
         </Button>
+        <AutoRebalance fromDate={fromDate} toDate={toDate} />
       </div>
+
+      <WorkloadPanel />
 
       {data?.zones.length === 0 && (
         <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
@@ -259,6 +268,115 @@ function RescheduleDialog({
         </div>
         {mut.error && <p className="mt-2 text-sm text-destructive">{(mut.error as Error).message}</p>}
       </div>
+    </div>
+  );
+}
+
+function AutoRebalance({ fromDate, toDate }: { fromDate: string; toDate: string }) {
+  const fn = useServerFn(autoRebalanceForecast);
+  const qc = useQueryClient();
+  const [preview, setPreview] = useState<Awaited<ReturnType<typeof fn>> | null>(null);
+
+  const dry = useMutation({
+    mutationFn: () => fn({ data: { fromDate, toDate, dryRun: true, dailyCap: 60 } }),
+    onSuccess: (r) => {
+      setPreview(r);
+      const total = r.summary.reduce((n, s) => n + s.moved, 0);
+      if (!total) toast.info("No risky visits to rebalance.");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const apply = useMutation({
+    mutationFn: () => fn({ data: { fromDate, toDate, dryRun: false, dailyCap: 60 } }),
+    onSuccess: (r) => {
+      const total = r.summary.reduce((n, s) => n + s.moved, 0);
+      toast.success(`Rebalanced ${total} visit(s).`);
+      setPreview(null);
+      qc.invalidateQueries({ queryKey: ["weather"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <div className="ml-auto flex items-center gap-2">
+      <Button variant="outline" onClick={() => dry.mutate()} disabled={dry.isPending}>
+        {dry.isPending ? "Previewing…" : "Preview auto-rebalance"}
+      </Button>
+      {preview && preview.summary.length > 0 && (
+        <>
+          <span className="text-xs text-muted-foreground">
+            {preview.summary.reduce((n, s) => n + s.moved, 0)} to move
+            {preview.summary.some((s) => s.skipped_no_slot > 0)
+              ? ` · ${preview.summary.reduce((n, s) => n + s.skipped_no_slot, 0)} skipped`
+              : ""}
+          </span>
+          <Button onClick={() => apply.mutate()} disabled={apply.isPending}>
+            {apply.isPending ? "Applying…" : "Apply"}
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function WorkloadPanel() {
+  const getWorkload = useServerFn(getStaffWorkload);
+  const [date, setDate] = useState(todayIso());
+  const { data } = useQuery({
+    queryKey: ["workload", date],
+    queryFn: () => getWorkload({ data: { date } }),
+  });
+  const overloaded = new Set(data?.overloaded_staff_ids ?? []);
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <div className="mb-3 flex items-end justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Tech workload</h2>
+          <p className="text-xs text-muted-foreground">
+            Balance the day. Overloaded techs are flagged &gt;1.5× median.
+          </p>
+        </div>
+        <div>
+          <Label htmlFor="wd">Date</Label>
+          <Input id="wd" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </div>
+      </div>
+      {!data ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : data.staff.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No active techs.</p>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {data.staff.map((s) => {
+            const flagged = overloaded.has(s.staff_id);
+            return (
+              <div
+                key={s.staff_id}
+                className={`flex items-center justify-between rounded-md border p-3 text-sm ${
+                  flagged ? "border-destructive bg-destructive/5" : ""
+                }`}
+              >
+                <span className="truncate">{s.name}</span>
+                <span className={`font-medium ${flagged ? "text-destructive" : ""}`}>
+                  {s.visit_count}
+                </span>
+              </div>
+            );
+          })}
+          {data.unassigned > 0 && (
+            <div className="flex items-center justify-between rounded-md border border-dashed p-3 text-sm">
+              <span className="text-muted-foreground">Unassigned</span>
+              <span className="font-medium">{data.unassigned}</span>
+            </div>
+          )}
+        </div>
+      )}
+      {data && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          Total {data.total} · median {data.median}. Rebalance manually on the Routes page.
+        </p>
+      )}
     </div>
   );
 }
