@@ -27,6 +27,7 @@ export type Database = {
           import_source: Database["public"]["Enums"]["import_source"] | null
           notes: string | null
           organization_id: string
+          portal_token: string
           primary_email: string | null
           primary_phone: string | null
           updated_at: string
@@ -43,6 +44,7 @@ export type Database = {
           import_source?: Database["public"]["Enums"]["import_source"] | null
           notes?: string | null
           organization_id: string
+          portal_token?: string
           primary_email?: string | null
           primary_phone?: string | null
           updated_at?: string
@@ -59,6 +61,7 @@ export type Database = {
           import_source?: Database["public"]["Enums"]["import_source"] | null
           notes?: string | null
           organization_id?: string
+          portal_token?: string
           primary_email?: string | null
           primary_phone?: string | null
           updated_at?: string
@@ -1138,6 +1141,57 @@ export type Database = {
         Returns: string
       }
       org_can_add_client: { Args: { _org_id: string }; Returns: boolean }
+      portal_get_client: {
+        Args: { _token: string }
+        Returns: {
+          account_type: string
+          client_id: string
+          credit_balance_cents: number
+          display_name: string
+          org_name: string
+          organization_id: string
+        }[]
+      }
+      portal_list_invoices: {
+        Args: { _token: string }
+        Returns: {
+          invoice_id: string
+          issued_at: string
+          kind: string
+          period_end: string
+          period_start: string
+          status: Database["public"]["Enums"]["invoice_status"]
+          total_cents: number
+        }[]
+      }
+      portal_list_prepaid_subscriptions: {
+        Args: { _token: string }
+        Returns: {
+          frequency: Database["public"]["Enums"]["service_frequency"]
+          price_cents: number
+          property_label: string
+          subscription_id: string
+        }[]
+      }
+      portal_list_upcoming_visits: {
+        Args: { _token: string }
+        Returns: {
+          city: string
+          postal_code: string
+          scheduled_on: string
+          status: Database["public"]["Enums"]["visit_status"]
+          street: string
+          visit_id: string
+        }[]
+      }
+      portal_request_skip: {
+        Args: { _reason: string; _token: string; _visit_id: string }
+        Returns: undefined
+      }
+      portal_start_prepaid_topup: {
+        Args: { _subscription_id: string; _token: string; _visit_count: number }
+        Returns: string
+      }
       post_credit_entry: {
         Args: {
           _client_id: string
@@ -1206,6 +1260,7 @@ export type Database = {
         | "access_blocked"
         | "unsafe_conditions"
         | "other"
+        | "customer_requested"
       staff_role: "owner" | "office_manager" | "dispatcher" | "tech"
       subscription_status: "active" | "paused" | "canceled"
       visit_status:
@@ -1382,6 +1437,7 @@ export const Constants = {
         "access_blocked",
         "unsafe_conditions",
         "other",
+        "customer_requested",
       ],
       staff_role: ["owner", "office_manager", "dispatcher", "tech"],
       subscription_status: ["active", "paused", "canceled"],
