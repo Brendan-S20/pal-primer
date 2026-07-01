@@ -7,6 +7,7 @@ import { createProperty, listPropertiesForClient } from "@/lib/properties.functi
 import { createSubscription, listSubscriptionsForClient } from "@/lib/subscriptions.functions";
 import { listZones } from "@/lib/zones.functions";
 import { getClientCredit, generatePrepaidInvoice } from "@/lib/invoices.functions";
+import { sendReviewRequest, applyReferralCode } from "@/lib/reviews.functions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
