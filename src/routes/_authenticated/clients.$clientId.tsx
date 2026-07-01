@@ -168,7 +168,37 @@ function ClientDetail() {
             {client.account_type}
           </Badge>
         </div>
+        {(client as any).portal_token && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 p-2 text-xs">
+            <span className="font-medium">Client portal link:</span>
+            <code className="max-w-full truncate rounded bg-background px-2 py-1">
+              {typeof window !== "undefined" ? `${window.location.origin}/portal/${(client as any).portal_token}` : `/portal/${(client as any).portal_token}`}
+            </code>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const url = `${window.location.origin}/portal/${(client as any).portal_token}`;
+                navigator.clipboard.writeText(url).then(
+                  () => toast.success("Portal link copied"),
+                  () => toast.error("Copy failed"),
+                );
+              }}
+            >
+              Copy
+            </Button>
+            <a
+              className="text-primary underline"
+              href={`/portal/${(client as any).portal_token}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open
+            </a>
+          </div>
+        )}
       </div>
+
 
       {/* Properties */}
       <section className="rounded-lg border bg-card p-5">
