@@ -14,6 +14,38 @@ export type Database = {
   }
   public: {
     Tables: {
+      blackout_dates: {
+        Row: {
+          blackout_on: string
+          created_at: string
+          id: string
+          organization_id: string
+          reason: string | null
+        }
+        Insert: {
+          blackout_on: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          reason?: string | null
+        }
+        Update: {
+          blackout_on?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blackout_dates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"]
@@ -863,6 +895,7 @@ export type Database = {
           frequency: Database["public"]["Enums"]["service_frequency"]
           id: string
           organization_id: string
+          preferred_weekdays: number[] | null
           price_cents: number
           property_id: string
           started_on: string
@@ -879,6 +912,7 @@ export type Database = {
           frequency: Database["public"]["Enums"]["service_frequency"]
           id?: string
           organization_id: string
+          preferred_weekdays?: number[] | null
           price_cents: number
           property_id: string
           started_on?: string
@@ -895,6 +929,7 @@ export type Database = {
           frequency?: Database["public"]["Enums"]["service_frequency"]
           id?: string
           organization_id?: string
+          preferred_weekdays?: number[] | null
           price_cents?: number
           property_id?: string
           started_on?: string
