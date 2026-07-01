@@ -23,6 +23,7 @@ import { Route as PortalTokenRouteImport } from './routes/portal.$token'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as AuthenticatedZonesRouteImport } from './routes/_authenticated/zones'
 import { Route as AuthenticatedWeatherRouteImport } from './routes/_authenticated/weather'
+import { Route as AuthenticatedWasteLogRouteImport } from './routes/_authenticated/waste-log'
 import { Route as AuthenticatedRoutesRouteImport } from './routes/_authenticated/routes'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedMyDayRouteImport } from './routes/_authenticated/my-day'
@@ -125,6 +126,11 @@ const AuthenticatedZonesRoute = AuthenticatedZonesRouteImport.update({
 const AuthenticatedWeatherRoute = AuthenticatedWeatherRouteImport.update({
   id: '/weather',
   path: '/weather',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedWasteLogRoute = AuthenticatedWasteLogRouteImport.update({
+  id: '/waste-log',
+  path: '/waste-log',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedRoutesRoute = AuthenticatedRoutesRouteImport.update({
@@ -333,6 +339,7 @@ export interface FileRoutesByFullPath {
   '/my-day': typeof AuthenticatedMyDayRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/routes': typeof AuthenticatedRoutesRoute
+  '/waste-log': typeof AuthenticatedWasteLogRoute
   '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
@@ -379,6 +386,7 @@ export interface FileRoutesByTo {
   '/my-day': typeof AuthenticatedMyDayRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/routes': typeof AuthenticatedRoutesRoute
+  '/waste-log': typeof AuthenticatedWasteLogRoute
   '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
@@ -430,6 +438,7 @@ export interface FileRoutesById {
   '/_authenticated/my-day': typeof AuthenticatedMyDayRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/routes': typeof AuthenticatedRoutesRoute
+  '/_authenticated/waste-log': typeof AuthenticatedWasteLogRoute
   '/_authenticated/weather': typeof AuthenticatedWeatherRoute
   '/_authenticated/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
@@ -481,6 +490,7 @@ export interface FileRouteTypes {
     | '/my-day'
     | '/reports'
     | '/routes'
+    | '/waste-log'
     | '/weather'
     | '/zones'
     | '/email/unsubscribe'
@@ -527,6 +537,7 @@ export interface FileRouteTypes {
     | '/my-day'
     | '/reports'
     | '/routes'
+    | '/waste-log'
     | '/weather'
     | '/zones'
     | '/email/unsubscribe'
@@ -577,6 +588,7 @@ export interface FileRouteTypes {
     | '/_authenticated/my-day'
     | '/_authenticated/reports'
     | '/_authenticated/routes'
+    | '/_authenticated/waste-log'
     | '/_authenticated/weather'
     | '/_authenticated/zones'
     | '/email/unsubscribe'
@@ -732,6 +744,13 @@ declare module '@tanstack/react-router' {
       path: '/weather'
       fullPath: '/weather'
       preLoaderRoute: typeof AuthenticatedWeatherRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/waste-log': {
+      id: '/_authenticated/waste-log'
+      path: '/waste-log'
+      fullPath: '/waste-log'
+      preLoaderRoute: typeof AuthenticatedWasteLogRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/routes': {
@@ -1030,6 +1049,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedMyDayRoute: typeof AuthenticatedMyDayRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedRoutesRoute: typeof AuthenticatedRoutesRoute
+  AuthenticatedWasteLogRoute: typeof AuthenticatedWasteLogRoute
   AuthenticatedWeatherRoute: typeof AuthenticatedWeatherRoute
   AuthenticatedZonesRoute: typeof AuthenticatedZonesRoute
   AuthenticatedImportsBatchIdRoute: typeof AuthenticatedImportsBatchIdRoute
@@ -1053,6 +1073,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedMyDayRoute: AuthenticatedMyDayRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedRoutesRoute: AuthenticatedRoutesRoute,
+  AuthenticatedWasteLogRoute: AuthenticatedWasteLogRoute,
   AuthenticatedWeatherRoute: AuthenticatedWeatherRoute,
   AuthenticatedZonesRoute: AuthenticatedZonesRoute,
   AuthenticatedImportsBatchIdRoute: AuthenticatedImportsBatchIdRoute,

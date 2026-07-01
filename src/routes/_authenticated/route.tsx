@@ -50,6 +50,9 @@ function AppShell() {
               <Link to="/my-day" activeProps={{ className: "text-foreground font-medium" }}>
                 My day
               </Link>
+              <Link to="/waste-log" activeProps={{ className: "text-foreground font-medium" }}>
+                Waste log
+              </Link>
               <Link to="/messages" activeProps={{ className: "text-foreground font-medium" }}>
                 Messages
               </Link>

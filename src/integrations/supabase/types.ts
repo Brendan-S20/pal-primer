@@ -1453,6 +1453,70 @@ export type Database = {
           },
         ]
       }
+      station_service_logs: {
+        Row: {
+          bags_collected: number
+          created_at: string
+          id: string
+          liner_replaced: boolean
+          notes: string | null
+          organization_id: string
+          photo_url: string | null
+          refill_bags_added: number
+          serviced_at: string
+          visit_id: string
+          waste_station_id: string
+        }
+        Insert: {
+          bags_collected?: number
+          created_at?: string
+          id?: string
+          liner_replaced?: boolean
+          notes?: string | null
+          organization_id: string
+          photo_url?: string | null
+          refill_bags_added?: number
+          serviced_at?: string
+          visit_id: string
+          waste_station_id: string
+        }
+        Update: {
+          bags_collected?: number
+          created_at?: string
+          id?: string
+          liner_replaced?: boolean
+          notes?: string | null
+          organization_id?: string
+          photo_url?: string | null
+          refill_bags_added?: number
+          serviced_at?: string
+          visit_id?: string
+          waste_station_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "station_service_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "station_service_logs_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "station_service_logs_waste_station_id_fkey"
+            columns: ["waste_station_id"]
+            isOneToOne: false
+            referencedRelation: "waste_stations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscriptions: {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"]
@@ -1656,6 +1720,7 @@ export type Database = {
             | Database["public"]["Enums"]["skip_reason_code"]
             | null
           started_at: string | null
+          station_count_serviced: number
           status: Database["public"]["Enums"]["visit_status"]
           subscription_id: string
           updated_at: string
@@ -1681,6 +1746,7 @@ export type Database = {
             | Database["public"]["Enums"]["skip_reason_code"]
             | null
           started_at?: string | null
+          station_count_serviced?: number
           status?: Database["public"]["Enums"]["visit_status"]
           subscription_id: string
           updated_at?: string
@@ -1706,6 +1772,7 @@ export type Database = {
             | Database["public"]["Enums"]["skip_reason_code"]
             | null
           started_at?: string | null
+          station_count_serviced?: number
           status?: Database["public"]["Enums"]["visit_status"]
           subscription_id?: string
           updated_at?: string
@@ -1754,6 +1821,184 @@ export type Database = {
             columns: ["zone_id"]
             isOneToOne: false
             referencedRelation: "zones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      waste_disposal_facilities: {
+        Row: {
+          active: boolean
+          address: string | null
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          address?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          address?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "waste_disposal_facilities_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      waste_disposal_manifests: {
+        Row: {
+          bag_count: number | null
+          created_at: string
+          disposed_at: string
+          disposed_on: string
+          facility_id: string | null
+          id: string
+          notes: string | null
+          organization_id: string
+          photo_url: string | null
+          staff_id: string | null
+          ticket_number: string | null
+          updated_at: string
+          weight_lbs: number | null
+        }
+        Insert: {
+          bag_count?: number | null
+          created_at?: string
+          disposed_at?: string
+          disposed_on: string
+          facility_id?: string | null
+          id?: string
+          notes?: string | null
+          organization_id: string
+          photo_url?: string | null
+          staff_id?: string | null
+          ticket_number?: string | null
+          updated_at?: string
+          weight_lbs?: number | null
+        }
+        Update: {
+          bag_count?: number | null
+          created_at?: string
+          disposed_at?: string
+          disposed_on?: string
+          facility_id?: string | null
+          id?: string
+          notes?: string | null
+          organization_id?: string
+          photo_url?: string | null
+          staff_id?: string | null
+          ticket_number?: string | null
+          updated_at?: string
+          weight_lbs?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "waste_disposal_manifests_facility_id_fkey"
+            columns: ["facility_id"]
+            isOneToOne: false
+            referencedRelation: "waste_disposal_facilities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waste_disposal_manifests_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waste_disposal_manifests_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      waste_stations: {
+        Row: {
+          active: boolean
+          capacity_liners: number | null
+          client_id: string
+          created_at: string
+          id: string
+          label: string
+          liner_size: string | null
+          location_description: string | null
+          organization_id: string
+          property_id: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          capacity_liners?: number | null
+          client_id: string
+          created_at?: string
+          id?: string
+          label: string
+          liner_size?: string | null
+          location_description?: string | null
+          organization_id: string
+          property_id: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          capacity_liners?: number | null
+          client_id?: string
+          created_at?: string
+          id?: string
+          label?: string
+          liner_size?: string | null
+          location_description?: string | null
+          organization_id?: string
+          property_id?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "waste_stations_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waste_stations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waste_stations_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
             referencedColumns: ["id"]
           },
         ]
@@ -1914,6 +2159,18 @@ export type Database = {
       is_visit_tech: {
         Args: { _user_id: string; _visit_id: string }
         Returns: boolean
+      }
+      log_station_service: {
+        Args: {
+          _bags_collected?: number
+          _liner_replaced?: boolean
+          _notes?: string
+          _photo_url?: string
+          _refill_bags_added?: number
+          _visit_id: string
+          _waste_station_id: string
+        }
+        Returns: string
       }
       mark_review_asked: { Args: { _client_id: string }; Returns: boolean }
       move_to_dlq: {
