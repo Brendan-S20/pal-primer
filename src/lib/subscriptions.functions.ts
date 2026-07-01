@@ -62,7 +62,7 @@ export const listSubscriptionsForClient = createServerFn({ method: "GET" })
     const { supabase } = context;
     const { data: rows, error } = await supabase
       .from("subscriptions")
-      .select("id, account_type, frequency, price_cents, dog_count, unit_count, zone_id, status, started_on, property_id")
+      .select("id, account_type, frequency, price_cents, dog_count, unit_count, zone_id, status, started_on, property_id, billing_cadence")
       .eq("client_id", data.clientId)
       .order("created_at");
     if (error) throw new Error(error.message);
