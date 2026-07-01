@@ -11,11 +11,20 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const secret = process.env.CRON_SECRET;
-        if (!secret) return json({ error: "not_configured" }, 500);
-        const url = new URL(request.url);
-        const provided = url.searchParams.get("s") ?? request.headers.get("x-cron-secret");
-        if (provided !== secret) return json({ error: "unauthorized" }, 401);
+        // Auth: accept either the generated CRON_SECRET (preferred) or the
+        // project anon key (per Lovable scheduled-jobs pattern). Nightly work
+        // is idempotent, so the worst-case if someone triggers it is running
+        // an org's automation early.
+        const cronSecret = process.env.CRON_SECRET;
+        const anonKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+        const providedSecret =
+          request.headers.get("x-cron-secret") ??
+          new URL(request.url).searchParams.get("s");
+        const providedApiKey = request.headers.get("apikey");
+        const okSecret = cronSecret && providedSecret === cronSecret;
+        const okAnon = anonKey && providedApiKey === anonKey;
+        if (!okSecret && !okAnon) return json({ error: "unauthorized" }, 401);
+
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const today = new Date();
