@@ -50,7 +50,10 @@ function uid() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export async function enqueueAction(action: Omit<PendingAction, "id" | "ts">): Promise<string> {
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+export type NewAction = DistributiveOmit<PendingAction, "id" | "ts">;
+
+export async function enqueueAction(action: NewAction): Promise<string> {
   const db = await getDb();
   const record = { ...action, id: uid(), ts: Date.now() } as PendingAction;
   await db.put("actions", record);
