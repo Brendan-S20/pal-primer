@@ -29,6 +29,7 @@ import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authent
 import { Route as AuthenticatedSettingsSmsRouteImport } from './routes/_authenticated/settings.sms'
 import { Route as AuthenticatedSettingsSkipRulesRouteImport } from './routes/_authenticated/settings.skip-rules'
 import { Route as AuthenticatedSettingsBlackoutsRouteImport } from './routes/_authenticated/settings.blackouts'
+import { Route as AuthenticatedSettingsAutomationRouteImport } from './routes/_authenticated/settings.automation'
 import { Route as AuthenticatedMessagesClientIdRouteImport } from './routes/_authenticated/messages.$clientId'
 import { Route as AuthenticatedInvoicesInvoiceIdRouteImport } from './routes/_authenticated/invoices.$invoiceId'
 import { Route as AuthenticatedImportsBatchIdRouteImport } from './routes/_authenticated/imports.$batchId'
@@ -36,6 +37,7 @@ import { Route as AuthenticatedClientsNewRouteImport } from './routes/_authentic
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
 import { Route as ApiPublicHooksTwilioRouteImport } from './routes/api/public/hooks/twilio'
 import { Route as ApiPublicHooksStripeRouteImport } from './routes/api/public/hooks/stripe'
+import { Route as ApiPublicHooksNightlyRouteImport } from './routes/api/public/hooks/nightly'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -143,6 +145,12 @@ const AuthenticatedSettingsBlackoutsRoute =
     path: '/settings/blackouts',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedSettingsAutomationRoute =
+  AuthenticatedSettingsAutomationRouteImport.update({
+    id: '/settings/automation',
+    path: '/settings/automation',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedMessagesClientIdRoute =
   AuthenticatedMessagesClientIdRouteImport.update({
     id: '/$clientId',
@@ -182,6 +190,11 @@ const ApiPublicHooksStripeRoute = ApiPublicHooksStripeRouteImport.update({
   path: '/api/public/hooks/stripe',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHooksNightlyRoute = ApiPublicHooksNightlyRouteImport.update({
+  id: '/api/public/hooks/nightly',
+  path: '/api/public/hooks/nightly',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -201,6 +214,7 @@ export interface FileRoutesByFullPath {
   '/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
   '/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
   '/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
+  '/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
@@ -208,6 +222,7 @@ export interface FileRoutesByFullPath {
   '/imports/': typeof AuthenticatedImportsIndexRoute
   '/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/messages/': typeof AuthenticatedMessagesIndexRoute
+  '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
 }
@@ -226,6 +241,7 @@ export interface FileRoutesByTo {
   '/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
   '/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
   '/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
+  '/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
@@ -233,6 +249,7 @@ export interface FileRoutesByTo {
   '/imports': typeof AuthenticatedImportsIndexRoute
   '/invoices': typeof AuthenticatedInvoicesIndexRoute
   '/messages': typeof AuthenticatedMessagesIndexRoute
+  '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
 }
@@ -256,6 +273,7 @@ export interface FileRoutesById {
   '/_authenticated/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
   '/_authenticated/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
   '/_authenticated/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
+  '/_authenticated/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/_authenticated/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/_authenticated/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/_authenticated/settings/sms': typeof AuthenticatedSettingsSmsRoute
@@ -263,6 +281,7 @@ export interface FileRoutesById {
   '/_authenticated/imports/': typeof AuthenticatedImportsIndexRoute
   '/_authenticated/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/_authenticated/messages/': typeof AuthenticatedMessagesIndexRoute
+  '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
 }
@@ -286,6 +305,7 @@ export interface FileRouteTypes {
     | '/imports/$batchId'
     | '/invoices/$invoiceId'
     | '/messages/$clientId'
+    | '/settings/automation'
     | '/settings/blackouts'
     | '/settings/skip-rules'
     | '/settings/sms'
@@ -293,6 +313,7 @@ export interface FileRouteTypes {
     | '/imports/'
     | '/invoices/'
     | '/messages/'
+    | '/api/public/hooks/nightly'
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
   fileRoutesByTo: FileRoutesByTo
@@ -311,6 +332,7 @@ export interface FileRouteTypes {
     | '/imports/$batchId'
     | '/invoices/$invoiceId'
     | '/messages/$clientId'
+    | '/settings/automation'
     | '/settings/blackouts'
     | '/settings/skip-rules'
     | '/settings/sms'
@@ -318,6 +340,7 @@ export interface FileRouteTypes {
     | '/imports'
     | '/invoices'
     | '/messages'
+    | '/api/public/hooks/nightly'
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
   id:
@@ -340,6 +363,7 @@ export interface FileRouteTypes {
     | '/_authenticated/imports/$batchId'
     | '/_authenticated/invoices/$invoiceId'
     | '/_authenticated/messages/$clientId'
+    | '/_authenticated/settings/automation'
     | '/_authenticated/settings/blackouts'
     | '/_authenticated/settings/skip-rules'
     | '/_authenticated/settings/sms'
@@ -347,6 +371,7 @@ export interface FileRouteTypes {
     | '/_authenticated/imports/'
     | '/_authenticated/invoices/'
     | '/_authenticated/messages/'
+    | '/api/public/hooks/nightly'
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
   fileRoutesById: FileRoutesById
@@ -355,6 +380,7 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   PortalTokenRoute: typeof PortalTokenRoute
+  ApiPublicHooksNightlyRoute: typeof ApiPublicHooksNightlyRoute
   ApiPublicHooksStripeRoute: typeof ApiPublicHooksStripeRoute
   ApiPublicHooksTwilioRoute: typeof ApiPublicHooksTwilioRoute
 }
@@ -501,6 +527,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsBlackoutsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/settings/automation': {
+      id: '/_authenticated/settings/automation'
+      path: '/settings/automation'
+      fullPath: '/settings/automation'
+      preLoaderRoute: typeof AuthenticatedSettingsAutomationRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/messages/$clientId': {
       id: '/_authenticated/messages/$clientId'
       path: '/$clientId'
@@ -548,6 +581,13 @@ declare module '@tanstack/react-router' {
       path: '/api/public/hooks/stripe'
       fullPath: '/api/public/hooks/stripe'
       preLoaderRoute: typeof ApiPublicHooksStripeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/nightly': {
+      id: '/api/public/hooks/nightly'
+      path: '/api/public/hooks/nightly'
+      fullPath: '/api/public/hooks/nightly'
+      preLoaderRoute: typeof ApiPublicHooksNightlyRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -610,6 +650,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedZonesRoute: typeof AuthenticatedZonesRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedImportsBatchIdRoute: typeof AuthenticatedImportsBatchIdRoute
+  AuthenticatedSettingsAutomationRoute: typeof AuthenticatedSettingsAutomationRoute
   AuthenticatedSettingsBlackoutsRoute: typeof AuthenticatedSettingsBlackoutsRoute
   AuthenticatedSettingsSkipRulesRoute: typeof AuthenticatedSettingsSkipRulesRoute
   AuthenticatedSettingsSmsRoute: typeof AuthenticatedSettingsSmsRoute
@@ -628,6 +669,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedZonesRoute: AuthenticatedZonesRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedImportsBatchIdRoute: AuthenticatedImportsBatchIdRoute,
+  AuthenticatedSettingsAutomationRoute: AuthenticatedSettingsAutomationRoute,
   AuthenticatedSettingsBlackoutsRoute: AuthenticatedSettingsBlackoutsRoute,
   AuthenticatedSettingsSkipRulesRoute: AuthenticatedSettingsSkipRulesRoute,
   AuthenticatedSettingsSmsRoute: AuthenticatedSettingsSmsRoute,
@@ -641,6 +683,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   PortalTokenRoute: PortalTokenRoute,
+  ApiPublicHooksNightlyRoute: ApiPublicHooksNightlyRoute,
   ApiPublicHooksStripeRoute: ApiPublicHooksStripeRoute,
   ApiPublicHooksTwilioRoute: ApiPublicHooksTwilioRoute,
 }
