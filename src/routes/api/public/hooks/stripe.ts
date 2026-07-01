@@ -72,7 +72,7 @@ async function provisionSignup(
         organization_id: sr.organization_id,
         client_id: client.id,
         delta_cents: prepay,
-        reason: "signup_prepay",
+        kind: "prepayment",
         note: `Signup prepay via Stripe ${session.id}`,
       });
     }
