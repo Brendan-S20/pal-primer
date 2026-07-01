@@ -83,6 +83,7 @@ function ClientDetail() {
   const [dogCount, setDogCount] = useState("1");
   const [unitCount, setUnitCount] = useState("1");
   const [zoneId, setZoneId] = useState("");
+  const [billingCadence, setBillingCadence] = useState<"postpaid" | "prepaid">("postpaid");
 
   const subMut = useMutation({
     mutationFn: () => {
