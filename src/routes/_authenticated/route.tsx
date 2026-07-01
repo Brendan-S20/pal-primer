@@ -60,6 +60,9 @@ function AppShell() {
               <Link to="/settings/skip-rules" activeProps={{ className: "text-foreground font-medium" }}>
                 Skip rules
               </Link>
+              <Link to="/settings/blackouts" activeProps={{ className: "text-foreground font-medium" }}>
+                Blackouts
+              </Link>
               <Link to="/settings/sms" activeProps={{ className: "text-foreground font-medium" }}>
                 SMS
               </Link>
