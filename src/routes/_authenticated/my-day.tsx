@@ -544,9 +544,9 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
             <Button
               size="sm"
               variant="default"
-              disabled={!hasCompletionPhoto || complete.isPending || (!inProg && !scheduled)}
+              disabled={(!hasCompletionPhoto && !hasQueuedCompletionPhoto) || complete.isPending || (!inProg && !scheduled)}
               onClick={() => complete.mutate()}
-              title={hasCompletionPhoto ? "" : "Add a completion photo first"}
+              title={hasCompletionPhoto || hasQueuedCompletionPhoto ? "" : "Add a completion photo first"}
             >
               Complete
             </Button>
