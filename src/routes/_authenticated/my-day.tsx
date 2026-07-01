@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,8 +14,12 @@ import {
 } from "@/lib/my-day.functions";
 import { sendVisitStatusSms } from "@/lib/messages.functions";
 import { SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
+import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
+import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
+import { syncQueue } from "@/lib/offline/sync";
+import { countPendingForVisit } from "@/lib/offline/queue";
 import { toast } from "sonner";
-import { Navigation, Camera, ChevronDown, ChevronUp } from "lucide-react";
+import { Navigation, Camera, ChevronDown, ChevronUp, WifiOff, RefreshCw } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   component: MyDay,
@@ -31,10 +35,48 @@ function todayISO() {
 function MyDay() {
   const [day, setDay] = useState(todayISO());
   const fn = useServerFn(getMyDay);
+  const qc = useQueryClient();
+  const online = useOnline();
+  const pending = usePendingCount();
+
   const { data, isLoading } = useQuery({
     queryKey: ["my-day", day],
     queryFn: () => fn({ data: { day } }),
   });
+
+  // Bind server-fn callers once for the sync driver.
+  const startFn = useServerFn(startVisit);
+  const completeFn = useServerFn(completeVisit);
+  const skipFn = useServerFn(skipVisit);
+  const photoFn = useServerFn(recordVisitPhoto);
+  const callers = useMemo(
+    () => ({
+      startVisit: startFn,
+      completeVisit: completeFn,
+      skipVisit: skipFn,
+      recordVisitPhoto: photoFn,
+    }),
+    [startFn, completeFn, skipFn, photoFn],
+  );
+
+  const runSync = useCallback(async () => {
+    const res = await syncQueue(callers);
+    if (res.succeeded > 0) {
+      toast.success(`Synced ${res.succeeded} queued action${res.succeeded === 1 ? "" : "s"}`);
+      qc.invalidateQueries({ queryKey: ["my-day"] });
+    }
+    if (res.failed > 0) {
+      toast.error(`Sync stalled on 1 action — will retry`);
+    }
+  }, [callers, qc]);
+
+  // Auto-sync on load + whenever we come back online.
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && navigator.onLine) runSync();
+    const on = () => runSync();
+    window.addEventListener("online", on);
+    return () => window.removeEventListener("online", on);
+  }, [runSync]);
 
   const visits = data?.visits ?? [];
   const staff = data?.staff;
@@ -48,6 +90,32 @@ function MyDay() {
 
   return (
     <div className="space-y-4">
+      {(!online || pending > 0) && (
+        <div
+          className={`flex items-center justify-between gap-3 rounded-lg border p-3 text-sm ${
+            online
+              ? "border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+              : "border-destructive/50 bg-destructive/10 text-destructive"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {!online && <WifiOff className="h-4 w-4" />}
+            <span className="font-medium">
+              {!online ? "You're offline" : "Back online"}
+              {pending > 0 ? ` · ${pending} pending action${pending === 1 ? "" : "s"}` : ""}
+            </span>
+          </div>
+          {online && pending > 0 && (
+            <button
+              onClick={runSync}
+              className="inline-flex items-center gap-1 rounded border border-current px-2 py-1 text-xs font-medium hover:bg-background/50"
+            >
+              <RefreshCw className="h-3 w-3" /> Sync now
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">My day</h1>
@@ -236,34 +304,57 @@ function mapsUrl(p: any): string {
 
 function VisitCard({ visit, index, day }: { visit: any; index: number; day: string }) {
   const qc = useQueryClient();
-  const startFn = useServerFn(startVisit);
-  const completeFn = useServerFn(completeVisit);
-  const skipFn = useServerFn(skipVisit);
-  const photoFn = useServerFn(recordVisitPhoto);
   const smsFn = useServerFn(sendVisitStatusSms);
+
+  const actions = useOfflineVisitActions(visit.id, visit.organization_id as string | undefined);
 
   const [showSkip, setShowSkip] = useState(false);
   const [reason, setReason] = useState("");
   const [reasonCode, setReasonCode] = useState<(typeof SKIP_REASON_CODES)[number]>("other");
   const [uploading, setUploading] = useState(false);
   const [photoKind, setPhotoKind] = useState<"before" | "completion" | "issue">("completion");
+  const [pendingLocal, setPendingLocal] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
+
+  // Refresh per-visit pending count so cards can show a subtle "queued" chip.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      countPendingForVisit(visit.id).then((c) => !cancelled && setPendingLocal(c));
+    };
+    refresh();
+    window.addEventListener("offline-queue-change", refresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("offline-queue-change", refresh);
+    };
+  }, [visit.id]);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["my-day", day] });
 
   const start = useMutation({
-    mutationFn: () => startFn({ data: { visitId: visit.id } }),
-    onSuccess: () => { toast.success("Started"); invalidate(); },
+    mutationFn: () => actions.start(),
+    onSuccess: (r) => {
+      toast.success(r.queued ? "Queued — starts when back online" : "Started");
+      if (!r.queued) invalidate();
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const complete = useMutation({
-    mutationFn: () => completeFn({ data: { visitId: visit.id } }),
-    onSuccess: () => { toast.success("Completed"); invalidate(); },
+    mutationFn: () => actions.complete(),
+    onSuccess: (r) => {
+      toast.success(r.queued ? "Queued — completes when back online" : "Completed");
+      if (!r.queued) invalidate();
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const skip = useMutation({
-    mutationFn: () => skipFn({ data: { visitId: visit.id, reason, code: reasonCode } }),
-    onSuccess: () => { toast.success("Marked skipped"); setShowSkip(false); invalidate(); },
+    mutationFn: () => actions.skip(reason, reasonCode),
+    onSuccess: (r) => {
+      toast.success(r.queued ? "Queued — will skip when back online" : "Marked skipped");
+      setShowSkip(false);
+      if (!r.queued) invalidate();
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const sms = useMutation({
@@ -276,18 +367,13 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
   const uploadPhoto = async (file: File) => {
     setUploading(true);
     try {
-      const { data: vRow, error: vErr } = await supabase
-        .from("visits").select("organization_id").eq("id", visit.id).single();
-      if (vErr) throw vErr;
-      const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-      const path = `${vRow.organization_id}/${visit.id}/${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from("visit-photos")
-        .upload(path, file, { contentType: file.type || "image/jpeg", upsert: false });
-      if (upErr) throw upErr;
-      await photoFn({ data: { visitId: visit.id, storagePath: path, kind: photoKind } });
-      toast.success(`${photoKind[0].toUpperCase() + photoKind.slice(1)} photo uploaded`);
-      invalidate();
+      const r = await actions.uploadPhoto(file, photoKind);
+      toast.success(
+        r.queued
+          ? `${photoKind[0].toUpperCase() + photoKind.slice(1)} photo queued — uploads when online`
+          : `${photoKind[0].toUpperCase() + photoKind.slice(1)} photo uploaded`,
+      );
+      if (!r.queued) invalidate();
     } catch (e: any) {
       toast.error(e.message ?? "Upload failed");
     } finally {
@@ -298,6 +384,9 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
 
   const photos = useMemo(() => visit.visit_photos ?? [], [visit.visit_photos]);
   const hasCompletionPhoto = photos.some((p: any) => p.kind === "completion");
+  // If a completion photo is queued locally, allow "Complete" — the sync
+  // driver replays photos first (older ts) then complete (newer ts).
+  const hasQueuedCompletionPhoto = pendingLocal > 0;
   const done = visit.status === "completed";
   const skipped = visit.status === "skipped";
   const inProg = visit.status === "in_progress";
@@ -317,6 +406,11 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
             <span className="font-mono">#{visit.sequence ?? index}</span>
             {visit.zones?.name && <span>· {visit.zones.name}</span>}
             {statusBadge(visit.status)}
+            {pendingLocal > 0 && (
+              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                {pendingLocal} queued
+              </span>
+            )}
             {inProg && visit.started_at && (
               <span className="text-blue-600 dark:text-blue-400">
                 · <ElapsedTimer startedAt={visit.started_at} />
@@ -450,9 +544,9 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
             <Button
               size="sm"
               variant="default"
-              disabled={!hasCompletionPhoto || complete.isPending || (!inProg && !scheduled)}
+              disabled={(!hasCompletionPhoto && !hasQueuedCompletionPhoto) || complete.isPending || (!inProg && !scheduled)}
               onClick={() => complete.mutate()}
-              title={hasCompletionPhoto ? "" : "Add a completion photo first"}
+              title={hasCompletionPhoto || hasQueuedCompletionPhoto ? "" : "Add a completion photo first"}
             >
               Complete
             </Button>

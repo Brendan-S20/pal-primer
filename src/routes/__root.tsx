@@ -129,6 +129,11 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
+  // Register the guarded service worker on real hosts only (see src/pwa/register.ts).
+  useEffect(() => {
+    import("../pwa/register").then((m) => m.registerPwa());
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
