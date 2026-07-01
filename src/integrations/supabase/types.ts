@@ -53,6 +53,7 @@ export type Database = {
           created_at: string
           credit_balance_cents: number
           display_name: string
+          email_opt_out: boolean
           id: string
           import_batch_id: string | null
           import_external_id: string | null
@@ -71,6 +72,7 @@ export type Database = {
           created_at?: string
           credit_balance_cents?: number
           display_name: string
+          email_opt_out?: boolean
           id?: string
           import_batch_id?: string | null
           import_external_id?: string | null
@@ -89,6 +91,7 @@ export type Database = {
           created_at?: string
           credit_balance_cents?: number
           display_name?: string
+          email_opt_out?: boolean
           id?: string
           import_batch_id?: string | null
           import_external_id?: string | null
@@ -702,6 +705,12 @@ export type Database = {
           current_period_end: string | null
           id: string
           name: string
+          notify_email_invoice_sent: boolean
+          notify_email_overdue: boolean
+          notify_email_payment_received: boolean
+          notify_email_visit_completed: boolean
+          notify_email_weather_reschedule: boolean
+          notify_email_welcome: boolean
           overdue_reminder_days: number
           overdue_reminders_enabled: boolean
           plan_status: Database["public"]["Enums"]["org_plan_status"]
@@ -720,6 +729,12 @@ export type Database = {
           current_period_end?: string | null
           id?: string
           name: string
+          notify_email_invoice_sent?: boolean
+          notify_email_overdue?: boolean
+          notify_email_payment_received?: boolean
+          notify_email_visit_completed?: boolean
+          notify_email_weather_reschedule?: boolean
+          notify_email_welcome?: boolean
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
@@ -738,6 +753,12 @@ export type Database = {
           current_period_end?: string | null
           id?: string
           name?: string
+          notify_email_invoice_sent?: boolean
+          notify_email_overdue?: boolean
+          notify_email_payment_received?: boolean
+          notify_email_visit_completed?: boolean
+          notify_email_weather_reschedule?: boolean
+          notify_email_welcome?: boolean
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
