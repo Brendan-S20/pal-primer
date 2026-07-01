@@ -14,6 +14,251 @@ export type Database = {
   }
   public: {
     Tables: {
+      addon_charges: {
+        Row: {
+          addon_service_id: string | null
+          addon_subscription_id: string | null
+          amount_cents: number
+          client_id: string
+          created_at: string
+          created_by: string | null
+          credit_ledger_id: string | null
+          description: string
+          id: string
+          invoice_line_item_id: string | null
+          note: string | null
+          occurred_on: string
+          organization_id: string
+          quantity: number
+          source: string
+          status: Database["public"]["Enums"]["addon_charge_status"]
+          unit_price_cents: number
+          updated_at: string
+          visit_id: string | null
+        }
+        Insert: {
+          addon_service_id?: string | null
+          addon_subscription_id?: string | null
+          amount_cents: number
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          credit_ledger_id?: string | null
+          description: string
+          id?: string
+          invoice_line_item_id?: string | null
+          note?: string | null
+          occurred_on?: string
+          organization_id: string
+          quantity?: number
+          source?: string
+          status?: Database["public"]["Enums"]["addon_charge_status"]
+          unit_price_cents: number
+          updated_at?: string
+          visit_id?: string | null
+        }
+        Update: {
+          addon_service_id?: string | null
+          addon_subscription_id?: string | null
+          amount_cents?: number
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          credit_ledger_id?: string | null
+          description?: string
+          id?: string
+          invoice_line_item_id?: string | null
+          note?: string | null
+          occurred_on?: string
+          organization_id?: string
+          quantity?: number
+          source?: string
+          status?: Database["public"]["Enums"]["addon_charge_status"]
+          unit_price_cents?: number
+          updated_at?: string
+          visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "addon_charges_addon_service_id_fkey"
+            columns: ["addon_service_id"]
+            isOneToOne: false
+            referencedRelation: "addon_services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "addon_charges_addon_subscription_id_fkey"
+            columns: ["addon_subscription_id"]
+            isOneToOne: false
+            referencedRelation: "addon_subscriptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "addon_charges_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "addon_charges_credit_ledger_id_fkey"
+            columns: ["credit_ledger_id"]
+            isOneToOne: false
+            referencedRelation: "credit_ledger"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "addon_charges_invoice_line_item_id_fkey"
+            columns: ["invoice_line_item_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_line_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "addon_charges_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "addon_charges_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      addon_services: {
+        Row: {
+          active: boolean
+          code: string
+          created_at: string
+          default_frequency:
+            | Database["public"]["Enums"]["addon_frequency"]
+            | null
+          description: string | null
+          id: string
+          kind: Database["public"]["Enums"]["addon_kind"]
+          name: string
+          organization_id: string
+          taxable: boolean
+          unit_price_cents: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          code: string
+          created_at?: string
+          default_frequency?:
+            | Database["public"]["Enums"]["addon_frequency"]
+            | null
+          description?: string | null
+          id?: string
+          kind?: Database["public"]["Enums"]["addon_kind"]
+          name: string
+          organization_id: string
+          taxable?: boolean
+          unit_price_cents?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          code?: string
+          created_at?: string
+          default_frequency?:
+            | Database["public"]["Enums"]["addon_frequency"]
+            | null
+          description?: string | null
+          id?: string
+          kind?: Database["public"]["Enums"]["addon_kind"]
+          name?: string
+          organization_id?: string
+          taxable?: boolean
+          unit_price_cents?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "addon_services_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      addon_subscriptions: {
+        Row: {
+          addon_service_id: string
+          client_id: string
+          created_at: string
+          frequency: Database["public"]["Enums"]["addon_frequency"]
+          id: string
+          next_charge_on: string
+          notes: string | null
+          organization_id: string
+          price_cents: number
+          quantity: number
+          started_on: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          addon_service_id: string
+          client_id: string
+          created_at?: string
+          frequency: Database["public"]["Enums"]["addon_frequency"]
+          id?: string
+          next_charge_on?: string
+          notes?: string | null
+          organization_id: string
+          price_cents: number
+          quantity?: number
+          started_on?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          addon_service_id?: string
+          client_id?: string
+          created_at?: string
+          frequency?: Database["public"]["Enums"]["addon_frequency"]
+          id?: string
+          next_charge_on?: string
+          notes?: string | null
+          organization_id?: string
+          price_cents?: number
+          quantity?: number
+          started_on?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "addon_subscriptions_addon_service_id_fkey"
+            columns: ["addon_service_id"]
+            isOneToOne: false
+            referencedRelation: "addon_services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "addon_subscriptions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "addon_subscriptions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       blackout_dates: {
         Row: {
           blackout_on: string
@@ -1603,7 +1848,24 @@ export type Database = {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
       }
+      client_default_billing_cadence: {
+        Args: { _client_id: string }
+        Returns: string
+      }
       complete_visit: { Args: { _visit_id: string }; Returns: undefined }
+      create_addon_charge: {
+        Args: {
+          _addon_service_id: string
+          _client_id: string
+          _description?: string
+          _note?: string
+          _quantity?: number
+          _source?: string
+          _unit_price_cents?: number
+          _visit_id?: string
+        }
+        Returns: string
+      }
       default_skip_billable_pct: {
         Args: { _code: Database["public"]["Enums"]["skip_reason_code"] }
         Returns: number
@@ -1615,6 +1877,10 @@ export type Database = {
       email_queue_dispatch: { Args: never; Returns: undefined }
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
+        Returns: number
+      }
+      generate_addon_charges_through: {
+        Args: { _org_id: string; _through: string }
         Returns: number
       }
       generate_invoice_for_client: {
@@ -1793,10 +2059,23 @@ export type Database = {
             Returns: undefined
           }
       start_visit: { Args: { _visit_id: string }; Returns: undefined }
+      void_addon_charge: { Args: { _charge_id: string }; Returns: undefined }
       void_invoice: { Args: { _invoice_id: string }; Returns: undefined }
     }
     Enums: {
       account_type: "residential" | "commercial"
+      addon_charge_status:
+        | "pending"
+        | "invoiced"
+        | "paid_from_credit"
+        | "voided"
+      addon_frequency:
+        | "weekly"
+        | "biweekly"
+        | "monthly"
+        | "quarterly"
+        | "yearly"
+      addon_kind: "one_time" | "recurring"
       app_role: "owner" | "office_manager" | "dispatcher" | "tech"
       billing_cadence: "prepaid" | "postpaid"
       dog_temperament: "friendly" | "nervous" | "aggressive" | "unknown"
@@ -1973,6 +2252,14 @@ export const Constants = {
   public: {
     Enums: {
       account_type: ["residential", "commercial"],
+      addon_charge_status: [
+        "pending",
+        "invoiced",
+        "paid_from_credit",
+        "voided",
+      ],
+      addon_frequency: ["weekly", "biweekly", "monthly", "quarterly", "yearly"],
+      addon_kind: ["one_time", "recurring"],
       app_role: ["owner", "office_manager", "dispatcher", "tech"],
       billing_cadence: ["prepaid", "postpaid"],
       dog_temperament: ["friendly", "nervous", "aggressive", "unknown"],

@@ -12,6 +12,7 @@ import {
   skipVisit,
   recordVisitPhoto,
 } from "@/lib/my-day.functions";
+import { listAddonServices, createAddonCharge } from "@/lib/addons.functions";
 import { sendVisitStatusSms } from "@/lib/messages.functions";
 import { SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
 import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
@@ -309,6 +310,36 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
   const actions = useOfflineVisitActions(visit.id, visit.organization_id as string | undefined);
 
   const [showSkip, setShowSkip] = useState(false);
+  const [showAddon, setShowAddon] = useState(false);
+  const [addonSvcId, setAddonSvcId] = useState("");
+  const [addonQty, setAddonQty] = useState("1");
+  const addonListFn = useServerFn(listAddonServices);
+  const addonChargeFn = useServerFn(createAddonCharge);
+  const { data: addonSvcData } = useQuery({
+    queryKey: ["addon-services"],
+    queryFn: () => addonListFn({ data: {} }),
+    staleTime: 5 * 60_000,
+  });
+  const addonServices: any[] = addonSvcData?.services ?? [];
+  const addonMut = useMutation({
+    mutationFn: () =>
+      addonChargeFn({
+        data: {
+          clientId: visit.client_id,
+          addonServiceId: addonSvcId,
+          quantity: Math.max(1, parseInt(addonQty, 10) || 1),
+          visitId: visit.id,
+          source: "field",
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Add-on billed");
+      setShowAddon(false);
+      setAddonSvcId("");
+      setAddonQty("1");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
   const [reason, setReason] = useState("");
   const [reasonCode, setReasonCode] = useState<(typeof SKIP_REASON_CODES)[number]>("other");
   const [uploading, setUploading] = useState(false);
@@ -554,6 +585,9 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
             <Button size="sm" variant="ghost" onClick={() => setShowSkip((s) => !s)}>
               Skip
             </Button>
+            <Button size="sm" variant="outline" onClick={() => setShowAddon((s) => !s)}>
+              + Add-on
+            </Button>
             {visit.clients?.primary_phone && (
               <>
                 <Button size="sm" variant="outline" disabled={sms.isPending} onClick={() => sms.mutate("reminder")}>
@@ -601,6 +635,40 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
               </div>
               <p className="text-[11px] text-muted-foreground">
                 Billing rules for each reason are set in Settings → Skip rules.
+              </p>
+            </div>
+          )}
+
+          {showAddon && (
+            <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+              <div className="text-xs font-medium text-muted-foreground">Bill an add-on to this client</div>
+              <div className="grid grid-cols-6 gap-2">
+                <select
+                  className="col-span-4 h-9 rounded-md border bg-background px-2 text-sm"
+                  value={addonSvcId}
+                  onChange={(e) => setAddonSvcId(e.target.value)}
+                >
+                  <option value="">Select service…</option>
+                  {addonServices.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} — ${(s.unit_price_cents / 100).toFixed(2)}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number" min="1"
+                  className="col-span-1 h-9 rounded-md border bg-background px-2 text-sm"
+                  value={addonQty}
+                  onChange={(e) => setAddonQty(e.target.value)}
+                />
+                <Button size="sm" className="col-span-1"
+                  disabled={!addonSvcId || addonMut.isPending}
+                  onClick={() => addonMut.mutate()}>
+                  Bill
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Prepaid clients are debited immediately; postpaid clients see it on the next invoice.
               </p>
             </div>
           )}

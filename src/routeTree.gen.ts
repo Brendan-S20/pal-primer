@@ -43,6 +43,7 @@ import { Route as AuthenticatedSettingsReviewsRouteImport } from './routes/_auth
 import { Route as AuthenticatedSettingsEmailsRouteImport } from './routes/_authenticated/settings.emails'
 import { Route as AuthenticatedSettingsBlackoutsRouteImport } from './routes/_authenticated/settings.blackouts'
 import { Route as AuthenticatedSettingsAutomationRouteImport } from './routes/_authenticated/settings.automation'
+import { Route as AuthenticatedSettingsAddonsRouteImport } from './routes/_authenticated/settings.addons'
 import { Route as AuthenticatedMessagesClientIdRouteImport } from './routes/_authenticated/messages.$clientId'
 import { Route as AuthenticatedInvoicesInvoiceIdRouteImport } from './routes/_authenticated/invoices.$invoiceId'
 import { Route as AuthenticatedImportsBatchIdRouteImport } from './routes/_authenticated/imports.$batchId'
@@ -236,6 +237,12 @@ const AuthenticatedSettingsAutomationRoute =
     path: '/settings/automation',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedSettingsAddonsRoute =
+  AuthenticatedSettingsAddonsRouteImport.update({
+    id: '/settings/addons',
+    path: '/settings/addons',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedMessagesClientIdRoute =
   AuthenticatedMessagesClientIdRouteImport.update({
     id: '/$clientId',
@@ -337,6 +344,7 @@ export interface FileRoutesByFullPath {
   '/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
   '/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
   '/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
+  '/settings/addons': typeof AuthenticatedSettingsAddonsRoute
   '/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
@@ -382,6 +390,7 @@ export interface FileRoutesByTo {
   '/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
   '/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
   '/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
+  '/settings/addons': typeof AuthenticatedSettingsAddonsRoute
   '/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
@@ -432,6 +441,7 @@ export interface FileRoutesById {
   '/_authenticated/imports/$batchId': typeof AuthenticatedImportsBatchIdRoute
   '/_authenticated/invoices/$invoiceId': typeof AuthenticatedInvoicesInvoiceIdRoute
   '/_authenticated/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
+  '/_authenticated/settings/addons': typeof AuthenticatedSettingsAddonsRoute
   '/_authenticated/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/_authenticated/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/_authenticated/settings/emails': typeof AuthenticatedSettingsEmailsRoute
@@ -482,6 +492,7 @@ export interface FileRouteTypes {
     | '/imports/$batchId'
     | '/invoices/$invoiceId'
     | '/messages/$clientId'
+    | '/settings/addons'
     | '/settings/automation'
     | '/settings/blackouts'
     | '/settings/emails'
@@ -527,6 +538,7 @@ export interface FileRouteTypes {
     | '/imports/$batchId'
     | '/invoices/$invoiceId'
     | '/messages/$clientId'
+    | '/settings/addons'
     | '/settings/automation'
     | '/settings/blackouts'
     | '/settings/emails'
@@ -576,6 +588,7 @@ export interface FileRouteTypes {
     | '/_authenticated/imports/$batchId'
     | '/_authenticated/invoices/$invoiceId'
     | '/_authenticated/messages/$clientId'
+    | '/_authenticated/settings/addons'
     | '/_authenticated/settings/automation'
     | '/_authenticated/settings/blackouts'
     | '/_authenticated/settings/emails'
@@ -861,6 +874,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsAutomationRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/settings/addons': {
+      id: '/_authenticated/settings/addons'
+      path: '/settings/addons'
+      fullPath: '/settings/addons'
+      preLoaderRoute: typeof AuthenticatedSettingsAddonsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/messages/$clientId': {
       id: '/_authenticated/messages/$clientId'
       path: '/$clientId'
@@ -1013,6 +1033,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedWeatherRoute: typeof AuthenticatedWeatherRoute
   AuthenticatedZonesRoute: typeof AuthenticatedZonesRoute
   AuthenticatedImportsBatchIdRoute: typeof AuthenticatedImportsBatchIdRoute
+  AuthenticatedSettingsAddonsRoute: typeof AuthenticatedSettingsAddonsRoute
   AuthenticatedSettingsAutomationRoute: typeof AuthenticatedSettingsAutomationRoute
   AuthenticatedSettingsBlackoutsRoute: typeof AuthenticatedSettingsBlackoutsRoute
   AuthenticatedSettingsEmailsRoute: typeof AuthenticatedSettingsEmailsRoute
@@ -1035,6 +1056,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedWeatherRoute: AuthenticatedWeatherRoute,
   AuthenticatedZonesRoute: AuthenticatedZonesRoute,
   AuthenticatedImportsBatchIdRoute: AuthenticatedImportsBatchIdRoute,
+  AuthenticatedSettingsAddonsRoute: AuthenticatedSettingsAddonsRoute,
   AuthenticatedSettingsAutomationRoute: AuthenticatedSettingsAutomationRoute,
   AuthenticatedSettingsBlackoutsRoute: AuthenticatedSettingsBlackoutsRoute,
   AuthenticatedSettingsEmailsRoute: AuthenticatedSettingsEmailsRoute,
