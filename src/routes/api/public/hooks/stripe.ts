@@ -69,7 +69,43 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 raw_event: JSON.parse(JSON.stringify(event)),
               });
             }
+          } else if (
+            event.type === "customer.subscription.created" ||
+            event.type === "customer.subscription.updated" ||
+            event.type === "customer.subscription.deleted"
+          ) {
+            const sub = event.data.object as import("stripe").Stripe.Subscription;
+            const orgId = sub.metadata?.organization_id;
+            const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null;
+            const periodEnd = (sub as unknown as { current_period_end?: number }).current_period_end;
+            let planStatus: "active" | "past_due" | "canceled" = "canceled";
+            if (event.type !== "customer.subscription.deleted") {
+              if (["active", "trialing"].includes(sub.status)) planStatus = "active";
+              else if (sub.status === "past_due") planStatus = "past_due";
+              else if (["canceled", "incomplete_expired", "unpaid"].includes(sub.status)) planStatus = "canceled";
+              else planStatus = "canceled";
+            }
+            // Locate org by metadata, else by customer id
+            let targetOrgId: string | null = orgId ?? null;
+            if (!targetOrgId && customerId) {
+              const { data: found } = await supabaseAdmin
+                .from("organizations")
+                .select("id")
+                .eq("stripe_customer_id", customerId)
+                .maybeSingle();
+              targetOrgId = (found?.id as string | undefined) ?? null;
+            }
+
+            if (targetOrgId) {
+              await supabaseAdmin.from("organizations").update({
+                plan_status: planStatus,
+                stripe_subscription_id: event.type === "customer.subscription.deleted" ? null : sub.id,
+                current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
+                ...(customerId ? { stripe_customer_id: customerId } : {}),
+              }).eq("id", targetOrgId);
+            }
           }
+
         } catch (e) {
           console.error("Webhook handler error", e);
           return new Response("Handler error", { status: 500 });
