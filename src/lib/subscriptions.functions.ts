@@ -14,6 +14,7 @@ const createSubSchema = z
     zoneId: z.string().uuid().optional(),
     billingCadence: z.enum(["prepaid", "postpaid"]).optional(),
     startedOn: z.string().optional(), // YYYY-MM-DD
+    preferredWeekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
   })
   .refine(
     (v) =>
