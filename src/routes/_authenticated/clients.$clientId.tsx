@@ -6,10 +6,12 @@ import { getClient } from "@/lib/clients.functions";
 import { createProperty, listPropertiesForClient } from "@/lib/properties.functions";
 import { createSubscription, listSubscriptionsForClient } from "@/lib/subscriptions.functions";
 import { listZones } from "@/lib/zones.functions";
+import { getClientCredit, generatePrepaidInvoice } from "@/lib/invoices.functions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/clients/$clientId")({
   component: ClientDetail,
@@ -47,6 +49,22 @@ function ClientDetail() {
     queryFn: () => listSubsFn({ data: { clientId } }),
   });
   const { data: zonesData } = useQuery({ queryKey: ["zones"], queryFn: () => listZonesFn() });
+  const getCreditFn = useServerFn(getClientCredit);
+  const prepayFn = useServerFn(generatePrepaidInvoice);
+  const { data: credit } = useQuery({
+    queryKey: ["credit", clientId],
+    queryFn: () => getCreditFn({ data: { clientId } }),
+  });
+  const prepayMut = useMutation({
+    mutationFn: (v: { subscriptionId: string; visitCount: number }) =>
+      prepayFn({ data: v }),
+    onSuccess: (r) => {
+      toast.success(`Prepaid invoice created`);
+      qc.invalidateQueries({ queryKey: ["credit", clientId] });
+      window.location.href = `/invoices/${r.invoiceId}`;
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
   // property form
   const [street, setStreet] = useState("");
@@ -81,6 +99,7 @@ function ClientDetail() {
   const [dogCount, setDogCount] = useState("1");
   const [unitCount, setUnitCount] = useState("1");
   const [zoneId, setZoneId] = useState("");
+  const [billingCadence, setBillingCadence] = useState<"postpaid" | "prepaid">("postpaid");
 
   const subMut = useMutation({
     mutationFn: () => {
@@ -95,6 +114,7 @@ function ClientDetail() {
           dogCount: accountType === "residential" ? parseInt(dogCount, 10) : undefined,
           unitCount: accountType === "commercial" ? parseInt(unitCount, 10) : undefined,
           zoneId: zoneId || undefined,
+          billingCadence,
         },
       });
     },
@@ -177,11 +197,22 @@ function ClientDetail() {
         <h2 className="text-sm font-medium">Subscriptions</h2>
         <ul className="mt-3 divide-y">
           {subs.map((s: any) => (
-            <li key={s.id} className="flex justify-between py-2 text-sm">
+            <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
               <span>
                 {FREQ_LABELS[s.frequency]} · {s.account_type === "residential" ? `${s.dog_count} dog(s)` : `${s.unit_count} unit(s)`}
+                <Badge variant={s.billing_cadence === "prepaid" ? "default" : "secondary"} className="ml-2">
+                  {s.billing_cadence}
+                </Badge>
               </span>
-              <span className="text-muted-foreground">${(s.price_cents / 100).toFixed(2)} · {s.status}</span>
+              <span className="flex items-center gap-3 text-muted-foreground">
+                <span>${(s.price_cents / 100).toFixed(2)} · {s.status}</span>
+                {s.billing_cadence === "prepaid" && s.status === "active" && (
+                  <PrepayInline
+                    disabled={prepayMut.isPending}
+                    onSubmit={(n) => prepayMut.mutate({ subscriptionId: s.id, visitCount: n })}
+                  />
+                )}
+              </span>
             </li>
           ))}
           {subs.length === 0 && (
@@ -253,6 +284,17 @@ function ClientDetail() {
                 ))}
               </select>
             </div>
+            <div>
+              <Label>Billing</Label>
+              <select
+                value={billingCadence}
+                onChange={(e) => setBillingCadence(e.target.value as "postpaid" | "prepaid")}
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="postpaid">Postpaid</option>
+                <option value="prepaid">Prepaid</option>
+              </select>
+            </div>
             <div className="sm:col-span-6">
               <Button type="submit" disabled={subMut.isPending || !propertyId}>
                 {subMut.isPending ? "Adding…" : "Add subscription"}
@@ -264,6 +306,65 @@ function ClientDetail() {
           </form>
         )}
       </section>
+
+      {/* Credit balance */}
+      <section className="rounded-lg border bg-card p-5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium">Prepaid credit balance</h2>
+          <span className={`text-lg font-semibold ${((credit?.balanceCents ?? 0) < 0) ? "text-destructive" : ""}`}>
+            ${((credit?.balanceCents ?? 0) / 100).toFixed(2)}
+          </span>
+        </div>
+        {credit && credit.ledger.length > 0 ? (
+          <ul className="mt-3 divide-y text-sm">
+            {credit.ledger.map((l) => (
+              <li key={l.id} className="flex items-center justify-between py-2">
+                <span>
+                  <span className="text-muted-foreground">{new Date(l.created_at).toLocaleDateString()}</span>
+                  <span className="ml-2">{l.note ?? l.kind}</span>
+                </span>
+                <span className={l.delta_cents < 0 ? "text-destructive" : "text-primary"}>
+                  {l.delta_cents < 0 ? "−" : "+"}${Math.abs(l.delta_cents / 100).toFixed(2)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm text-muted-foreground">No credit activity yet.</p>
+        )}
+      </section>
     </div>
+  );
+}
+
+function PrepayInline({
+  disabled,
+  onSubmit,
+}: {
+  disabled: boolean;
+  onSubmit: (n: number) => void;
+}) {
+  const [count, setCount] = useState("4");
+  return (
+    <form
+      className="flex items-center gap-1"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const n = parseInt(count, 10);
+        if (n > 0) onSubmit(n);
+      }}
+    >
+      <Input
+        type="number"
+        min="1"
+        max="52"
+        value={count}
+        onChange={(e) => setCount(e.target.value)}
+        className="h-8 w-16"
+      />
+      <Button type="submit" size="sm" variant="outline" disabled={disabled}>
+        Bill next
+      </Button>
+    </form>
   );
 }

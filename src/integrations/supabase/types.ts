@@ -19,6 +19,7 @@ export type Database = {
           account_type: Database["public"]["Enums"]["account_type"]
           active: boolean
           created_at: string
+          credit_balance_cents: number
           display_name: string
           id: string
           notes: string | null
@@ -31,6 +32,7 @@ export type Database = {
           account_type: Database["public"]["Enums"]["account_type"]
           active?: boolean
           created_at?: string
+          credit_balance_cents?: number
           display_name: string
           id?: string
           notes?: string | null
@@ -43,6 +45,7 @@ export type Database = {
           account_type?: Database["public"]["Enums"]["account_type"]
           active?: boolean
           created_at?: string
+          credit_balance_cents?: number
           display_name?: string
           id?: string
           notes?: string | null
@@ -57,6 +60,71 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_ledger: {
+        Row: {
+          client_id: string
+          created_at: string
+          delta_cents: number
+          id: string
+          invoice_id: string | null
+          kind: string
+          note: string | null
+          organization_id: string
+          visit_id: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          delta_cents: number
+          id?: string
+          invoice_id?: string | null
+          kind: string
+          note?: string | null
+          organization_id: string
+          visit_id?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          delta_cents?: number
+          id?: string
+          invoice_id?: string | null
+          kind?: string
+          note?: string | null
+          organization_id?: string
+          visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_ledger_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_ledger_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_ledger_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_ledger_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
             referencedColumns: ["id"]
           },
         ]
@@ -172,6 +240,7 @@ export type Database = {
           currency: string
           id: string
           issued_at: string | null
+          kind: Database["public"]["Enums"]["invoice_kind"]
           notes: string | null
           organization_id: string
           paid_at: string | null
@@ -192,6 +261,7 @@ export type Database = {
           currency?: string
           id?: string
           issued_at?: string | null
+          kind?: Database["public"]["Enums"]["invoice_kind"]
           notes?: string | null
           organization_id: string
           paid_at?: string | null
@@ -212,6 +282,7 @@ export type Database = {
           currency?: string
           id?: string
           issued_at?: string | null
+          kind?: Database["public"]["Enums"]["invoice_kind"]
           notes?: string | null
           organization_id?: string
           paid_at?: string | null
@@ -828,6 +899,10 @@ export type Database = {
         Args: { _org_id: string; _through: string }
         Returns: number
       }
+      generate_prepaid_invoice: {
+        Args: { _subscription_id: string; _visit_count: number }
+        Returns: string
+      }
       generate_visits_through: {
         Args: { _org_id: string; _through: string }
         Returns: number
@@ -855,6 +930,18 @@ export type Database = {
         }
         Returns: string
       }
+      post_credit_entry: {
+        Args: {
+          _client_id: string
+          _delta: number
+          _invoice_id: string
+          _kind: string
+          _note: string
+          _org_id: string
+          _visit_id: string
+        }
+        Returns: undefined
+      }
       refresh_active_client_count: {
         Args: { _org_id: string }
         Returns: undefined
@@ -871,6 +958,7 @@ export type Database = {
       app_role: "owner" | "office_manager" | "dispatcher" | "tech"
       billing_cadence: "prepaid" | "postpaid"
       dog_temperament: "friendly" | "nervous" | "aggressive" | "unknown"
+      invoice_kind: "postpaid" | "prepaid_topup"
       invoice_status: "draft" | "open" | "paid" | "void" | "uncollectible"
       payment_status: "pending" | "succeeded" | "failed" | "refunded"
       service_frequency:
@@ -1018,6 +1106,7 @@ export const Constants = {
       app_role: ["owner", "office_manager", "dispatcher", "tech"],
       billing_cadence: ["prepaid", "postpaid"],
       dog_temperament: ["friendly", "nervous", "aggressive", "unknown"],
+      invoice_kind: ["postpaid", "prepaid_topup"],
       invoice_status: ["draft", "open", "paid", "void", "uncollectible"],
       payment_status: ["pending", "succeeded", "failed", "refunded"],
       service_frequency: [

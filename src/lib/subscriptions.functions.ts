@@ -12,6 +12,7 @@ const createSubSchema = z
     dogCount: z.number().int().min(1).optional(),
     unitCount: z.number().int().min(1).optional(),
     zoneId: z.string().uuid().optional(),
+    billingCadence: z.enum(["prepaid", "postpaid"]).optional(),
     startedOn: z.string().optional(), // YYYY-MM-DD
   })
   .refine(
@@ -45,6 +46,7 @@ export const createSubscription = createServerFn({ method: "POST" })
         dog_count: data.dogCount ?? null,
         unit_count: data.unitCount ?? null,
         zone_id: data.zoneId ?? null,
+        billing_cadence: data.billingCadence ?? "postpaid",
         started_on: data.startedOn ?? undefined,
       })
       .select("id")
@@ -60,7 +62,7 @@ export const listSubscriptionsForClient = createServerFn({ method: "GET" })
     const { supabase } = context;
     const { data: rows, error } = await supabase
       .from("subscriptions")
-      .select("id, account_type, frequency, price_cents, dog_count, unit_count, zone_id, status, started_on, property_id")
+      .select("id, account_type, frequency, price_cents, dog_count, unit_count, zone_id, status, started_on, property_id, billing_cadence")
       .eq("client_id", data.clientId)
       .order("created_at");
     if (error) throw new Error(error.message);
