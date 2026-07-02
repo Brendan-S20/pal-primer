@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, UserPlus, Trash2 } from "lucide-react";
+import { MapPin, UserPlus, Trash2, Footprints, ArrowRight, ArrowLeft, Navigation2 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/neighbors")({
   head: () => ({
@@ -100,10 +100,72 @@ function NeighborsPage() {
 
   const rows = data?.rows ?? [];
   const s = data?.summary ?? { total: 0 };
+  const [walkMode, setWalkMode] = useState(false);
+  const [walkIdx, setWalkIdx] = useState(0);
+  const walkQueue = rows.filter((r) => r.status === "new" || r.status === "contacted");
+  const current = walkQueue[walkIdx];
 
-  return (
-    <div className="space-y-6">
-      <div>
+  if (walkMode) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold flex items-center gap-2">
+            <Footprints className="h-6 w-6" /> Walk mode
+          </h1>
+          <Button variant="outline" size="sm" onClick={() => setWalkMode(false)}>Exit</Button>
+        </div>
+        {!current ? (
+          <Card><CardContent className="p-6 text-center text-muted-foreground">
+            No more doors in the queue. Great work!
+          </CardContent></Card>
+        ) : (
+          <Card>
+            <CardContent className="space-y-4 p-6">
+              <div className="text-xs text-muted-foreground">Door {walkIdx + 1} of {walkQueue.length}</div>
+              <div className="text-xl font-semibold">{current.address_line}</div>
+              {current.seed_client_name && (
+                <div className="text-sm text-muted-foreground">Seeded from: {current.seed_client_name}</div>
+              )}
+              {current.notes && <p className="rounded bg-muted p-2 text-sm">{current.notes}</p>}
+              <a
+                className="inline-flex items-center gap-1 text-sm text-primary underline"
+                href={`https://maps.google.com/?q=${encodeURIComponent(current.address_line)}`}
+                target="_blank" rel="noreferrer"
+              >
+                <Navigation2 className="h-4 w-4" /> Navigate
+              </a>
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => { update.mutate({ id: current.id, status: "contacted" }); setWalkIdx((i) => i + 1); }}
+                >Left flyer</Button>
+                <Button
+                  onClick={() => { update.mutate({ id: current.id, status: "interested" }); setWalkIdx((i) => i + 1); }}
+                >Interested</Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => { update.mutate({ id: current.id, status: "not_interested" }); setWalkIdx((i) => i + 1); }}
+                >Passed</Button>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  onClick={() => { update.mutate({ id: current.id, status: "converted" }); setWalkIdx((i) => i + 1); }}
+                >Signed up</Button>
+              </div>
+              <div className="flex items-center justify-between pt-2 text-xs">
+                <Button variant="ghost" size="sm" disabled={walkIdx === 0} onClick={() => setWalkIdx((i) => Math.max(0, i - 1))}>
+                  <ArrowLeft className="mr-1 h-4 w-4" /> Prev
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setWalkIdx((i) => i + 1)}>
+                  Skip <ArrowRight className="ml-1 h-4 w-4" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
+
         <h1 className="text-2xl font-semibold flex items-center gap-2">
           <MapPin className="h-6 w-6" /> Neighbor canvassing
         </h1>
