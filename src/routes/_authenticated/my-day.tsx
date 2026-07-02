@@ -131,9 +131,9 @@ function MyDay() {
 
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
             <div className="min-w-0">
-              <h1 className="truncate text-xl font-semibold">My day</h1>
+              <h1 className="truncate text-xl font-semibold">{t("myDay.title")}</h1>
               <p className="truncate text-xs text-muted-foreground">
-                {staff ? `${staff.display_name} · ${staff.role}` : "Not on any staff record"}
+                {staff ? `${staff.display_name} · ${staff.role}` : t("myDay.notOnStaff")}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -151,7 +151,7 @@ function MyDay() {
           {total > 0 && (
             <div>
               <div className="flex items-center justify-between text-xs">
-                <div className="font-medium">{done} of {total} done</div>
+                <div className="font-medium">{done} {t("common.of")} {total} {t("common.done")}</div>
                 <div className="text-muted-foreground">{pct}%</div>
               </div>
               <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
@@ -168,13 +168,13 @@ function MyDay() {
       <div className="space-y-3 px-4 pt-4">
         {!staff && (
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
-            Your user is not linked to a staff record yet. Ask an owner to add you.
+            {t("myDay.unlinkedStaff")}
           </div>
         )}
 
         {staff && visits.length === 0 && (
           <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
-            Nothing scheduled for you on this day.
+            {t("myDay.nothingScheduled")}
           </div>
         )}
 
@@ -198,14 +198,14 @@ function MyDay() {
           >
             <div className="min-w-0">
               <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                Next up · #{nextUp.sequence ?? ""}
+                {t("myDay.nextUp")} · #{nextUp.sequence ?? ""}
               </div>
               <div className="truncate text-sm font-semibold">
                 {nextUp.clients?.display_name}
               </div>
             </div>
             <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-md">
-              Jump <ArrowDown className="h-4 w-4" />
+              {t("myDay.jump")} <ArrowDown className="h-4 w-4" />
             </div>
           </a>
         </div>
