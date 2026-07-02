@@ -1,0 +1,311 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import {
+  getCohortRetention,
+  getClientLtv,
+  getZoneProfitability,
+  getChurnDrivers,
+} from "@/lib/analytics.functions";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+
+function fmt(cents: number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format((cents ?? 0) / 100);
+}
+
+function pct(n: number, d: number) {
+  if (!d) return "—";
+  return `${Math.round((n / d) * 100)}%`;
+}
+
+export const Route = createFileRoute("/_authenticated/analytics")({
+  head: () => ({ meta: [{ title: "Advanced analytics · ScoopCRM" }] }),
+  component: AnalyticsPage,
+});
+
+function AnalyticsPage() {
+  return (
+    <div className="mx-auto max-w-6xl p-6 space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold">Advanced analytics</h1>
+        <p className="text-sm text-muted-foreground">Cohort retention, lifetime value, zone profitability, and churn drivers.</p>
+      </div>
+      <Tabs defaultValue="retention" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="retention">Cohort retention</TabsTrigger>
+          <TabsTrigger value="ltv">LTV</TabsTrigger>
+          <TabsTrigger value="zones">Zone profitability</TabsTrigger>
+          <TabsTrigger value="churn">Churn drivers</TabsTrigger>
+        </TabsList>
+        <TabsContent value="retention"><CohortTab /></TabsContent>
+        <TabsContent value="ltv"><LtvTab /></TabsContent>
+        <TabsContent value="zones"><ZoneTab /></TabsContent>
+        <TabsContent value="churn"><ChurnTab /></TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function CohortTab() {
+  const [months, setMonths] = useState(12);
+  const call = useServerFn(getCohortRetention);
+  const q = useQuery({
+    queryKey: ["analytics", "cohort", months],
+    queryFn: () => call({ data: { monthsBack: months } }),
+  });
+
+  const grid = useMemo(() => {
+    const rows = q.data?.rows ?? [];
+    const byCohort = new Map<string, { size: number; retained: Map<number, number> }>();
+    for (const r of rows) {
+      const key = r.cohort_month.slice(0, 7);
+      const entry = byCohort.get(key) ?? { size: r.cohort_size, retained: new Map() };
+      entry.size = r.cohort_size;
+      entry.retained.set(r.months_since, r.retained);
+      byCohort.set(key, entry);
+    }
+    return Array.from(byCohort.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [q.data]);
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-end gap-4">
+        <div>
+          <CardTitle>Cohort retention</CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">% of each signup cohort with a completed visit N months later.</p>
+        </div>
+        <div className="ml-auto flex items-end gap-2">
+          <div>
+            <Label htmlFor="months" className="text-xs">Months back</Label>
+            <Input id="months" type="number" min={1} max={24} value={months}
+              onChange={(e) => setMonths(Math.max(1, Math.min(24, Number(e.target.value) || 12)))}
+              className="w-24" />
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="overflow-auto">
+        {q.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : grid.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No cohorts in window.</p>
+        ) : (
+          <table className="text-xs">
+            <thead>
+              <tr className="text-left">
+                <th className="p-2">Cohort</th>
+                <th className="p-2">Size</th>
+                {Array.from({ length: months + 1 }).map((_, i) => (
+                  <th key={i} className="p-2 text-center">M{i}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {grid.map(([cohort, entry]) => (
+                <tr key={cohort} className="border-t">
+                  <td className="p-2 font-mono">{cohort}</td>
+                  <td className="p-2">{entry.size}</td>
+                  {Array.from({ length: months + 1 }).map((_, i) => {
+                    const r = entry.retained.get(i) ?? 0;
+                    const p = entry.size ? r / entry.size : 0;
+                    const bg = p > 0 ? `rgba(34,197,94,${Math.min(0.85, 0.15 + p * 0.7).toFixed(2)})` : "transparent";
+                    return (
+                      <td key={i} className="p-2 text-center" style={{ background: bg }}>
+                        {r > 0 ? pct(r, entry.size) : "·"}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function LtvTab() {
+  const [limit, setLimit] = useState(25);
+  const call = useServerFn(getClientLtv);
+  const q = useQuery({
+    queryKey: ["analytics", "ltv", limit],
+    queryFn: () => call({ data: { limit } }),
+  });
+  const rows = q.data?.rows ?? [];
+  const totalRev = rows.reduce((s, r) => s + Number(r.revenue_cents ?? 0), 0);
+  const avgMonthly = rows.length ? rows.reduce((s, r) => s + Number(r.monthly_avg_cents ?? 0), 0) / rows.length : 0;
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-end gap-4">
+        <div>
+          <CardTitle>Client lifetime value</CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">Paid revenue by client. Monthly avg = paid revenue ÷ tenure × 30.</p>
+        </div>
+        <div className="ml-auto flex items-end gap-2">
+          <div>
+            <Label htmlFor="limit" className="text-xs">Top N</Label>
+            <Input id="limit" type="number" min={1} max={200} value={limit}
+              onChange={(e) => setLimit(Math.max(1, Math.min(200, Number(e.target.value) || 25)))}
+              className="w-24" />
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-3 gap-4 mb-4 text-sm">
+          <Stat label="Clients shown" value={String(rows.length)} />
+          <Stat label="Total paid revenue" value={fmt(totalRev)} />
+          <Stat label="Avg monthly / client" value={fmt(avgMonthly)} />
+        </div>
+        {q.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : (
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs text-muted-foreground">
+              <tr>
+                <th className="py-2">Client</th>
+                <th className="py-2">Tenure</th>
+                <th className="py-2 text-right">Revenue</th>
+                <th className="py-2 text-right">Monthly avg</th>
+                <th className="py-2">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.client_id} className="border-t">
+                  <td className="py-2">{r.display_name}</td>
+                  <td className="py-2 text-muted-foreground">{r.tenure_days}d</td>
+                  <td className="py-2 text-right">{fmt(Number(r.revenue_cents))}</td>
+                  <td className="py-2 text-right">{fmt(Number(r.monthly_avg_cents))}</td>
+                  <td className="py-2">{r.active ? <Badge>Active</Badge> : <Badge variant="secondary">Inactive</Badge>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ZoneTab() {
+  const today = new Date();
+  const past = new Date(); past.setDate(past.getDate() - 89);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const [from, setFrom] = useState(iso(past));
+  const [to, setTo] = useState(iso(today));
+  const [applied, setApplied] = useState({ from, to });
+  const call = useServerFn(getZoneProfitability);
+  const q = useQuery({
+    queryKey: ["analytics", "zones", applied.from, applied.to],
+    queryFn: () => call({ data: applied }),
+  });
+  const rows = q.data?.rows ?? [];
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-end gap-4">
+        <div>
+          <CardTitle>Zone profitability</CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">Revenue attributed to completed visits per zone.</p>
+        </div>
+        <div className="ml-auto flex items-end gap-2">
+          <div>
+            <Label className="text-xs">From</Label>
+            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs">To</Label>
+            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          </div>
+          <Button onClick={() => setApplied({ from, to })}>Apply</Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {q.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : (
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs text-muted-foreground">
+              <tr>
+                <th className="py-2">Zone</th>
+                <th className="py-2 text-right">Visits</th>
+                <th className="py-2 text-right">Completed</th>
+                <th className="py-2 text-right">Revenue</th>
+                <th className="py-2 text-right">Avg / visit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.zone_id} className="border-t">
+                  <td className="py-2">{r.zone_name}</td>
+                  <td className="py-2 text-right">{r.visit_count}</td>
+                  <td className="py-2 text-right">{r.completed_count}</td>
+                  <td className="py-2 text-right">{fmt(Number(r.revenue_cents))}</td>
+                  <td className="py-2 text-right">{fmt(Number(r.avg_revenue_per_visit_cents))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ChurnTab() {
+  const call = useServerFn(getChurnDrivers);
+  const q = useQuery({ queryKey: ["analytics", "churn"], queryFn: () => call() });
+  const rows = q.data?.rows ?? [];
+  const totalAtRisk = rows.reduce((s, r) => s + Number(r.revenue_at_risk_cents ?? 0), 0);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Churn drivers</CardTitle>
+        <p className="text-xs text-muted-foreground mt-1">
+          Grouped by AI-scored churn reason. Revenue at risk = paid revenue from these clients in the last 180 days.
+          Score churn from <span className="font-medium">AI Tools → Churn</span>.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="mb-4 text-sm">
+          <Stat label="Total revenue at risk (180d)" value={fmt(totalAtRisk)} />
+        </div>
+        {q.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No churn-scored clients yet.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs text-muted-foreground">
+              <tr>
+                <th className="py-2">Reason</th>
+                <th className="py-2 text-right">Clients</th>
+                <th className="py-2 text-right">Avg score</th>
+                <th className="py-2 text-right">Revenue at risk</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.reason} className="border-t">
+                  <td className="py-2">{r.reason}</td>
+                  <td className="py-2 text-right">{r.client_count}</td>
+                  <td className="py-2 text-right">{Number(r.avg_score).toFixed(2)}</td>
+                  <td className="py-2 text-right">{fmt(Number(r.revenue_at_risk_cents))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border p-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-lg font-semibold">{value}</div>
+    </div>
+  );
+}

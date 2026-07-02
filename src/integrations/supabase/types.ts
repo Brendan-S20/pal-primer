@@ -2494,9 +2494,38 @@ export type Database = {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
       }
+      churn_drivers: {
+        Args: { _org_id: string }
+        Returns: {
+          avg_score: number
+          client_count: number
+          reason: string
+          revenue_at_risk_cents: number
+        }[]
+      }
+      client_cohort_retention: {
+        Args: { _months_back?: number; _org_id: string }
+        Returns: {
+          cohort_month: string
+          cohort_size: number
+          months_since: number
+          retained: number
+        }[]
+      }
       client_default_billing_cadence: {
         Args: { _client_id: string }
         Returns: string
+      }
+      client_ltv: {
+        Args: { _limit?: number; _org_id: string }
+        Returns: {
+          active: boolean
+          client_id: string
+          display_name: string
+          monthly_avg_cents: number
+          revenue_cents: number
+          tenure_days: number
+        }[]
       }
       complete_visit: { Args: { _visit_id: string }; Returns: undefined }
       create_addon_charge: {
@@ -2807,6 +2836,17 @@ export type Database = {
       start_visit: { Args: { _visit_id: string }; Returns: undefined }
       void_addon_charge: { Args: { _charge_id: string }; Returns: undefined }
       void_invoice: { Args: { _invoice_id: string }; Returns: undefined }
+      zone_profitability: {
+        Args: { _from: string; _org_id: string; _to: string }
+        Returns: {
+          avg_revenue_per_visit_cents: number
+          completed_count: number
+          revenue_cents: number
+          visit_count: number
+          zone_id: string
+          zone_name: string
+        }[]
+      }
     }
     Enums: {
       account_type: "residential" | "commercial"
