@@ -78,6 +78,10 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             );
           }
 
+          perOrg.autopay_charged = await runAutopayForOrg(supabaseAdmin, org.id);
+
+
+
           summary.push(perOrg);
         }
 
