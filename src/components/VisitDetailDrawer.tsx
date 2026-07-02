@@ -293,3 +293,164 @@ export function VisitDetailDrawer({
     </Sheet>
   );
 }
+
+function DogsSection({
+  propertyId,
+  dogs,
+  onChanged,
+}: {
+  propertyId: string | undefined;
+  dogs: any[];
+  onChanged: () => void;
+}) {
+  const doAdd = useServerFn(addDog);
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [breed, setBreed] = useState("");
+  const [temperament, setTemperament] = useState<"friendly" | "nervous" | "aggressive" | "unknown">("friendly");
+  const addMut = useMutation({
+    mutationFn: () =>
+      doAdd({
+        data: {
+          propertyId: propertyId!,
+          name,
+          breed: breed || undefined,
+          temperament,
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Dog added");
+      setName("");
+      setBreed("");
+      setTemperament("friendly");
+      setAdding(false);
+      onChanged();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <section>
+      <div className="mb-1 flex items-center justify-between">
+        <h3 className="text-xs font-semibold uppercase text-muted-foreground">
+          <PawPrint className="mr-1 inline h-3 w-3" /> Dogs ({dogs.length})
+        </h3>
+        {propertyId && !adding && (
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setAdding(true)}>
+            <Plus className="mr-1 h-3 w-3" /> Add
+          </Button>
+        )}
+      </div>
+      {dogs.length > 0 && (
+        <ul className="space-y-1 text-sm">
+          {dogs.map((d: any) => (
+            <li key={d.id} className="rounded border p-2">
+              <div className="font-medium">{d.name}</div>
+              <div className="text-xs text-muted-foreground">
+                {[d.breed, d.weight_class, d.temperament].filter(Boolean).join(" · ")}
+              </div>
+              {d.notes && <div className="mt-1 text-xs">{d.notes}</div>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {adding && (
+        <div className="mt-2 space-y-2 rounded-md border bg-muted/30 p-2">
+          <Input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Input placeholder="Breed (optional)" value={breed} onChange={(e) => setBreed(e.target.value)} />
+          <select
+            className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+            value={temperament}
+            onChange={(e) => setTemperament(e.target.value as any)}
+          >
+            <option value="friendly">Friendly</option>
+            <option value="nervous">Nervous</option>
+            <option value="aggressive">Aggressive</option>
+            <option value="unknown">Unknown</option>
+          </select>
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={() => addMut.mutate()} disabled={!name.trim() || addMut.isPending}>
+              {addMut.isPending ? "Saving…" : "Save"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PhotosSection({ visitId, photos }: { visitId: string; photos: any[] }) {
+  const qc = useQueryClient();
+  const actions = useOfflineVisitActions(visitId, undefined);
+  const [uploading, setUploading] = useState(false);
+  const [kind, setKind] = useState<"before" | "completion" | "issue">("completion");
+
+  const upload = async (file: File) => {
+    setUploading(true);
+    try {
+      const r = await actions.uploadPhoto(file, kind);
+      toast.success(r.queued ? "Queued — uploads when online" : "Photo uploaded");
+      qc.invalidateQueries({ queryKey: ["visit-detail", visitId] });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <section>
+      <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
+        <Camera className="mr-1 inline h-3 w-3" /> Photos ({photos.length})
+      </h3>
+      {photos.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-2">
+          {photos.map((ph: any) => (
+            <div key={ph.id} className="relative">
+              <PhotoThumb path={ph.storage_path} />
+              <span className="absolute -bottom-1 -right-1 rounded bg-background px-1 text-[9px] uppercase text-muted-foreground shadow-sm">
+                {ph.kind}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          className="h-9 rounded-md border bg-background px-2 text-sm"
+          value={kind}
+          onChange={(e) => setKind(e.target.value as any)}
+          aria-label="Photo type"
+        >
+          <option value="before">Before</option>
+          <option value="completion">Completion</option>
+          <option value="issue">Issue</option>
+        </select>
+        <input
+          id={`photo-input-${visitId}`}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) upload(f);
+            e.target.value = "";
+          }}
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={uploading}
+          onClick={() => document.getElementById(`photo-input-${visitId}`)?.click()}
+        >
+          <Camera className="mr-1.5 h-3.5 w-3.5" />
+          {uploading ? "Uploading…" : "Take photo"}
+        </Button>
+      </div>
+    </section>
+  );
+}
