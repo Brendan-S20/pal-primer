@@ -56,6 +56,7 @@ import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/l
 import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
 import { Route as LovableEmailAuthWebhookRouteImport } from './routes/lovable/email/auth/webhook'
 import { Route as LovableEmailAuthPreviewRouteImport } from './routes/lovable/email/auth/preview'
+import { Route as ApiPublicHooksTwilioVoiceRouteImport } from './routes/api/public/hooks/twilio-voice'
 import { Route as ApiPublicHooksTwilioRouteImport } from './routes/api/public/hooks/twilio'
 import { Route as ApiPublicHooksStripeRouteImport } from './routes/api/public/hooks/stripe'
 import { Route as ApiPublicHooksNightlyRouteImport } from './routes/api/public/hooks/nightly'
@@ -313,6 +314,12 @@ const LovableEmailAuthPreviewRoute = LovableEmailAuthPreviewRouteImport.update({
   path: '/lovable/email/auth/preview',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHooksTwilioVoiceRoute =
+  ApiPublicHooksTwilioVoiceRouteImport.update({
+    id: '/api/public/hooks/twilio-voice',
+    path: '/api/public/hooks/twilio-voice',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksTwilioRoute = ApiPublicHooksTwilioRouteImport.update({
   id: '/api/public/hooks/twilio',
   path: '/api/public/hooks/twilio',
@@ -374,6 +381,7 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
+  '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
   '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
@@ -422,6 +430,7 @@ export interface FileRoutesByTo {
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
+  '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
   '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
@@ -475,6 +484,7 @@ export interface FileRoutesById {
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
+  '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
   '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
@@ -528,6 +538,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
+    | '/api/public/hooks/twilio-voice'
     | '/lovable/email/auth/preview'
     | '/lovable/email/auth/webhook'
     | '/lovable/email/queue/process'
@@ -576,6 +587,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
+    | '/api/public/hooks/twilio-voice'
     | '/lovable/email/auth/preview'
     | '/lovable/email/auth/webhook'
     | '/lovable/email/queue/process'
@@ -628,6 +640,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
+    | '/api/public/hooks/twilio-voice'
     | '/lovable/email/auth/preview'
     | '/lovable/email/auth/webhook'
     | '/lovable/email/queue/process'
@@ -652,6 +665,7 @@ export interface RootRouteChildren {
   ApiPublicHooksNightlyRoute: typeof ApiPublicHooksNightlyRoute
   ApiPublicHooksStripeRoute: typeof ApiPublicHooksStripeRoute
   ApiPublicHooksTwilioRoute: typeof ApiPublicHooksTwilioRoute
+  ApiPublicHooksTwilioVoiceRoute: typeof ApiPublicHooksTwilioVoiceRoute
   LovableEmailAuthPreviewRoute: typeof LovableEmailAuthPreviewRoute
   LovableEmailAuthWebhookRoute: typeof LovableEmailAuthWebhookRoute
   LovableEmailQueueProcessRoute: typeof LovableEmailQueueProcessRoute
@@ -990,6 +1004,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LovableEmailAuthPreviewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/twilio-voice': {
+      id: '/api/public/hooks/twilio-voice'
+      path: '/api/public/hooks/twilio-voice'
+      fullPath: '/api/public/hooks/twilio-voice'
+      preLoaderRoute: typeof ApiPublicHooksTwilioVoiceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/twilio': {
       id: '/api/public/hooks/twilio'
       path: '/api/public/hooks/twilio'
@@ -1130,6 +1151,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksNightlyRoute: ApiPublicHooksNightlyRoute,
   ApiPublicHooksStripeRoute: ApiPublicHooksStripeRoute,
   ApiPublicHooksTwilioRoute: ApiPublicHooksTwilioRoute,
+  ApiPublicHooksTwilioVoiceRoute: ApiPublicHooksTwilioVoiceRoute,
   LovableEmailAuthPreviewRoute: LovableEmailAuthPreviewRoute,
   LovableEmailAuthWebhookRoute: LovableEmailAuthWebhookRoute,
   LovableEmailQueueProcessRoute: LovableEmailQueueProcessRoute,

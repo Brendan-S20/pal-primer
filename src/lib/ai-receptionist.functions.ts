@@ -18,7 +18,9 @@ export const getAiReceptionistSettings = createServerFn({ method: "GET" })
     const orgId = await orgIdFor(context.supabase, context.userId);
     const { data, error } = await context.supabase
       .from("organizations")
-      .select("ai_receptionist_enabled, ai_receptionist_faq, ai_receptionist_persona")
+      .select(
+        "ai_receptionist_enabled, ai_receptionist_faq, ai_receptionist_persona, ai_voice_enabled, ai_voice_greeting",
+      )
       .eq("id", orgId)
       .single();
     if (error) throw new Error(error.message);
@@ -33,18 +35,29 @@ export const updateAiReceptionistSettings = createServerFn({ method: "POST" })
         enabled: z.boolean(),
         faq: z.string().max(20000).nullable(),
         persona: z.string().max(4000).nullable(),
+        voice_enabled: z.boolean().optional(),
+        voice_greeting: z.string().max(1000).nullable().optional(),
       })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
     const orgId = await orgIdFor(context.supabase, context.userId);
+    const patch: {
+      ai_receptionist_enabled: boolean;
+      ai_receptionist_faq: string | null;
+      ai_receptionist_persona: string | null;
+      ai_voice_enabled?: boolean;
+      ai_voice_greeting?: string | null;
+    } = {
+      ai_receptionist_enabled: data.enabled,
+      ai_receptionist_faq: data.faq,
+      ai_receptionist_persona: data.persona,
+    };
+    if (data.voice_enabled !== undefined) patch.ai_voice_enabled = data.voice_enabled;
+    if (data.voice_greeting !== undefined) patch.ai_voice_greeting = data.voice_greeting;
     const { error } = await context.supabase
       .from("organizations")
-      .update({
-        ai_receptionist_enabled: data.enabled,
-        ai_receptionist_faq: data.faq,
-        ai_receptionist_persona: data.persona,
-      })
+      .update(patch)
       .eq("id", orgId);
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -56,7 +69,7 @@ export const listAiReceptionistLogs = createServerFn({ method: "GET" })
     const orgId = await orgIdFor(context.supabase, context.userId);
     const { data, error } = await context.supabase
       .from("ai_receptionist_logs")
-      .select("id, created_at, from_number, user_text, reply_text, escalated, latency_ms, error, tool_calls")
+      .select("id, created_at, from_number, user_text, reply_text, escalated, latency_ms, error, tool_calls, channel, call_sid, turn")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false })
       .limit(50);
