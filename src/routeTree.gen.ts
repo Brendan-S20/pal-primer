@@ -30,6 +30,7 @@ import { Route as AuthenticatedWasteLogRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedRoutesRouteImport } from './routes/_authenticated/routes'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
+import { Route as AuthenticatedNeighborsRouteImport } from './routes/_authenticated/neighbors'
 import { Route as AuthenticatedMyDayRouteImport } from './routes/_authenticated/my-day'
 import { Route as AuthenticatedMessagesRouteImport } from './routes/_authenticated/messages'
 import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated/leads'
@@ -179,6 +180,11 @@ const AuthenticatedRoutesRoute = AuthenticatedRoutesRouteImport.update({
 const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedNeighborsRoute = AuthenticatedNeighborsRouteImport.update({
+  id: '/neighbors',
+  path: '/neighbors',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedMyDayRoute = AuthenticatedMyDayRouteImport.update({
@@ -462,6 +468,7 @@ export interface FileRoutesByFullPath {
   '/leads': typeof AuthenticatedLeadsRoute
   '/messages': typeof AuthenticatedMessagesRouteWithChildren
   '/my-day': typeof AuthenticatedMyDayRoute
+  '/neighbors': typeof AuthenticatedNeighborsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/routes': typeof AuthenticatedRoutesRoute
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
@@ -527,6 +534,7 @@ export interface FileRoutesByTo {
   '/inventory': typeof AuthenticatedInventoryRoute
   '/leads': typeof AuthenticatedLeadsRoute
   '/my-day': typeof AuthenticatedMyDayRoute
+  '/neighbors': typeof AuthenticatedNeighborsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/routes': typeof AuthenticatedRoutesRoute
   '/waste-log': typeof AuthenticatedWasteLogRoute
@@ -596,6 +604,7 @@ export interface FileRoutesById {
   '/_authenticated/leads': typeof AuthenticatedLeadsRoute
   '/_authenticated/messages': typeof AuthenticatedMessagesRouteWithChildren
   '/_authenticated/my-day': typeof AuthenticatedMyDayRoute
+  '/_authenticated/neighbors': typeof AuthenticatedNeighborsRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/routes': typeof AuthenticatedRoutesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
@@ -666,6 +675,7 @@ export interface FileRouteTypes {
     | '/leads'
     | '/messages'
     | '/my-day'
+    | '/neighbors'
     | '/reports'
     | '/routes'
     | '/settings'
@@ -731,6 +741,7 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/leads'
     | '/my-day'
+    | '/neighbors'
     | '/reports'
     | '/routes'
     | '/waste-log'
@@ -799,6 +810,7 @@ export interface FileRouteTypes {
     | '/_authenticated/leads'
     | '/_authenticated/messages'
     | '/_authenticated/my-day'
+    | '/_authenticated/neighbors'
     | '/_authenticated/reports'
     | '/_authenticated/routes'
     | '/_authenticated/settings'
@@ -1023,6 +1035,13 @@ declare module '@tanstack/react-router' {
       path: '/reports'
       fullPath: '/reports'
       preLoaderRoute: typeof AuthenticatedReportsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/neighbors': {
+      id: '/_authenticated/neighbors'
+      path: '/neighbors'
+      fullPath: '/neighbors'
+      preLoaderRoute: typeof AuthenticatedNeighborsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/my-day': {
@@ -1445,6 +1464,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedLeadsRoute: typeof AuthenticatedLeadsRoute
   AuthenticatedMessagesRoute: typeof AuthenticatedMessagesRouteWithChildren
   AuthenticatedMyDayRoute: typeof AuthenticatedMyDayRoute
+  AuthenticatedNeighborsRoute: typeof AuthenticatedNeighborsRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedRoutesRoute: typeof AuthenticatedRoutesRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRouteWithChildren
@@ -1468,6 +1488,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedLeadsRoute: AuthenticatedLeadsRoute,
   AuthenticatedMessagesRoute: AuthenticatedMessagesRouteWithChildren,
   AuthenticatedMyDayRoute: AuthenticatedMyDayRoute,
+  AuthenticatedNeighborsRoute: AuthenticatedNeighborsRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedRoutesRoute: AuthenticatedRoutesRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRouteWithChildren,
