@@ -45,7 +45,7 @@ export const listClients = createServerFn({ method: "GET" })
             .from("invoices")
             .select("client_id, amount_cents, amount_paid_cents, status")
             .in("client_id", ids)
-            .in("status", ["open", "past_due"])
+            .eq("status", "open")
         : Promise.resolve({ data: [] as any[] }),
     ]);
 
