@@ -275,6 +275,15 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
         </div>
       )}
 
+      {SOURCE_HINTS[source] && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 p-3 text-xs">
+          <span className="text-muted-foreground">{SOURCE_HINTS[source]}</span>
+          <Button size="sm" variant="outline" onClick={() => downloadTemplate(source, entity)}>
+            Download {SOURCE_LABELS[source]} {entity} template
+          </Button>
+        </div>
+      )}
+
       {headers.length > 0 && (
         <div className="space-y-3">
           <div className="text-sm text-muted-foreground">
