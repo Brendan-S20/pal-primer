@@ -497,11 +497,17 @@ export type Database = {
           account_type: Database["public"]["Enums"]["account_type"]
           accounting_remote_id: string | null
           active: boolean
+          autopay_enabled: boolean
+          autopay_last_attempt_at: string | null
+          autopay_last_error: string | null
           churn_reason: string | null
           churn_score: number | null
           churn_scored_at: string | null
           created_at: string
           credit_balance_cents: number
+          default_card_brand: string | null
+          default_card_last4: string | null
+          default_payment_method_id: string | null
           display_name: string
           email_opt_out: boolean
           id: string
@@ -519,17 +525,24 @@ export type Database = {
           review_asked_at: string | null
           review_submitted_at: string | null
           sms_opt_out: boolean
+          stripe_customer_id: string | null
           updated_at: string
         }
         Insert: {
           account_type: Database["public"]["Enums"]["account_type"]
           accounting_remote_id?: string | null
           active?: boolean
+          autopay_enabled?: boolean
+          autopay_last_attempt_at?: string | null
+          autopay_last_error?: string | null
           churn_reason?: string | null
           churn_score?: number | null
           churn_scored_at?: string | null
           created_at?: string
           credit_balance_cents?: number
+          default_card_brand?: string | null
+          default_card_last4?: string | null
+          default_payment_method_id?: string | null
           display_name: string
           email_opt_out?: boolean
           id?: string
@@ -547,17 +560,24 @@ export type Database = {
           review_asked_at?: string | null
           review_submitted_at?: string | null
           sms_opt_out?: boolean
+          stripe_customer_id?: string | null
           updated_at?: string
         }
         Update: {
           account_type?: Database["public"]["Enums"]["account_type"]
           accounting_remote_id?: string | null
           active?: boolean
+          autopay_enabled?: boolean
+          autopay_last_attempt_at?: string | null
+          autopay_last_error?: string | null
           churn_reason?: string | null
           churn_score?: number | null
           churn_scored_at?: string | null
           created_at?: string
           credit_balance_cents?: number
+          default_card_brand?: string | null
+          default_card_last4?: string | null
+          default_payment_method_id?: string | null
           display_name?: string
           email_opt_out?: boolean
           id?: string
@@ -575,6 +595,7 @@ export type Database = {
           review_asked_at?: string | null
           review_submitted_at?: string | null
           sms_opt_out?: boolean
+          stripe_customer_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -2557,9 +2578,13 @@ export type Database = {
         Args: { _token: string }
         Returns: {
           account_type: string
+          autopay_enabled: boolean
+          card_brand: string
+          card_last4: string
           client_id: string
           credit_balance_cents: number
           display_name: string
+          has_saved_card: boolean
           org_name: string
           organization_id: string
         }[]
@@ -2628,6 +2653,10 @@ export type Database = {
       portal_reschedule_visit: {
         Args: { _new_date: string; _token: string; _visit_id: string }
         Returns: undefined
+      }
+      portal_set_autopay: {
+        Args: { _enabled: boolean; _token: string }
+        Returns: boolean
       }
       portal_start_prepaid_topup: {
         Args: { _subscription_id: string; _token: string; _visit_count: number }
