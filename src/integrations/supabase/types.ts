@@ -1516,7 +1516,9 @@ export type Database = {
           key_location: string | null
           label: string | null
           latest_service_time: string | null
+          latitude: number | null
           lock_box_code: string | null
+          longitude: number | null
           organization_id: string
           parking_notes: string | null
           postal_code: string
@@ -1546,7 +1548,9 @@ export type Database = {
           key_location?: string | null
           label?: string | null
           latest_service_time?: string | null
+          latitude?: number | null
           lock_box_code?: string | null
+          longitude?: number | null
           organization_id: string
           parking_notes?: string | null
           postal_code: string
@@ -1576,7 +1580,9 @@ export type Database = {
           key_location?: string | null
           label?: string | null
           latest_service_time?: string | null
+          latitude?: number | null
           lock_box_code?: string | null
+          longitude?: number | null
           organization_id?: string
           parking_notes?: string | null
           postal_code?: string

@@ -67,6 +67,8 @@ function RoutesPage() {
   const [localColumns, setLocalColumns] = useState<Record<string, Visit[]> | null>(null);
 
   const [weekDays, setWeekDays] = useState(7);
+  const [viewMode, setViewMode] = useState<"split" | "map" | "board">("split");
+  const [toolsOpen, setToolsOpen] = useState(false);
 
   const listV = useServerFn(listVisitsForDay);
   const listS = useServerFn(listStaff);
@@ -262,15 +264,36 @@ function RoutesPage() {
   const activeVisit = activeId ? visits.find((v) => v.id === activeId) : null;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Dispatch</h1>
-        <p className="text-sm text-muted-foreground">
-          Drag visits between techs and reorder within a route. Changes save automatically.
-        </p>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Today</h1>
+          <p className="text-sm text-muted-foreground">
+            Dispatch, route, map, and mark visits complete — all in one view.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input type="date" value={day} onChange={(e) => { setLocalColumns(null); setDay(e.target.value); }} className="w-[160px]" />
+          <div className="inline-flex rounded-md border bg-card p-0.5 text-xs">
+            {(["split", "map", "board"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setViewMode(m)}
+                className={`px-3 py-1.5 rounded ${viewMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                {m === "split" ? "Split" : m === "map" ? "Map" : "Board"}
+              </button>
+            ))}
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setToolsOpen((v) => !v)}>
+            {toolsOpen ? "Hide planning tools" : "Planning tools"}
+          </Button>
+        </div>
       </div>
 
+      {toolsOpen && (
       <div className="grid gap-4 rounded-lg border bg-card p-5 sm:grid-cols-3">
+
         <div className="space-y-2">
           <Label htmlFor="day">Day</Label>
           <Input id="day" type="date" value={day} onChange={(e) => { setLocalColumns(null); setDay(e.target.value); }} />
@@ -310,8 +333,11 @@ function RoutesPage() {
           </p>
         </div>
       </div>
+      )}
 
+      {toolsOpen && (
       <div className="grid gap-4 rounded-lg border bg-card p-5 md:grid-cols-2">
+
         <div className="space-y-2">
           <Label>Optimize multiple days (auto-balance across techs)</Label>
           <div className="flex items-center gap-2">
@@ -381,17 +407,23 @@ function RoutesPage() {
           </div>
         </div>
       </div>
+      )}
 
-      <MapPanel visits={visits} staff={staff} />
+      {(viewMode === "map" || viewMode === "split") && (
+        <>
+          <MapPanel visits={visits} staff={staff} />
+          <HeatmapPanel visits={visits} staff={staff} />
+        </>
+      )}
 
-      <HeatmapPanel visits={visits} staff={staff} />
-
+      {(viewMode === "board" || viewMode === "split") && (
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
       >
+
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <Column
             id={UNASSIGNED}
@@ -417,7 +449,9 @@ function RoutesPage() {
           {activeVisit ? <VisitCardView visit={activeVisit} dragging /> : null}
         </DragOverlay>
       </DndContext>
+      )}
     </div>
+
   );
 }
 
