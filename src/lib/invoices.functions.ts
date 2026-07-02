@@ -108,13 +108,12 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
       if (uErr) { failed++; continue; }
       await supabase.from("payments").insert({
         invoice_id: id,
-        client_id: inv.client_id,
         organization_id: inv.organization_id,
         amount_cents: inv.total_cents,
         currency: inv.currency ?? "usd",
         status: "succeeded",
         paid_at: nowIso,
-        note: data.note ?? "Manual mark-paid",
+        raw_event: { source: "manual_mark_paid", note: data.note ?? null },
       });
       ok++;
     }
