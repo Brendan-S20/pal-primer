@@ -295,6 +295,35 @@ function normalizeAccountType(v: unknown): "residential" | "commercial" {
   return "residential";
 }
 
+function normalizePhone(v: string | null): string | null {
+  if (!v) return null;
+  const digits = v.replace(/\D+/g, "");
+  if (!digits) return null;
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return v.trim();
+}
+
+// Case-insensitive lookup across common column-name synonyms in the raw row.
+function rawLookup(raw: Record<string, any>, names: string[]): string | null {
+  const keys = Object.keys(raw);
+  const lc = keys.map((k) => k.toLowerCase().trim());
+  for (const n of names) {
+    const idx = lc.indexOf(n.toLowerCase().trim());
+    if (idx !== -1) {
+      const v = raw[keys[idx]];
+      if (v === undefined || v === null) continue;
+      const s = String(v).trim();
+      if (s) return s;
+    }
+  }
+  return null;
+}
+
+const FIRST_NAME_COLUMNS = ["First Name", "First name", "first_name", "Given Name"];
+const LAST_NAME_COLUMNS = ["Last Name", "Last name", "last_name", "Family Name", "Surname"];
+const ADDRESS_2_COLUMNS = ["Street 2", "Address Line 2", "address_line_2", "Address 2", "Unit", "Apt", "Suite"];
+
 function getStr(raw: Record<string, any>, mapping: Record<string, string | null>, field: string): string | null {
   const src = mapping[field];
   if (!src) return null;
@@ -305,8 +334,14 @@ function getStr(raw: Record<string, any>, mapping: Record<string, string | null>
 }
 
 function mapClientRow(raw: Record<string, any>, mapping: Record<string, string | null>) {
-  const display_name = getStr(raw, mapping, "display_name");
-  if (!display_name) return { mapped: null, error: "Missing display_name" };
+  let display_name = getStr(raw, mapping, "display_name");
+  if (!display_name) {
+    const first = rawLookup(raw, FIRST_NAME_COLUMNS);
+    const last = rawLookup(raw, LAST_NAME_COLUMNS);
+    const combined = [first, last].filter(Boolean).join(" ").trim();
+    if (combined) display_name = combined;
+  }
+  if (!display_name) return { mapped: null, error: "Missing display_name (or First Name + Last Name)" };
   const email = getStr(raw, mapping, "primary_email");
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return { mapped: null, error: `Invalid email: ${email}` };
@@ -316,7 +351,7 @@ function mapClientRow(raw: Record<string, any>, mapping: Record<string, string |
       display_name,
       account_type: normalizeAccountType(getStr(raw, mapping, "account_type")),
       primary_email: email,
-      primary_phone: getStr(raw, mapping, "primary_phone"),
+      primary_phone: normalizePhone(getStr(raw, mapping, "primary_phone")),
       external_id: getStr(raw, mapping, "external_id"),
       notes: getStr(raw, mapping, "notes"),
     },
@@ -327,8 +362,10 @@ function mapClientRow(raw: Record<string, any>, mapping: Record<string, string |
 function mapPropertyRow(raw: Record<string, any>, mapping: Record<string, string | null>) {
   const client_external_id = getStr(raw, mapping, "client_external_id");
   if (!client_external_id) return { mapped: null, error: "Missing client_external_id (link to client)" };
-  const street = getStr(raw, mapping, "street");
+  let street = getStr(raw, mapping, "street");
   if (!street) return { mapped: null, error: "Missing street" };
+  const line2 = rawLookup(raw, ADDRESS_2_COLUMNS);
+  if (line2) street = `${street}, ${line2}`;
   return {
     mapped: {
       client_external_id,
