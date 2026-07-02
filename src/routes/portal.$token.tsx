@@ -156,6 +156,31 @@ function PortalPage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
+  const startSetupMut = useMutation({
+    mutationFn: () => startSetupFn({ data: { token, returnUrl: window.location.href } }),
+    onSuccess: (r) => { window.location.href = r.url; },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const setAutopayMut = useMutation({
+    mutationFn: (enabled: boolean) => setAutopayFn({ data: { token, enabled } }),
+    onSuccess: (r) => { toast.success(r.enabled ? "Autopay on" : "Autopay off"); invalidatePortal(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const removeCardMut = useMutation({
+    mutationFn: () => removeCardFn({ data: { token } }),
+    onSuccess: () => { toast.success("Card removed"); invalidatePortal(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const paySavedMut = useMutation({
+    mutationFn: (invoiceId: string) => payWithSavedFn({ data: { token, invoiceId } }),
+    onSuccess: () => { toast.success("Payment submitted"); invalidatePortal(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+
   if (clientQ.isLoading) {
     return <div className="mx-auto max-w-3xl p-8 text-center text-sm text-muted-foreground">Loading…</div>;
   }
