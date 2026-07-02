@@ -95,3 +95,62 @@ export const listPlatformAudit = createServerFn({ method: "GET" })
     return { rows: data ?? [] };
   });
 
+// ---------- Impersonation ----------
+// Generates a one-time magic link for the org owner. Admin briefly signs in as
+// that user in a new tab; RLS naturally scopes them to that tenant. Every
+// action is written to platform_admin_audit.
+
+const impersonateSchema = z.object({
+  organization_id: z.string().uuid(),
+});
+
+export const startImpersonation = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => impersonateSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    await assertPlatformAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Find an owner or admin for that org.
+    const { data: role, error: roleErr } = await supabaseAdmin
+      .from("user_roles")
+      .select("user_id, role")
+      .eq("organization_id", data.organization_id)
+      .in("role", ["owner", "office_manager"])
+      .limit(1)
+      .maybeSingle();
+    if (roleErr) throw new Error(roleErr.message);
+    if (!role) throw new Error("No owner/admin found for this organization.");
+
+    // Fetch the auth user's email.
+    const { data: userRes, error: userErr } = await supabaseAdmin.auth.admin.getUserById(
+      role.user_id,
+    );
+    if (userErr) throw new Error(userErr.message);
+    const email = userRes.user?.email;
+    if (!email) throw new Error("Target user has no email.");
+
+    // Generate a magic link — short-lived, single-use.
+    const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+      type: "magiclink",
+      email,
+    });
+    if (linkErr) throw new Error(linkErr.message);
+    const actionLink = linkData.properties?.action_link;
+    if (!actionLink) throw new Error("Failed to generate impersonation link.");
+
+    // Audit — before/after left null; action carries context.
+    try {
+      await supabaseAdmin.from("platform_admin_audit").insert({
+        actor_user_id: context.userId,
+        organization_id: data.organization_id,
+        action: "start_impersonation",
+        before_json: null,
+        after_json: { target_user_id: role.user_id, target_email: email },
+      });
+    } catch { /* ignore */ }
+
+    return { actionLink, targetEmail: email };
+  });
+
+

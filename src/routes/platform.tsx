@@ -6,6 +6,7 @@ import {
   getPlatformContext,
   getPlatformStats,
   updateOrgPlan,
+  startImpersonation,
   type PlatformOrgRow,
 } from "@/lib/platform.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Shield, Building2, Users, DollarSign, AlertCircle } from "lucide-react";
+import { Shield, Building2, Users, DollarSign, AlertCircle, LogIn } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/platform")({
@@ -207,9 +208,12 @@ function TenantRow({ row }: { row: PlatformOrgRow }) {
         <TableCell className="text-right tabular-nums">{money(row.revenue_mtd_cents)}</TableCell>
         <TableCell className="text-right tabular-nums">{money(row.ar_open_cents)}</TableCell>
         <TableCell className="text-right">
-          <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-            Edit plan
-          </Button>
+          <div className="flex justify-end gap-2">
+            <ImpersonateButton organizationId={row.organization_id} orgName={row.organization_name} />
+            <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+              Edit plan
+            </Button>
+          </div>
         </TableCell>
       </TableRow>
       <Dialog open={open} onOpenChange={setOpen}>
@@ -254,5 +258,29 @@ function TenantRow({ row }: { row: PlatformOrgRow }) {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function ImpersonateButton({ organizationId, orgName }: { organizationId: string; orgName: string }) {
+  const startFn = useServerFn(startImpersonation);
+  const [busy, setBusy] = useState(false);
+  const onClick = async () => {
+    if (!confirm(`Impersonate ${orgName}? This will open their account in a new tab and is logged to the audit trail.`)) return;
+    setBusy(true);
+    try {
+      const { actionLink, targetEmail } = await startFn({ data: { organization_id: organizationId } });
+      toast.success(`Opening session as ${targetEmail}`);
+      window.open(actionLink, "_blank", "noopener");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Impersonation failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button variant="secondary" size="sm" onClick={onClick} disabled={busy}>
+      <LogIn className="mr-1 h-3.5 w-3.5" />
+      {busy ? "Preparing…" : "Impersonate"}
+    </Button>
   );
 }

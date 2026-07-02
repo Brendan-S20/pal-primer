@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { lovable } from "@/integrations/lovable/index";
 import { bootstrapOrganization } from "@/lib/org.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,6 +81,40 @@ function AuthPage() {
         <div className="text-center">
           <h1 className="text-3xl font-semibold">{APP_NAME}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{APP_DESCRIPTION}</p>
+        </div>
+
+        <div className="space-y-3 rounded-lg border bg-card p-4">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            disabled={loading}
+            onClick={async () => {
+              setError(null);
+              setLoading(true);
+              try {
+                const result = await lovable.auth.signInWithOAuth("google", {
+                  redirect_uri: window.location.origin,
+                });
+                if (result.error) {
+                  setLoading(false);
+                  return setError(result.error.message ?? "Google sign-in failed");
+                }
+                if (result.redirected) return; // browser will redirect
+                // Popup flow completed with session. Route to dashboard;
+                // onboarding flow handles org bootstrap if none exists.
+                navigate({ to: "/dashboard" });
+              } catch (err) {
+                setLoading(false);
+                setError(err instanceof Error ? err.message : "Google sign-in failed");
+              }
+            }}
+          >
+            Continue with Google
+          </Button>
+          <div className="relative text-center text-xs text-muted-foreground">
+            <span className="bg-card px-2">or use email</span>
+          </div>
         </div>
 
         <Tabs defaultValue="signin" className="w-full">
