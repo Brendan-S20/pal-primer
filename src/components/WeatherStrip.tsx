@@ -58,16 +58,49 @@ export function WeatherStrip({ day }: { day: string }) {
   });
 
   const reschedule = useMutation({
-    mutationFn: () =>
-      rescheduleFn({
-        data: {
-          visitIds: analysis?.flagged_visit_ids ?? [],
-          newDate: rescheduleDate,
-          note: "Weather-flagged auto-reschedule",
-        },
-      }),
-    onSuccess: (r) => {
-      toast.success(`Moved ${r.moved} visit${r.moved === 1 ? "" : "s"} to ${rescheduleDate}`);
+    mutationFn: async () => {
+      const visitIds = analysis?.flagged_visit_ids ?? [];
+      // Snapshot originals so we can undo
+      const originals: Array<{ id: string; date: string }> = [];
+      if (visitIds.length) {
+        const { data: pre } = await (await import("@/integrations/supabase/client")).supabase
+          .from("visits")
+          .select("id, scheduled_on")
+          .in("id", visitIds);
+        (pre ?? []).forEach((r: any) => originals.push({ id: r.id, date: r.scheduled_on }));
+      }
+      const r = await rescheduleFn({
+        data: { visitIds, newDate: rescheduleDate, note: "Weather-flagged auto-reschedule" },
+      });
+      return { ...r, originals };
+    },
+    onSuccess: (r: any) => {
+      const originals = r.originals ?? [];
+      toast.success(`Moved ${r.moved} visit${r.moved === 1 ? "" : "s"} to ${rescheduleDate}`, {
+        duration: 8000,
+        action: originals.length ? {
+          label: "Undo",
+          onClick: async () => {
+            const byDate = new Map<string, string[]>();
+            for (const o of originals) {
+              if (!byDate.has(o.date)) byDate.set(o.date, []);
+              byDate.get(o.date)!.push(o.id);
+            }
+            let restored = 0;
+            for (const [date, ids] of byDate) {
+              try {
+                const back = await rescheduleFn({ data: { visitIds: ids, newDate: date, note: "Weather reschedule undone" } });
+                restored += back.moved;
+              } catch (e: any) {
+                toast.error(e.message);
+              }
+            }
+            toast.success(`Restored ${restored} visit${restored === 1 ? "" : "s"}`);
+            qc.invalidateQueries({ queryKey: ["visits"] });
+            qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
+          },
+        } : undefined,
+      });
       setAnalysis(null);
       qc.invalidateQueries({ queryKey: ["visits"] });
       qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
