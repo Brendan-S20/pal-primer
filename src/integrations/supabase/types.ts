@@ -1312,6 +1312,7 @@ export type Database = {
           frequency_multipliers: Json
           google_review_url: string | null
           id: string
+          is_franchise_parent: boolean
           name: string
           notify_email_invoice_sent: boolean
           notify_email_overdue: boolean
@@ -1321,6 +1322,7 @@ export type Database = {
           notify_email_welcome: boolean
           overdue_reminder_days: number
           overdue_reminders_enabled: boolean
+          parent_organization_id: string | null
           plan_status: Database["public"]["Enums"]["org_plan_status"]
           public_signup_enabled: boolean
           referral_reward_cents: number
@@ -1353,6 +1355,7 @@ export type Database = {
           frequency_multipliers?: Json
           google_review_url?: string | null
           id?: string
+          is_franchise_parent?: boolean
           name: string
           notify_email_invoice_sent?: boolean
           notify_email_overdue?: boolean
@@ -1362,6 +1365,7 @@ export type Database = {
           notify_email_welcome?: boolean
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
+          parent_organization_id?: string | null
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
           public_signup_enabled?: boolean
           referral_reward_cents?: number
@@ -1394,6 +1398,7 @@ export type Database = {
           frequency_multipliers?: Json
           google_review_url?: string | null
           id?: string
+          is_franchise_parent?: boolean
           name?: string
           notify_email_invoice_sent?: boolean
           notify_email_overdue?: boolean
@@ -1403,6 +1408,7 @@ export type Database = {
           notify_email_welcome?: boolean
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
+          parent_organization_id?: string | null
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
           public_signup_enabled?: boolean
           referral_reward_cents?: number
@@ -1417,7 +1423,15 @@ export type Database = {
           workday_end?: string
           workday_start?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "organizations_parent_organization_id_fkey"
+            columns: ["parent_organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       payments: {
         Row: {
@@ -2553,6 +2567,19 @@ export type Database = {
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
+      }
+      franchise_rollup: {
+        Args: { _parent_org: string }
+        Returns: {
+          active_clients: number
+          ar_open_cents: number
+          organization_id: string
+          organization_name: string
+          revenue_mtd_cents: number
+          tech_count: number
+          visits_completed_today: number
+          visits_today: number
+        }[]
       }
       generate_addon_charges_through: {
         Args: { _org_id: string; _through: string }

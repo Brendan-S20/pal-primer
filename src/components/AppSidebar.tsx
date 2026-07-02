@@ -16,6 +16,7 @@ import {
   Sparkles,
   Settings as SettingsIcon,
   UserPlus,
+  Building2,
 } from "lucide-react";
 
 import {
@@ -71,6 +72,7 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { title: "Reports", url: "/reports", icon: BarChart3 },
       { title: "Analytics", url: "/analytics", icon: LineChart },
+      { title: "Franchise", url: "/franchise", icon: Building2 },
       { title: "AI tools", url: "/ai-tools", icon: Sparkles },
     ],
   },
