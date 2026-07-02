@@ -75,6 +75,41 @@ export const optimizeRoute = createServerFn({ method: "POST" })
     return { assigned: (count as number) ?? 0 };
   });
 
+export const reoptimizeAll = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ day: z.string() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+    // Get all techs that have any visits assigned that day
+    const { data: rows, error: qErr } = await supabase
+      .from("visits")
+      .select("assigned_staff_id")
+      .eq("organization_id", orgId)
+      .eq("scheduled_on", data.day)
+      .not("assigned_staff_id", "is", null);
+    if (qErr) throw new Error(qErr.message);
+    const staffIds = Array.from(
+      new Set((rows ?? []).map((r: any) => r.assigned_staff_id).filter(Boolean)),
+    ) as string[];
+    let total = 0;
+    const perTech: { staffId: string; assigned: number }[] = [];
+    for (const staffId of staffIds) {
+      const { data: n, error } = await supabase.rpc("optimize_route_v2", {
+        _org_id: orgId,
+        _staff_id: staffId,
+        _day: data.day,
+        _reassign: false,
+      });
+      if (error) throw new Error(error.message);
+      const assigned = (n as number) ?? 0;
+      total += assigned;
+      perTech.push({ staffId, assigned });
+    }
+    return { techs: staffIds.length, total, perTech };
+  });
+
+
 export const updateStaffStart = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
