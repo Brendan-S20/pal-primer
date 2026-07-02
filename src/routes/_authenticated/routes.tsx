@@ -313,6 +313,14 @@ function RoutesPage() {
             <Button onClick={() => weekMut.mutate()} disabled={weekMut.isPending}>
               {weekMut.isPending ? "…" : "Optimize week"}
             </Button>
+            <Button
+              variant="secondary"
+              onClick={() => reoptMut.mutate()}
+              disabled={reoptMut.isPending}
+              title="Recompute sequence for every tech using their remaining stops"
+            >
+              {reoptMut.isPending ? "…" : "Re-optimize today"}
+            </Button>
           </div>
           <p className="text-[11px] text-muted-foreground">
             Distributes unassigned visits round-robin by zone, then optimizes each tech's day.
