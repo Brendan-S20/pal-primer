@@ -137,12 +137,13 @@ export const syncInvoice = createServerFn({ method: "POST" })
     if (invErr || !invoice) throw new Error(invErr?.message ?? "Invoice not found");
 
     // Delegate to the provider-specific driver (server-only import).
-    const { pushInvoice } = await import("./accounting.server");
+    const { pushInvoice, ensureFreshToken } = await import("./accounting.server");
     let remoteId: string | null = null;
     let status: "success" | "error" = "success";
     let message: string | null = null;
     try {
-      remoteId = await pushInvoice(conn as any, invoice as any);
+      const fresh = await ensureFreshToken(conn as any);
+      remoteId = await pushInvoice(fresh, invoice as any);
       await supabase
         .from("invoices")
         .update({ accounting_remote_id: remoteId })
