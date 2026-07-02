@@ -27,6 +27,11 @@ function openPalette() {
 }
 
 function AppShell() {
+  // Native Capacitor bootstrap — matches brand status bar; no-ops on web.
+  useEffect(() => {
+    import("@/lib/native").then((m) => m.initStatusBar()).catch(() => {});
+  }, []);
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     window.location.href = "/auth";
