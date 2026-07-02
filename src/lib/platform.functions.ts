@@ -51,7 +51,7 @@ export const updateOrgPlan = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertPlatformAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const patch: Record<string, unknown> = {};
+    const patch: { billing_tier?: string; plan_status?: any } = {};
     if (data.billing_tier !== null) patch.billing_tier = data.billing_tier;
     if (data.plan_status !== null) patch.plan_status = data.plan_status;
     const { error } = await supabaseAdmin
