@@ -208,9 +208,12 @@ function TenantRow({ row }: { row: PlatformOrgRow }) {
         <TableCell className="text-right tabular-nums">{money(row.revenue_mtd_cents)}</TableCell>
         <TableCell className="text-right tabular-nums">{money(row.ar_open_cents)}</TableCell>
         <TableCell className="text-right">
-          <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-            Edit plan
-          </Button>
+          <div className="flex justify-end gap-2">
+            <ImpersonateButton organizationId={row.organization_id} orgName={row.organization_name} />
+            <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+              Edit plan
+            </Button>
+          </div>
         </TableCell>
       </TableRow>
       <Dialog open={open} onOpenChange={setOpen}>
