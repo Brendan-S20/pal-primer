@@ -303,6 +303,8 @@ function RoutesPage() {
           </Button>
         </div>
       </div>
+      <WeatherStrip day={day} />
+
 
       {toolsOpen && (
       <div className="grid gap-4 rounded-lg border bg-card p-5 sm:grid-cols-3">
