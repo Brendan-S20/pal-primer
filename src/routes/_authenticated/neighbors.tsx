@@ -132,7 +132,7 @@ function NeighborsPage() {
                 className="mt-1 block w-full rounded border bg-background px-3 py-2 text-sm"
               >
                 <option value="">Pick a client…</option>
-                {(clientsQ.data?.rows ?? []).map((c: any) => (
+                {(clientsQ.data?.clients ?? []).map((c: any) => (
                   <option key={c.id} value={c.id}>{c.display_name}</option>
                 ))}
               </select>
