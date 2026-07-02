@@ -21,7 +21,7 @@ export const getAutomationSettings = createServerFn({ method: "GET" })
     const { data, error } = await supabase
       .from("organizations")
       .select(
-        "auto_generate_visits, auto_generate_days_ahead, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days",
+        "auto_generate_visits, auto_generate_days_ahead, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days, dunning_retry_days, dunning_pause_after_failures, seasonal_deepclean_enabled, seasonal_deepclean_months",
       )
       .eq("id", orgId)
       .single();
@@ -35,6 +35,10 @@ const updateSchema = z.object({
   autoInvoiceEnabled: z.boolean(),
   overdueRemindersEnabled: z.boolean(),
   overdueReminderDays: z.number().int().min(1).max(90),
+  dunningRetryDays: z.array(z.number().int().min(1).max(60)).min(1).max(6),
+  dunningPauseAfterFailures: z.number().int().min(1).max(10),
+  seasonalDeepcleanEnabled: z.boolean(),
+  seasonalDeepcleanMonths: z.array(z.number().int().min(1).max(12)).max(12),
 });
 
 export const updateAutomationSettings = createServerFn({ method: "POST" })
@@ -51,6 +55,10 @@ export const updateAutomationSettings = createServerFn({ method: "POST" })
         auto_invoice_enabled: data.autoInvoiceEnabled,
         overdue_reminders_enabled: data.overdueRemindersEnabled,
         overdue_reminder_days: data.overdueReminderDays,
+        dunning_retry_days: data.dunningRetryDays,
+        dunning_pause_after_failures: data.dunningPauseAfterFailures,
+        seasonal_deepclean_enabled: data.seasonalDeepcleanEnabled,
+        seasonal_deepclean_months: data.seasonalDeepcleanMonths,
       })
       .eq("id", orgId);
     if (error) throw new Error(error.message);

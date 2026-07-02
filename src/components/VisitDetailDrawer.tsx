@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { getVisitDetail } from "@/lib/visits.functions";
 import { completeVisit, startVisit, skipVisit } from "@/lib/my-day.functions";
-import { addDog } from "@/lib/dogs.functions";
+import { addDog, setDogDna } from "@/lib/dogs.functions";
 import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { Input } from "@/components/ui/input";
 import {
@@ -350,11 +350,16 @@ function DogsSection({
         <ul className="space-y-1 text-sm">
           {dogs.map((d: any) => (
             <li key={d.id} className="rounded border p-2">
-              <div className="font-medium">{d.name}</div>
-              <div className="text-xs text-muted-foreground">
-                {[d.breed, d.weight_class, d.temperament].filter(Boolean).join(" · ")}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-medium">{d.name}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {[d.breed, d.weight_class, d.temperament].filter(Boolean).join(" · ")}
+                  </div>
+                  {d.notes && <div className="mt-1 text-xs">{d.notes}</div>}
+                </div>
+                <DogDnaControl dog={d} onChanged={onChanged} />
               </div>
-              {d.notes && <div className="mt-1 text-xs">{d.notes}</div>}
             </li>
           ))}
         </ul>
@@ -457,5 +462,60 @@ function PhotosSection({ visitId, photos }: { visitId: string; photos: any[] }) 
         </Button>
       </div>
     </section>
+  );
+}
+
+function DogDnaControl({ dog, onChanged }: { dog: any; onChanged: () => void }) {
+  const setDna = useServerFn(setDogDna);
+  const [editing, setEditing] = useState(false);
+  const [registryId, setRegistryId] = useState<string>(dog.dna_registry_id ?? "");
+  const mut = useMutation({
+    mutationFn: (v: { registered: boolean; registryId?: string | null }) =>
+      setDna({ data: { id: dog.id, registered: v.registered, registryId: v.registryId ?? null } }),
+    onSuccess: () => {
+      toast.success("DNA record updated");
+      setEditing(false);
+      onChanged();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  if (dog.dna_registered && !editing) {
+    return (
+      <div className="flex flex-col items-end text-[11px]">
+        <Badge variant="outline" className="border-emerald-500/60 text-emerald-700 dark:text-emerald-400">
+          DNA ✓
+        </Badge>
+        {dog.dna_registry_id && <span className="mt-0.5 text-muted-foreground">{dog.dna_registry_id}</span>}
+        <button className="mt-0.5 text-[10px] text-muted-foreground underline" onClick={() => setEditing(true)}>edit</button>
+      </div>
+    );
+  }
+  if (!editing) {
+    return (
+      <button
+        className="text-[11px] text-muted-foreground underline"
+        onClick={() => setEditing(true)}
+        disabled={mut.isPending}
+      >
+        + DNA
+      </button>
+    );
+  }
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <Input
+        className="h-7 w-32 text-xs"
+        placeholder="Registry ID"
+        value={registryId}
+        onChange={(e) => setRegistryId(e.target.value)}
+      />
+      <div className="flex gap-1">
+        <Button size="sm" className="h-6 px-2 text-[11px]" onClick={() => mut.mutate({ registered: true, registryId })} disabled={mut.isPending}>Save</Button>
+        {dog.dna_registered && (
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => mut.mutate({ registered: false })} disabled={mut.isPending}>Clear</Button>
+        )}
+        <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => setEditing(false)}>Cancel</Button>
+      </div>
+    </div>
   );
 }

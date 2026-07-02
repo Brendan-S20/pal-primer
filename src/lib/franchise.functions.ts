@@ -53,3 +53,12 @@ export const getFranchiseRollup = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     return { rows: (data ?? []) as FranchiseRow[] };
   });
+
+export const markSelfAsFranchiseParent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { error } = await context.supabase.rpc("mark_franchise_parent", { _org_id: orgId });
+    if (error) throw new Error(error.message);
+    return { ok: true, orgId };
+  });

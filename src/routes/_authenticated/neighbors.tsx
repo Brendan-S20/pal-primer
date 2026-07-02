@@ -1,0 +1,229 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { toast } from "sonner";
+import {
+  listNeighborLeads,
+  addNeighborLead,
+  updateNeighborLead,
+  deleteNeighborLead,
+  seedNeighborsForClient,
+  type NeighborLead,
+} from "@/lib/neighbors.functions";
+import { listClients } from "@/lib/clients.functions";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { MapPin, UserPlus, Trash2 } from "lucide-react";
+
+export const Route = createFileRoute("/_authenticated/neighbors")({
+  head: () => ({
+    meta: [
+      { title: "Neighbor canvassing · ScoopCRM" },
+      { name: "description", content: "Turn happy clients into whole-street routes with door-to-door canvassing." },
+    ],
+  }),
+  component: NeighborsPage,
+});
+
+const STATUS_LABEL: Record<NeighborLead["status"], string> = {
+  new: "To visit",
+  contacted: "Contacted",
+  interested: "Interested",
+  converted: "Signed up",
+  not_interested: "Passed",
+};
+
+const STATUS_TONE: Record<NeighborLead["status"], "default" | "secondary" | "outline" | "destructive"> = {
+  new: "secondary",
+  contacted: "outline",
+  interested: "default",
+  converted: "default",
+  not_interested: "destructive",
+};
+
+function NeighborsPage() {
+  const listFn = useServerFn(listNeighborLeads);
+  const addFn = useServerFn(addNeighborLead);
+  const updateFn = useServerFn(updateNeighborLead);
+  const deleteFn = useServerFn(deleteNeighborLead);
+  const seedFn = useServerFn(seedNeighborsForClient);
+  const clientsFn = useServerFn(listClients);
+
+  const { data, refetch, isLoading } = useQuery({
+    queryKey: ["neighbor-leads"],
+    queryFn: () => listFn(),
+  });
+  const clientsQ = useQuery({
+    queryKey: ["clients", "for-canvass"],
+    queryFn: () => clientsFn(),
+  });
+
+  const [address, setAddress] = useState("");
+  const [notes, setNotes] = useState("");
+  const [seedClient, setSeedClient] = useState<string>("");
+  const [seedCount, setSeedCount] = useState(6);
+
+  const add = useMutation({
+    mutationFn: () => addFn({ data: { addressLine: address, notes: notes || undefined } }),
+    onSuccess: () => {
+      toast.success("Lead added");
+      setAddress("");
+      setNotes("");
+      refetch();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const seed = useMutation({
+    mutationFn: () => seedFn({ data: { clientId: seedClient, count: seedCount } }),
+    onSuccess: (r) => {
+      toast.success(`Seeded ${r.added} neighbor door${r.added === 1 ? "" : "s"}`);
+      refetch();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const update = useMutation({
+    mutationFn: (v: { id: string; status?: NeighborLead["status"]; notes?: string | null }) => updateFn({ data: v }),
+    onSuccess: () => refetch(),
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const del = useMutation({
+    mutationFn: (id: string) => deleteFn({ data: { id } }),
+    onSuccess: () => refetch(),
+  });
+
+  const rows = data?.rows ?? [];
+  const s = data?.summary ?? { total: 0 };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold flex items-center gap-2">
+          <MapPin className="h-6 w-6" /> Neighbor canvassing
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Every new client is a beachhead. Seed 5–10 doors on their street, canvass them, and turn one house into a whole route.
+        </p>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-5">
+        <Stat label="Total" value={s.total} />
+        <Stat label="To visit" value={s.new ?? 0} />
+        <Stat label="Contacted" value={s.contacted ?? 0} />
+        <Stat label="Interested" value={s.interested ?? 0} />
+        <Stat label="Signed up" value={s.converted ?? 0} tone="good" />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle className="text-base">Seed from an existing client</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <Label>Client</Label>
+              <select
+                value={seedClient}
+                onChange={(e) => setSeedClient(e.target.value)}
+                className="mt-1 block w-full rounded border bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Pick a client…</option>
+                {(clientsQ.data?.clients ?? []).map((c: any) => (
+                  <option key={c.id} value={c.id}>{c.display_name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label>How many doors</Label>
+              <Input type="number" min={1} max={20} value={seedCount} onChange={(e) => setSeedCount(Number(e.target.value))} />
+            </div>
+            <Button disabled={!seedClient || seed.isPending} onClick={() => seed.mutate()}>
+              <UserPlus className="mr-1.5 h-4 w-4" />
+              {seed.isPending ? "Seeding…" : `Seed ${seedCount} neighbors`}
+            </Button>
+            <p className="text-xs text-muted-foreground">Generates addresses at even offsets from the client's house number on the same street.</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="text-base">Add a door manually</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <Label>Address</Label>
+              <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="123 Elm St, Springfield" />
+            </div>
+            <div>
+              <Label>Notes</Label>
+              <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Saw a golden retriever in the yard" />
+            </div>
+            <Button disabled={address.trim().length < 3 || add.isPending} onClick={() => add.mutate()}>
+              {add.isPending ? "Adding…" : "Add lead"}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Canvassing list</CardTitle></CardHeader>
+        <CardContent className="p-0">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2">Address</th>
+                <th className="px-3 py-2">Seed client</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Notes</th>
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">Loading…</td></tr>
+              ) : rows.length === 0 ? (
+                <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">No leads yet. Seed from a happy client to get going.</td></tr>
+              ) : rows.map((r) => (
+                <tr key={r.id} className="border-t align-top">
+                  <td className="px-3 py-2 font-medium">{r.address_line}</td>
+                  <td className="px-3 py-2 text-muted-foreground text-xs">{r.seed_client_name ?? "—"}</td>
+                  <td className="px-3 py-2">
+                    <select
+                      value={r.status}
+                      onChange={(e) => update.mutate({ id: r.id, status: e.target.value as any })}
+                      className="rounded border bg-background px-2 py-1 text-xs"
+                    >
+                      {Object.entries(STATUS_LABEL).map(([k, v]) => (
+                        <option key={k} value={k}>{v}</option>
+                      ))}
+                    </select>
+                    <Badge variant={STATUS_TONE[r.status]} className="ml-2">{STATUS_LABEL[r.status]}</Badge>
+                  </td>
+                  <td className="px-3 py-2 max-w-[300px] text-xs text-muted-foreground">{r.notes ?? "—"}</td>
+                  <td className="px-3 py-2 text-right">
+                    <Button size="sm" variant="ghost" onClick={() => del.mutate(r.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function Stat({ label, value, tone }: { label: string; value: number; tone?: "good" }) {
+  return (
+    <Card>
+      <CardContent className="p-3">
+        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+        <div className={`text-2xl font-semibold ${tone === "good" ? "text-emerald-600" : ""}`}>{value}</div>
+      </CardContent>
+    </Card>
+  );
+}

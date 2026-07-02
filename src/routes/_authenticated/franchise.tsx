@@ -1,10 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useQuery } from "@tanstack/react-query";
-import { getFranchiseContext, getFranchiseRollup, type FranchiseRow } from "@/lib/franchise.functions";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
+import {
+  getFranchiseContext,
+  getFranchiseRollup,
+  markSelfAsFranchiseParent,
+  type FranchiseRow,
+} from "@/lib/franchise.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Building2 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/franchise")({
@@ -23,6 +30,16 @@ function FranchisePage() {
     enabled: !!ctx.data?.isParent,
   });
 
+  const markFn = useServerFn(markSelfAsFranchiseParent);
+  const mark = useMutation({
+    mutationFn: () => markFn(),
+    onSuccess: () => {
+      toast.success("Marked as franchise parent");
+      ctx.refetch();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   if (ctx.isLoading) return <div className="p-6 text-muted-foreground">Loading…</div>;
   if (!ctx.data?.isParent) {
     return (
@@ -31,9 +48,12 @@ function FranchisePage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" /> Franchise rollup</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-muted-foreground space-y-2">
-            <p>This organization is not configured as a franchise parent.</p>
-            <p>Mark it as a parent and link child organizations by setting <code>parent_organization_id</code> on each child org.</p>
+          <CardContent className="text-sm text-muted-foreground space-y-3">
+            <p>This organization is not configured as a franchise parent yet.</p>
+            <p>Once you enable it, any organization whose <code>parent_organization_id</code> points at this one will roll up its clients, revenue, and open AR here.</p>
+            <Button onClick={() => mark.mutate()} disabled={mark.isPending}>
+              {mark.isPending ? "Marking…" : "Mark this org as a franchise parent"}
+            </Button>
           </CardContent>
         </Card>
       </div>
