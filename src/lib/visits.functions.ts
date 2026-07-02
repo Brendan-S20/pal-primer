@@ -51,6 +51,58 @@ export const assignRoute = createServerFn({ method: "POST" })
     return { assigned: (count as number) ?? 0 };
   });
 
+export const optimizeRoute = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        staffId: z.string().uuid(),
+        day: z.string(),
+        reassign: z.boolean().optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+    const { data: count, error } = await supabase.rpc("optimize_route_for_day", {
+      _org_id: orgId,
+      _staff_id: data.staffId,
+      _day: data.day,
+      _reassign: data.reassign ?? false,
+    });
+    if (error) throw new Error(error.message);
+    return { assigned: (count as number) ?? 0 };
+  });
+
+export const updateStaffStart = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        staffId: z.string().uuid(),
+        start_address: z.string().nullable().optional(),
+        start_latitude: z.number().nullable().optional(),
+        start_longitude: z.number().nullable().optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+    const { error } = await supabase
+      .from("staff")
+      .update({
+        start_address: data.start_address ?? null,
+        start_latitude: data.start_latitude ?? null,
+        start_longitude: data.start_longitude ?? null,
+      })
+      .eq("id", data.staffId)
+      .eq("organization_id", orgId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const listVisitsForDay = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ day: z.string() }).parse(d))
