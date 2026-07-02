@@ -350,13 +350,21 @@ function mapDogRow(raw: Record<string, any>, mapping: Record<string, string | nu
   const name = getStr(raw, mapping, "name");
   if (!name) return { mapped: null, error: "Missing dog name" };
   const wRaw = getStr(raw, mapping, "weight_class");
-  const weight = wRaw ? Number(wRaw.replace(/[^\d.]/g, "")) : null;
+  let weightClass: string | null = null;
+  if (wRaw) {
+    const n = Number(wRaw.replace(/[^\d.]/g, ""));
+    if (!Number.isNaN(n) && n > 0) {
+      weightClass = n < 25 ? "small" : n < 60 ? "medium" : "large";
+    } else {
+      weightClass = wRaw.toLowerCase();
+    }
+  }
   return {
     mapped: {
       client_external_id,
       name,
       breed: getStr(raw, mapping, "breed"),
-      weight_class: weight && !Number.isNaN(weight) ? weight : null,
+      weight_class: weightClass,
       notes: getStr(raw, mapping, "notes"),
     },
     error: null as string | null,
