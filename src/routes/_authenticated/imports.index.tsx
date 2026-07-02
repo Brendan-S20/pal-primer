@@ -30,6 +30,16 @@ const SOURCE_LABELS: Record<string, string> = {
   quoteiq_family: "QuoteIQ / Flowcarve / DoTimely",
 };
 
+const SOURCE_HINTS: Record<string, string> = {
+  sweepgo: "Export from Sweep&Go → Settings → Data Export. Use the Customers, Locations, and Pets CSVs (one at a time).",
+  jobber: "Export from Jobber → Gear icon → Imports & Exports → Export Data. Clients export includes company name and mobile phone.",
+  housecall_pro: "Housecall Pro Customers CSV uses separate First Name / Last Name columns — we'll combine them automatically.",
+  time_to_pet: "Time To Pet → Admin → Data → Export Clients / Pets. Pets link back to a Client ID.",
+  gorilla_desk: "GorillaDesk → Reports → Customers → Export CSV. Import Customers first, then Locations, then Pets.",
+  quoteiq_family: "QuoteIQ, Flowcarve, and DoTimely share a similar shape — the generic mapping usually works.",
+  generic_csv: "",
+};
+
 const ENTITY_LABELS: Record<ImportEntity, string> = {
   clients: "Clients",
   properties: "Properties (addresses)",
@@ -41,6 +51,48 @@ const REQUIRED_FIELDS: Record<ImportEntity, string[]> = {
   properties: ["client_external_id", "street"],
   dogs: ["client_external_id", "name"],
 };
+
+const TEMPLATE_HEADERS: Record<ImportEntity, Record<string, string[]>> = {
+  clients: {
+    generic_csv: ["name", "email", "phone", "type", "external_id", "notes"],
+    sweepgo: ["Client ID", "Client Name", "Email", "Phone", "Account Type", "Notes"],
+    jobber: ["Client ID", "Company/Client name", "Primary email", "Mobile phone number", "Client type", "Notes"],
+    housecall_pro: ["Customer ID", "First Name", "Last Name", "Email", "Phone", "Type", "Notes"],
+    time_to_pet: ["Client ID", "Client", "Email", "Phone", "Type", "Notes"],
+    gorilla_desk: ["Customer ID", "Customer", "Email", "Phone", "Type", "Notes"],
+    quoteiq_family: ["ID", "Name", "Email", "Phone", "Type", "Notes"],
+  },
+  properties: {
+    generic_csv: ["client_id", "label", "street", "address_line_2", "city", "region", "postal_code", "gate_code", "notes"],
+    sweepgo: ["Client ID", "Property Name", "Street", "City", "State", "Zip", "Gate Code", "Notes"],
+    jobber: ["Client ID", "Property name", "Street 1", "Street 2", "City", "Province/State", "Postal/Zip Code", "Notes"],
+    housecall_pro: ["Customer ID", "Address Name", "Street", "Address Line 2", "City", "State", "Zip", "Gate Code", "Notes"],
+    time_to_pet: ["Client ID", "Location", "Street", "City", "State", "Zip", "Notes"],
+    gorilla_desk: ["Customer ID", "Location", "Street", "City", "State", "Zip", "Notes"],
+    quoteiq_family: ["Client ID", "Location", "Street", "City", "State", "Zip", "Notes"],
+  },
+  dogs: {
+    generic_csv: ["client_id", "name", "breed", "weight", "notes"],
+    sweepgo: ["Client ID", "Dog Name", "Breed", "Weight (lbs)", "Notes"],
+    jobber: ["Client ID", "Pet name", "Breed", "Weight", "Notes"],
+    housecall_pro: ["Customer ID", "Pet Name", "Breed", "Weight", "Notes"],
+    time_to_pet: ["Client ID", "Pet Name", "Breed", "Weight", "Notes"],
+    gorilla_desk: ["Customer ID", "Pet Name", "Breed", "Weight", "Notes"],
+    quoteiq_family: ["Client ID", "Pet Name", "Breed", "Weight", "Notes"],
+  },
+};
+
+function downloadTemplate(source: string, entity: ImportEntity) {
+  const headers = TEMPLATE_HEADERS[entity][source] ?? TEMPLATE_HEADERS[entity].generic_csv;
+  const csv = headers.join(",") + "\n";
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${source}-${entity}-template.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 function ImportsPage() {
   const listFn = useServerFn(listImportBatches);
@@ -220,6 +272,15 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
         <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
           Import <strong>clients first</strong>. Properties and dogs link back to a client by its
           external id from the original system.
+        </div>
+      )}
+
+      {SOURCE_HINTS[source] && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 p-3 text-xs">
+          <span className="text-muted-foreground">{SOURCE_HINTS[source]}</span>
+          <Button size="sm" variant="outline" onClick={() => downloadTemplate(source, entity)}>
+            Download {SOURCE_LABELS[source]} {entity} template
+          </Button>
         </div>
       )}
 
