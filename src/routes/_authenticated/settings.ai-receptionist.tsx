@@ -153,7 +153,13 @@ function Page() {
             {logs.logs.map((l: any) => (
               <div key={l.id} className="rounded-lg border bg-card p-3 text-sm">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{new Date(l.created_at).toLocaleString()} · {l.from_number}</span>
+                  <span>
+                    <span className={`mr-2 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${l.channel === "voice" ? "bg-blue-100 text-blue-800" : "bg-muted"}`}>
+                      {l.channel ?? "sms"}
+                    </span>
+                    {new Date(l.created_at).toLocaleString()} · {l.from_number}
+                    {l.channel === "voice" && l.turn != null ? ` · turn ${l.turn}` : ""}
+                  </span>
                   <span>
                     {l.latency_ms}ms
                     {l.escalated ? " · escalated" : ""}
