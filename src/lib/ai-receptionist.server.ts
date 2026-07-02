@@ -111,11 +111,16 @@ export async function runAiReceptionist(
     }),
   };
 
+  const isVoice = input.channel === "voice";
+  const maxLen = isVoice ? MAX_REPLY_LEN_VOICE : MAX_REPLY_LEN_SMS;
+  const channelRule = isVoice
+    ? `- You are on a live PHONE CALL. Speak conversationally in 1-2 short sentences (under ${maxLen} characters). No emoji, no URLs, no markdown — everything you say is read aloud.`
+    : `- Keep every SMS reply under ${maxLen} characters.`;
   const system = [
     input.persona.trim(),
     "",
     "Rules:",
-    `- Keep every SMS reply under ${MAX_REPLY_LEN} characters.`,
+    channelRule,
     "- Never guess prices. Always call get_pricing_quote before quoting.",
     "- If you don't know something, call lookup_faq. If the FAQ doesn't cover it, call escalate_to_human.",
     "- If the caller expresses interest in signing up, call capture_lead with their name and what they asked for.",
