@@ -7,9 +7,12 @@ import {
   generateVisits,
   assignRoute,
   optimizeRoute,
+  optimizeWeek,
   listStaff,
   reassignVisit,
   reorderRoute,
+  getDispatchSettings,
+  updateDispatchSettings,
 } from "@/lib/visits.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,14 +61,30 @@ function RoutesPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [localColumns, setLocalColumns] = useState<Record<string, Visit[]> | null>(null);
 
+  const [weekDays, setWeekDays] = useState(7);
+
   const listV = useServerFn(listVisitsForDay);
   const listS = useServerFn(listStaff);
   const gen = useServerFn(generateVisits);
   const assign = useServerFn(assignRoute);
   const optimize = useServerFn(optimizeRoute);
+  const optWeek = useServerFn(optimizeWeek);
   const reassign = useServerFn(reassignVisit);
   const reorder = useServerFn(reorderRoute);
+  const getSettings = useServerFn(getDispatchSettings);
+  const updSettings = useServerFn(updateDispatchSettings);
   const qc = useQueryClient();
+
+  const { data: settingsData } = useQuery({
+    queryKey: ["dispatch-settings"],
+    queryFn: () => getSettings(),
+  });
+  const settings = settingsData?.settings ?? {
+    workday_start: "08:00",
+    workday_end: "17:00",
+    avg_speed_kmh: 30,
+    traffic_profile: "normal",
+  };
 
   const { data: visitsData } = useQuery({
     queryKey: ["visits", day],
@@ -114,6 +133,24 @@ function RoutesPage() {
       toast.success(`Optimized ${r.assigned} stops (nearest-neighbor)`);
       setLocalColumns(null);
       qc.invalidateQueries({ queryKey: ["visits", day] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const weekMut = useMutation({
+    mutationFn: () => optWeek({ data: { startDate: day, days: weekDays } }),
+    onSuccess: (r) => {
+      const total = (r.results ?? []).reduce((s: number, x: any) => s + (x.assigned ?? 0), 0);
+      toast.success(`Optimized ${total} stops across ${weekDays} day(s)`);
+      setLocalColumns(null);
+      qc.invalidateQueries({ queryKey: ["visits"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const settingsMut = useMutation({
+    mutationFn: (patch: any) => updSettings({ data: patch }),
+    onSuccess: () => {
+      toast.success("Dispatch settings saved");
+      qc.invalidateQueries({ queryKey: ["dispatch-settings"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -241,10 +278,74 @@ function RoutesPage() {
             </Button>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Optimize uses nearest-neighbor from the tech's start location (Settings → Team).
+            Optimize uses nearest-neighbor with time windows + traffic from the tech's start location.
           </p>
         </div>
       </div>
+
+      <div className="grid gap-4 rounded-lg border bg-card p-5 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label>Optimize multiple days (auto-balance across techs)</Label>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={1}
+              max={31}
+              value={weekDays}
+              onChange={(e) => setWeekDays(Math.max(1, Math.min(31, Number(e.target.value) || 1)))}
+              className="w-20"
+            />
+            <span className="text-sm text-muted-foreground">days starting {day}</span>
+            <Button onClick={() => weekMut.mutate()} disabled={weekMut.isPending}>
+              {weekMut.isPending ? "…" : "Optimize week"}
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Distributes unassigned visits round-robin by zone, then optimizes each tech's day.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-xs">Workday start</Label>
+            <Input
+              type="time"
+              defaultValue={settings.workday_start?.slice(0, 5) ?? "08:00"}
+              onBlur={(e) => settingsMut.mutate({ workday_start: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Workday end</Label>
+            <Input
+              type="time"
+              defaultValue={settings.workday_end?.slice(0, 5) ?? "17:00"}
+              onBlur={(e) => settingsMut.mutate({ workday_end: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Avg speed (km/h)</Label>
+            <Input
+              type="number"
+              min={5}
+              max={120}
+              defaultValue={settings.avg_speed_kmh ?? 30}
+              onBlur={(e) => settingsMut.mutate({ avg_speed_kmh: Number(e.target.value) })}
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Traffic profile</Label>
+            <select
+              defaultValue={settings.traffic_profile ?? "normal"}
+              onChange={(e) => settingsMut.mutate({ traffic_profile: e.target.value as any })}
+              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            >
+              <option value="light">Light (faster)</option>
+              <option value="normal">Normal</option>
+              <option value="heavy">Heavy (slower)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
 
       <DndContext
         sensors={sensors}
@@ -345,9 +446,24 @@ function VisitCardView({
               {p.street}, {p.city} {p.postal_code}
             </div>
           )}
+          {(visit.eta_start || visit.travel_min != null) && (
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+              {visit.eta_start && (
+                <span>ETA {new Date(visit.eta_start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+              )}
+              {visit.travel_km != null && <span>· {Number(visit.travel_km).toFixed(1)} km</span>}
+              {visit.travel_min != null && <span>· {Math.round(Number(visit.travel_min))} min drive</span>}
+            </div>
+          )}
+          {(p?.earliest_service_time || p?.latest_service_time) && (
+            <div className="mt-0.5 text-[10px] text-muted-foreground">
+              Window {p.earliest_service_time?.slice(0, 5) ?? "—"}–{p.latest_service_time?.slice(0, 5) ?? "—"}
+            </div>
+          )}
           <div className="mt-1 flex flex-wrap items-center gap-1">
             {visit.zones?.name && <Badge variant="outline" className="h-4 px-1 text-[10px]">{visit.zones.name}</Badge>}
             <Badge variant="secondary" className="h-4 px-1 text-[10px]">{visit.status}</Badge>
+            {visit.window_violated && <Badge variant="destructive" className="h-4 px-1 text-[10px]">Late</Badge>}
           </div>
         </div>
       </div>

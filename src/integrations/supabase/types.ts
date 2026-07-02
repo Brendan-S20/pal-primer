@@ -1248,6 +1248,7 @@ export type Database = {
           auto_generate_days_ahead: number
           auto_generate_visits: boolean
           auto_invoice_enabled: boolean
+          avg_speed_kmh: number
           billing_tier: string | null
           created_at: string
           currency: string
@@ -1273,7 +1274,10 @@ export type Database = {
           sms_from_number: string | null
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
+          traffic_profile: string
           updated_at: string
+          workday_end: string
+          workday_start: string
         }
         Insert: {
           active_client_count?: number
@@ -1285,6 +1289,7 @@ export type Database = {
           auto_generate_days_ahead?: number
           auto_generate_visits?: boolean
           auto_invoice_enabled?: boolean
+          avg_speed_kmh?: number
           billing_tier?: string | null
           created_at?: string
           currency?: string
@@ -1310,7 +1315,10 @@ export type Database = {
           sms_from_number?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
+          traffic_profile?: string
           updated_at?: string
+          workday_end?: string
+          workday_start?: string
         }
         Update: {
           active_client_count?: number
@@ -1322,6 +1330,7 @@ export type Database = {
           auto_generate_days_ahead?: number
           auto_generate_visits?: boolean
           auto_invoice_enabled?: boolean
+          avg_speed_kmh?: number
           billing_tier?: string | null
           created_at?: string
           currency?: string
@@ -1347,7 +1356,10 @@ export type Database = {
           sms_from_number?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
+          traffic_profile?: string
           updated_at?: string
+          workday_end?: string
+          workday_start?: string
         }
         Relationships: []
       }
@@ -1425,6 +1437,7 @@ export type Database = {
           created_at: string
           do_not_enter_if_dog_out: boolean
           dog_in_yard_during_service: boolean
+          earliest_service_time: string | null
           escape_risk: boolean
           gate_code: string | null
           hazard_notes: string | null
@@ -1432,11 +1445,13 @@ export type Database = {
           invisible_fence: boolean
           key_location: string | null
           label: string | null
+          latest_service_time: string | null
           lock_box_code: string | null
           organization_id: string
           parking_notes: string | null
           postal_code: string
           region: string | null
+          service_duration_min: number
           sharp_objects: boolean
           slippery_surfaces: boolean
           street: string
@@ -1452,6 +1467,7 @@ export type Database = {
           created_at?: string
           do_not_enter_if_dog_out?: boolean
           dog_in_yard_during_service?: boolean
+          earliest_service_time?: string | null
           escape_risk?: boolean
           gate_code?: string | null
           hazard_notes?: string | null
@@ -1459,11 +1475,13 @@ export type Database = {
           invisible_fence?: boolean
           key_location?: string | null
           label?: string | null
+          latest_service_time?: string | null
           lock_box_code?: string | null
           organization_id: string
           parking_notes?: string | null
           postal_code: string
           region?: string | null
+          service_duration_min?: number
           sharp_objects?: boolean
           slippery_surfaces?: boolean
           street: string
@@ -1479,6 +1497,7 @@ export type Database = {
           created_at?: string
           do_not_enter_if_dog_out?: boolean
           dog_in_yard_during_service?: boolean
+          earliest_service_time?: string | null
           escape_risk?: boolean
           gate_code?: string | null
           hazard_notes?: string | null
@@ -1486,11 +1505,13 @@ export type Database = {
           invisible_fence?: boolean
           key_location?: string | null
           label?: string | null
+          latest_service_time?: string | null
           lock_box_code?: string | null
           organization_id?: string
           parking_notes?: string | null
           postal_code?: string
           region?: string | null
+          service_duration_min?: number
           sharp_objects?: boolean
           slippery_surfaces?: boolean
           street?: string
@@ -1773,6 +1794,7 @@ export type Database = {
           frequency: Database["public"]["Enums"]["service_frequency"]
           id: string
           organization_id: string
+          preferred_time_of_day: string
           preferred_weekdays: number[] | null
           price_cents: number
           property_id: string
@@ -1790,6 +1812,7 @@ export type Database = {
           frequency: Database["public"]["Enums"]["service_frequency"]
           id?: string
           organization_id: string
+          preferred_time_of_day?: string
           preferred_weekdays?: number[] | null
           price_cents: number
           property_id: string
@@ -1807,6 +1830,7 @@ export type Database = {
           frequency?: Database["public"]["Enums"]["service_frequency"]
           id?: string
           organization_id?: string
+          preferred_time_of_day?: string
           preferred_weekdays?: number[] | null
           price_cents?: number
           property_id?: string
@@ -1953,6 +1977,8 @@ export type Database = {
           client_id: string
           completed_at: string | null
           created_at: string
+          eta_end: string | null
+          eta_start: string | null
           id: string
           organization_id: string
           property_id: string
@@ -1969,9 +1995,12 @@ export type Database = {
           station_count_serviced: number
           status: Database["public"]["Enums"]["visit_status"]
           subscription_id: string
+          travel_km: number | null
+          travel_min: number | null
           updated_at: string
           weather_flagged: boolean
           weather_note: string | null
+          window_violated: boolean
           zone_id: string | null
         }
         Insert: {
@@ -1979,6 +2008,8 @@ export type Database = {
           client_id: string
           completed_at?: string | null
           created_at?: string
+          eta_end?: string | null
+          eta_start?: string | null
           id?: string
           organization_id: string
           property_id: string
@@ -1995,9 +2026,12 @@ export type Database = {
           station_count_serviced?: number
           status?: Database["public"]["Enums"]["visit_status"]
           subscription_id: string
+          travel_km?: number | null
+          travel_min?: number | null
           updated_at?: string
           weather_flagged?: boolean
           weather_note?: string | null
+          window_violated?: boolean
           zone_id?: string | null
         }
         Update: {
@@ -2005,6 +2039,8 @@ export type Database = {
           client_id?: string
           completed_at?: string | null
           created_at?: string
+          eta_end?: string | null
+          eta_start?: string | null
           id?: string
           organization_id?: string
           property_id?: string
@@ -2021,9 +2057,12 @@ export type Database = {
           station_count_serviced?: number
           status?: Database["public"]["Enums"]["visit_status"]
           subscription_id?: string
+          travel_km?: number | null
+          travel_min?: number | null
           updated_at?: string
           weather_flagged?: boolean
           weather_note?: string | null
+          window_violated?: boolean
           zone_id?: string | null
         }
         Relationships: [
@@ -2447,6 +2486,23 @@ export type Database = {
           _staff_id: string
         }
         Returns: number
+      }
+      optimize_route_v2: {
+        Args: {
+          _day: string
+          _org_id: string
+          _reassign?: boolean
+          _staff_id: string
+        }
+        Returns: number
+      }
+      optimize_week: {
+        Args: { _days?: number; _org_id: string; _start_date: string }
+        Returns: {
+          assigned: number
+          day: string
+          staff_id: string
+        }[]
       }
       org_can_add_client: { Args: { _org_id: string }; Returns: boolean }
       phone_digits: { Args: { _p: string }; Returns: string }

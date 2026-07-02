@@ -72,7 +72,7 @@ export const listPropertiesForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("properties")
       .select(
-        "id, label, street, city, region, postal_code, gate_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes",
+        "id, label, street, city, region, postal_code, gate_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min",
       )
       .eq("client_id", data.clientId)
       .order("created_at");
