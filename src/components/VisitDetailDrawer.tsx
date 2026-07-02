@@ -200,6 +200,11 @@ export function VisitDetailDrawer({
                 <Link to="/clients/$clientId" params={{ clientId: v.client_id }} onClick={() => onOpenChange(false)}>
                   <Button size="sm" variant="ghost"><ExternalLink className="mr-1.5 h-3.5 w-3.5" />Open client</Button>
                 </Link>
+                {p?.id && (
+                  <Link to="/properties/$propertyId/boundary" params={{ propertyId: p.id }} onClick={() => onOpenChange(false)}>
+                    <Button size="sm" variant="ghost">Boundary map</Button>
+                  </Link>
+                )}
               </div>
               {(p?.gate_code || p?.lock_box_code || p?.key_location) && (
                 <div className="grid grid-cols-2 gap-2 rounded-md border bg-muted/30 p-2 text-xs">
