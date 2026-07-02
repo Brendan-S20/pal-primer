@@ -1590,6 +1590,66 @@ export type Database = {
           },
         ]
       }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          client_id: string | null
+          created_at: string
+          disabled: boolean
+          endpoint: string
+          id: string
+          last_error: string | null
+          last_sent_at: string | null
+          organization_id: string | null
+          p256dh: string
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          auth: string
+          client_id?: string | null
+          created_at?: string
+          disabled?: boolean
+          endpoint: string
+          id?: string
+          last_error?: string | null
+          last_sent_at?: string | null
+          organization_id?: string | null
+          p256dh: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          auth?: string
+          client_id?: string | null
+          created_at?: string
+          disabled?: boolean
+          endpoint?: string
+          id?: string
+          last_error?: string | null
+          last_sent_at?: string | null
+          organization_id?: string | null
+          p256dh?: string
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "push_subscriptions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       signup_requests: {
         Row: {
           city: string | null
