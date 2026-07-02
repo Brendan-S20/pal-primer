@@ -127,3 +127,76 @@ export const listPropertiesForClient = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     return { properties: rows ?? [] };
   });
+
+// GeoJSON Polygon: coordinates = [ [ [lng, lat], ... ] ]  first == last
+const polygonSchema = z
+  .object({
+    type: z.literal("Polygon"),
+    coordinates: z.array(z.array(z.tuple([z.number(), z.number()])).min(4)).min(1),
+  })
+  .nullable();
+
+// Shoelace on lat/lng, projected as equirectangular around the polygon centroid.
+function polygonAreaSqm(poly: { coordinates: number[][][] } | null): number | null {
+  if (!poly) return null;
+  const ring = poly.coordinates[0];
+  if (!ring || ring.length < 4) return null;
+  const R = 6378137;
+  const latMean = (ring.reduce((s, p) => s + p[1], 0) / ring.length) * (Math.PI / 180);
+  const cosLat = Math.cos(latMean);
+  let a = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    const x1 = xi * (Math.PI / 180) * R * cosLat;
+    const y1 = yi * (Math.PI / 180) * R;
+    const x2 = xj * (Math.PI / 180) * R * cosLat;
+    const y2 = yj * (Math.PI / 180) * R;
+    a += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(a / 2);
+}
+
+export const getPropertyBoundary = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ propertyId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: row, error } = await context.supabase
+      .from("properties")
+      .select("id, street, city, postal_code, latitude, longitude, boundary, boundary_area_sqm, yard_size")
+      .eq("id", data.propertyId)
+      .single();
+    if (error) throw new Error(error.message);
+    return { property: row };
+  });
+
+export const updatePropertyBoundary = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        propertyId: z.string().uuid(),
+        boundary: polygonSchema,
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const orgRes = await context.supabase
+      .from("user_roles")
+      .select("organization_id")
+      .eq("user_id", context.userId)
+      .maybeSingle();
+    const orgId = orgRes.data?.organization_id as string | undefined;
+    if (!orgId) throw new Error("No organization");
+    const area = polygonAreaSqm(data.boundary as any);
+    const { error } = await context.supabase
+      .from("properties")
+      .update({
+        boundary: data.boundary as any,
+        boundary_area_sqm: area,
+      } as any)
+      .eq("id", data.propertyId)
+      .eq("organization_id", orgId);
+    if (error) throw new Error(error.message);
+    return { ok: true, area_sqm: area };
+  });
