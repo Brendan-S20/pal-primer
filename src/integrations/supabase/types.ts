@@ -687,6 +687,92 @@ export type Database = {
           },
         ]
       }
+      dna_matches: {
+        Row: {
+          client_id: string | null
+          collected_at: string
+          created_at: string
+          created_by: string | null
+          fine_cents: number
+          id: string
+          lab_reference: string | null
+          location_note: string | null
+          matched_at: string | null
+          matched_dog_id: string | null
+          notes: string | null
+          organization_id: string
+          property_id: string | null
+          sample_kind: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          client_id?: string | null
+          collected_at?: string
+          created_at?: string
+          created_by?: string | null
+          fine_cents?: number
+          id?: string
+          lab_reference?: string | null
+          location_note?: string | null
+          matched_at?: string | null
+          matched_dog_id?: string | null
+          notes?: string | null
+          organization_id: string
+          property_id?: string | null
+          sample_kind: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string | null
+          collected_at?: string
+          created_at?: string
+          created_by?: string | null
+          fine_cents?: number
+          id?: string
+          lab_reference?: string | null
+          location_note?: string | null
+          matched_at?: string | null
+          matched_dog_id?: string | null
+          notes?: string | null
+          organization_id?: string
+          property_id?: string | null
+          sample_kind?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dna_matches_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dna_matches_matched_dog_id_fkey"
+            columns: ["matched_dog_id"]
+            isOneToOne: false
+            referencedRelation: "dogs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dna_matches_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dna_matches_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dogs: {
         Row: {
           breed: string | null
@@ -1700,6 +1786,7 @@ export type Database = {
           referral_reward_cents: number
           review_ask_enabled: boolean
           review_ask_template: string | null
+          seasonal_deepclean_charge_cents: number
           seasonal_deepclean_enabled: boolean
           seasonal_deepclean_months: number[]
           slug: string | null
@@ -1748,6 +1835,7 @@ export type Database = {
           referral_reward_cents?: number
           review_ask_enabled?: boolean
           review_ask_template?: string | null
+          seasonal_deepclean_charge_cents?: number
           seasonal_deepclean_enabled?: boolean
           seasonal_deepclean_months?: number[]
           slug?: string | null
@@ -1796,6 +1884,7 @@ export type Database = {
           referral_reward_cents?: number
           review_ask_enabled?: boolean
           review_ask_template?: string | null
+          seasonal_deepclean_charge_cents?: number
           seasonal_deepclean_enabled?: boolean
           seasonal_deepclean_months?: number[]
           slug?: string | null
@@ -2673,9 +2762,11 @@ export type Database = {
           client_id: string
           completed_at: string | null
           created_at: string
+          deepclean_charge_cents: number
           eta_end: string | null
           eta_start: string | null
           id: string
+          is_deepclean: boolean
           organization_id: string
           property_id: string
           rescheduled_from: string | null
@@ -2704,9 +2795,11 @@ export type Database = {
           client_id: string
           completed_at?: string | null
           created_at?: string
+          deepclean_charge_cents?: number
           eta_end?: string | null
           eta_start?: string | null
           id?: string
+          is_deepclean?: boolean
           organization_id: string
           property_id: string
           rescheduled_from?: string | null
@@ -2735,9 +2828,11 @@ export type Database = {
           client_id?: string
           completed_at?: string | null
           created_at?: string
+          deepclean_charge_cents?: number
           eta_end?: string | null
           eta_start?: string | null
           id?: string
+          is_deepclean?: boolean
           organization_id?: string
           property_id?: string
           rescheduled_from?: string | null
@@ -3047,6 +3142,10 @@ export type Database = {
     Functions: {
       admin_generate_invoices_for_org: {
         Args: { _org_id: string; _through: string }
+        Returns: number
+      }
+      admin_generate_seasonal_deepcleans: {
+        Args: { _month: number; _org_id: string; _year: number }
         Returns: number
       }
       admin_generate_visits_through: {
