@@ -1410,6 +1410,9 @@ export type Database = {
           organization_id: string
           phone: string | null
           role: Database["public"]["Enums"]["staff_role"]
+          start_address: string | null
+          start_latitude: number | null
+          start_longitude: number | null
           user_id: string
         }
         Insert: {
@@ -1422,6 +1425,9 @@ export type Database = {
           organization_id: string
           phone?: string | null
           role: Database["public"]["Enums"]["staff_role"]
+          start_address?: string | null
+          start_latitude?: number | null
+          start_longitude?: number | null
           user_id: string
         }
         Update: {
@@ -1434,6 +1440,9 @@ export type Database = {
           organization_id?: string
           phone?: string | null
           role?: Database["public"]["Enums"]["staff_role"]
+          start_address?: string | null
+          start_latitude?: number | null
+          start_longitude?: number | null
           user_id?: string
         }
         Relationships: [
@@ -2152,6 +2161,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      haversine_km: {
+        Args: { lat1: number; lat2: number; lon1: number; lon2: number }
+        Returns: number
+      }
       is_org_member: {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
@@ -2188,6 +2201,15 @@ export type Database = {
           _from: string
         }
         Returns: string
+      }
+      optimize_route_for_day: {
+        Args: {
+          _day: string
+          _org_id: string
+          _reassign?: boolean
+          _staff_id: string
+        }
+        Returns: number
       }
       org_can_add_client: { Args: { _org_id: string }; Returns: boolean }
       phone_digits: { Args: { _p: string }; Returns: string }

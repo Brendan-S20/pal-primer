@@ -6,6 +6,7 @@ import {
   listVisitsForDay,
   generateVisits,
   assignRoute,
+  optimizeRoute,
   listStaff,
   reassignVisit,
   reorderRoute,
@@ -61,6 +62,7 @@ function RoutesPage() {
   const listS = useServerFn(listStaff);
   const gen = useServerFn(generateVisits);
   const assign = useServerFn(assignRoute);
+  const optimize = useServerFn(optimizeRoute);
   const reassign = useServerFn(reassignVisit);
   const reorder = useServerFn(reorderRoute);
   const qc = useQueryClient();
@@ -101,6 +103,15 @@ function RoutesPage() {
     mutationFn: () => assign({ data: { staffId: assignStaffId, day, reassign: false } }),
     onSuccess: (r) => {
       toast.success(`Auto-assigned ${r.assigned} visits`);
+      setLocalColumns(null);
+      qc.invalidateQueries({ queryKey: ["visits", day] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const optimizeMut = useMutation({
+    mutationFn: () => optimize({ data: { staffId: assignStaffId, day, reassign: true } }),
+    onSuccess: (r) => {
+      toast.success(`Optimized ${r.assigned} stops (nearest-neighbor)`);
       setLocalColumns(null);
       qc.invalidateQueries({ queryKey: ["visits", day] });
     },
@@ -209,7 +220,7 @@ function RoutesPage() {
           </div>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="tech">Auto-assign day to tech</Label>
+          <Label htmlFor="tech">Auto-assign / optimize day for tech</Label>
           <div className="flex gap-2">
             <select
               id="tech"
@@ -225,7 +236,13 @@ function RoutesPage() {
             <Button onClick={() => assignMut.mutate()} disabled={!assignStaffId || assignMut.isPending} variant="secondary">
               Assign
             </Button>
+            <Button onClick={() => optimizeMut.mutate()} disabled={!assignStaffId || optimizeMut.isPending}>
+              {optimizeMut.isPending ? "…" : "Optimize"}
+            </Button>
           </div>
+          <p className="text-[11px] text-muted-foreground">
+            Optimize uses nearest-neighbor from the tech's start location (Settings → Team).
+          </p>
         </div>
       </div>
 
