@@ -157,7 +157,7 @@ export async function runAiReceptionist(
     }
 
     const raw = (result.text ?? "").trim();
-    const reply = raw ? raw.slice(0, MAX_REPLY_LEN) : null;
+    const reply = raw ? raw.slice(0, maxLen) : null;
 
     return { reply, toolCalls, escalated, latencyMs, model: MODEL_ID, error: null };
   } catch (e: any) {
