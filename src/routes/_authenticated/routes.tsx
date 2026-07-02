@@ -291,8 +291,9 @@ function RoutesPage() {
         </div>
       </div>
 
-
+      {toolsOpen && (
       <div className="grid gap-4 rounded-lg border bg-card p-5 sm:grid-cols-3">
+
         <div className="space-y-2">
           <Label htmlFor="day">Day</Label>
           <Input id="day" type="date" value={day} onChange={(e) => { setLocalColumns(null); setDay(e.target.value); }} />
@@ -332,8 +333,11 @@ function RoutesPage() {
           </p>
         </div>
       </div>
+      )}
 
+      {toolsOpen && (
       <div className="grid gap-4 rounded-lg border bg-card p-5 md:grid-cols-2">
+
         <div className="space-y-2">
           <Label>Optimize multiple days (auto-balance across techs)</Label>
           <div className="flex items-center gap-2">
@@ -403,17 +407,23 @@ function RoutesPage() {
           </div>
         </div>
       </div>
+      )}
 
-      <MapPanel visits={visits} staff={staff} />
+      {(viewMode === "map" || viewMode === "split") && (
+        <>
+          <MapPanel visits={visits} staff={staff} />
+          <HeatmapPanel visits={visits} staff={staff} />
+        </>
+      )}
 
-      <HeatmapPanel visits={visits} staff={staff} />
-
+      {(viewMode === "board" || viewMode === "split") && (
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
       >
+
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <Column
             id={UNASSIGNED}
