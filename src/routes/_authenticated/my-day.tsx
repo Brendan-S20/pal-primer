@@ -22,6 +22,7 @@ import { syncQueue } from "@/lib/offline/sync";
 import { countPendingForVisit } from "@/lib/offline/queue";
 import { toast } from "sonner";
 import { Navigation, Camera, ChevronDown, ChevronUp, WifiOff, RefreshCw } from "lucide-react";
+import { PushToggle } from "@/components/PushToggle";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   component: MyDay,
@@ -125,12 +126,15 @@ function MyDay() {
             {staff ? `${staff.display_name} · ${staff.role}` : "Not on any staff record"}
           </p>
         </div>
-        <input
-          type="date"
-          value={day}
-          onChange={(e) => setDay(e.target.value)}
-          className="rounded-md border bg-background px-3 py-2 text-sm"
-        />
+        <div className="flex items-center gap-2">
+          <PushToggle />
+          <input
+            type="date"
+            value={day}
+            onChange={(e) => setDay(e.target.value)}
+            className="rounded-md border bg-background px-3 py-2 text-sm"
+          />
+        </div>
       </div>
 
       {total > 0 && (
