@@ -1802,6 +1802,44 @@ export type Database = {
           },
         ]
       }
+      platform_admin_audit: {
+        Row: {
+          action: string
+          actor_user_id: string
+          after_json: Json | null
+          before_json: Json | null
+          created_at: string
+          id: string
+          organization_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_user_id: string
+          after_json?: Json | null
+          before_json?: Json | null
+          created_at?: string
+          id?: string
+          organization_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string
+          after_json?: Json | null
+          before_json?: Json | null
+          created_at?: string
+          id?: string
+          organization_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_admin_audit_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       promo_codes: {
         Row: {
           active: boolean
@@ -2043,6 +2081,73 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qc_tickets: {
+        Row: {
+          category: string
+          client_id: string
+          created_at: string
+          id: string
+          message: string | null
+          organization_id: string
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          updated_at: string
+          visit_id: string | null
+        }
+        Insert: {
+          category: string
+          client_id: string
+          created_at?: string
+          id?: string
+          message?: string | null
+          organization_id: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          updated_at?: string
+          visit_id?: string | null
+        }
+        Update: {
+          category?: string
+          client_id?: string
+          created_at?: string
+          id?: string
+          message?: string | null
+          organization_id?: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          updated_at?: string
+          visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qc_tickets_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qc_tickets_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qc_tickets_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
             referencedColumns: ["id"]
           },
         ]
@@ -3123,6 +3228,12 @@ export type Database = {
           organization_id: string
         }[]
       }
+      portal_get_referral: {
+        Args: { _token: string }
+        Returns: {
+          referral_code: string
+        }[]
+      }
       portal_list_addon_catalog: {
         Args: { _token: string }
         Returns: {
@@ -3148,6 +3259,17 @@ export type Database = {
           status: string
         }[]
       }
+      portal_list_dogs: {
+        Args: { _token: string }
+        Returns: {
+          breed: string
+          dog_id: string
+          name: string
+          notes: string
+          temperament: string
+          weight_class: string
+        }[]
+      }
       portal_list_invoices: {
         Args: { _token: string }
         Returns: {
@@ -3169,6 +3291,15 @@ export type Database = {
           subscription_id: string
         }[]
       }
+      portal_list_recent_visits: {
+        Args: { _token: string }
+        Returns: {
+          photo_paths: string[]
+          scheduled_on: string
+          status: Database["public"]["Enums"]["visit_status"]
+          visit_id: string
+        }[]
+      }
       portal_list_upcoming_visits: {
         Args: { _token: string }
         Returns: {
@@ -3179,6 +3310,15 @@ export type Database = {
           street: string
           visit_id: string
         }[]
+      }
+      portal_report_concern: {
+        Args: {
+          _category: string
+          _message: string
+          _token: string
+          _visit_id: string
+        }
+        Returns: string
       }
       portal_request_skip: {
         Args: { _reason: string; _token: string; _visit_id: string }

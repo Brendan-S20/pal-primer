@@ -95,7 +95,25 @@ function AuthPage() {
                 <Input id="si-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="si-pw">Password</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="si-pw">Password</Label>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!email) { setError("Enter your email above, then click Forgot password."); return; }
+                      setError(null); setLoading(true);
+                      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                        redirectTo: `${window.location.origin}/reset-password`,
+                      });
+                      setLoading(false);
+                      if (error) setError(error.message);
+                      else setError("Check your email for a reset link.");
+                    }}
+                    className="text-xs text-muted-foreground underline underline-offset-2 hover:text-primary"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
                 <Input id="si-pw" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
               </div>
               <Button type="submit" disabled={loading} className="w-full">
@@ -103,6 +121,7 @@ function AuthPage() {
               </Button>
             </form>
           </TabsContent>
+
 
           <TabsContent value="signup">
             <form onSubmit={handleSignUp} className="space-y-4 rounded-lg border bg-card p-6">

@@ -86,7 +86,16 @@ function Dashboard() {
         tone: "danger",
       });
     }
+    if (sum.openConcerns && sum.openConcerns.length > 0) {
+      alerts.push({
+        icon: AlertTriangle,
+        text: `${sum.openConcerns.length} client concern${sum.openConcerns.length === 1 ? "" : "s"} to review`,
+        to: "/messages",
+        tone: "warn",
+      });
+    }
   }
+
 
   const completed = sum?.visitCounts.completed ?? 0;
   const total = sum?.visitCounts.total ?? 0;
