@@ -8,9 +8,10 @@ import {
   listImportBatches,
   previewImport,
   IMPORT_SOURCES,
-  CLIENT_TARGET_FIELDS,
+  IMPORT_ENTITIES,
+  TARGET_FIELDS_BY_ENTITY,
   autoMap,
-  type ClientTargetField,
+  type ImportEntity,
 } from "@/lib/imports.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,18 @@ const SOURCE_LABELS: Record<string, string> = {
   time_to_pet: "Time To Pet",
   gorilla_desk: "GorillaDesk",
   quoteiq_family: "QuoteIQ / Flowcarve / DoTimely",
+};
+
+const ENTITY_LABELS: Record<ImportEntity, string> = {
+  clients: "Clients",
+  properties: "Properties (addresses)",
+  dogs: "Dogs",
+};
+
+const REQUIRED_FIELDS: Record<ImportEntity, string[]> = {
+  clients: ["display_name"],
+  properties: ["client_external_id", "street"],
+  dogs: ["client_external_id", "name"],
 };
 
 function ImportsPage() {
@@ -103,18 +116,15 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
   const navigate = useNavigate();
   const previewFn = useServerFn(previewImport);
   const [source, setSource] = useState<(typeof IMPORT_SOURCES)[number]>("generic_csv");
+  const [entity, setEntity] = useState<ImportEntity>("clients");
   const [file, setFile] = useState<File | null>(null);
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<Record<string, any>[]>([]);
-  const [mapping, setMapping] = useState<Record<ClientTargetField, string | null>>({
-    display_name: null,
-    account_type: null,
-    primary_email: null,
-    primary_phone: null,
-    external_id: null,
-    notes: null,
-  });
+  const [mapping, setMapping] = useState<Record<string, string | null>>({});
   const [busy, setBusy] = useState(false);
+
+  const targetFields = TARGET_FIELDS_BY_ENTITY[entity];
+  const required = REQUIRED_FIELDS[entity];
 
   const onFileChange = (f: File | null) => {
     setFile(f);
@@ -130,7 +140,7 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
         const hs = res.meta.fields ?? [];
         setHeaders(hs);
         setRows(res.data);
-        setMapping(autoMap(source, hs));
+        setMapping(autoMap(source, hs, entity));
       },
       error: (err) => toast.error(`CSV parse error: ${err.message}`),
     });
@@ -138,16 +148,23 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
 
   const onSourceChange = (s: (typeof IMPORT_SOURCES)[number]) => {
     setSource(s);
-    if (headers.length) setMapping(autoMap(s, headers));
+    if (headers.length) setMapping(autoMap(s, headers, entity));
+  };
+
+  const onEntityChange = (e: ImportEntity) => {
+    setEntity(e);
+    if (headers.length) setMapping(autoMap(source, headers, e));
   };
 
   const runPreview = async () => {
     if (!rows.length) return toast.error("Upload a CSV first.");
-    if (!mapping.display_name) return toast.error("Map the display_name column.");
+    for (const req of required) {
+      if (!mapping[req]) return toast.error(`Map the ${req} column.`);
+    }
     setBusy(true);
     try {
       const { batchId } = await previewFn({
-        data: { source, filename: file?.name, mapping, rows },
+        data: { source, entity, filename: file?.name, mapping, rows },
       });
       toast.success("Preview ready");
       onCreated();
@@ -163,7 +180,19 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
     <section className="space-y-4 rounded-lg border bg-card p-6">
       <h2 className="text-lg font-medium">New import</h2>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
+        <label className="space-y-1 text-sm">
+          <span className="font-medium">What are you importing?</span>
+          <select
+            value={entity}
+            onChange={(e) => onEntityChange(e.target.value as ImportEntity)}
+            className="block w-full rounded border bg-background px-3 py-2 text-sm"
+          >
+            {IMPORT_ENTITIES.map((e) => (
+              <option key={e} value={e}>{ENTITY_LABELS[e]}</option>
+            ))}
+          </select>
+        </label>
         <label className="space-y-1 text-sm">
           <span className="font-medium">Source system</span>
           <select
@@ -187,6 +216,13 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
         </label>
       </div>
 
+      {entity !== "clients" && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+          Import <strong>clients first</strong>. Properties and dogs link back to a client by its
+          external id from the original system.
+        </div>
+      )}
+
       {headers.length > 0 && (
         <div className="space-y-3">
           <div className="text-sm text-muted-foreground">
@@ -195,11 +231,11 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
             target field to a column (auto-mapped from the {SOURCE_LABELS[source]} preset).
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            {CLIENT_TARGET_FIELDS.map((field) => (
+            {targetFields.map((field) => (
               <label key={field} className="space-y-1 text-sm">
                 <span className="font-medium">
                   {field}
-                  {field === "display_name" && <span className="text-red-500"> *</span>}
+                  {required.includes(field) && <span className="text-red-500"> *</span>}
                 </span>
                 <select
                   value={mapping[field] ?? ""}
