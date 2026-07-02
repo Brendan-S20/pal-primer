@@ -64,6 +64,7 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
       { title: "My day", url: "/my-day", icon: Truck },
       { title: "Waste log", url: "/waste-log", icon: Trash2 },
       { title: "Messages", url: "/messages", icon: MessageSquare },
+      { title: "Neighbor canvassing", url: "/neighbors", icon: MapPin },
     ],
   },
   {
