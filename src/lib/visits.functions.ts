@@ -169,3 +169,72 @@ export const reorderRoute = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { updated: (count as number) ?? 0 };
   });
+
+export const optimizeWeek = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ startDate: z.string(), days: z.number().int().min(1).max(31) }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+    const { data: rows, error } = await supabase.rpc("optimize_week", {
+      _org_id: orgId,
+      _start_date: data.startDate,
+      _days: data.days,
+    });
+    if (error) throw new Error(error.message);
+    return { results: (rows as any[]) ?? [] };
+  });
+
+export const getDispatchSettings = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { data, error } = await context.supabase
+      .from("organizations")
+      .select("workday_start, workday_end, avg_speed_kmh, traffic_profile")
+      .eq("id", orgId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return { settings: data };
+  });
+
+export const updateDispatchSettings = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      workday_start: z.string().optional(),
+      workday_end: z.string().optional(),
+      avg_speed_kmh: z.number().int().min(5).max(120).optional(),
+      traffic_profile: z.enum(["light", "normal", "heavy"]).optional(),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { error } = await context.supabase.from("organizations").update(data).eq("id", orgId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const updatePropertyWindow = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      propertyId: z.string().uuid(),
+      earliest_service_time: z.string().nullable().optional(),
+      latest_service_time: z.string().nullable().optional(),
+      service_duration_min: z.number().int().min(1).max(240).optional(),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { propertyId, ...patch } = data;
+    const { error } = await context.supabase
+      .from("properties")
+      .update(patch)
+      .eq("id", propertyId)
+      .eq("organization_id", orgId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
