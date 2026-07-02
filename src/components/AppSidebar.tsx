@@ -62,6 +62,12 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
     ],
   },
   {
+    label: "Ops",
+    items: [
+      { title: "Inventory", url: "/inventory", icon: Package },
+    ],
+  },
+  {
     label: "Billing",
     items: [
       { title: "Invoices", url: "/invoices", icon: Receipt },
