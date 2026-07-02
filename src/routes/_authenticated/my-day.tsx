@@ -394,39 +394,43 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
   const start = useMutation({
     mutationFn: () => actions.start(),
     onSuccess: (r) => {
+      haptic("select");
       toast.success(r.queued ? "Queued — starts when back online" : "Started");
       if (!r.queued) invalidate();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => { haptic("error"); toast.error(e.message); },
   });
   const complete = useMutation({
     mutationFn: () => actions.complete(),
     onSuccess: (r) => {
+      haptic("success");
       toast.success(r.queued ? "Queued — completes when back online" : "Completed");
       if (!r.queued) invalidate();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => { haptic("error"); toast.error(e.message); },
   });
   const skip = useMutation({
     mutationFn: () => actions.skip(reason, reasonCode),
     onSuccess: (r) => {
+      haptic("warning");
       toast.success(r.queued ? "Queued — will skip when back online" : "Marked skipped");
       setShowSkip(false);
       if (!r.queued) invalidate();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => { haptic("error"); toast.error(e.message); },
   });
   const sms = useMutation({
     mutationFn: (kind: "reminder" | "on_my_way" | "completed") =>
       smsFn({ data: { visitId: visit.id, kind } }),
-    onSuccess: () => toast.success("SMS sent"),
-    onError: (e: Error) => toast.error(e.message),
+    onSuccess: () => { haptic("select"); toast.success("SMS sent"); },
+    onError: (e: Error) => { haptic("error"); toast.error(e.message); },
   });
 
   const uploadPhoto = async (file: File) => {
     setUploading(true);
     try {
       const r = await actions.uploadPhoto(file, photoKind);
+      haptic("tap");
       toast.success(
         r.queued
           ? `${photoKind[0].toUpperCase() + photoKind.slice(1)} photo queued — uploads when online`
@@ -434,6 +438,7 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
       );
       if (!r.queued) invalidate();
     } catch (e: any) {
+      haptic("error");
       toast.error(e.message ?? "Upload failed");
     } finally {
       setUploading(false);
