@@ -93,9 +93,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "Scoop CRM — Field service for pet waste removal" },
-      { name: "description", content: "First Steps is a TypeScript application that guides users through initial setup and learning modules." },
-      { property: "og:description", content: "First Steps is a TypeScript application that guides users through initial setup and learning modules." },
-      { name: "twitter:description", content: "First Steps is a TypeScript application that guides users through initial setup and learning modules." },
+      {
+        name: "twitter:description",
+        content: "Field service CRM built exclusively for pet waste removal companies.",
+      },
       { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/5db1fefc-e2e3-47a9-b6fe-874a92d3bd9f/id-preview-6276cc7b--da34c6c7-a052-492e-a400-8085bfb98730.lovable.app-1782922042889.png" },
       { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/5db1fefc-e2e3-47a9-b6fe-874a92d3bd9f/id-preview-6276cc7b--da34c6c7-a052-492e-a400-8085bfb98730.lovable.app-1782922042889.png" },
     ],

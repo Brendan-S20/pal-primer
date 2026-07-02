@@ -599,7 +599,21 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
               size="default"
               className="h-10"
               disabled={uploading}
-              onClick={() => fileInput.current?.click()}
+              onClick={async () => {
+                // Prefer native Capacitor camera when inside the app shell.
+                try {
+                  const { isNative, takePhotoNative } = await import("@/lib/native");
+                  if (isNative()) {
+                    const blob = await takePhotoNative();
+                    if (blob) {
+                      const file = new File([blob], `photo-${Date.now()}.jpg`, { type: blob.type || "image/jpeg" });
+                      await uploadPhoto(file);
+                      return;
+                    }
+                  }
+                } catch { /* fall through to web input */ }
+                fileInput.current?.click();
+              }}
             >
               <Camera className="mr-1.5 h-4 w-4" />
               {uploading ? "Uploading…" : "Take photo"}

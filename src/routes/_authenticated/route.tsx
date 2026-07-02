@@ -1,4 +1,5 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { InstallBanner } from "@/components/InstallBanner";
@@ -26,6 +27,11 @@ function openPalette() {
 }
 
 function AppShell() {
+  // Native Capacitor bootstrap — matches brand status bar; no-ops on web.
+  useEffect(() => {
+    import("@/lib/native").then((m) => m.initStatusBar()).catch(() => {});
+  }, []);
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     window.location.href = "/auth";

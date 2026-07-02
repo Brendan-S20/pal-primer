@@ -65,3 +65,13 @@ Import from `@/lib/native` — every helper no-ops on web, uses the plugin nativ
 - App ID: `consulting.thenorth.pal` — matches the notify subdomain. Change in `capacitor.config.ts` **before** running `cap add`.
 - Deep links to visits (`pal://visit/<id>`) can be added later via `@capacitor/app` `appUrlOpen`.
 - Offline queue (IndexedDB) already works inside the WebView with no changes.
+
+## Session status
+
+- ✅ Camera: `Take photo` in **My day** and the **Visit drawer** calls `takePhotoNative()` first, falls back to the web `<input capture>` if the plugin refuses.
+- ✅ Haptics: `haptic()` routes to Capacitor `Haptics` on device, `navigator.vibrate` on web.
+- ✅ Status bar: dark brand style applied in the authenticated shell.
+- ✅ Offline queue: unchanged — IndexedDB works inside the WebView.
+- ⏳ Push tokens: `push_subscriptions` schema is web-push (endpoint/p256dh/auth). Wire APNs/FCM by adding a `native_token` + `platform` column and calling `registerPushNotifications()` from the authenticated shell.
+- ⏳ GPS start-route: `getCurrentPositionNative()` is ready; hook into the tech "Start" action when route optimization needs a live pin.
+

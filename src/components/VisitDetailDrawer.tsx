@@ -455,7 +455,20 @@ function PhotosSection({ visitId, photos }: { visitId: string; photos: any[] }) 
           size="sm"
           variant="outline"
           disabled={uploading}
-          onClick={() => document.getElementById(`photo-input-${visitId}`)?.click()}
+          onClick={async () => {
+            try {
+              const { isNative, takePhotoNative } = await import("@/lib/native");
+              if (isNative()) {
+                const blob = await takePhotoNative();
+                if (blob) {
+                  const file = new File([blob], `photo-${Date.now()}.jpg`, { type: blob.type || "image/jpeg" });
+                  await upload(file);
+                  return;
+                }
+              }
+            } catch { /* fall through */ }
+            document.getElementById(`photo-input-${visitId}`)?.click();
+          }}
         >
           <Camera className="mr-1.5 h-3.5 w-3.5" />
           {uploading ? "Uploading…" : "Take photo"}
