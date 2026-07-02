@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyOrg } from "@/lib/org.functions";
 import { Button } from "@/components/ui/button";
+import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
@@ -35,6 +36,10 @@ function Dashboard() {
         <h1 className="text-2xl font-semibold">{org.name}</h1>
         <p className="text-sm text-muted-foreground">Signed in as {org.role}</p>
       </div>
+
+      <OnboardingChecklist />
+
+
 
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="rounded-lg border bg-card p-5">
