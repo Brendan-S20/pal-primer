@@ -69,7 +69,7 @@ export const listAiReceptionistLogs = createServerFn({ method: "GET" })
     const orgId = await orgIdFor(context.supabase, context.userId);
     const { data, error } = await context.supabase
       .from("ai_receptionist_logs")
-      .select("id, created_at, from_number, user_text, reply_text, escalated, latency_ms, error, tool_calls")
+      .select("id, created_at, from_number, user_text, reply_text, escalated, latency_ms, error, tool_calls, channel, call_sid, turn")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false })
       .limit(50);
