@@ -1,4 +1,8 @@
-const en = {
+const en: {
+  common: Record<string, string>;
+  myDay: Record<string, string>;
+  status: Record<string, string>;
+} = {
   common: {
     loading: "Loading…",
     save: "Save",
@@ -49,7 +53,7 @@ const en = {
     skipped: "skipped",
     canceled: "canceled",
   },
-} as const;
+};
 
 export default en;
 export type Translations = typeof en;
