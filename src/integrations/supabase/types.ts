@@ -2693,6 +2693,14 @@ export type Database = {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
       }
+      change_user_role: {
+        Args: {
+          _new_role: Database["public"]["Enums"]["app_role"]
+          _org_id: string
+          _user_id: string
+        }
+        Returns: undefined
+      }
       churn_drivers: {
         Args: { _org_id: string }
         Returns: {
@@ -2805,6 +2813,18 @@ export type Database = {
       is_visit_tech: {
         Args: { _user_id: string; _visit_id: string }
         Returns: boolean
+      }
+      list_org_users: {
+        Args: { _org_id: string }
+        Returns: {
+          active: boolean
+          created_at: string
+          display_name: string
+          email: string
+          role: Database["public"]["Enums"]["app_role"]
+          staff_id: string
+          user_id: string
+        }[]
       }
       log_station_service: {
         Args: {
@@ -3033,6 +3053,10 @@ export type Database = {
       }
       reschedule_visit: {
         Args: { _new_date: string; _note?: string; _visit_id: string }
+        Returns: undefined
+      }
+      set_staff_active: {
+        Args: { _active: boolean; _staff_id: string }
         Returns: undefined
       }
       skip_visit:

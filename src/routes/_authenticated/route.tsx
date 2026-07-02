@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { InstallBanner } from "@/components/InstallBanner";
 import { AppSidebar } from "@/components/AppSidebar";
+import { RoleGuard } from "@/components/RoleGuard";
 import { CommandPalette } from "@/components/CommandPalette";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
@@ -64,6 +65,8 @@ function AppShell() {
         <CommandPalette />
         <KeyboardShortcuts />
         <InstallBanner />
+        <RoleGuard />
+
       </div>
     </SidebarProvider>
   );

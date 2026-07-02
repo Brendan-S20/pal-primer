@@ -44,6 +44,7 @@ import { Route as AuthenticatedInvoicesIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedImportsIndexRouteImport } from './routes/_authenticated/imports.index'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
 import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
+import { Route as AuthenticatedSettingsUsersRouteImport } from './routes/_authenticated/settings.users'
 import { Route as AuthenticatedSettingsSmsRouteImport } from './routes/_authenticated/settings.sms'
 import { Route as AuthenticatedSettingsSkipRulesRouteImport } from './routes/_authenticated/settings.skip-rules'
 import { Route as AuthenticatedSettingsReviewsRouteImport } from './routes/_authenticated/settings.reviews'
@@ -249,6 +250,12 @@ const LovableEmailSuppressionRoute = LovableEmailSuppressionRouteImport.update({
   path: '/lovable/email/suppression',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedSettingsUsersRoute =
+  AuthenticatedSettingsUsersRouteImport.update({
+    id: '/users',
+    path: '/users',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedSettingsSmsRoute =
   AuthenticatedSettingsSmsRouteImport.update({
     id: '/sms',
@@ -437,6 +444,7 @@ export interface FileRoutesByFullPath {
   '/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
+  '/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
   '/imports/': typeof AuthenticatedImportsIndexRoute
@@ -494,6 +502,7 @@ export interface FileRoutesByTo {
   '/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
+  '/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
   '/imports': typeof AuthenticatedImportsIndexRoute
@@ -557,6 +566,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
   '/_authenticated/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/_authenticated/settings/sms': typeof AuthenticatedSettingsSmsRoute
+  '/_authenticated/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
   '/_authenticated/imports/': typeof AuthenticatedImportsIndexRoute
@@ -620,6 +630,7 @@ export interface FileRouteTypes {
     | '/settings/reviews'
     | '/settings/skip-rules'
     | '/settings/sms'
+    | '/settings/users'
     | '/lovable/email/suppression'
     | '/clients/'
     | '/imports/'
@@ -677,6 +688,7 @@ export interface FileRouteTypes {
     | '/settings/reviews'
     | '/settings/skip-rules'
     | '/settings/sms'
+    | '/settings/users'
     | '/lovable/email/suppression'
     | '/clients'
     | '/imports'
@@ -739,6 +751,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/reviews'
     | '/_authenticated/settings/skip-rules'
     | '/_authenticated/settings/sms'
+    | '/_authenticated/settings/users'
     | '/lovable/email/suppression'
     | '/_authenticated/clients/'
     | '/_authenticated/imports/'
@@ -1032,6 +1045,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LovableEmailSuppressionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/settings/users': {
+      id: '/_authenticated/settings/users'
+      path: '/users'
+      fullPath: '/settings/users'
+      preLoaderRoute: typeof AuthenticatedSettingsUsersRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/settings/sms': {
       id: '/_authenticated/settings/sms'
       path: '/sms'
@@ -1265,6 +1285,7 @@ interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsReviewsRoute: typeof AuthenticatedSettingsReviewsRoute
   AuthenticatedSettingsSkipRulesRoute: typeof AuthenticatedSettingsSkipRulesRoute
   AuthenticatedSettingsSmsRoute: typeof AuthenticatedSettingsSmsRoute
+  AuthenticatedSettingsUsersRoute: typeof AuthenticatedSettingsUsersRoute
   AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
 }
 
@@ -1279,6 +1300,7 @@ const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsReviewsRoute: AuthenticatedSettingsReviewsRoute,
   AuthenticatedSettingsSkipRulesRoute: AuthenticatedSettingsSkipRulesRoute,
   AuthenticatedSettingsSmsRoute: AuthenticatedSettingsSmsRoute,
+  AuthenticatedSettingsUsersRoute: AuthenticatedSettingsUsersRoute,
   AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
 }
 

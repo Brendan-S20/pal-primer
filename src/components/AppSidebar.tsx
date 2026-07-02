@@ -1,4 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
+import { useMyRole, canAccess } from "@/hooks/useMyRole";
 import {
   LayoutDashboard,
   Users,
@@ -96,9 +97,15 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = useRouterState({ select: (r) => r.location.pathname });
+  const { role } = useMyRole();
 
   const isActive = (url: string) =>
     url === "/dashboard" ? pathname === "/dashboard" : pathname === url || pathname.startsWith(url + "/");
+
+  const visibleGroups = GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((it) => canAccess(role, it.url)),
+  })).filter((g) => g.items.length > 0);
 
   return (
     <Sidebar collapsible="icon">
@@ -111,7 +118,7 @@ export function AppSidebar() {
         </Link>
       </SidebarHeader>
       <SidebarContent>
-        {GROUPS.map((group) => (
+        {visibleGroups.map((group) => (
           <SidebarGroup key={group.label}>
             {!collapsed && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
             <SidebarGroupContent>
@@ -134,3 +141,4 @@ export function AppSidebar() {
     </Sidebar>
   );
 }
+
