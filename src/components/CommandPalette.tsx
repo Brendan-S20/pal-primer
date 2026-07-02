@@ -69,10 +69,12 @@ export function CommandPalette() {
     const t = setTimeout(async () => {
       const { data } = await supabase
         .from("clients")
-        .select("id,name")
-        .ilike("name", `%${q}%`)
+        .select("id,display_name")
+        .ilike("display_name", `%${q}%`)
         .limit(6);
-      if (!cancelled && data) setClients(data as ClientHit[]);
+      if (!cancelled && data) {
+        setClients(data.map((c) => ({ id: c.id, name: c.display_name ?? "(no name)" })));
+      }
     }, 150);
     return () => {
       cancelled = true;
