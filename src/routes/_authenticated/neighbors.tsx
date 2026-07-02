@@ -60,7 +60,7 @@ function NeighborsPage() {
   });
   const clientsQ = useQuery({
     queryKey: ["clients", "for-canvass"],
-    queryFn: () => clientsFn({ data: { search: "", limit: 500 } as any }),
+    queryFn: () => clientsFn(),
   });
 
   const [address, setAddress] = useState("");
