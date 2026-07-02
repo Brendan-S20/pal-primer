@@ -21,8 +21,9 @@ import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { syncQueue } from "@/lib/offline/sync";
 import { countPendingForVisit } from "@/lib/offline/queue";
 import { toast } from "sonner";
-import { Navigation, Camera, ChevronDown, ChevronUp, WifiOff, RefreshCw } from "lucide-react";
+import { Navigation, Camera, ChevronDown, ChevronUp, WifiOff, RefreshCw, ArrowDown } from "lucide-react";
 import { PushToggle } from "@/components/PushToggle";
+import { haptic } from "@/lib/haptics";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   component: MyDay,
@@ -92,98 +93,119 @@ function MyDay() {
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
 
   return (
-    <div className="space-y-4">
-      {(!online || pending > 0) && (
-        <div
-          className={`flex items-center justify-between gap-3 rounded-lg border p-3 text-sm ${
-            online
-              ? "border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400"
-              : "border-destructive/50 bg-destructive/10 text-destructive"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {!online && <WifiOff className="h-4 w-4" />}
-            <span className="font-medium">
-              {!online ? "You're offline" : "Back online"}
-              {pending > 0 ? ` · ${pending} pending action${pending === 1 ? "" : "s"}` : ""}
-            </span>
-          </div>
-          {online && pending > 0 && (
-            <button
-              onClick={runSync}
-              className="inline-flex items-center gap-1 rounded border border-current px-2 py-1 text-xs font-medium hover:bg-background/50"
+    <div className="-mx-4 -my-6 pb-28" style={{ paddingBottom: "calc(7rem + env(safe-area-inset-bottom))" }}>
+      {/* Sticky, blurred top bar — feels like a native nav */}
+      <div
+        className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      >
+        <div className="space-y-3 px-4 py-3">
+          {(!online || pending > 0) && (
+            <div
+              className={`flex items-center justify-between gap-3 rounded-lg border p-2.5 text-sm animate-fade-in ${
+                online
+                  ? "border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                  : "border-destructive/50 bg-destructive/10 text-destructive"
+              }`}
             >
-              <RefreshCw className="h-3 w-3" /> Sync now
-            </button>
+              <div className="flex items-center gap-2">
+                {!online && <WifiOff className="h-4 w-4" />}
+                <span className="font-medium">
+                  {!online ? "You're offline" : "Back online"}
+                  {pending > 0 ? ` · ${pending} pending` : ""}
+                </span>
+              </div>
+              {online && pending > 0 && (
+                <button
+                  onClick={() => { haptic("tap"); runSync(); }}
+                  className="inline-flex min-h-9 items-center gap-1 rounded-md border border-current px-3 py-1 text-xs font-medium active:scale-95 transition-transform"
+                >
+                  <RefreshCw className="h-3 w-3" /> Sync
+                </button>
+              )}
+            </div>
           )}
-        </div>
-      )}
 
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">My day</h1>
-          <p className="text-sm text-muted-foreground">
-            {staff ? `${staff.display_name} · ${staff.role}` : "Not on any staff record"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <PushToggle />
-          <input
-            type="date"
-            value={day}
-            onChange={(e) => setDay(e.target.value)}
-            className="rounded-md border bg-background px-3 py-2 text-sm"
-          />
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+            <div className="min-w-0">
+              <h1 className="truncate text-xl font-semibold">My day</h1>
+              <p className="truncate text-xs text-muted-foreground">
+                {staff ? `${staff.display_name} · ${staff.role}` : "Not on any staff record"}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <PushToggle />
+              <input
+                type="date"
+                value={day}
+                onChange={(e) => setDay(e.target.value)}
+                className="h-10 rounded-md border bg-background px-2 text-sm"
+              />
+            </div>
+          </div>
+
+          {total > 0 && (
+            <div>
+              <div className="flex items-center justify-between text-xs">
+                <div className="font-medium">{done} of {total} done</div>
+                <div className="text-muted-foreground">{pct}%</div>
+              </div>
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full bg-primary transition-all duration-500 ease-out"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {total > 0 && (
-        <div className="rounded-lg border bg-card p-4">
-          <div className="flex items-center justify-between text-sm">
-            <div className="font-medium">
-              {done} of {total} done
-            </div>
-            <div className="text-muted-foreground">{pct}%</div>
+      <div className="space-y-3 px-4 pt-4">
+        {!staff && (
+          <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
+            Your user is not linked to a staff record yet. Ask an owner to add you.
           </div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full bg-primary transition-all"
-              style={{ width: `${pct}%` }}
-            />
+        )}
+
+        {staff && visits.length === 0 && (
+          <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
+            Nothing scheduled for you on this day.
           </div>
-          {nextUp && (
-            <div className="mt-3 flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">
-                Next: <span className="font-medium text-foreground">{nextUp.clients?.display_name}</span>
-              </span>
-              <a
-                href={`#visit-${nextUp.id}`}
-                className="text-primary underline"
-              >
-                Jump →
-              </a>
+        )}
+
+        <ol className="space-y-3">
+          {visits.map((v: any, idx: number) => (
+            <VisitCard key={v.id} visit={v} index={idx + 1} day={day} />
+          ))}
+        </ol>
+      </div>
+
+      {/* Sticky bottom "Next up" action bar */}
+      {nextUp && (
+        <div
+          className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/70 animate-fade-in"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
+          <a
+            href={`#visit-${nextUp.id}`}
+            onClick={() => haptic("select")}
+            className="mx-auto flex max-w-lg items-center justify-between gap-3 px-4 py-3 active:opacity-70"
+          >
+            <div className="min-w-0">
+              <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                Next up · #{nextUp.sequence ?? ""}
+              </div>
+              <div className="truncate text-sm font-semibold">
+                {nextUp.clients?.display_name}
+              </div>
             </div>
-          )}
+            <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-md">
+              Jump <ArrowDown className="h-4 w-4" />
+            </div>
+          </a>
         </div>
       )}
-
-      {!staff && (
-        <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
-          Your user is not linked to a staff record yet. Ask an owner to add you.
-        </div>
-      )}
-
-      {staff && visits.length === 0 && (
-        <div className="rounded-lg border bg-card p-6 text-center text-sm text-muted-foreground">
-          Nothing scheduled for you on this day.
-        </div>
-      )}
-
-      <ol className="space-y-3">
-        {visits.map((v: any, idx: number) => (
-          <VisitCard key={v.id} visit={v} index={idx + 1} day={day} />
-        ))}
-      </ol>
     </div>
   );
 }
@@ -372,39 +394,43 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
   const start = useMutation({
     mutationFn: () => actions.start(),
     onSuccess: (r) => {
+      haptic("select");
       toast.success(r.queued ? "Queued — starts when back online" : "Started");
       if (!r.queued) invalidate();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => { haptic("error"); toast.error(e.message); },
   });
   const complete = useMutation({
     mutationFn: () => actions.complete(),
     onSuccess: (r) => {
+      haptic("success");
       toast.success(r.queued ? "Queued — completes when back online" : "Completed");
       if (!r.queued) invalidate();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => { haptic("error"); toast.error(e.message); },
   });
   const skip = useMutation({
     mutationFn: () => actions.skip(reason, reasonCode),
     onSuccess: (r) => {
+      haptic("warning");
       toast.success(r.queued ? "Queued — will skip when back online" : "Marked skipped");
       setShowSkip(false);
       if (!r.queued) invalidate();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => { haptic("error"); toast.error(e.message); },
   });
   const sms = useMutation({
     mutationFn: (kind: "reminder" | "on_my_way" | "completed") =>
       smsFn({ data: { visitId: visit.id, kind } }),
-    onSuccess: () => toast.success("SMS sent"),
-    onError: (e: Error) => toast.error(e.message),
+    onSuccess: () => { haptic("select"); toast.success("SMS sent"); },
+    onError: (e: Error) => { haptic("error"); toast.error(e.message); },
   });
 
   const uploadPhoto = async (file: File) => {
     setUploading(true);
     try {
       const r = await actions.uploadPhoto(file, photoKind);
+      haptic("tap");
       toast.success(
         r.queued
           ? `${photoKind[0].toUpperCase() + photoKind.slice(1)} photo queued — uploads when online`
@@ -412,6 +438,7 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
       );
       if (!r.queued) invalidate();
     } catch (e: any) {
+      haptic("error");
       toast.error(e.message ?? "Upload failed");
     } finally {
       setUploading(false);
@@ -434,7 +461,9 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
   useEffect(() => { setCollapsed(finalStatus); }, [finalStatus]);
 
   return (
-    <li id={`visit-${visit.id}`} className={`rounded-lg border bg-card p-4 shadow-sm ${inProg ? "ring-2 ring-blue-500/40" : ""}`}>
+    <li id={`visit-${visit.id}`} className={`animate-fade-in scroll-mt-40 rounded-xl border bg-card p-4 shadow-sm transition-shadow ${inProg ? "ring-2 ring-blue-500/40 shadow-md" : ""}`}>
+
+
       {!collapsed && <HazardBanner property={p} />}
 
       <div className="flex items-start justify-between gap-3">
