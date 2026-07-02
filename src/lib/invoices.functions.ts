@@ -74,6 +74,53 @@ export const voidInvoice = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const bulkVoidInvoices = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ ids: z.array(z.string().uuid()).min(1).max(500) }).parse(d))
+  .handler(async ({ data, context }) => {
+    let ok = 0, failed = 0;
+    for (const id of data.ids) {
+      const { error } = await context.supabase.rpc("void_invoice", { _invoice_id: id });
+      if (error) failed++; else ok++;
+    }
+    return { ok, failed };
+  });
+
+export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ ids: z.array(z.string().uuid()).min(1).max(500), note: z.string().optional() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const nowIso = new Date().toISOString();
+    let ok = 0, failed = 0;
+    for (const id of data.ids) {
+      const { data: inv, error: rErr } = await supabase
+        .from("invoices")
+        .select("id, status, total_cents, currency, client_id, organization_id")
+        .eq("id", id)
+        .single();
+      if (rErr || !inv) { failed++; continue; }
+      if (inv.status === "paid" || inv.status === "void") { failed++; continue; }
+      const { error: uErr } = await supabase
+        .from("invoices")
+        .update({ status: "paid", paid_at: nowIso })
+        .eq("id", id);
+      if (uErr) { failed++; continue; }
+      await supabase.from("payments").insert({
+        invoice_id: id,
+        client_id: inv.client_id,
+        organization_id: inv.organization_id,
+        amount_cents: inv.total_cents,
+        currency: inv.currency ?? "usd",
+        status: "succeeded",
+        paid_at: nowIso,
+        note: data.note ?? "Manual mark-paid",
+      });
+      ok++;
+    }
+    return { ok, failed };
+  });
+
 export const createCheckoutForInvoice = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid(), returnUrl: z.string().url() }).parse(d))
