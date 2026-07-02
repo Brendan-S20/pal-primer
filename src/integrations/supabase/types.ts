@@ -1496,6 +1496,7 @@ export type Database = {
           notify_email_visit_completed: boolean
           notify_email_weather_reschedule: boolean
           notify_email_welcome: boolean
+          onboarding_dismissed_at: string | null
           overdue_reminder_days: number
           overdue_reminders_enabled: boolean
           parent_organization_id: string | null
@@ -1539,6 +1540,7 @@ export type Database = {
           notify_email_visit_completed?: boolean
           notify_email_weather_reschedule?: boolean
           notify_email_welcome?: boolean
+          onboarding_dismissed_at?: string | null
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
           parent_organization_id?: string | null
@@ -1582,6 +1584,7 @@ export type Database = {
           notify_email_visit_completed?: boolean
           notify_email_weather_reschedule?: boolean
           notify_email_welcome?: boolean
+          onboarding_dismissed_at?: string | null
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
           parent_organization_id?: string | null
