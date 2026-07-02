@@ -16,8 +16,23 @@ export function haptic(kind: Pattern = "tap") {
   try {
     const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (reduce) return;
-    const nav = window.navigator as Navigator & { vibrate?: (p: number | number[]) => boolean };
-    nav.vibrate?.(PATTERNS[kind]);
+
+    // Prefer native Capacitor haptics when running inside the iOS/Android shell.
+    // Dynamic import keeps the plugin out of the web bundle path.
+    void import("@/lib/native").then(({ isNative, hapticImpact, hapticSuccess }) => {
+      if (!isNative()) {
+        const nav = window.navigator as Navigator & { vibrate?: (p: number | number[]) => boolean };
+        nav.vibrate?.(PATTERNS[kind]);
+        return;
+      }
+      if (kind === "success") void hapticSuccess();
+      else if (kind === "error" || kind === "warning") void hapticImpact("heavy");
+      else if (kind === "tap") void hapticImpact("light");
+      else void hapticImpact("light");
+    }).catch(() => {
+      const nav = window.navigator as Navigator & { vibrate?: (p: number | number[]) => boolean };
+      nav.vibrate?.(PATTERNS[kind]);
+    });
   } catch {
     // vibration unsupported — silently ignore
   }
