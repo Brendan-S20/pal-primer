@@ -576,8 +576,8 @@ function Column({
 }
 
 function SortableVisitCard({
-  visit, seq, onComplete, completing,
-}: { visit: Visit; seq: number; onComplete?: (id: string) => void; completing?: boolean }) {
+  visit, seq, onComplete, completing, onOpen,
+}: { visit: Visit; seq: number; onComplete?: (id: string) => void; completing?: boolean; onOpen?: (id: string) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: visit.id,
   });
@@ -594,6 +594,7 @@ function SortableVisitCard({
         dragHandle={listeners}
         onComplete={onComplete}
         completing={completing}
+        onOpen={onOpen}
       />
     </div>
   );
