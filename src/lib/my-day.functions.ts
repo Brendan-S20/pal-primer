@@ -67,6 +67,18 @@ export const completeVisit = createServerFn({ method: "POST" })
             address,
           },
         });
+        // Best-effort push notification to the client (if they subscribed via portal).
+        try {
+          const { sendPushToClient } = await import("@/lib/push.server");
+          await sendPushToClient(v.client_id, {
+            title: "Visit completed",
+            body: address ? `We just cleaned up at ${address}.` : "Your yard visit is complete.",
+            tag: `visit-${data.visitId}`,
+            url: "/portal",
+          });
+        } catch (e) {
+          console.error("client push failed", e);
+        }
       }
     } catch (e) {
       console.error("visit-completed email failed", e);
