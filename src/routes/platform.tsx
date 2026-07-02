@@ -260,3 +260,27 @@ function TenantRow({ row }: { row: PlatformOrgRow }) {
     </>
   );
 }
+
+function ImpersonateButton({ organizationId, orgName }: { organizationId: string; orgName: string }) {
+  const startFn = useServerFn(startImpersonation);
+  const [busy, setBusy] = useState(false);
+  const onClick = async () => {
+    if (!confirm(`Impersonate ${orgName}? This will open their account in a new tab and is logged to the audit trail.`)) return;
+    setBusy(true);
+    try {
+      const { actionLink, targetEmail } = await startFn({ data: { organization_id: organizationId } });
+      toast.success(`Opening session as ${targetEmail}`);
+      window.open(actionLink, "_blank", "noopener");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Impersonation failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button variant="secondary" size="sm" onClick={onClick} disabled={busy}>
+      <LogIn className="mr-1 h-3.5 w-3.5" />
+      {busy ? "Preparing…" : "Impersonate"}
+    </Button>
+  );
+}
