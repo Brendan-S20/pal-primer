@@ -21,8 +21,9 @@ import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { syncQueue } from "@/lib/offline/sync";
 import { countPendingForVisit } from "@/lib/offline/queue";
 import { toast } from "sonner";
-import { Navigation, Camera, ChevronDown, ChevronUp, WifiOff, RefreshCw } from "lucide-react";
+import { Navigation, Camera, ChevronDown, ChevronUp, WifiOff, RefreshCw, ArrowDown } from "lucide-react";
 import { PushToggle } from "@/components/PushToggle";
+import { haptic } from "@/lib/haptics";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   component: MyDay,
