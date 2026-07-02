@@ -23,6 +23,7 @@ import { countPendingForVisit } from "@/lib/offline/queue";
 import { toast } from "sonner";
 import { Navigation, Camera, ChevronDown, ChevronUp, WifiOff, RefreshCw, ArrowDown } from "lucide-react";
 import { PushToggle } from "@/components/PushToggle";
+import { LanguageToggle } from "@/components/LanguageToggle";
 import { haptic } from "@/lib/haptics";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
@@ -134,6 +135,7 @@ function MyDay() {
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              <LanguageToggle />
               <PushToggle />
               <input
                 type="date"
