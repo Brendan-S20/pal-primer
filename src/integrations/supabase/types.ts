@@ -3008,6 +3008,7 @@ export type Database = {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
       }
+      is_platform_admin: { Args: { _user_id: string }; Returns: boolean }
       is_visit_tech: {
         Args: { _user_id: string; _visit_id: string }
         Returns: boolean
@@ -3081,6 +3082,20 @@ export type Database = {
       }
       org_can_add_client: { Args: { _org_id: string }; Returns: boolean }
       phone_digits: { Args: { _p: string }; Returns: string }
+      platform_org_stats: {
+        Args: never
+        Returns: {
+          active_clients: number
+          ar_open_cents: number
+          billing_tier: string
+          created_at: string
+          organization_id: string
+          organization_name: string
+          plan_status: string
+          revenue_mtd_cents: number
+          users_count: number
+        }[]
+      }
       portal_cancel_addon: {
         Args: { _addon_subscription_id: string; _token: string }
         Returns: undefined
@@ -3314,7 +3329,12 @@ export type Database = {
         | "quarterly"
         | "yearly"
       addon_kind: "one_time" | "recurring"
-      app_role: "owner" | "office_manager" | "dispatcher" | "tech"
+      app_role:
+        | "owner"
+        | "office_manager"
+        | "dispatcher"
+        | "tech"
+        | "platform_admin"
       billing_cadence: "prepaid" | "postpaid"
       dog_temperament: "friendly" | "nervous" | "aggressive" | "unknown"
       import_row_action: "create" | "update" | "skip" | "error"
@@ -3502,7 +3522,13 @@ export const Constants = {
       ],
       addon_frequency: ["weekly", "biweekly", "monthly", "quarterly", "yearly"],
       addon_kind: ["one_time", "recurring"],
-      app_role: ["owner", "office_manager", "dispatcher", "tech"],
+      app_role: [
+        "owner",
+        "office_manager",
+        "dispatcher",
+        "tech",
+        "platform_admin",
+      ],
       billing_cadence: ["prepaid", "postpaid"],
       dog_temperament: ["friendly", "nervous", "aggressive", "unknown"],
       import_row_action: ["create", "update", "skip", "error"],

@@ -1,5 +1,8 @@
 import { Link, useRouterState } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery } from "@tanstack/react-query";
 import { useMyRole, canAccess } from "@/hooks/useMyRole";
+import { getPlatformContext } from "@/lib/platform.functions";
 import {
   LayoutDashboard,
   Users,
@@ -19,6 +22,7 @@ import {
   UserPlus,
   Building2,
   Package,
+  Shield,
 } from "lucide-react";
 
 import {
@@ -102,10 +106,25 @@ export function AppSidebar() {
   const isActive = (url: string) =>
     url === "/dashboard" ? pathname === "/dashboard" : pathname === url || pathname.startsWith(url + "/");
 
+  const platformFn = useServerFn(getPlatformContext);
+  const platform = useQuery({
+    queryKey: ["platform", "ctx"],
+    queryFn: () => platformFn(),
+    staleTime: 60_000,
+  });
+  const isPlatformAdmin = !!platform.data?.isPlatformAdmin;
+
   const visibleGroups = GROUPS.map((g) => ({
     ...g,
     items: g.items.filter((it) => canAccess(role, it.url)),
   })).filter((g) => g.items.length > 0);
+
+  if (isPlatformAdmin) {
+    visibleGroups.push({
+      label: "Platform",
+      items: [{ title: "Platform admin", url: "/platform", icon: Shield }],
+    });
+  }
 
   return (
     <Sidebar collapsible="icon">
