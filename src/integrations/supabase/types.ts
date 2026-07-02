@@ -259,6 +259,76 @@ export type Database = {
           },
         ]
       }
+      ai_receptionist_logs: {
+        Row: {
+          created_at: string
+          error: string | null
+          escalated: boolean
+          from_number: string | null
+          id: string
+          inbound_message_id: string | null
+          latency_ms: number | null
+          model: string | null
+          organization_id: string
+          outbound_message_id: string | null
+          reply_text: string | null
+          tool_calls: Json | null
+          user_text: string | null
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          escalated?: boolean
+          from_number?: string | null
+          id?: string
+          inbound_message_id?: string | null
+          latency_ms?: number | null
+          model?: string | null
+          organization_id: string
+          outbound_message_id?: string | null
+          reply_text?: string | null
+          tool_calls?: Json | null
+          user_text?: string | null
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          escalated?: boolean
+          from_number?: string | null
+          id?: string
+          inbound_message_id?: string | null
+          latency_ms?: number | null
+          model?: string | null
+          organization_id?: string
+          outbound_message_id?: string | null
+          reply_text?: string | null
+          tool_calls?: Json | null
+          user_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_receptionist_logs_inbound_message_id_fkey"
+            columns: ["inbound_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_receptionist_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_receptionist_logs_outbound_message_id_fkey"
+            columns: ["outbound_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       blackout_dates: {
         Row: {
           blackout_on: string
@@ -940,6 +1010,7 @@ export type Database = {
       }
       messages: {
         Row: {
+          ai_handled: boolean
           body: string
           client_id: string | null
           created_at: string
@@ -956,6 +1027,7 @@ export type Database = {
           visit_id: string | null
         }
         Insert: {
+          ai_handled?: boolean
           body: string
           client_id?: string | null
           created_at?: string
@@ -972,6 +1044,7 @@ export type Database = {
           visit_id?: string | null
         }
         Update: {
+          ai_handled?: boolean
           body?: string
           client_id?: string | null
           created_at?: string
@@ -1021,6 +1094,9 @@ export type Database = {
       organizations: {
         Row: {
           active_client_count: number
+          ai_receptionist_enabled: boolean
+          ai_receptionist_faq: string | null
+          ai_receptionist_persona: string | null
           auto_generate_days_ahead: number
           auto_generate_visits: boolean
           auto_invoice_enabled: boolean
@@ -1053,6 +1129,9 @@ export type Database = {
         }
         Insert: {
           active_client_count?: number
+          ai_receptionist_enabled?: boolean
+          ai_receptionist_faq?: string | null
+          ai_receptionist_persona?: string | null
           auto_generate_days_ahead?: number
           auto_generate_visits?: boolean
           auto_invoice_enabled?: boolean
@@ -1085,6 +1164,9 @@ export type Database = {
         }
         Update: {
           active_client_count?: number
+          ai_receptionist_enabled?: boolean
+          ai_receptionist_faq?: string | null
+          ai_receptionist_persona?: string | null
           auto_generate_days_ahead?: number
           auto_generate_visits?: boolean
           auto_invoice_enabled?: boolean
