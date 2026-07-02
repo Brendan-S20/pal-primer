@@ -146,3 +146,96 @@ export const portalCreateCheckout = createServerFn({ method: "POST" })
 
     return { url: session.url as string };
   });
+
+const frequencyEnum = z.enum(["weekly", "biweekly", "twice_weekly", "monthly"]);
+const addonFreqEnum = z.enum(["weekly", "biweekly", "monthly", "quarterly", "yearly"]);
+
+export const portalRescheduleVisit = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z.object({
+      token: z.string().uuid(),
+      visitId: z.string().uuid(),
+      newDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const sb = anonClient();
+    const { error } = await sb.rpc("portal_reschedule_visit", {
+      _token: data.token, _visit_id: data.visitId, _new_date: data.newDate,
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const portalChangeFrequency = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z.object({
+      token: z.string().uuid(),
+      subscriptionId: z.string().uuid(),
+      frequency: frequencyEnum,
+    }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const sb = anonClient();
+    const { error } = await sb.rpc("portal_change_frequency", {
+      _token: data.token, _subscription_id: data.subscriptionId, _new_frequency: data.frequency,
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const portalListAddonCatalog = createServerFn({ method: "GET" })
+  .inputValidator((d) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    const sb = anonClient();
+    const { data: rows, error } = await sb.rpc("portal_list_addon_catalog", { _token: data.token });
+    if (error) throw new Error(error.message);
+    return rows ?? [];
+  });
+
+export const portalListClientAddons = createServerFn({ method: "GET" })
+  .inputValidator((d) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    const sb = anonClient();
+    const { data: rows, error } = await sb.rpc("portal_list_client_addons", { _token: data.token });
+    if (error) throw new Error(error.message);
+    return rows ?? [];
+  });
+
+export const portalSubscribeAddon = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z.object({
+      token: z.string().uuid(),
+      addonServiceId: z.string().uuid(),
+      frequency: addonFreqEnum.nullable().optional(),
+      quantity: z.number().int().min(1).max(50).default(1),
+    }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const sb = anonClient();
+    const { data: id, error } = await sb.rpc("portal_subscribe_addon", {
+      _token: data.token,
+      _addon_service_id: data.addonServiceId,
+      _frequency: data.frequency ?? null,
+      _quantity: data.quantity,
+    });
+    if (error) throw new Error(error.message);
+    return { id: id as string };
+  });
+
+export const portalCancelAddon = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z.object({
+      token: z.string().uuid(),
+      addonSubscriptionId: z.string().uuid(),
+    }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const sb = anonClient();
+    const { error } = await sb.rpc("portal_cancel_addon", {
+      _token: data.token, _addon_subscription_id: data.addonSubscriptionId,
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
