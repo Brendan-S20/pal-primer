@@ -185,9 +185,9 @@ export const redeemGiftCard = createServerFn({ method: "POST" })
       _org_id: orgId,
       _code: data.code.trim().toUpperCase(),
       _amount_cents: data.amountCents,
-      _client_id: data.clientId ?? null,
-      _invoice_id: data.invoiceId ?? null,
-      _note: data.note ?? null,
+      _client_id: data.clientId,
+      _invoice_id: data.invoiceId,
+      _note: data.note,
     });
     if (error) throw new Error(error.message);
     const row = Array.isArray(res) ? res[0] : res;
