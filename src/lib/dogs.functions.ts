@@ -49,3 +49,24 @@ export const deleteDog = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+const dnaSchema = z.object({
+  id: z.string().uuid(),
+  registered: z.boolean(),
+  registryId: z.string().max(120).optional().nullable(),
+});
+
+export const setDogDna = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => dnaSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase
+      .from("dogs")
+      .update({
+        dna_registered: data.registered,
+        dna_registry_id: data.registered ? (data.registryId || null) : null,
+      })
+      .eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
