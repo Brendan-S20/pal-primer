@@ -464,3 +464,58 @@ function PhotosSection({ visitId, photos }: { visitId: string; photos: any[] }) 
     </section>
   );
 }
+
+function DogDnaControl({ dog, onChanged }: { dog: any; onChanged: () => void }) {
+  const setDna = useServerFn(setDogDna);
+  const [editing, setEditing] = useState(false);
+  const [registryId, setRegistryId] = useState<string>(dog.dna_registry_id ?? "");
+  const mut = useMutation({
+    mutationFn: (v: { registered: boolean; registryId?: string | null }) =>
+      setDna({ data: { id: dog.id, registered: v.registered, registryId: v.registryId ?? null } }),
+    onSuccess: () => {
+      toast.success("DNA record updated");
+      setEditing(false);
+      onChanged();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  if (dog.dna_registered && !editing) {
+    return (
+      <div className="flex flex-col items-end text-[11px]">
+        <Badge variant="outline" className="border-emerald-500/60 text-emerald-700 dark:text-emerald-400">
+          DNA ✓
+        </Badge>
+        {dog.dna_registry_id && <span className="mt-0.5 text-muted-foreground">{dog.dna_registry_id}</span>}
+        <button className="mt-0.5 text-[10px] text-muted-foreground underline" onClick={() => setEditing(true)}>edit</button>
+      </div>
+    );
+  }
+  if (!editing) {
+    return (
+      <button
+        className="text-[11px] text-muted-foreground underline"
+        onClick={() => setEditing(true)}
+        disabled={mut.isPending}
+      >
+        + DNA
+      </button>
+    );
+  }
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <Input
+        className="h-7 w-32 text-xs"
+        placeholder="Registry ID"
+        value={registryId}
+        onChange={(e) => setRegistryId(e.target.value)}
+      />
+      <div className="flex gap-1">
+        <Button size="sm" className="h-6 px-2 text-[11px]" onClick={() => mut.mutate({ registered: true, registryId })} disabled={mut.isPending}>Save</Button>
+        {dog.dna_registered && (
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => mut.mutate({ registered: false })} disabled={mut.isPending}>Clear</Button>
+        )}
+        <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => setEditing(false)}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
