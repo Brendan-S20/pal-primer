@@ -50,6 +50,16 @@ function InvoiceDetail() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const syncFn = useServerFn(syncInvoice);
+  const syncM = useMutation({
+    mutationFn: async () => syncFn({ data: { invoice_id: invoiceId } }),
+    onSuccess: (r) => {
+      toast.success(`Synced to accounting (id ${r.remote_id})`);
+      qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   if (q.isLoading) return <p className="text-muted-foreground">Loading…</p>;
   if (!q.data) return <p>Not found.</p>;
   const { invoice, items, payments } = q.data;
