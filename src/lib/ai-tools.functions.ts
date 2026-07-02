@@ -313,3 +313,223 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
 
     return { stats, summary: text };
   });
+
+// ---------------- Value-aware AI dispatch ----------------
+
+export const suggestDispatch = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ day: z.string().min(8).max(10) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const staff = await callerOrg(context);
+    const orgId = staff.organization_id;
+
+    const [{ data: visits, error: vErr }, { data: techs, error: sErr }] = await Promise.all([
+      context.supabase
+        .from("visits")
+        .select(
+          "id, assigned_staff_id, sequence, status, client_id, zone_id, " +
+          "clients(display_name, churn_score, credit_balance_cents), " +
+          "properties(street, city, postal_code, latitude, longitude), " +
+          "zones(name, postal_prefix), " +
+          "subscriptions(price_cents, frequency, billing_cadence)",
+        )
+        .eq("organization_id", orgId)
+        .eq("scheduled_on", data.day)
+        .in("status", ["scheduled", "in_progress"]),
+      context.supabase
+        .from("staff")
+        .select("id, display_name, role, start_latitude, start_longitude, active")
+        .eq("organization_id", orgId)
+        .eq("active", true),
+    ]);
+    if (vErr) throw new Error(vErr.message);
+    if (sErr) throw new Error(sErr.message);
+    if (!visits?.length) return { day: data.day, suggestions: [], notes: "No open visits on this day." };
+
+    const visitPayload = visits.map((v: any) => ({
+      id: v.id,
+      current_staff_id: v.assigned_staff_id,
+      current_sequence: v.sequence,
+      client: v.clients?.display_name,
+      churn_score: v.clients?.churn_score ?? null,
+      price_cents: v.subscriptions?.price_cents ?? 0,
+      frequency: v.subscriptions?.frequency ?? null,
+      zone: v.zones?.name ?? null,
+      postal: v.properties?.postal_code ?? null,
+      lat: v.properties?.latitude ?? null,
+      lng: v.properties?.longitude ?? null,
+    }));
+    const staffPayload = (techs ?? []).map((s: any) => ({
+      id: s.id, name: s.display_name, role: s.role,
+      start_lat: s.start_latitude, start_lng: s.start_longitude,
+    }));
+
+    const provider = gateway();
+    const { output } = await generateText({
+      model: provider(MODEL),
+      output: Output.object({
+        schema: z.object({
+          notes: z.string(),
+          suggestions: z.array(
+            z.object({
+              visit_id: z.string(),
+              suggested_staff_id: z.string().nullable(),
+              reason: z.string(),
+              priority: z.enum(["high", "medium", "low"]),
+            }),
+          ),
+        }),
+      }),
+      prompt:
+        `You are a dispatch assistant for a pet-waste-removal business. Suggest visit-to-tech assignments for ${data.day} that:\n` +
+        `1) Prioritize high-value clients (higher price_cents) and at-risk clients (churn_score >= 60) for the most experienced techs (role manager/owner over tech).\n` +
+        `2) Group stops in the same zone / postal prefix on the same tech to minimize drive time.\n` +
+        `3) Balance total revenue across techs so no one is under-loaded while another is overloaded.\n` +
+        `4) Prefer keeping current assignment if it's already good — only recommend moves with real upside.\n\n` +
+        `Return one suggestion PER visit that should change. Do not include visits where the current assignment is already optimal. ` +
+        `Give a one-sentence reason each. Priority=high when both value and routing improve; medium when routing only; low when marginal.\n\n` +
+        `Visits:\n${JSON.stringify(visitPayload)}\n\nTechs:\n${JSON.stringify(staffPayload)}`,
+    });
+
+    // Enrich suggestions with display info the UI needs
+    const byVisit = new Map(visits.map((v: any) => [v.id, v]));
+    const byStaff = new Map((techs ?? []).map((s: any) => [s.id, s]));
+    const enriched = output.suggestions
+      .filter((s) => byVisit.has(s.visit_id))
+      .map((s) => {
+        const v: any = byVisit.get(s.visit_id);
+        return {
+          ...s,
+          client: v.clients?.display_name,
+          current_staff: v.assigned_staff_id ? (byStaff.get(v.assigned_staff_id) as any)?.display_name ?? null : null,
+          suggested_staff: s.suggested_staff_id ? (byStaff.get(s.suggested_staff_id) as any)?.display_name ?? null : null,
+          zone: v.zones?.name ?? null,
+          price_cents: v.subscriptions?.price_cents ?? 0,
+        };
+      });
+
+    return { day: data.day, notes: output.notes, suggestions: enriched };
+  });
+
+export const applyDispatchSuggestions = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      changes: z.array(
+        z.object({ visit_id: z.string().uuid(), staff_id: z.string().uuid().nullable() }),
+      ).min(1).max(500),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    let applied = 0;
+    for (const c of data.changes) {
+      const { error } = await context.supabase.rpc("reassign_visit", {
+        _visit_id: c.visit_id,
+        _staff_id: c.staff_id as string,
+      });
+      if (!error) applied++;
+    }
+    return { applied };
+  });
+
+// ---------------- AI zone-pricing suggestions ----------------
+
+export const suggestZonePricing = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({}).parse(d ?? {}))
+  .handler(async ({ context }) => {
+    const staff = await callerOrg(context);
+    const orgId = staff.organization_id;
+    const since = new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10);
+
+    const { data: zones, error } = await context.supabase
+      .from("zones")
+      .select("id, name, postal_prefix, account_type, price_note")
+      .eq("organization_id", orgId)
+      .order("name");
+    if (error) throw new Error(error.message);
+    if (!zones?.length) return { suggestions: [], notes: "No zones defined." };
+
+    const zoneIds = zones.map((z: any) => z.id);
+    const { data: visits } = await context.supabase
+      .from("visits")
+      .select("zone_id, status, subscriptions(price_cents, frequency)")
+      .eq("organization_id", orgId)
+      .in("zone_id", zoneIds)
+      .gte("scheduled_on", since);
+
+    const stats = zones.map((z: any) => {
+      const zv = (visits ?? []).filter((v: any) => v.zone_id === z.id);
+      const completed = zv.filter((v: any) => v.status === "completed");
+      const skipped = zv.filter((v: any) => v.status === "skipped");
+      const prices = completed
+        .map((v: any) => v.subscriptions?.price_cents ?? 0)
+        .filter((n: number) => n > 0);
+      const avg = prices.length ? Math.round(prices.reduce((a: number, b: number) => a + b, 0) / prices.length) : 0;
+      return {
+        zone_id: z.id,
+        name: z.name,
+        postal_prefix: z.postal_prefix,
+        account_type: z.account_type,
+        current_price_note: z.price_note,
+        completed_90d: completed.length,
+        skipped_90d: skipped.length,
+        skip_rate_pct: zv.length ? Math.round((skipped.length / zv.length) * 100) : 0,
+        avg_visit_price_cents: avg,
+      };
+    });
+
+    const provider = gateway();
+    const { output } = await generateText({
+      model: provider(MODEL),
+      output: Output.object({
+        schema: z.object({
+          notes: z.string(),
+          suggestions: z.array(
+            z.object({
+              zone_id: z.string(),
+              suggested_price_cents: z.number().int().min(0),
+              delta_pct: z.number().int().min(-50).max(200),
+              confidence: z.enum(["low", "medium", "high"]),
+              reason: z.string(),
+            }),
+          ),
+        }),
+      }),
+      prompt:
+        `You are a pricing analyst for a pet-waste-removal business. Recommend a per-visit price (in cents) for each zone based on the 90-day stats. ` +
+        `Raise prices where demand is strong (high completed count, low skip rate) or costs are higher (commercial). Lower or hold where skip rate is high or volume is thin. ` +
+        `Suggest realistic residential per-visit pricing typically between $12 and $45 unless commercial. Give a one-sentence reason. Confidence high only when 20+ completed visits.\n\n` +
+        `Zones:\n${JSON.stringify(stats)}`,
+    });
+
+    const byZone = new Map(stats.map((s) => [s.zone_id, s]));
+    const enriched = output.suggestions
+      .filter((s) => byZone.has(s.zone_id))
+      .map((s) => ({ ...s, ...(byZone.get(s.zone_id) as any) }));
+
+    return { notes: output.notes, suggestions: enriched };
+  });
+
+export const applyZonePricing = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      changes: z.array(
+        z.object({ zone_id: z.string().uuid(), price_note: z.string().max(200) }),
+      ).min(1).max(200),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const staff = await callerOrg(context);
+    let applied = 0;
+    for (const c of data.changes) {
+      const { error } = await context.supabase
+        .from("zones")
+        .update({ price_note: c.price_note })
+        .eq("id", c.zone_id)
+        .eq("organization_id", staff.organization_id);
+      if (!error) applied++;
+    }
+    return { applied };
+  });

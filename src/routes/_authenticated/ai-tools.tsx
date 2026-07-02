@@ -10,6 +10,10 @@ import {
   scoreChurn,
   listChurnRisk,
   generateWeeklyDigest,
+  suggestDispatch,
+  applyDispatchSuggestions,
+  suggestZonePricing,
+  applyZonePricing,
 } from "@/lib/ai-tools.functions";
 
 export const Route = createFileRoute("/_authenticated/ai-tools")({
@@ -19,23 +23,27 @@ export const Route = createFileRoute("/_authenticated/ai-tools")({
   }),
 });
 
+type Tab = "marketing" | "reviews" | "churn" | "digest" | "dispatch" | "pricing";
+
 function AiToolsPage() {
-  const [tab, setTab] = useState<"marketing" | "reviews" | "churn" | "digest">("marketing");
+  const [tab, setTab] = useState<Tab>("marketing");
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">AI tools</h1>
         <p className="text-sm text-muted-foreground">
-          Marketing content, review replies, churn scoring, and your weekly owner digest.
+          Marketing, replies, churn, digest, value-aware dispatch, and zone pricing — all AI-suggested, human-approved.
         </p>
       </div>
-      <div className="flex gap-2 border-b text-sm">
+      <div className="flex flex-wrap gap-2 border-b text-sm">
         {(
           [
             ["marketing", "Marketing content"],
             ["reviews", "Review replies"],
             ["churn", "Churn risk"],
             ["digest", "Weekly digest"],
+            ["dispatch", "AI dispatch"],
+            ["pricing", "Zone pricing"],
           ] as const
         ).map(([k, label]) => (
           <button
@@ -53,6 +61,8 @@ function AiToolsPage() {
       {tab === "reviews" && <ReviewPanel />}
       {tab === "churn" && <ChurnPanel />}
       {tab === "digest" && <DigestPanel />}
+      {tab === "dispatch" && <DispatchPanel />}
+      {tab === "pricing" && <PricingPanel />}
     </div>
   );
 }
@@ -300,4 +310,209 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
 
 function fmt(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+// ---------------- Dispatch panel ----------------
+
+function DispatchPanel() {
+  const suggestFn = useServerFn(suggestDispatch);
+  const applyFn = useServerFn(applyDispatchSuggestions);
+  const [day, setDay] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+
+  const m = useMutation({
+    mutationFn: () => suggestFn({ data: { day } }),
+    onSuccess: (r) => {
+      const next: Record<string, boolean> = {};
+      for (const s of r.suggestions) next[s.visit_id] = s.priority !== "low";
+      setSelected(next);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const apply = useMutation({
+    mutationFn: () => {
+      const changes = (m.data?.suggestions ?? [])
+        .filter((s: any) => selected[s.visit_id])
+        .map((s: any) => ({ visit_id: s.visit_id, staff_id: s.suggested_staff_id }));
+      return applyFn({ data: { changes } });
+    },
+    onSuccess: (r) => toast.success(`Applied ${r.applied} reassignments`),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const suggestions = m.data?.suggestions ?? [];
+  const chosen = suggestions.filter((s: any) => selected[s.visit_id]).length;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4">
+        <label className="text-sm">
+          <span className="block font-medium">Day</span>
+          <input type="date" value={day} onChange={(e) => setDay(e.target.value)} className="mt-1 rounded border bg-background px-3 py-2 text-sm" />
+        </label>
+        <Button onClick={() => m.mutate()} disabled={m.isPending}>
+          {m.isPending ? "Analyzing…" : "Suggest reassignments"}
+        </Button>
+        <div className="flex-1" />
+        <Button variant="secondary" disabled={!chosen || apply.isPending} onClick={() => apply.mutate()}>
+          {apply.isPending ? "Applying…" : `Apply ${chosen} selected`}
+        </Button>
+      </div>
+
+      {m.data && (
+        <div className="rounded-lg border bg-card p-4 text-sm">
+          <div className="mb-2 font-medium">Dispatcher notes</div>
+          <p className="whitespace-pre-wrap text-muted-foreground">{m.data.notes}</p>
+        </div>
+      )}
+
+      <div className="overflow-hidden rounded-lg border bg-card">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+            <tr>
+              <th className="px-3 py-2 w-8"></th>
+              <th className="px-3 py-2">Client</th>
+              <th className="px-3 py-2">Zone</th>
+              <th className="px-3 py-2">Value</th>
+              <th className="px-3 py-2">Current → Suggested</th>
+              <th className="px-3 py-2">Priority</th>
+              <th className="px-3 py-2">Why</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!suggestions.length ? (
+              <tr><td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
+                {m.isPending ? "Analyzing…" : "No suggestions yet. Choose a day and click Suggest."}
+              </td></tr>
+            ) : suggestions.map((s: any) => (
+              <tr key={s.visit_id} className="border-t">
+                <td className="px-3 py-2">
+                  <input type="checkbox" checked={!!selected[s.visit_id]} onChange={(e) => setSelected((p) => ({ ...p, [s.visit_id]: e.target.checked }))} />
+                </td>
+                <td className="px-3 py-2 font-medium">{s.client}</td>
+                <td className="px-3 py-2 text-muted-foreground">{s.zone ?? "—"}</td>
+                <td className="px-3 py-2">{fmt(s.price_cents)}</td>
+                <td className="px-3 py-2 text-xs">
+                  <span className="text-muted-foreground">{s.current_staff ?? "Unassigned"}</span>
+                  {" → "}
+                  <span className="font-medium">{s.suggested_staff ?? "Unassigned"}</span>
+                </td>
+                <td className="px-3 py-2">
+                  <span className={`rounded px-2 py-0.5 text-xs font-medium ${s.priority === "high" ? "bg-red-100 text-red-800" : s.priority === "medium" ? "bg-amber-100 text-amber-800" : "bg-muted text-muted-foreground"}`}>
+                    {s.priority}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-muted-foreground">{s.reason}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ---------------- Zone pricing panel ----------------
+
+function PricingPanel() {
+  const suggestFn = useServerFn(suggestZonePricing);
+  const applyFn = useServerFn(applyZonePricing);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+
+  const m = useMutation({
+    mutationFn: () => suggestFn({ data: {} }),
+    onSuccess: (r) => {
+      const next: Record<string, boolean> = {};
+      for (const s of r.suggestions) next[s.zone_id] = s.confidence !== "low";
+      setSelected(next);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const apply = useMutation({
+    mutationFn: () => {
+      const changes = (m.data?.suggestions ?? [])
+        .filter((s: any) => selected[s.zone_id])
+        .map((s: any) => ({
+          zone_id: s.zone_id,
+          price_note: `AI: $${(s.suggested_price_cents / 100).toFixed(2)}/visit (${s.delta_pct >= 0 ? "+" : ""}${s.delta_pct}%) — ${s.reason}`,
+        }));
+      return applyFn({ data: { changes } });
+    },
+    onSuccess: (r) => toast.success(`Updated ${r.applied} zone price notes`),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const suggestions = m.data?.suggestions ?? [];
+  const chosen = suggestions.filter((s: any) => selected[s.zone_id]).length;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-end gap-3 rounded-lg border bg-card p-4">
+        <Button onClick={() => m.mutate()} disabled={m.isPending}>
+          {m.isPending ? "Analyzing…" : "Suggest zone prices"}
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Based on the last 90 days of completed visits, skip rate, and current pricing. Applies to each zone's price note.
+        </p>
+        <div className="flex-1" />
+        <Button variant="secondary" disabled={!chosen || apply.isPending} onClick={() => apply.mutate()}>
+          {apply.isPending ? "Applying…" : `Apply ${chosen} selected`}
+        </Button>
+      </div>
+
+      {m.data && (
+        <div className="rounded-lg border bg-card p-4 text-sm">
+          <div className="mb-2 font-medium">Pricing analyst notes</div>
+          <p className="whitespace-pre-wrap text-muted-foreground">{m.data.notes}</p>
+        </div>
+      )}
+
+      <div className="overflow-hidden rounded-lg border bg-card">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+            <tr>
+              <th className="px-3 py-2 w-8"></th>
+              <th className="px-3 py-2">Zone</th>
+              <th className="px-3 py-2">Completed 90d</th>
+              <th className="px-3 py-2">Skip rate</th>
+              <th className="px-3 py-2">Current avg</th>
+              <th className="px-3 py-2">Suggested</th>
+              <th className="px-3 py-2">Δ</th>
+              <th className="px-3 py-2">Confidence</th>
+              <th className="px-3 py-2">Why</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!suggestions.length ? (
+              <tr><td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">
+                {m.isPending ? "Analyzing…" : "No suggestions yet."}
+              </td></tr>
+            ) : suggestions.map((s: any) => (
+              <tr key={s.zone_id} className="border-t">
+                <td className="px-3 py-2">
+                  <input type="checkbox" checked={!!selected[s.zone_id]} onChange={(e) => setSelected((p) => ({ ...p, [s.zone_id]: e.target.checked }))} />
+                </td>
+                <td className="px-3 py-2 font-medium">{s.name}<div className="text-xs text-muted-foreground">{s.account_type ?? ""}</div></td>
+                <td className="px-3 py-2">{s.completed_90d}</td>
+                <td className="px-3 py-2">{s.skip_rate_pct}%</td>
+                <td className="px-3 py-2">{fmt(s.avg_visit_price_cents)}</td>
+                <td className="px-3 py-2 font-medium">{fmt(s.suggested_price_cents)}</td>
+                <td className={`px-3 py-2 font-medium ${s.delta_pct > 0 ? "text-green-700" : s.delta_pct < 0 ? "text-red-700" : ""}`}>
+                  {s.delta_pct > 0 ? "+" : ""}{s.delta_pct}%
+                </td>
+                <td className="px-3 py-2">
+                  <span className={`rounded px-2 py-0.5 text-xs font-medium ${s.confidence === "high" ? "bg-green-100 text-green-800" : s.confidence === "medium" ? "bg-amber-100 text-amber-800" : "bg-muted text-muted-foreground"}`}>
+                    {s.confidence}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-muted-foreground">{s.reason}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
