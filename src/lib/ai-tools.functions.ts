@@ -270,7 +270,6 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
       context.supabase
         .from("leads")
         .select("id, status")
-        .eq("organization_id", orgId)
         .gte("created_at", weekAgoIso),
       context.supabase
         .from("clients")
