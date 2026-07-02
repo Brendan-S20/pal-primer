@@ -10,6 +10,10 @@ import {
   scoreChurn,
   listChurnRisk,
   generateWeeklyDigest,
+  suggestDispatch,
+  applyDispatchSuggestions,
+  suggestZonePricing,
+  applyZonePricing,
 } from "@/lib/ai-tools.functions";
 
 export const Route = createFileRoute("/_authenticated/ai-tools")({
@@ -19,23 +23,27 @@ export const Route = createFileRoute("/_authenticated/ai-tools")({
   }),
 });
 
+type Tab = "marketing" | "reviews" | "churn" | "digest" | "dispatch" | "pricing";
+
 function AiToolsPage() {
-  const [tab, setTab] = useState<"marketing" | "reviews" | "churn" | "digest">("marketing");
+  const [tab, setTab] = useState<Tab>("marketing");
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">AI tools</h1>
         <p className="text-sm text-muted-foreground">
-          Marketing content, review replies, churn scoring, and your weekly owner digest.
+          Marketing, replies, churn, digest, value-aware dispatch, and zone pricing — all AI-suggested, human-approved.
         </p>
       </div>
-      <div className="flex gap-2 border-b text-sm">
+      <div className="flex flex-wrap gap-2 border-b text-sm">
         {(
           [
             ["marketing", "Marketing content"],
             ["reviews", "Review replies"],
             ["churn", "Churn risk"],
             ["digest", "Weekly digest"],
+            ["dispatch", "AI dispatch"],
+            ["pricing", "Zone pricing"],
           ] as const
         ).map(([k, label]) => (
           <button
@@ -53,6 +61,8 @@ function AiToolsPage() {
       {tab === "reviews" && <ReviewPanel />}
       {tab === "churn" && <ChurnPanel />}
       {tab === "digest" && <DigestPanel />}
+      {tab === "dispatch" && <DispatchPanel />}
+      {tab === "pricing" && <PricingPanel />}
     </div>
   );
 }
