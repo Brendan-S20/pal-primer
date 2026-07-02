@@ -611,16 +611,25 @@ function directionsUrl(p: any): string | null {
 }
 
 function VisitCardView({
-  visit, seq, dragging, dragHandle, onComplete, completing,
+  visit, seq, dragging, dragHandle, onComplete, completing, onOpen,
 }: {
   visit: Visit; seq?: number; dragging?: boolean; dragHandle?: any;
   onComplete?: (id: string) => void; completing?: boolean;
+  onOpen?: (id: string) => void;
 }) {
   const p = visit.properties;
   const dirUrl = directionsUrl(p);
   const canComplete = onComplete && (visit.status === "scheduled" || visit.status === "in_progress");
   return (
-    <div className={`rounded-md border bg-background p-2 text-xs shadow-sm ${dragging ? "shadow-lg" : ""}`}>
+    <div
+      className={`rounded-md border bg-background p-2 text-xs shadow-sm ${dragging ? "shadow-lg" : ""} ${onOpen ? "cursor-pointer hover:border-primary/40 hover:bg-muted/40" : ""}`}
+      onClick={(e) => {
+        if (!onOpen) return;
+        const t = e.target as HTMLElement;
+        if (t.closest("a,button")) return;
+        onOpen(visit.id);
+      }}
+    >
       <div className="flex items-start gap-2">
         <button
           {...(dragHandle ?? {})}
