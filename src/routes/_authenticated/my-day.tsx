@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { Navigation, Camera, ChevronDown, ChevronUp, WifiOff, RefreshCw, ArrowDown } from "lucide-react";
 import { PushToggle } from "@/components/PushToggle";
 import { LanguageToggle } from "@/components/LanguageToggle";
+import { useTranslation } from "react-i18next";
 import { haptic } from "@/lib/haptics";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
@@ -43,6 +44,7 @@ function MyDay() {
   const qc = useQueryClient();
   const online = useOnline();
   const pending = usePendingCount();
+  const { t } = useTranslation();
 
   const { data, isLoading } = useQuery({
     queryKey: ["my-day", day],
@@ -112,8 +114,8 @@ function MyDay() {
               <div className="flex items-center gap-2">
                 {!online && <WifiOff className="h-4 w-4" />}
                 <span className="font-medium">
-                  {!online ? "You're offline" : "Back online"}
-                  {pending > 0 ? ` · ${pending} pending` : ""}
+                  {!online ? t("common.offline") : t("common.online")}
+                  {pending > 0 ? ` · ${t("common.pending", { count: pending })}` : ""}
                 </span>
               </div>
               {online && pending > 0 && (
@@ -121,7 +123,7 @@ function MyDay() {
                   onClick={() => { haptic("tap"); runSync(); }}
                   className="inline-flex min-h-9 items-center gap-1 rounded-md border border-current px-3 py-1 text-xs font-medium active:scale-95 transition-transform"
                 >
-                  <RefreshCw className="h-3 w-3" /> Sync
+                  <RefreshCw className="h-3 w-3" /> {t("common.sync")}
                 </button>
               )}
             </div>
