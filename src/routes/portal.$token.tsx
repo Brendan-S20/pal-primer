@@ -67,6 +67,11 @@ function PortalPage() {
   const listClientAddonsFn = useServerFn(portalListClientAddons);
   const subscribeAddonFn = useServerFn(portalSubscribeAddon);
   const cancelAddonFn = useServerFn(portalCancelAddon);
+  const startSetupFn = useServerFn(portalStartCardSetup);
+  const setAutopayFn = useServerFn(portalSetAutopay);
+  const removeCardFn = useServerFn(portalRemoveCard);
+  const payWithSavedFn = useServerFn(portalPayInvoiceWithSavedCard);
+
 
   const clientQ = useQuery({
     queryKey: ["portal", token, "client"],
