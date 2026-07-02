@@ -451,10 +451,11 @@ export const previewImport = createServerFn({ method: "POST" })
     } else if (entity === "dogs") {
       const { data: dogs } = await supabase
         .from("dogs")
-        .select("client_id, name")
+        .select("property_id, name, properties!inner(client_id)")
         .eq("organization_id", orgId);
-      for (const d of dogs ?? []) {
-        existingDogKeys.add(`${d.client_id}::${(d.name ?? "").toLowerCase()}`);
+      for (const d of (dogs ?? []) as any[]) {
+        const cid = d.properties?.client_id;
+        if (cid) existingDogKeys.add(`${cid}::${(d.name ?? "").toLowerCase()}`);
       }
     }
 
