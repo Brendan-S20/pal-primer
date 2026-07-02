@@ -454,8 +454,12 @@ function MapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
 }
 
 function Column({
-  id, title, subtitle, items, tone,
-}: { id: string; title: string; subtitle?: string; items: Visit[]; tone?: "muted" }) {
+  id, title, subtitle, items, tone, onComplete, completingId,
+}: {
+  id: string; title: string; subtitle?: string; items: Visit[]; tone?: "muted";
+  onComplete?: (visitId: string) => void;
+  completingId?: string | null;
+}) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const totalCents = items.reduce((sum, v) => sum + (v.subscriptions?.price_cents ?? 0), 0);
   return (
@@ -482,7 +486,13 @@ function Column({
       <SortableContext items={items.map((v) => v.id)} strategy={verticalListSortingStrategy}>
         <div className="min-h-[80px] space-y-2 p-2">
           {items.map((v, i) => (
-            <SortableVisitCard key={v.id} visit={v} seq={i + 1} />
+            <SortableVisitCard
+              key={v.id}
+              visit={v}
+              seq={i + 1}
+              onComplete={onComplete}
+              completing={completingId === v.id}
+            />
           ))}
           {items.length === 0 && (
             <div className="py-6 text-center text-xs text-muted-foreground">Drop visits here</div>
@@ -493,7 +503,9 @@ function Column({
   );
 }
 
-function SortableVisitCard({ visit, seq }: { visit: Visit; seq: number }) {
+function SortableVisitCard({
+  visit, seq, onComplete, completing,
+}: { visit: Visit; seq: number; onComplete?: (id: string) => void; completing?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: visit.id,
   });
@@ -504,15 +516,36 @@ function SortableVisitCard({ visit, seq }: { visit: Visit; seq: number }) {
   };
   return (
     <div ref={setNodeRef} style={style} {...attributes}>
-      <VisitCardView visit={visit} seq={seq} dragHandle={listeners} />
+      <VisitCardView
+        visit={visit}
+        seq={seq}
+        dragHandle={listeners}
+        onComplete={onComplete}
+        completing={completing}
+      />
     </div>
   );
 }
 
+function directionsUrl(p: any): string | null {
+  if (!p) return null;
+  if (p.latitude != null && p.longitude != null) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${p.latitude},${p.longitude}&travelmode=driving`;
+  }
+  const parts = [p.street, p.city, p.postal_code].filter(Boolean).join(", ");
+  if (!parts) return null;
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(parts)}&travelmode=driving`;
+}
+
 function VisitCardView({
-  visit, seq, dragging, dragHandle,
-}: { visit: Visit; seq?: number; dragging?: boolean; dragHandle?: any }) {
+  visit, seq, dragging, dragHandle, onComplete, completing,
+}: {
+  visit: Visit; seq?: number; dragging?: boolean; dragHandle?: any;
+  onComplete?: (id: string) => void; completing?: boolean;
+}) {
   const p = visit.properties;
+  const dirUrl = directionsUrl(p);
+  const canComplete = onComplete && (visit.status === "scheduled" || visit.status === "in_progress");
   return (
     <div className={`rounded-md border bg-background p-2 text-xs shadow-sm ${dragging ? "shadow-lg" : ""}`}>
       <div className="flex items-start gap-2">
@@ -551,11 +584,36 @@ function VisitCardView({
             <Badge variant="secondary" className="h-4 px-1 text-[10px]">{visit.status}</Badge>
             {visit.window_violated && <Badge variant="destructive" className="h-4 px-1 text-[10px]">Late</Badge>}
           </div>
+          {(dirUrl || canComplete) && !dragging && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {dirUrl && (
+                <a
+                  href={dirUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] hover:bg-muted"
+                >
+                  <Navigation className="h-3 w-3" /> Directions
+                </a>
+              )}
+              {canComplete && (
+                <button
+                  type="button"
+                  onClick={() => onComplete!(visit.id)}
+                  disabled={completing}
+                  className="inline-flex items-center gap-1 rounded border border-emerald-600/40 bg-emerald-600/10 px-2 py-1 text-[11px] text-emerald-700 hover:bg-emerald-600/20 disabled:opacity-50 dark:text-emerald-400"
+                >
+                  <CheckCircle2 className="h-3 w-3" /> {completing ? "…" : "Complete"}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
+
 
 function HeatmapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
   const perTech = staff.map((s: any) => {
