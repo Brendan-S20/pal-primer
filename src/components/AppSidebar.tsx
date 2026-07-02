@@ -23,6 +23,7 @@ import {
   Building2,
   Package,
   Shield,
+  Dna,
 } from "lucide-react";
 
 import {
@@ -65,6 +66,7 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
       { title: "Waste log", url: "/waste-log", icon: Trash2 },
       { title: "Messages", url: "/messages", icon: MessageSquare },
       { title: "Neighbor canvassing", url: "/neighbors", icon: MapPin },
+      { title: "DNA compliance", url: "/dna", icon: Dna },
     ],
   },
   {

@@ -36,6 +36,8 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/ai-tools": ["owner", "office_manager"],
   "/imports": ["owner", "office_manager"],
   "/settings": ["owner", "office_manager"],
+  "/neighbors": ["owner", "office_manager", "dispatcher", "tech"],
+  "/dna": ["owner", "office_manager", "dispatcher", "tech"],
 };
 
 export function canAccess(role: AppRole | null, path: string): boolean {
