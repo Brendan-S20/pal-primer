@@ -141,11 +141,44 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
         try {
           if (event.type === "checkout.session.completed") {
             const session = event.data.object as import("stripe").Stripe.Checkout.Session;
+
+            // Portal saved-card setup flow
+            if (session.mode === "setup" && session.metadata?.source === "portal_setup") {
+              const clientId = session.metadata.client_id;
+              const setupIntentId = typeof session.setup_intent === "string"
+                ? session.setup_intent
+                : session.setup_intent?.id ?? null;
+              if (clientId && setupIntentId) {
+                try {
+                  const si = await stripe.setupIntents.retrieve(setupIntentId);
+                  const pmId = typeof si.payment_method === "string" ? si.payment_method : si.payment_method?.id;
+                  const customerId = typeof si.customer === "string" ? si.customer : si.customer?.id;
+                  if (pmId && customerId) {
+                    const pm = await stripe.paymentMethods.retrieve(pmId);
+                    await stripe.customers.update(customerId, {
+                      invoice_settings: { default_payment_method: pmId },
+                    });
+                    await supabaseAdmin.from("clients").update({
+                      stripe_customer_id: customerId,
+                      default_payment_method_id: pmId,
+                      default_card_brand: pm.card?.brand ?? null,
+                      default_card_last4: pm.card?.last4 ?? null,
+                      autopay_enabled: true,
+                    }).eq("id", clientId);
+                  }
+                } catch (e) {
+                  console.error("portal_setup finalize failed", e);
+                }
+              }
+              return new Response("ok", { status: 200 });
+            }
+
             const signupRequestId = session.metadata?.signup_request_id;
             if (signupRequestId) {
               await provisionSignup(supabaseAdmin, signupRequestId, session);
               return new Response("ok", { status: 200 });
             }
+
             const invoiceId = session.metadata?.invoice_id || session.client_reference_id;
             const pi = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id ?? null;
             if (invoiceId) {
