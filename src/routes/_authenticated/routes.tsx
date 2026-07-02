@@ -382,26 +382,73 @@ function RoutesPage() {
         </div>
       </div>
 
+      <MapPanel visits={visits} staff={staff} />
 
       <HeatmapPanel visits={visits} staff={staff} />
 
       <DndContext
-
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
       >
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <Column id={UNASSIGNED} title="Unassigned" items={columns[UNASSIGNED] ?? []} tone="muted" />
+          <Column
+            id={UNASSIGNED}
+            title="Unassigned"
+            items={columns[UNASSIGNED] ?? []}
+            tone="muted"
+            onComplete={(id) => completeMut.mutate(id)}
+            completingId={completeMut.isPending ? (completeMut.variables as string) : null}
+          />
           {staff.map((s: any) => (
-            <Column key={s.id} id={s.id} title={s.display_name} subtitle={s.role} items={columns[s.id] ?? []} />
+            <Column
+              key={s.id}
+              id={s.id}
+              title={s.display_name}
+              subtitle={s.role}
+              items={columns[s.id] ?? []}
+              onComplete={(id) => completeMut.mutate(id)}
+              completingId={completeMut.isPending ? (completeMut.variables as string) : null}
+            />
           ))}
         </div>
         <DragOverlay>
           {activeVisit ? <VisitCardView visit={activeVisit} dragging /> : null}
         </DragOverlay>
       </DndContext>
+    </div>
+  );
+}
+
+function MapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
+  const groups = useMemo(() => buildTechGroups(visits as any, staff as any), [visits, staff]);
+  const mappable = visits.filter((v: any) => v.properties?.latitude != null && v.properties?.longitude != null).length;
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold">Map</h2>
+          <p className="text-[11px] text-muted-foreground">
+            {mappable} of {visits.length} visits geocoded. Click a pin to open a popup; use the tech cards below to open directions or mark complete.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {groups.map((g) => (
+            <div key={g.staffId ?? "u"} className="flex items-center gap-1 text-[11px]">
+              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: g.color }} />
+              <span>{g.name}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      {mappable === 0 ? (
+        <div className="rounded-md border border-dashed p-6 text-center text-xs text-muted-foreground">
+          No visits with coordinates on this day. Add latitude/longitude to properties to see the route on the map.
+        </div>
+      ) : (
+        <RouteMap groups={groups} height={420} />
+      )}
     </div>
   );
 }
