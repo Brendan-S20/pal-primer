@@ -70,6 +70,7 @@ import { Route as ApiPublicHooksTwilioRouteImport } from './routes/api/public/ho
 import { Route as ApiPublicHooksStripeRouteImport } from './routes/api/public/hooks/stripe'
 import { Route as ApiPublicHooksQboCallbackRouteImport } from './routes/api/public/hooks/qbo-callback'
 import { Route as ApiPublicHooksNightlyRouteImport } from './routes/api/public/hooks/nightly'
+import { Route as AuthenticatedPropertiesPropertyIdBoundaryRouteImport } from './routes/_authenticated/properties.$propertyId.boundary'
 
 const UnsubscribeRoute = UnsubscribeRouteImport.update({
   id: '/unsubscribe',
@@ -400,6 +401,12 @@ const ApiPublicHooksNightlyRoute = ApiPublicHooksNightlyRouteImport.update({
   path: '/api/public/hooks/nightly',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedPropertiesPropertyIdBoundaryRoute =
+  AuthenticatedPropertiesPropertyIdBoundaryRouteImport.update({
+    id: '/properties/$propertyId/boundary',
+    path: '/properties/$propertyId/boundary',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -451,6 +458,7 @@ export interface FileRoutesByFullPath {
   '/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/messages/': typeof AuthenticatedMessagesIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
@@ -509,6 +517,7 @@ export interface FileRoutesByTo {
   '/invoices': typeof AuthenticatedInvoicesIndexRoute
   '/messages': typeof AuthenticatedMessagesIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
+  '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
@@ -573,6 +582,7 @@ export interface FileRoutesById {
   '/_authenticated/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/_authenticated/messages/': typeof AuthenticatedMessagesIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/_authenticated/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
@@ -637,6 +647,7 @@ export interface FileRouteTypes {
     | '/invoices/'
     | '/messages/'
     | '/settings/'
+    | '/properties/$propertyId/boundary'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
@@ -695,6 +706,7 @@ export interface FileRouteTypes {
     | '/invoices'
     | '/messages'
     | '/settings'
+    | '/properties/$propertyId/boundary'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
@@ -758,6 +770,7 @@ export interface FileRouteTypes {
     | '/_authenticated/invoices/'
     | '/_authenticated/messages/'
     | '/_authenticated/settings/'
+    | '/_authenticated/properties/$propertyId/boundary'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
@@ -1227,6 +1240,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksNightlyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/properties/$propertyId/boundary': {
+      id: '/_authenticated/properties/$propertyId/boundary'
+      path: '/properties/$propertyId/boundary'
+      fullPath: '/properties/$propertyId/boundary'
+      preLoaderRoute: typeof AuthenticatedPropertiesPropertyIdBoundaryRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -1329,6 +1349,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedZonesRoute: typeof AuthenticatedZonesRoute
   AuthenticatedImportsBatchIdRoute: typeof AuthenticatedImportsBatchIdRoute
   AuthenticatedImportsIndexRoute: typeof AuthenticatedImportsIndexRoute
+  AuthenticatedPropertiesPropertyIdBoundaryRoute: typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -1351,6 +1372,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedZonesRoute: AuthenticatedZonesRoute,
   AuthenticatedImportsBatchIdRoute: AuthenticatedImportsBatchIdRoute,
   AuthenticatedImportsIndexRoute: AuthenticatedImportsIndexRoute,
+  AuthenticatedPropertiesPropertyIdBoundaryRoute:
+    AuthenticatedPropertiesPropertyIdBoundaryRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
