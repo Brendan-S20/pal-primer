@@ -33,6 +33,7 @@ import { Route as AuthenticatedInvoicesRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated/clients'
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
+import { Route as AuthenticatedAiToolsRouteImport } from './routes/_authenticated/ai-tools'
 import { Route as AuthenticatedMessagesIndexRouteImport } from './routes/_authenticated/messages.index'
 import { Route as AuthenticatedInvoicesIndexRouteImport } from './routes/_authenticated/invoices.index'
 import { Route as AuthenticatedImportsIndexRouteImport } from './routes/_authenticated/imports.index'
@@ -178,6 +179,11 @@ const AuthenticatedClientsRoute = AuthenticatedClientsRouteImport.update({
 const AuthenticatedBillingRoute = AuthenticatedBillingRouteImport.update({
   id: '/billing',
   path: '/billing',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAiToolsRoute = AuthenticatedAiToolsRouteImport.update({
+  id: '/ai-tools',
+  path: '/ai-tools',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedMessagesIndexRoute =
@@ -344,6 +350,7 @@ export interface FileRoutesByFullPath {
   '/pricing': typeof PricingRoute
   '/services': typeof ServicesRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/ai-tools': typeof AuthenticatedAiToolsRoute
   '/billing': typeof AuthenticatedBillingRoute
   '/clients': typeof AuthenticatedClientsRouteWithChildren
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -396,6 +403,7 @@ export interface FileRoutesByTo {
   '/pricing': typeof PricingRoute
   '/services': typeof ServicesRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/ai-tools': typeof AuthenticatedAiToolsRoute
   '/billing': typeof AuthenticatedBillingRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/leads': typeof AuthenticatedLeadsRoute
@@ -447,6 +455,7 @@ export interface FileRoutesById {
   '/pricing': typeof PricingRoute
   '/services': typeof ServicesRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/_authenticated/ai-tools': typeof AuthenticatedAiToolsRoute
   '/_authenticated/billing': typeof AuthenticatedBillingRoute
   '/_authenticated/clients': typeof AuthenticatedClientsRouteWithChildren
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
@@ -501,6 +510,7 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/services'
     | '/unsubscribe'
+    | '/ai-tools'
     | '/billing'
     | '/clients'
     | '/dashboard'
@@ -553,6 +563,7 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/services'
     | '/unsubscribe'
+    | '/ai-tools'
     | '/billing'
     | '/dashboard'
     | '/leads'
@@ -603,6 +614,7 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/services'
     | '/unsubscribe'
+    | '/_authenticated/ai-tools'
     | '/_authenticated/billing'
     | '/_authenticated/clients'
     | '/_authenticated/dashboard'
@@ -843,6 +855,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedBillingRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/ai-tools': {
+      id: '/_authenticated/ai-tools'
+      path: '/ai-tools'
+      fullPath: '/ai-tools'
+      preLoaderRoute: typeof AuthenticatedAiToolsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/messages/': {
       id: '/_authenticated/messages/'
       path: '/'
@@ -1081,6 +1100,7 @@ const AuthenticatedMessagesRouteWithChildren =
   )
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAiToolsRoute: typeof AuthenticatedAiToolsRoute
   AuthenticatedBillingRoute: typeof AuthenticatedBillingRoute
   AuthenticatedClientsRoute: typeof AuthenticatedClientsRouteWithChildren
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
@@ -1106,6 +1126,7 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAiToolsRoute: AuthenticatedAiToolsRoute,
   AuthenticatedBillingRoute: AuthenticatedBillingRoute,
   AuthenticatedClientsRoute: AuthenticatedClientsRouteWithChildren,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
