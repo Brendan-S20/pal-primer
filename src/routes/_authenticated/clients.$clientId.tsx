@@ -17,6 +17,7 @@ import {
   setAddonSubscriptionStatus,
 } from "@/lib/addons.functions";
 import { listStations, upsertStation, deleteStation } from "@/lib/stations.functions";
+import { updatePropertyWindow } from "@/lib/visits.functions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
