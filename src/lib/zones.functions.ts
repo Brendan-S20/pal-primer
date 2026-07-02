@@ -13,6 +13,14 @@ async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   return data.organization_id as string;
 }
 
+function normalizeZips(input: string[] | undefined): string[] {
+  if (!input) return [];
+  const cleaned = input
+    .map((z) => String(z).trim().replace(/[^0-9A-Za-z-]/g, ""))
+    .filter((z) => z.length > 0);
+  return Array.from(new Set(cleaned));
+}
+
 export const listZones = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -20,25 +28,31 @@ export const listZones = createServerFn({ method: "GET" })
     const orgId = await resolveOrgId(supabase, userId);
     const { data, error } = await supabase
       .from("zones")
-      .select("id, name, postal_prefix, account_type, price_note, latitude, longitude")
+      .select(
+        "id, name, postal_prefix, zip_codes, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents",
+      )
       .eq("organization_id", orgId)
       .order("name");
     if (error) throw new Error(error.message);
     return { zones: data ?? [] };
   });
 
-const createZoneSchema = z.object({
+const zoneWriteSchema = z.object({
   name: z.string().min(1).max(120),
-  postalPrefix: z.string().max(20).optional(),
-  accountType: z.enum(["residential", "commercial"]).optional(),
-  priceNote: z.string().max(200).optional(),
-  latitude: z.number().min(-90).max(90).optional(),
-  longitude: z.number().min(-180).max(180).optional(),
+  zipCodes: z.array(z.string()).optional(),
+  postalPrefix: z.string().max(20).optional().nullable(),
+  accountType: z.enum(["residential", "commercial"]).optional().nullable(),
+  priceNote: z.string().max(200).optional().nullable(),
+  latitude: z.number().min(-90).max(90).optional().nullable(),
+  longitude: z.number().min(-180).max(180).optional().nullable(),
+  basePriceCents: z.number().int().min(0).optional(),
+  perDogAddlCents: z.number().int().min(0).optional(),
+  initialCleanupCents: z.number().int().min(0).optional(),
 });
 
 export const createZone = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => createZoneSchema.parse(d))
+  .inputValidator((d) => zoneWriteSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
@@ -47,14 +61,63 @@ export const createZone = createServerFn({ method: "POST" })
       .insert({
         organization_id: orgId,
         name: data.name,
+        zip_codes: normalizeZips(data.zipCodes),
         postal_prefix: data.postalPrefix || null,
         account_type: data.accountType ?? null,
         price_note: data.priceNote || null,
         latitude: data.latitude ?? null,
         longitude: data.longitude ?? null,
+        base_price_cents: data.basePriceCents ?? 2500,
+        per_dog_addl_cents: data.perDogAddlCents ?? 500,
+        initial_cleanup_cents: data.initialCleanupCents ?? 0,
       })
       .select("id")
       .single();
     if (error) throw new Error(error.message);
     return { id: row.id as string };
+  });
+
+const updateZoneSchema = zoneWriteSchema.extend({ id: z.string().uuid() }).partial({ name: true });
+
+export const updateZone = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => updateZoneSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+    const patch: Record<string, any> = {};
+    if (data.name !== undefined) patch.name = data.name;
+    if (data.zipCodes !== undefined) patch.zip_codes = normalizeZips(data.zipCodes);
+    if (data.postalPrefix !== undefined) patch.postal_prefix = data.postalPrefix || null;
+    if (data.accountType !== undefined) patch.account_type = data.accountType ?? null;
+    if (data.priceNote !== undefined) patch.price_note = data.priceNote || null;
+    if (data.latitude !== undefined) patch.latitude = data.latitude;
+    if (data.longitude !== undefined) patch.longitude = data.longitude;
+    if (data.basePriceCents !== undefined) patch.base_price_cents = data.basePriceCents;
+    if (data.perDogAddlCents !== undefined) patch.per_dog_addl_cents = data.perDogAddlCents;
+    if (data.initialCleanupCents !== undefined)
+      patch.initial_cleanup_cents = data.initialCleanupCents;
+
+    const { error } = await supabase
+      .from("zones")
+      .update(patch as any)
+      .eq("id", data.id)
+      .eq("organization_id", orgId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const deleteZone = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+    const { error } = await supabase
+      .from("zones")
+      .delete()
+      .eq("id", data.id)
+      .eq("organization_id", orgId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
   });

@@ -2,179 +2,427 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
-import { listZones, createZone } from "@/lib/zones.functions";
-import { updateZoneCoords } from "@/lib/weather.functions";
+import { listZones, createZone, updateZone, deleteZone } from "@/lib/zones.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { X, Plus, Trash2, MapPin } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/zones")({
   component: ZonesPage,
 });
 
+const money = (cents: number) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
+    (cents ?? 0) / 100,
+  );
+
+function ZipChips({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+  placeholder?: string;
+}) {
+  const [buf, setBuf] = useState("");
+
+  const commit = (raw: string) => {
+    const parts = raw
+      .split(/[\s,]+/)
+      .map((p) => p.trim().replace(/[^0-9A-Za-z-]/g, ""))
+      .filter(Boolean);
+    if (!parts.length) return;
+    const next = Array.from(new Set([...value, ...parts]));
+    onChange(next);
+    setBuf("");
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 rounded-md border bg-background p-2 min-h-[42px]">
+      {value.map((z) => (
+        <Badge key={z} variant="secondary" className="gap-1 pr-1">
+          {z}
+          <button
+            type="button"
+            className="rounded-full p-0.5 hover:bg-muted-foreground/20"
+            onClick={() => onChange(value.filter((x) => x !== z))}
+            aria-label={`Remove ${z}`}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </Badge>
+      ))}
+      <input
+        value={buf}
+        onChange={(e) => setBuf(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === "," || e.key === " " || e.key === "Tab") {
+            if (buf.trim()) {
+              e.preventDefault();
+              commit(buf);
+            }
+          } else if (e.key === "Backspace" && !buf && value.length) {
+            onChange(value.slice(0, -1));
+          }
+        }}
+        onBlur={() => buf.trim() && commit(buf)}
+        onPaste={(e) => {
+          const text = e.clipboardData.getData("text");
+          if (/[\s,]/.test(text)) {
+            e.preventDefault();
+            commit(text);
+          }
+        }}
+        className="flex-1 min-w-[100px] bg-transparent text-sm outline-none"
+        placeholder={value.length ? "" : (placeholder ?? "78701, 78702…")}
+      />
+    </div>
+  );
+}
+
 function ZonesPage() {
   const list = useServerFn(listZones);
   const create = useServerFn(createZone);
-  const setCoords = useServerFn(updateZoneCoords);
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["zones"], queryFn: () => list() });
+
+  const [showNew, setShowNew] = useState(false);
   const [name, setName] = useState("");
-  const [postalPrefix, setPostalPrefix] = useState("");
+  const [zips, setZips] = useState<string[]>([]);
+  const [basePrice, setBasePrice] = useState("25.00");
+  const [perDog, setPerDog] = useState("5.00");
+  const [initialCleanup, setInitialCleanup] = useState("0");
   const [priceNote, setPriceNote] = useState("");
-  const [latitude, setLatitude] = useState("");
-  const [longitude, setLongitude] = useState("");
+
+  const resetForm = () => {
+    setName("");
+    setZips([]);
+    setBasePrice("25.00");
+    setPerDog("5.00");
+    setInitialCleanup("0");
+    setPriceNote("");
+  };
 
   const mut = useMutation({
     mutationFn: () =>
       create({
         data: {
           name,
-          postalPrefix: postalPrefix || undefined,
+          zipCodes: zips,
+          basePriceCents: Math.round((parseFloat(basePrice) || 0) * 100),
+          perDogAddlCents: Math.round((parseFloat(perDog) || 0) * 100),
+          initialCleanupCents: Math.round((parseFloat(initialCleanup) || 0) * 100),
           priceNote: priceNote || undefined,
-          latitude: latitude ? Number(latitude) : undefined,
-          longitude: longitude ? Number(longitude) : undefined,
         },
       }),
     onSuccess: () => {
-      setName("");
-      setPostalPrefix("");
-      setPriceNote("");
-      setLatitude("");
-      setLongitude("");
+      toast.success("Zone created");
+      resetForm();
+      setShowNew(false);
       qc.invalidateQueries({ queryKey: ["zones"] });
     },
-  });
-
-  const coordMut = useMutation({
-    mutationFn: (v: { id: string; latitude: number; longitude: number }) =>
-      setCoords({ data: v }),
-    onSuccess: () => {
-      toast.success("Coordinates saved");
-      qc.invalidateQueries({ queryKey: ["zones"] });
-    },
+    onError: (e) => toast.error((e as Error).message),
   });
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Zones</h1>
-        <p className="text-sm text-muted-foreground">
-          Territories used to order visits into a route. Add latitude/longitude to enable weather forecasts.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Zones</h1>
+          <p className="text-sm text-muted-foreground">
+            Group service areas by ZIP code. Pricing here powers the instant quote for new
+            clients.
+          </p>
+        </div>
+        <Button onClick={() => setShowNew((v) => !v)} variant={showNew ? "outline" : "default"}>
+          <Plus className="mr-1 h-4 w-4" /> {showNew ? "Cancel" : "New zone"}
+        </Button>
       </div>
 
-      <form
-        className="grid gap-3 rounded-lg border bg-card p-5 sm:grid-cols-6"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (name) mut.mutate();
-        }}
-      >
-        <div className="sm:col-span-2">
-          <Label htmlFor="name">Name</Label>
-          <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
-        </div>
-        <div>
-          <Label htmlFor="pp">Postal prefix</Label>
-          <Input id="pp" placeholder="787" value={postalPrefix} onChange={(e) => setPostalPrefix(e.target.value)} />
-        </div>
-        <div>
-          <Label htmlFor="lat">Latitude</Label>
-          <Input id="lat" placeholder="30.27" value={latitude} onChange={(e) => setLatitude(e.target.value)} />
-        </div>
-        <div>
-          <Label htmlFor="lon">Longitude</Label>
-          <Input id="lon" placeholder="-97.74" value={longitude} onChange={(e) => setLongitude(e.target.value)} />
-        </div>
-        <div className="flex items-end">
-          <Button type="submit" disabled={mut.isPending || !name}>
-            {mut.isPending ? "Adding…" : "Add"}
-          </Button>
-        </div>
-        <div className="sm:col-span-6">
-          <Label htmlFor="pn">Price note</Label>
-          <Input id="pn" value={priceNote} onChange={(e) => setPriceNote(e.target.value)} />
-        </div>
-        {mut.error && <p className="col-span-full text-sm text-destructive">{(mut.error as Error).message}</p>}
-      </form>
+      {showNew && (
+        <Card className="p-5">
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (name) mut.mutate();
+            }}
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="name">Zone name</Label>
+                <Input
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Central Austin"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pn">Internal note (optional)</Label>
+                <Input
+                  id="pn"
+                  value={priceNote}
+                  onChange={(e) => setPriceNote(e.target.value)}
+                  placeholder="Weekday only, gate codes"
+                />
+              </div>
+            </div>
 
-      <div className="rounded-lg border bg-card">
-        <table className="w-full text-sm">
-          <thead className="border-b text-left text-muted-foreground">
-            <tr>
-              <th className="px-4 py-2">Name</th>
-              <th className="px-4 py-2">Prefix</th>
-              <th className="px-4 py-2">Coords</th>
-              <th className="px-4 py-2">Notes</th>
-              <th className="px-4 py-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {(data?.zones ?? []).map((z: any) => (
-              <ZoneRow key={z.id} zone={z} onSave={(lat, lon) => coordMut.mutate({ id: z.id, latitude: lat, longitude: lon })} />
-            ))}
-            {data && data.zones.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">
-                  No zones yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+            <div className="space-y-2">
+              <Label>ZIP codes served</Label>
+              <ZipChips value={zips} onChange={setZips} />
+              <p className="text-xs text-muted-foreground">
+                Type ZIPs and press Enter, comma, or space. Paste a list to bulk add.
+              </p>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="bp">Base price / visit</Label>
+                <div className="flex items-center gap-1">
+                  <span className="text-muted-foreground">$</span>
+                  <Input
+                    id="bp"
+                    inputMode="decimal"
+                    value={basePrice}
+                    onChange={(e) => setBasePrice(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pd">Each additional dog</Label>
+                <div className="flex items-center gap-1">
+                  <span className="text-muted-foreground">$</span>
+                  <Input
+                    id="pd"
+                    inputMode="decimal"
+                    value={perDog}
+                    onChange={(e) => setPerDog(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ic">Initial cleanup fee</Label>
+                <div className="flex items-center gap-1">
+                  <span className="text-muted-foreground">$</span>
+                  <Input
+                    id="ic"
+                    inputMode="decimal"
+                    value={initialCleanup}
+                    onChange={(e) => setInitialCleanup(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t pt-3">
+              <Button type="button" variant="ghost" onClick={() => setShowNew(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={mut.isPending || !name}>
+                {mut.isPending ? "Creating…" : "Create zone"}
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      <div className="grid gap-3">
+        {(data?.zones ?? []).map((z: any) => (
+          <ZoneCard key={z.id} zone={z} />
+        ))}
+        {data && data.zones.length === 0 && !showNew && (
+          <Card className="p-10 text-center text-muted-foreground">
+            <MapPin className="mx-auto mb-2 h-8 w-8 opacity-50" />
+            No zones yet. Create your first zone to enable instant quoting.
+          </Card>
+        )}
       </div>
     </div>
   );
 }
 
-function ZoneRow({ zone, onSave }: { zone: any; onSave: (lat: number, lon: number) => void }) {
+function ZoneCard({ zone }: { zone: any }) {
+  const update = useServerFn(updateZone);
+  const del = useServerFn(deleteZone);
+  const qc = useQueryClient();
+
   const [editing, setEditing] = useState(false);
-  const [lat, setLat] = useState<string>(zone.latitude != null ? String(zone.latitude) : "");
-  const [lon, setLon] = useState<string>(zone.longitude != null ? String(zone.longitude) : "");
-  return (
-    <tr className="border-b last:border-0">
-      <td className="px-4 py-2 font-medium">{zone.name}</td>
-      <td className="px-4 py-2">{zone.postal_prefix ?? "—"}</td>
-      <td className="px-4 py-2">
-        {editing ? (
-          <div className="flex gap-1">
-            <Input className="h-8 w-24" value={lat} onChange={(e) => setLat(e.target.value)} placeholder="lat" />
-            <Input className="h-8 w-24" value={lon} onChange={(e) => setLon(e.target.value)} placeholder="lon" />
+  const [name, setName] = useState(zone.name);
+  const [zips, setZips] = useState<string[]>(zone.zip_codes ?? []);
+  const [basePrice, setBasePrice] = useState(((zone.base_price_cents ?? 0) / 100).toFixed(2));
+  const [perDog, setPerDog] = useState(((zone.per_dog_addl_cents ?? 0) / 100).toFixed(2));
+  const [initialCleanup, setInitialCleanup] = useState(
+    ((zone.initial_cleanup_cents ?? 0) / 100).toFixed(2),
+  );
+  const [priceNote, setPriceNote] = useState(zone.price_note ?? "");
+
+  const saveMut = useMutation({
+    mutationFn: () =>
+      update({
+        data: {
+          id: zone.id,
+          name,
+          zipCodes: zips,
+          basePriceCents: Math.round((parseFloat(basePrice) || 0) * 100),
+          perDogAddlCents: Math.round((parseFloat(perDog) || 0) * 100),
+          initialCleanupCents: Math.round((parseFloat(initialCleanup) || 0) * 100),
+          priceNote: priceNote,
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Zone updated");
+      setEditing(false);
+      qc.invalidateQueries({ queryKey: ["zones"] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const delMut = useMutation({
+    mutationFn: () => del({ data: { id: zone.id } }),
+    onSuccess: () => {
+      toast.success("Zone deleted");
+      qc.invalidateQueries({ queryKey: ["zones"] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  if (!editing) {
+    const zipList: string[] = zone.zip_codes ?? [];
+    return (
+      <Card className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold">{zone.name}</h3>
+              {zone.postal_prefix && (
+                <Badge variant="outline" className="text-xs">
+                  prefix {zone.postal_prefix}
+                </Badge>
+              )}
+            </div>
+            {zipList.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {zipList.slice(0, 12).map((z) => (
+                  <Badge key={z} variant="secondary" className="text-xs">
+                    {z}
+                  </Badge>
+                ))}
+                {zipList.length > 12 && (
+                  <Badge variant="outline" className="text-xs">
+                    +{zipList.length - 12} more
+                  </Badge>
+                )}
+              </div>
+            )}
+            {zipList.length === 0 && !zone.postal_prefix && (
+              <p className="mt-2 text-xs text-amber-600">
+                No ZIPs set — this zone won't match new signups.
+              </p>
+            )}
+            {zone.price_note && (
+              <p className="mt-2 text-xs text-muted-foreground">{zone.price_note}</p>
+            )}
           </div>
-        ) : zone.latitude != null ? (
-          `${zone.latitude.toFixed(3)}, ${zone.longitude.toFixed(3)}`
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </td>
-      <td className="px-4 py-2 text-muted-foreground">{zone.price_note ?? "—"}</td>
-      <td className="px-4 py-2 text-right">
-        {editing ? (
-          <div className="flex justify-end gap-2">
-            <Button
-              size="sm"
-              onClick={() => {
-                const la = Number(lat);
-                const lo = Number(lon);
-                if (Number.isFinite(la) && Number.isFinite(lo)) {
-                  onSave(la, lo);
-                  setEditing(false);
-                }
-              }}
-            >
-              Save
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
-              Cancel
-            </Button>
+          <div className="text-right">
+            <div className="text-lg font-semibold">{money(zone.base_price_cents)}</div>
+            <div className="text-xs text-muted-foreground">
+              base + {money(zone.per_dog_addl_cents)} / extra dog
+            </div>
+            {zone.initial_cleanup_cents > 0 && (
+              <div className="text-xs text-muted-foreground">
+                First cleanup: {money(zone.initial_cleanup_cents)}
+              </div>
+            )}
           </div>
-        ) : (
-          <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
-            {zone.latitude != null ? "Edit coords" : "Add coords"}
+        </div>
+        <div className="mt-3 flex justify-end gap-2 border-t pt-3">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              if (confirm(`Delete zone "${zone.name}"?`)) delMut.mutate();
+            }}
+            disabled={delMut.isPending}
+          >
+            <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
           </Button>
-        )}
-      </td>
-    </tr>
+          <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+            Edit
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-5">
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Zone name</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Internal note</Label>
+            <Input value={priceNote} onChange={(e) => setPriceNote(e.target.value)} />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label>ZIP codes served</Label>
+          <ZipChips value={zips} onChange={setZips} />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="space-y-2">
+            <Label>Base price / visit</Label>
+            <div className="flex items-center gap-1">
+              <span className="text-muted-foreground">$</span>
+              <Input
+                inputMode="decimal"
+                value={basePrice}
+                onChange={(e) => setBasePrice(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Each additional dog</Label>
+            <div className="flex items-center gap-1">
+              <span className="text-muted-foreground">$</span>
+              <Input
+                inputMode="decimal"
+                value={perDog}
+                onChange={(e) => setPerDog(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Initial cleanup fee</Label>
+            <div className="flex items-center gap-1">
+              <span className="text-muted-foreground">$</span>
+              <Input
+                inputMode="decimal"
+                value={initialCleanup}
+                onChange={(e) => setInitialCleanup(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t pt-3">
+          <Button variant="ghost" onClick={() => setEditing(false)}>
+            Cancel
+          </Button>
+          <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>
+            {saveMut.isPending ? "Saving…" : "Save changes"}
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }
