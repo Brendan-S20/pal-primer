@@ -172,11 +172,65 @@ function PortalPage() {
         ) : (
           <ul className="divide-y rounded-md border">
             {visitsQ.data!.map((v) => (
-              <VisitRow key={v.visit_id} v={v} onSkip={(reason) => skipMut.mutate({ visitId: v.visit_id, reason })} />
+              <VisitRow key={v.visit_id} v={v}
+                        onSkip={(reason) => skipMut.mutate({ visitId: v.visit_id, reason })}
+                        onReschedule={(newDate) => rescheduleMut.mutate({ visitId: v.visit_id, newDate })} />
             ))}
           </ul>
         )}
       </section>
+
+      {(subsQ.data ?? []).length > 0 && (
+        <section>
+          <h2 className="mb-2 text-lg font-semibold">Your plan</h2>
+          <ul className="space-y-2">
+            {subsQ.data!.map((s) => (
+              <PlanRow key={`plan-${s.subscription_id}`} s={s}
+                       onChange={(f) => freqMut.mutate({ subscriptionId: s.subscription_id, frequency: f })}
+                       pending={freqMut.isPending} />
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <section>
+        <h2 className="mb-2 text-lg font-semibold">Your add-ons</h2>
+        {(clientAddonsQ.data ?? []).filter((a) => a.status === "active").length === 0 ? (
+          <p className="text-sm text-muted-foreground">No active add-ons.</p>
+        ) : (
+          <ul className="divide-y rounded-md border">
+            {clientAddonsQ.data!.filter((a) => a.status === "active").map((a) => (
+              <li key={a.addon_subscription_id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
+                <div>
+                  <div className="font-medium">{a.name}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {money(a.price_cents)} · {a.frequency} · next {a.next_charge_on}
+                  </div>
+                </div>
+                <Button size="sm" variant="outline"
+                        disabled={cancelAddonMut.isPending}
+                        onClick={() => cancelAddonMut.mutate(a.addon_subscription_id)}>
+                  Cancel
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {(catalogQ.data ?? []).length > 0 && (
+          <>
+            <h3 className="mt-4 mb-2 text-sm font-semibold text-muted-foreground">Available add-ons</h3>
+            <ul className="space-y-2">
+              {catalogQ.data!.map((a) => (
+                <AddonCatalogRow key={a.addon_service_id} a={a}
+                                 onSubscribe={(freq, qty) => subscribeAddonMut.mutate({
+                                   addonServiceId: a.addon_service_id, frequency: freq, quantity: qty,
+                                 })}
+                                 pending={subscribeAddonMut.isPending} />
+              ))}
+            </ul>
+          </>
+        )}
 
       {(subsQ.data ?? []).length > 0 && (
         <section>
