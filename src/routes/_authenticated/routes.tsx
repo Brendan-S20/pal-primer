@@ -80,7 +80,18 @@ function RoutesPage() {
   const reorder = useServerFn(reorderRoute);
   const getSettings = useServerFn(getDispatchSettings);
   const updSettings = useServerFn(updateDispatchSettings);
+  const doComplete = useServerFn(completeVisit);
   const qc = useQueryClient();
+
+  const completeMut = useMutation({
+    mutationFn: (visitId: string) => doComplete({ data: { visitId } }),
+    onSuccess: () => {
+      toast.success("Visit marked complete");
+      setLocalColumns(null);
+      qc.invalidateQueries({ queryKey: ["visits", day] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const { data: settingsData } = useQuery({
     queryKey: ["dispatch-settings"],
