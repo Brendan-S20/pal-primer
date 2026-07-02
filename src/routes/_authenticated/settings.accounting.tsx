@@ -98,7 +98,30 @@ function AccountingSettings() {
       <div>
         <h1 className="text-2xl font-semibold">Accounting sync</h1>
         <p className="text-sm text-muted-foreground">
-          Push paid invoices to QuickBooks Online or Xero. Add your OAuth access token below (obtain via the provider's OAuth flow with your app's client credentials — refresh manually when it expires).
+          Push paid invoices to QuickBooks Online or Xero. Use the Connect buttons below to authorize your accounting provider — tokens are refreshed automatically.
+        </p>
+      </div>
+
+      <div className="rounded border bg-card p-4">
+        <h2 className="mb-3 font-medium">Connect a provider</h2>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => connect("quickbooks")}
+            disabled={busy}
+            className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-60"
+          >
+            Connect QuickBooks Online
+          </button>
+          <button
+            onClick={() => connect("xero")}
+            disabled={busy}
+            className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-60"
+          >
+            Connect Xero
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          You'll be redirected to the provider to authorize. Requires <code>QBO_CLIENT_ID</code>/<code>QBO_CLIENT_SECRET</code> or <code>XERO_CLIENT_ID</code>/<code>XERO_CLIENT_SECRET</code> configured as project secrets.
         </p>
       </div>
 
