@@ -142,7 +142,7 @@ export const syncInvoice = createServerFn({ method: "POST" })
     let status: "success" | "error" = "success";
     let message: string | null = null;
     try {
-      remoteId = await pushInvoice(conn, invoice);
+      remoteId = await pushInvoice(conn as any, invoice as any);
       await supabase
         .from("invoices")
         .update({ accounting_remote_id: remoteId })
