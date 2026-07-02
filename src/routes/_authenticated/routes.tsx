@@ -19,7 +19,8 @@ import { backfillPropertyGeocodes } from "@/lib/properties.functions";
 import { completeVisit } from "@/lib/my-day.functions";
 import { RouteMap, buildTechGroups } from "@/components/RouteMap";
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
-import { Navigation, CheckCircle2, MapPin } from "lucide-react";
+import { WeatherStrip } from "@/components/WeatherStrip";
+import { Navigation, CheckCircle2, MapPin, CloudRain } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -302,6 +303,8 @@ function RoutesPage() {
           </Button>
         </div>
       </div>
+      <WeatherStrip day={day} />
+
 
       {toolsOpen && (
       <div className="grid gap-4 rounded-lg border bg-card p-5 sm:grid-cols-3">
@@ -665,6 +668,16 @@ function VisitCardView({
             {visit.zones?.name && <Badge variant="outline" className="h-4 px-1 text-[10px]">{visit.zones.name}</Badge>}
             <Badge variant="secondary" className="h-4 px-1 text-[10px]">{visit.status}</Badge>
             {visit.window_violated && <Badge variant="destructive" className="h-4 px-1 text-[10px]">Late</Badge>}
+            {visit.weather_flagged && (
+              <Badge
+                variant="destructive"
+                className="h-4 gap-0.5 px-1 text-[10px]"
+                title={visit.weather_note ?? "Weather risk"}
+              >
+                <CloudRain className="h-2.5 w-2.5" />
+                {visit.weather_note ? String(visit.weather_note).split(",")[0] : "Weather"}
+              </Badge>
+            )}
           </div>
           {(dirUrl || canComplete) && !dragging && (
             <div className="mt-2 flex flex-wrap gap-1">
