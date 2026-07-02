@@ -220,7 +220,7 @@ function RoutesPage() {
           </div>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="tech">Auto-assign day to tech</Label>
+          <Label htmlFor="tech">Auto-assign / optimize day for tech</Label>
           <div className="flex gap-2">
             <select
               id="tech"
@@ -236,7 +236,13 @@ function RoutesPage() {
             <Button onClick={() => assignMut.mutate()} disabled={!assignStaffId || assignMut.isPending} variant="secondary">
               Assign
             </Button>
+            <Button onClick={() => optimizeMut.mutate()} disabled={!assignStaffId || optimizeMut.isPending}>
+              {optimizeMut.isPending ? "…" : "Optimize"}
+            </Button>
           </div>
+          <p className="text-[11px] text-muted-foreground">
+            Optimize uses nearest-neighbor from the tech's start location (Settings → Team).
+          </p>
         </div>
       </div>
 
