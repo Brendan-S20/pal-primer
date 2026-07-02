@@ -278,10 +278,74 @@ function RoutesPage() {
             </Button>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Optimize uses nearest-neighbor from the tech's start location (Settings → Team).
+            Optimize uses nearest-neighbor with time windows + traffic from the tech's start location.
           </p>
         </div>
       </div>
+
+      <div className="grid gap-4 rounded-lg border bg-card p-5 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label>Optimize multiple days (auto-balance across techs)</Label>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={1}
+              max={31}
+              value={weekDays}
+              onChange={(e) => setWeekDays(Math.max(1, Math.min(31, Number(e.target.value) || 1)))}
+              className="w-20"
+            />
+            <span className="text-sm text-muted-foreground">days starting {day}</span>
+            <Button onClick={() => weekMut.mutate()} disabled={weekMut.isPending}>
+              {weekMut.isPending ? "…" : "Optimize week"}
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Distributes unassigned visits round-robin by zone, then optimizes each tech's day.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <Label className="text-xs">Workday start</Label>
+            <Input
+              type="time"
+              defaultValue={settings.workday_start?.slice(0, 5) ?? "08:00"}
+              onBlur={(e) => settingsMut.mutate({ workday_start: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Workday end</Label>
+            <Input
+              type="time"
+              defaultValue={settings.workday_end?.slice(0, 5) ?? "17:00"}
+              onBlur={(e) => settingsMut.mutate({ workday_end: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Avg speed (km/h)</Label>
+            <Input
+              type="number"
+              min={5}
+              max={120}
+              defaultValue={settings.avg_speed_kmh ?? 30}
+              onBlur={(e) => settingsMut.mutate({ avg_speed_kmh: Number(e.target.value) })}
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Traffic profile</Label>
+            <select
+              defaultValue={settings.traffic_profile ?? "normal"}
+              onChange={(e) => settingsMut.mutate({ traffic_profile: e.target.value as any })}
+              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            >
+              <option value="light">Light (faster)</option>
+              <option value="normal">Normal</option>
+              <option value="heavy">Heavy (slower)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
 
       <DndContext
         sensors={sensors}
