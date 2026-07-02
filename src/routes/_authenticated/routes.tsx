@@ -61,14 +61,30 @@ function RoutesPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [localColumns, setLocalColumns] = useState<Record<string, Visit[]> | null>(null);
 
+  const [weekDays, setWeekDays] = useState(7);
+
   const listV = useServerFn(listVisitsForDay);
   const listS = useServerFn(listStaff);
   const gen = useServerFn(generateVisits);
   const assign = useServerFn(assignRoute);
   const optimize = useServerFn(optimizeRoute);
+  const optWeek = useServerFn(optimizeWeek);
   const reassign = useServerFn(reassignVisit);
   const reorder = useServerFn(reorderRoute);
+  const getSettings = useServerFn(getDispatchSettings);
+  const updSettings = useServerFn(updateDispatchSettings);
   const qc = useQueryClient();
+
+  const { data: settingsData } = useQuery({
+    queryKey: ["dispatch-settings"],
+    queryFn: () => getSettings(),
+  });
+  const settings = settingsData?.settings ?? {
+    workday_start: "08:00",
+    workday_end: "17:00",
+    avg_speed_kmh: 30,
+    traffic_profile: "normal",
+  };
 
   const { data: visitsData } = useQuery({
     queryKey: ["visits", day],
