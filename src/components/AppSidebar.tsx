@@ -22,6 +22,7 @@ import {
   UserPlus,
   Building2,
   Package,
+  Shield,
 } from "lucide-react";
 
 import {
