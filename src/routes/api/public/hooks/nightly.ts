@@ -34,7 +34,7 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
         const { data: orgs, error: orgErr } = await supabaseAdmin
           .from("organizations")
           .select(
-            "id, name, sms_from_number, auto_generate_visits, auto_generate_days_ahead, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days",
+            "id, name, sms_from_number, auto_generate_visits, auto_generate_days_ahead, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days, seasonal_deepclean_enabled, seasonal_deepclean_months",
           );
         if (orgErr) return json({ error: orgErr.message }, 500);
 
@@ -80,7 +80,23 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
 
           perOrg.autopay_charged = await runAutopayForOrg(supabaseAdmin, org.id);
 
-
+          // Seasonal deep-cleans: run on the 1st of each configured month.
+          if (
+            org.seasonal_deepclean_enabled &&
+            today.getUTCDate() === 1 &&
+            Array.isArray(org.seasonal_deepclean_months) &&
+            org.seasonal_deepclean_months.includes(today.getUTCMonth() + 1)
+          ) {
+            const { data: n, error } = await supabaseAdmin.rpc(
+              "admin_generate_seasonal_deepcleans",
+              {
+                _org_id: org.id,
+                _year: today.getUTCFullYear(),
+                _month: today.getUTCMonth() + 1,
+              },
+            );
+            perOrg.deepcleans_generated = error ? `err: ${error.message}` : (n as number);
+          }
 
           summary.push(perOrg);
         }
