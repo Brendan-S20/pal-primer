@@ -42,7 +42,13 @@ export const updateAiReceptionistSettings = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const orgId = await orgIdFor(context.supabase, context.userId);
-    const patch: Record<string, unknown> = {
+    const patch: {
+      ai_receptionist_enabled: boolean;
+      ai_receptionist_faq: string | null;
+      ai_receptionist_persona: string | null;
+      ai_voice_enabled?: boolean;
+      ai_voice_greeting?: string | null;
+    } = {
       ai_receptionist_enabled: data.enabled,
       ai_receptionist_faq: data.faq,
       ai_receptionist_persona: data.persona,
