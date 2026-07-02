@@ -374,6 +374,9 @@ export type Database = {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"]
           active: boolean
+          churn_reason: string | null
+          churn_score: number | null
+          churn_scored_at: string | null
           created_at: string
           credit_balance_cents: number
           display_name: string
@@ -398,6 +401,9 @@ export type Database = {
         Insert: {
           account_type: Database["public"]["Enums"]["account_type"]
           active?: boolean
+          churn_reason?: string | null
+          churn_score?: number | null
+          churn_scored_at?: string | null
           created_at?: string
           credit_balance_cents?: number
           display_name: string
@@ -422,6 +428,9 @@ export type Database = {
         Update: {
           account_type?: Database["public"]["Enums"]["account_type"]
           active?: boolean
+          churn_reason?: string | null
+          churn_score?: number | null
+          churn_scored_at?: string | null
           created_at?: string
           credit_balance_cents?: number
           display_name?: string
