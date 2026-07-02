@@ -524,11 +524,12 @@ function MapPanel({
 }
 
 function Column({
-  id, title, subtitle, items, tone, onComplete, completingId,
+  id, title, subtitle, items, tone, onComplete, completingId, onOpen,
 }: {
   id: string; title: string; subtitle?: string; items: Visit[]; tone?: "muted";
   onComplete?: (visitId: string) => void;
   completingId?: string | null;
+  onOpen?: (visitId: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const totalCents = items.reduce((sum, v) => sum + (v.subscriptions?.price_cents ?? 0), 0);
