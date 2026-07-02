@@ -15,6 +15,9 @@ import {
   getDispatchSettings,
   updateDispatchSettings,
 } from "@/lib/visits.functions";
+import { completeVisit } from "@/lib/my-day.functions";
+import { RouteMap, buildTechGroups } from "@/components/RouteMap";
+import { Navigation, CheckCircle2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
