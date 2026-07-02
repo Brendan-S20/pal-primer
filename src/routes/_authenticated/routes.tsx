@@ -19,7 +19,8 @@ import { backfillPropertyGeocodes } from "@/lib/properties.functions";
 import { completeVisit } from "@/lib/my-day.functions";
 import { RouteMap, buildTechGroups } from "@/components/RouteMap";
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
-import { Navigation, CheckCircle2, MapPin } from "lucide-react";
+import { WeatherStrip } from "@/components/WeatherStrip";
+import { Navigation, CheckCircle2, MapPin, CloudRain } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
