@@ -224,3 +224,45 @@ async function sendOverdueEmails(
   }
   return sent;
 }
+
+async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<number> {
+  const secret = process.env.STRIPE_SECRET_KEY;
+  if (!secret) return 0;
+  const { data: invoices } = await supabaseAdmin
+    .from("invoices")
+    .select("id, client_id, total_cents, currency, organization_id, status, clients!inner(id, stripe_customer_id, default_payment_method_id, autopay_enabled)")
+    .eq("organization_id", orgId)
+    .in("status", ["open", "draft"])
+    .gt("total_cents", 0);
+  if (!invoices?.length) return 0;
+  const Stripe = (await import("stripe")).default;
+  const stripe = new Stripe(secret);
+  let charged = 0;
+  for (const inv of invoices) {
+    const c = Array.isArray(inv.clients) ? inv.clients[0] : inv.clients;
+    if (!c?.autopay_enabled || !c.stripe_customer_id || !c.default_payment_method_id) continue;
+    try {
+      await stripe.paymentIntents.create({
+        amount: inv.total_cents,
+        currency: inv.currency ?? "usd",
+        customer: c.stripe_customer_id,
+        payment_method: c.default_payment_method_id,
+        off_session: true,
+        confirm: true,
+        metadata: {
+          invoice_id: inv.id,
+          organization_id: inv.organization_id,
+          source: "autopay",
+        },
+      });
+      charged++;
+    } catch (e) {
+      const msg = (e as Error).message || "autopay failed";
+      await supabaseAdmin.from("clients").update({
+        autopay_last_attempt_at: new Date().toISOString(),
+        autopay_last_error: msg,
+      }).eq("id", c.id);
+    }
+  }
+  return charged;
+}
