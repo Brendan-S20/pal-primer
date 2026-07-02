@@ -2506,6 +2506,18 @@ export type Database = {
       }
       org_can_add_client: { Args: { _org_id: string }; Returns: boolean }
       phone_digits: { Args: { _p: string }; Returns: string }
+      portal_cancel_addon: {
+        Args: { _addon_subscription_id: string; _token: string }
+        Returns: undefined
+      }
+      portal_change_frequency: {
+        Args: {
+          _new_frequency: Database["public"]["Enums"]["service_frequency"]
+          _subscription_id: string
+          _token: string
+        }
+        Returns: undefined
+      }
       portal_get_client: {
         Args: { _token: string }
         Returns: {
@@ -2515,6 +2527,31 @@ export type Database = {
           display_name: string
           org_name: string
           organization_id: string
+        }[]
+      }
+      portal_list_addon_catalog: {
+        Args: { _token: string }
+        Returns: {
+          addon_service_id: string
+          code: string
+          default_frequency: Database["public"]["Enums"]["addon_frequency"]
+          description: string
+          kind: Database["public"]["Enums"]["addon_kind"]
+          name: string
+          unit_price_cents: number
+        }[]
+      }
+      portal_list_client_addons: {
+        Args: { _token: string }
+        Returns: {
+          addon_service_id: string
+          addon_subscription_id: string
+          frequency: Database["public"]["Enums"]["addon_frequency"]
+          name: string
+          next_charge_on: string
+          price_cents: number
+          quantity: number
+          status: string
         }[]
       }
       portal_list_invoices: {
@@ -2553,8 +2590,21 @@ export type Database = {
         Args: { _reason: string; _token: string; _visit_id: string }
         Returns: undefined
       }
+      portal_reschedule_visit: {
+        Args: { _new_date: string; _token: string; _visit_id: string }
+        Returns: undefined
+      }
       portal_start_prepaid_topup: {
         Args: { _subscription_id: string; _token: string; _visit_count: number }
+        Returns: string
+      }
+      portal_subscribe_addon: {
+        Args: {
+          _addon_service_id: string
+          _frequency: Database["public"]["Enums"]["addon_frequency"]
+          _quantity: number
+          _token: string
+        }
         Returns: string
       }
       post_credit_entry: {

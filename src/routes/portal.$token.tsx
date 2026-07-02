@@ -10,11 +10,20 @@ import {
   portalRequestSkip,
   portalStartPrepaidTopup,
   portalCreateCheckout,
+  portalRescheduleVisit,
+  portalChangeFrequency,
+  portalListAddonCatalog,
+  portalListClientAddons,
+  portalSubscribeAddon,
+  portalCancelAddon,
 } from "@/lib/portal.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/portal/$token")({
@@ -47,6 +56,12 @@ function PortalPage() {
   const skipFn = useServerFn(portalRequestSkip);
   const topupFn = useServerFn(portalStartPrepaidTopup);
   const checkoutFn = useServerFn(portalCreateCheckout);
+  const rescheduleFn = useServerFn(portalRescheduleVisit);
+  const changeFreqFn = useServerFn(portalChangeFrequency);
+  const listAddonCatalogFn = useServerFn(portalListAddonCatalog);
+  const listClientAddonsFn = useServerFn(portalListClientAddons);
+  const subscribeAddonFn = useServerFn(portalSubscribeAddon);
+  const cancelAddonFn = useServerFn(portalCancelAddon);
 
   const clientQ = useQuery({
     queryKey: ["portal", token, "client"],
@@ -63,6 +78,14 @@ function PortalPage() {
   const subsQ = useQuery({
     queryKey: ["portal", token, "subs"],
     queryFn: () => listSubsFn({ data: { token } }),
+  });
+  const catalogQ = useQuery({
+    queryKey: ["portal", token, "catalog"],
+    queryFn: () => listAddonCatalogFn({ data: { token } }),
+  });
+  const clientAddonsQ = useQuery({
+    queryKey: ["portal", token, "clientAddons"],
+    queryFn: () => listClientAddonsFn({ data: { token } }),
   });
 
   const skipMut = useMutation({
@@ -93,6 +116,36 @@ function PortalPage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
+  const invalidatePortal = () => qc.invalidateQueries({ queryKey: ["portal", token] });
+
+  const rescheduleMut = useMutation({
+    mutationFn: (v: { visitId: string; newDate: string }) =>
+      rescheduleFn({ data: { token, ...v } }),
+    onSuccess: () => { toast.success("Visit rescheduled"); invalidatePortal(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const freqMut = useMutation({
+    mutationFn: (v: { subscriptionId: string; frequency: "weekly" | "biweekly" | "twice_weekly" | "monthly" }) =>
+      changeFreqFn({ data: { token, ...v } }),
+    onSuccess: () => { toast.success("Plan updated"); invalidatePortal(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const subscribeAddonMut = useMutation({
+    mutationFn: (v: { addonServiceId: string; frequency: "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly" | null; quantity: number }) =>
+      subscribeAddonFn({ data: { token, ...v } }),
+    onSuccess: () => { toast.success("Add-on added"); invalidatePortal(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const cancelAddonMut = useMutation({
+    mutationFn: (addonSubscriptionId: string) =>
+      cancelAddonFn({ data: { token, addonSubscriptionId } }),
+    onSuccess: () => { toast.success("Add-on canceled"); invalidatePortal(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
   if (clientQ.isLoading) {
     return <div className="mx-auto max-w-3xl p-8 text-center text-sm text-muted-foreground">Loading…</div>;
   }
@@ -119,11 +172,67 @@ function PortalPage() {
         ) : (
           <ul className="divide-y rounded-md border">
             {visitsQ.data!.map((v) => (
-              <VisitRow key={v.visit_id} v={v} onSkip={(reason) => skipMut.mutate({ visitId: v.visit_id, reason })} />
+              <VisitRow key={v.visit_id} v={v}
+                        onSkip={(reason) => skipMut.mutate({ visitId: v.visit_id, reason })}
+                        onReschedule={(newDate) => rescheduleMut.mutate({ visitId: v.visit_id, newDate })} />
             ))}
           </ul>
         )}
       </section>
+
+      {(subsQ.data ?? []).length > 0 && (
+        <section>
+          <h2 className="mb-2 text-lg font-semibold">Your plan</h2>
+          <ul className="space-y-2">
+            {subsQ.data!.map((s) => (
+              <PlanRow key={`plan-${s.subscription_id}`} s={s}
+                       onChange={(f) => freqMut.mutate({ subscriptionId: s.subscription_id, frequency: f })}
+                       pending={freqMut.isPending} />
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <section>
+        <h2 className="mb-2 text-lg font-semibold">Your add-ons</h2>
+        {(clientAddonsQ.data ?? []).filter((a) => a.status === "active").length === 0 ? (
+          <p className="text-sm text-muted-foreground">No active add-ons.</p>
+        ) : (
+          <ul className="divide-y rounded-md border">
+            {clientAddonsQ.data!.filter((a) => a.status === "active").map((a) => (
+              <li key={a.addon_subscription_id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
+                <div>
+                  <div className="font-medium">{a.name}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {money(a.price_cents)} · {a.frequency} · next {a.next_charge_on}
+                  </div>
+                </div>
+                <Button size="sm" variant="outline"
+                        disabled={cancelAddonMut.isPending}
+                        onClick={() => cancelAddonMut.mutate(a.addon_subscription_id)}>
+                  Cancel
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {(catalogQ.data ?? []).length > 0 && (
+          <>
+            <h3 className="mt-4 mb-2 text-sm font-semibold text-muted-foreground">Available add-ons</h3>
+            <ul className="space-y-2">
+              {catalogQ.data!.map((a) => (
+                <AddonCatalogRow key={a.addon_service_id} a={a}
+                                 onSubscribe={(freq, qty) => subscribeAddonMut.mutate({
+                                   addonServiceId: a.addon_service_id, frequency: freq, quantity: qty,
+                                 })}
+                                 pending={subscribeAddonMut.isPending} />
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
+
 
       {(subsQ.data ?? []).length > 0 && (
         <section>
@@ -165,9 +274,17 @@ function PortalPage() {
   );
 }
 
-function VisitRow({ v, onSkip }: { v: { visit_id: string; scheduled_on: string; status: string; street: string | null; city: string | null; postal_code: string | null }; onSkip: (reason: string) => void }) {
-  const [open, setOpen] = useState(false);
+function VisitRow({ v, onSkip, onReschedule }: {
+  v: { visit_id: string; scheduled_on: string; status: string; street: string | null; city: string | null; postal_code: string | null };
+  onSkip: (reason: string) => void;
+  onReschedule: (newDate: string) => void;
+}) {
+  const [skipOpen, setSkipOpen] = useState(false);
+  const [reschedOpen, setReschedOpen] = useState(false);
   const [reason, setReason] = useState("");
+  const minDate = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const maxDate = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+  const [newDate, setNewDate] = useState(minDate);
   return (
     <li className="p-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -177,20 +294,113 @@ function VisitRow({ v, onSkip }: { v: { visit_id: string; scheduled_on: string; 
             {[v.street, v.city, v.postal_code].filter(Boolean).join(", ") || "Address on file"}
           </div>
         </div>
-        <Button size="sm" variant="outline" onClick={() => setOpen((o) => !o)}>
-          {open ? "Cancel" : "Request skip"}
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => { setReschedOpen((o) => !o); setSkipOpen(false); }}>
+            {reschedOpen ? "Cancel" : "Reschedule"}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => { setSkipOpen((o) => !o); setReschedOpen(false); }}>
+            {skipOpen ? "Cancel" : "Skip"}
+          </Button>
+        </div>
       </div>
-      {open && (
+      {reschedOpen && (
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <div>
+            <Label htmlFor={`d-${v.visit_id}`} className="text-xs">New date</Label>
+            <Input id={`d-${v.visit_id}`} type="date" min={minDate} max={maxDate}
+                   value={newDate} onChange={(e) => setNewDate(e.target.value)} className="w-40" />
+          </div>
+          <Button size="sm" onClick={() => { onReschedule(newDate); setReschedOpen(false); }}>
+            Confirm reschedule
+          </Button>
+        </div>
+      )}
+      {skipOpen && (
         <div className="mt-3 space-y-2">
           <Label htmlFor={`r-${v.visit_id}`} className="text-xs">Reason (optional)</Label>
           <Input id={`r-${v.visit_id}`} value={reason} onChange={(e) => setReason(e.target.value)}
                  placeholder="Out of town, etc." />
-          <Button size="sm" onClick={() => { onSkip(reason); setOpen(false); setReason(""); }}>
+          <Button size="sm" onClick={() => { onSkip(reason); setSkipOpen(false); setReason(""); }}>
             Confirm skip
           </Button>
         </div>
       )}
+    </li>
+  );
+}
+
+function PlanRow({ s, onChange, pending }: {
+  s: { subscription_id: string; frequency: string; property_label: string | null; price_cents: number };
+  onChange: (f: "weekly" | "biweekly" | "twice_weekly" | "monthly") => void;
+  pending: boolean;
+}) {
+  const [freq, setFreq] = useState<string>(s.frequency);
+  return (
+    <li className="flex flex-wrap items-end gap-3 rounded-md border p-3 text-sm">
+      <div className="flex-1">
+        <div className="font-medium">{s.property_label ?? "Service"}</div>
+        <div className="text-xs text-muted-foreground">Currently {s.frequency} · {money(s.price_cents)} / visit</div>
+      </div>
+      <div>
+        <Label className="text-xs">Change frequency</Label>
+        <Select value={freq} onValueChange={setFreq}>
+          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="weekly">Weekly</SelectItem>
+            <SelectItem value="biweekly">Biweekly</SelectItem>
+            <SelectItem value="twice_weekly">Twice weekly</SelectItem>
+            <SelectItem value="monthly">Monthly</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <Button size="sm" disabled={pending || freq === s.frequency}
+              onClick={() => onChange(freq as "weekly" | "biweekly" | "twice_weekly" | "monthly")}>
+        Update plan
+      </Button>
+    </li>
+  );
+}
+
+function AddonCatalogRow({ a, onSubscribe, pending }: {
+  a: { addon_service_id: string; name: string; description: string | null; kind: string;
+       unit_price_cents: number; default_frequency: string | null };
+  onSubscribe: (freq: "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly" | null, qty: number) => void;
+  pending: boolean;
+}) {
+  const [qty, setQty] = useState(1);
+  const [freq, setFreq] = useState<string>(a.default_frequency ?? "monthly");
+  const isRecurring = a.kind === "recurring";
+  return (
+    <li className="flex flex-wrap items-end gap-3 rounded-md border p-3 text-sm">
+      <div className="flex-1 min-w-[12rem]">
+        <div className="font-medium">{a.name}</div>
+        {a.description && <div className="text-xs text-muted-foreground">{a.description}</div>}
+        <div className="text-xs text-muted-foreground">{money(a.unit_price_cents)} · {a.kind === "recurring" ? "recurring" : "one-time"}</div>
+      </div>
+      <div>
+        <Label className="text-xs">Qty</Label>
+        <Input type="number" min={1} max={50} value={qty}
+               onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))} className="w-20" />
+      </div>
+      {isRecurring && (
+        <div>
+          <Label className="text-xs">Frequency</Label>
+          <Select value={freq} onValueChange={setFreq}>
+            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="weekly">Weekly</SelectItem>
+              <SelectItem value="biweekly">Biweekly</SelectItem>
+              <SelectItem value="monthly">Monthly</SelectItem>
+              <SelectItem value="quarterly">Quarterly</SelectItem>
+              <SelectItem value="yearly">Yearly</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      <Button size="sm" disabled={pending}
+              onClick={() => onSubscribe(isRecurring ? (freq as any) : null, qty)}>
+        {isRecurring ? "Subscribe" : "Add"}
+      </Button>
     </li>
   );
 }
