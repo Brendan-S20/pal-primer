@@ -145,3 +145,239 @@ export const getClient = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     return { client };
   });
+
+// ---------- Internal quote (for authenticated onboarding wizard) ----------
+
+const internalQuoteSchema = z.object({
+  postalCode: z.string().trim().min(3).max(12),
+  dogCount: z.coerce.number().int().min(1).max(20),
+  frequency: z.enum(["weekly", "biweekly", "twice_weekly", "monthly"]),
+});
+
+export const getInternalQuote = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => internalQuoteSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+    const { data: org, error: oErr } = await supabase
+      .from("organizations")
+      .select("currency, frequency_multipliers")
+      .eq("id", orgId)
+      .single();
+    if (oErr) throw new Error(oErr.message);
+
+    const { data: zones, error: zErr } = await supabase
+      .from("zones")
+      .select("id, name, postal_prefix, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents")
+      .eq("organization_id", orgId);
+    if (zErr) throw new Error(zErr.message);
+
+    const pc = data.postalCode.trim();
+    const match = (zones ?? [])
+      .map((z: any) => {
+        const exact = Array.isArray(z.zip_codes) && z.zip_codes.includes(pc);
+        const prefix = z.postal_prefix && pc.startsWith(z.postal_prefix);
+        if (!exact && !prefix) return null;
+        return { z, rank: exact ? 0 : 1, prefLen: (z.postal_prefix ?? "").length };
+      })
+      .filter(Boolean)
+      .sort((a: any, b: any) => a.rank - b.rank || b.prefLen - a.prefLen)[0] as any;
+
+    if (!match) return { available: false as const };
+    const z = match.z;
+    const mult = Number((org.frequency_multipliers as any)?.[data.frequency] ?? 1);
+    const perVisit = (z.base_price_cents ?? 0) + Math.max(0, data.dogCount - 1) * (z.per_dog_addl_cents ?? 0);
+    const recurring = Math.round(perVisit * mult);
+    return {
+      available: true as const,
+      quote: {
+        zoneId: z.id as string,
+        zoneName: z.name as string,
+        basePriceCents: perVisit,
+        perDogAddlCents: z.per_dog_addl_cents ?? 0,
+        recurringPriceCents: recurring,
+        initialCleanupCents: z.initial_cleanup_cents ?? 0,
+        currency: org.currency as string,
+      },
+    };
+  });
+
+// ---------- Composite onboarding: client + property + dogs + subscription ----------
+
+const onboardSchema = z.object({
+  // client
+  displayName: z.string().min(1).max(200),
+  accountType: z.enum(["residential", "commercial"]),
+  primaryEmail: z.string().email().or(z.literal("")).optional(),
+  primaryPhone: z.string().max(40).optional(),
+  // property
+  street: z.string().min(1).max(200),
+  city: z.string().min(1).max(120),
+  region: z.string().max(120).optional(),
+  postalCode: z.string().min(1).max(20),
+  gateCode: z.string().max(60).optional(),
+  yardSize: z.enum(["small", "medium", "large", "xlarge"]).optional(),
+  hazardNotes: z.string().max(1000).optional(),
+  hazards: z
+    .object({
+      doNotEnterIfDogOut: z.boolean().optional(),
+      aggressiveDog: z.boolean().optional(),
+      escapeRisk: z.boolean().optional(),
+      invisibleFence: z.boolean().optional(),
+      dogInYardDuringService: z.boolean().optional(),
+      beesWasps: z.boolean().optional(),
+      sharpObjects: z.boolean().optional(),
+      slipperySurfaces: z.boolean().optional(),
+    })
+    .optional(),
+  // dogs
+  dogs: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(80),
+        breed: z.string().max(120).optional(),
+        weightClass: z.string().max(40).optional(),
+        temperament: z.enum(["friendly", "shy", "anxious", "aggressive", "unknown"]).optional(),
+        notes: z.string().max(500).optional(),
+      }),
+    )
+    .max(20)
+    .optional(),
+  // subscription (optional — user may skip)
+  subscription: z
+    .object({
+      frequency: z.enum(["weekly", "biweekly", "twice_weekly", "monthly", "one_time"]),
+      priceCents: z.number().int().min(0),
+      dogCount: z.number().int().min(1).optional(),
+      unitCount: z.number().int().min(1).optional(),
+      zoneId: z.string().uuid().optional(),
+      billingCadence: z.enum(["prepaid", "postpaid"]).optional(),
+      preferredWeekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
+    })
+    .optional(),
+});
+
+export const onboardClient = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => onboardSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+
+    // 1) client
+    const { data: cRow, error: cErr } = await supabase
+      .from("clients")
+      .insert({
+        organization_id: orgId,
+        display_name: data.displayName,
+        account_type: data.accountType,
+        primary_email: data.primaryEmail || null,
+        primary_phone: data.primaryPhone || null,
+      })
+      .select("id, portal_token")
+      .single();
+    if (cErr) throw new Error(cErr.message);
+    const clientId = cRow.id as string;
+
+    // 2) property (best-effort geocode)
+    let latitude: number | null = null;
+    let longitude: number | null = null;
+    try {
+      const { geocodeAddress } = await import("./geocode.server");
+      const geo = await geocodeAddress({
+        street: data.street,
+        city: data.city,
+        region: data.region,
+        postal_code: data.postalCode,
+      });
+      latitude = geo?.latitude ?? null;
+      longitude = geo?.longitude ?? null;
+    } catch {}
+
+    const hz = data.hazards ?? {};
+    const { data: pRow, error: pErr } = await supabase
+      .from("properties")
+      .insert({
+        client_id: clientId,
+        organization_id: orgId,
+        street: data.street,
+        city: data.city,
+        region: data.region || null,
+        postal_code: data.postalCode,
+        gate_code: data.gateCode || null,
+        yard_size: data.yardSize ?? null,
+        do_not_enter_if_dog_out: !!hz.doNotEnterIfDogOut,
+        aggressive_dog: !!hz.aggressiveDog,
+        escape_risk: !!hz.escapeRisk,
+        invisible_fence: !!hz.invisibleFence,
+        dog_in_yard_during_service: !!hz.dogInYardDuringService,
+        bees_wasps: !!hz.beesWasps,
+        sharp_objects: !!hz.sharpObjects,
+        slippery_surfaces: !!hz.slipperySurfaces,
+        hazard_notes: data.hazardNotes || null,
+        latitude,
+        longitude,
+      })
+      .select("id")
+      .single();
+    if (pErr) throw new Error(pErr.message);
+    const propertyId = pRow.id as string;
+
+    // 3) dogs
+    if (data.dogs?.length) {
+      const rows = data.dogs.map((d) => ({
+        organization_id: orgId,
+        property_id: propertyId,
+        name: d.name,
+        breed: d.breed || null,
+        weight_class: d.weightClass || null,
+        temperament: (d.temperament ?? "unknown") as any,
+        notes: d.notes || null,
+      }));
+      const { error: dErr } = await supabase.from("dogs").insert(rows);
+      if (dErr) throw new Error(dErr.message);
+    }
+
+    // 4) subscription
+    if (data.subscription) {
+      const s = data.subscription;
+      const isRes = data.accountType === "residential";
+      const { error: sErr } = await supabase.from("subscriptions").insert({
+        organization_id: orgId,
+        client_id: clientId,
+        property_id: propertyId,
+        account_type: data.accountType,
+        frequency: s.frequency,
+        price_cents: s.priceCents,
+        dog_count: isRes ? (s.dogCount ?? data.dogs?.length ?? 1) : null,
+        unit_count: !isRes ? (s.unitCount ?? 1) : null,
+        zone_id: s.zoneId ?? null,
+        billing_cadence: s.billingCadence ?? "postpaid",
+        preferred_weekdays: s.preferredWeekdays?.length ? s.preferredWeekdays : null,
+      });
+      if (sErr) throw new Error(sErr.message);
+    }
+
+    // welcome email (best-effort)
+    if (data.primaryEmail) {
+      try {
+        const appUrl = process.env.APP_URL || "https://pal-primer.lovable.app";
+        const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+        await enqueueAppEmail({
+          organizationId: orgId,
+          clientId,
+          templateName: "welcome",
+          notifyKey: "notify_email_welcome",
+          idempotencyKey: `welcome-${clientId}`,
+          templateData: {
+            portalUrl: cRow.portal_token ? `${appUrl}/portal/${cRow.portal_token}` : undefined,
+          },
+        });
+      } catch (e) {
+        console.error("welcome email failed", e);
+      }
+    }
+
+    return { id: clientId };
+  });
