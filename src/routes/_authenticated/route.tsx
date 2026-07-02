@@ -1,4 +1,5 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { InstallBanner } from "@/components/InstallBanner";
