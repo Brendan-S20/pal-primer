@@ -476,19 +476,33 @@ function RoutesPage() {
   );
 }
 
-function MapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
+function MapPanel({
+  visits, staff, onOpenVisit, onGeocode, geocoding,
+}: {
+  visits: any[]; staff: any[];
+  onOpenVisit?: (id: string) => void;
+  onGeocode?: () => void;
+  geocoding?: boolean;
+}) {
   const groups = useMemo(() => buildTechGroups(visits as any, staff as any), [visits, staff]);
   const mappable = visits.filter((v: any) => v.properties?.latitude != null && v.properties?.longitude != null).length;
+  const missing = visits.length - mappable;
   return (
     <div className="rounded-lg border bg-card p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-sm font-semibold">Map</h2>
           <p className="text-[11px] text-muted-foreground">
-            {mappable} of {visits.length} visits geocoded. Click a pin to open a popup; use the tech cards below to open directions or mark complete.
+            {mappable} of {visits.length} visits on map. Click a pin or a card to view details.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {onGeocode && missing > 0 && (
+            <Button size="sm" variant="outline" onClick={onGeocode} disabled={geocoding}>
+              <MapPin className="mr-1 h-3.5 w-3.5" />
+              {geocoding ? "Geocoding…" : `Geocode ${missing} address${missing === 1 ? "" : "es"}`}
+            </Button>
+          )}
           {groups.map((g) => (
             <div key={g.staffId ?? "u"} className="flex items-center gap-1 text-[11px]">
               <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: g.color }} />
@@ -497,13 +511,14 @@ function MapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
           ))}
         </div>
       </div>
-      {mappable === 0 ? (
-        <div className="rounded-md border border-dashed p-6 text-center text-xs text-muted-foreground">
-          No visits with coordinates on this day. Add latitude/longitude to properties to see the route on the map.
-        </div>
-      ) : (
-        <RouteMap groups={groups} height={420} />
-      )}
+      <div className="relative">
+        <RouteMap groups={groups} height={420} onVisitClick={onOpenVisit} />
+        {mappable === 0 && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-background/70 text-xs text-muted-foreground">
+            No coordinates yet. Click “Geocode addresses” to plot properties.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
