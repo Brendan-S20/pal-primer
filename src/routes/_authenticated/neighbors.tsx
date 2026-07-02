@@ -177,7 +177,13 @@ function NeighborsPage() {
         <p className="text-sm text-muted-foreground">
           Every new client is a beachhead. Seed 5–10 doors on their street, canvass them, and turn one house into a whole route.
         </p>
+        </div>
+        <Button variant="outline" onClick={() => { setWalkIdx(0); setWalkMode(true); }} disabled={walkQueue.length === 0}>
+          <Footprints className="mr-1.5 h-4 w-4" />
+          Walk mode ({walkQueue.length})
+        </Button>
       </div>
+
 
       <div className="grid gap-3 md:grid-cols-5">
         <Stat label="Total" value={s.total} />
