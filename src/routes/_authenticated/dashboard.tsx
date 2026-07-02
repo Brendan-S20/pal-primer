@@ -243,13 +243,10 @@ function Dashboard() {
         </div>
       </div>
 
-      {detailVisitId && (
-        <VisitDetailDrawer
-          visitId={detailVisitId}
-          open={!!detailVisitId}
-          onOpenChange={(o) => !o && setDetailVisitId(null)}
-        />
-      )}
+      <VisitDetailDrawer
+        visitId={detailVisitId}
+        onOpenChange={(o) => !o && setDetailVisitId(null)}
+      />
     </div>
   );
 }
