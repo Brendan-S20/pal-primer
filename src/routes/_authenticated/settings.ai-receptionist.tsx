@@ -29,17 +29,29 @@ function Page() {
   const [enabled, setEnabled] = useState(false);
   const [faq, setFaq] = useState("");
   const [persona, setPersona] = useState(DEFAULT_PERSONA);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [voiceGreeting, setVoiceGreeting] = useState("");
 
   useEffect(() => {
     if (!data) return;
     setEnabled(!!data.ai_receptionist_enabled);
     setFaq(data.ai_receptionist_faq ?? "");
     setPersona(data.ai_receptionist_persona ?? DEFAULT_PERSONA);
+    setVoiceEnabled(!!(data as any).ai_voice_enabled);
+    setVoiceGreeting((data as any).ai_voice_greeting ?? "");
   }, [data]);
 
   const save = useMutation({
     mutationFn: () =>
-      saveFn({ data: { enabled, faq: faq || null, persona: persona || null } }),
+      saveFn({
+        data: {
+          enabled,
+          faq: faq || null,
+          persona: persona || null,
+          voice_enabled: voiceEnabled,
+          voice_greeting: voiceGreeting || null,
+        },
+      }),
     onSuccess: () => {
       toast.success("Saved");
       qc.invalidateQueries({ queryKey: ["ai-recep"] });
