@@ -77,6 +77,9 @@ function AppShell() {
               <Link to="/settings/sms" activeProps={{ className: "text-foreground font-medium" }}>
                 SMS
               </Link>
+              <Link to="/settings/ai-receptionist" activeProps={{ className: "text-foreground font-medium" }}>
+                AI receptionist
+              </Link>
               <Link to="/settings/automation" activeProps={{ className: "text-foreground font-medium" }}>
                 Automation
               </Link>
