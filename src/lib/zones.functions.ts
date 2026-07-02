@@ -100,7 +100,7 @@ export const updateZone = createServerFn({ method: "POST" })
 
     const { error } = await supabase
       .from("zones")
-      .update(patch)
+      .update(patch as any)
       .eq("id", data.id)
       .eq("organization_id", orgId);
     if (error) throw new Error(error.message);
