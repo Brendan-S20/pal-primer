@@ -9,6 +9,7 @@ const MAX_REPLY_LEN = 320; // ~2 SMS segments
 
 export type AiReceptionistInput = {
   organizationId: string;
+  orgSlug: string;
   fromNumber: string;
   toNumber: string;
   userText: string;
