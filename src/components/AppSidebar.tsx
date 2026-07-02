@@ -17,6 +17,7 @@ import {
   Settings as SettingsIcon,
   UserPlus,
   Building2,
+  Package,
 } from "lucide-react";
 
 import {
@@ -58,6 +59,12 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
       { title: "My day", url: "/my-day", icon: Truck },
       { title: "Waste log", url: "/waste-log", icon: Trash2 },
       { title: "Messages", url: "/messages", icon: MessageSquare },
+    ],
+  },
+  {
+    label: "Ops",
+    items: [
+      { title: "Inventory", url: "/inventory", icon: Package },
     ],
   },
   {

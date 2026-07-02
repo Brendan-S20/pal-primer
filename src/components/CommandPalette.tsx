@@ -23,6 +23,7 @@ const NAV: NavEntry[] = [
   { label: "My day", to: "/my-day", group: "Field" },
   { label: "Waste log", to: "/waste-log", group: "Field" },
   { label: "Messages", to: "/messages", group: "Field" },
+  { label: "Inventory", to: "/inventory", group: "Ops" },
   { label: "Invoices", to: "/invoices", group: "Billing" },
   { label: "Billing", to: "/billing", group: "Billing" },
   { label: "Reports", to: "/reports", group: "Insights" },
