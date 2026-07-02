@@ -136,6 +136,24 @@ function RoutesPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const weekMut = useMutation({
+    mutationFn: () => optWeek({ data: { startDate: day, days: weekDays } }),
+    onSuccess: (r) => {
+      const total = (r.results ?? []).reduce((s: number, x: any) => s + (x.assigned ?? 0), 0);
+      toast.success(`Optimized ${total} stops across ${weekDays} day(s)`);
+      setLocalColumns(null);
+      qc.invalidateQueries({ queryKey: ["visits"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const settingsMut = useMutation({
+    mutationFn: (patch: any) => updSettings({ data: patch }),
+    onSuccess: () => {
+      toast.success("Dispatch settings saved");
+      qc.invalidateQueries({ queryKey: ["dispatch-settings"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
