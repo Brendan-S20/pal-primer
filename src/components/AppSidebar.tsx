@@ -17,6 +17,7 @@ import {
   Settings as SettingsIcon,
   UserPlus,
   Building2,
+  Package,
 } from "lucide-react";
 
 import {
