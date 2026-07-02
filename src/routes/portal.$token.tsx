@@ -372,6 +372,7 @@ function PortalPage() {
         )}
       </section>
 
+      </div>
     </div>
   );
 }
