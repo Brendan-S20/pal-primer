@@ -634,7 +634,7 @@ export const commitImport = createServerFn({ method: "POST" })
                 region: m.region,
                 postal_code: m.postal_code,
                 gate_code: m.gate_code,
-                notes: m.notes,
+                access_notes: m.notes,
               })
               .select("id").single();
             if (cErr) throw cErr;
@@ -643,11 +643,22 @@ export const commitImport = createServerFn({ method: "POST" })
           }
         } else if (entity === "dogs") {
           if (row.action === "create" && row.target_id) {
+            // Attach to client's first property
+            const { data: prop, error: pErr } = await supabase
+              .from("properties")
+              .select("id")
+              .eq("organization_id", orgId)
+              .eq("client_id", row.target_id)
+              .order("created_at", { ascending: true })
+              .limit(1)
+              .maybeSingle();
+            if (pErr) throw pErr;
+            if (!prop) throw new Error("Client has no property; import a property first");
             const { data: ins, error: cErr } = await supabase
               .from("dogs")
               .insert({
                 organization_id: orgId,
-                client_id: row.target_id,
+                property_id: prop.id,
                 name: m.name,
                 breed: m.breed,
                 weight_class: m.weight_class,
