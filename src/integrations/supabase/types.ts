@@ -825,6 +825,133 @@ export type Database = {
         }
         Relationships: []
       }
+      gift_card_redemptions: {
+        Row: {
+          amount_cents: number
+          client_id: string | null
+          created_at: string
+          created_by: string | null
+          gift_card_id: string
+          id: string
+          invoice_id: string | null
+          note: string | null
+          organization_id: string
+        }
+        Insert: {
+          amount_cents: number
+          client_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          gift_card_id: string
+          id?: string
+          invoice_id?: string | null
+          note?: string | null
+          organization_id: string
+        }
+        Update: {
+          amount_cents?: number
+          client_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          gift_card_id?: string
+          id?: string
+          invoice_id?: string | null
+          note?: string | null
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gift_card_redemptions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gift_card_redemptions_gift_card_id_fkey"
+            columns: ["gift_card_id"]
+            isOneToOne: false
+            referencedRelation: "gift_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gift_card_redemptions_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gift_card_redemptions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      gift_cards: {
+        Row: {
+          code: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          initial_balance_cents: number
+          message: string | null
+          organization_id: string
+          purchaser_email: string | null
+          purchaser_name: string | null
+          recipient_email: string | null
+          recipient_name: string | null
+          remaining_balance_cents: number
+          status: string
+          stripe_payment_intent_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          initial_balance_cents: number
+          message?: string | null
+          organization_id: string
+          purchaser_email?: string | null
+          purchaser_name?: string | null
+          recipient_email?: string | null
+          recipient_name?: string | null
+          remaining_balance_cents: number
+          status?: string
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          initial_balance_cents?: number
+          message?: string | null
+          organization_id?: string
+          purchaser_email?: string | null
+          purchaser_name?: string | null
+          recipient_email?: string | null
+          recipient_name?: string | null
+          remaining_balance_cents?: number
+          status?: string
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gift_cards_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       import_batches: {
         Row: {
           committed_at: string | null
@@ -1668,6 +1795,71 @@ export type Database = {
           },
           {
             foreignKeyName: "payments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      promo_codes: {
+        Row: {
+          active: boolean
+          applies_to: string
+          code: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          discount_percent: number | null
+          discount_type: string
+          discount_value_cents: number | null
+          expires_at: string | null
+          id: string
+          max_redemptions: number | null
+          organization_id: string
+          recurring_cycles: number | null
+          redemption_count: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          applies_to?: string
+          code: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          discount_percent?: number | null
+          discount_type: string
+          discount_value_cents?: number | null
+          expires_at?: string | null
+          id?: string
+          max_redemptions?: number | null
+          organization_id: string
+          recurring_cycles?: number | null
+          redemption_count?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          applies_to?: string
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          discount_percent?: number | null
+          discount_type?: string
+          discount_value_cents?: number | null
+          expires_at?: string | null
+          id?: string
+          max_redemptions?: number | null
+          organization_id?: string
+          recurring_cycles?: number | null
+          redemption_count?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "promo_codes_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -3048,6 +3240,20 @@ export type Database = {
       reassign_visit: {
         Args: { _staff_id: string; _visit_id: string }
         Returns: undefined
+      }
+      redeem_gift_card: {
+        Args: {
+          _amount_cents: number
+          _client_id?: string
+          _code: string
+          _invoice_id?: string
+          _note?: string
+          _org_id: string
+        }
+        Returns: {
+          redeemed_cents: number
+          remaining_cents: number
+        }[]
       }
       refresh_active_client_count: {
         Args: { _org_id: string }
