@@ -54,18 +54,18 @@ export async function runAiReceptionist(
       }),
       execute: async ({ postal_code, dogs, frequency }) => {
         const { data, error } = await supabaseAdmin.rpc("public_quote", {
-          p_org_id: input.organizationId,
-          p_postal_code: postal_code,
-          p_dogs: dogs,
-          p_frequency: frequency,
+          _slug: input.orgSlug,
+          _postal_code: postal_code,
+          _dog_count: dogs,
+          _frequency: frequency,
         });
         if (error) return { available: false, reason: error.message };
         const row = Array.isArray(data) ? data[0] : data;
         if (!row) return { available: false, reason: "No service in that zip." };
         return {
           available: true,
-          price_per_visit_usd: (row.price_cents ?? 0) / 100,
-          first_cleanup_usd: (row.initial_cents ?? 0) / 100,
+          price_per_visit_usd: (row.recurring_price_cents ?? 0) / 100,
+          first_cleanup_usd: (row.initial_cleanup_cents ?? 0) / 100,
           zone_name: row.zone_name ?? null,
         };
       },
