@@ -262,4 +262,3 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
     </section>
   );
 }
-}
