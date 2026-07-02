@@ -84,14 +84,15 @@ export async function runAiReceptionist(
         note: z.string().describe("What they want or asked about."),
       }),
       execute: async ({ display_name, note }) => {
+        const digits = input.fromNumber.replace(/\D/g, "") || "unknown";
         const { data, error } = await supabaseAdmin
           .from("leads")
           .insert({
-            organization_id: input.organizationId,
-            display_name,
-            primary_phone: input.fromNumber,
+            name: display_name,
+            email: `${digits}@sms.lead`,
+            phone: input.fromNumber,
             source: "sms_receptionist",
-            note,
+            message: note,
             status: "new",
           })
           .select("id")
