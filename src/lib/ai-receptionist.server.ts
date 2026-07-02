@@ -5,7 +5,8 @@ import { z } from "zod";
 import { createLovableAiGatewayProvider } from "./ai-gateway.server";
 
 const MODEL_ID = "google/gemini-3-flash-preview";
-const MAX_REPLY_LEN = 320; // ~2 SMS segments
+const MAX_REPLY_LEN_SMS = 320; // ~2 SMS segments
+const MAX_REPLY_LEN_VOICE = 500; // ~2 sentences read aloud
 
 export type AiReceptionistInput = {
   organizationId: string;
@@ -16,6 +17,7 @@ export type AiReceptionistInput = {
   clientId: string | null;
   persona: string;
   faq: string | null;
+  channel?: "sms" | "voice";
   // last N messages with this from_number, oldest→newest
   history: Array<{ direction: "inbound" | "outbound"; body: string }>;
 };
