@@ -24,6 +24,7 @@ import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe
 import { Route as AuthenticatedZonesRouteImport } from './routes/_authenticated/zones'
 import { Route as AuthenticatedWeatherRouteImport } from './routes/_authenticated/weather'
 import { Route as AuthenticatedWasteLogRouteImport } from './routes/_authenticated/waste-log'
+import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedRoutesRouteImport } from './routes/_authenticated/routes'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedMyDayRouteImport } from './routes/_authenticated/my-day'
@@ -35,6 +36,7 @@ import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedAiToolsRouteImport } from './routes/_authenticated/ai-tools'
+import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings.index'
 import { Route as AuthenticatedMessagesIndexRouteImport } from './routes/_authenticated/messages.index'
 import { Route as AuthenticatedInvoicesIndexRouteImport } from './routes/_authenticated/invoices.index'
 import { Route as AuthenticatedImportsIndexRouteImport } from './routes/_authenticated/imports.index'
@@ -140,6 +142,11 @@ const AuthenticatedWasteLogRoute = AuthenticatedWasteLogRouteImport.update({
   path: '/waste-log',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedRoutesRoute = AuthenticatedRoutesRouteImport.update({
   id: '/routes',
   path: '/routes',
@@ -195,6 +202,12 @@ const AuthenticatedAiToolsRoute = AuthenticatedAiToolsRouteImport.update({
   path: '/ai-tools',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSettingsIndexRoute =
+  AuthenticatedSettingsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedMessagesIndexRoute =
   AuthenticatedMessagesIndexRouteImport.update({
     id: '/',
@@ -226,57 +239,57 @@ const LovableEmailSuppressionRoute = LovableEmailSuppressionRouteImport.update({
 } as any)
 const AuthenticatedSettingsSmsRoute =
   AuthenticatedSettingsSmsRouteImport.update({
-    id: '/settings/sms',
-    path: '/settings/sms',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/sms',
+    path: '/sms',
+    getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
 const AuthenticatedSettingsSkipRulesRoute =
   AuthenticatedSettingsSkipRulesRouteImport.update({
-    id: '/settings/skip-rules',
-    path: '/settings/skip-rules',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/skip-rules',
+    path: '/skip-rules',
+    getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
 const AuthenticatedSettingsReviewsRoute =
   AuthenticatedSettingsReviewsRouteImport.update({
-    id: '/settings/reviews',
-    path: '/settings/reviews',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/reviews',
+    path: '/reviews',
+    getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
 const AuthenticatedSettingsEmailsRoute =
   AuthenticatedSettingsEmailsRouteImport.update({
-    id: '/settings/emails',
-    path: '/settings/emails',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/emails',
+    path: '/emails',
+    getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
 const AuthenticatedSettingsBlackoutsRoute =
   AuthenticatedSettingsBlackoutsRouteImport.update({
-    id: '/settings/blackouts',
-    path: '/settings/blackouts',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/blackouts',
+    path: '/blackouts',
+    getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
 const AuthenticatedSettingsAutomationRoute =
   AuthenticatedSettingsAutomationRouteImport.update({
-    id: '/settings/automation',
-    path: '/settings/automation',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/automation',
+    path: '/automation',
+    getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
 const AuthenticatedSettingsAiReceptionistRoute =
   AuthenticatedSettingsAiReceptionistRouteImport.update({
-    id: '/settings/ai-receptionist',
-    path: '/settings/ai-receptionist',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/ai-receptionist',
+    path: '/ai-receptionist',
+    getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
 const AuthenticatedSettingsAddonsRoute =
   AuthenticatedSettingsAddonsRouteImport.update({
-    id: '/settings/addons',
-    path: '/settings/addons',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/addons',
+    path: '/addons',
+    getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
 const AuthenticatedSettingsAccountingRoute =
   AuthenticatedSettingsAccountingRouteImport.update({
-    id: '/settings/accounting',
-    path: '/settings/accounting',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/accounting',
+    path: '/accounting',
+    getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
 const AuthenticatedMessagesClientIdRoute =
   AuthenticatedMessagesClientIdRouteImport.update({
@@ -388,6 +401,7 @@ export interface FileRoutesByFullPath {
   '/my-day': typeof AuthenticatedMyDayRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/routes': typeof AuthenticatedRoutesRoute
+  '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/waste-log': typeof AuthenticatedWasteLogRoute
   '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
@@ -414,6 +428,7 @@ export interface FileRoutesByFullPath {
   '/imports/': typeof AuthenticatedImportsIndexRoute
   '/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/messages/': typeof AuthenticatedMessagesIndexRoute
+  '/settings/': typeof AuthenticatedSettingsIndexRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
@@ -468,6 +483,7 @@ export interface FileRoutesByTo {
   '/imports': typeof AuthenticatedImportsIndexRoute
   '/invoices': typeof AuthenticatedInvoicesIndexRoute
   '/messages': typeof AuthenticatedMessagesIndexRoute
+  '/settings': typeof AuthenticatedSettingsIndexRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
@@ -501,6 +517,7 @@ export interface FileRoutesById {
   '/_authenticated/my-day': typeof AuthenticatedMyDayRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/routes': typeof AuthenticatedRoutesRoute
+  '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/_authenticated/waste-log': typeof AuthenticatedWasteLogRoute
   '/_authenticated/weather': typeof AuthenticatedWeatherRoute
   '/_authenticated/zones': typeof AuthenticatedZonesRoute
@@ -527,6 +544,7 @@ export interface FileRoutesById {
   '/_authenticated/imports/': typeof AuthenticatedImportsIndexRoute
   '/_authenticated/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/_authenticated/messages/': typeof AuthenticatedMessagesIndexRoute
+  '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
@@ -560,6 +578,7 @@ export interface FileRouteTypes {
     | '/my-day'
     | '/reports'
     | '/routes'
+    | '/settings'
     | '/waste-log'
     | '/weather'
     | '/zones'
@@ -586,6 +605,7 @@ export interface FileRouteTypes {
     | '/imports/'
     | '/invoices/'
     | '/messages/'
+    | '/settings/'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
@@ -640,6 +660,7 @@ export interface FileRouteTypes {
     | '/imports'
     | '/invoices'
     | '/messages'
+    | '/settings'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
@@ -672,6 +693,7 @@ export interface FileRouteTypes {
     | '/_authenticated/my-day'
     | '/_authenticated/reports'
     | '/_authenticated/routes'
+    | '/_authenticated/settings'
     | '/_authenticated/waste-log'
     | '/_authenticated/weather'
     | '/_authenticated/zones'
@@ -698,6 +720,7 @@ export interface FileRouteTypes {
     | '/_authenticated/imports/'
     | '/_authenticated/invoices/'
     | '/_authenticated/messages/'
+    | '/_authenticated/settings/'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
@@ -845,6 +868,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWasteLogRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/settings': {
+      id: '/_authenticated/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/routes': {
       id: '/_authenticated/routes'
       path: '/routes'
@@ -922,6 +952,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAiToolsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/settings/': {
+      id: '/_authenticated/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof AuthenticatedSettingsIndexRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/messages/': {
       id: '/_authenticated/messages/'
       path: '/'
@@ -959,66 +996,66 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/settings/sms': {
       id: '/_authenticated/settings/sms'
-      path: '/settings/sms'
+      path: '/sms'
       fullPath: '/settings/sms'
       preLoaderRoute: typeof AuthenticatedSettingsSmsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedSettingsRoute
     }
     '/_authenticated/settings/skip-rules': {
       id: '/_authenticated/settings/skip-rules'
-      path: '/settings/skip-rules'
+      path: '/skip-rules'
       fullPath: '/settings/skip-rules'
       preLoaderRoute: typeof AuthenticatedSettingsSkipRulesRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedSettingsRoute
     }
     '/_authenticated/settings/reviews': {
       id: '/_authenticated/settings/reviews'
-      path: '/settings/reviews'
+      path: '/reviews'
       fullPath: '/settings/reviews'
       preLoaderRoute: typeof AuthenticatedSettingsReviewsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedSettingsRoute
     }
     '/_authenticated/settings/emails': {
       id: '/_authenticated/settings/emails'
-      path: '/settings/emails'
+      path: '/emails'
       fullPath: '/settings/emails'
       preLoaderRoute: typeof AuthenticatedSettingsEmailsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedSettingsRoute
     }
     '/_authenticated/settings/blackouts': {
       id: '/_authenticated/settings/blackouts'
-      path: '/settings/blackouts'
+      path: '/blackouts'
       fullPath: '/settings/blackouts'
       preLoaderRoute: typeof AuthenticatedSettingsBlackoutsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedSettingsRoute
     }
     '/_authenticated/settings/automation': {
       id: '/_authenticated/settings/automation'
-      path: '/settings/automation'
+      path: '/automation'
       fullPath: '/settings/automation'
       preLoaderRoute: typeof AuthenticatedSettingsAutomationRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedSettingsRoute
     }
     '/_authenticated/settings/ai-receptionist': {
       id: '/_authenticated/settings/ai-receptionist'
-      path: '/settings/ai-receptionist'
+      path: '/ai-receptionist'
       fullPath: '/settings/ai-receptionist'
       preLoaderRoute: typeof AuthenticatedSettingsAiReceptionistRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedSettingsRoute
     }
     '/_authenticated/settings/addons': {
       id: '/_authenticated/settings/addons'
-      path: '/settings/addons'
+      path: '/addons'
       fullPath: '/settings/addons'
       preLoaderRoute: typeof AuthenticatedSettingsAddonsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedSettingsRoute
     }
     '/_authenticated/settings/accounting': {
       id: '/_authenticated/settings/accounting'
-      path: '/settings/accounting'
+      path: '/accounting'
       fullPath: '/settings/accounting'
       preLoaderRoute: typeof AuthenticatedSettingsAccountingRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedSettingsRoute
     }
     '/_authenticated/messages/$clientId': {
       id: '/_authenticated/messages/$clientId'
@@ -1180,6 +1217,38 @@ const AuthenticatedMessagesRouteWithChildren =
     AuthenticatedMessagesRouteChildren,
   )
 
+interface AuthenticatedSettingsRouteChildren {
+  AuthenticatedSettingsAccountingRoute: typeof AuthenticatedSettingsAccountingRoute
+  AuthenticatedSettingsAddonsRoute: typeof AuthenticatedSettingsAddonsRoute
+  AuthenticatedSettingsAiReceptionistRoute: typeof AuthenticatedSettingsAiReceptionistRoute
+  AuthenticatedSettingsAutomationRoute: typeof AuthenticatedSettingsAutomationRoute
+  AuthenticatedSettingsBlackoutsRoute: typeof AuthenticatedSettingsBlackoutsRoute
+  AuthenticatedSettingsEmailsRoute: typeof AuthenticatedSettingsEmailsRoute
+  AuthenticatedSettingsReviewsRoute: typeof AuthenticatedSettingsReviewsRoute
+  AuthenticatedSettingsSkipRulesRoute: typeof AuthenticatedSettingsSkipRulesRoute
+  AuthenticatedSettingsSmsRoute: typeof AuthenticatedSettingsSmsRoute
+  AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
+}
+
+const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
+  AuthenticatedSettingsAccountingRoute: AuthenticatedSettingsAccountingRoute,
+  AuthenticatedSettingsAddonsRoute: AuthenticatedSettingsAddonsRoute,
+  AuthenticatedSettingsAiReceptionistRoute:
+    AuthenticatedSettingsAiReceptionistRoute,
+  AuthenticatedSettingsAutomationRoute: AuthenticatedSettingsAutomationRoute,
+  AuthenticatedSettingsBlackoutsRoute: AuthenticatedSettingsBlackoutsRoute,
+  AuthenticatedSettingsEmailsRoute: AuthenticatedSettingsEmailsRoute,
+  AuthenticatedSettingsReviewsRoute: AuthenticatedSettingsReviewsRoute,
+  AuthenticatedSettingsSkipRulesRoute: AuthenticatedSettingsSkipRulesRoute,
+  AuthenticatedSettingsSmsRoute: AuthenticatedSettingsSmsRoute,
+  AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
+}
+
+const AuthenticatedSettingsRouteWithChildren =
+  AuthenticatedSettingsRoute._addFileChildren(
+    AuthenticatedSettingsRouteChildren,
+  )
+
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAiToolsRoute: typeof AuthenticatedAiToolsRoute
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
@@ -1192,19 +1261,11 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedMyDayRoute: typeof AuthenticatedMyDayRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedRoutesRoute: typeof AuthenticatedRoutesRoute
+  AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRouteWithChildren
   AuthenticatedWasteLogRoute: typeof AuthenticatedWasteLogRoute
   AuthenticatedWeatherRoute: typeof AuthenticatedWeatherRoute
   AuthenticatedZonesRoute: typeof AuthenticatedZonesRoute
   AuthenticatedImportsBatchIdRoute: typeof AuthenticatedImportsBatchIdRoute
-  AuthenticatedSettingsAccountingRoute: typeof AuthenticatedSettingsAccountingRoute
-  AuthenticatedSettingsAddonsRoute: typeof AuthenticatedSettingsAddonsRoute
-  AuthenticatedSettingsAiReceptionistRoute: typeof AuthenticatedSettingsAiReceptionistRoute
-  AuthenticatedSettingsAutomationRoute: typeof AuthenticatedSettingsAutomationRoute
-  AuthenticatedSettingsBlackoutsRoute: typeof AuthenticatedSettingsBlackoutsRoute
-  AuthenticatedSettingsEmailsRoute: typeof AuthenticatedSettingsEmailsRoute
-  AuthenticatedSettingsReviewsRoute: typeof AuthenticatedSettingsReviewsRoute
-  AuthenticatedSettingsSkipRulesRoute: typeof AuthenticatedSettingsSkipRulesRoute
-  AuthenticatedSettingsSmsRoute: typeof AuthenticatedSettingsSmsRoute
   AuthenticatedImportsIndexRoute: typeof AuthenticatedImportsIndexRoute
 }
 
@@ -1220,20 +1281,11 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedMyDayRoute: AuthenticatedMyDayRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedRoutesRoute: AuthenticatedRoutesRoute,
+  AuthenticatedSettingsRoute: AuthenticatedSettingsRouteWithChildren,
   AuthenticatedWasteLogRoute: AuthenticatedWasteLogRoute,
   AuthenticatedWeatherRoute: AuthenticatedWeatherRoute,
   AuthenticatedZonesRoute: AuthenticatedZonesRoute,
   AuthenticatedImportsBatchIdRoute: AuthenticatedImportsBatchIdRoute,
-  AuthenticatedSettingsAccountingRoute: AuthenticatedSettingsAccountingRoute,
-  AuthenticatedSettingsAddonsRoute: AuthenticatedSettingsAddonsRoute,
-  AuthenticatedSettingsAiReceptionistRoute:
-    AuthenticatedSettingsAiReceptionistRoute,
-  AuthenticatedSettingsAutomationRoute: AuthenticatedSettingsAutomationRoute,
-  AuthenticatedSettingsBlackoutsRoute: AuthenticatedSettingsBlackoutsRoute,
-  AuthenticatedSettingsEmailsRoute: AuthenticatedSettingsEmailsRoute,
-  AuthenticatedSettingsReviewsRoute: AuthenticatedSettingsReviewsRoute,
-  AuthenticatedSettingsSkipRulesRoute: AuthenticatedSettingsSkipRulesRoute,
-  AuthenticatedSettingsSmsRoute: AuthenticatedSettingsSmsRoute,
   AuthenticatedImportsIndexRoute: AuthenticatedImportsIndexRoute,
 }
 
