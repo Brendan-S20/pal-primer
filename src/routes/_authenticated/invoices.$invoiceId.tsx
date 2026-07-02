@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getInvoice, createCheckoutForInvoice, voidInvoice } from "@/lib/invoices.functions";
+import { syncInvoice } from "@/lib/accounting.functions";
 import { sendInvoiceEmail } from "@/lib/notifications.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,6 +47,16 @@ function InvoiceDetail() {
   const emailM = useMutation({
     mutationFn: async () => emailFn({ data: { invoiceId } }),
     onSuccess: () => toast.success("Invoice emailed to client"),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const syncFn = useServerFn(syncInvoice);
+  const syncM = useMutation({
+    mutationFn: async () => syncFn({ data: { invoice_id: invoiceId } }),
+    onSuccess: (r) => {
+      toast.success(`Synced to accounting (id ${r.remote_id})`);
+      qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -111,6 +122,16 @@ function InvoiceDetail() {
             )}
             <Button variant="destructive" onClick={() => voidM.mutate()} disabled={voidM.isPending}>Void</Button>
           </>
+        )}
+        {invoice.status === "paid" && !(invoice as any).accounting_remote_id && (
+          <Button variant="outline" onClick={() => syncM.mutate()} disabled={syncM.isPending}>
+            {syncM.isPending ? "Syncing…" : "Sync to accounting"}
+          </Button>
+        )}
+        {(invoice as any).accounting_remote_id && (
+          <span className="self-center text-xs text-muted-foreground">
+            Synced · {(invoice as any).accounting_remote_id}
+          </span>
         )}
       </div>
 
