@@ -108,6 +108,15 @@ function RoutesPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const optimizeMut = useMutation({
+    mutationFn: () => optimize({ data: { staffId: assignStaffId, day, reassign: true } }),
+    onSuccess: (r) => {
+      toast.success(`Optimized ${r.assigned} stops (nearest-neighbor)`);
+      setLocalColumns(null);
+      qc.invalidateQueries({ queryKey: ["visits", day] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
