@@ -54,7 +54,7 @@ export const DOG_TARGET_FIELDS = [
   "client_external_id",
   "name",
   "breed",
-  "weight_lbs",
+  "weight_class",
   "notes",
 ] as const;
 export type DogTargetField = (typeof DOG_TARGET_FIELDS)[number];
