@@ -449,7 +449,9 @@ function RoutesPage() {
           {activeVisit ? <VisitCardView visit={activeVisit} dragging /> : null}
         </DragOverlay>
       </DndContext>
+      )}
     </div>
+
   );
 }
 
