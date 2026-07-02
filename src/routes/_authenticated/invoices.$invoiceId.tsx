@@ -123,6 +123,16 @@ function InvoiceDetail() {
             <Button variant="destructive" onClick={() => voidM.mutate()} disabled={voidM.isPending}>Void</Button>
           </>
         )}
+        {invoice.status === "paid" && !(invoice as any).accounting_remote_id && (
+          <Button variant="outline" onClick={() => syncM.mutate()} disabled={syncM.isPending}>
+            {syncM.isPending ? "Syncing…" : "Sync to accounting"}
+          </Button>
+        )}
+        {(invoice as any).accounting_remote_id && (
+          <span className="self-center text-xs text-muted-foreground">
+            Synced · {(invoice as any).accounting_remote_id}
+          </span>
+        )}
       </div>
 
       {payments.length > 0 && (
