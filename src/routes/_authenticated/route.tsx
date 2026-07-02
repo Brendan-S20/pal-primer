@@ -92,6 +92,9 @@ function AppShell() {
               <Link to="/ai-tools" activeProps={{ className: "text-foreground font-medium" }}>
                 AI tools
               </Link>
+              <Link to="/settings/accounting" activeProps={{ className: "text-foreground font-medium" }}>
+                Accounting
+              </Link>
 
 
 
