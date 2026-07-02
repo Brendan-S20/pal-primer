@@ -261,6 +261,8 @@ export type Database = {
       }
       ai_receptionist_logs: {
         Row: {
+          call_sid: string | null
+          channel: string
           created_at: string
           error: string | null
           escalated: boolean
@@ -273,9 +275,12 @@ export type Database = {
           outbound_message_id: string | null
           reply_text: string | null
           tool_calls: Json | null
+          turn: number | null
           user_text: string | null
         }
         Insert: {
+          call_sid?: string | null
+          channel?: string
           created_at?: string
           error?: string | null
           escalated?: boolean
@@ -288,9 +293,12 @@ export type Database = {
           outbound_message_id?: string | null
           reply_text?: string | null
           tool_calls?: Json | null
+          turn?: number | null
           user_text?: string | null
         }
         Update: {
+          call_sid?: string | null
+          channel?: string
           created_at?: string
           error?: string | null
           escalated?: boolean
@@ -303,6 +311,7 @@ export type Database = {
           outbound_message_id?: string | null
           reply_text?: string | null
           tool_calls?: Json | null
+          turn?: number | null
           user_text?: string | null
         }
         Relationships: [
@@ -1097,6 +1106,8 @@ export type Database = {
           ai_receptionist_enabled: boolean
           ai_receptionist_faq: string | null
           ai_receptionist_persona: string | null
+          ai_voice_enabled: boolean
+          ai_voice_greeting: string | null
           auto_generate_days_ahead: number
           auto_generate_visits: boolean
           auto_invoice_enabled: boolean
@@ -1132,6 +1143,8 @@ export type Database = {
           ai_receptionist_enabled?: boolean
           ai_receptionist_faq?: string | null
           ai_receptionist_persona?: string | null
+          ai_voice_enabled?: boolean
+          ai_voice_greeting?: string | null
           auto_generate_days_ahead?: number
           auto_generate_visits?: boolean
           auto_invoice_enabled?: boolean
@@ -1167,6 +1180,8 @@ export type Database = {
           ai_receptionist_enabled?: boolean
           ai_receptionist_faq?: string | null
           ai_receptionist_persona?: string | null
+          ai_voice_enabled?: boolean
+          ai_voice_greeting?: string | null
           auto_generate_days_ahead?: number
           auto_generate_visits?: boolean
           auto_invoice_enabled?: boolean
