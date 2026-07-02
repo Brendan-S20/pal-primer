@@ -15,9 +15,11 @@ import {
   getDispatchSettings,
   updateDispatchSettings,
 } from "@/lib/visits.functions";
+import { backfillPropertyGeocodes } from "@/lib/properties.functions";
 import { completeVisit } from "@/lib/my-day.functions";
 import { RouteMap, buildTechGroups } from "@/components/RouteMap";
-import { Navigation, CheckCircle2 } from "lucide-react";
+import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
+import { Navigation, CheckCircle2, MapPin } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,6 +71,7 @@ function RoutesPage() {
   const [weekDays, setWeekDays] = useState(7);
   const [viewMode, setViewMode] = useState<"split" | "map" | "board">("split");
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
 
   const listV = useServerFn(listVisitsForDay);
   const listS = useServerFn(listStaff);
@@ -181,6 +184,15 @@ function RoutesPage() {
     onSuccess: () => {
       toast.success("Dispatch settings saved");
       qc.invalidateQueries({ queryKey: ["dispatch-settings"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const geocode = useServerFn(backfillPropertyGeocodes);
+  const geocodeMut = useMutation({
+    mutationFn: () => geocode({ data: { limit: 100 } }),
+    onSuccess: (r) => {
+      toast.success(`Geocoded ${r.updated} addresses${r.remaining ? ` · ${r.remaining} remaining` : ""}`);
+      qc.invalidateQueries({ queryKey: ["visits"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -411,7 +423,13 @@ function RoutesPage() {
 
       {(viewMode === "map" || viewMode === "split") && (
         <>
-          <MapPanel visits={visits} staff={staff} />
+          <MapPanel
+            visits={visits}
+            staff={staff}
+            onOpenVisit={setDetailVisitId}
+            onGeocode={() => geocodeMut.mutate()}
+            geocoding={geocodeMut.isPending}
+          />
           <HeatmapPanel visits={visits} staff={staff} />
         </>
       )}
@@ -432,6 +450,7 @@ function RoutesPage() {
             tone="muted"
             onComplete={(id) => completeMut.mutate(id)}
             completingId={completeMut.isPending ? (completeMut.variables as string) : null}
+            onOpen={setDetailVisitId}
           />
           {staff.map((s: any) => (
             <Column
@@ -442,6 +461,7 @@ function RoutesPage() {
               items={columns[s.id] ?? []}
               onComplete={(id) => completeMut.mutate(id)}
               completingId={completeMut.isPending ? (completeMut.variables as string) : null}
+              onOpen={setDetailVisitId}
             />
           ))}
         </div>
@@ -450,24 +470,39 @@ function RoutesPage() {
         </DragOverlay>
       </DndContext>
       )}
+      <VisitDetailDrawer visitId={detailVisitId} onOpenChange={(o) => !o && setDetailVisitId(null)} />
     </div>
 
   );
 }
 
-function MapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
+function MapPanel({
+  visits, staff, onOpenVisit, onGeocode, geocoding,
+}: {
+  visits: any[]; staff: any[];
+  onOpenVisit?: (id: string) => void;
+  onGeocode?: () => void;
+  geocoding?: boolean;
+}) {
   const groups = useMemo(() => buildTechGroups(visits as any, staff as any), [visits, staff]);
   const mappable = visits.filter((v: any) => v.properties?.latitude != null && v.properties?.longitude != null).length;
+  const missing = visits.length - mappable;
   return (
     <div className="rounded-lg border bg-card p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-sm font-semibold">Map</h2>
           <p className="text-[11px] text-muted-foreground">
-            {mappable} of {visits.length} visits geocoded. Click a pin to open a popup; use the tech cards below to open directions or mark complete.
+            {mappable} of {visits.length} visits on map. Click a pin or a card to view details.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {onGeocode && missing > 0 && (
+            <Button size="sm" variant="outline" onClick={onGeocode} disabled={geocoding}>
+              <MapPin className="mr-1 h-3.5 w-3.5" />
+              {geocoding ? "Geocoding…" : `Geocode ${missing} address${missing === 1 ? "" : "es"}`}
+            </Button>
+          )}
           {groups.map((g) => (
             <div key={g.staffId ?? "u"} className="flex items-center gap-1 text-[11px]">
               <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: g.color }} />
@@ -476,23 +511,25 @@ function MapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
           ))}
         </div>
       </div>
-      {mappable === 0 ? (
-        <div className="rounded-md border border-dashed p-6 text-center text-xs text-muted-foreground">
-          No visits with coordinates on this day. Add latitude/longitude to properties to see the route on the map.
-        </div>
-      ) : (
-        <RouteMap groups={groups} height={420} />
-      )}
+      <div className="relative">
+        <RouteMap groups={groups} height={420} onVisitClick={onOpenVisit} />
+        {mappable === 0 && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-background/70 text-xs text-muted-foreground">
+            No coordinates yet. Click “Geocode addresses” to plot properties.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 function Column({
-  id, title, subtitle, items, tone, onComplete, completingId,
+  id, title, subtitle, items, tone, onComplete, completingId, onOpen,
 }: {
   id: string; title: string; subtitle?: string; items: Visit[]; tone?: "muted";
   onComplete?: (visitId: string) => void;
   completingId?: string | null;
+  onOpen?: (visitId: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const totalCents = items.reduce((sum, v) => sum + (v.subscriptions?.price_cents ?? 0), 0);
@@ -526,6 +563,7 @@ function Column({
               seq={i + 1}
               onComplete={onComplete}
               completing={completingId === v.id}
+              onOpen={onOpen}
             />
           ))}
           {items.length === 0 && (
@@ -538,8 +576,8 @@ function Column({
 }
 
 function SortableVisitCard({
-  visit, seq, onComplete, completing,
-}: { visit: Visit; seq: number; onComplete?: (id: string) => void; completing?: boolean }) {
+  visit, seq, onComplete, completing, onOpen,
+}: { visit: Visit; seq: number; onComplete?: (id: string) => void; completing?: boolean; onOpen?: (id: string) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: visit.id,
   });
@@ -556,6 +594,7 @@ function SortableVisitCard({
         dragHandle={listeners}
         onComplete={onComplete}
         completing={completing}
+        onOpen={onOpen}
       />
     </div>
   );
@@ -572,16 +611,25 @@ function directionsUrl(p: any): string | null {
 }
 
 function VisitCardView({
-  visit, seq, dragging, dragHandle, onComplete, completing,
+  visit, seq, dragging, dragHandle, onComplete, completing, onOpen,
 }: {
   visit: Visit; seq?: number; dragging?: boolean; dragHandle?: any;
   onComplete?: (id: string) => void; completing?: boolean;
+  onOpen?: (id: string) => void;
 }) {
   const p = visit.properties;
   const dirUrl = directionsUrl(p);
   const canComplete = onComplete && (visit.status === "scheduled" || visit.status === "in_progress");
   return (
-    <div className={`rounded-md border bg-background p-2 text-xs shadow-sm ${dragging ? "shadow-lg" : ""}`}>
+    <div
+      className={`rounded-md border bg-background p-2 text-xs shadow-sm ${dragging ? "shadow-lg" : ""} ${onOpen ? "cursor-pointer hover:border-primary/40 hover:bg-muted/40" : ""}`}
+      onClick={(e) => {
+        if (!onOpen) return;
+        const t = e.target as HTMLElement;
+        if (t.closest("a,button")) return;
+        onOpen(visit.id);
+      }}
+    >
       <div className="flex items-start gap-2">
         <button
           {...(dragHandle ?? {})}
