@@ -5,6 +5,7 @@ export const Route = createFileRoute("/_authenticated/settings")({
 });
 
 const TABS: Array<{ label: string; to: string }> = [
+  { label: "Preferences", to: "/settings/preferences" },
   { label: "Skip rules", to: "/settings/skip-rules" },
   { label: "Blackouts", to: "/settings/blackouts" },
   { label: "Add-ons", to: "/settings/addons" },
@@ -17,6 +18,7 @@ const TABS: Array<{ label: string; to: string }> = [
   { label: "Promotions", to: "/settings/promotions" },
   { label: "Users & roles", to: "/settings/users" },
 ];
+
 
 function SettingsLayout() {
   const pathname = useRouterState({ select: (r) => r.location.pathname });

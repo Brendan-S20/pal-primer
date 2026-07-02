@@ -387,4 +387,82 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
     }
   });
 
+// ── Portal: history, dogs, concerns, photo signing ──────────────────────────
+
+export const portalListRecentVisits = createServerFn({ method: "GET" })
+  .inputValidator((d) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    const sb = anonClient();
+    const { data: rows, error } = await sb.rpc("portal_list_recent_visits", { _token: data.token });
+    if (error) throw new Error(error.message);
+    return (rows ?? []) as Array<{
+      visit_id: string; scheduled_on: string; status: string; photo_paths: string[];
+    }>;
+  });
+
+export const portalListDogs = createServerFn({ method: "GET" })
+  .inputValidator((d) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    const sb = anonClient();
+    const { data: rows, error } = await sb.rpc("portal_list_dogs", { _token: data.token });
+    if (error) throw new Error(error.message);
+    return (rows ?? []) as Array<{
+      dog_id: string; name: string; breed: string | null; weight_class: string | null;
+      temperament: string | null; notes: string | null;
+    }>;
+  });
+
+export const portalReportConcern = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z.object({
+      token: z.string().uuid(),
+      visitId: z.string().uuid().nullable(),
+      category: z.enum(["missed_spot","gate_left_open","damage","wrong_yard","other"]),
+      message: z.string().max(1000).optional().default(""),
+    }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const sb = anonClient();
+    const { data: id, error } = await sb.rpc("portal_report_concern", {
+      _token: data.token,
+      _visit_id: data.visitId as string,
+
+      _category: data.category,
+      _message: data.message,
+    });
+    if (error) throw new Error(error.message);
+    return { ticketId: id as string };
+  });
+
+export const portalSignPhotoUrls = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z.object({ token: z.string().uuid(), paths: z.array(z.string()).max(60) }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    // Verify token is valid before signing
+    const sb = anonClient();
+    const { data: rows } = await sb.rpc("portal_get_client", { _token: data.token });
+    if (!rows?.[0]) throw new Error("Invalid token");
+    if (data.paths.length === 0) return { urls: {} as Record<string, string> };
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: signed, error } = await supabaseAdmin.storage
+      .from("visit-photos")
+      .createSignedUrls(data.paths, 600);
+    if (error) throw new Error(error.message);
+    const urls: Record<string, string> = {};
+    for (const s of signed ?? []) if (s.path && s.signedUrl) urls[s.path] = s.signedUrl;
+    return { urls };
+  });
+
+export const portalGetReferral = createServerFn({ method: "GET" })
+  .inputValidator((d) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    const sb = anonClient();
+    const { data: rows, error } = await sb.rpc("portal_get_referral", { _token: data.token });
+    if (error) throw new Error(error.message);
+    return (rows?.[0] ?? { referral_code: null }) as { referral_code: string | null };
+  });
+
+
+
 

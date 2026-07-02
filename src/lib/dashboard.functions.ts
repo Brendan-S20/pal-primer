@@ -29,7 +29,7 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
     const today = todayISO();
     const monthStart = firstOfMonthISO();
 
-    const [activeClientsRes, todayVisitsRes, mtdInvoicesRes, openInvoicesRes, staffRes] =
+    const [activeClientsRes, todayVisitsRes, mtdInvoicesRes, openInvoicesRes, staffRes, openTicketsRes] =
       await Promise.all([
         supabase
           .from("clients")
@@ -62,7 +62,15 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
           .select("id, display_name")
           .eq("organization_id", orgId)
           .eq("active", true),
+        supabase
+          .from("qc_tickets")
+          .select("id, category, message, created_at, client_id, visit_id, clients(display_name)")
+          .eq("organization_id", orgId)
+          .eq("status", "open")
+          .order("created_at", { ascending: false })
+          .limit(10),
       ]);
+
 
     if (todayVisitsRes.error) throw new Error(todayVisitsRes.error.message);
     if (mtdInvoicesRes.error) throw new Error(mtdInvoicesRes.error.message);

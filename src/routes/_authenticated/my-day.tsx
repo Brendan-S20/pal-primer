@@ -23,7 +23,7 @@ import { countPendingForVisit } from "@/lib/offline/queue";
 import { toast } from "sonner";
 import { Navigation, Camera, ChevronDown, ChevronUp, WifiOff, RefreshCw, ArrowDown } from "lucide-react";
 import { PushToggle } from "@/components/PushToggle";
-import { LanguageToggle } from "@/components/LanguageToggle";
+// LanguageToggle moved to Settings → Preferences
 import { useTranslation } from "react-i18next";
 import { haptic } from "@/lib/haptics";
 
@@ -137,8 +137,8 @@ function MyDay() {
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <LanguageToggle />
               <PushToggle />
+
               <input
                 type="date"
                 value={day}
