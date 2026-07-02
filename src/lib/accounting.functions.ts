@@ -175,11 +175,10 @@ export const syncAllPaidInvoices = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const orgId = await getOrgId(supabase, userId);
+    await getOrgId(supabase, userId);
     const { data: invoices } = await supabase
       .from("invoices")
       .select("id")
-      .eq("org_id", orgId)
       .eq("status", "paid")
       .is("accounting_remote_id", null)
       .limit(50);
