@@ -178,6 +178,53 @@ export const listVisitsForDay = createServerFn({ method: "GET" })
     return { visits: rows ?? [] };
   });
 
+export const getVisitDetail = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ visitId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+    const { data: v, error } = await supabase
+      .from("visits")
+      .select(
+        `id, scheduled_on, status, sequence, assigned_staff_id, notes,
+         started_at, completed_at, skip_reason, skip_reason_code,
+         eta_start, eta_end, travel_km, travel_min, window_violated,
+         client_id, property_id,
+         clients(id, display_name, primary_phone, primary_email, credit_balance_cents),
+         properties(id, street, city, region, postal_code, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, latitude, longitude),
+         zones(name),
+         staff(id, display_name),
+         subscriptions(price_cents, frequency, preferred_time_of_day),
+         visit_photos(id, storage_path, kind, created_at)`,
+      )
+      .eq("id", data.visitId)
+      .eq("organization_id", orgId)
+      .single();
+    if (error) throw new Error(error.message);
+
+    // dogs for the client
+    const { data: dogs } = await supabase
+      .from("dogs")
+      .select("id, name, breed, size, notes, deceased")
+      .eq("client_id", (v as any).client_id)
+      .eq("deceased", false)
+      .order("name");
+
+    // last 5 visits for this client
+    const { data: history } = await supabase
+      .from("visits")
+      .select("id, scheduled_on, status")
+      .eq("client_id", (v as any).client_id)
+      .neq("id", data.visitId)
+      .order("scheduled_on", { ascending: false })
+      .limit(5);
+
+    return { visit: v, dogs: dogs ?? [], history: history ?? [] };
+  });
+
+
+
 export const listStaff = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
