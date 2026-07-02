@@ -30,7 +30,7 @@ import {
 import { Shield, Building2, Users, DollarSign, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/_authenticated/platform")({
+export const Route = createFileRoute("/platform")({
   component: PlatformPage,
 });
 
