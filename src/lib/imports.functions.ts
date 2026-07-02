@@ -206,49 +206,49 @@ const DOG_PRESETS: Record<string, PresetMap> = {
     client_external_id: ["client_id", "customer_id", "external_id"],
     name: ["name", "dog name", "pet name"],
     breed: ["breed"],
-    weight_lbs: ["weight", "weight_lbs", "weight (lbs)"],
+    weight_class: ["weight", "weight_class", "weight (lbs)"],
     notes: ["notes", "note"],
   },
   sweepgo: {
     client_external_id: ["Client ID", "Customer ID"],
     name: ["Dog Name", "Pet Name", "Name"],
     breed: ["Breed"],
-    weight_lbs: ["Weight", "Weight (lbs)"],
+    weight_class: ["Weight", "Weight (lbs)"],
     notes: ["Notes"],
   },
   jobber: {
     client_external_id: ["Client ID"],
     name: ["Pet name", "Name"],
     breed: ["Breed"],
-    weight_lbs: ["Weight"],
+    weight_class: ["Weight"],
     notes: ["Notes"],
   },
   housecall_pro: {
     client_external_id: ["Customer ID"],
     name: ["Pet Name"],
     breed: ["Breed"],
-    weight_lbs: ["Weight"],
+    weight_class: ["Weight"],
     notes: ["Notes"],
   },
   time_to_pet: {
     client_external_id: ["Client ID"],
     name: ["Pet Name", "Name"],
     breed: ["Breed"],
-    weight_lbs: ["Weight"],
+    weight_class: ["Weight"],
     notes: ["Notes"],
   },
   gorilla_desk: {
     client_external_id: ["Customer ID"],
     name: ["Pet Name"],
     breed: ["Breed"],
-    weight_lbs: ["Weight"],
+    weight_class: ["Weight"],
     notes: ["Notes"],
   },
   quoteiq_family: {
     client_external_id: ["Client ID"],
     name: ["Pet Name", "Name"],
     breed: ["Breed"],
-    weight_lbs: ["Weight"],
+    weight_class: ["Weight"],
     notes: ["Notes"],
   },
 };
@@ -349,14 +349,14 @@ function mapDogRow(raw: Record<string, any>, mapping: Record<string, string | nu
   if (!client_external_id) return { mapped: null, error: "Missing client_external_id (link to client)" };
   const name = getStr(raw, mapping, "name");
   if (!name) return { mapped: null, error: "Missing dog name" };
-  const wRaw = getStr(raw, mapping, "weight_lbs");
+  const wRaw = getStr(raw, mapping, "weight_class");
   const weight = wRaw ? Number(wRaw.replace(/[^\d.]/g, "")) : null;
   return {
     mapped: {
       client_external_id,
       name,
       breed: getStr(raw, mapping, "breed"),
-      weight_lbs: weight && !Number.isNaN(weight) ? weight : null,
+      weight_class: weight && !Number.isNaN(weight) ? weight : null,
       notes: getStr(raw, mapping, "notes"),
     },
     error: null as string | null,
@@ -642,7 +642,7 @@ export const commitImport = createServerFn({ method: "POST" })
                 client_id: row.target_id,
                 name: m.name,
                 breed: m.breed,
-                weight_lbs: m.weight_lbs,
+                weight_class: m.weight_class,
                 notes: m.notes,
               })
               .select("id").single();
