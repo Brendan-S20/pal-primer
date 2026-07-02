@@ -203,13 +203,13 @@ export const getVisitDetail = createServerFn({ method: "GET" })
       .single();
     if (error) throw new Error(error.message);
 
-    // dogs for the client
+    // dogs at this property
     const { data: dogs } = await supabase
       .from("dogs")
-      .select("id, name, breed, size, notes, deceased")
-      .eq("client_id", (v as any).client_id)
-      .eq("deceased", false)
+      .select("id, name, breed, weight_class, temperament, notes")
+      .eq("property_id", (v as any).property_id)
       .order("name");
+
 
     // last 5 visits for this client
     const { data: history } = await supabase
