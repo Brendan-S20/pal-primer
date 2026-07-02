@@ -191,6 +191,7 @@ function ContactPage() {
               </p>
             </form>
           )}
+          </div>
         </div>
       </section>
     </MarketingLayout>
