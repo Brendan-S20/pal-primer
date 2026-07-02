@@ -446,9 +446,24 @@ function VisitCardView({
               {p.street}, {p.city} {p.postal_code}
             </div>
           )}
+          {(visit.eta_start || visit.travel_min != null) && (
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+              {visit.eta_start && (
+                <span>ETA {new Date(visit.eta_start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+              )}
+              {visit.travel_km != null && <span>· {Number(visit.travel_km).toFixed(1)} km</span>}
+              {visit.travel_min != null && <span>· {Math.round(Number(visit.travel_min))} min drive</span>}
+            </div>
+          )}
+          {(p?.earliest_service_time || p?.latest_service_time) && (
+            <div className="mt-0.5 text-[10px] text-muted-foreground">
+              Window {p.earliest_service_time?.slice(0, 5) ?? "—"}–{p.latest_service_time?.slice(0, 5) ?? "—"}
+            </div>
+          )}
           <div className="mt-1 flex flex-wrap items-center gap-1">
             {visit.zones?.name && <Badge variant="outline" className="h-4 px-1 text-[10px]">{visit.zones.name}</Badge>}
             <Badge variant="secondary" className="h-4 px-1 text-[10px]">{visit.status}</Badge>
+            {visit.window_violated && <Badge variant="destructive" className="h-4 px-1 text-[10px]">Late</Badge>}
           </div>
         </div>
       </div>
