@@ -21,7 +21,7 @@ export const getAutomationSettings = createServerFn({ method: "GET" })
     const { data, error } = await supabase
       .from("organizations")
       .select(
-        "auto_generate_visits, auto_generate_days_ahead, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days",
+        "auto_generate_visits, auto_generate_days_ahead, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days, dunning_retry_days, dunning_pause_after_failures, seasonal_deepclean_enabled, seasonal_deepclean_months",
       )
       .eq("id", orgId)
       .single();
