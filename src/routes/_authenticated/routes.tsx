@@ -150,7 +150,17 @@ function RoutesPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const reoptMut = useMutation({
+    mutationFn: () => reoptAll({ data: { day } }),
+    onSuccess: (r) => {
+      toast.success(`Re-optimized ${r.total} stops across ${r.techs} tech(s)`);
+      setLocalColumns(null);
+      qc.invalidateQueries({ queryKey: ["visits", day] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
   const settingsMut = useMutation({
+
     mutationFn: (patch: any) => updSettings({ data: patch }),
     onSuccess: () => {
       toast.success("Dispatch settings saved");
