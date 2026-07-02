@@ -1,10 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useQuery } from "@tanstack/react-query";
-import { getFranchiseContext, getFranchiseRollup, type FranchiseRow } from "@/lib/franchise.functions";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
+import {
+  getFranchiseContext,
+  getFranchiseRollup,
+  markSelfAsFranchiseParent,
+  type FranchiseRow,
+} from "@/lib/franchise.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Building2 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/franchise")({
