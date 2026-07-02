@@ -9,6 +9,7 @@ import {
   listSyncLog,
   syncAllPaidInvoices,
 } from "@/lib/accounting.functions";
+import { startAccountingOAuth } from "@/lib/accounting-oauth.functions";
 
 export const Route = createFileRoute("/_authenticated/settings/accounting")({
   head: () => ({ meta: [{ title: "Accounting sync · Settings" }] }),
