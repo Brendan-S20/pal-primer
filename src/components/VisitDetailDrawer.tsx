@@ -350,11 +350,16 @@ function DogsSection({
         <ul className="space-y-1 text-sm">
           {dogs.map((d: any) => (
             <li key={d.id} className="rounded border p-2">
-              <div className="font-medium">{d.name}</div>
-              <div className="text-xs text-muted-foreground">
-                {[d.breed, d.weight_class, d.temperament].filter(Boolean).join(" · ")}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-medium">{d.name}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {[d.breed, d.weight_class, d.temperament].filter(Boolean).join(" · ")}
+                  </div>
+                  {d.notes && <div className="mt-1 text-xs">{d.notes}</div>}
+                </div>
+                <DogDnaControl dog={d} onChanged={onChanged} />
               </div>
-              {d.notes && <div className="mt-1 text-xs">{d.notes}</div>}
             </li>
           ))}
         </ul>
