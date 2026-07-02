@@ -30,6 +30,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { PushToggle } from "@/components/PushToggle";
 
 export const Route = createFileRoute("/portal/$token")({
   head: () => ({ meta: [{ title: "Your service portal" }] }),
@@ -193,11 +194,16 @@ function PortalPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-4 md:p-8">
       <header className="border-b pb-4">
-        <div className="text-xs uppercase tracking-wide text-muted-foreground">{c.org_name}</div>
-        <h1 className="mt-1 text-2xl font-semibold">Hello, {c.display_name}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Prepaid balance: <span className="font-medium text-foreground">{money(c.credit_balance_cents)}</span>
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">{c.org_name}</div>
+            <h1 className="mt-1 text-2xl font-semibold">Hello, {c.display_name}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Prepaid balance: <span className="font-medium text-foreground">{money(c.credit_balance_cents)}</span>
+            </p>
+          </div>
+          <PushToggle portalToken={token} />
+        </div>
       </header>
 
       <section>
