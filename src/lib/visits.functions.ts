@@ -65,7 +65,7 @@ export const optimizeRoute = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
-    const { data: count, error } = await supabase.rpc("optimize_route_for_day", {
+    const { data: count, error } = await supabase.rpc("optimize_route_v2", {
       _org_id: orgId,
       _staff_id: data.staffId,
       _day: data.day,
