@@ -31,6 +31,18 @@ function AccountingSettings() {
   const upsert = useServerFn(upsertAccountingConnection);
   const disconnect = useServerFn(disconnectAccounting);
   const syncAll = useServerFn(syncAllPaidInvoices);
+  const startOAuth = useServerFn(startAccountingOAuth);
+
+  async function connect(provider: Provider) {
+    setBusy(true); setMsg(null);
+    try {
+      const { url } = await startOAuth({ data: { provider, origin: window.location.origin } });
+      window.location.href = url;
+    } catch (err: any) {
+      setMsg(err?.message ?? "Failed to start connect flow");
+      setBusy(false);
+    }
+  }
 
   const [provider, setProvider] = useState<Provider>("quickbooks");
   const [realmId, setRealmId] = useState("");
