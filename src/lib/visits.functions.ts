@@ -48,7 +48,28 @@ export const assignRoute = createServerFn({ method: "POST" })
       _reassign: data.reassign ?? false,
     });
     if (error) throw new Error(error.message);
-    return { assigned: (count as number) ?? 0 };
+    const assigned = (count as number) ?? 0;
+    if (assigned > 0) {
+      try {
+        const { data: staff } = await supabase
+          .from("staff")
+          .select("user_id, display_name")
+          .eq("id", data.staffId)
+          .maybeSingle();
+        if (staff?.user_id) {
+          const { sendPushToUser } = await import("@/lib/push.server");
+          await sendPushToUser(staff.user_id, {
+            title: "New route assigned",
+            body: `${assigned} stop${assigned === 1 ? "" : "s"} on ${data.day}`,
+            tag: `route-${data.staffId}-${data.day}`,
+            url: "/my-day",
+          });
+        }
+      } catch (e) {
+        console.error("route push failed", e);
+      }
+    }
+    return { assigned };
   });
 
 export const optimizeRoute = createServerFn({ method: "POST" })
