@@ -423,7 +423,13 @@ function RoutesPage() {
 
       {(viewMode === "map" || viewMode === "split") && (
         <>
-          <MapPanel visits={visits} staff={staff} />
+          <MapPanel
+            visits={visits}
+            staff={staff}
+            onOpenVisit={setDetailVisitId}
+            onGeocode={() => geocodeMut.mutate()}
+            geocoding={geocodeMut.isPending}
+          />
           <HeatmapPanel visits={visits} staff={staff} />
         </>
       )}
@@ -444,6 +450,7 @@ function RoutesPage() {
             tone="muted"
             onComplete={(id) => completeMut.mutate(id)}
             completingId={completeMut.isPending ? (completeMut.variables as string) : null}
+            onOpen={setDetailVisitId}
           />
           {staff.map((s: any) => (
             <Column
@@ -454,6 +461,7 @@ function RoutesPage() {
               items={columns[s.id] ?? []}
               onComplete={(id) => completeMut.mutate(id)}
               completingId={completeMut.isPending ? (completeMut.variables as string) : null}
+              onOpen={setDetailVisitId}
             />
           ))}
         </div>
@@ -462,6 +470,7 @@ function RoutesPage() {
         </DragOverlay>
       </DndContext>
       )}
+      <VisitDetailDrawer visitId={detailVisitId} onOpenChange={(o) => !o && setDetailVisitId(null)} />
     </div>
 
   );
