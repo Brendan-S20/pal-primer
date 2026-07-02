@@ -62,6 +62,7 @@ function RoutesPage() {
   const listS = useServerFn(listStaff);
   const gen = useServerFn(generateVisits);
   const assign = useServerFn(assignRoute);
+  const optimize = useServerFn(optimizeRoute);
   const reassign = useServerFn(reassignVisit);
   const reorder = useServerFn(reorderRoute);
   const qc = useQueryClient();
