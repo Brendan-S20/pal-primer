@@ -187,6 +187,15 @@ function RoutesPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const geocode = useServerFn(backfillPropertyGeocodes);
+  const geocodeMut = useMutation({
+    mutationFn: () => geocode({ data: { limit: 100 } }),
+    onSuccess: (r) => {
+      toast.success(`Geocoded ${r.updated} addresses${r.remaining ? ` · ${r.remaining} remaining` : ""}`);
+      qc.invalidateQueries({ queryKey: ["visits"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
