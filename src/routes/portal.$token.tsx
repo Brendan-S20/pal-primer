@@ -231,6 +231,8 @@ function PortalPage() {
             </ul>
           </>
         )}
+      </section>
+
 
       {(subsQ.data ?? []).length > 0 && (
         <section>
