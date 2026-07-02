@@ -216,22 +216,12 @@ export function VisitDetailDrawer({
               )}
             </section>
 
-            {dogs.length > 0 && (
-              <section>
-                <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Dogs</h3>
-                <ul className="space-y-1 text-sm">
-                  {dogs.map((d: any) => (
-                    <li key={d.id} className="rounded border p-2">
-                      <div className="font-medium">{d.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {[d.breed, d.weight_class, d.temperament].filter(Boolean).join(" · ")}
-                      </div>
-                      {d.notes && <div className="mt-1 text-xs">{d.notes}</div>}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
+            <DogsSection
+              propertyId={p?.id}
+              dogs={dogs}
+              onChanged={() => qc.invalidateQueries({ queryKey: ["visit-detail", visitId] })}
+            />
+
 
             {(v.eta_start || v.travel_min != null) && (
               <section className="rounded-md border p-2 text-xs">
