@@ -9,7 +9,7 @@ import {
   upsertItem,
   recordMovement,
 } from "@/lib/inventory.functions";
-import { listStaff } from "@/lib/staff.functions";
+import { listStaff } from "@/lib/inventory.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
