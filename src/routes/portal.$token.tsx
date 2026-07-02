@@ -56,6 +56,12 @@ function PortalPage() {
   const skipFn = useServerFn(portalRequestSkip);
   const topupFn = useServerFn(portalStartPrepaidTopup);
   const checkoutFn = useServerFn(portalCreateCheckout);
+  const rescheduleFn = useServerFn(portalRescheduleVisit);
+  const changeFreqFn = useServerFn(portalChangeFrequency);
+  const listAddonCatalogFn = useServerFn(portalListAddonCatalog);
+  const listClientAddonsFn = useServerFn(portalListClientAddons);
+  const subscribeAddonFn = useServerFn(portalSubscribeAddon);
+  const cancelAddonFn = useServerFn(portalCancelAddon);
 
   const clientQ = useQuery({
     queryKey: ["portal", token, "client"],
@@ -72,6 +78,14 @@ function PortalPage() {
   const subsQ = useQuery({
     queryKey: ["portal", token, "subs"],
     queryFn: () => listSubsFn({ data: { token } }),
+  });
+  const catalogQ = useQuery({
+    queryKey: ["portal", token, "catalog"],
+    queryFn: () => listAddonCatalogFn({ data: { token } }),
+  });
+  const clientAddonsQ = useQuery({
+    queryKey: ["portal", token, "clientAddons"],
+    queryFn: () => listClientAddonsFn({ data: { token } }),
   });
 
   const skipMut = useMutation({
