@@ -118,5 +118,26 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
       todayVisits: visits,
       staff: staffRes.data ?? [],
       overdueInvoices,
+      openConcerns: (openTicketsRes.data ?? []).map((r: any) => ({
+        id: r.id,
+        category: r.category,
+        message: r.message,
+        createdAt: r.created_at,
+        clientName: r.clients?.display_name ?? "—",
+        visitId: r.visit_id,
+      })),
     };
   });
+
+export const resolveConcern = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context, data }: any) => {
+    const { supabase } = context;
+    const { error } = await supabase
+      .from("qc_tickets")
+      .update({ status: "resolved", resolved_at: new Date().toISOString(), resolved_by: context.userId })
+      .eq("id", data.ticketId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
