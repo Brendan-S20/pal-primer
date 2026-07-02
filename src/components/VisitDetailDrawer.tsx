@@ -15,6 +15,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { getVisitDetail } from "@/lib/visits.functions";
 import { completeVisit, startVisit, skipVisit } from "@/lib/my-day.functions";
+import { addDog } from "@/lib/dogs.functions";
+import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
+import { Input } from "@/components/ui/input";
 import {
   Navigation,
   CheckCircle2,
@@ -25,6 +28,9 @@ import {
   AlertTriangle,
   Loader2,
   ExternalLink,
+  Camera,
+  PawPrint,
+  Plus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
