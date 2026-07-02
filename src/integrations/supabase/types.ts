@@ -3314,7 +3314,12 @@ export type Database = {
         | "quarterly"
         | "yearly"
       addon_kind: "one_time" | "recurring"
-      app_role: "owner" | "office_manager" | "dispatcher" | "tech"
+      app_role:
+        | "owner"
+        | "office_manager"
+        | "dispatcher"
+        | "tech"
+        | "platform_admin"
       billing_cadence: "prepaid" | "postpaid"
       dog_temperament: "friendly" | "nervous" | "aggressive" | "unknown"
       import_row_action: "create" | "update" | "skip" | "error"
@@ -3502,7 +3507,13 @@ export const Constants = {
       ],
       addon_frequency: ["weekly", "biweekly", "monthly", "quarterly", "yearly"],
       addon_kind: ["one_time", "recurring"],
-      app_role: ["owner", "office_manager", "dispatcher", "tech"],
+      app_role: [
+        "owner",
+        "office_manager",
+        "dispatcher",
+        "tech",
+        "platform_admin",
+      ],
       billing_cadence: ["prepaid", "postpaid"],
       dog_temperament: ["friendly", "nervous", "aggressive", "unknown"],
       import_row_action: ["create", "update", "skip", "error"],
