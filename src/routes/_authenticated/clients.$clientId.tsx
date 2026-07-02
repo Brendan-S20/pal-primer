@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/clients/$clientId")({
@@ -212,14 +213,35 @@ function ClientDetail() {
         )}
       </div>
 
-      <ReviewsReferralPanel client={client} />
+      <Tabs defaultValue="overview" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="service">Service</TabsTrigger>
+          <TabsTrigger value="billing">Billing</TabsTrigger>
+        </TabsList>
 
+        <TabsContent value="overview" className="space-y-6">
+          <ReviewsReferralPanel client={client} />
+          <section className="rounded-lg border bg-card p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-medium">Prepaid credit balance</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  See full ledger in the Billing tab.
+                </p>
+              </div>
+              <span className={`text-2xl font-semibold ${((credit?.balanceCents ?? 0) < 0) ? "text-destructive" : ""}`}>
+                ${((credit?.balanceCents ?? 0) / 100).toFixed(2)}
+              </span>
+            </div>
+          </section>
+        </TabsContent>
 
-
-
+        <TabsContent value="service" className="space-y-6">
       {/* Properties */}
       <section className="rounded-lg border bg-card p-5">
         <h2 className="text-sm font-medium">Properties</h2>
+
         <ul className="mt-3 divide-y">
           {properties.map((p: any) => {
             const chips: string[] = [];
@@ -486,36 +508,42 @@ function ClientDetail() {
         )}
       </section>
 
-      {/* Credit balance */}
-      <section className="rounded-lg border bg-card p-5">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium">Prepaid credit balance</h2>
-          <span className={`text-lg font-semibold ${((credit?.balanceCents ?? 0) < 0) ? "text-destructive" : ""}`}>
-            ${((credit?.balanceCents ?? 0) / 100).toFixed(2)}
-          </span>
-        </div>
-        {credit && credit.ledger.length > 0 ? (
-          <ul className="mt-3 divide-y text-sm">
-            {credit.ledger.map((l) => (
-              <li key={l.id} className="flex items-center justify-between py-2">
-                <span>
-                  <span className="text-muted-foreground">{new Date(l.created_at).toLocaleDateString()}</span>
-                  <span className="ml-2">{l.note ?? l.kind}</span>
-                </span>
-                <span className={l.delta_cents < 0 ? "text-destructive" : "text-primary"}>
-                  {l.delta_cents < 0 ? "−" : "+"}${Math.abs(l.delta_cents / 100).toFixed(2)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-3 text-sm text-muted-foreground">No credit activity yet.</p>
-        )}
-      </section>
+          <StationsPanel clientId={clientId} properties={properties} />
+        </TabsContent>
 
-      <StationsPanel clientId={clientId} properties={properties} />
-      <AddonsPanel clientId={clientId} />
+        <TabsContent value="billing" className="space-y-6">
+          {/* Credit balance */}
+          <section className="rounded-lg border bg-card p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-medium">Prepaid credit balance</h2>
+              <span className={`text-lg font-semibold ${((credit?.balanceCents ?? 0) < 0) ? "text-destructive" : ""}`}>
+                ${((credit?.balanceCents ?? 0) / 100).toFixed(2)}
+              </span>
+            </div>
+            {credit && credit.ledger.length > 0 ? (
+              <ul className="mt-3 divide-y text-sm">
+                {credit.ledger.map((l) => (
+                  <li key={l.id} className="flex items-center justify-between py-2">
+                    <span>
+                      <span className="text-muted-foreground">{new Date(l.created_at).toLocaleDateString()}</span>
+                      <span className="ml-2">{l.note ?? l.kind}</span>
+                    </span>
+                    <span className={l.delta_cents < 0 ? "text-destructive" : "text-primary"}>
+                      {l.delta_cents < 0 ? "−" : "+"}${Math.abs(l.delta_cents / 100).toFixed(2)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">No credit activity yet.</p>
+            )}
+          </section>
+
+          <AddonsPanel clientId={clientId} />
+        </TabsContent>
+      </Tabs>
     </div>
+
   );
 }
 
