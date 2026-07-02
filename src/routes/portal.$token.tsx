@@ -16,7 +16,12 @@ import {
   portalListClientAddons,
   portalSubscribeAddon,
   portalCancelAddon,
+  portalStartCardSetup,
+  portalSetAutopay,
+  portalRemoveCard,
+  portalPayInvoiceWithSavedCard,
 } from "@/lib/portal.functions";
+
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -62,6 +67,11 @@ function PortalPage() {
   const listClientAddonsFn = useServerFn(portalListClientAddons);
   const subscribeAddonFn = useServerFn(portalSubscribeAddon);
   const cancelAddonFn = useServerFn(portalCancelAddon);
+  const startSetupFn = useServerFn(portalStartCardSetup);
+  const setAutopayFn = useServerFn(portalSetAutopay);
+  const removeCardFn = useServerFn(portalRemoveCard);
+  const payWithSavedFn = useServerFn(portalPayInvoiceWithSavedCard);
+
 
   const clientQ = useQuery({
     queryKey: ["portal", token, "client"],
@@ -145,6 +155,31 @@ function PortalPage() {
     onSuccess: () => { toast.success("Add-on canceled"); invalidatePortal(); },
     onError: (e) => toast.error((e as Error).message),
   });
+
+  const startSetupMut = useMutation({
+    mutationFn: () => startSetupFn({ data: { token, returnUrl: window.location.href } }),
+    onSuccess: (r) => { window.location.href = r.url; },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const setAutopayMut = useMutation({
+    mutationFn: (enabled: boolean) => setAutopayFn({ data: { token, enabled } }),
+    onSuccess: (r) => { toast.success(r.enabled ? "Autopay on" : "Autopay off"); invalidatePortal(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const removeCardMut = useMutation({
+    mutationFn: () => removeCardFn({ data: { token } }),
+    onSuccess: () => { toast.success("Card removed"); invalidatePortal(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const paySavedMut = useMutation({
+    mutationFn: (invoiceId: string) => payWithSavedFn({ data: { token, invoiceId } }),
+    onSuccess: () => { toast.success("Payment submitted"); invalidatePortal(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
 
   if (clientQ.isLoading) {
     return <div className="mx-auto max-w-3xl p-8 text-center text-sm text-muted-foreground">Loading…</div>;
@@ -248,6 +283,53 @@ function PortalPage() {
       )}
 
       <section>
+        <h2 className="mb-2 text-lg font-semibold">Payment method</h2>
+        <div className="rounded-md border p-3 text-sm space-y-3">
+          {c.has_saved_card ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="font-medium capitalize">
+                    {c.card_brand ?? "Card"} ending in {c.card_last4 ?? "····"}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Autopay {c.autopay_enabled ? "on — open invoices will be charged automatically." : "off."}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant={c.autopay_enabled ? "outline" : "default"}
+                          disabled={setAutopayMut.isPending}
+                          onClick={() => setAutopayMut.mutate(!c.autopay_enabled)}>
+                    {c.autopay_enabled ? "Turn off autopay" : "Turn on autopay"}
+                  </Button>
+                  <Button size="sm" variant="outline"
+                          disabled={removeCardMut.isPending}
+                          onClick={() => removeCardMut.mutate()}>
+                    Remove
+                  </Button>
+                </div>
+              </div>
+              <Button size="sm" variant="ghost"
+                      disabled={startSetupMut.isPending}
+                      onClick={() => startSetupMut.mutate()}>
+                Replace card
+              </Button>
+            </>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-muted-foreground">
+                Save a card once and pay open invoices with a single tap — or enable autopay.
+              </div>
+              <Button size="sm" disabled={startSetupMut.isPending}
+                      onClick={() => startSetupMut.mutate()}>
+                Add card
+              </Button>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section>
         <h2 className="mb-2 text-lg font-semibold">Invoices</h2>
         {(invoicesQ.data ?? []).length === 0 ? (
           <p className="text-sm text-muted-foreground">No invoices yet.</p>
@@ -261,15 +343,27 @@ function PortalPage() {
                   {i.period_start && <div className="text-xs text-muted-foreground">{i.period_start} → {i.period_end}</div>}
                 </div>
                 {i.status !== "paid" && i.status !== "void" && (
-                  <Button size="sm" disabled={payMut.isPending} onClick={() => payMut.mutate(i.invoice_id)}>
-                    Pay now
-                  </Button>
+                  <div className="flex gap-2">
+                    {c.has_saved_card && (
+                      <Button size="sm" variant="default"
+                              disabled={paySavedMut.isPending}
+                              onClick={() => paySavedMut.mutate(i.invoice_id)}>
+                        Pay with saved card
+                      </Button>
+                    )}
+                    <Button size="sm" variant={c.has_saved_card ? "outline" : "default"}
+                            disabled={payMut.isPending}
+                            onClick={() => payMut.mutate(i.invoice_id)}>
+                      Pay now
+                    </Button>
+                  </div>
                 )}
               </li>
             ))}
           </ul>
         )}
       </section>
+
     </div>
   );
 }
