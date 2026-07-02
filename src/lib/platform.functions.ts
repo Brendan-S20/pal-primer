@@ -116,7 +116,7 @@ export const startImpersonation = createServerFn({ method: "POST" })
       .from("user_roles")
       .select("user_id, role")
       .eq("organization_id", data.organization_id)
-      .in("role", ["owner", "admin"])
+      .in("role", ["owner", "office_manager"])
       .limit(1)
       .maybeSingle();
     if (roleErr) throw new Error(roleErr.message);
