@@ -1021,3 +1021,45 @@ function StationsPanel({ clientId, properties }: { clientId: string; properties:
 
 
 
+
+function PropertyWindowRow({ property }: { property: any }) {
+  const upd = useServerFn(updatePropertyWindow);
+  const qc = useQueryClient();
+  const mut = useMutation({
+    mutationFn: (patch: any) =>
+      upd({ data: { propertyId: property.id, ...patch } }),
+    onSuccess: () => {
+      toast.success("Time window saved");
+      qc.invalidateQueries({ queryKey: ["properties"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+      <span className="text-muted-foreground">Service window</span>
+      <Input
+        type="time"
+        className="h-7 w-24 text-xs"
+        defaultValue={property.earliest_service_time?.slice(0, 5) ?? ""}
+        onBlur={(e) => mut.mutate({ earliest_service_time: e.target.value || null })}
+      />
+      <span>–</span>
+      <Input
+        type="time"
+        className="h-7 w-24 text-xs"
+        defaultValue={property.latest_service_time?.slice(0, 5) ?? ""}
+        onBlur={(e) => mut.mutate({ latest_service_time: e.target.value || null })}
+      />
+      <span className="text-muted-foreground">·</span>
+      <Input
+        type="number"
+        min={1}
+        max={240}
+        className="h-7 w-16 text-xs"
+        defaultValue={property.service_duration_min ?? 8}
+        onBlur={(e) => mut.mutate({ service_duration_min: Number(e.target.value) || 8 })}
+      />
+      <span className="text-muted-foreground">min</span>
+    </div>
+  );
+}
