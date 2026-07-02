@@ -461,8 +461,8 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
   useEffect(() => { setCollapsed(finalStatus); }, [finalStatus]);
 
   return (
-    <li id={`visit-${visit.id}`} className={`animate-fade-in rounded-xl border bg-card p-4 shadow-sm transition-shadow ${inProg ? "ring-2 ring-blue-500/40 shadow-md" : ""}`}>
-      <span className="scroll-mt-32" aria-hidden />
+    <li id={`visit-${visit.id}`} className={`animate-fade-in scroll-mt-40 rounded-xl border bg-card p-4 shadow-sm transition-shadow ${inProg ? "ring-2 ring-blue-500/40 shadow-md" : ""}`}>
+
 
       {!collapsed && <HazardBanner property={p} />}
 
