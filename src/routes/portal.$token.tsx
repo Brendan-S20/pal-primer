@@ -116,6 +116,36 @@ function PortalPage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
+  const invalidatePortal = () => qc.invalidateQueries({ queryKey: ["portal", token] });
+
+  const rescheduleMut = useMutation({
+    mutationFn: (v: { visitId: string; newDate: string }) =>
+      rescheduleFn({ data: { token, ...v } }),
+    onSuccess: () => { toast.success("Visit rescheduled"); invalidatePortal(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const freqMut = useMutation({
+    mutationFn: (v: { subscriptionId: string; frequency: "weekly" | "biweekly" | "twice_weekly" | "monthly" }) =>
+      changeFreqFn({ data: { token, ...v } }),
+    onSuccess: () => { toast.success("Plan updated"); invalidatePortal(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const subscribeAddonMut = useMutation({
+    mutationFn: (v: { addonServiceId: string; frequency: "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly" | null; quantity: number }) =>
+      subscribeAddonFn({ data: { token, ...v } }),
+    onSuccess: () => { toast.success("Add-on added"); invalidatePortal(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const cancelAddonMut = useMutation({
+    mutationFn: (addonSubscriptionId: string) =>
+      cancelAddonFn({ data: { token, addonSubscriptionId } }),
+    onSuccess: () => { toast.success("Add-on canceled"); invalidatePortal(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
   if (clientQ.isLoading) {
     return <div className="mx-auto max-w-3xl p-8 text-center text-sm text-muted-foreground">Loading…</div>;
   }
