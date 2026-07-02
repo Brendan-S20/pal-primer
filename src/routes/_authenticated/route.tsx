@@ -1,8 +1,12 @@
-import { createFileRoute, Outlet, redirect, Link } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
-import { APP_NAME } from "@/lib/scoop";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { InstallBanner } from "@/components/InstallBanner";
+import { AppSidebar } from "@/components/AppSidebar";
+import { CommandPalette } from "@/components/CommandPalette";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
+import { Search } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -14,109 +18,53 @@ export const Route = createFileRoute("/_authenticated")({
   component: AppShell,
 });
 
+function openPalette() {
+  window.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }),
+  );
+}
+
 function AppShell() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     window.location.href = "/auth";
   };
 
+  const isMac =
+    typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-6">
-            <Link to="/dashboard" className="text-lg font-semibold">
-              {APP_NAME}
-            </Link>
-            <nav className="flex gap-4 text-sm text-muted-foreground">
-              <Link to="/dashboard" activeOptions={{ exact: true }} activeProps={{ className: "text-foreground font-medium" }}>
-                Dashboard
-              </Link>
-              <Link to="/leads" activeProps={{ className: "text-foreground font-medium" }}>
-                Leads
-              </Link>
-              <Link to="/clients" activeProps={{ className: "text-foreground font-medium" }}>
-                Clients
-              </Link>
-              <Link to="/zones" activeProps={{ className: "text-foreground font-medium" }}>
-                Zones
-              </Link>
-              <Link to="/routes" activeProps={{ className: "text-foreground font-medium" }}>
-                Routes
-              </Link>
-              <Link to="/weather" activeProps={{ className: "text-foreground font-medium" }}>
-                Weather
-              </Link>
-              <Link to="/my-day" activeProps={{ className: "text-foreground font-medium" }}>
-                My day
-              </Link>
-              <Link to="/waste-log" activeProps={{ className: "text-foreground font-medium" }}>
-                Waste log
-              </Link>
-              <Link to="/messages" activeProps={{ className: "text-foreground font-medium" }}>
-                Messages
-              </Link>
-              <Link to="/invoices" activeProps={{ className: "text-foreground font-medium" }}>
-                Invoices
-              </Link>
-              <Link to="/reports" activeProps={{ className: "text-foreground font-medium" }}>
-                Reports
-              </Link>
-              <Link to="/analytics" activeProps={{ className: "text-foreground font-medium" }}>
-                Analytics
-              </Link>
-              <Link to="/billing" activeProps={{ className: "text-foreground font-medium" }}>
-                Billing
-              </Link>
-              <Link to="/imports" activeProps={{ className: "text-foreground font-medium" }}>
-                Import
-              </Link>
-              <Link to="/settings/skip-rules" activeProps={{ className: "text-foreground font-medium" }}>
-                Skip rules
-              </Link>
-              <Link to="/settings/blackouts" activeProps={{ className: "text-foreground font-medium" }}>
-                Blackouts
-              </Link>
-              <Link to="/settings/sms" activeProps={{ className: "text-foreground font-medium" }}>
-                SMS
-              </Link>
-              <Link to="/settings/ai-receptionist" activeProps={{ className: "text-foreground font-medium" }}>
-                AI receptionist
-              </Link>
-              <Link to="/settings/automation" activeProps={{ className: "text-foreground font-medium" }}>
-                Automation
-              </Link>
-              <Link to="/settings/emails" activeProps={{ className: "text-foreground font-medium" }}>
-                Emails
-              </Link>
-              <Link to="/settings/reviews" activeProps={{ className: "text-foreground font-medium" }}>
-                Reviews
-              </Link>
-              <Link to="/ai-tools" activeProps={{ className: "text-foreground font-medium" }}>
-                AI tools
-              </Link>
-              <Link to="/settings/accounting" activeProps={{ className: "text-foreground font-medium" }}>
-                Accounting
-              </Link>
-
-
-
-
-            </nav>
-          </div>
-          <button
-            onClick={handleSignOut}
-            className="text-sm text-muted-foreground hover:text-foreground"
-          >
-            Sign out
-          </button>
+    <SidebarProvider>
+      <div className="flex min-h-screen w-full bg-background">
+        <AppSidebar />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-card/80 px-4 backdrop-blur">
+            <SidebarTrigger />
+            <button
+              type="button"
+              onClick={openPalette}
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-md border bg-background/60 px-3 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
+            >
+              <Search className="h-4 w-4 shrink-0" />
+              <span className="truncate">Search or jump to…</span>
+              <kbd className="ml-auto hidden shrink-0 rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] sm:inline-block">
+                {isMac ? "⌘K" : "Ctrl K"}
+              </kbd>
+            </button>
+            <Button variant="ghost" size="sm" onClick={handleSignOut}>
+              Sign out
+            </Button>
+          </header>
+          <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 sm:py-8">
+            <div className="mx-auto w-full max-w-6xl">
+              <Outlet />
+            </div>
+          </main>
         </div>
-      </header>
-      <main className="mx-auto max-w-6xl px-6 py-8">
-        <Outlet />
-      </main>
-      <KeyboardShortcuts />
-      <InstallBanner />
-    </div>
+        <CommandPalette />
+        <KeyboardShortcuts />
+        <InstallBanner />
+      </div>
+    </SidebarProvider>
   );
 }
