@@ -65,6 +65,8 @@ function AppShell() {
         <CommandPalette />
         <KeyboardShortcuts />
         <InstallBanner />
+        <RoleGuard />
+
       </div>
     </SidebarProvider>
   );
