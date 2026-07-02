@@ -72,8 +72,8 @@ export const Route = createFileRoute("/api/public/hooks/qbo-callback")({
           .maybeSingle();
 
         const payload = {
-          org_id: st.org_id,
-          provider: "quickbooks",
+          org_id: st.org_id as string,
+          provider: "quickbooks" as const,
           realm_id: realmId,
           access_token: tok.access_token,
           refresh_token: tok.refresh_token,

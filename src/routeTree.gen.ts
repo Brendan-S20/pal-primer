@@ -61,6 +61,7 @@ import { Route as LovableEmailAuthPreviewRouteImport } from './routes/lovable/em
 import { Route as ApiPublicHooksTwilioVoiceRouteImport } from './routes/api/public/hooks/twilio-voice'
 import { Route as ApiPublicHooksTwilioRouteImport } from './routes/api/public/hooks/twilio'
 import { Route as ApiPublicHooksStripeRouteImport } from './routes/api/public/hooks/stripe'
+import { Route as ApiPublicHooksQboCallbackRouteImport } from './routes/api/public/hooks/qbo-callback'
 import { Route as ApiPublicHooksNightlyRouteImport } from './routes/api/public/hooks/nightly'
 
 const UnsubscribeRoute = UnsubscribeRouteImport.update({
@@ -343,6 +344,12 @@ const ApiPublicHooksStripeRoute = ApiPublicHooksStripeRouteImport.update({
   path: '/api/public/hooks/stripe',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHooksQboCallbackRoute =
+  ApiPublicHooksQboCallbackRouteImport.update({
+    id: '/api/public/hooks/qbo-callback',
+    path: '/api/public/hooks/qbo-callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksNightlyRoute = ApiPublicHooksNightlyRouteImport.update({
   id: '/api/public/hooks/nightly',
   path: '/api/public/hooks/nightly',
@@ -394,6 +401,7 @@ export interface FileRoutesByFullPath {
   '/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/messages/': typeof AuthenticatedMessagesIndexRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
+  '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
@@ -445,6 +453,7 @@ export interface FileRoutesByTo {
   '/invoices': typeof AuthenticatedInvoicesIndexRoute
   '/messages': typeof AuthenticatedMessagesIndexRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
+  '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
@@ -501,6 +510,7 @@ export interface FileRoutesById {
   '/_authenticated/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/_authenticated/messages/': typeof AuthenticatedMessagesIndexRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
+  '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
@@ -557,6 +567,7 @@ export interface FileRouteTypes {
     | '/invoices/'
     | '/messages/'
     | '/api/public/hooks/nightly'
+    | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
@@ -608,6 +619,7 @@ export interface FileRouteTypes {
     | '/invoices'
     | '/messages'
     | '/api/public/hooks/nightly'
+    | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
@@ -663,6 +675,7 @@ export interface FileRouteTypes {
     | '/_authenticated/invoices/'
     | '/_authenticated/messages/'
     | '/api/public/hooks/nightly'
+    | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
@@ -688,6 +701,7 @@ export interface RootRouteChildren {
   SignupSuccessRoute: typeof SignupSuccessRoute
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
   ApiPublicHooksNightlyRoute: typeof ApiPublicHooksNightlyRoute
+  ApiPublicHooksQboCallbackRoute: typeof ApiPublicHooksQboCallbackRoute
   ApiPublicHooksStripeRoute: typeof ApiPublicHooksStripeRoute
   ApiPublicHooksTwilioRoute: typeof ApiPublicHooksTwilioRoute
   ApiPublicHooksTwilioVoiceRoute: typeof ApiPublicHooksTwilioVoiceRoute
@@ -1064,6 +1078,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksStripeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/qbo-callback': {
+      id: '/api/public/hooks/qbo-callback'
+      path: '/api/public/hooks/qbo-callback'
+      fullPath: '/api/public/hooks/qbo-callback'
+      preLoaderRoute: typeof ApiPublicHooksQboCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/nightly': {
       id: '/api/public/hooks/nightly'
       path: '/api/public/hooks/nightly'
@@ -1192,6 +1213,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupSuccessRoute: SignupSuccessRoute,
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
   ApiPublicHooksNightlyRoute: ApiPublicHooksNightlyRoute,
+  ApiPublicHooksQboCallbackRoute: ApiPublicHooksQboCallbackRoute,
   ApiPublicHooksStripeRoute: ApiPublicHooksStripeRoute,
   ApiPublicHooksTwilioRoute: ApiPublicHooksTwilioRoute,
   ApiPublicHooksTwilioVoiceRoute: ApiPublicHooksTwilioVoiceRoute,
