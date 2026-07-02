@@ -70,7 +70,7 @@ function AccountingSettings() {
   async function runSync() {
     setBusy(true); setMsg(null);
     try {
-      const res = await syncAll({ data: {} });
+      const res = await (syncAll as any)();
       setMsg(`Synced ${res.ok}/${res.total} paid invoices${res.failed ? ` (${res.failed} failed)` : ""}.`);
       logs.refetch();
     } catch (err: any) {
