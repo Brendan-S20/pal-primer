@@ -101,8 +101,8 @@ function AuthPage() {
                   return setError(result.error.message ?? "Google sign-in failed");
                 }
                 if (result.redirected) return; // browser will redirect
-                // Popup flow: session set. Bootstrap org if none, then navigate.
-                try { await bootstrapOrganization({ data: { orgName: "", displayName: "" } }); } catch { /* already provisioned */ }
+                // Popup flow completed with session. Route to dashboard;
+                // onboarding flow handles org bootstrap if none exists.
                 navigate({ to: "/dashboard" });
               } catch (err) {
                 setLoading(false);
