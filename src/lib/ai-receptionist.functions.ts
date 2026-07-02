@@ -18,7 +18,9 @@ export const getAiReceptionistSettings = createServerFn({ method: "GET" })
     const orgId = await orgIdFor(context.supabase, context.userId);
     const { data, error } = await context.supabase
       .from("organizations")
-      .select("ai_receptionist_enabled, ai_receptionist_faq, ai_receptionist_persona")
+      .select(
+        "ai_receptionist_enabled, ai_receptionist_faq, ai_receptionist_persona, ai_voice_enabled, ai_voice_greeting",
+      )
       .eq("id", orgId)
       .single();
     if (error) throw new Error(error.message);
@@ -33,18 +35,23 @@ export const updateAiReceptionistSettings = createServerFn({ method: "POST" })
         enabled: z.boolean(),
         faq: z.string().max(20000).nullable(),
         persona: z.string().max(4000).nullable(),
+        voice_enabled: z.boolean().optional(),
+        voice_greeting: z.string().max(1000).nullable().optional(),
       })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
     const orgId = await orgIdFor(context.supabase, context.userId);
+    const patch: Record<string, unknown> = {
+      ai_receptionist_enabled: data.enabled,
+      ai_receptionist_faq: data.faq,
+      ai_receptionist_persona: data.persona,
+    };
+    if (data.voice_enabled !== undefined) patch.ai_voice_enabled = data.voice_enabled;
+    if (data.voice_greeting !== undefined) patch.ai_voice_greeting = data.voice_greeting;
     const { error } = await context.supabase
       .from("organizations")
-      .update({
-        ai_receptionist_enabled: data.enabled,
-        ai_receptionist_faq: data.faq,
-        ai_receptionist_persona: data.persona,
-      })
+      .update(patch)
       .eq("id", orgId);
     if (error) throw new Error(error.message);
     return { ok: true };
