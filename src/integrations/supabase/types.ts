@@ -691,6 +691,8 @@ export type Database = {
         Row: {
           breed: string | null
           created_at: string
+          dna_registered: boolean
+          dna_registry_id: string | null
           id: string
           name: string
           notes: string | null
@@ -702,6 +704,8 @@ export type Database = {
         Insert: {
           breed?: string | null
           created_at?: string
+          dna_registered?: boolean
+          dna_registry_id?: string | null
           id?: string
           name: string
           notes?: string | null
@@ -713,6 +717,8 @@ export type Database = {
         Update: {
           breed?: string | null
           created_at?: string
+          dna_registered?: boolean
+          dna_registry_id?: string | null
           id?: string
           name?: string
           notes?: string | null
@@ -1561,6 +1567,66 @@ export type Database = {
           },
         ]
       }
+      neighbor_leads: {
+        Row: {
+          address_line: string
+          contacted_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          latitude: number | null
+          longitude: number | null
+          notes: string | null
+          organization_id: string
+          seed_client_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          address_line: string
+          contacted_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          notes?: string | null
+          organization_id: string
+          seed_client_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          address_line?: string
+          contacted_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          notes?: string | null
+          organization_id?: string
+          seed_client_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "neighbor_leads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "neighbor_leads_seed_client_id_fkey"
+            columns: ["seed_client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       oauth_states: {
         Row: {
           created_at: string
@@ -1612,6 +1678,8 @@ export type Database = {
           created_at: string
           currency: string
           current_period_end: string | null
+          dunning_pause_after_failures: number
+          dunning_retry_days: number[]
           frequency_multipliers: Json
           google_review_url: string | null
           id: string
@@ -1632,6 +1700,8 @@ export type Database = {
           referral_reward_cents: number
           review_ask_enabled: boolean
           review_ask_template: string | null
+          seasonal_deepclean_enabled: boolean
+          seasonal_deepclean_months: number[]
           slug: string | null
           sms_from_number: string | null
           stripe_customer_id: string | null
@@ -1656,6 +1726,8 @@ export type Database = {
           created_at?: string
           currency?: string
           current_period_end?: string | null
+          dunning_pause_after_failures?: number
+          dunning_retry_days?: number[]
           frequency_multipliers?: Json
           google_review_url?: string | null
           id?: string
@@ -1676,6 +1748,8 @@ export type Database = {
           referral_reward_cents?: number
           review_ask_enabled?: boolean
           review_ask_template?: string | null
+          seasonal_deepclean_enabled?: boolean
+          seasonal_deepclean_months?: number[]
           slug?: string | null
           sms_from_number?: string | null
           stripe_customer_id?: string | null
@@ -1700,6 +1774,8 @@ export type Database = {
           created_at?: string
           currency?: string
           current_period_end?: string | null
+          dunning_pause_after_failures?: number
+          dunning_retry_days?: number[]
           frequency_multipliers?: Json
           google_review_url?: string | null
           id?: string
@@ -1720,6 +1796,8 @@ export type Database = {
           referral_reward_cents?: number
           review_ask_enabled?: boolean
           review_ask_template?: string | null
+          seasonal_deepclean_enabled?: boolean
+          seasonal_deepclean_months?: number[]
           slug?: string | null
           sms_from_number?: string | null
           stripe_customer_id?: string | null
@@ -3142,6 +3220,7 @@ export type Database = {
         }
         Returns: string
       }
+      mark_franchise_parent: { Args: { _org_id: string }; Returns: undefined }
       mark_review_asked: { Args: { _client_id: string }; Returns: boolean }
       move_to_dlq: {
         Args: {
