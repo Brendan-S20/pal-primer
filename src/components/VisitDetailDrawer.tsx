@@ -239,21 +239,8 @@ export function VisitDetailDrawer({
               </section>
             )}
 
-            {v.visit_photos?.length > 0 && (
-              <section>
-                <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Photos</h3>
-                <div className="flex flex-wrap gap-2">
-                  {v.visit_photos.map((ph: any) => (
-                    <div key={ph.id} className="relative">
-                      <PhotoThumb path={ph.storage_path} />
-                      <span className="absolute -bottom-1 -right-1 rounded bg-background px-1 text-[9px] uppercase text-muted-foreground shadow-sm">
-                        {ph.kind}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
+            <PhotosSection visitId={visitId!} photos={v.visit_photos ?? []} />
+
 
             {history.length > 0 && (
               <section>
