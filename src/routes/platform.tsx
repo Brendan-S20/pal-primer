@@ -28,7 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Shield, Building2, Users, DollarSign, AlertCircle } from "lucide-react";
+import { Shield, Building2, Users, DollarSign, AlertCircle, LogIn } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/platform")({
