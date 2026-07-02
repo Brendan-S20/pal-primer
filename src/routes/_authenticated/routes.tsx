@@ -71,6 +71,7 @@ function RoutesPage() {
   const [weekDays, setWeekDays] = useState(7);
   const [viewMode, setViewMode] = useState<"split" | "map" | "board">("split");
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
 
   const listV = useServerFn(listVisitsForDay);
   const listS = useServerFn(listStaff);
