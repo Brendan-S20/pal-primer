@@ -563,6 +563,7 @@ function Column({
               seq={i + 1}
               onComplete={onComplete}
               completing={completingId === v.id}
+              onOpen={onOpen}
             />
           ))}
           {items.length === 0 && (
