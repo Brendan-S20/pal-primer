@@ -30,6 +30,16 @@ function FranchisePage() {
     enabled: !!ctx.data?.isParent,
   });
 
+  const markFn = useServerFn(markSelfAsFranchiseParent);
+  const mark = useMutation({
+    mutationFn: () => markFn(),
+    onSuccess: () => {
+      toast.success("Marked as franchise parent");
+      ctx.refetch();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   if (ctx.isLoading) return <div className="p-6 text-muted-foreground">Loading…</div>;
   if (!ctx.data?.isParent) {
     return (
@@ -38,9 +48,12 @@ function FranchisePage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" /> Franchise rollup</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-muted-foreground space-y-2">
-            <p>This organization is not configured as a franchise parent.</p>
-            <p>Mark it as a parent and link child organizations by setting <code>parent_organization_id</code> on each child org.</p>
+          <CardContent className="text-sm text-muted-foreground space-y-3">
+            <p>This organization is not configured as a franchise parent yet.</p>
+            <p>Once you enable it, any organization whose <code>parent_organization_id</code> points at this one will roll up its clients, revenue, and open AR here.</p>
+            <Button onClick={() => mark.mutate()} disabled={mark.isPending}>
+              {mark.isPending ? "Marking…" : "Mark this org as a franchise parent"}
+            </Button>
           </CardContent>
         </Card>
       </div>
