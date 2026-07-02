@@ -245,6 +245,7 @@ function ClientDetail() {
                     ))}
                   </div>
                 )}
+                <PropertyWindowRow property={p} />
               </li>
             );
           })}
