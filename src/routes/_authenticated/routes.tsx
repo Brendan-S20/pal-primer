@@ -369,7 +369,10 @@ function RoutesPage() {
       </div>
 
 
+      <HeatmapPanel visits={visits} staff={staff} />
+
       <DndContext
+
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragStart={onDragStart}
