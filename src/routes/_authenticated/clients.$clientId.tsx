@@ -268,6 +268,15 @@ function ClientDetail() {
                   </div>
                 )}
                 <PropertyWindowRow property={p} />
+                <div className="mt-1">
+                  <Link
+                    to="/properties/$propertyId/boundary"
+                    params={{ propertyId: p.id }}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    {p.boundary ? "Edit boundary on map" : "Sketch boundary on map"}
+                  </Link>
+                </div>
               </li>
             );
           })}

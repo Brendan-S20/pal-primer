@@ -1680,6 +1680,8 @@ export type Database = {
           access_notes: string | null
           aggressive_dog: boolean
           bees_wasps: boolean
+          boundary: Json | null
+          boundary_area_sqm: number | null
           city: string
           client_id: string
           country: string | null
@@ -1712,6 +1714,8 @@ export type Database = {
           access_notes?: string | null
           aggressive_dog?: boolean
           bees_wasps?: boolean
+          boundary?: Json | null
+          boundary_area_sqm?: number | null
           city: string
           client_id: string
           country?: string | null
@@ -1744,6 +1748,8 @@ export type Database = {
           access_notes?: string | null
           aggressive_dog?: boolean
           bees_wasps?: boolean
+          boundary?: Json | null
+          boundary_area_sqm?: number | null
           city?: string
           client_id?: string
           country?: string | null
