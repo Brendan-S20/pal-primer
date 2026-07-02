@@ -507,36 +507,42 @@ function ClientDetail() {
         )}
       </section>
 
-      {/* Credit balance */}
-      <section className="rounded-lg border bg-card p-5">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium">Prepaid credit balance</h2>
-          <span className={`text-lg font-semibold ${((credit?.balanceCents ?? 0) < 0) ? "text-destructive" : ""}`}>
-            ${((credit?.balanceCents ?? 0) / 100).toFixed(2)}
-          </span>
-        </div>
-        {credit && credit.ledger.length > 0 ? (
-          <ul className="mt-3 divide-y text-sm">
-            {credit.ledger.map((l) => (
-              <li key={l.id} className="flex items-center justify-between py-2">
-                <span>
-                  <span className="text-muted-foreground">{new Date(l.created_at).toLocaleDateString()}</span>
-                  <span className="ml-2">{l.note ?? l.kind}</span>
-                </span>
-                <span className={l.delta_cents < 0 ? "text-destructive" : "text-primary"}>
-                  {l.delta_cents < 0 ? "−" : "+"}${Math.abs(l.delta_cents / 100).toFixed(2)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-3 text-sm text-muted-foreground">No credit activity yet.</p>
-        )}
-      </section>
+          <StationsPanel clientId={clientId} properties={properties} />
+        </TabsContent>
 
-      <StationsPanel clientId={clientId} properties={properties} />
-      <AddonsPanel clientId={clientId} />
+        <TabsContent value="billing" className="space-y-6">
+          {/* Credit balance */}
+          <section className="rounded-lg border bg-card p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-medium">Prepaid credit balance</h2>
+              <span className={`text-lg font-semibold ${((credit?.balanceCents ?? 0) < 0) ? "text-destructive" : ""}`}>
+                ${((credit?.balanceCents ?? 0) / 100).toFixed(2)}
+              </span>
+            </div>
+            {credit && credit.ledger.length > 0 ? (
+              <ul className="mt-3 divide-y text-sm">
+                {credit.ledger.map((l) => (
+                  <li key={l.id} className="flex items-center justify-between py-2">
+                    <span>
+                      <span className="text-muted-foreground">{new Date(l.created_at).toLocaleDateString()}</span>
+                      <span className="ml-2">{l.note ?? l.kind}</span>
+                    </span>
+                    <span className={l.delta_cents < 0 ? "text-destructive" : "text-primary"}>
+                      {l.delta_cents < 0 ? "−" : "+"}${Math.abs(l.delta_cents / 100).toFixed(2)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">No credit activity yet.</p>
+            )}
+          </section>
+
+          <AddonsPanel clientId={clientId} />
+        </TabsContent>
+      </Tabs>
     </div>
+
   );
 }
 
