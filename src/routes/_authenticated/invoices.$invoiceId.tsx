@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getInvoice, createCheckoutForInvoice, voidInvoice } from "@/lib/invoices.functions";
+import { syncInvoice } from "@/lib/accounting.functions";
 import { sendInvoiceEmail } from "@/lib/notifications.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
