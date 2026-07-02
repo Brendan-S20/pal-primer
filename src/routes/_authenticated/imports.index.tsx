@@ -8,9 +8,10 @@ import {
   listImportBatches,
   previewImport,
   IMPORT_SOURCES,
-  CLIENT_TARGET_FIELDS,
+  IMPORT_ENTITIES,
+  TARGET_FIELDS_BY_ENTITY,
   autoMap,
-  type ClientTargetField,
+  type ImportEntity,
 } from "@/lib/imports.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,18 @@ const SOURCE_LABELS: Record<string, string> = {
   time_to_pet: "Time To Pet",
   gorilla_desk: "GorillaDesk",
   quoteiq_family: "QuoteIQ / Flowcarve / DoTimely",
+};
+
+const ENTITY_LABELS: Record<ImportEntity, string> = {
+  clients: "Clients",
+  properties: "Properties (addresses)",
+  dogs: "Dogs",
+};
+
+const REQUIRED_FIELDS: Record<ImportEntity, string[]> = {
+  clients: ["display_name"],
+  properties: ["client_external_id", "street"],
+  dogs: ["client_external_id", "name"],
 };
 
 function ImportsPage() {
