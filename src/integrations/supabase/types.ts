@@ -1237,6 +1237,41 @@ export type Database = {
           },
         ]
       }
+      oauth_states: {
+        Row: {
+          created_at: string
+          expires_at: string
+          org_id: string
+          provider: string
+          redirect_to: string | null
+          state: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          org_id: string
+          provider: string
+          redirect_to?: string | null
+          state: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          org_id?: string
+          provider?: string
+          redirect_to?: string | null
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "oauth_states_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations: {
         Row: {
           active_client_count: number

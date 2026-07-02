@@ -58,9 +58,11 @@ import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/l
 import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
 import { Route as LovableEmailAuthWebhookRouteImport } from './routes/lovable/email/auth/webhook'
 import { Route as LovableEmailAuthPreviewRouteImport } from './routes/lovable/email/auth/preview'
+import { Route as ApiPublicHooksXeroCallbackRouteImport } from './routes/api/public/hooks/xero-callback'
 import { Route as ApiPublicHooksTwilioVoiceRouteImport } from './routes/api/public/hooks/twilio-voice'
 import { Route as ApiPublicHooksTwilioRouteImport } from './routes/api/public/hooks/twilio'
 import { Route as ApiPublicHooksStripeRouteImport } from './routes/api/public/hooks/stripe'
+import { Route as ApiPublicHooksQboCallbackRouteImport } from './routes/api/public/hooks/qbo-callback'
 import { Route as ApiPublicHooksNightlyRouteImport } from './routes/api/public/hooks/nightly'
 
 const UnsubscribeRoute = UnsubscribeRouteImport.update({
@@ -327,6 +329,12 @@ const LovableEmailAuthPreviewRoute = LovableEmailAuthPreviewRouteImport.update({
   path: '/lovable/email/auth/preview',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHooksXeroCallbackRoute =
+  ApiPublicHooksXeroCallbackRouteImport.update({
+    id: '/api/public/hooks/xero-callback',
+    path: '/api/public/hooks/xero-callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksTwilioVoiceRoute =
   ApiPublicHooksTwilioVoiceRouteImport.update({
     id: '/api/public/hooks/twilio-voice',
@@ -343,6 +351,12 @@ const ApiPublicHooksStripeRoute = ApiPublicHooksStripeRouteImport.update({
   path: '/api/public/hooks/stripe',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHooksQboCallbackRoute =
+  ApiPublicHooksQboCallbackRouteImport.update({
+    id: '/api/public/hooks/qbo-callback',
+    path: '/api/public/hooks/qbo-callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksNightlyRoute = ApiPublicHooksNightlyRouteImport.update({
   id: '/api/public/hooks/nightly',
   path: '/api/public/hooks/nightly',
@@ -394,9 +408,11 @@ export interface FileRoutesByFullPath {
   '/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/messages/': typeof AuthenticatedMessagesIndexRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
+  '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
+  '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
   '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
@@ -445,9 +461,11 @@ export interface FileRoutesByTo {
   '/invoices': typeof AuthenticatedInvoicesIndexRoute
   '/messages': typeof AuthenticatedMessagesIndexRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
+  '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
+  '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
   '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
@@ -501,9 +519,11 @@ export interface FileRoutesById {
   '/_authenticated/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/_authenticated/messages/': typeof AuthenticatedMessagesIndexRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
+  '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
+  '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
   '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
@@ -557,9 +577,11 @@ export interface FileRouteTypes {
     | '/invoices/'
     | '/messages/'
     | '/api/public/hooks/nightly'
+    | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
+    | '/api/public/hooks/xero-callback'
     | '/lovable/email/auth/preview'
     | '/lovable/email/auth/webhook'
     | '/lovable/email/queue/process'
@@ -608,9 +630,11 @@ export interface FileRouteTypes {
     | '/invoices'
     | '/messages'
     | '/api/public/hooks/nightly'
+    | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
+    | '/api/public/hooks/xero-callback'
     | '/lovable/email/auth/preview'
     | '/lovable/email/auth/webhook'
     | '/lovable/email/queue/process'
@@ -663,9 +687,11 @@ export interface FileRouteTypes {
     | '/_authenticated/invoices/'
     | '/_authenticated/messages/'
     | '/api/public/hooks/nightly'
+    | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
+    | '/api/public/hooks/xero-callback'
     | '/lovable/email/auth/preview'
     | '/lovable/email/auth/webhook'
     | '/lovable/email/queue/process'
@@ -688,9 +714,11 @@ export interface RootRouteChildren {
   SignupSuccessRoute: typeof SignupSuccessRoute
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
   ApiPublicHooksNightlyRoute: typeof ApiPublicHooksNightlyRoute
+  ApiPublicHooksQboCallbackRoute: typeof ApiPublicHooksQboCallbackRoute
   ApiPublicHooksStripeRoute: typeof ApiPublicHooksStripeRoute
   ApiPublicHooksTwilioRoute: typeof ApiPublicHooksTwilioRoute
   ApiPublicHooksTwilioVoiceRoute: typeof ApiPublicHooksTwilioVoiceRoute
+  ApiPublicHooksXeroCallbackRoute: typeof ApiPublicHooksXeroCallbackRoute
   LovableEmailAuthPreviewRoute: typeof LovableEmailAuthPreviewRoute
   LovableEmailAuthWebhookRoute: typeof LovableEmailAuthWebhookRoute
   LovableEmailQueueProcessRoute: typeof LovableEmailQueueProcessRoute
@@ -1043,6 +1071,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LovableEmailAuthPreviewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/xero-callback': {
+      id: '/api/public/hooks/xero-callback'
+      path: '/api/public/hooks/xero-callback'
+      fullPath: '/api/public/hooks/xero-callback'
+      preLoaderRoute: typeof ApiPublicHooksXeroCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/twilio-voice': {
       id: '/api/public/hooks/twilio-voice'
       path: '/api/public/hooks/twilio-voice'
@@ -1062,6 +1097,13 @@ declare module '@tanstack/react-router' {
       path: '/api/public/hooks/stripe'
       fullPath: '/api/public/hooks/stripe'
       preLoaderRoute: typeof ApiPublicHooksStripeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/hooks/qbo-callback': {
+      id: '/api/public/hooks/qbo-callback'
+      path: '/api/public/hooks/qbo-callback'
+      fullPath: '/api/public/hooks/qbo-callback'
+      preLoaderRoute: typeof ApiPublicHooksQboCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/hooks/nightly': {
@@ -1192,9 +1234,11 @@ const rootRouteChildren: RootRouteChildren = {
   SignupSuccessRoute: SignupSuccessRoute,
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
   ApiPublicHooksNightlyRoute: ApiPublicHooksNightlyRoute,
+  ApiPublicHooksQboCallbackRoute: ApiPublicHooksQboCallbackRoute,
   ApiPublicHooksStripeRoute: ApiPublicHooksStripeRoute,
   ApiPublicHooksTwilioRoute: ApiPublicHooksTwilioRoute,
   ApiPublicHooksTwilioVoiceRoute: ApiPublicHooksTwilioVoiceRoute,
+  ApiPublicHooksXeroCallbackRoute: ApiPublicHooksXeroCallbackRoute,
   LovableEmailAuthPreviewRoute: LovableEmailAuthPreviewRoute,
   LovableEmailAuthWebhookRoute: LovableEmailAuthWebhookRoute,
   LovableEmailQueueProcessRoute: LovableEmailQueueProcessRoute,

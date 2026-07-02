@@ -8,13 +8,62 @@
  */
 
 type Conn = {
+  id: string;
   provider: "quickbooks" | "xero";
   realm_id: string | null;
   tenant_id: string | null;
   access_token: string;
+  refresh_token: string | null;
+  token_expires_at: string | null;
   default_income_account: string | null;
   default_ar_account: string | null;
 };
+
+/**
+ * Ensure `conn.access_token` is valid. If `token_expires_at` is within 60s or
+ * past, exchange the refresh token for a new pair and persist. Returns an
+ * updated `Conn` with the fresh access token so callers can proceed.
+ */
+export async function ensureFreshToken(conn: Conn): Promise<Conn> {
+  const exp = conn.token_expires_at ? new Date(conn.token_expires_at).getTime() : 0;
+  if (exp - Date.now() > 60_000) return conn;
+  if (!conn.refresh_token) throw new Error("Access token expired and no refresh token stored — reconnect the integration.");
+
+  const clientId = conn.provider === "quickbooks" ? process.env.QBO_CLIENT_ID : process.env.XERO_CLIENT_ID;
+  const clientSecret = conn.provider === "quickbooks" ? process.env.QBO_CLIENT_SECRET : process.env.XERO_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error(`${conn.provider} client credentials are not configured.`);
+
+  const tokenUrl =
+    conn.provider === "quickbooks"
+      ? "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer"
+      : "https://identity.xero.com/connect/token";
+  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+  const res = await fetch(tokenUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${basic}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+    },
+    body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: conn.refresh_token }),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`Token refresh failed (${res.status}): ${t}`);
+  }
+  const tok = (await res.json()) as { access_token: string; refresh_token?: string; expires_in: number };
+  const expiresAt = new Date(Date.now() + (tok.expires_in - 60) * 1000).toISOString();
+  const nextRefresh = tok.refresh_token ?? conn.refresh_token;
+
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  await supabaseAdmin
+    .from("accounting_connections")
+    .update({ access_token: tok.access_token, refresh_token: nextRefresh, token_expires_at: expiresAt })
+    .eq("id", conn.id);
+
+  return { ...conn, access_token: tok.access_token, refresh_token: nextRefresh, token_expires_at: expiresAt };
+}
+
 
 type InvoicePayload = {
   id: string;
