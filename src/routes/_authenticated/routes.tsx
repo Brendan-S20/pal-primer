@@ -6,6 +6,7 @@ import {
   listVisitsForDay,
   generateVisits,
   assignRoute,
+  optimizeRoute,
   listStaff,
   reassignVisit,
   reorderRoute,
