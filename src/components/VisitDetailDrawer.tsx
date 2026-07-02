@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { getVisitDetail } from "@/lib/visits.functions";
 import { completeVisit, startVisit, skipVisit } from "@/lib/my-day.functions";
-import { addDog } from "@/lib/dogs.functions";
+import { addDog, setDogDna } from "@/lib/dogs.functions";
 import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { Input } from "@/components/ui/input";
 import {
