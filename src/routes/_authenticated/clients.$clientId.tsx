@@ -212,14 +212,35 @@ function ClientDetail() {
         )}
       </div>
 
-      <ReviewsReferralPanel client={client} />
+      <Tabs defaultValue="overview" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="service">Service</TabsTrigger>
+          <TabsTrigger value="billing">Billing</TabsTrigger>
+        </TabsList>
 
+        <TabsContent value="overview" className="space-y-6">
+          <ReviewsReferralPanel client={client} />
+          <section className="rounded-lg border bg-card p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-medium">Prepaid credit balance</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  See full ledger in the Billing tab.
+                </p>
+              </div>
+              <span className={`text-2xl font-semibold ${((credit?.balanceCents ?? 0) < 0) ? "text-destructive" : ""}`}>
+                ${((credit?.balanceCents ?? 0) / 100).toFixed(2)}
+              </span>
+            </div>
+          </section>
+        </TabsContent>
 
-
-
+        <TabsContent value="service" className="space-y-6">
       {/* Properties */}
       <section className="rounded-lg border bg-card p-5">
         <h2 className="text-sm font-medium">Properties</h2>
+
         <ul className="mt-3 divide-y">
           {properties.map((p: any) => {
             const chips: string[] = [];
