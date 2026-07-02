@@ -235,10 +235,11 @@ export function VisitDetailDrawer({
               </section>
             )}
 
-            {v.notes && (
+            {(v.skip_reason || v.weather_note) && (
               <section>
                 <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Notes</h3>
-                <p className="whitespace-pre-wrap text-sm">{v.notes}</p>
+                {v.weather_note && <p className="whitespace-pre-wrap text-sm">{v.weather_note}</p>}
+                {v.skip_reason && <p className="mt-1 text-sm text-muted-foreground">Skip: {v.skip_reason}</p>}
               </section>
             )}
 

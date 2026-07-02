@@ -187,8 +187,9 @@ export const getVisitDetail = createServerFn({ method: "GET" })
     const { data: v, error } = await supabase
       .from("visits")
       .select(
-        `id, scheduled_on, status, sequence, assigned_staff_id, notes,
+        `id, scheduled_on, status, sequence, assigned_staff_id,
          started_at, completed_at, skip_reason, skip_reason_code,
+         weather_flagged, weather_note,
          eta_start, eta_end, travel_km, travel_min, window_violated,
          client_id, property_id,
          clients(id, display_name, primary_phone, primary_email, credit_balance_cents),
