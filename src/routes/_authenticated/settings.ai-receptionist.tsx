@@ -106,6 +106,39 @@ function Page() {
           </span>
         </label>
 
+        <div className="border-t pt-4">
+          <label className="flex items-center gap-3 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={voiceEnabled}
+              onChange={(e) => setVoiceEnabled(e.target.checked)}
+              className="h-4 w-4"
+            />
+            Enable AI voice receptionist on inbound calls
+          </label>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Uses the same persona, FAQ, and tools as SMS. Twilio's built-in speech recognition
+            captures what the caller says; the AI reply is spoken back via text-to-speech. If it
+            can't help, the caller is asked to leave a voicemail.
+          </p>
+          <label className="mt-3 block space-y-1 text-sm">
+            <span className="font-medium">Greeting (spoken first)</span>
+            <input
+              value={voiceGreeting}
+              onChange={(e) => setVoiceGreeting(e.target.value)}
+              placeholder="Hi, thanks for calling Acme Pet Waste. How can I help?"
+              className="block w-full rounded border bg-background px-3 py-2 text-sm"
+            />
+          </label>
+          <p className="mt-3 text-xs text-muted-foreground">
+            In Twilio Console → your voice number → <em>A call comes in</em>, set{" "}
+            <strong>HTTP POST</strong> to:
+          </p>
+          <code className="mt-1 block break-all rounded bg-muted px-2 py-1 text-xs">
+            {typeof window !== "undefined" ? window.location.origin : ""}/api/public/hooks/twilio-voice?s=YOUR_TWILIO_INBOUND_SECRET
+          </code>
+        </div>
+
         <Button onClick={() => save.mutate()} disabled={save.isPending}>
           Save
         </Button>
