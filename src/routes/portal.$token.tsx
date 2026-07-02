@@ -274,9 +274,17 @@ function PortalPage() {
   );
 }
 
-function VisitRow({ v, onSkip }: { v: { visit_id: string; scheduled_on: string; status: string; street: string | null; city: string | null; postal_code: string | null }; onSkip: (reason: string) => void }) {
-  const [open, setOpen] = useState(false);
+function VisitRow({ v, onSkip, onReschedule }: {
+  v: { visit_id: string; scheduled_on: string; status: string; street: string | null; city: string | null; postal_code: string | null };
+  onSkip: (reason: string) => void;
+  onReschedule: (newDate: string) => void;
+}) {
+  const [skipOpen, setSkipOpen] = useState(false);
+  const [reschedOpen, setReschedOpen] = useState(false);
   const [reason, setReason] = useState("");
+  const minDate = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const maxDate = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+  const [newDate, setNewDate] = useState(minDate);
   return (
     <li className="p-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -286,20 +294,113 @@ function VisitRow({ v, onSkip }: { v: { visit_id: string; scheduled_on: string; 
             {[v.street, v.city, v.postal_code].filter(Boolean).join(", ") || "Address on file"}
           </div>
         </div>
-        <Button size="sm" variant="outline" onClick={() => setOpen((o) => !o)}>
-          {open ? "Cancel" : "Request skip"}
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => { setReschedOpen((o) => !o); setSkipOpen(false); }}>
+            {reschedOpen ? "Cancel" : "Reschedule"}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => { setSkipOpen((o) => !o); setReschedOpen(false); }}>
+            {skipOpen ? "Cancel" : "Skip"}
+          </Button>
+        </div>
       </div>
-      {open && (
+      {reschedOpen && (
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <div>
+            <Label htmlFor={`d-${v.visit_id}`} className="text-xs">New date</Label>
+            <Input id={`d-${v.visit_id}`} type="date" min={minDate} max={maxDate}
+                   value={newDate} onChange={(e) => setNewDate(e.target.value)} className="w-40" />
+          </div>
+          <Button size="sm" onClick={() => { onReschedule(newDate); setReschedOpen(false); }}>
+            Confirm reschedule
+          </Button>
+        </div>
+      )}
+      {skipOpen && (
         <div className="mt-3 space-y-2">
           <Label htmlFor={`r-${v.visit_id}`} className="text-xs">Reason (optional)</Label>
           <Input id={`r-${v.visit_id}`} value={reason} onChange={(e) => setReason(e.target.value)}
                  placeholder="Out of town, etc." />
-          <Button size="sm" onClick={() => { onSkip(reason); setOpen(false); setReason(""); }}>
+          <Button size="sm" onClick={() => { onSkip(reason); setSkipOpen(false); setReason(""); }}>
             Confirm skip
           </Button>
         </div>
       )}
+    </li>
+  );
+}
+
+function PlanRow({ s, onChange, pending }: {
+  s: { subscription_id: string; frequency: string; property_label: string | null; price_cents: number };
+  onChange: (f: "weekly" | "biweekly" | "twice_weekly" | "monthly") => void;
+  pending: boolean;
+}) {
+  const [freq, setFreq] = useState<string>(s.frequency);
+  return (
+    <li className="flex flex-wrap items-end gap-3 rounded-md border p-3 text-sm">
+      <div className="flex-1">
+        <div className="font-medium">{s.property_label ?? "Service"}</div>
+        <div className="text-xs text-muted-foreground">Currently {s.frequency} · {money(s.price_cents)} / visit</div>
+      </div>
+      <div>
+        <Label className="text-xs">Change frequency</Label>
+        <Select value={freq} onValueChange={setFreq}>
+          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="weekly">Weekly</SelectItem>
+            <SelectItem value="biweekly">Biweekly</SelectItem>
+            <SelectItem value="twice_weekly">Twice weekly</SelectItem>
+            <SelectItem value="monthly">Monthly</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <Button size="sm" disabled={pending || freq === s.frequency}
+              onClick={() => onChange(freq as "weekly" | "biweekly" | "twice_weekly" | "monthly")}>
+        Update plan
+      </Button>
+    </li>
+  );
+}
+
+function AddonCatalogRow({ a, onSubscribe, pending }: {
+  a: { addon_service_id: string; name: string; description: string | null; kind: string;
+       unit_price_cents: number; default_frequency: string | null };
+  onSubscribe: (freq: "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly" | null, qty: number) => void;
+  pending: boolean;
+}) {
+  const [qty, setQty] = useState(1);
+  const [freq, setFreq] = useState<string>(a.default_frequency ?? "monthly");
+  const isRecurring = a.kind === "recurring";
+  return (
+    <li className="flex flex-wrap items-end gap-3 rounded-md border p-3 text-sm">
+      <div className="flex-1 min-w-[12rem]">
+        <div className="font-medium">{a.name}</div>
+        {a.description && <div className="text-xs text-muted-foreground">{a.description}</div>}
+        <div className="text-xs text-muted-foreground">{money(a.unit_price_cents)} · {a.kind === "recurring" ? "recurring" : "one-time"}</div>
+      </div>
+      <div>
+        <Label className="text-xs">Qty</Label>
+        <Input type="number" min={1} max={50} value={qty}
+               onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))} className="w-20" />
+      </div>
+      {isRecurring && (
+        <div>
+          <Label className="text-xs">Frequency</Label>
+          <Select value={freq} onValueChange={setFreq}>
+            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="weekly">Weekly</SelectItem>
+              <SelectItem value="biweekly">Biweekly</SelectItem>
+              <SelectItem value="monthly">Monthly</SelectItem>
+              <SelectItem value="quarterly">Quarterly</SelectItem>
+              <SelectItem value="yearly">Yearly</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      <Button size="sm" disabled={pending}
+              onClick={() => onSubscribe(isRecurring ? (freq as any) : null, qty)}>
+        {isRecurring ? "Subscribe" : "Add"}
+      </Button>
     </li>
   );
 }
