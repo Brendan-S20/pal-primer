@@ -495,3 +495,101 @@ function VisitCardView({
     </div>
   );
 }
+
+function HeatmapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
+  const perTech = staff.map((s: any) => {
+    const mine = visits.filter((v) => v.assigned_staff_id === s.id);
+    const done = mine.filter((v) => v.status === "completed").length;
+    const skipped = mine.filter((v) => v.status === "skipped").length;
+    const inProgress = mine.filter((v) => v.status === "in_progress").length;
+    const remaining = mine.filter((v) => v.status === "scheduled").length;
+    const late = mine.filter((v) => v.window_violated).length;
+    const revenue = mine.reduce((sum, v) => sum + (v.subscriptions?.price_cents ?? 0), 0);
+    const withEta = mine
+      .map((v) => v.eta_end)
+      .filter(Boolean)
+      .map((s) => new Date(s as string).getTime());
+    const projectedEnd = withEta.length ? new Date(Math.max(...withEta)) : null;
+    return { staff: s, total: mine.length, done, skipped, inProgress, remaining, late, revenue, projectedEnd };
+  });
+  const unassigned = visits.filter((v) => !v.assigned_staff_id).length;
+  const maxTotal = Math.max(1, ...perTech.map((t) => t.total));
+
+  const zoneMap = new Map<string, number>();
+  for (const v of visits) {
+    const name = v.zones?.name ?? "No zone";
+    zoneMap.set(name, (zoneMap.get(name) ?? 0) + 1);
+  }
+  const zones = Array.from(zoneMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const maxZone = Math.max(1, ...zones.map(([, n]) => n));
+
+  if (staff.length === 0 && visits.length === 0) return null;
+  return (
+    <div className="grid gap-4 rounded-lg border bg-card p-5 md:grid-cols-2">
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Tech load</h2>
+          {unassigned > 0 && (
+            <Badge variant="destructive" className="text-[10px]">{unassigned} unassigned</Badge>
+          )}
+        </div>
+        <div className="space-y-2">
+          {perTech.length === 0 && (
+            <div className="text-xs text-muted-foreground">No techs configured.</div>
+          )}
+          {perTech.map((t) => {
+            const pct = Math.round((t.total / maxTotal) * 100);
+            const donePct = t.total ? Math.round((t.done / t.total) * 100) : 0;
+            return (
+              <div key={t.staff.id} className="text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{t.staff.display_name}</span>
+                  <span className="text-muted-foreground">
+                    {t.done}/{t.total} · ${(t.revenue / 100).toFixed(0)}
+                    {t.late > 0 && <span className="ml-2 text-destructive">{t.late} late</span>}
+                    {t.projectedEnd && (
+                      <span className="ml-2">
+                        ends {t.projectedEnd.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div className="mt-1 h-2 w-full overflow-hidden rounded bg-muted">
+                  <div
+                    className="h-full bg-primary/30"
+                    style={{ width: `${pct}%` }}
+                  >
+                    <div className="h-full bg-primary" style={{ width: `${donePct}%` }} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div>
+        <h2 className="mb-2 text-sm font-semibold">Zone density</h2>
+        {zones.length === 0 ? (
+          <div className="text-xs text-muted-foreground">No visits on this day.</div>
+        ) : (
+          <div className="space-y-2">
+            {zones.map(([name, count]) => (
+              <div key={name} className="text-xs">
+                <div className="flex justify-between">
+                  <span>{name}</span>
+                  <span className="text-muted-foreground">{count}</span>
+                </div>
+                <div className="mt-1 h-2 w-full overflow-hidden rounded bg-muted">
+                  <div
+                    className="h-full bg-amber-500/70"
+                    style={{ width: `${Math.round((count / maxZone) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
