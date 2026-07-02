@@ -118,7 +118,7 @@ export function VisitDetailDrawer({
   });
   const [skipReason, setSkipReason] = useState("");
   const skipMut = useMutation({
-    mutationFn: () => doSkip({ data: { visitId: visitId!, reason: skipReason || "Skipped from dispatch", reasonCode: "other" } }),
+    mutationFn: () => doSkip({ data: { visitId: visitId!, reason: skipReason || "Skipped from dispatch", code: "other" } }),
     onSuccess: () => { toast.success("Visit skipped"); invalidate(); onOpenChange(false); },
     onError: (e: Error) => toast.error(e.message),
   });
