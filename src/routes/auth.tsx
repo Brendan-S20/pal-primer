@@ -83,6 +83,40 @@ function AuthPage() {
           <p className="mt-1 text-sm text-muted-foreground">{APP_DESCRIPTION}</p>
         </div>
 
+        <div className="space-y-3 rounded-lg border bg-card p-4">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            disabled={loading}
+            onClick={async () => {
+              setError(null);
+              setLoading(true);
+              try {
+                const result = await lovable.auth.signInWithOAuth("google", {
+                  redirect_uri: window.location.origin,
+                });
+                if (result.error) {
+                  setLoading(false);
+                  return setError(result.error.message ?? "Google sign-in failed");
+                }
+                if (result.redirected) return; // browser will redirect
+                // Popup flow: session set. Bootstrap org if none, then navigate.
+                try { await bootstrapOrganization({ data: { orgName: "", displayName: "" } }); } catch { /* already provisioned */ }
+                navigate({ to: "/dashboard" });
+              } catch (err) {
+                setLoading(false);
+                setError(err instanceof Error ? err.message : "Google sign-in failed");
+              }
+            }}
+          >
+            Continue with Google
+          </Button>
+          <div className="relative text-center text-xs text-muted-foreground">
+            <span className="bg-card px-2">or use email</span>
+          </div>
+        </div>
+
         <Tabs defaultValue="signin" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="signin">Sign in</TabsTrigger>
