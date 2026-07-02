@@ -8,12 +8,14 @@ import {
   assignRoute,
   optimizeRoute,
   optimizeWeek,
+  reoptimizeAll,
   listStaff,
   reassignVisit,
   reorderRoute,
   getDispatchSettings,
   updateDispatchSettings,
 } from "@/lib/visits.functions";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
