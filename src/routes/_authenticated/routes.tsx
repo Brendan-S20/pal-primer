@@ -71,7 +71,9 @@ function RoutesPage() {
   const assign = useServerFn(assignRoute);
   const optimize = useServerFn(optimizeRoute);
   const optWeek = useServerFn(optimizeWeek);
+  const reoptAll = useServerFn(reoptimizeAll);
   const reassign = useServerFn(reassignVisit);
+
   const reorder = useServerFn(reorderRoute);
   const getSettings = useServerFn(getDispatchSettings);
   const updSettings = useServerFn(updateDispatchSettings);
