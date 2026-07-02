@@ -69,31 +69,46 @@ function ContactPage() {
 
   return (
     <MarketingLayout>
-      <section className="mx-auto grid max-w-6xl gap-12 px-6 pt-20 pb-24 lg:grid-cols-2">
-        <div>
-          <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Let's talk.</h1>
-          <p className="mt-4 text-muted-foreground">
-            Tell us about your route and we&rsquo;ll set up a short walkthrough. No pitch decks,
-            no pressure — just a live tour of {APP_NAME} on your data.
-          </p>
-          <div className="mt-8 space-y-3 text-sm text-muted-foreground">
-            <div>• 15-minute demo, screen-shared</div>
-            <div>• We import your first 20 clients for free</div>
-            <div>• Cancel anytime — your data is yours</div>
-          </div>
-        </div>
-        <div className="rounded-2xl border bg-card p-6 shadow-sm">
-          {done ? (
-            <div className="py-10 text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-                ✓
-              </div>
-              <h2 className="mt-4 text-lg font-semibold">Message received</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                We&rsquo;ll get back to you within one business day.
-              </p>
+      <section className="marketing-hero-gradient">
+        <div className="mx-auto grid max-w-6xl gap-12 px-6 pt-20 pb-24 lg:grid-cols-[1fr_1.1fr]">
+          <div className="lg:pt-8">
+            <div className="inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand-soft px-3 py-1 text-xs font-medium text-brand-ink">
+              Talk to a human
             </div>
-          ) : (
+            <h1 className="mt-6 text-4xl font-semibold tracking-tight sm:text-5xl">Let's talk.</h1>
+            <p className="mt-4 max-w-md text-muted-foreground">
+              Tell us about your route and we'll set up a short walkthrough. No pitch decks,
+              no pressure — just a live tour of {APP_NAME} on your data.
+            </p>
+            <ul className="mt-8 space-y-3 text-sm">
+              {[
+                "15-minute demo, screen-shared",
+                "We import your first 20 clients for free",
+                "Cancel anytime — your data is yours",
+              ].map((t) => (
+                <li key={t} className="flex items-start gap-2.5">
+                  <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-soft text-brand-ink">
+                    <svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="3">
+                      <path d="M4 10l4 4 8-8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
+                  <span>{t}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="rounded-2xl border bg-card p-6 shadow-xl sm:p-8">
+            {done ? (
+              <div className="py-10 text-center">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand-soft text-2xl text-brand-ink">
+                  ✓
+                </div>
+                <h2 className="mt-4 text-lg font-semibold">Message received</h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  We'll get back to you within one business day.
+                </p>
+              </div>
+            ) : (
             <form onSubmit={onSubmit} className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
@@ -176,6 +191,7 @@ function ContactPage() {
               </p>
             </form>
           )}
+          </div>
         </div>
       </section>
     </MarketingLayout>

@@ -132,6 +132,30 @@
   --sidebar-ring: oklch(0.551 0.027 264.364);
 }
 
+@theme inline {
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-ink: var(--brand-ink);
+  --color-cream: var(--cream);
+}
+
+:root {
+  --brand: oklch(0.52 0.11 155);
+  --brand-foreground: oklch(0.99 0.005 155);
+  --brand-soft: oklch(0.95 0.04 155);
+  --brand-ink: oklch(0.28 0.06 155);
+  --cream: oklch(0.985 0.012 90);
+}
+
+.dark {
+  --brand: oklch(0.65 0.13 155);
+  --brand-foreground: oklch(0.16 0.03 155);
+  --brand-soft: oklch(0.24 0.05 155);
+  --brand-ink: oklch(0.95 0.03 155);
+  --cream: oklch(0.18 0.02 90);
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
@@ -141,4 +165,16 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
   }
+}
+
+.marketing-hero-gradient {
+  background:
+    radial-gradient(1200px 500px at 85% -10%, color-mix(in oklab, var(--brand) 18%, transparent), transparent 60%),
+    radial-gradient(800px 400px at 10% 20%, color-mix(in oklab, var(--brand) 10%, transparent), transparent 60%),
+    linear-gradient(180deg, var(--cream), var(--background));
+}
+
+.portal-header-gradient {
+  background: linear-gradient(135deg, var(--brand) 0%, color-mix(in oklab, var(--brand) 65%, black) 100%);
+  color: var(--brand-foreground);
 }

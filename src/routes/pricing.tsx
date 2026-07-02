@@ -30,7 +30,7 @@ const TIERS = [
     per: "/ month",
     tag: "Up to 3 active clients",
     features: ["All operational features", "1 technician", "Community support"],
-    cta: { to: "/auth", label: "Start free" as const },
+    cta: { to: "/auth" as const, label: "Start free" },
   },
   {
     name: "Starter",
@@ -43,7 +43,7 @@ const TIERS = [
       "Two-way SMS (Twilio BYOK)",
       "Stripe invoicing (BYOK)",
     ],
-    cta: { to: "/contact", label: "Talk to us" as const },
+    cta: { to: "/contact" as const, label: "Start Starter" },
     highlight: true,
   },
   {
@@ -57,46 +57,84 @@ const TIERS = [
       "Weather rescheduling",
       "Priority support",
     ],
-    cta: { to: "/contact", label: "Talk to us" as const },
+    cta: { to: "/contact" as const, label: "Talk to us" },
+  },
+];
+
+const FAQ = [
+  {
+    q: "What counts as an active client?",
+    a: "Any client with at least one visit scheduled or completed in the last 30 days. Paused and archived clients don't count.",
+  },
+  {
+    q: "Do you take a cut of my payments?",
+    a: "No. Stripe and Twilio are bring-your-own-keys — you pay them directly and we never touch the money.",
+  },
+  {
+    q: "Can I switch plans later?",
+    a: "Any time. We prorate up or down automatically at the next billing cycle.",
+  },
+  {
+    q: "Is my data locked in?",
+    a: "Never. Full CSV export is one click away for clients, visits, invoices, and payments.",
   },
 ];
 
 function PricingPage() {
   return (
     <MarketingLayout>
-      <section className="mx-auto max-w-6xl px-6 pt-20 pb-12 text-center">
-        <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">Simple pricing.</h1>
-        <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
-          Start free. Pay only when the tool is already paying for itself.
-        </p>
+      <section className="marketing-hero-gradient">
+        <div className="mx-auto max-w-3xl px-6 pt-20 pb-16 text-center">
+          <div className="inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand-soft px-3 py-1 text-xs font-medium text-brand-ink">
+            Simple, transparent pricing
+          </div>
+          <h1 className="mt-6 text-4xl font-semibold tracking-tight sm:text-5xl">
+            Start free. Grow when you're ready.
+          </h1>
+          <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
+            Flat monthly tiers with no per-visit fees, no per-tech fees, and no surprise markups on Stripe or SMS.
+          </p>
+        </div>
       </section>
-      <section className="mx-auto grid max-w-6xl gap-6 px-6 pb-20 sm:grid-cols-3">
+
+      <section className="mx-auto -mt-8 grid max-w-6xl gap-6 px-6 pb-16 sm:grid-cols-3">
         {TIERS.map((t) => (
           <div
             key={t.name}
-            className={`rounded-2xl border bg-card p-6 ${
-              t.highlight ? "border-primary shadow-lg ring-1 ring-primary/20" : ""
+            className={`relative rounded-2xl border bg-card p-7 transition ${
+              t.highlight
+                ? "border-brand shadow-xl ring-1 ring-brand/30 sm:-mt-4 sm:pb-10"
+                : "hover:shadow-md"
             }`}
           >
+            {t.highlight && (
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-brand px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-brand-foreground shadow">
+                Most popular
+              </div>
+            )}
             <div className="text-sm font-medium text-muted-foreground">{t.name}</div>
             <div className="mt-3 flex items-baseline gap-1">
-              <div className="text-4xl font-semibold">{t.price}</div>
+              <div className="text-4xl font-semibold tracking-tight">{t.price}</div>
               <div className="text-sm text-muted-foreground">{t.per}</div>
             </div>
             <div className="mt-1 text-xs text-muted-foreground">{t.tag}</div>
-            <ul className="mt-6 space-y-2 text-sm text-muted-foreground">
+            <ul className="mt-6 space-y-3 text-sm">
               {t.features.map((f) => (
-                <li key={f} className="flex gap-2">
-                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-                  {f}
+                <li key={f} className="flex items-start gap-2.5">
+                  <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-soft text-brand-ink">
+                    <svg viewBox="0 0 20 20" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="3">
+                      <path d="M4 10l4 4 8-8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
+                  <span>{f}</span>
                 </li>
               ))}
             </ul>
             <Link
               to={t.cta.to}
-              className={`mt-6 inline-flex w-full items-center justify-center rounded-md px-4 py-2 text-sm font-medium ${
+              className={`mt-8 inline-flex w-full items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium transition ${
                 t.highlight
-                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                  ? "bg-brand text-brand-foreground hover:opacity-90"
                   : "border border-input hover:bg-accent"
               }`}
             >
@@ -105,9 +143,21 @@ function PricingPage() {
           </div>
         ))}
       </section>
-      <p className="mx-auto max-w-2xl px-6 pb-20 text-center text-xs text-muted-foreground">
-        Prices in USD. Bring your own Stripe and Twilio keys — no markups from {APP_NAME}.
-      </p>
+
+      <section className="mx-auto max-w-3xl px-6 pb-24">
+        <h2 className="text-center text-2xl font-semibold tracking-tight">Common questions</h2>
+        <dl className="mt-8 divide-y rounded-2xl border bg-card">
+          {FAQ.map((item) => (
+            <div key={item.q} className="p-6">
+              <dt className="font-medium">{item.q}</dt>
+              <dd className="mt-2 text-sm text-muted-foreground">{item.a}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="mt-8 text-center text-xs text-muted-foreground">
+          Prices in USD. Bring your own Stripe and Twilio keys — no markups from {APP_NAME}.
+        </p>
+      </section>
     </MarketingLayout>
   );
 }

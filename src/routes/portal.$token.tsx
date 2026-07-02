@@ -192,19 +192,21 @@ function PortalPage() {
   const c = clientQ.data;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-4 md:p-8">
-      <header className="border-b pb-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">{c.org_name}</div>
-            <h1 className="mt-1 text-2xl font-semibold">Hello, {c.display_name}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Prepaid balance: <span className="font-medium text-foreground">{money(c.credit_balance_cents)}</span>
-            </p>
+    <div className="min-h-screen bg-muted/20">
+      <div className="mx-auto max-w-3xl space-y-6 p-4 md:p-8">
+        <header className="overflow-hidden rounded-2xl portal-header-gradient p-6 shadow-lg">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-xs uppercase tracking-wider opacity-80">{c.org_name}</div>
+              <h1 className="mt-1 text-2xl font-semibold sm:text-3xl">Hello, {c.display_name} 👋</h1>
+              <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-sm backdrop-blur">
+                <span className="opacity-80">Prepaid balance</span>
+                <span className="font-semibold">{money(c.credit_balance_cents)}</span>
+              </div>
+            </div>
+            <PushToggle portalToken={token} />
           </div>
-          <PushToggle portalToken={token} />
-        </div>
-      </header>
+        </header>
 
       <section>
         <h2 className="mb-2 text-lg font-semibold">Upcoming visits</h2>
@@ -370,6 +372,7 @@ function PortalPage() {
         )}
       </section>
 
+      </div>
     </div>
   );
 }
