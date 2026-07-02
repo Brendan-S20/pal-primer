@@ -216,7 +216,7 @@ export const portalSubscribeAddon = createServerFn({ method: "POST" })
     const { data: id, error } = await sb.rpc("portal_subscribe_addon", {
       _token: data.token,
       _addon_service_id: data.addonServiceId,
-      _frequency: data.frequency ?? null,
+      _frequency: (data.frequency ?? null) as any,
       _quantity: data.quantity,
     });
     if (error) throw new Error(error.message);
