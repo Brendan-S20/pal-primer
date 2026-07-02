@@ -14,6 +14,128 @@ export type Database = {
   }
   public: {
     Tables: {
+      accounting_connections: {
+        Row: {
+          access_token: string | null
+          auto_sync: boolean
+          connected_at: string
+          created_at: string
+          default_ar_account: string | null
+          default_income_account: string | null
+          default_payment_account: string | null
+          id: string
+          last_sync_at: string | null
+          org_id: string
+          provider: Database["public"]["Enums"]["accounting_provider"]
+          realm_id: string | null
+          refresh_token: string | null
+          tenant_id: string | null
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          auto_sync?: boolean
+          connected_at?: string
+          created_at?: string
+          default_ar_account?: string | null
+          default_income_account?: string | null
+          default_payment_account?: string | null
+          id?: string
+          last_sync_at?: string | null
+          org_id: string
+          provider: Database["public"]["Enums"]["accounting_provider"]
+          realm_id?: string | null
+          refresh_token?: string | null
+          tenant_id?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          auto_sync?: boolean
+          connected_at?: string
+          created_at?: string
+          default_ar_account?: string | null
+          default_income_account?: string | null
+          default_payment_account?: string | null
+          id?: string
+          last_sync_at?: string | null
+          org_id?: string
+          provider?: Database["public"]["Enums"]["accounting_provider"]
+          realm_id?: string | null
+          refresh_token?: string | null
+          tenant_id?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accounting_connections_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      accounting_sync_log: {
+        Row: {
+          connection_id: string | null
+          created_at: string
+          direction: Database["public"]["Enums"]["accounting_sync_direction"]
+          entity_id: string
+          entity_type: Database["public"]["Enums"]["accounting_entity_type"]
+          id: string
+          message: string | null
+          org_id: string
+          payload: Json | null
+          remote_id: string | null
+          status: Database["public"]["Enums"]["accounting_sync_status"]
+        }
+        Insert: {
+          connection_id?: string | null
+          created_at?: string
+          direction: Database["public"]["Enums"]["accounting_sync_direction"]
+          entity_id: string
+          entity_type: Database["public"]["Enums"]["accounting_entity_type"]
+          id?: string
+          message?: string | null
+          org_id: string
+          payload?: Json | null
+          remote_id?: string | null
+          status: Database["public"]["Enums"]["accounting_sync_status"]
+        }
+        Update: {
+          connection_id?: string | null
+          created_at?: string
+          direction?: Database["public"]["Enums"]["accounting_sync_direction"]
+          entity_id?: string
+          entity_type?: Database["public"]["Enums"]["accounting_entity_type"]
+          id?: string
+          message?: string | null
+          org_id?: string
+          payload?: Json | null
+          remote_id?: string | null
+          status?: Database["public"]["Enums"]["accounting_sync_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accounting_sync_log_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "accounting_connections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accounting_sync_log_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       addon_charges: {
         Row: {
           addon_service_id: string | null
@@ -373,6 +495,7 @@ export type Database = {
       clients: {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"]
+          accounting_remote_id: string | null
           active: boolean
           churn_reason: string | null
           churn_score: number | null
@@ -400,6 +523,7 @@ export type Database = {
         }
         Insert: {
           account_type: Database["public"]["Enums"]["account_type"]
+          accounting_remote_id?: string | null
           active?: boolean
           churn_reason?: string | null
           churn_score?: number | null
@@ -427,6 +551,7 @@ export type Database = {
         }
         Update: {
           account_type?: Database["public"]["Enums"]["account_type"]
+          accounting_remote_id?: string | null
           active?: boolean
           churn_reason?: string | null
           churn_score?: number | null
@@ -843,6 +968,7 @@ export type Database = {
       }
       invoices: {
         Row: {
+          accounting_remote_id: string | null
           checkout_url: string | null
           client_id: string
           created_at: string
@@ -866,6 +992,7 @@ export type Database = {
           voided_at: string | null
         }
         Insert: {
+          accounting_remote_id?: string | null
           checkout_url?: string | null
           client_id: string
           created_at?: string
@@ -889,6 +1016,7 @@ export type Database = {
           voided_at?: string | null
         }
         Update: {
+          accounting_remote_id?: string | null
           checkout_url?: string | null
           client_id?: string
           created_at?: string
@@ -1225,6 +1353,7 @@ export type Database = {
       }
       payments: {
         Row: {
+          accounting_remote_id: string | null
           amount_cents: number
           created_at: string
           currency: string
@@ -1239,6 +1368,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          accounting_remote_id?: string | null
           amount_cents: number
           created_at?: string
           currency?: string
@@ -1253,6 +1383,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          accounting_remote_id?: string | null
           amount_cents?: number
           created_at?: string
           currency?: string
@@ -2449,6 +2580,10 @@ export type Database = {
     }
     Enums: {
       account_type: "residential" | "commercial"
+      accounting_entity_type: "invoice" | "payment" | "client"
+      accounting_provider: "quickbooks" | "xero"
+      accounting_sync_direction: "push" | "pull"
+      accounting_sync_status: "pending" | "success" | "error"
       addon_charge_status:
         | "pending"
         | "invoiced"
@@ -2637,6 +2772,10 @@ export const Constants = {
   public: {
     Enums: {
       account_type: ["residential", "commercial"],
+      accounting_entity_type: ["invoice", "payment", "client"],
+      accounting_provider: ["quickbooks", "xero"],
+      accounting_sync_direction: ["push", "pull"],
+      accounting_sync_status: ["pending", "success", "error"],
       addon_charge_status: [
         "pending",
         "invoiced",
