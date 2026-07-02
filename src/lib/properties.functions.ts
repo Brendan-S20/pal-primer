@@ -36,6 +36,14 @@ export const createProperty = createServerFn({ method: "POST" })
       .single();
     if (cErr) throw new Error(cErr.message);
 
+    const { geocodeAddress } = await import("./geocode.server");
+    const geo = await geocodeAddress({
+      street: data.street,
+      city: data.city,
+      region: data.region,
+      postal_code: data.postalCode,
+    });
+
     const { data: row, error } = await supabase
       .from("properties")
       .insert({
@@ -57,11 +65,51 @@ export const createProperty = createServerFn({ method: "POST" })
         slippery_surfaces: !!data.slipperySurfaces,
         do_not_enter_if_dog_out: !!data.doNotEnterIfDogOut,
         hazard_notes: data.hazardNotes || null,
+        latitude: geo?.latitude ?? null,
+        longitude: geo?.longitude ?? null,
       })
       .select("id")
       .single();
     if (error) throw new Error(error.message);
     return { id: row.id as string };
+  });
+
+export const backfillPropertyGeocodes = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ limit: z.number().int().min(1).max(200).optional() }).parse(d ?? {}),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { data: rows, error } = await supabase
+      .from("properties")
+      .select("id, street, city, region, postal_code")
+      .is("latitude", null)
+      .limit(data.limit ?? 50);
+    if (error) throw new Error(error.message);
+    if (!rows || rows.length === 0) return { updated: 0, remaining: 0 };
+
+    const { geocodeAddress } = await import("./geocode.server");
+    let updated = 0;
+    for (const r of rows) {
+      const geo = await geocodeAddress({
+        street: r.street,
+        city: r.city,
+        region: r.region,
+        postal_code: r.postal_code,
+      });
+      if (!geo) continue;
+      const { error: uErr } = await supabase
+        .from("properties")
+        .update({ latitude: geo.latitude, longitude: geo.longitude })
+        .eq("id", r.id);
+      if (!uErr) updated += 1;
+    }
+    const { count } = await supabase
+      .from("properties")
+      .select("id", { count: "exact", head: true })
+      .is("latitude", null);
+    return { updated, remaining: count ?? 0 };
   });
 
 export const listPropertiesForClient = createServerFn({ method: "GET" })
