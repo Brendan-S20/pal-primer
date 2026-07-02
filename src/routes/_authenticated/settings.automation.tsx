@@ -149,6 +149,71 @@ function AutomationPage() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader><CardTitle>Failed-payment dunning ladder</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="max-w-md">
+            <Label htmlFor="ladder">Retry days after first failure</Label>
+            <Input
+              id="ladder"
+              value={ladder}
+              onChange={(e) => setLadder(e.target.value)}
+              placeholder="1, 3, 7"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Comma-separated days. Default 1, 3, 7 means retry the card 1 day, 3 days, and 7 days after the first failure.
+            </p>
+          </div>
+          <div className="max-w-xs">
+            <Label htmlFor="pauseAfter">Pause service after N total failures</Label>
+            <Input
+              id="pauseAfter"
+              type="number"
+              min={1}
+              max={10}
+              value={pauseAfter}
+              onChange={(e) => setPauseAfter(Number(e.target.value))}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Client keeps a paused subscription until they update payment; visits stop being generated.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Seasonal deep-clean campaign</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={seasonalOn} onChange={(e) => setSeasonalOn(e.target.checked)} />
+            Auto-offer deep cleans to active clients each season
+          </label>
+          <div>
+            <Label>Campaign months</Label>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {MONTHS.map((label, i) => {
+                const m = i + 1;
+                const on = seasonalMonths.includes(m);
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => toggleMonth(m)}
+                    disabled={!seasonalOn}
+                    className={`rounded border px-2 py-1 text-xs ${on ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground"} disabled:opacity-50`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              The 1st of each selected month, active clients get an email/SMS offering a discounted seasonal deep-clean add-on.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
         {mut.isPending ? "Saving…" : "Save automation settings"}
       </Button>
