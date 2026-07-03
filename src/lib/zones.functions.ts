@@ -91,6 +91,12 @@ export const createZone = createServerFn({ method: "POST" })
         price_per_sqft_cents: data.pricePerSqftCents ?? 0,
         price_per_acre_cents: data.pricePerAcreCents ?? 0,
         area_min_charge_cents: data.areaMinChargeCents ?? 0,
+        geo_match_mode: data.geoMatchMode ?? "zip",
+        boundary: (data.boundary as any) ?? null,
+        center_latitude: data.centerLatitude ?? null,
+        center_longitude: data.centerLongitude ?? null,
+        radius_meters: data.radiusMeters ?? null,
+        drive_time_minutes: data.driveTimeMinutes ?? null,
       })
       .select("id")
       .single();
@@ -99,6 +105,23 @@ export const createZone = createServerFn({ method: "POST" })
   });
 
 const updateZoneSchema = zoneWriteSchema.extend({ id: z.string().uuid() }).partial({ name: true });
+
+export const updateZone = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => updateZoneSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+    const patch: Record<string, any> = {};
+    if (data.name !== undefined) patch.name = data.name;
+    if (data.zipCodes !== undefined) patch.zip_codes = normalizeZips(data.zipCodes);
+    if (data.postalPrefix !== undefined) patch.postal_prefix = data.postalPrefix || null;
+    if (data.accountType !== undefined) patch.account_type = data.accountType ?? null;
+    if (data.priceNote !== undefined) patch.price_note = data.priceNote || null;
+    if (data.latitude !== undefined) patch.latitude = data.latitude;
+    if (data.longitude !== undefined) patch.longitude = data.longitude;
+    if (data.basePriceCents !== undefined) patch.base_price_cents = data.basePriceCents;
+    if (data.perDogAddlCents !== undefined) patch.per_dog_addl_cents = data.perDogAddlCents;
 
 export const updateZone = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
