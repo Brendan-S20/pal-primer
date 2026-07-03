@@ -152,6 +152,7 @@ const internalQuoteSchema = z.object({
   postalCode: z.string().trim().min(3).max(12),
   dogCount: z.coerce.number().int().min(1).max(20),
   frequency: z.enum(["weekly", "biweekly", "twice_weekly", "monthly"]),
+  boundaryAreaSqm: z.number().positive().max(1_000_000).optional(),
 });
 
 export const getInternalQuote = createServerFn({ method: "POST" })
@@ -169,7 +170,7 @@ export const getInternalQuote = createServerFn({ method: "POST" })
 
     const { data: zones, error: zErr } = await supabase
       .from("zones")
-      .select("id, name, postal_prefix, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents")
+      .select("id, name, postal_prefix, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents")
       .eq("organization_id", orgId);
     if (zErr) throw new Error(zErr.message);
 
@@ -187,13 +188,32 @@ export const getInternalQuote = createServerFn({ method: "POST" })
     if (!match) return { available: false as const };
     const z = match.z;
     const mult = Number((org.frequency_multipliers as any)?.[data.frequency] ?? 1);
-    const perVisit = (z.base_price_cents ?? 0) + Math.max(0, data.dogCount - 1) * (z.per_dog_addl_cents ?? 0);
+    const dogAddl = Math.max(0, data.dogCount - 1) * (z.per_dog_addl_cents ?? 0);
+    const mode = (z.pricing_mode ?? "flat") as "flat" | "per_sqft" | "per_acre";
+
+    let baseVisit: number;
+    let areaBasisCents: number | null = null;
+    if (mode !== "flat" && data.boundaryAreaSqm) {
+      const sqft = data.boundaryAreaSqm * 10.7639;
+      const acres = data.boundaryAreaSqm / 4046.8564;
+      const raw =
+        mode === "per_sqft"
+          ? Math.round(sqft * Number(z.price_per_sqft_cents ?? 0))
+          : Math.round(acres * (z.price_per_acre_cents ?? 0));
+      areaBasisCents = raw;
+      baseVisit = Math.max(raw, z.area_min_charge_cents ?? 0);
+    } else {
+      baseVisit = z.base_price_cents ?? 0;
+    }
+    const perVisit = baseVisit + dogAddl;
     const recurring = Math.round(perVisit * mult);
     return {
       available: true as const,
       quote: {
         zoneId: z.id as string,
         zoneName: z.name as string,
+        pricingMode: mode,
+        areaBasisCents,
         basePriceCents: perVisit,
         perDogAddlCents: z.per_dog_addl_cents ?? 0,
         recurringPriceCents: recurring,
