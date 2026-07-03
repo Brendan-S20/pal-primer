@@ -56,6 +56,8 @@ export function ZoneCoverageMap({
       : null,
   );
   const [mode, setMode] = useState<CoverageMode>(initial.mode);
+  const modeRef = useRef<CoverageMode>(initial.mode);
+  useEffect(() => { modeRef.current = mode; }, [mode]);
   const [radius, setRadius] = useState<number>(initial.radiusMeters ?? 5000);
   const [minutes, setMinutes] = useState<number>(initial.driveTimeMinutes ?? 15);
   const [tick, setTick] = useState(0);
@@ -74,7 +76,10 @@ export function ZoneCoverageMap({
     drawLayer.current = L.layerGroup().addTo(map);
 
     map.on("click", (e: L.LeafletMouseEvent) => {
-      if (mode === "polygon") {
+      // Read the current mode from the ref — the handler is registered once at
+      // init, so closing over the initial `mode` state would misroute clicks
+      // after the user switches tabs.
+      if (modeRef.current === "polygon") {
         pointsRef.current = [...pointsRef.current, e.latlng];
         setTick((t) => t + 1);
       } else {
@@ -82,6 +87,11 @@ export function ZoneCoverageMap({
         setTick((t) => t + 1);
       }
     });
+    return () => {
+      try { map.off(); map.remove(); } catch { /* ignore */ }
+      mapRef.current = null;
+      drawLayer.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -90,6 +100,10 @@ export function ZoneCoverageMap({
     const map = mapRef.current;
     const layer = drawLayer.current;
     if (!map || !layer) return;
+    // Stop any in-flight interactions before we tear down the layer — otherwise
+    // a marker mid-drag whose ._map has already been detached crashes Leaflet's
+    // mouse plumbing with `Cannot read properties of undefined (reading 'layerPointToLatLng')`.
+    try { (map as any).dragging?.enable(); } catch { /* ignore */ }
     layer.clearLayers();
 
     if (mode === "polygon") {
@@ -103,9 +117,17 @@ export function ZoneCoverageMap({
           iconSize: [12, 12], iconAnchor: [6, 6],
         });
         const m = L.marker(p, { icon, draggable: true }).addTo(layer);
-        m.on("drag", (ev: any) => { pointsRef.current = pointsRef.current.map((q, idx) => idx === i ? ev.target.getLatLng() : q); });
-        m.on("dragend", () => setTick((t) => t + 1));
-        m.on("click", (ev) => { L.DomEvent.stopPropagation(ev); pointsRef.current = pointsRef.current.filter((_, idx) => idx !== i); setTick((t) => t + 1); });
+        m.on("drag", (ev: any) => {
+          if (!ev.target?._map) return; // detached mid-drag
+          pointsRef.current = pointsRef.current.map((q, idx) => idx === i ? ev.target.getLatLng() : q);
+        });
+        m.on("dragend", (ev: any) => { if (ev.target?._map) setTick((t) => t + 1); });
+        m.on("click", (ev) => {
+          if (!(ev as any).target?._map) return;
+          L.DomEvent.stopPropagation(ev);
+          pointsRef.current = pointsRef.current.filter((_, idx) => idx !== i);
+          setTick((t) => t + 1);
+        });
       });
       if (pts.length >= 3) map.fitBounds(L.latLngBounds(pts), { padding: [30, 30], maxZoom: 15 });
     } else {
@@ -115,7 +137,11 @@ export function ZoneCoverageMap({
         L.circle(c, { radius: r, color: mode === "drive_time" ? "#0891b2" : "#2563eb", weight: 2, fillOpacity: 0.15 }).addTo(layer);
         const icon = L.divIcon({ className: "zone-center", html: `<div style="background:#f59e0b;border:2px solid white;border-radius:9999px;width:14px;height:14px;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`, iconSize: [14, 14], iconAnchor: [7, 7] });
         const m = L.marker(c, { icon, draggable: true }).addTo(layer);
-        m.on("dragend", (ev: any) => { centerRef.current = ev.target.getLatLng(); setTick((t) => t + 1); });
+        m.on("dragend", (ev: any) => {
+          if (!ev.target?._map) return;
+          centerRef.current = ev.target.getLatLng();
+          setTick((t) => t + 1);
+        });
         map.fitBounds(L.circle(c, { radius: r }).getBounds(), { padding: [30, 30], maxZoom: 14 });
       }
     }

@@ -21,6 +21,11 @@ export const Route = createFileRoute("/auth")({
 
 // Where a given role should land immediately after sign-in.
 async function landingPathForUser(userId: string): Promise<string> {
+  // Platform admins always land in the platform console — never inside a tenant
+  // dashboard (impersonation uses a separate magic-link session for that).
+  const { data: isPlatform } = await supabase.rpc("is_platform_admin", { _user_id: userId });
+  if (isPlatform) return "/platform";
+
   const { data } = await supabase
     .from("user_roles")
     .select("role")
