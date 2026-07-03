@@ -105,6 +105,10 @@ export const updateZone = createServerFn({ method: "POST" })
     if (data.perDogAddlCents !== undefined) patch.per_dog_addl_cents = data.perDogAddlCents;
     if (data.initialCleanupCents !== undefined)
       patch.initial_cleanup_cents = data.initialCleanupCents;
+    if (data.pricingMode !== undefined) patch.pricing_mode = data.pricingMode;
+    if (data.pricePerSqftCents !== undefined) patch.price_per_sqft_cents = data.pricePerSqftCents;
+    if (data.pricePerAcreCents !== undefined) patch.price_per_acre_cents = data.pricePerAcreCents;
+    if (data.areaMinChargeCents !== undefined) patch.area_min_charge_cents = data.areaMinChargeCents;
 
     const { error } = await supabase
       .from("zones")
