@@ -122,29 +122,18 @@ export const updateZone = createServerFn({ method: "POST" })
     if (data.longitude !== undefined) patch.longitude = data.longitude;
     if (data.basePriceCents !== undefined) patch.base_price_cents = data.basePriceCents;
     if (data.perDogAddlCents !== undefined) patch.per_dog_addl_cents = data.perDogAddlCents;
-
-export const updateZone = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) => updateZoneSchema.parse(d))
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const orgId = await resolveOrgId(supabase, userId);
-    const patch: Record<string, any> = {};
-    if (data.name !== undefined) patch.name = data.name;
-    if (data.zipCodes !== undefined) patch.zip_codes = normalizeZips(data.zipCodes);
-    if (data.postalPrefix !== undefined) patch.postal_prefix = data.postalPrefix || null;
-    if (data.accountType !== undefined) patch.account_type = data.accountType ?? null;
-    if (data.priceNote !== undefined) patch.price_note = data.priceNote || null;
-    if (data.latitude !== undefined) patch.latitude = data.latitude;
-    if (data.longitude !== undefined) patch.longitude = data.longitude;
-    if (data.basePriceCents !== undefined) patch.base_price_cents = data.basePriceCents;
-    if (data.perDogAddlCents !== undefined) patch.per_dog_addl_cents = data.perDogAddlCents;
     if (data.initialCleanupCents !== undefined)
       patch.initial_cleanup_cents = data.initialCleanupCents;
     if (data.pricingMode !== undefined) patch.pricing_mode = data.pricingMode;
     if (data.pricePerSqftCents !== undefined) patch.price_per_sqft_cents = data.pricePerSqftCents;
     if (data.pricePerAcreCents !== undefined) patch.price_per_acre_cents = data.pricePerAcreCents;
     if (data.areaMinChargeCents !== undefined) patch.area_min_charge_cents = data.areaMinChargeCents;
+    if (data.geoMatchMode !== undefined) patch.geo_match_mode = data.geoMatchMode;
+    if (data.boundary !== undefined) patch.boundary = data.boundary as any;
+    if (data.centerLatitude !== undefined) patch.center_latitude = data.centerLatitude;
+    if (data.centerLongitude !== undefined) patch.center_longitude = data.centerLongitude;
+    if (data.radiusMeters !== undefined) patch.radius_meters = data.radiusMeters;
+    if (data.driveTimeMinutes !== undefined) patch.drive_time_minutes = data.driveTimeMinutes;
 
     const { error } = await supabase
       .from("zones")
