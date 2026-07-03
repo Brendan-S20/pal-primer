@@ -22,6 +22,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SignupSuccessRouteImport } from './routes/signup.success'
 import { Route as SignupSlugRouteImport } from './routes/signup.$slug'
+import { Route as PortalTokenRouteImport } from './routes/portal.$token'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as AuthenticatedZonesRouteImport } from './routes/_authenticated/zones'
 import { Route as AuthenticatedWeatherRouteImport } from './routes/_authenticated/weather'
@@ -144,6 +145,11 @@ const SignupSlugRoute = SignupSlugRouteImport.update({
   path: '/signup/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PortalTokenRoute = PortalTokenRouteImport.update({
+  id: '/portal/$token',
+  path: '/portal/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EmailUnsubscribeRoute = EmailUnsubscribeRouteImport.update({
   id: '/email/unsubscribe',
   path: '/email/unsubscribe',
@@ -245,9 +251,9 @@ const AuthenticatedAiToolsRoute = AuthenticatedAiToolsRouteImport.update({
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const PortalTokenIndexRoute = PortalTokenIndexRouteImport.update({
-  id: '/portal/$token/',
-  path: '/portal/$token/',
-  getParentRoute: () => rootRouteImport,
+  id: '/',
+  path: '/',
+  getParentRoute: () => PortalTokenRoute,
 } as any)
 const AuthenticatedSettingsIndexRoute =
   AuthenticatedSettingsIndexRouteImport.update({
@@ -490,6 +496,7 @@ export interface FileRoutesByFullPath {
   '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/portal/$token': typeof PortalTokenRouteWithChildren
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
@@ -630,6 +637,7 @@ export interface FileRoutesById {
   '/_authenticated/weather': typeof AuthenticatedWeatherRoute
   '/_authenticated/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/portal/$token': typeof PortalTokenRouteWithChildren
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
@@ -703,6 +711,7 @@ export interface FileRouteTypes {
     | '/weather'
     | '/zones'
     | '/email/unsubscribe'
+    | '/portal/$token'
     | '/signup/$slug'
     | '/signup/success'
     | '/clients/$clientId'
@@ -842,6 +851,7 @@ export interface FileRouteTypes {
     | '/_authenticated/weather'
     | '/_authenticated/zones'
     | '/email/unsubscribe'
+    | '/portal/$token'
     | '/signup/$slug'
     | '/signup/success'
     | '/_authenticated/clients/$clientId'
@@ -896,10 +906,10 @@ export interface RootRouteChildren {
   ServicesRoute: typeof ServicesRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
+  PortalTokenRoute: typeof PortalTokenRouteWithChildren
   SignupSlugRoute: typeof SignupSlugRoute
   SignupSuccessRoute: typeof SignupSuccessRoute
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
-  PortalTokenIndexRoute: typeof PortalTokenIndexRoute
   ApiPublicHooksNightlyRoute: typeof ApiPublicHooksNightlyRoute
   ApiPublicHooksQboCallbackRoute: typeof ApiPublicHooksQboCallbackRoute
   ApiPublicHooksStripeRoute: typeof ApiPublicHooksStripeRoute
@@ -1004,6 +1014,13 @@ declare module '@tanstack/react-router' {
       path: '/signup/$slug'
       fullPath: '/signup/$slug'
       preLoaderRoute: typeof SignupSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal/$token': {
+      id: '/portal/$token'
+      path: '/portal/$token'
+      fullPath: '/portal/$token'
+      preLoaderRoute: typeof PortalTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/email/unsubscribe': {
@@ -1148,10 +1165,10 @@ declare module '@tanstack/react-router' {
     }
     '/portal/$token/': {
       id: '/portal/$token/'
-      path: '/portal/$token'
+      path: '/'
       fullPath: '/portal/$token/'
       preLoaderRoute: typeof PortalTokenIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof PortalTokenRoute
     }
     '/_authenticated/settings/': {
       id: '/_authenticated/settings/'
@@ -1547,6 +1564,18 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
 const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
+interface PortalTokenRouteChildren {
+  PortalTokenIndexRoute: typeof PortalTokenIndexRoute
+}
+
+const PortalTokenRouteChildren: PortalTokenRouteChildren = {
+  PortalTokenIndexRoute: PortalTokenIndexRoute,
+}
+
+const PortalTokenRouteWithChildren = PortalTokenRoute._addFileChildren(
+  PortalTokenRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
@@ -1560,10 +1589,10 @@ const rootRouteChildren: RootRouteChildren = {
   ServicesRoute: ServicesRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
+  PortalTokenRoute: PortalTokenRouteWithChildren,
   SignupSlugRoute: SignupSlugRoute,
   SignupSuccessRoute: SignupSuccessRoute,
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
-  PortalTokenIndexRoute: PortalTokenIndexRoute,
   ApiPublicHooksNightlyRoute: ApiPublicHooksNightlyRoute,
   ApiPublicHooksQboCallbackRoute: ApiPublicHooksQboCallbackRoute,
   ApiPublicHooksStripeRoute: ApiPublicHooksStripeRoute,
