@@ -42,6 +42,24 @@ function money(cents: number, currency = "USD") {
   );
 }
 
+function polyAreaSqm(g: PolygonGeoJSON): number {
+  const ring = g.coordinates[0];
+  if (!ring || ring.length < 4) return 0;
+  const R = 6378137;
+  const latMean = (ring.reduce((s, p) => s + p[1], 0) / ring.length) * (Math.PI / 180);
+  const cosLat = Math.cos(latMean);
+  let a = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    const x1 = xi * (Math.PI / 180) * R * cosLat;
+    const y1 = yi * (Math.PI / 180) * R;
+    const x2 = xj * (Math.PI / 180) * R * cosLat;
+    const y2 = yj * (Math.PI / 180) * R;
+    a += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(a / 2);
+
 function NewClientWizard() {
   const navigate = useNavigate();
   const qc = useQueryClient();
