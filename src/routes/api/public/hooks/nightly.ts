@@ -61,7 +61,7 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             perOrg.invoices_generated = error ? `err: ${error.message}` : (n as number);
           }
 
-          if (org.overdue_reminders_enabled && org.sms_from_number) {
+          if (org.overdue_reminders_enabled && (org.notify_sms_overdue_invoice ?? true) && org.sms_from_number) {
             perOrg.reminders_sent = await sendOverdueReminders(
               supabaseAdmin,
               org.id,
