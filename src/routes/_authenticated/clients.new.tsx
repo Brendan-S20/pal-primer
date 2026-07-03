@@ -185,6 +185,8 @@ function NewClientWizard() {
           yardSize: yardSize || undefined,
           hazardNotes: hazardNotes || undefined,
           hazards: hz,
+          boundary: boundary ?? undefined,
+          boundaryAreaSqm: boundaryAreaSqm ?? undefined,
           dogs: validDogs.length
             ? validDogs.map((d) => ({
                 name: d.name.trim(),
