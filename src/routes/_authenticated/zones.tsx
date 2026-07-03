@@ -424,6 +424,46 @@ function ZoneCard({ zone }: { zone: any }) {
             </div>
           </div>
         </div>
+
+        <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <Label className="text-sm font-medium">Pricing mode</Label>
+            <select
+              value={pricingMode}
+              onChange={(e) => setPricingMode(e.target.value as any)}
+              className="h-9 rounded-md border bg-background px-2 text-sm"
+            >
+              <option value="flat">Flat rate (use base price above)</option>
+              <option value="per_sqft">Per square foot of yard</option>
+              <option value="per_acre">Per acre of yard</option>
+            </select>
+          </div>
+          {pricingMode !== "flat" && (
+            <>
+              <p className="text-xs text-muted-foreground">
+                When the property has a sketched boundary, per-visit price = area × rate + per-dog add-ons, then applies frequency multiplier. Falls back to base price when no boundary is set.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {pricingMode === "per_sqft" ? (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Rate per sq ft (¢)</Label>
+                    <Input inputMode="decimal" value={perSqft} onChange={(e) => setPerSqft(e.target.value)} placeholder="0.75" />
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Rate per acre ($)</Label>
+                    <Input inputMode="decimal" value={perAcre} onChange={(e) => setPerAcre(e.target.value)} placeholder="300.00" />
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <Label className="text-xs">Minimum charge / visit ($)</Label>
+                  <Input inputMode="decimal" value={areaMin} onChange={(e) => setAreaMin(e.target.value)} placeholder="25.00" />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
         <div className="flex justify-end gap-2 border-t pt-3">
           <Button variant="ghost" onClick={() => setEditing(false)}>
             Cancel
