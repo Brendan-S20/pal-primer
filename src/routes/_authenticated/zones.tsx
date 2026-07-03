@@ -263,6 +263,12 @@ function ZoneCard({ zone }: { zone: any }) {
     ((zone.initial_cleanup_cents ?? 0) / 100).toFixed(2),
   );
   const [priceNote, setPriceNote] = useState(zone.price_note ?? "");
+  const [pricingMode, setPricingMode] = useState<"flat" | "per_sqft" | "per_acre">(
+    (zone.pricing_mode as any) ?? "flat",
+  );
+  const [perSqft, setPerSqft] = useState<string>(String(Number(zone.price_per_sqft_cents ?? 0) / 100));
+  const [perAcre, setPerAcre] = useState<string>(((zone.price_per_acre_cents ?? 0) / 100).toFixed(2));
+  const [areaMin, setAreaMin] = useState<string>(((zone.area_min_charge_cents ?? 0) / 100).toFixed(2));
 
   const saveMut = useMutation({
     mutationFn: () =>
@@ -275,6 +281,10 @@ function ZoneCard({ zone }: { zone: any }) {
           perDogAddlCents: Math.round((parseFloat(perDog) || 0) * 100),
           initialCleanupCents: Math.round((parseFloat(initialCleanup) || 0) * 100),
           priceNote: priceNote,
+          pricingMode,
+          pricePerSqftCents: parseFloat(perSqft) > 0 ? parseFloat(perSqft) * 100 : 0,
+          pricePerAcreCents: Math.round((parseFloat(perAcre) || 0) * 100),
+          areaMinChargeCents: Math.round((parseFloat(areaMin) || 0) * 100),
         },
       }),
     onSuccess: () => {
