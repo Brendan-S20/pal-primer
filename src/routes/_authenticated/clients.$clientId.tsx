@@ -548,6 +548,8 @@ function ClientDetail() {
             )}
           </section>
 
+          <BillingPanel clientId={clientId} />
+
           <AddonsPanel clientId={clientId} />
         </TabsContent>
       </Tabs>
