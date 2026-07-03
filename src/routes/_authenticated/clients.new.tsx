@@ -75,6 +75,31 @@ function NewClientWizard() {
     slipperySurfaces: false,
   });
 
+  // yard boundary
+  const [boundary, setBoundary] = useState<PolygonGeoJSON | null>(null);
+  const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(null);
+  const boundaryAreaSqm = useMemo(() => (boundary ? polyAreaSqm(boundary) : null), [boundary]);
+
+  // Best-effort geocode when entering the Yard step
+  useEffect(() => {
+    if (step !== 2) return;
+    if (geo) return;
+    const q = [street, city, region, postalCode].filter(Boolean).join(", ");
+    if (q.length < 6) return;
+    const ac = new AbortController();
+    (async () => {
+      try {
+        const r = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`,
+          { signal: ac.signal, headers: { Accept: "application/json" } },
+        );
+        const rows = (await r.json()) as Array<{ lat: string; lon: string }>;
+        if (rows?.[0]) setGeo({ lat: Number(rows[0].lat), lng: Number(rows[0].lon) });
+      } catch {}
+    })();
+    return () => ac.abort();
+  }, [step, street, city, region, postalCode, geo]);
+
   // dogs
   const [dogs, setDogs] = useState<Dog[]>([
     { name: "", breed: "", weightClass: "", temperament: "unknown", notes: "" },
