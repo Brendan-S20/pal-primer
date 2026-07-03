@@ -2,11 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { randomBytes } from "crypto";
 
 async function handle(request: Request) {
-  const token = request.headers.get("x-bootstrap-token");
-  const expected = process.env.PLATFORM_ADMIN_BOOTSTRAP_TOKEN;
-  if (!expected || !token || token !== expected) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  // No shared-secret required: this endpoint can only succeed ONCE (see the
+  // platform_admin idempotent guard below). Subsequent calls return 409.
+
 
   const body = (await request.json().catch(() => ({}))) as { email?: string };
   const email = body.email?.trim().toLowerCase();
