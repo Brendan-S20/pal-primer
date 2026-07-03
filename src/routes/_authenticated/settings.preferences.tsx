@@ -14,6 +14,9 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useMyRole } from "@/hooks/useMyRole";
 import { reseedDemoData } from "@/lib/demo.functions";
+import { getOrgBranding, updateOrgBranding } from "@/lib/org.functions";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Input } from "@/components/ui/input";
 
 export const Route = createFileRoute("/_authenticated/settings/preferences")({
   component: PreferencesPage,
