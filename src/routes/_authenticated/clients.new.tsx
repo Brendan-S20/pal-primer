@@ -223,8 +223,9 @@ function NewClientWizard() {
 
   const canNext = (() => {
     if (step === 0) return displayName.trim().length > 0;
-    if (step === 1) return street && city && postalCode;
-    if (step === 2) return true;
+    if (step === 1) return !!(street && city && postalCode);
+    if (step === 2) return true; // yard boundary optional
+    if (step === 3) return true;
     return true;
   })();
 
