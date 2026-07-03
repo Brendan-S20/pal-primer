@@ -490,3 +490,99 @@ function ZoneCard({ zone }: { zone: any }) {
     </Card>
   );
 }
+
+function ZoneCoverageSection({ zone }: { zone: any }) {
+  const update = useServerFn(updateZone);
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const mode = (zone.geo_match_mode ?? "zip") as "zip" | "polygon" | "radius" | "drive_time";
+
+  const saveMut = useMutation({
+    mutationFn: (v: CoverageValue) =>
+      update({
+        data: {
+          id: zone.id,
+          geoMatchMode: v.mode,
+          boundary: v.polygon,
+          centerLatitude: v.centerLat,
+          centerLongitude: v.centerLng,
+          radiusMeters: v.radiusMeters,
+          driveTimeMinutes: v.driveTimeMinutes,
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Coverage saved");
+      qc.invalidateQueries({ queryKey: ["zones"] });
+      setOpen(false);
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const clearMut = useMutation({
+    mutationFn: () =>
+      update({
+        data: {
+          id: zone.id,
+          geoMatchMode: "zip",
+          boundary: null,
+          centerLatitude: null,
+          centerLongitude: null,
+          radiusMeters: null,
+          driveTimeMinutes: null,
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Reverted to ZIP matching");
+      qc.invalidateQueries({ queryKey: ["zones"] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const summary =
+    mode === "polygon" && zone.boundary
+      ? "Polygon on map"
+      : mode === "radius" && zone.radius_meters
+        ? `${(zone.radius_meters / 1609).toFixed(1)} mi radius`
+        : mode === "drive_time" && zone.drive_time_minutes
+          ? `~${zone.drive_time_minutes} min drive`
+          : "ZIP only";
+
+  return (
+    <div className="mt-3 border-t pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm">
+          <span className="text-muted-foreground">Map coverage:</span>{" "}
+          <Badge variant={mode === "zip" ? "outline" : "secondary"} className="text-xs">
+            {summary}
+          </Badge>
+        </div>
+        <div className="flex gap-2">
+          {mode !== "zip" && (
+            <Button size="sm" variant="ghost" onClick={() => clearMut.mutate()} disabled={clearMut.isPending}>
+              Clear
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={() => setOpen((v) => !v)}>
+            {open ? "Close map" : "Set on map"}
+          </Button>
+        </div>
+      </div>
+      {open && (
+        <div className="mt-3">
+          <ZoneCoverageMap
+            initial={{
+              mode: mode === "zip" ? "radius" : mode,
+              polygon: zone.boundary ?? null,
+              centerLat: zone.center_latitude != null ? Number(zone.center_latitude) : (zone.latitude != null ? Number(zone.latitude) : null),
+              centerLng: zone.center_longitude != null ? Number(zone.center_longitude) : (zone.longitude != null ? Number(zone.longitude) : null),
+              radiusMeters: zone.radius_meters ?? 5000,
+              driveTimeMinutes: zone.drive_time_minutes ?? 15,
+            }}
+            onSave={(v) => saveMut.mutate(v)}
+            saving={saveMut.isPending}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
