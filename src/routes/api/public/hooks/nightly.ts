@@ -34,7 +34,7 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
         const { data: orgs, error: orgErr } = await supabaseAdmin
           .from("organizations")
           .select(
-            "id, name, sms_from_number, auto_generate_visits, auto_generate_days_ahead, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days, seasonal_deepclean_enabled, seasonal_deepclean_months",
+            "id, name, sms_from_number, auto_generate_visits, auto_generate_days_ahead, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days, seasonal_deepclean_enabled, seasonal_deepclean_months, notify_sms_overdue_invoice",
           );
         if (orgErr) return json({ error: orgErr.message }, 500);
 
@@ -61,7 +61,7 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             perOrg.invoices_generated = error ? `err: ${error.message}` : (n as number);
           }
 
-          if (org.overdue_reminders_enabled && org.sms_from_number) {
+          if (org.overdue_reminders_enabled && (org.notify_sms_overdue_invoice ?? true) && org.sms_from_number) {
             perOrg.reminders_sent = await sendOverdueReminders(
               supabaseAdmin,
               org.id,

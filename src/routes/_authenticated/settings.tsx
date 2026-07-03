@@ -1,11 +1,14 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { useMyRole } from "@/hooks/useMyRole";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsLayout,
 });
 
-const TABS: Array<{ label: string; to: string }> = [
-  { label: "Preferences", to: "/settings/preferences" },
+type Tab = { label: string; to: string; techVisible?: boolean };
+
+const TABS: Tab[] = [
+  { label: "Preferences", to: "/settings/preferences", techVisible: true },
   { label: "Skip rules", to: "/settings/skip-rules" },
   { label: "Blackouts", to: "/settings/blackouts" },
   { label: "Add-ons", to: "/settings/addons" },
@@ -23,6 +26,8 @@ const TABS: Array<{ label: string; to: string }> = [
 
 function SettingsLayout() {
   const pathname = useRouterState({ select: (r) => r.location.pathname });
+  const { role } = useMyRole();
+  const tabs = role === "tech" ? TABS.filter((t) => t.techVisible) : TABS;
   return (
     <div className="space-y-6">
       <div>
@@ -33,7 +38,7 @@ function SettingsLayout() {
         aria-label="Settings sections"
         className="-mx-1 flex flex-wrap gap-1 border-b pb-2"
       >
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const active = pathname === tab.to || pathname.startsWith(tab.to + "/");
           return (
             <Link

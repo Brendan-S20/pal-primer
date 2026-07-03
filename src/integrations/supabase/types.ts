@@ -1777,6 +1777,11 @@ export type Database = {
           notify_email_visit_completed: boolean
           notify_email_weather_reschedule: boolean
           notify_email_welcome: boolean
+          notify_sms_on_my_way: boolean
+          notify_sms_overdue_invoice: boolean
+          notify_sms_payment_failed: boolean
+          notify_sms_visit_completed: boolean
+          notify_sms_visit_reminder: boolean
           onboarding_dismissed_at: string | null
           overdue_reminder_days: number
           overdue_reminders_enabled: boolean
@@ -1826,6 +1831,11 @@ export type Database = {
           notify_email_visit_completed?: boolean
           notify_email_weather_reschedule?: boolean
           notify_email_welcome?: boolean
+          notify_sms_on_my_way?: boolean
+          notify_sms_overdue_invoice?: boolean
+          notify_sms_payment_failed?: boolean
+          notify_sms_visit_completed?: boolean
+          notify_sms_visit_reminder?: boolean
           onboarding_dismissed_at?: string | null
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
@@ -1875,6 +1885,11 @@ export type Database = {
           notify_email_visit_completed?: boolean
           notify_email_weather_reschedule?: boolean
           notify_email_welcome?: boolean
+          notify_sms_on_my_way?: boolean
+          notify_sms_overdue_invoice?: boolean
+          notify_sms_payment_failed?: boolean
+          notify_sms_visit_completed?: boolean
+          notify_sms_visit_reminder?: boolean
           onboarding_dismissed_at?: string | null
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean

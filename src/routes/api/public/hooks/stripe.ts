@@ -291,12 +291,43 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               // Record error on client for autopay visibility
               const err = pi.last_payment_error?.message ?? "Card charge failed";
               const { data: inv } = await supabaseAdmin
-                .from("invoices").select("client_id").eq("id", invoiceId).single();
+                .from("invoices").select("client_id, organization_id").eq("id", invoiceId).single();
               if (inv?.client_id) {
                 await supabaseAdmin.from("clients").update({
                   autopay_last_error: err,
                   autopay_last_attempt_at: new Date().toISOString(),
                 }).eq("id", inv.client_id);
+
+                // Optional SMS alert to client (org toggle)
+                try {
+                  const { data: org } = await supabaseAdmin
+                    .from("organizations")
+                    .select("sms_from_number, notify_sms_payment_failed")
+                    .eq("id", inv.organization_id)
+                    .single();
+                  if (org?.notify_sms_payment_failed && org.sms_from_number) {
+                    const { data: c } = await supabaseAdmin
+                      .from("clients")
+                      .select("display_name, primary_phone, sms_opt_out, portal_token")
+                      .eq("id", inv.client_id).single();
+                    if (c && !c.sms_opt_out && c.primary_phone) {
+                      const { sendTwilioSms } = await import("@/lib/twilio.server");
+                      const url = `${process.env.APP_URL || "https://pal-primer.lovable.app"}/portal/${c.portal_token}`;
+                      const body = `Hi ${c.display_name}, your card on file was declined. Please update your payment method: ${url}`;
+                      const r = await sendTwilioSms({ from: org.sms_from_number, to: c.primary_phone, body });
+                      await supabaseAdmin.from("messages").insert({
+                        organization_id: inv.organization_id,
+                        client_id: inv.client_id,
+                        direction: "outbound",
+                        body,
+                        from_number: org.sms_from_number,
+                        to_number: c.primary_phone,
+                        twilio_sid: r.sid,
+                        status: (r.status as "queued" | "sent" | "delivered" | "failed" | "received" | undefined) ?? "queued",
+                      });
+                    }
+                  }
+                } catch (e) { console.error("payment-failed SMS failed", e); }
               }
             }
 

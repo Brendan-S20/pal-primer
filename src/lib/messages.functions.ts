@@ -198,11 +198,16 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
     if (client.sms_opt_out) throw new Error("Client has opted out of SMS.");
     const { data: org } = await supabase
       .from("organizations")
-      .select("sms_from_number")
+      .select("sms_from_number, notify_sms_visit_reminder, notify_sms_on_my_way, notify_sms_visit_completed")
       .eq("id", client.organization_id)
       .single();
     if (!org?.sms_from_number)
       throw new Error("Your organization has no SMS sender number set. Add one in Settings → SMS.");
+    const kindEnabled =
+      data.kind === "reminder" ? org.notify_sms_visit_reminder :
+      data.kind === "on_my_way" ? org.notify_sms_on_my_way :
+      org.notify_sms_visit_completed;
+    if (!kindEnabled) throw new Error("This notification is turned off in Settings → Automation.");
     const { data: staff } = await supabase
       .from("staff")
       .select("id")
