@@ -91,7 +91,7 @@ export const updateOrgBranding = createServerFn({ method: "POST" })
     if (data.portalAllowFrequencyChange !== undefined) patch.portal_allow_frequency_change = data.portalAllowFrequencyChange;
     if (data.portalAutoApplyChanges !== undefined) patch.portal_auto_apply_changes = data.portalAutoApplyChanges;
     const { error } = await supabase.from("organizations")
-      .update(patch).eq("id", role.organization_id);
+      .update(patch as any).eq("id", role.organization_id);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
