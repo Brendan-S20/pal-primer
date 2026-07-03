@@ -75,6 +75,11 @@ function AutomationPage() {
           dunningPauseAfterFailures: pauseAfter,
           seasonalDeepcleanEnabled: seasonalOn,
           seasonalDeepcleanMonths: seasonalMonths,
+          notifySmsOverdueInvoice: nOverdue,
+          notifySmsPaymentFailed: nPayFail,
+          notifySmsVisitReminder: nVisitRem,
+          notifySmsOnMyWay: nOnWay,
+          notifySmsVisitCompleted: nDone,
         },
       });
     },
