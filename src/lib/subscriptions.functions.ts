@@ -70,3 +70,59 @@ export const listSubscriptionsForClient = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     return { subscriptions: rows ?? [] };
   });
+
+// ── Seasonal deep-clean settings ─────────────────────────────────────────
+
+async function loadOrgForCaller(supabase: any, userId: string) {
+  const { data: role, error } = await supabase
+    .from("user_roles")
+    .select("organization_id, role")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!role) throw new Error("No organization");
+  if (!["owner", "office_manager"].includes(role.role)) {
+    throw new Error("Only owners or office managers can change pricing settings");
+  }
+  return role.organization_id as string;
+}
+
+export const getDeepCleanSettings = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const orgId = await loadOrgForCaller(context.supabase, context.userId);
+    const { data, error } = await context.supabase
+      .from("organizations")
+      .select("seasonal_deepclean_enabled, seasonal_deepclean_months, seasonal_deepclean_charge_cents")
+      .eq("id", orgId)
+      .single();
+    if (error) throw new Error(error.message);
+    return {
+      enabled: !!data.seasonal_deepclean_enabled,
+      months: (data.seasonal_deepclean_months ?? [3, 10]) as number[],
+      chargeCents: data.seasonal_deepclean_charge_cents ?? 4900,
+    };
+  });
+
+export const updateDeepCleanSettings = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      enabled: z.boolean(),
+      months: z.array(z.number().int().min(1).max(12)).max(12),
+      chargeCents: z.number().int().min(0).max(1_000_000),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const orgId = await loadOrgForCaller(context.supabase, context.userId);
+    const { error } = await context.supabase
+      .from("organizations")
+      .update({
+        seasonal_deepclean_enabled: data.enabled,
+        seasonal_deepclean_months: data.months,
+        seasonal_deepclean_charge_cents: data.chargeCents,
+      })
+      .eq("id", orgId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });

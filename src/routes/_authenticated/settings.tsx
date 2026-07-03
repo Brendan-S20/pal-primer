@@ -14,6 +14,7 @@ const TABS: Array<{ label: string; to: string }> = [
   { label: "AI receptionist", to: "/settings/ai-receptionist" },
   { label: "Reviews", to: "/settings/reviews" },
   { label: "Automation", to: "/settings/automation" },
+  { label: "Deep-clean", to: "/settings/deep-clean" },
   { label: "Accounting", to: "/settings/accounting" },
   { label: "Promotions", to: "/settings/promotions" },
   { label: "Users & roles", to: "/settings/users" },

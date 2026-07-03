@@ -109,3 +109,65 @@ export const unsubscribeClientPush = createServerFn({ method: "POST" })
       .eq("endpoint", data.endpoint);
     return { ok: true };
   });
+
+// ── Native (APNs/FCM) push token registration ──────────────────────────────
+
+const nativeSchema = z.object({
+  token: z.string().min(10),
+  platform: z.enum(["ios", "android"]),
+  userAgent: z.string().optional(),
+});
+
+export const subscribeStaffNativePush = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => nativeSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: role } = await supabase
+      .from("user_roles")
+      .select("organization_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const orgId = role?.organization_id ?? null;
+    const { error } = await supabase.from("push_subscriptions").upsert(
+      {
+        user_id: userId,
+        organization_id: orgId,
+        native_token: data.token,
+        platform: data.platform,
+        user_agent: data.userAgent ?? null,
+        disabled: false,
+        last_error: null,
+      },
+      { onConflict: "native_token" },
+    );
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const subscribeClientNativePush = createServerFn({ method: "POST" })
+  .inputValidator((d) => nativeSchema.extend({ token: z.string().min(10), portalToken: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: client, error: cErr } = await supabaseAdmin
+      .from("clients")
+      .select("id, organization_id")
+      .eq("portal_token", data.portalToken)
+      .maybeSingle();
+    if (cErr) throw new Error(cErr.message);
+    if (!client) throw new Error("Invalid portal link");
+    const { error } = await supabaseAdmin.from("push_subscriptions").upsert(
+      {
+        client_id: client.id,
+        organization_id: client.organization_id,
+        native_token: data.token,
+        platform: data.platform,
+        user_agent: data.userAgent ?? null,
+        disabled: false,
+        last_error: null,
+      },
+      { onConflict: "native_token" },
+    );
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
