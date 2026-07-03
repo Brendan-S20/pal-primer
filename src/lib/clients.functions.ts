@@ -251,6 +251,13 @@ const onboardSchema = z.object({
       slipperySurfaces: z.boolean().optional(),
     })
     .optional(),
+  boundary: z
+    .object({
+      type: z.literal("Polygon"),
+      coordinates: z.array(z.array(z.array(z.number()))),
+    })
+    .optional(),
+  boundaryAreaSqm: z.number().positive().max(1_000_000).optional(),
   // dogs
   dogs: z
     .array(
