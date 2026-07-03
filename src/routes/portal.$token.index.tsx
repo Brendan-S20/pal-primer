@@ -50,7 +50,7 @@ import {
   Sun, CloudRain, PalmtreeIcon,
 } from "lucide-react";
 
-export const Route = createFileRoute("/portal/$token")({
+export const Route = createFileRoute("/portal/$token/")({
   head: () => ({ meta: [{ title: "Your service portal" }] }),
   component: PortalPage,
   errorComponent: ({ error }) => (
