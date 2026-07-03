@@ -74,6 +74,10 @@ export const createZone = createServerFn({ method: "POST" })
         base_price_cents: data.basePriceCents ?? 2500,
         per_dog_addl_cents: data.perDogAddlCents ?? 500,
         initial_cleanup_cents: data.initialCleanupCents ?? 0,
+        pricing_mode: data.pricingMode ?? "flat",
+        price_per_sqft_cents: data.pricePerSqftCents ?? 0,
+        price_per_acre_cents: data.pricePerAcreCents ?? 0,
+        area_min_charge_cents: data.areaMinChargeCents ?? 0,
       })
       .select("id")
       .single();
