@@ -323,7 +323,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                         from_number: org.sms_from_number,
                         to_number: c.primary_phone,
                         twilio_sid: r.sid,
-                        status: r.status,
+                        status: (r.status as "queued" | "sent" | "delivered" | "failed" | "received" | undefined) ?? "queued",
                       });
                     }
                   }
