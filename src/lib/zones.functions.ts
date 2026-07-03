@@ -29,13 +29,20 @@ export const listZones = createServerFn({ method: "GET" })
     const { data, error } = await supabase
       .from("zones")
       .select(
-        "id, name, postal_prefix, zip_codes, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents",
+        "id, name, postal_prefix, zip_codes, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
       )
       .eq("organization_id", orgId)
       .order("name");
     if (error) throw new Error(error.message);
     return { zones: data ?? [] };
   });
+
+const polygonSchema = z
+  .object({
+    type: z.literal("Polygon"),
+    coordinates: z.array(z.array(z.tuple([z.number(), z.number()]))).min(1),
+  })
+  .nullable();
 
 const zoneWriteSchema = z.object({
   name: z.string().min(1).max(120),
@@ -52,6 +59,12 @@ const zoneWriteSchema = z.object({
   pricePerSqftCents: z.number().min(0).max(10000).optional(),
   pricePerAcreCents: z.number().int().min(0).optional(),
   areaMinChargeCents: z.number().int().min(0).optional(),
+  geoMatchMode: z.enum(["zip", "radius", "polygon", "drive_time"]).optional(),
+  boundary: polygonSchema.optional(),
+  centerLatitude: z.number().min(-90).max(90).nullable().optional(),
+  centerLongitude: z.number().min(-180).max(180).nullable().optional(),
+  radiusMeters: z.number().int().min(100).max(200000).nullable().optional(),
+  driveTimeMinutes: z.number().int().min(1).max(180).nullable().optional(),
 });
 
 export const createZone = createServerFn({ method: "POST" })
