@@ -59,6 +59,9 @@ function polyAreaSqm(g: PolygonGeoJSON): number {
     a += x1 * y2 - x2 * y1;
   }
   return Math.abs(a / 2);
+}
+
+
 
 function NewClientWizard() {
   const navigate = useNavigate();
