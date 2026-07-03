@@ -365,6 +365,7 @@ function ZoneCard({ zone }: { zone: any }) {
             )}
           </div>
         </div>
+        <ZoneCoverageSection zone={zone} />
         <div className="mt-3 flex justify-end gap-2 border-t pt-3">
           <Button
             size="sm"
