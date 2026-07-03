@@ -227,7 +227,7 @@ export const getClientBillingSummary = createServerFn({ method: "GET" })
   .handler(async ({ data, context }) => {
     const { supabase } = context;
 
-    const [clientRes, invoicesRes, paymentsRes] = await Promise.all([
+    const [clientRes, invoicesRes] = await Promise.all([
       supabase
         .from("clients")
         .select("autopay_enabled, default_card_brand, default_card_last4, default_payment_method_id, stripe_customer_id, primary_email")
@@ -239,20 +239,25 @@ export const getClientBillingSummary = createServerFn({ method: "GET" })
         .eq("client_id", data.clientId)
         .order("created_at", { ascending: false })
         .limit(25),
-      supabase
-        .from("payments")
-        .select("id, invoice_id, amount_cents, status, stripe_payment_intent_id, paid_at, created_at")
-        .eq("client_id", data.clientId)
-        .order("created_at", { ascending: false })
-        .limit(25),
     ]);
     if (clientRes.error) throw new Error(clientRes.error.message);
 
-    const openInvoices = (invoicesRes.data ?? []).filter((i) => i.status === "open" || i.status === "overdue");
+    const invoices = invoicesRes.data ?? [];
+    const invoiceIds = invoices.map((i) => i.id);
+    const paymentsRes = invoiceIds.length
+      ? await supabase
+          .from("payments")
+          .select("id, invoice_id, amount_cents, status, stripe_payment_intent_id, paid_at, created_at")
+          .in("invoice_id", invoiceIds)
+          .order("created_at", { ascending: false })
+          .limit(50)
+      : { data: [] as any[] };
+
+    const openInvoices = invoices.filter((i) => i.status === "open");
 
     return {
       client: clientRes.data,
-      invoices: invoicesRes.data ?? [],
+      invoices,
       payments: paymentsRes.data ?? [],
       openCount: openInvoices.length,
       openTotalCents: openInvoices.reduce((s, i) => s + (i.total_cents ?? 0), 0),
