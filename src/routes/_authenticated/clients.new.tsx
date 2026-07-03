@@ -396,7 +396,33 @@ function NewClientWizard() {
           </div>
         )}
 
-        {/* STEP 2 — Dogs */}
+        {/* STEP 2 — Yard (optional boundary sketch) */}
+        {step === 2 && (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-base font-medium">Sketch the yard (optional)</h2>
+              <p className="text-sm text-muted-foreground">
+                Draw the service area on the satellite map so the tech and pricing know the exact footprint. Skip to price a flat visit instead.
+              </p>
+            </div>
+            <BoundarySketch
+              center={geo}
+              initial={boundary}
+              areaSqm={boundaryAreaSqm}
+              onSave={(poly) => {
+                setBoundary(poly);
+                toast.success(poly ? "Boundary saved" : "Boundary cleared");
+              }}
+            />
+            {boundaryAreaSqm != null && (
+              <p className="text-xs text-muted-foreground">
+                Saved area: <strong>{formatArea(boundaryAreaSqm)}</strong>. If your zone uses per-sqft or per-acre pricing, the plan step will price from this area.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* STEP 3 — Dogs */}
         {step === 3 && (
           <div className="space-y-4">
             {accountType === "commercial" && (
