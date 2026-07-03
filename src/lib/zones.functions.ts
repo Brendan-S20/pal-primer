@@ -29,7 +29,7 @@ export const listZones = createServerFn({ method: "GET" })
     const { data, error } = await supabase
       .from("zones")
       .select(
-        "id, name, postal_prefix, zip_codes, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents",
+        "id, name, postal_prefix, zip_codes, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents",
       )
       .eq("organization_id", orgId)
       .order("name");
@@ -48,6 +48,10 @@ const zoneWriteSchema = z.object({
   basePriceCents: z.number().int().min(0).optional(),
   perDogAddlCents: z.number().int().min(0).optional(),
   initialCleanupCents: z.number().int().min(0).optional(),
+  pricingMode: z.enum(["flat", "per_sqft", "per_acre"]).optional(),
+  pricePerSqftCents: z.number().min(0).max(10000).optional(),
+  pricePerAcreCents: z.number().int().min(0).optional(),
+  areaMinChargeCents: z.number().int().min(0).optional(),
 });
 
 export const createZone = createServerFn({ method: "POST" })
@@ -70,6 +74,10 @@ export const createZone = createServerFn({ method: "POST" })
         base_price_cents: data.basePriceCents ?? 2500,
         per_dog_addl_cents: data.perDogAddlCents ?? 500,
         initial_cleanup_cents: data.initialCleanupCents ?? 0,
+        pricing_mode: data.pricingMode ?? "flat",
+        price_per_sqft_cents: data.pricePerSqftCents ?? 0,
+        price_per_acre_cents: data.pricePerAcreCents ?? 0,
+        area_min_charge_cents: data.areaMinChargeCents ?? 0,
       })
       .select("id")
       .single();
@@ -97,6 +105,10 @@ export const updateZone = createServerFn({ method: "POST" })
     if (data.perDogAddlCents !== undefined) patch.per_dog_addl_cents = data.perDogAddlCents;
     if (data.initialCleanupCents !== undefined)
       patch.initial_cleanup_cents = data.initialCleanupCents;
+    if (data.pricingMode !== undefined) patch.pricing_mode = data.pricingMode;
+    if (data.pricePerSqftCents !== undefined) patch.price_per_sqft_cents = data.pricePerSqftCents;
+    if (data.pricePerAcreCents !== undefined) patch.price_per_acre_cents = data.pricePerAcreCents;
+    if (data.areaMinChargeCents !== undefined) patch.area_min_charge_cents = data.areaMinChargeCents;
 
     const { error } = await supabase
       .from("zones")

@@ -1,14 +1,16 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { onboardClient, getInternalQuote } from "@/lib/clients.functions";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { BoundarySketch, formatArea, type PolygonGeoJSON } from "@/components/BoundarySketch";
 import { Check, ChevronRight, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
@@ -32,13 +34,34 @@ const FREQS = [
   { value: "one_time", label: "One-time" },
 ] as const;
 
-const STEPS = ["Contact", "Property", "Dogs", "Plan"] as const;
+const STEPS = ["Contact", "Property", "Yard", "Dogs", "Plan"] as const;
 
 function money(cents: number, currency = "USD") {
   return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(
     (cents ?? 0) / 100,
   );
 }
+
+function polyAreaSqm(g: PolygonGeoJSON): number {
+  const ring = g.coordinates[0];
+  if (!ring || ring.length < 4) return 0;
+  const R = 6378137;
+  const latMean = (ring.reduce((s, p) => s + p[1], 0) / ring.length) * (Math.PI / 180);
+  const cosLat = Math.cos(latMean);
+  let a = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    const x1 = xi * (Math.PI / 180) * R * cosLat;
+    const y1 = yi * (Math.PI / 180) * R;
+    const x2 = xj * (Math.PI / 180) * R * cosLat;
+    const y2 = yj * (Math.PI / 180) * R;
+    a += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(a / 2);
+}
+
+
 
 function NewClientWizard() {
   const navigate = useNavigate();
@@ -73,6 +96,31 @@ function NewClientWizard() {
     slipperySurfaces: false,
   });
 
+  // yard boundary
+  const [boundary, setBoundary] = useState<PolygonGeoJSON | null>(null);
+  const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(null);
+  const boundaryAreaSqm = useMemo(() => (boundary ? polyAreaSqm(boundary) : null), [boundary]);
+
+  // Best-effort geocode when entering the Yard step
+  useEffect(() => {
+    if (step !== 2) return;
+    if (geo) return;
+    const q = [street, city, region, postalCode].filter(Boolean).join(", ");
+    if (q.length < 6) return;
+    const ac = new AbortController();
+    (async () => {
+      try {
+        const r = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`,
+          { signal: ac.signal, headers: { Accept: "application/json" } },
+        );
+        const rows = (await r.json()) as Array<{ lat: string; lon: string }>;
+        if (rows?.[0]) setGeo({ lat: Number(rows[0].lat), lng: Number(rows[0].lon) });
+      } catch {}
+    })();
+    return () => ac.abort();
+  }, [step, street, city, region, postalCode, geo]);
+
   // dogs
   const [dogs, setDogs] = useState<Dog[]>([
     { name: "", breed: "", weightClass: "", temperament: "unknown", notes: "" },
@@ -92,13 +140,14 @@ function NewClientWizard() {
       postalCode: postalCode.trim(),
       dogCount: Math.max(1, validDogs.length),
       frequency: frequency === "one_time" ? "weekly" : frequency,
+      boundaryAreaSqm: boundaryAreaSqm ?? undefined,
     }),
-    [postalCode, validDogs.length, frequency],
+    [postalCode, validDogs.length, frequency, boundaryAreaSqm],
   );
 
   const quoteQ = useQuery({
     enabled:
-      step === 3 &&
+      step === 4 &&
       !skipPlan &&
       accountType === "residential" &&
       quoteKey.postalCode.length >= 3 &&
@@ -136,6 +185,8 @@ function NewClientWizard() {
           yardSize: yardSize || undefined,
           hazardNotes: hazardNotes || undefined,
           hazards: hz,
+          boundary: boundary ?? undefined,
+          boundaryAreaSqm: boundaryAreaSqm ?? undefined,
           dogs: validDogs.length
             ? validDogs.map((d) => ({
                 name: d.name.trim(),
@@ -172,8 +223,9 @@ function NewClientWizard() {
 
   const canNext = (() => {
     if (step === 0) return displayName.trim().length > 0;
-    if (step === 1) return street && city && postalCode;
-    if (step === 2) return true;
+    if (step === 1) return !!(street && city && postalCode);
+    if (step === 2) return true; // yard boundary optional
+    if (step === 3) return true;
     return true;
   })();
 
@@ -345,8 +397,34 @@ function NewClientWizard() {
           </div>
         )}
 
-        {/* STEP 2 — Dogs */}
+        {/* STEP 2 — Yard (optional boundary sketch) */}
         {step === 2 && (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-base font-medium">Sketch the yard (optional)</h2>
+              <p className="text-sm text-muted-foreground">
+                Draw the service area on the satellite map so the tech and pricing know the exact footprint. Skip to price a flat visit instead.
+              </p>
+            </div>
+            <BoundarySketch
+              center={geo}
+              initial={boundary}
+              areaSqm={boundaryAreaSqm}
+              onSave={(poly) => {
+                setBoundary(poly);
+                toast.success(poly ? "Boundary saved" : "Boundary cleared");
+              }}
+            />
+            {boundaryAreaSqm != null && (
+              <p className="text-xs text-muted-foreground">
+                Saved area: <strong>{formatArea(boundaryAreaSqm)}</strong>. If your zone uses per-sqft or per-acre pricing, the plan step will price from this area.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* STEP 3 — Dogs */}
+        {step === 3 && (
           <div className="space-y-4">
             {accountType === "commercial" && (
               <p className="text-sm text-muted-foreground">
@@ -447,7 +525,7 @@ function NewClientWizard() {
         )}
 
         {/* STEP 3 — Plan */}
-        {step === 3 && (
+        {step === 4 && (
           <div className="space-y-5">
             <label className="flex items-center gap-2 text-sm">
               <input

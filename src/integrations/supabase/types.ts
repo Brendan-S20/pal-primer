@@ -3103,6 +3103,7 @@ export type Database = {
       zones: {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"] | null
+          area_min_charge_cents: number
           base_price_cents: number
           created_at: string
           id: string
@@ -3114,10 +3115,14 @@ export type Database = {
           per_dog_addl_cents: number
           postal_prefix: string | null
           price_note: string | null
+          price_per_acre_cents: number
+          price_per_sqft_cents: number
+          pricing_mode: string
           zip_codes: string[]
         }
         Insert: {
           account_type?: Database["public"]["Enums"]["account_type"] | null
+          area_min_charge_cents?: number
           base_price_cents?: number
           created_at?: string
           id?: string
@@ -3129,10 +3134,14 @@ export type Database = {
           per_dog_addl_cents?: number
           postal_prefix?: string | null
           price_note?: string | null
+          price_per_acre_cents?: number
+          price_per_sqft_cents?: number
+          pricing_mode?: string
           zip_codes?: string[]
         }
         Update: {
           account_type?: Database["public"]["Enums"]["account_type"] | null
+          area_min_charge_cents?: number
           base_price_cents?: number
           created_at?: string
           id?: string
@@ -3144,6 +3153,9 @@ export type Database = {
           per_dog_addl_cents?: number
           postal_prefix?: string | null
           price_note?: string | null
+          price_per_acre_cents?: number
+          price_per_sqft_cents?: number
+          pricing_mode?: string
           zip_codes?: string[]
         }
         Relationships: [
