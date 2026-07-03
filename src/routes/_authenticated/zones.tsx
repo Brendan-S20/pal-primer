@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { X, Plus, Trash2, MapPin } from "lucide-react";
 import { toast } from "sonner";
+import { ZoneCoverageMap, type CoverageValue } from "@/components/ZoneCoverageMap";
 
 export const Route = createFileRoute("/_authenticated/zones")({
   component: ZonesPage,
