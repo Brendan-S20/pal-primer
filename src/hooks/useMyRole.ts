@@ -35,7 +35,7 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/franchise": ["owner"],
   "/ai-tools": ["owner", "office_manager"],
   "/imports": ["owner", "office_manager"],
-  "/settings": ["owner", "office_manager"],
+  "/settings": ["owner", "office_manager", "tech"],
   "/neighbors": ["owner", "office_manager", "dispatcher", "tech"],
   "/dna": ["owner", "office_manager", "dispatcher", "tech"],
 };
