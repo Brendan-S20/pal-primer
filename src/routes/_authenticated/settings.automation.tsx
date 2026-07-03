@@ -34,6 +34,11 @@ function AutomationPage() {
   const [pauseAfter, setPauseAfter] = useState<number>(data.dunning_pause_after_failures ?? 3);
   const [seasonalOn, setSeasonalOn] = useState<boolean>(data.seasonal_deepclean_enabled ?? false);
   const [seasonalMonths, setSeasonalMonths] = useState<number[]>(data.seasonal_deepclean_months ?? [3, 10]);
+  const [nOverdue, setNOverdue] = useState<boolean>(data.notify_sms_overdue_invoice ?? true);
+  const [nPayFail, setNPayFail] = useState<boolean>(data.notify_sms_payment_failed ?? true);
+  const [nVisitRem, setNVisitRem] = useState<boolean>(data.notify_sms_visit_reminder ?? true);
+  const [nOnWay, setNOnWay] = useState<boolean>(data.notify_sms_on_my_way ?? true);
+  const [nDone, setNDone] = useState<boolean>(data.notify_sms_visit_completed ?? true);
 
   useEffect(() => {
     setAutoGen(data.auto_generate_visits);
@@ -45,6 +50,11 @@ function AutomationPage() {
     setPauseAfter(data.dunning_pause_after_failures ?? 3);
     setSeasonalOn(data.seasonal_deepclean_enabled ?? false);
     setSeasonalMonths(data.seasonal_deepclean_months ?? [3, 10]);
+    setNOverdue(data.notify_sms_overdue_invoice ?? true);
+    setNPayFail(data.notify_sms_payment_failed ?? true);
+    setNVisitRem(data.notify_sms_visit_reminder ?? true);
+    setNOnWay(data.notify_sms_on_my_way ?? true);
+    setNDone(data.notify_sms_visit_completed ?? true);
   }, [data]);
 
   const mut = useMutation({
