@@ -31,9 +31,11 @@ function arrayBufferToBase64(buf: ArrayBuffer | null) {
 interface Props {
   /** When provided, subscribes the client via portal token (unauthenticated). */
   portalToken?: string;
+  /** Extra classes for the trigger button (e.g. to invert on dark backgrounds). */
+  className?: string;
 }
 
-export function PushToggle({ portalToken }: Props) {
+export function PushToggle({ portalToken, className }: Props) {
   const [supported, setSupported] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
   const [busy, setBusy] = useState(false);
