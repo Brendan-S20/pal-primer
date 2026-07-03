@@ -43,6 +43,7 @@ import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedAiToolsRouteImport } from './routes/_authenticated/ai-tools'
+import { Route as PortalTokenIndexRouteImport } from './routes/portal.$token.index'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings.index'
 import { Route as AuthenticatedMessagesIndexRouteImport } from './routes/_authenticated/messages.index'
 import { Route as AuthenticatedInvoicesIndexRouteImport } from './routes/_authenticated/invoices.index'
@@ -248,6 +249,11 @@ const AuthenticatedAiToolsRoute = AuthenticatedAiToolsRouteImport.update({
   id: '/ai-tools',
   path: '/ai-tools',
   getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const PortalTokenIndexRoute = PortalTokenIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PortalTokenRoute,
 } as any)
 const AuthenticatedSettingsIndexRoute =
   AuthenticatedSettingsIndexRouteImport.update({
@@ -490,7 +496,7 @@ export interface FileRoutesByFullPath {
   '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
-  '/portal/$token': typeof PortalTokenRoute
+  '/portal/$token': typeof PortalTokenRouteWithChildren
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
@@ -517,6 +523,7 @@ export interface FileRoutesByFullPath {
   '/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/messages/': typeof AuthenticatedMessagesIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/portal/$token/': typeof PortalTokenIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
@@ -557,7 +564,6 @@ export interface FileRoutesByTo {
   '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
-  '/portal/$token': typeof PortalTokenRoute
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
@@ -584,6 +590,7 @@ export interface FileRoutesByTo {
   '/invoices': typeof AuthenticatedInvoicesIndexRoute
   '/messages': typeof AuthenticatedMessagesIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
+  '/portal/$token': typeof PortalTokenIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
@@ -630,7 +637,7 @@ export interface FileRoutesById {
   '/_authenticated/weather': typeof AuthenticatedWeatherRoute
   '/_authenticated/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
-  '/portal/$token': typeof PortalTokenRoute
+  '/portal/$token': typeof PortalTokenRouteWithChildren
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
@@ -657,6 +664,7 @@ export interface FileRoutesById {
   '/_authenticated/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/_authenticated/messages/': typeof AuthenticatedMessagesIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/portal/$token/': typeof PortalTokenIndexRoute
   '/_authenticated/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
@@ -730,6 +738,7 @@ export interface FileRouteTypes {
     | '/invoices/'
     | '/messages/'
     | '/settings/'
+    | '/portal/$token/'
     | '/properties/$propertyId/boundary'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/qbo-callback'
@@ -770,7 +779,6 @@ export interface FileRouteTypes {
     | '/weather'
     | '/zones'
     | '/email/unsubscribe'
-    | '/portal/$token'
     | '/signup/$slug'
     | '/signup/success'
     | '/clients/$clientId'
@@ -797,6 +805,7 @@ export interface FileRouteTypes {
     | '/invoices'
     | '/messages'
     | '/settings'
+    | '/portal/$token'
     | '/properties/$propertyId/boundary'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/qbo-callback'
@@ -869,6 +878,7 @@ export interface FileRouteTypes {
     | '/_authenticated/invoices/'
     | '/_authenticated/messages/'
     | '/_authenticated/settings/'
+    | '/portal/$token/'
     | '/_authenticated/properties/$propertyId/boundary'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/qbo-callback'
@@ -896,7 +906,7 @@ export interface RootRouteChildren {
   ServicesRoute: typeof ServicesRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
-  PortalTokenRoute: typeof PortalTokenRoute
+  PortalTokenRoute: typeof PortalTokenRouteWithChildren
   SignupSlugRoute: typeof SignupSlugRoute
   SignupSuccessRoute: typeof SignupSuccessRoute
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
@@ -1152,6 +1162,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/ai-tools'
       preLoaderRoute: typeof AuthenticatedAiToolsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/portal/$token/': {
+      id: '/portal/$token/'
+      path: '/'
+      fullPath: '/portal/$token/'
+      preLoaderRoute: typeof PortalTokenIndexRouteImport
+      parentRoute: typeof PortalTokenRoute
     }
     '/_authenticated/settings/': {
       id: '/_authenticated/settings/'
@@ -1547,6 +1564,18 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
 const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
+interface PortalTokenRouteChildren {
+  PortalTokenIndexRoute: typeof PortalTokenIndexRoute
+}
+
+const PortalTokenRouteChildren: PortalTokenRouteChildren = {
+  PortalTokenIndexRoute: PortalTokenIndexRoute,
+}
+
+const PortalTokenRouteWithChildren = PortalTokenRoute._addFileChildren(
+  PortalTokenRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
@@ -1560,7 +1589,7 @@ const rootRouteChildren: RootRouteChildren = {
   ServicesRoute: ServicesRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
-  PortalTokenRoute: PortalTokenRoute,
+  PortalTokenRoute: PortalTokenRouteWithChildren,
   SignupSlugRoute: SignupSlugRoute,
   SignupSuccessRoute: SignupSuccessRoute,
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
