@@ -140,13 +140,14 @@ function NewClientWizard() {
       postalCode: postalCode.trim(),
       dogCount: Math.max(1, validDogs.length),
       frequency: frequency === "one_time" ? "weekly" : frequency,
+      boundaryAreaSqm: boundaryAreaSqm ?? undefined,
     }),
-    [postalCode, validDogs.length, frequency],
+    [postalCode, validDogs.length, frequency, boundaryAreaSqm],
   );
 
   const quoteQ = useQuery({
     enabled:
-      step === 3 &&
+      step === 4 &&
       !skipPlan &&
       accountType === "residential" &&
       quoteKey.postalCode.length >= 3 &&
