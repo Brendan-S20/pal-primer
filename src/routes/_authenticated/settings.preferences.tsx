@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { setLanguage, currentLanguage } from "@/lib/i18n";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -8,7 +10,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useMyRole } from "@/hooks/useMyRole";
+import { reseedDemoData } from "@/lib/demo.functions";
 
 export const Route = createFileRoute("/_authenticated/settings/preferences")({
   component: PreferencesPage,
@@ -119,6 +124,50 @@ function PreferencesPage() {
           </div>
         </CardContent>
       </Card>
+
+      <DemoDataCard />
     </div>
   );
 }
+
+function DemoDataCard() {
+  const { role } = useMyRole();
+  const reseedFn = useServerFn(reseedDemoData);
+  const mut = useMutation({
+    mutationFn: () => reseedFn({ data: {} }),
+    onSuccess: (r) => {
+      toast.success(`Demo reset — ${r.clients} clients, ${r.visits_created} visits, ${r.invoices_created} invoices`);
+      setTimeout(() => window.location.reload(), 1500);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  if (role !== "owner") return null;
+
+  return (
+    <Card className="border-destructive/30">
+      <CardHeader>
+        <CardTitle>Demo data</CardTitle>
+        <CardDescription>
+          Wipes your organization's demo rows and rebuilds a rich fixture:
+          6 clients (residential + HOA), zones, sketched yards, subscriptions,
+          8 weeks of visits (including weather reschedules and skips), invoices in
+          multiple states, promo codes, a gift card, referrals, and QC tickets.
+          Safe to run repeatedly.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button
+          variant="destructive"
+          disabled={mut.isPending}
+          onClick={() => {
+            if (confirm("Wipe and reseed demo data for this organization?")) mut.mutate();
+          }}
+        >
+          {mut.isPending ? "Reseeding…" : "Reseed demo data"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+

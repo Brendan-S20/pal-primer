@@ -3660,6 +3660,7 @@ export type Database = {
         Args: { _new_date: string; _note?: string; _visit_id: string }
         Returns: undefined
       }
+      seed_demo_org: { Args: { _org_id: string }; Returns: Json }
       set_staff_active: {
         Args: { _active: boolean; _staff_id: string }
         Returns: undefined
