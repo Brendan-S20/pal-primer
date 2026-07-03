@@ -124,6 +124,9 @@ export const portalCreateCheckout = createServerFn({ method: "POST" })
       success_url: `${data.returnUrl}?paid=1`,
       cancel_url: data.returnUrl,
       client_reference_id: invoice.id,
+      // Cards + ACH (us_bank_account requires enabling ACH in the connected Stripe
+      // account; if disabled, Stripe silently falls back to cards only).
+      payment_method_types: ["card", "us_bank_account"],
       line_items: [{
         quantity: 1,
         price_data: {
