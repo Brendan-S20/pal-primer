@@ -43,3 +43,55 @@ export const getMyOrg = createServerFn({ method: "GET" })
     return { organization: { ...org, role: role.role as string } };
   });
 
+
+const brandingSchema = z.object({
+  brandColor: z.string().regex(/^#[0-9a-fA-F]{3,8}$/).nullable().optional(),
+  logoUrl: z.string().url().max(500).nullable().optional(),
+  contactPhone: z.string().max(30).nullable().optional(),
+  contactEmail: z.string().email().max(255).nullable().optional(),
+  portalRescheduleCutoffHours: z.number().int().min(0).max(168).optional(),
+  portalAllowSelfReschedule: z.boolean().optional(),
+  portalAllowVacationHold: z.boolean().optional(),
+  portalAllowFrequencyChange: z.boolean().optional(),
+  portalAutoApplyChanges: z.boolean().optional(),
+});
+
+export const getOrgBranding = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data: role } = await supabase.from("user_roles")
+      .select("organization_id").eq("user_id", userId).maybeSingle();
+    if (!role) throw new Error("No org");
+    const { data, error } = await supabase.from("organizations")
+      .select("id, name, brand_color, logo_url, contact_phone, contact_email, portal_reschedule_cutoff_hours, portal_allow_self_reschedule, portal_allow_vacation_hold, portal_allow_frequency_change, portal_auto_apply_changes")
+      .eq("id", role.organization_id).single();
+    if (error) throw new Error(error.message);
+    return data;
+  });
+
+export const updateOrgBranding = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => brandingSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: role } = await supabase.from("user_roles")
+      .select("organization_id, role").eq("user_id", userId).maybeSingle();
+    if (!role) throw new Error("No org");
+    if (role.role !== "owner" && role.role !== "office_manager")
+      throw new Error("Not permitted");
+    const patch: Record<string, unknown> = {};
+    if (data.brandColor !== undefined) patch.brand_color = data.brandColor;
+    if (data.logoUrl !== undefined) patch.logo_url = data.logoUrl;
+    if (data.contactPhone !== undefined) patch.contact_phone = data.contactPhone;
+    if (data.contactEmail !== undefined) patch.contact_email = data.contactEmail;
+    if (data.portalRescheduleCutoffHours !== undefined) patch.portal_reschedule_cutoff_hours = data.portalRescheduleCutoffHours;
+    if (data.portalAllowSelfReschedule !== undefined) patch.portal_allow_self_reschedule = data.portalAllowSelfReschedule;
+    if (data.portalAllowVacationHold !== undefined) patch.portal_allow_vacation_hold = data.portalAllowVacationHold;
+    if (data.portalAllowFrequencyChange !== undefined) patch.portal_allow_frequency_change = data.portalAllowFrequencyChange;
+    if (data.portalAutoApplyChanges !== undefined) patch.portal_auto_apply_changes = data.portalAutoApplyChanges;
+    const { error } = await supabase.from("organizations")
+      .update(patch).eq("id", role.organization_id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
