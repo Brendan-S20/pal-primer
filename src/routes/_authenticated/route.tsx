@@ -28,9 +28,34 @@ function openPalette() {
 
 function AppShell() {
   // Native Capacitor bootstrap — matches brand status bar; no-ops on web.
+  // Also registers APNs/FCM device tokens with our backend on native platforms.
   useEffect(() => {
-    import("@/lib/native").then((m) => m.initStatusBar()).catch(() => {});
+    let cancelled = false;
+    (async () => {
+      try {
+        const native = await import("@/lib/native");
+        await native.initStatusBar();
+        if (!native.isNative()) return;
+        const { subscribeStaffNativePush } = await import("@/lib/push.functions");
+        await native.registerPushNotifications(async (token) => {
+          if (cancelled) return;
+          try {
+            await subscribeStaffNativePush({
+              data: {
+                token,
+                platform: native.platform() === "ios" ? "ios" : "android",
+                userAgent: navigator.userAgent,
+              },
+            });
+          } catch (e) {
+            console.warn("native push register failed", e);
+          }
+        });
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
   }, []);
+
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
