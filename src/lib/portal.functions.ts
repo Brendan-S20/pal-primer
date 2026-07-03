@@ -124,6 +124,9 @@ export const portalCreateCheckout = createServerFn({ method: "POST" })
       success_url: `${data.returnUrl}?paid=1`,
       cancel_url: data.returnUrl,
       client_reference_id: invoice.id,
+      // Cards + ACH (us_bank_account requires enabling ACH in the connected Stripe
+      // account; if disabled, Stripe silently falls back to cards only).
+      payment_method_types: ["card", "us_bank_account"],
       line_items: [{
         quantity: 1,
         price_data: {
@@ -466,3 +469,63 @@ export const portalGetReferral = createServerFn({ method: "GET" })
 
 
 
+
+// ── Portal: stations, requests, vacation hold, promo redemption ─────────────
+
+export const portalListStations = createServerFn({ method: "GET" })
+  .inputValidator((d) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    const sb = anonClient();
+    const { data: rows, error } = await sb.rpc("portal_list_stations" as any, { _token: data.token });
+    if (error) throw new Error(error.message);
+    return (rows ?? []) as Array<{
+      station_id: string; label: string; location_description: string | null;
+      liner_size: string | null; capacity_liners: number | null;
+      last_serviced_on: string | null;
+    }>;
+  });
+
+export const portalListMyRequests = createServerFn({ method: "GET" })
+  .inputValidator((d) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    const sb = anonClient();
+    const { data: rows, error } = await sb.rpc("portal_list_my_requests" as any, { _token: data.token });
+    if (error) throw new Error(error.message);
+    return (rows ?? []) as Array<{
+      ticket_id: string; visit_id: string | null; visit_date: string | null;
+      category: string; message: string | null;
+      status: string; resolution_note: string | null;
+      resolved_at: string | null; created_at: string;
+    }>;
+  });
+
+export const portalRequestVacationHold = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z.object({
+      token: z.string().uuid(),
+      startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      reason: z.string().max(500).optional().default(""),
+    }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const sb = anonClient();
+    const { data: n, error } = await sb.rpc("portal_request_vacation_hold" as any, {
+      _token: data.token, _start: data.startDate, _end: data.endDate, _reason: data.reason,
+    });
+    if (error) throw new Error(error.message);
+    return { skippedCount: (n as number) ?? 0 };
+  });
+
+export const portalRedeemPromo = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z.object({ token: z.string().uuid(), code: z.string().min(2).max(60) }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const sb = anonClient();
+    const { data: amt, error } = await sb.rpc("portal_redeem_promo" as any, {
+      _token: data.token, _code: data.code,
+    });
+    if (error) throw new Error(error.message);
+    return { creditCents: (amt as number) ?? 0 };
+  });
