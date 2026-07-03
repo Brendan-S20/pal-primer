@@ -6,7 +6,7 @@ import { getClient } from "@/lib/clients.functions";
 import { createProperty, listPropertiesForClient } from "@/lib/properties.functions";
 import { createSubscription, listSubscriptionsForClient } from "@/lib/subscriptions.functions";
 import { listZones } from "@/lib/zones.functions";
-import { getClientCredit, generatePrepaidInvoice } from "@/lib/invoices.functions";
+import { getClientCredit, generatePrepaidInvoice, getClientBillingSummary, generateInvoiceForClient, createCheckoutForInvoice, voidInvoice } from "@/lib/invoices.functions";
 import { sendReviewRequest, applyReferralCode } from "@/lib/reviews.functions";
 import {
   listAddonServices,
@@ -547,6 +547,8 @@ function ClientDetail() {
               <p className="mt-3 text-sm text-muted-foreground">No credit activity yet.</p>
             )}
           </section>
+
+          <BillingPanel clientId={clientId} />
 
           <AddonsPanel clientId={clientId} />
         </TabsContent>
@@ -1098,5 +1100,174 @@ function PropertyWindowRow({ property }: { property: any }) {
       />
       <span className="text-muted-foreground">min</span>
     </div>
+  );
+}
+
+function BillingPanel({ clientId }: { clientId: string }) {
+  const qc = useQueryClient();
+  const summaryFn = useServerFn(getClientBillingSummary);
+  const genFn = useServerFn(generateInvoiceForClient);
+  const checkoutFn = useServerFn(createCheckoutForInvoice);
+  const voidFn = useServerFn(voidInvoice);
+
+  const { data } = useQuery({
+    queryKey: ["billing-summary", clientId],
+    queryFn: () => summaryFn({ data: { clientId } }),
+  });
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["billing-summary", clientId] });
+
+  const genMut = useMutation({
+    mutationFn: () => {
+      const through = new Date().toISOString().slice(0, 10);
+      return genFn({ data: { clientId, through } });
+    },
+    onSuccess: (r: any) => {
+      if (r?.id) {
+        toast.success("Invoice generated");
+        invalidate();
+      } else {
+        toast.info("Nothing to invoice yet");
+      }
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const linkMut = useMutation({
+    mutationFn: (id: string) =>
+      checkoutFn({ data: { id, returnUrl: window.location.href } }),
+    onSuccess: (r: { url: string }) => {
+      navigator.clipboard.writeText(r.url).then(
+        () => toast.success("Pay link copied to clipboard"),
+        () => toast.error("Copy failed — opening in new tab"),
+      );
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const voidMut = useMutation({
+    mutationFn: (id: string) => voidFn({ data: { id } }),
+    onSuccess: () => { toast.success("Invoice voided"); invalidate(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const invoices = data?.invoices ?? [];
+  const payments = data?.payments ?? [];
+  const c = data?.client;
+
+  return (
+    <>
+      <section className="rounded-lg border bg-card p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-medium">Payment method</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Managed by the client from their portal.
+            </p>
+          </div>
+          <div className="text-sm">
+            {c?.default_payment_method_id ? (
+              <div className="text-right">
+                <div className="capitalize">
+                  {c.default_card_brand ?? "Card"} ····{c.default_card_last4 ?? "····"}
+                </div>
+                <Badge variant={c.autopay_enabled ? "default" : "outline"} className="mt-1">
+                  Autopay {c.autopay_enabled ? "on" : "off"}
+                </Badge>
+              </div>
+            ) : (
+              <span className="text-muted-foreground">No card on file</span>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-lg border bg-card p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-medium">Invoices</h2>
+            {data && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {data.openCount} open · ${(data.openTotalCents / 100).toFixed(2)} outstanding
+              </p>
+            )}
+          </div>
+          <Button size="sm" variant="outline" disabled={genMut.isPending} onClick={() => genMut.mutate()}>
+            {genMut.isPending ? "Generating…" : "Generate invoice from unbilled visits"}
+          </Button>
+        </div>
+
+        {invoices.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">No invoices yet.</p>
+        ) : (
+          <ul className="mt-3 divide-y text-sm">
+            {invoices.map((inv: any) => (
+              <li key={inv.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      to="/invoices/$invoiceId"
+                      params={{ invoiceId: inv.id }}
+                      className="font-mono text-xs text-primary hover:underline"
+                    >
+                      #{inv.id.slice(0, 8)}
+                    </Link>
+                    <Badge variant={inv.status === "paid" ? "default" : inv.status === "void" ? "outline" : "secondary"}>
+                      {inv.status}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">{inv.kind}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {inv.period_start ? `${inv.period_start} → ${inv.period_end}` : new Date(inv.created_at).toLocaleDateString()}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">${(inv.total_cents / 100).toFixed(2)}</span>
+                  {inv.status === "open" && (
+                    <>
+                      <Button size="sm" variant="outline" disabled={linkMut.isPending}
+                        onClick={() => linkMut.mutate(inv.id)}>
+                        Copy pay link
+                      </Button>
+                      <Button size="sm" variant="ghost" disabled={voidMut.isPending}
+                        onClick={() => { if (confirm("Void this invoice?")) voidMut.mutate(inv.id); }}>
+                        Void
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="rounded-lg border bg-card p-5">
+        <h2 className="text-sm font-medium">Payment history</h2>
+        {payments.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">No payments recorded.</p>
+        ) : (
+          <ul className="mt-3 divide-y text-sm">
+            {payments.map((p: any) => (
+              <li key={p.id} className="flex items-center justify-between py-2">
+                <span>
+                  <span className="text-muted-foreground">
+                    {new Date(p.paid_at ?? p.created_at).toLocaleDateString()}
+                  </span>
+                  {p.invoice_id && (
+                    <Link to="/invoices/$invoiceId" params={{ invoiceId: p.invoice_id }} className="ml-2 font-mono text-xs text-primary hover:underline">
+                      #{p.invoice_id.slice(0, 8)}
+                    </Link>
+                  )}
+                  <Badge variant="outline" className="ml-2 text-[10px]">{p.status}</Badge>
+                </span>
+                <span className="font-medium">${(p.amount_cents / 100).toFixed(2)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </>
   );
 }
