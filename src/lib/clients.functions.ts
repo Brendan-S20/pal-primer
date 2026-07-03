@@ -345,6 +345,8 @@ export const onboardClient = createServerFn({ method: "POST" })
         hazard_notes: data.hazardNotes || null,
         latitude,
         longitude,
+        boundary: (data.boundary as any) ?? null,
+        boundary_area_sqm: data.boundaryAreaSqm ?? null,
       })
       .select("id")
       .single();
