@@ -56,6 +56,7 @@ import { Route as AuthenticatedSettingsReviewsRouteImport } from './routes/_auth
 import { Route as AuthenticatedSettingsPromotionsRouteImport } from './routes/_authenticated/settings.promotions'
 import { Route as AuthenticatedSettingsPreferencesRouteImport } from './routes/_authenticated/settings.preferences'
 import { Route as AuthenticatedSettingsEmailsRouteImport } from './routes/_authenticated/settings.emails'
+import { Route as AuthenticatedSettingsDeepCleanRouteImport } from './routes/_authenticated/settings.deep-clean'
 import { Route as AuthenticatedSettingsBlackoutsRouteImport } from './routes/_authenticated/settings.blackouts'
 import { Route as AuthenticatedSettingsAutomationRouteImport } from './routes/_authenticated/settings.automation'
 import { Route as AuthenticatedSettingsAiReceptionistRouteImport } from './routes/_authenticated/settings.ai-receptionist'
@@ -325,6 +326,12 @@ const AuthenticatedSettingsEmailsRoute =
     path: '/emails',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedSettingsDeepCleanRoute =
+  AuthenticatedSettingsDeepCleanRouteImport.update({
+    id: '/deep-clean',
+    path: '/deep-clean',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedSettingsBlackoutsRoute =
   AuthenticatedSettingsBlackoutsRouteImport.update({
     id: '/blackouts',
@@ -496,6 +503,7 @@ export interface FileRoutesByFullPath {
   '/settings/ai-receptionist': typeof AuthenticatedSettingsAiReceptionistRoute
   '/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
+  '/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
   '/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute
   '/settings/promotions': typeof AuthenticatedSettingsPromotionsRoute
@@ -562,6 +570,7 @@ export interface FileRoutesByTo {
   '/settings/ai-receptionist': typeof AuthenticatedSettingsAiReceptionistRoute
   '/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
+  '/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
   '/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute
   '/settings/promotions': typeof AuthenticatedSettingsPromotionsRoute
@@ -634,6 +643,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/ai-receptionist': typeof AuthenticatedSettingsAiReceptionistRoute
   '/_authenticated/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/_authenticated/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
+  '/_authenticated/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/_authenticated/settings/emails': typeof AuthenticatedSettingsEmailsRoute
   '/_authenticated/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute
   '/_authenticated/settings/promotions': typeof AuthenticatedSettingsPromotionsRoute
@@ -706,6 +716,7 @@ export interface FileRouteTypes {
     | '/settings/ai-receptionist'
     | '/settings/automation'
     | '/settings/blackouts'
+    | '/settings/deep-clean'
     | '/settings/emails'
     | '/settings/preferences'
     | '/settings/promotions'
@@ -772,6 +783,7 @@ export interface FileRouteTypes {
     | '/settings/ai-receptionist'
     | '/settings/automation'
     | '/settings/blackouts'
+    | '/settings/deep-clean'
     | '/settings/emails'
     | '/settings/preferences'
     | '/settings/promotions'
@@ -843,6 +855,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/ai-receptionist'
     | '/_authenticated/settings/automation'
     | '/_authenticated/settings/blackouts'
+    | '/_authenticated/settings/deep-clean'
     | '/_authenticated/settings/emails'
     | '/_authenticated/settings/preferences'
     | '/_authenticated/settings/promotions'
@@ -1231,6 +1244,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsEmailsRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/settings/deep-clean': {
+      id: '/_authenticated/settings/deep-clean'
+      path: '/deep-clean'
+      fullPath: '/settings/deep-clean'
+      preLoaderRoute: typeof AuthenticatedSettingsDeepCleanRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/settings/blackouts': {
       id: '/_authenticated/settings/blackouts'
       path: '/blackouts'
@@ -1439,6 +1459,7 @@ interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsAiReceptionistRoute: typeof AuthenticatedSettingsAiReceptionistRoute
   AuthenticatedSettingsAutomationRoute: typeof AuthenticatedSettingsAutomationRoute
   AuthenticatedSettingsBlackoutsRoute: typeof AuthenticatedSettingsBlackoutsRoute
+  AuthenticatedSettingsDeepCleanRoute: typeof AuthenticatedSettingsDeepCleanRoute
   AuthenticatedSettingsEmailsRoute: typeof AuthenticatedSettingsEmailsRoute
   AuthenticatedSettingsPreferencesRoute: typeof AuthenticatedSettingsPreferencesRoute
   AuthenticatedSettingsPromotionsRoute: typeof AuthenticatedSettingsPromotionsRoute
@@ -1456,6 +1477,7 @@ const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
     AuthenticatedSettingsAiReceptionistRoute,
   AuthenticatedSettingsAutomationRoute: AuthenticatedSettingsAutomationRoute,
   AuthenticatedSettingsBlackoutsRoute: AuthenticatedSettingsBlackoutsRoute,
+  AuthenticatedSettingsDeepCleanRoute: AuthenticatedSettingsDeepCleanRoute,
   AuthenticatedSettingsEmailsRoute: AuthenticatedSettingsEmailsRoute,
   AuthenticatedSettingsPreferencesRoute: AuthenticatedSettingsPreferencesRoute,
   AuthenticatedSettingsPromotionsRoute: AuthenticatedSettingsPromotionsRoute,
