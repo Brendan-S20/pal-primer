@@ -351,6 +351,18 @@ function ZoneCard({ zone }: { zone: any }) {
                 First cleanup: {money(zone.initial_cleanup_cents)}
               </div>
             )}
+            {zone.pricing_mode === "per_sqft" && (
+              <div className="mt-1 text-xs text-primary">
+                {Number(zone.price_per_sqft_cents ?? 0).toFixed(2)}¢/sq ft
+                {zone.area_min_charge_cents > 0 && ` · min ${money(zone.area_min_charge_cents)}`}
+              </div>
+            )}
+            {zone.pricing_mode === "per_acre" && (
+              <div className="mt-1 text-xs text-primary">
+                {money(zone.price_per_acre_cents)}/acre
+                {zone.area_min_charge_cents > 0 && ` · min ${money(zone.area_min_charge_cents)}`}
+              </div>
+            )}
           </div>
         </div>
         <div className="mt-3 flex justify-end gap-2 border-t pt-3">
