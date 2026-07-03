@@ -18,10 +18,6 @@ export const Route = createFileRoute("/_authenticated/clients/new")({
   component: NewClientWizard,
 });
 
-export const Route = createFileRoute("/_authenticated/clients/new")({
-  component: NewClientWizard,
-});
-
 type Dog = {
   name: string;
   breed: string;
