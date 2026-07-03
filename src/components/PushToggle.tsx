@@ -138,11 +138,11 @@ export function PushToggle({ portalToken, className }: Props) {
   }
 
   return subscribed ? (
-    <Button size="sm" variant="ghost" onClick={disable} disabled={busy} className="min-h-[36px]">
+    <Button size="sm" variant="ghost" onClick={disable} disabled={busy} className={"min-h-[36px] " + (className ?? "")}>
       <Bell className="h-4 w-4 mr-1" /> On
     </Button>
   ) : (
-    <Button size="sm" variant="outline" onClick={enable} disabled={busy} className="min-h-[36px]">
+    <Button size="sm" variant="outline" onClick={enable} disabled={busy} className={"min-h-[36px] " + (className ?? "")}>
       <BellOff className="h-4 w-4 mr-1" /> Enable notifications
     </Button>
   );
