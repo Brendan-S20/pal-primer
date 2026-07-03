@@ -29,7 +29,7 @@ export const listZones = createServerFn({ method: "GET" })
     const { data, error } = await supabase
       .from("zones")
       .select(
-        "id, name, postal_prefix, zip_codes, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents",
+        "id, name, postal_prefix, zip_codes, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents",
       )
       .eq("organization_id", orgId)
       .order("name");
@@ -48,6 +48,10 @@ const zoneWriteSchema = z.object({
   basePriceCents: z.number().int().min(0).optional(),
   perDogAddlCents: z.number().int().min(0).optional(),
   initialCleanupCents: z.number().int().min(0).optional(),
+  pricingMode: z.enum(["flat", "per_sqft", "per_acre"]).optional(),
+  pricePerSqftCents: z.number().min(0).max(10000).optional(),
+  pricePerAcreCents: z.number().int().min(0).optional(),
+  areaMinChargeCents: z.number().int().min(0).optional(),
 });
 
 export const createZone = createServerFn({ method: "POST" })
