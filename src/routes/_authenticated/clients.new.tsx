@@ -34,7 +34,7 @@ const FREQS = [
   { value: "one_time", label: "One-time" },
 ] as const;
 
-const STEPS = ["Contact", "Property", "Dogs", "Plan"] as const;
+const STEPS = ["Contact", "Property", "Yard", "Dogs", "Plan"] as const;
 
 function money(cents: number, currency = "USD") {
   return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(
