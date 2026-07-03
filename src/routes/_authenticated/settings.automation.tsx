@@ -229,6 +229,28 @@ function AutomationPage() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader><CardTitle>SMS notifications</CardTitle></CardHeader>
+        <CardContent className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Turn individual automated texts on or off. Requires an SMS sender number and that the client hasn't opted out.
+          </p>
+          {[
+            { label: "Overdue invoice reminder", val: nOverdue, set: setNOverdue },
+            { label: "Card payment failed alert", val: nPayFail, set: setNPayFail },
+            { label: "Day-before visit reminder", val: nVisitRem, set: setNVisitRem },
+            { label: '"On my way" text', val: nOnWay, set: setNOnWay },
+            { label: "Visit completed confirmation", val: nDone, set: setNDone },
+          ].map((row) => (
+            <label key={row.label} className="flex items-center justify-between gap-2 rounded border px-3 py-2 text-sm">
+              <span>{row.label}</span>
+              <input type="checkbox" checked={row.val} onChange={(e) => row.set(e.target.checked)} />
+            </label>
+          ))}
+        </CardContent>
+      </Card>
+
+
       <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
         {mut.isPending ? "Saving…" : "Save automation settings"}
       </Button>
