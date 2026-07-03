@@ -397,7 +397,7 @@ function NewClientWizard() {
         )}
 
         {/* STEP 2 — Dogs */}
-        {step === 2 && (
+        {step === 3 && (
           <div className="space-y-4">
             {accountType === "commercial" && (
               <p className="text-sm text-muted-foreground">
