@@ -78,7 +78,6 @@ import { Route as ApiPublicHooksTwilioRouteImport } from './routes/api/public/ho
 import { Route as ApiPublicHooksStripeRouteImport } from './routes/api/public/hooks/stripe'
 import { Route as ApiPublicHooksQboCallbackRouteImport } from './routes/api/public/hooks/qbo-callback'
 import { Route as ApiPublicHooksNightlyRouteImport } from './routes/api/public/hooks/nightly'
-import { Route as ApiPublicHooksBootstrapAdminRouteImport } from './routes/api/public/hooks/bootstrap-admin'
 import { Route as AuthenticatedPropertiesPropertyIdBoundaryRouteImport } from './routes/_authenticated/properties.$propertyId.boundary'
 
 const UnsubscribeRoute = UnsubscribeRouteImport.update({
@@ -453,12 +452,6 @@ const ApiPublicHooksNightlyRoute = ApiPublicHooksNightlyRouteImport.update({
   path: '/api/public/hooks/nightly',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicHooksBootstrapAdminRoute =
-  ApiPublicHooksBootstrapAdminRouteImport.update({
-    id: '/api/public/hooks/bootstrap-admin',
-    path: '/api/public/hooks/bootstrap-admin',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const AuthenticatedPropertiesPropertyIdBoundaryRoute =
   AuthenticatedPropertiesPropertyIdBoundaryRouteImport.update({
     id: '/properties/$propertyId/boundary',
@@ -525,7 +518,6 @@ export interface FileRoutesByFullPath {
   '/messages/': typeof AuthenticatedMessagesIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
-  '/api/public/hooks/bootstrap-admin': typeof ApiPublicHooksBootstrapAdminRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
@@ -593,7 +585,6 @@ export interface FileRoutesByTo {
   '/messages': typeof AuthenticatedMessagesIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
-  '/api/public/hooks/bootstrap-admin': typeof ApiPublicHooksBootstrapAdminRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
@@ -667,7 +658,6 @@ export interface FileRoutesById {
   '/_authenticated/messages/': typeof AuthenticatedMessagesIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
   '/_authenticated/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
-  '/api/public/hooks/bootstrap-admin': typeof ApiPublicHooksBootstrapAdminRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
@@ -741,7 +731,6 @@ export interface FileRouteTypes {
     | '/messages/'
     | '/settings/'
     | '/properties/$propertyId/boundary'
-    | '/api/public/hooks/bootstrap-admin'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
@@ -809,7 +798,6 @@ export interface FileRouteTypes {
     | '/messages'
     | '/settings'
     | '/properties/$propertyId/boundary'
-    | '/api/public/hooks/bootstrap-admin'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
@@ -882,7 +870,6 @@ export interface FileRouteTypes {
     | '/_authenticated/messages/'
     | '/_authenticated/settings/'
     | '/_authenticated/properties/$propertyId/boundary'
-    | '/api/public/hooks/bootstrap-admin'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
@@ -913,7 +900,6 @@ export interface RootRouteChildren {
   SignupSlugRoute: typeof SignupSlugRoute
   SignupSuccessRoute: typeof SignupSuccessRoute
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
-  ApiPublicHooksBootstrapAdminRoute: typeof ApiPublicHooksBootstrapAdminRoute
   ApiPublicHooksNightlyRoute: typeof ApiPublicHooksNightlyRoute
   ApiPublicHooksQboCallbackRoute: typeof ApiPublicHooksQboCallbackRoute
   ApiPublicHooksStripeRoute: typeof ApiPublicHooksStripeRoute
@@ -1412,13 +1398,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksNightlyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/hooks/bootstrap-admin': {
-      id: '/api/public/hooks/bootstrap-admin'
-      path: '/api/public/hooks/bootstrap-admin'
-      fullPath: '/api/public/hooks/bootstrap-admin'
-      preLoaderRoute: typeof ApiPublicHooksBootstrapAdminRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_authenticated/properties/$propertyId/boundary': {
       id: '/_authenticated/properties/$propertyId/boundary'
       path: '/properties/$propertyId/boundary'
@@ -1585,7 +1564,6 @@ const rootRouteChildren: RootRouteChildren = {
   SignupSlugRoute: SignupSlugRoute,
   SignupSuccessRoute: SignupSuccessRoute,
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
-  ApiPublicHooksBootstrapAdminRoute: ApiPublicHooksBootstrapAdminRoute,
   ApiPublicHooksNightlyRoute: ApiPublicHooksNightlyRoute,
   ApiPublicHooksQboCallbackRoute: ApiPublicHooksQboCallbackRoute,
   ApiPublicHooksStripeRoute: ApiPublicHooksStripeRoute,
