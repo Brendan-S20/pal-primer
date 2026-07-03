@@ -255,6 +255,7 @@ export type Database = {
       addon_services: {
         Row: {
           active: boolean
+          audience: Database["public"]["Enums"]["addon_audience"]
           code: string
           created_at: string
           default_frequency:
@@ -271,6 +272,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          audience?: Database["public"]["Enums"]["addon_audience"]
           code: string
           created_at?: string
           default_frequency?:
@@ -287,6 +289,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          audience?: Database["public"]["Enums"]["addon_audience"]
           code?: string
           created_at?: string
           default_frequency?:
@@ -1761,6 +1764,9 @@ export type Database = {
           auto_invoice_enabled: boolean
           avg_speed_kmh: number
           billing_tier: string | null
+          brand_color: string | null
+          contact_email: string | null
+          contact_phone: string | null
           created_at: string
           currency: string
           current_period_end: string | null
@@ -1770,6 +1776,7 @@ export type Database = {
           google_review_url: string | null
           id: string
           is_franchise_parent: boolean
+          logo_url: string | null
           name: string
           notify_email_invoice_sent: boolean
           notify_email_overdue: boolean
@@ -1787,6 +1794,11 @@ export type Database = {
           overdue_reminders_enabled: boolean
           parent_organization_id: string | null
           plan_status: Database["public"]["Enums"]["org_plan_status"]
+          portal_allow_frequency_change: boolean
+          portal_allow_self_reschedule: boolean
+          portal_allow_vacation_hold: boolean
+          portal_auto_apply_changes: boolean
+          portal_reschedule_cutoff_hours: number
           public_signup_enabled: boolean
           referral_reward_cents: number
           review_ask_enabled: boolean
@@ -1815,6 +1827,9 @@ export type Database = {
           auto_invoice_enabled?: boolean
           avg_speed_kmh?: number
           billing_tier?: string | null
+          brand_color?: string | null
+          contact_email?: string | null
+          contact_phone?: string | null
           created_at?: string
           currency?: string
           current_period_end?: string | null
@@ -1824,6 +1839,7 @@ export type Database = {
           google_review_url?: string | null
           id?: string
           is_franchise_parent?: boolean
+          logo_url?: string | null
           name: string
           notify_email_invoice_sent?: boolean
           notify_email_overdue?: boolean
@@ -1841,6 +1857,11 @@ export type Database = {
           overdue_reminders_enabled?: boolean
           parent_organization_id?: string | null
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
+          portal_allow_frequency_change?: boolean
+          portal_allow_self_reschedule?: boolean
+          portal_allow_vacation_hold?: boolean
+          portal_auto_apply_changes?: boolean
+          portal_reschedule_cutoff_hours?: number
           public_signup_enabled?: boolean
           referral_reward_cents?: number
           review_ask_enabled?: boolean
@@ -1869,6 +1890,9 @@ export type Database = {
           auto_invoice_enabled?: boolean
           avg_speed_kmh?: number
           billing_tier?: string | null
+          brand_color?: string | null
+          contact_email?: string | null
+          contact_phone?: string | null
           created_at?: string
           currency?: string
           current_period_end?: string | null
@@ -1878,6 +1902,7 @@ export type Database = {
           google_review_url?: string | null
           id?: string
           is_franchise_parent?: boolean
+          logo_url?: string | null
           name?: string
           notify_email_invoice_sent?: boolean
           notify_email_overdue?: boolean
@@ -1895,6 +1920,11 @@ export type Database = {
           overdue_reminders_enabled?: boolean
           parent_organization_id?: string | null
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
+          portal_allow_frequency_change?: boolean
+          portal_allow_self_reschedule?: boolean
+          portal_allow_vacation_hold?: boolean
+          portal_auto_apply_changes?: boolean
+          portal_reschedule_cutoff_hours?: number
           public_signup_enabled?: boolean
           referral_reward_cents?: number
           review_ask_enabled?: boolean
@@ -3455,15 +3485,35 @@ export type Database = {
         Args: { _token: string }
         Returns: {
           account_type: string
+          allow_frequency_change: boolean
+          allow_self_reschedule: boolean
+          allow_vacation_hold: boolean
+          auto_apply_changes: boolean
           autopay_enabled: boolean
+          brand_color: string
           card_brand: string
           card_last4: string
           client_id: string
+          contact_email: string
+          contact_phone: string
           credit_balance_cents: number
           display_name: string
           has_saved_card: boolean
+          logo_url: string
+          next_visit_eta_end: string
+          next_visit_eta_start: string
+          next_visit_id: string
+          next_visit_on: string
+          next_visit_tech_name: string
           org_name: string
           organization_id: string
+          primary_billing_cadence: string
+          primary_dog_count: number
+          primary_frequency: string
+          primary_price_cents: number
+          primary_unit_count: number
+          reschedule_cutoff_hours: number
+          station_count: number
         }[]
       }
       portal_get_referral: {
@@ -3520,6 +3570,20 @@ export type Database = {
           total_cents: number
         }[]
       }
+      portal_list_my_requests: {
+        Args: { _token: string }
+        Returns: {
+          category: string
+          created_at: string
+          message: string
+          resolution_note: string
+          resolved_at: string
+          status: string
+          ticket_id: string
+          visit_date: string
+          visit_id: string
+        }[]
+      }
       portal_list_prepaid_subscriptions: {
         Args: { _token: string }
         Returns: {
@@ -3532,22 +3596,45 @@ export type Database = {
       portal_list_recent_visits: {
         Args: { _token: string }
         Returns: {
+          completed_at: string
           photo_paths: string[]
           scheduled_on: string
+          skip_reason: string
           status: Database["public"]["Enums"]["visit_status"]
+          tech_name: string
           visit_id: string
+        }[]
+      }
+      portal_list_stations: {
+        Args: { _token: string }
+        Returns: {
+          capacity_liners: number
+          label: string
+          last_serviced_on: string
+          liner_size: string
+          location_description: string
+          station_id: string
         }[]
       }
       portal_list_upcoming_visits: {
         Args: { _token: string }
         Returns: {
           city: string
+          eta_end: string
+          eta_start: string
           postal_code: string
           scheduled_on: string
           status: Database["public"]["Enums"]["visit_status"]
           street: string
+          tech_name: string
           visit_id: string
+          weather_flagged: boolean
+          weather_note: string
         }[]
+      }
+      portal_redeem_promo: {
+        Args: { _code: string; _token: string }
+        Returns: number
       }
       portal_report_concern: {
         Args: {
@@ -3561,6 +3648,10 @@ export type Database = {
       portal_request_skip: {
         Args: { _reason: string; _token: string; _visit_id: string }
         Returns: undefined
+      }
+      portal_request_vacation_hold: {
+        Args: { _end: string; _reason: string; _start: string; _token: string }
+        Returns: number
       }
       portal_reschedule_visit: {
         Args: { _new_date: string; _token: string; _visit_id: string }
@@ -3696,6 +3787,7 @@ export type Database = {
       accounting_provider: "quickbooks" | "xero"
       accounting_sync_direction: "push" | "pull"
       accounting_sync_status: "pending" | "success" | "error"
+      addon_audience: "any" | "residential" | "commercial"
       addon_charge_status:
         | "pending"
         | "invoiced"
@@ -3893,6 +3985,7 @@ export const Constants = {
       accounting_provider: ["quickbooks", "xero"],
       accounting_sync_direction: ["push", "pull"],
       accounting_sync_status: ["pending", "success", "error"],
+      addon_audience: ["any", "residential", "commercial"],
       addon_charge_status: [
         "pending",
         "invoiced",
