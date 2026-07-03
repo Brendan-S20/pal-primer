@@ -19,6 +19,21 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
+// Where a given role should land immediately after sign-in.
+async function landingPathForUser(userId: string): Promise<string> {
+  const { data } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const role = data?.role;
+  if (role === "tech") return "/my-day";
+  if (role === "dispatcher") return "/routes";
+  if (role === "owner" || role === "office_manager") return "/dashboard";
+  // No role yet (fresh signup) → dashboard triggers onboarding.
+  return "/dashboard";
+}
+
 function AuthPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -29,9 +44,12 @@ function AuthPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // If already signed in, bounce to dashboard.
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) navigate({ to: "/dashboard" });
+    // If already signed in, bounce to the right landing page for our role.
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (data.user) {
+        const to = await landingPathForUser(data.user.id);
+        navigate({ to });
+      }
     });
   }, [navigate]);
 
@@ -39,11 +57,13 @@ function AuthPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) return setError(error.message);
-    navigate({ to: "/dashboard" });
+    const to = data.user ? await landingPathForUser(data.user.id) : "/dashboard";
+    navigate({ to });
   };
+
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,9 +121,10 @@ function AuthPage() {
                   return setError(result.error.message ?? "Google sign-in failed");
                 }
                 if (result.redirected) return; // browser will redirect
-                // Popup flow completed with session. Route to dashboard;
-                // onboarding flow handles org bootstrap if none exists.
-                navigate({ to: "/dashboard" });
+                // Popup flow completed with session → role-aware landing.
+                const { data } = await supabase.auth.getUser();
+                const to = data.user ? await landingPathForUser(data.user.id) : "/dashboard";
+                navigate({ to });
               } catch (err) {
                 setLoading(false);
                 setError(err instanceof Error ? err.message : "Google sign-in failed");
