@@ -128,8 +128,135 @@ function PreferencesPage() {
         </CardContent>
       </Card>
 
+      <BrandingCard />
       <DemoDataCard />
     </div>
+  );
+}
+
+function BrandingCard() {
+  const qc = useQueryClient();
+  const getFn = useServerFn(getOrgBranding);
+  const setFn = useServerFn(updateOrgBranding);
+  const q = useQuery({ queryKey: ["org-branding"], queryFn: () => getFn() });
+  const { role } = useMyRole();
+  const canEdit = role === "owner" || role === "office_manager";
+
+  const [brandColor, setBrandColor] = useState("#16a34a");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [cutoff, setCutoff] = useState(18);
+  const [allowResched, setAllowResched] = useState(true);
+  const [allowHold, setAllowHold] = useState(true);
+  const [allowFreq, setAllowFreq] = useState(true);
+  const [autoApply, setAutoApply] = useState(false);
+
+  useEffect(() => {
+    if (!q.data) return;
+    setBrandColor(q.data.brand_color ?? "#16a34a");
+    setLogoUrl(q.data.logo_url ?? "");
+    setContactPhone(q.data.contact_phone ?? "");
+    setContactEmail(q.data.contact_email ?? "");
+    setCutoff(q.data.portal_reschedule_cutoff_hours ?? 18);
+    setAllowResched(q.data.portal_allow_self_reschedule);
+    setAllowHold(q.data.portal_allow_vacation_hold);
+    setAllowFreq(q.data.portal_allow_frequency_change);
+    setAutoApply(q.data.portal_auto_apply_changes);
+  }, [q.data]);
+
+  const mut = useMutation({
+    mutationFn: () => setFn({ data: {
+      brandColor: brandColor || null,
+      logoUrl: logoUrl.trim() || null,
+      contactPhone: contactPhone.trim() || null,
+      contactEmail: contactEmail.trim() || null,
+      portalRescheduleCutoffHours: cutoff,
+      portalAllowSelfReschedule: allowResched,
+      portalAllowVacationHold: allowHold,
+      portalAllowFrequencyChange: allowFreq,
+      portalAutoApplyChanges: autoApply,
+    } }),
+    onSuccess: () => { toast.success("Portal settings saved"); qc.invalidateQueries({ queryKey: ["org-branding"] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  if (!canEdit) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Client portal branding & policy</CardTitle>
+        <CardDescription>
+          What your clients see on their portal — colors, logo, contact info, and what they can change themselves.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label className="text-xs">Brand color</Label>
+            <div className="mt-1 flex gap-2">
+              <Input type="color" value={brandColor} onChange={(e) => setBrandColor(e.target.value)} className="h-10 w-14 p-1" />
+              <Input value={brandColor} onChange={(e) => setBrandColor(e.target.value)} placeholder="#16a34a" />
+            </div>
+          </div>
+          <div>
+            <Label className="text-xs">Logo URL</Label>
+            <Input className="mt-1" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)}
+              placeholder="https://…/logo.png" />
+          </div>
+          <div>
+            <Label className="text-xs">Office phone (tap-to-call in the portal)</Label>
+            <Input className="mt-1" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)}
+              placeholder="+1 555 123 4567" />
+          </div>
+          <div>
+            <Label className="text-xs">Office email</Label>
+            <Input className="mt-1" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)}
+              placeholder="hello@your-company.com" />
+          </div>
+          <div>
+            <Label className="text-xs">Change cutoff (hours before visit)</Label>
+            <Input className="mt-1" type="number" min={0} max={168} value={cutoff}
+              onChange={(e) => setCutoff(Math.max(0, Number(e.target.value) || 0))} />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Below this window clients can no longer self-serve reschedule or skip.
+            </p>
+          </div>
+        </div>
+
+        <div className="border-t pt-4 space-y-3">
+          <p className="text-sm font-medium">Self-serve permissions</p>
+          <div className="flex items-center justify-between">
+            <div className="text-sm">Allow clients to reschedule visits</div>
+            <Switch checked={allowResched} onCheckedChange={setAllowResched} />
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="text-sm">Allow clients to request vacation holds</div>
+            <Switch checked={allowHold} onCheckedChange={setAllowHold} />
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="text-sm">Allow clients to change plan frequency</div>
+            <Switch checked={allowFreq} onCheckedChange={setAllowFreq} />
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm">Auto-apply requested changes</div>
+              <div className="text-xs text-muted-foreground">
+                Off (default): the office reviews every change. On: changes take effect immediately.
+              </div>
+            </div>
+            <Switch checked={autoApply} onCheckedChange={setAutoApply} />
+          </div>
+        </div>
+
+        <div className="flex justify-end">
+          <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
+            {mut.isPending ? "Saving…" : "Save portal settings"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
