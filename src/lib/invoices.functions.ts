@@ -220,3 +220,41 @@ export const getClientCredit = createServerFn({ method: "GET" })
     if (lErr) throw new Error(lErr.message);
     return { balanceCents: client.credit_balance_cents ?? 0, ledger: ledger ?? [] };
   });
+
+export const getClientBillingSummary = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+
+    const [clientRes, invoicesRes, paymentsRes] = await Promise.all([
+      supabase
+        .from("clients")
+        .select("autopay_enabled, default_card_brand, default_card_last4, default_payment_method_id, stripe_customer_id, primary_email")
+        .eq("id", data.clientId)
+        .single(),
+      supabase
+        .from("invoices")
+        .select("id, status, kind, currency, subtotal_cents, total_cents, period_start, period_end, issued_at, paid_at, checkout_url, created_at")
+        .eq("client_id", data.clientId)
+        .order("created_at", { ascending: false })
+        .limit(25),
+      supabase
+        .from("payments")
+        .select("id, invoice_id, amount_cents, status, stripe_payment_intent_id, paid_at, created_at")
+        .eq("client_id", data.clientId)
+        .order("created_at", { ascending: false })
+        .limit(25),
+    ]);
+    if (clientRes.error) throw new Error(clientRes.error.message);
+
+    const openInvoices = (invoicesRes.data ?? []).filter((i) => i.status === "open" || i.status === "overdue");
+
+    return {
+      client: clientRes.data,
+      invoices: invoicesRes.data ?? [],
+      payments: paymentsRes.data ?? [],
+      openCount: openInvoices.length,
+      openTotalCents: openInvoices.reduce((s, i) => s + (i.total_cents ?? 0), 0),
+    };
+  });
