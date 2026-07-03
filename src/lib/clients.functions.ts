@@ -153,7 +153,29 @@ const internalQuoteSchema = z.object({
   dogCount: z.coerce.number().int().min(1).max(20),
   frequency: z.enum(["weekly", "biweekly", "twice_weekly", "monthly"]),
   boundaryAreaSqm: z.number().positive().max(1_000_000).optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
 });
+
+function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371000;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const la1 = (a.lat * Math.PI) / 180;
+  const la2 = (b.lat * Math.PI) / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function pointInPolygon(point: { lat: number; lng: number }, ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    const intersect = (yi > point.lat) !== (yj > point.lat) && point.lng < ((xj - xi) * (point.lat - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
 
 export const getInternalQuote = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -170,13 +192,30 @@ export const getInternalQuote = createServerFn({ method: "POST" })
 
     const { data: zones, error: zErr } = await supabase
       .from("zones")
-      .select("id, name, postal_prefix, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents")
+      .select("id, name, postal_prefix, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes")
       .eq("organization_id", orgId);
     if (zErr) throw new Error(zErr.message);
 
     const pc = data.postalCode.trim();
+    const pt = data.latitude != null && data.longitude != null ? { lat: data.latitude, lng: data.longitude } : null;
+    const DRIVE_M_PER_MIN = 800;
+
     const match = (zones ?? [])
       .map((z: any) => {
+        const mode = (z.geo_match_mode ?? "zip") as string;
+        // Geo match takes precedence when configured and we have a point
+        if (pt) {
+          if (mode === "polygon" && z.boundary?.coordinates?.[0]) {
+            const ring = z.boundary.coordinates[0] as number[][];
+            if (pointInPolygon(pt, ring)) return { z, rank: -2, prefLen: 0 };
+          }
+          if (mode === "radius" && z.center_latitude != null && z.center_longitude != null && z.radius_meters) {
+            if (haversineMeters(pt, { lat: Number(z.center_latitude), lng: Number(z.center_longitude) }) <= z.radius_meters) return { z, rank: -1, prefLen: 0 };
+          }
+          if (mode === "drive_time" && z.center_latitude != null && z.center_longitude != null && z.drive_time_minutes) {
+            if (haversineMeters(pt, { lat: Number(z.center_latitude), lng: Number(z.center_longitude) }) <= z.drive_time_minutes * DRIVE_M_PER_MIN) return { z, rank: -1, prefLen: 0 };
+          }
+        }
         const exact = Array.isArray(z.zip_codes) && z.zip_codes.includes(pc);
         const prefix = z.postal_prefix && pc.startsWith(z.postal_prefix);
         if (!exact && !prefix) return null;

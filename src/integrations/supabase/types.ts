@@ -2469,6 +2469,9 @@ export type Database = {
           created_at: string
           display_name: string
           email: string | null
+          end_address: string | null
+          end_latitude: number | null
+          end_longitude: number | null
           id: string
           location_id: string | null
           organization_id: string
@@ -2484,6 +2487,9 @@ export type Database = {
           created_at?: string
           display_name: string
           email?: string | null
+          end_address?: string | null
+          end_latitude?: number | null
+          end_longitude?: number | null
           id?: string
           location_id?: string | null
           organization_id: string
@@ -2499,6 +2505,9 @@ export type Database = {
           created_at?: string
           display_name?: string
           email?: string | null
+          end_address?: string | null
+          end_latitude?: number | null
+          end_longitude?: number | null
           id?: string
           location_id?: string | null
           organization_id?: string
@@ -3105,7 +3114,12 @@ export type Database = {
           account_type: Database["public"]["Enums"]["account_type"] | null
           area_min_charge_cents: number
           base_price_cents: number
+          boundary: Json | null
+          center_latitude: number | null
+          center_longitude: number | null
           created_at: string
+          drive_time_minutes: number | null
+          geo_match_mode: string
           id: string
           initial_cleanup_cents: number
           latitude: number | null
@@ -3118,13 +3132,19 @@ export type Database = {
           price_per_acre_cents: number
           price_per_sqft_cents: number
           pricing_mode: string
+          radius_meters: number | null
           zip_codes: string[]
         }
         Insert: {
           account_type?: Database["public"]["Enums"]["account_type"] | null
           area_min_charge_cents?: number
           base_price_cents?: number
+          boundary?: Json | null
+          center_latitude?: number | null
+          center_longitude?: number | null
           created_at?: string
+          drive_time_minutes?: number | null
+          geo_match_mode?: string
           id?: string
           initial_cleanup_cents?: number
           latitude?: number | null
@@ -3137,13 +3157,19 @@ export type Database = {
           price_per_acre_cents?: number
           price_per_sqft_cents?: number
           pricing_mode?: string
+          radius_meters?: number | null
           zip_codes?: string[]
         }
         Update: {
           account_type?: Database["public"]["Enums"]["account_type"] | null
           area_min_charge_cents?: number
           base_price_cents?: number
+          boundary?: Json | null
+          center_latitude?: number | null
+          center_longitude?: number | null
           created_at?: string
+          drive_time_minutes?: number | null
+          geo_match_mode?: string
           id?: string
           initial_cleanup_cents?: number
           latitude?: number | null
@@ -3156,6 +3182,7 @@ export type Database = {
           price_per_acre_cents?: number
           price_per_sqft_cents?: number
           pricing_mode?: string
+          radius_meters?: number | null
           zip_codes?: string[]
         }
         Relationships: [
