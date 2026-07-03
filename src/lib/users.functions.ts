@@ -87,7 +87,7 @@ export const setStaffAddresses = createServerFn({ method: "POST" })
     if (data.endLongitude !== undefined) patch.end_longitude = data.endLongitude;
     const { error } = await context.supabase
       .from("staff")
-      .update(patch)
+      .update(patch as any)
       .eq("id", data.staffId)
       .eq("organization_id", orgId);
     if (error) throw new Error(error.message);
