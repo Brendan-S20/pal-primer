@@ -244,19 +244,45 @@ async function sendOverdueEmails(
 async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<number> {
   const secret = process.env.STRIPE_SECRET_KEY;
   if (!secret) return 0;
+  const { data: org } = await supabaseAdmin
+    .from("organizations")
+    .select("dunning_retry_days, dunning_pause_after_failures")
+    .eq("id", orgId)
+    .single();
+  const retryDays: number[] = Array.isArray(org?.dunning_retry_days) && org.dunning_retry_days.length > 0
+    ? org.dunning_retry_days
+    : [1, 3, 7];
+  const pauseAfter: number = org?.dunning_pause_after_failures ?? 3;
+
   const { data: invoices } = await supabaseAdmin
     .from("invoices")
-    .select("id, client_id, total_cents, currency, organization_id, status, clients!inner(id, stripe_customer_id, default_payment_method_id, autopay_enabled)")
+    .select("id, client_id, total_cents, currency, organization_id, status, clients!inner(id, stripe_customer_id, default_payment_method_id, autopay_enabled, autopay_paused, autopay_failure_count, autopay_last_attempt_at)")
     .eq("organization_id", orgId)
     .in("status", ["open", "draft"])
     .gt("total_cents", 0);
   if (!invoices?.length) return 0;
+
   const Stripe = (await import("stripe")).default;
   const stripe = new Stripe(secret);
+  const nowMs = Date.now();
   let charged = 0;
+
   for (const inv of invoices) {
     const c = Array.isArray(inv.clients) ? inv.clients[0] : inv.clients;
     if (!c?.autopay_enabled || !c.stripe_customer_id || !c.default_payment_method_id) continue;
+    if (c.autopay_paused) continue;
+
+    // Dunning ladder gate: after N failures, wait retryDays[N-1] days before
+    // retrying. failure_count of 0 = first attempt on this invoice, allowed.
+    const failures: number = c.autopay_failure_count ?? 0;
+    if (failures >= pauseAfter) continue;
+    if (failures > 0) {
+      const waitDays = retryDays[Math.min(failures - 1, retryDays.length - 1)] ?? 7;
+      const lastMs = c.autopay_last_attempt_at ? new Date(c.autopay_last_attempt_at).getTime() : 0;
+      const daysSince = (nowMs - lastMs) / 86400000;
+      if (daysSince < waitDays) continue;
+    }
+
     try {
       await stripe.paymentIntents.create({
         amount: inv.total_cents,
@@ -271,12 +297,17 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
           source: "autopay",
         },
       });
+      // Success bookkeeping happens in the webhook payment_intent.succeeded
+      // branch, which also clears failure_count. Just count locally.
       charged++;
     } catch (e) {
       const msg = (e as Error).message || "autopay failed";
+      const nextCount = failures + 1;
       await supabaseAdmin.from("clients").update({
         autopay_last_attempt_at: new Date().toISOString(),
         autopay_last_error: msg,
+        autopay_failure_count: nextCount,
+        autopay_paused: nextCount >= pauseAfter,
       }).eq("id", c.id);
     }
   }
