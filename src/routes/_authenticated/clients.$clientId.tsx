@@ -1175,6 +1175,9 @@ function BillingPanel({ clientId }: { clientId: string }) {
                 <Badge variant={c.autopay_enabled ? "default" : "outline"} className="mt-1">
                   Autopay {c.autopay_enabled ? "on" : "off"}
                 </Badge>
+                {(c as any).autopay_paused && (
+                  <AutopayResume clientId={clientId} lastError={(c as any).autopay_last_error} onDone={invalidate} />
+                )}
               </div>
             ) : (
               <span className="text-muted-foreground">No card on file</span>
