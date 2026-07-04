@@ -192,7 +192,19 @@ export function RouteMap({
   );
 }
 
-export function buildTechGroups(visits: MapVisit[], staff: { id: string; display_name: string }[]): TechGroup[] {
+export function buildTechGroups(
+  visits: MapVisit[],
+  staff: Array<{
+    id: string;
+    display_name: string;
+    start_latitude?: number | null;
+    start_longitude?: number | null;
+    start_address?: string | null;
+    end_latitude?: number | null;
+    end_longitude?: number | null;
+    end_address?: string | null;
+  }>,
+): TechGroup[] {
   const byStaff = new Map<string | null, MapVisit[]>();
   for (const v of visits) {
     const k = (v as any).assigned_staff_id ?? null;
@@ -204,7 +216,18 @@ export function buildTechGroups(visits: MapVisit[], staff: { id: string; display
   for (const s of staff) {
     const list = byStaff.get(s.id) ?? [];
     if (list.length === 0) continue;
-    groups.push({ staffId: s.id, name: s.display_name, color: TECH_COLORS[ci % TECH_COLORS.length], visits: list });
+    groups.push({
+      staffId: s.id,
+      name: s.display_name,
+      color: TECH_COLORS[ci % TECH_COLORS.length],
+      visits: list,
+      startLat: s.start_latitude ?? null,
+      startLng: s.start_longitude ?? null,
+      startAddress: s.start_address ?? null,
+      endLat: s.end_latitude ?? null,
+      endLng: s.end_longitude ?? null,
+      endAddress: s.end_address ?? null,
+    });
     ci++;
   }
   const unassigned = byStaff.get(null) ?? [];
