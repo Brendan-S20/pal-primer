@@ -155,9 +155,7 @@ export async function computeDigestMetrics(orgId: string): Promise<DigestMetrics
   // Top zones intentionally omitted — visits schema has no zone_id.
   const topZones: Array<{ name: string; revenueCents: number }> = [];
 
-      topZones.push({ name: (nameById.get(id) as string) ?? "Zone", revenueCents: ct });
-    }
-  }
+
 
   const alerts: string[] = [];
   if (overdueInvoices > 0) {
