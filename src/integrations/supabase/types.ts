@@ -519,6 +519,7 @@ export type Database = {
           import_batch_id: string | null
           import_external_id: string | null
           import_source: Database["public"]["Enums"]["import_source"] | null
+          last_winback_sent_at: string | null
           notes: string | null
           organization_id: string
           portal_token: string
@@ -556,6 +557,7 @@ export type Database = {
           import_batch_id?: string | null
           import_external_id?: string | null
           import_source?: Database["public"]["Enums"]["import_source"] | null
+          last_winback_sent_at?: string | null
           notes?: string | null
           organization_id: string
           portal_token?: string
@@ -593,6 +595,7 @@ export type Database = {
           import_batch_id?: string | null
           import_external_id?: string | null
           import_source?: Database["public"]["Enums"]["import_source"] | null
+          last_winback_sent_at?: string | null
           notes?: string | null
           organization_id?: string
           portal_token?: string
@@ -1790,6 +1793,7 @@ export type Database = {
           notify_email_visit_completed: boolean
           notify_email_weather_reschedule: boolean
           notify_email_welcome: boolean
+          notify_email_win_back: boolean
           notify_sms_on_my_way: boolean
           notify_sms_overdue_invoice: boolean
           notify_sms_payment_failed: boolean
@@ -1853,6 +1857,7 @@ export type Database = {
           notify_email_visit_completed?: boolean
           notify_email_weather_reschedule?: boolean
           notify_email_welcome?: boolean
+          notify_email_win_back?: boolean
           notify_sms_on_my_way?: boolean
           notify_sms_overdue_invoice?: boolean
           notify_sms_payment_failed?: boolean
@@ -1916,6 +1921,7 @@ export type Database = {
           notify_email_visit_completed?: boolean
           notify_email_weather_reschedule?: boolean
           notify_email_welcome?: boolean
+          notify_email_win_back?: boolean
           notify_sms_on_my_way?: boolean
           notify_sms_overdue_invoice?: boolean
           notify_sms_payment_failed?: boolean

@@ -1,19 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import {
   getCohortRetention,
   getClientLtv,
   getZoneProfitability,
   getChurnDrivers,
 } from "@/lib/analytics.functions";
+import { scoreChurnHeuristic, listAtRiskClients, sendWinBack } from "@/lib/churn.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+
 
 function fmt(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format((cents ?? 0) / 100);
@@ -42,15 +45,18 @@ function AnalyticsPage() {
           <TabsTrigger value="ltv">LTV</TabsTrigger>
           <TabsTrigger value="zones">Zone profitability</TabsTrigger>
           <TabsTrigger value="churn">Churn drivers</TabsTrigger>
+          <TabsTrigger value="winback">Win-back</TabsTrigger>
         </TabsList>
         <TabsContent value="retention"><CohortTab /></TabsContent>
         <TabsContent value="ltv"><LtvTab /></TabsContent>
         <TabsContent value="zones"><ZoneTab /></TabsContent>
         <TabsContent value="churn"><ChurnTab /></TabsContent>
+        <TabsContent value="winback"><WinBackTab /></TabsContent>
       </Tabs>
     </div>
   );
 }
+
 
 function CohortTab() {
   const [months, setMonths] = useState(12);
@@ -307,5 +313,122 @@ function Stat({ label, value }: { label: string; value: string }) {
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-lg font-semibold">{value}</div>
     </div>
+  );
+}
+
+function WinBackTab() {
+  const listFn = useServerFn(listAtRiskClients);
+  const scoreFn = useServerFn(scoreChurnHeuristic);
+  const sendFn = useServerFn(sendWinBack);
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["churn", "at-risk"], queryFn: () => listFn() });
+  const [discount, setDiscount] = useState(20);
+
+  const score = useMutation({
+    mutationFn: () => scoreFn(),
+    onSuccess: (r) => {
+      toast.success(`Scored ${r.scored} client${r.scored === 1 ? "" : "s"}`);
+      qc.invalidateQueries({ queryKey: ["churn", "at-risk"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const send = useMutation({
+    mutationFn: (clientId: string) =>
+      sendFn({ data: { clientId, discountPercent: discount, expiresDays: 30 } }),
+    onSuccess: (r) => {
+      toast.success(`Win-back sent — code ${r.promoCode}`);
+      qc.invalidateQueries({ queryKey: ["churn", "at-risk"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const rows = q.data?.rows ?? [];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">At-risk clients</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3 rounded-md border bg-muted/30 p-3">
+          <div>
+            <p className="text-sm">
+              Heuristic score based on recent visit gaps, skips, complaints, and payment failures. Score ≥ 60 shows here.
+            </p>
+            <p className="text-xs text-muted-foreground">Prefer the AI churn scorer in AI Tools when you want reason-with-context.</p>
+          </div>
+          <div className="flex items-end gap-2">
+            <div>
+              <Label htmlFor="wd">Discount %</Label>
+              <Input
+                id="wd"
+                type="number"
+                min={5}
+                max={50}
+                value={discount}
+                onChange={(e) => setDiscount(Number(e.target.value))}
+                className="w-24"
+              />
+            </div>
+            <Button variant="outline" onClick={() => score.mutate()} disabled={score.isPending}>
+              {score.isPending ? "Scoring…" : "Re-score all"}
+            </Button>
+          </div>
+        </div>
+
+        {q.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No at-risk clients right now. Run "Re-score all" to refresh.</p>
+        ) : (
+          <div className="overflow-hidden rounded-md border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2">Client</th>
+                  <th className="px-3 py-2">Score</th>
+                  <th className="px-3 py-2">Why</th>
+                  <th className="px-3 py-2">Last visit</th>
+                  <th className="px-3 py-2">Win-back</th>
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const tone =
+                    r.churn_score >= 85 ? "destructive" : r.churn_score >= 70 ? "default" : "secondary";
+                  return (
+                    <tr key={r.id} className="border-t">
+                      <td className="px-3 py-2 font-medium">{r.display_name}</td>
+                      <td className="px-3 py-2">
+                        <Badge variant={tone as any}>{r.churn_score}</Badge>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">{r.churn_reason ?? "—"}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {r.last_visit_date ? new Date(r.last_visit_date).toLocaleDateString() : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {r.last_winback_sent_at
+                          ? `sent ${new Date(r.last_winback_sent_at).toLocaleDateString()}`
+                          : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Button
+                          size="sm"
+                          onClick={() => send.mutate(r.id)}
+                          disabled={send.isPending}
+                        >
+                          Send {discount}% offer
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
