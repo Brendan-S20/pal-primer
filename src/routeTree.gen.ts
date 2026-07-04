@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as ServicesRouteImport } from './routes/services'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as RequestAccessRouteImport } from './routes/request-access'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PlatformRouteImport } from './routes/platform'
 import { Route as ContactRouteImport } from './routes/contact'
@@ -36,6 +37,7 @@ import { Route as PlatformHealthRouteImport } from './routes/platform.health'
 import { Route as PlatformCouponsRouteImport } from './routes/platform.coupons'
 import { Route as PlatformAuditRouteImport } from './routes/platform.audit'
 import { Route as PlatformAnnouncementsRouteImport } from './routes/platform.announcements'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as AuthenticatedZonesRouteImport } from './routes/_authenticated/zones'
 import { Route as AuthenticatedWeatherRouteImport } from './routes/_authenticated/weather'
@@ -115,6 +117,11 @@ const ServicesRoute = ServicesRouteImport.update({
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RequestAccessRoute = RequestAccessRouteImport.update({
+  id: '/request-access',
+  path: '/request-access',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PricingRoute = PricingRouteImport.update({
@@ -235,6 +242,11 @@ const PlatformAnnouncementsRoute = PlatformAnnouncementsRouteImport.update({
   id: '/announcements',
   path: '/announcements',
   getParentRoute: () => PlatformRoute,
+} as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const EmailUnsubscribeRoute = EmailUnsubscribeRouteImport.update({
   id: '/email/unsubscribe',
@@ -600,6 +612,7 @@ export interface FileRoutesByFullPath {
   '/contact': typeof ContactRoute
   '/platform': typeof PlatformRouteWithChildren
   '/pricing': typeof PricingRoute
+  '/request-access': typeof RequestAccessRoute
   '/reset-password': typeof ResetPasswordRoute
   '/services': typeof ServicesRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -623,6 +636,7 @@ export interface FileRoutesByFullPath {
   '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
@@ -692,6 +706,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/contact': typeof ContactRoute
   '/pricing': typeof PricingRoute
+  '/request-access': typeof RequestAccessRoute
   '/reset-password': typeof ResetPasswordRoute
   '/services': typeof ServicesRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -711,6 +726,7 @@ export interface FileRoutesByTo {
   '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
@@ -782,6 +798,7 @@ export interface FileRoutesById {
   '/contact': typeof ContactRoute
   '/platform': typeof PlatformRouteWithChildren
   '/pricing': typeof PricingRoute
+  '/request-access': typeof RequestAccessRoute
   '/reset-password': typeof ResetPasswordRoute
   '/services': typeof ServicesRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -805,6 +822,7 @@ export interface FileRoutesById {
   '/_authenticated/weather': typeof AuthenticatedWeatherRoute
   '/_authenticated/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
@@ -877,6 +895,7 @@ export interface FileRouteTypes {
     | '/contact'
     | '/platform'
     | '/pricing'
+    | '/request-access'
     | '/reset-password'
     | '/services'
     | '/unsubscribe'
@@ -900,6 +919,7 @@ export interface FileRouteTypes {
     | '/weather'
     | '/zones'
     | '/email/unsubscribe'
+    | '/invite/$token'
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
@@ -969,6 +989,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/contact'
     | '/pricing'
+    | '/request-access'
     | '/reset-password'
     | '/services'
     | '/unsubscribe'
@@ -988,6 +1009,7 @@ export interface FileRouteTypes {
     | '/weather'
     | '/zones'
     | '/email/unsubscribe'
+    | '/invite/$token'
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
@@ -1058,6 +1080,7 @@ export interface FileRouteTypes {
     | '/contact'
     | '/platform'
     | '/pricing'
+    | '/request-access'
     | '/reset-password'
     | '/services'
     | '/unsubscribe'
@@ -1081,6 +1104,7 @@ export interface FileRouteTypes {
     | '/_authenticated/weather'
     | '/_authenticated/zones'
     | '/email/unsubscribe'
+    | '/invite/$token'
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
@@ -1153,10 +1177,12 @@ export interface RootRouteChildren {
   ContactRoute: typeof ContactRoute
   PlatformRoute: typeof PlatformRouteWithChildren
   PricingRoute: typeof PricingRoute
+  RequestAccessRoute: typeof RequestAccessRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   ServicesRoute: typeof ServicesRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
+  InviteTokenRoute: typeof InviteTokenRoute
   PortalTokenRoute: typeof PortalTokenRouteWithChildren
   SignupSlugRoute: typeof SignupSlugRoute
   SignupSuccessRoute: typeof SignupSuccessRoute
@@ -1196,6 +1222,13 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/request-access': {
+      id: '/request-access'
+      path: '/request-access'
+      fullPath: '/request-access'
+      preLoaderRoute: typeof RequestAccessRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pricing': {
@@ -1365,6 +1398,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/platform/announcements'
       preLoaderRoute: typeof PlatformAnnouncementsRouteImport
       parentRoute: typeof PlatformRoute
+    }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/email/unsubscribe': {
       id: '/email/unsubscribe'
@@ -2044,10 +2084,12 @@ const rootRouteChildren: RootRouteChildren = {
   ContactRoute: ContactRoute,
   PlatformRoute: PlatformRouteWithChildren,
   PricingRoute: PricingRoute,
+  RequestAccessRoute: RequestAccessRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   ServicesRoute: ServicesRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
+  InviteTokenRoute: InviteTokenRoute,
   PortalTokenRoute: PortalTokenRouteWithChildren,
   SignupSlugRoute: SignupSlugRoute,
   SignupSuccessRoute: SignupSuccessRoute,
