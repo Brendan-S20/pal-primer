@@ -163,7 +163,10 @@ function PlatformSidebar() {
 
 function PlatformHeader() {
   const currentPath = useRouterState({ select: (r) => r.location.pathname });
-  const label = allNavItems().find((i) => currentPath === i.to || currentPath.startsWith(i.to + "/"))?.label
+  const all: Array<{ to: string; label: string }> = NAV.flatMap((g) =>
+    g.items.map((i) => ({ to: i.to as string, label: i.label })),
+  );
+  const label = all.find((i) => currentPath === i.to || currentPath.startsWith(i.to + "/"))?.label
     ?? "Platform";
 
   const handleSignOut = async () => {
@@ -196,6 +199,3 @@ function PlatformHeader() {
   );
 }
 
-function allNavItems() {
-  return NAV.flatMap((g) => g.items);
-}
