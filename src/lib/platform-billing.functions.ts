@@ -144,7 +144,7 @@ export type PlatformInvoiceRow = {
   id: string;
   organization_id: string | null;
   organization_name: string | null;
-  stripe_invoice_id: string;
+  stripe_invoice_id: string | null;
   number: string | null;
   amount_due_cents: number;
   amount_paid_cents: number;
