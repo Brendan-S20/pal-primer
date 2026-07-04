@@ -10,6 +10,12 @@ import {
   getChurnDrivers,
 } from "@/lib/analytics.functions";
 import { scoreChurnHeuristic, listAtRiskClients, sendWinBack } from "@/lib/churn.functions";
+import {
+  previewWeeklyDigest,
+  sendWeeklyDigestNow,
+  getDigestSettings,
+  updateDigestSettings,
+} from "@/lib/digest.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
