@@ -433,7 +433,7 @@ export const acceptPlatformInvite = createServerFn({ method: "POST" })
           role: inv.role as any,
           organization_id: organizationId,
         } as any,
-        { onConflict: "user_id,role,organization_id" as any },
+        { onConflict: "user_id,organization_id,role" as any },
       );
     if (roleErr) throw new Error(roleErr.message);
 
