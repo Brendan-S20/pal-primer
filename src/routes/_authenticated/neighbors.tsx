@@ -278,51 +278,51 @@ function NeighborsPage() {
               )}
             </div>
           ) : (
-
-        <CardContent className="p-0">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2">Address</th>
-                <th className="px-3 py-2">Seed client</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Notes</th>
-                <th className="px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">Loading…</td></tr>
-              ) : rows.length === 0 ? (
-                <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">No leads yet. Seed from a happy client to get going.</td></tr>
-              ) : rows.map((r) => (
-                <tr key={r.id} className="border-t align-top">
-                  <td className="px-3 py-2 font-medium">{r.address_line}</td>
-                  <td className="px-3 py-2 text-muted-foreground text-xs">{r.seed_client_name ?? "—"}</td>
-                  <td className="px-3 py-2">
-                    <select
-                      value={r.status}
-                      onChange={(e) => update.mutate({ id: r.id, status: e.target.value as any })}
-                      className="rounded border bg-background px-2 py-1 text-xs"
-                    >
-                      {Object.entries(STATUS_LABEL).map(([k, v]) => (
-                        <option key={k} value={k}>{v}</option>
-                      ))}
-                    </select>
-                    <Badge variant={STATUS_TONE[r.status]} className="ml-2">{STATUS_LABEL[r.status]}</Badge>
-                  </td>
-                  <td className="px-3 py-2 max-w-[300px] text-xs text-muted-foreground">{r.notes ?? "—"}</td>
-                  <td className="px-3 py-2 text-right">
-                    <Button size="sm" variant="ghost" onClick={() => del.mutate(r.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </td>
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2">Address</th>
+                  <th className="px-3 py-2">Seed client</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Notes</th>
+                  <th className="px-3 py-2" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">Loading…</td></tr>
+                ) : rows.length === 0 ? (
+                  <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">No leads yet. Seed from a happy client to get going.</td></tr>
+                ) : rows.map((r) => (
+                  <tr key={r.id} className="border-t align-top">
+                    <td className="px-3 py-2 font-medium">{r.address_line}</td>
+                    <td className="px-3 py-2 text-muted-foreground text-xs">{r.seed_client_name ?? "—"}</td>
+                    <td className="px-3 py-2">
+                      <select
+                        value={r.status}
+                        onChange={(e) => update.mutate({ id: r.id, status: e.target.value as any })}
+                        className="rounded border bg-background px-2 py-1 text-xs"
+                      >
+                        {Object.entries(STATUS_LABEL).map(([k, v]) => (
+                          <option key={k} value={k}>{v}</option>
+                        ))}
+                      </select>
+                      <Badge variant={STATUS_TONE[r.status]} className="ml-2">{STATUS_LABEL[r.status]}</Badge>
+                    </td>
+                    <td className="px-3 py-2 max-w-[300px] text-xs text-muted-foreground">{r.notes ?? "—"}</td>
+                    <td className="px-3 py-2 text-right">
+                      <Button size="sm" variant="ghost" onClick={() => del.mutate(r.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </CardContent>
       </Card>
+
     </div>
   );
 }
