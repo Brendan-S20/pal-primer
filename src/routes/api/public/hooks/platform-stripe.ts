@@ -74,7 +74,7 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
               await supabaseAdmin.from("platform_invoices").upsert(
                 {
                   stripe_invoice_id: inv.id ?? event.id,
-                  organization_id: orgId,
+                  organization_id: orgId as string,
                   number: inv.number ?? null,
                   amount_due_cents: inv.amount_due ?? 0,
                   amount_paid_cents: inv.amount_paid ?? 0,
