@@ -529,3 +529,117 @@ export const portalRedeemPromo = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { creditCents: (amt as number) ?? 0 };
   });
+
+// ── R11: In-app Payment Element (inline card/ACH) ───────────────────────────
+
+/**
+ * Create (or reuse) a PaymentIntent for an open invoice so the portal can
+ * mount Stripe's Payment Element inline. Returns the client_secret plus the
+ * publishable key so the browser can init Stripe without any hardcoding.
+ * Card + ACH are enabled via automatic_payment_methods.
+ */
+export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z.object({
+      token: z.string().uuid(),
+      invoiceId: z.string().uuid(),
+    }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY;
+    const secret = process.env.STRIPE_SECRET_KEY;
+    if (!publishableKey || !secret) throw new Error("Payments not configured");
+
+    const client = await loadClientByToken(data.token);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: invoice, error: iErr } = await supabaseAdmin
+      .from("invoices")
+      .select("id, organization_id, client_id, total_cents, currency, status, stripe_payment_intent_id")
+      .eq("id", data.invoiceId)
+      .single();
+    if (iErr) throw new Error(iErr.message);
+    if (invoice.client_id !== client.client_id) throw new Error("Invoice not found");
+    if (invoice.status === "paid") throw new Error("Invoice already paid");
+    if (invoice.status === "void") throw new Error("Invoice is voided");
+    if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
+
+    // Ensure a Stripe customer for saving payment methods after checkout
+    const { data: cRow } = await supabaseAdmin
+      .from("clients")
+      .select("id, stripe_customer_id, primary_email, display_name")
+      .eq("id", client.client_id)
+      .single();
+    if (!cRow) throw new Error("Client not found");
+
+    const Stripe = (await import("stripe")).default;
+    const stripe = new Stripe(secret);
+
+    let customerId = cRow.stripe_customer_id;
+    if (!customerId) {
+      const cust = await stripe.customers.create({
+        email: cRow.primary_email ?? undefined,
+        name: cRow.display_name ?? undefined,
+        metadata: { client_id: cRow.id, organization_id: client.organization_id },
+      });
+      customerId = cust.id;
+      await supabaseAdmin.from("clients").update({ stripe_customer_id: customerId }).eq("id", cRow.id);
+    }
+
+    const currency = (invoice.currency ?? "usd").toLowerCase();
+    const metadata = {
+      invoice_id: invoice.id,
+      organization_id: invoice.organization_id,
+      source: "portal_inline",
+    };
+
+    // Reuse an existing intent when it's still usable, otherwise create fresh.
+    let pi: import("stripe").Stripe.PaymentIntent | null = null;
+    if (invoice.stripe_payment_intent_id) {
+      try {
+        const existing = await stripe.paymentIntents.retrieve(invoice.stripe_payment_intent_id);
+        if (
+          existing.status === "requires_payment_method" ||
+          existing.status === "requires_confirmation" ||
+          existing.status === "requires_action"
+        ) {
+          // Keep the same intent; sync amount if it changed.
+          if (existing.amount !== invoice.total_cents || existing.currency !== currency) {
+            pi = await stripe.paymentIntents.update(existing.id, {
+              amount: invoice.total_cents,
+              currency,
+              metadata,
+            });
+          } else {
+            pi = existing;
+          }
+        }
+      } catch (e) {
+        console.warn("retrieve existing PI failed, creating new", e);
+      }
+    }
+
+    if (!pi) {
+      pi = await stripe.paymentIntents.create({
+        amount: invoice.total_cents,
+        currency,
+        customer: customerId,
+        automatic_payment_methods: { enabled: true },
+        setup_future_usage: "off_session",
+        metadata,
+      });
+      await supabaseAdmin.from("invoices").update({
+        stripe_payment_intent_id: pi.id,
+        status: "open",
+      }).eq("id", invoice.id);
+    }
+
+    return {
+      clientSecret: pi.client_secret as string,
+      publishableKey,
+      amountCents: invoice.total_cents,
+      currency,
+      invoiceId: invoice.id,
+      businessName: client.display_name as string,
+    };
+  });

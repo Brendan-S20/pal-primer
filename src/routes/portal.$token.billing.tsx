@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import {
   usePortalCtx, EmptyBox, InvoiceStatusBadge, PromoRedeemCard, TopupRow,
@@ -10,9 +10,10 @@ export const Route = createFileRoute("/portal/$token/billing")({
 });
 
 function PortalBilling() {
+  const { token } = Route.useParams();
   const {
     clientQ, invoicesQ, subsQ,
-    startSetupMut, setAutopayMut, removeCardMut, paySavedMut, payMut, topupMut, promoMut,
+    startSetupMut, setAutopayMut, removeCardMut, paySavedMut, topupMut, promoMut,
   } = usePortalCtx();
   const c = clientQ.data as any;
 
@@ -106,10 +107,10 @@ function PortalBilling() {
                           Pay with saved card
                         </Button>
                       )}
-                      <Button size="sm" variant={c?.has_saved_card ? "outline" : "default"}
-                        disabled={payMut.isPending}
-                        onClick={() => payMut.mutate(i.invoice_id)}>
-                        Pay now
+                      <Button asChild size="sm" variant={c?.has_saved_card ? "outline" : "default"}>
+                        <Link to="/portal/$token/pay/$invoiceId" params={{ token, invoiceId: i.invoice_id }}>
+                          Pay now
+                        </Link>
                       </Button>
                     </div>
                   )}
