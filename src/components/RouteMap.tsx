@@ -28,6 +28,12 @@ type TechGroup = {
   name: string;
   color: string;
   visits: MapVisit[];
+  startLat?: number | null;
+  startLng?: number | null;
+  startAddress?: string | null;
+  endLat?: number | null;
+  endLng?: number | null;
+  endAddress?: string | null;
 };
 
 const TECH_COLORS = [
