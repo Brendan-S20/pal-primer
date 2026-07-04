@@ -18,7 +18,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, UserPlus, Trash2, Footprints, ArrowRight, ArrowLeft, Navigation2 } from "lucide-react";
+import { MapPin, UserPlus, Trash2, Footprints, ArrowRight, ArrowLeft, Navigation2, Map as MapIcon, List } from "lucide-react";
+import { NeighborMap, type NeighborPin } from "@/components/NeighborMap";
+
 
 export const Route = createFileRoute("/_authenticated/neighbors")({
   head: () => ({
