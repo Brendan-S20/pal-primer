@@ -230,7 +230,7 @@ export const getClientBillingSummary = createServerFn({ method: "GET" })
     const [clientRes, invoicesRes] = await Promise.all([
       supabase
         .from("clients")
-        .select("autopay_enabled, default_card_brand, default_card_last4, default_payment_method_id, stripe_customer_id, primary_email")
+        .select("autopay_enabled, default_card_brand, default_card_last4, default_payment_method_id, stripe_customer_id, primary_email, autopay_paused, autopay_failure_count, autopay_last_error, autopay_last_attempt_at")
         .eq("id", data.clientId)
         .single(),
       supabase
