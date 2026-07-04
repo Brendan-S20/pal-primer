@@ -2488,6 +2488,74 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_signup_requests: {
+        Row: {
+          approx_client_count: number | null
+          contact_email: string
+          contact_name: string
+          contact_phone: string | null
+          created_at: string
+          created_invite_id: string | null
+          denial_reason: string | null
+          id: string
+          ip_address: string | null
+          notes: string | null
+          organization_name: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          updated_at: string
+          user_agent: string | null
+          website: string | null
+        }
+        Insert: {
+          approx_client_count?: number | null
+          contact_email: string
+          contact_name: string
+          contact_phone?: string | null
+          created_at?: string
+          created_invite_id?: string | null
+          denial_reason?: string | null
+          id?: string
+          ip_address?: string | null
+          notes?: string | null
+          organization_name: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+          user_agent?: string | null
+          website?: string | null
+        }
+        Update: {
+          approx_client_count?: number | null
+          contact_email?: string
+          contact_name?: string
+          contact_phone?: string | null
+          created_at?: string
+          created_invite_id?: string | null
+          denial_reason?: string | null
+          id?: string
+          ip_address?: string | null
+          notes?: string | null
+          organization_name?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+          user_agent?: string | null
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_signup_requests_created_invite_id_fkey"
+            columns: ["created_invite_id"]
+            isOneToOne: false
+            referencedRelation: "platform_invites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_stripe_events: {
         Row: {
           error: string | null
