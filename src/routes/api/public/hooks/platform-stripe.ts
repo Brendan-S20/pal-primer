@@ -73,7 +73,7 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
               const orgId = await orgFromCustomer(customerId);
               await supabaseAdmin.from("platform_invoices").upsert(
                 {
-                  stripe_invoice_id: inv.id,
+                  stripe_invoice_id: inv.id ?? event.id,
                   organization_id: orgId,
                   number: inv.number ?? null,
                   amount_due_cents: inv.amount_due ?? 0,
