@@ -501,8 +501,10 @@ export type Database = {
           accounting_remote_id: string | null
           active: boolean
           autopay_enabled: boolean
+          autopay_failure_count: number
           autopay_last_attempt_at: string | null
           autopay_last_error: string | null
+          autopay_paused: boolean
           churn_reason: string | null
           churn_score: number | null
           churn_scored_at: string | null
@@ -536,8 +538,10 @@ export type Database = {
           accounting_remote_id?: string | null
           active?: boolean
           autopay_enabled?: boolean
+          autopay_failure_count?: number
           autopay_last_attempt_at?: string | null
           autopay_last_error?: string | null
+          autopay_paused?: boolean
           churn_reason?: string | null
           churn_score?: number | null
           churn_scored_at?: string | null
@@ -571,8 +575,10 @@ export type Database = {
           accounting_remote_id?: string | null
           active?: boolean
           autopay_enabled?: boolean
+          autopay_failure_count?: number
           autopay_last_attempt_at?: string | null
           autopay_last_error?: string | null
+          autopay_paused?: boolean
           churn_reason?: string | null
           churn_score?: number | null
           churn_scored_at?: string | null
