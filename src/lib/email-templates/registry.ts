@@ -7,6 +7,7 @@ import { template as visitCompletedTemplate } from "./visit-completed";
 import { template as weatherRescheduleTemplate } from "./weather-reschedule";
 import { template as overdueReminderTemplate } from "./overdue-reminder";
 import { template as winBackTemplate } from "./win-back";
+import { template as weeklyDigestTemplate } from "./weekly-digest";
 
 
 export interface TemplateEntry {
@@ -26,4 +27,5 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   "weather-reschedule": weatherRescheduleTemplate,
   "overdue-reminder": overdueReminderTemplate,
   "win-back": winBackTemplate,
+  "weekly-digest": weeklyDigestTemplate,
 };
