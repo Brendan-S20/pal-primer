@@ -169,3 +169,144 @@ export const listRegisteredDogs = createServerFn({ method: "GET" })
       street: d.properties?.street ?? null,
     }));
   });
+
+export const listAllDogsForDna = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { data, error } = await context.supabase
+      .from("dogs")
+      .select("id, name, breed, dna_registered, dna_registry_id, property_id, properties:property_id(street, clients:client_id(display_name))")
+      .eq("organization_id", orgId)
+      .order("name");
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((d: any) => ({
+      id: d.id,
+      name: d.name,
+      breed: d.breed,
+      dna_registered: !!d.dna_registered,
+      registry_id: d.dna_registry_id,
+      client_name: d.properties?.clients?.display_name ?? null,
+      street: d.properties?.street ?? null,
+    }));
+  });
+
+export const billDnaViolation = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ matchId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const orgId = await resolveOrgId(supabase, context.userId);
+    const { data: m, error: mErr } = await supabase
+      .from("dna_matches")
+      .select("id, status, matched_dog_id, client_id, property_id, fine_cents, lab_reference, location_note, matched_at, collected_at")
+      .eq("id", data.matchId)
+      .single();
+    if (mErr) throw new Error(mErr.message);
+    if (m.status !== "matched") throw new Error("Sample must be matched before billing");
+    if (!m.fine_cents || m.fine_cents <= 0) throw new Error("Set a fine amount first");
+
+    // Resolve client_id — prefer explicit, else via matched dog → property → client
+    let clientId = m.client_id as string | null;
+    if (!clientId && m.matched_dog_id) {
+      const { data: dog } = await supabase
+        .from("dogs")
+        .select("properties:property_id(client_id)")
+        .eq("id", m.matched_dog_id)
+        .single();
+      clientId = (dog as any)?.properties?.client_id ?? null;
+    }
+    if (!clientId) throw new Error("No client associated with match");
+
+    const nowIso = new Date().toISOString();
+    const today = nowIso.slice(0, 10);
+    const { data: inv, error: iErr } = await supabase
+      .from("invoices")
+      .insert({
+        organization_id: orgId,
+        client_id: clientId,
+        kind: "postpaid",
+        status: "open",
+        subtotal_cents: m.fine_cents,
+        total_cents: m.fine_cents,
+        period_start: today,
+        period_end: today,
+        issued_at: nowIso,
+        notes: `DNA violation fine — sample ${m.lab_reference ?? m.id.slice(0, 8)}${m.location_note ? ` (${m.location_note})` : ""}`,
+      })
+      .select("id")
+      .single();
+    if (iErr) throw new Error(iErr.message);
+
+    const { error: lErr } = await supabase.from("invoice_line_items").insert({
+      invoice_id: inv.id,
+      amount_cents: m.fine_cents,
+      description: `DNA pile-sample violation fine · collected ${new Date(m.collected_at).toLocaleDateString()}${m.location_note ? ` · ${m.location_note}` : ""}`,
+    });
+    if (lErr) throw new Error(lErr.message);
+
+    const { error: uErr } = await supabase
+      .from("dna_matches")
+      .update({ status: "billed" })
+      .eq("id", m.id);
+    if (uErr) throw new Error(uErr.message);
+
+    return { ok: true, invoiceId: inv.id as string };
+  });
+
+export type ViolationNotice = {
+  matchId: string;
+  orgName: string;
+  clientName: string;
+  clientEmail: string | null;
+  dogName: string | null;
+  breed: string | null;
+  registryId: string | null;
+  street: string | null;
+  collectedAt: string;
+  matchedAt: string | null;
+  labReference: string | null;
+  locationNote: string | null;
+  fineCents: number;
+  notes: string | null;
+};
+
+export const getViolationNotice = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ matchId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }): Promise<ViolationNotice> => {
+    const { supabase } = context;
+    const orgId = await resolveOrgId(supabase, context.userId);
+    const [{ data: org }, { data: m, error: mErr }] = await Promise.all([
+      supabase.from("organizations").select("name").eq("id", orgId).single(),
+      supabase
+        .from("dna_matches")
+        .select(
+          "id, collected_at, matched_at, lab_reference, location_note, fine_cents, notes, matched_dog_id, client_id, property_id, " +
+            "matched_dog:matched_dog_id(name, breed, dna_registry_id, properties:property_id(street, clients:client_id(display_name, primary_email))), " +
+            "properties:property_id(street), clients:client_id(display_name, primary_email)",
+        )
+        .eq("id", data.matchId)
+        .single(),
+    ]);
+    if (mErr) throw new Error(mErr.message);
+    const dog = (m as any).matched_dog;
+    const dogClient = dog?.properties?.clients;
+    return {
+      matchId: m.id,
+      orgName: (org as any)?.name ?? "Your service",
+      clientName: dogClient?.display_name ?? (m as any).clients?.display_name ?? "Resident",
+      clientEmail: dogClient?.primary_email ?? (m as any).clients?.primary_email ?? null,
+      dogName: dog?.name ?? null,
+      breed: dog?.breed ?? null,
+      registryId: dog?.dna_registry_id ?? null,
+      street: dog?.properties?.street ?? (m as any).properties?.street ?? null,
+      collectedAt: m.collected_at,
+      matchedAt: m.matched_at,
+      labReference: m.lab_reference,
+      locationNote: m.location_note,
+      fineCents: m.fine_cents ?? 0,
+      notes: m.notes,
+    };
+  });
+
