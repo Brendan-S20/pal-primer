@@ -233,7 +233,7 @@ export const listStaff = createServerFn({ method: "GET" })
     const orgId = await resolveOrgId(supabase, userId);
     const { data, error } = await supabase
       .from("staff")
-      .select("id, display_name, role, active")
+      .select("id, display_name, role, active, start_latitude, start_longitude, start_address, end_latitude, end_longitude, end_address")
       .eq("organization_id", orgId)
       .eq("active", true)
       .order("display_name");
