@@ -109,6 +109,42 @@ export function RouteMap({
       if (latlngs.length > 1) {
         L.polyline(latlngs, { color: g.color, weight: 3, opacity: 0.7 }).addTo(layer);
       }
+
+      // Start / end anchors — dashed lines from home base to first stop and
+      // from last stop to end location.
+      const hasStart = g.startLat != null && g.startLng != null;
+      const hasEnd = g.endLat != null && g.endLng != null;
+      if (hasStart && latlngs.length > 0) {
+        L.polyline([[g.startLat!, g.startLng!], latlngs[0]], {
+          color: g.color, weight: 2, opacity: 0.5, dashArray: "6 6",
+        }).addTo(layer);
+      }
+      if (hasEnd && latlngs.length > 0) {
+        L.polyline([latlngs[latlngs.length - 1], [g.endLat!, g.endLng!]], {
+          color: g.color, weight: 2, opacity: 0.5, dashArray: "6 6",
+        }).addTo(layer);
+      }
+      if (hasStart) {
+        const startIcon = L.divIcon({
+          className: "route-anchor",
+          html: `<div style="background:white;color:${g.color};border:2px solid ${g.color};border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.25);">S</div>`,
+          iconSize: [22, 18], iconAnchor: [11, 9],
+        });
+        L.marker([g.startLat!, g.startLng!], { icon: startIcon })
+          .addTo(layer)
+          .bindPopup(`<div style="min-width:140px"><div style="font-weight:600">${escapeHtml(g.name)} — start</div><div style="font-size:11px;color:#555">${escapeHtml(g.startAddress ?? "Home base")}</div></div>`);
+      }
+      if (hasEnd) {
+        const endIcon = L.divIcon({
+          className: "route-anchor",
+          html: `<div style="background:${g.color};color:white;border:2px solid white;border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.25);">E</div>`,
+          iconSize: [22, 18], iconAnchor: [11, 9],
+        });
+        L.marker([g.endLat!, g.endLng!], { icon: endIcon })
+          .addTo(layer)
+          .bindPopup(`<div style="min-width:140px"><div style="font-weight:600">${escapeHtml(g.name)} — end</div><div style="font-size:11px;color:#555">${escapeHtml(g.endAddress ?? "End of day")}</div></div>`);
+      }
+
       pts.forEach((v, idx) => {
         const label = String(v.sequence ?? idx + 1);
         const done = v.status === "completed" || v.status === "skipped";
@@ -127,9 +163,13 @@ export function RouteMap({
       });
     }
 
-    const all = points.map(
+    const all: [number, number][] = points.map(
       ({ v }) => [v.properties!.latitude!, v.properties!.longitude!] as [number, number],
     );
+    for (const g of groups) {
+      if (g.startLat != null && g.startLng != null) all.push([g.startLat, g.startLng]);
+      if (g.endLat != null && g.endLng != null) all.push([g.endLat, g.endLng]);
+    }
     if (all.length > 0) {
       map.fitBounds(L.latLngBounds(all), { padding: [30, 30] });
     }
