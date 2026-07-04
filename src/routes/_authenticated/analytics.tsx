@@ -45,15 +45,18 @@ function AnalyticsPage() {
           <TabsTrigger value="ltv">LTV</TabsTrigger>
           <TabsTrigger value="zones">Zone profitability</TabsTrigger>
           <TabsTrigger value="churn">Churn drivers</TabsTrigger>
+          <TabsTrigger value="winback">Win-back</TabsTrigger>
         </TabsList>
         <TabsContent value="retention"><CohortTab /></TabsContent>
         <TabsContent value="ltv"><LtvTab /></TabsContent>
         <TabsContent value="zones"><ZoneTab /></TabsContent>
         <TabsContent value="churn"><ChurnTab /></TabsContent>
+        <TabsContent value="winback"><WinBackTab /></TabsContent>
       </Tabs>
     </div>
   );
 }
+
 
 function CohortTab() {
   const [months, setMonths] = useState(12);
