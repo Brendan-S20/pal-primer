@@ -107,10 +107,10 @@ function PortalBilling() {
                           Pay with saved card
                         </Button>
                       )}
-                      <Button size="sm" variant={c?.has_saved_card ? "outline" : "default"}
-                        disabled={payMut.isPending}
-                        onClick={() => payMut.mutate(i.invoice_id)}>
-                        Pay now
+                      <Button asChild size="sm" variant={c?.has_saved_card ? "outline" : "default"}>
+                        <Link to="/portal/$token/pay/$invoiceId" params={{ token, invoiceId: i.invoice_id }}>
+                          Pay now
+                        </Link>
                       </Button>
                     </div>
                   )}
