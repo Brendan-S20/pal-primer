@@ -18,7 +18,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, UserPlus, Trash2, Footprints, ArrowRight, ArrowLeft, Navigation2 } from "lucide-react";
+import { MapPin, UserPlus, Trash2, Footprints, ArrowRight, ArrowLeft, Navigation2, Map as MapIcon, List } from "lucide-react";
+import { NeighborMap, type NeighborPin } from "@/components/NeighborMap";
+
 
 export const Route = createFileRoute("/_authenticated/neighbors")({
   head: () => ({
@@ -101,6 +103,8 @@ function NeighborsPage() {
   const rows = data?.rows ?? [];
   const s = data?.summary ?? { total: 0 };
   const [walkMode, setWalkMode] = useState(false);
+  const [view, setView] = useState<"list" | "map">("list");
+
   const [walkIdx, setWalkIdx] = useState(0);
   const walkQueue = rows.filter((r) => r.status === "new" || r.status === "contacted");
   const current = walkQueue[walkIdx];
@@ -241,51 +245,84 @@ function NeighborsPage() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Canvassing list</CardTitle></CardHeader>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base">Canvassing list</CardTitle>
+          <div className="flex gap-1 rounded-md border p-0.5">
+            <Button size="sm" variant={view === "list" ? "secondary" : "ghost"} className="h-7 px-2" onClick={() => setView("list")}>
+              <List className="mr-1 h-3.5 w-3.5" /> List
+            </Button>
+            <Button size="sm" variant={view === "map" ? "secondary" : "ghost"} className="h-7 px-2" onClick={() => setView("map")}>
+              <MapIcon className="mr-1 h-3.5 w-3.5" /> Map
+            </Button>
+          </div>
+        </CardHeader>
         <CardContent className="p-0">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2">Address</th>
-                <th className="px-3 py-2">Seed client</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Notes</th>
-                <th className="px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">Loading…</td></tr>
-              ) : rows.length === 0 ? (
-                <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">No leads yet. Seed from a happy client to get going.</td></tr>
-              ) : rows.map((r) => (
-                <tr key={r.id} className="border-t align-top">
-                  <td className="px-3 py-2 font-medium">{r.address_line}</td>
-                  <td className="px-3 py-2 text-muted-foreground text-xs">{r.seed_client_name ?? "—"}</td>
-                  <td className="px-3 py-2">
-                    <select
-                      value={r.status}
-                      onChange={(e) => update.mutate({ id: r.id, status: e.target.value as any })}
-                      className="rounded border bg-background px-2 py-1 text-xs"
-                    >
-                      {Object.entries(STATUS_LABEL).map(([k, v]) => (
-                        <option key={k} value={k}>{v}</option>
-                      ))}
-                    </select>
-                    <Badge variant={STATUS_TONE[r.status]} className="ml-2">{STATUS_LABEL[r.status]}</Badge>
-                  </td>
-                  <td className="px-3 py-2 max-w-[300px] text-xs text-muted-foreground">{r.notes ?? "—"}</td>
-                  <td className="px-3 py-2 text-right">
-                    <Button size="sm" variant="ghost" onClick={() => del.mutate(r.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </td>
+          {view === "map" ? (
+            <div className="p-3">
+              {rows.every((r) => r.latitude == null || r.longitude == null) ? (
+                <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  No mapped leads yet. Seed from a client with a geocoded property to place pins.
+                </div>
+              ) : (
+                <NeighborMap
+                  pins={rows.map<NeighborPin>((r) => ({
+                    id: r.id,
+                    address: r.address_line,
+                    status: r.status,
+                    latitude: r.latitude,
+                    longitude: r.longitude,
+                    seedClientName: r.seed_client_name,
+                    isSeed: false,
+                  }))}
+                />
+              )}
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2">Address</th>
+                  <th className="px-3 py-2">Seed client</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Notes</th>
+                  <th className="px-3 py-2" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">Loading…</td></tr>
+                ) : rows.length === 0 ? (
+                  <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">No leads yet. Seed from a happy client to get going.</td></tr>
+                ) : rows.map((r) => (
+                  <tr key={r.id} className="border-t align-top">
+                    <td className="px-3 py-2 font-medium">{r.address_line}</td>
+                    <td className="px-3 py-2 text-muted-foreground text-xs">{r.seed_client_name ?? "—"}</td>
+                    <td className="px-3 py-2">
+                      <select
+                        value={r.status}
+                        onChange={(e) => update.mutate({ id: r.id, status: e.target.value as any })}
+                        className="rounded border bg-background px-2 py-1 text-xs"
+                      >
+                        {Object.entries(STATUS_LABEL).map(([k, v]) => (
+                          <option key={k} value={k}>{v}</option>
+                        ))}
+                      </select>
+                      <Badge variant={STATUS_TONE[r.status]} className="ml-2">{STATUS_LABEL[r.status]}</Badge>
+                    </td>
+                    <td className="px-3 py-2 max-w-[300px] text-xs text-muted-foreground">{r.notes ?? "—"}</td>
+                    <td className="px-3 py-2 text-right">
+                      <Button size="sm" variant="ghost" onClick={() => del.mutate(r.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </CardContent>
       </Card>
+
     </div>
   );
 }
