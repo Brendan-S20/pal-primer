@@ -75,7 +75,7 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
                 {
                   stripe_invoice_id: inv.id,
                   organization_id: orgId,
-                  number: inv.number,
+                  number: inv.number ?? null,
                   amount_due_cents: inv.amount_due ?? 0,
                   amount_paid_cents: inv.amount_paid ?? 0,
                   currency: inv.currency ?? "usd",
