@@ -98,7 +98,7 @@ export const updateDigestSettings = createServerFn({ method: "POST" })
     if (!Object.keys(patch).length) return { ok: true };
     const { error } = await context.supabase
       .from("organizations")
-      .update(patch)
+      .update(patch as any)
       .eq("id", orgId);
     if (error) throw new Error(error.message);
     return { ok: true };
