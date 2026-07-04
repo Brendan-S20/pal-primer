@@ -27,4 +27,5 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   "weather-reschedule": weatherRescheduleTemplate,
   "overdue-reminder": overdueReminderTemplate,
   "win-back": winBackTemplate,
+  "weekly-digest": weeklyDigestTemplate,
 };
