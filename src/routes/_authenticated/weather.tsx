@@ -164,6 +164,7 @@ function RescheduleDialog({
 }) {
   const getVisits = useServerFn(getZoneVisitsOnDay);
   const rmove = useServerFn(rescheduleVisits);
+  const undoFn = useServerFn(undoReschedule);
   const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: ["zone-visits", zoneId, fromDay],
@@ -182,13 +183,31 @@ function RescheduleDialog({
         data: { visitIds: Array.from(selected), newDate, note: note || undefined },
       }),
     onSuccess: (r) => {
-      toast.success(`Rescheduled ${r.moved} visit(s)`);
       if (r.errors.length) toast.error(r.errors[0]);
+      if (r.moved > 0 && r.moves.length > 0) {
+        toast.success(`Rescheduled ${r.moved} visit(s)`, {
+          duration: 10000,
+          action: {
+            label: "Undo",
+            onClick: async () => {
+              try {
+                const u = await undoFn({ data: { moves: r.moves } });
+                toast.success(`Restored ${u.restored} visit(s)`);
+                qc.invalidateQueries({ queryKey: ["weather"] });
+                qc.invalidateQueries({ queryKey: ["zone-visits", zoneId] });
+              } catch (e) {
+                toast.error((e as Error).message);
+              }
+            },
+          },
+        });
+      }
       qc.invalidateQueries({ queryKey: ["weather"] });
       qc.invalidateQueries({ queryKey: ["zone-visits", zoneId] });
       onClose();
     },
   });
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
