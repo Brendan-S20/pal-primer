@@ -60,8 +60,8 @@ export const createAnnouncement = createServerFn({ method: "POST" })
         body: data.body,
         severity: data.severity,
         audience: data.audience,
-        starts_at: data.starts_at ?? null,
-        ends_at: data.ends_at ?? null,
+        starts_at: data.starts_at ?? undefined,
+        ends_at: data.ends_at ?? undefined,
         send_email: data.send_email,
         created_by: context.userId,
       })
