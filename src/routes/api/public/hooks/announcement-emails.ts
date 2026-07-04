@@ -45,8 +45,10 @@ export const Route = createFileRoute("/api/public/hooks/announcement-emails")({
             .select("id, name, contact_email, plan_status")
             .not("contact_email", "is", null);
 
-          if (["active", "trialing", "past_due"].includes(a.audience)) {
-            orgQ = orgQ.eq("plan_status", a.audience as "active" | "past_due");
+          if (["active", "past_due", "canceled", "free"].includes(a.audience)) {
+            orgQ = orgQ.eq("plan_status", a.audience as "active" | "past_due" | "canceled" | "free");
+          } else if (a.audience === "trialing") {
+            orgQ = orgQ.eq("plan_status", "free");
           }
           const { data: orgs } = await orgQ;
 
