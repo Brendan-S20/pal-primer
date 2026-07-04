@@ -18,7 +18,9 @@ type NotifyKey =
   | "notify_email_visit_completed"
   | "notify_email_weather_reschedule"
   | "notify_email_welcome"
-  | "notify_email_overdue";
+  | "notify_email_overdue"
+  | "notify_email_win_back";
+
 
 interface EnqueueParams {
   organizationId: string;
