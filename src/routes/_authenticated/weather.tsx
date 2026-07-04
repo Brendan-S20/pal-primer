@@ -8,7 +8,9 @@ import {
   rescheduleVisits,
   autoRebalanceForecast,
   getStaffWorkload,
+  undoReschedule,
 } from "@/lib/weather.functions";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -162,6 +164,7 @@ function RescheduleDialog({
 }) {
   const getVisits = useServerFn(getZoneVisitsOnDay);
   const rmove = useServerFn(rescheduleVisits);
+  const undoFn = useServerFn(undoReschedule);
   const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: ["zone-visits", zoneId, fromDay],
@@ -180,13 +183,31 @@ function RescheduleDialog({
         data: { visitIds: Array.from(selected), newDate, note: note || undefined },
       }),
     onSuccess: (r) => {
-      toast.success(`Rescheduled ${r.moved} visit(s)`);
       if (r.errors.length) toast.error(r.errors[0]);
+      if (r.moved > 0 && r.moves.length > 0) {
+        toast.success(`Rescheduled ${r.moved} visit(s)`, {
+          duration: 10000,
+          action: {
+            label: "Undo",
+            onClick: async () => {
+              try {
+                const u = await undoFn({ data: { moves: r.moves } });
+                toast.success(`Restored ${u.restored} visit(s)`);
+                qc.invalidateQueries({ queryKey: ["weather"] });
+                qc.invalidateQueries({ queryKey: ["zone-visits", zoneId] });
+              } catch (e) {
+                toast.error((e as Error).message);
+              }
+            },
+          },
+        });
+      }
       qc.invalidateQueries({ queryKey: ["weather"] });
       qc.invalidateQueries({ queryKey: ["zone-visits", zoneId] });
       onClose();
     },
   });
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -274,6 +295,7 @@ function RescheduleDialog({
 
 function AutoRebalance({ fromDate, toDate }: { fromDate: string; toDate: string }) {
   const fn = useServerFn(autoRebalanceForecast);
+  const undoFn = useServerFn(undoReschedule);
   const qc = useQueryClient();
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof fn>> | null>(null);
 
@@ -291,12 +313,34 @@ function AutoRebalance({ fromDate, toDate }: { fromDate: string; toDate: string 
     mutationFn: () => fn({ data: { fromDate, toDate, dryRun: false, dailyCap: 60 } }),
     onSuccess: (r) => {
       const total = r.summary.reduce((n, s) => n + s.moved, 0);
-      toast.success(`Rebalanced ${total} visit(s).`);
+      const moves = r.summary.flatMap((s) =>
+        s.details.map((d) => ({ visitId: d.visit_id, from: d.from, to: d.to })),
+      );
+      if (total > 0 && moves.length > 0) {
+        toast.success(`Rebalanced ${total} visit(s).`, {
+          duration: 10000,
+          action: {
+            label: "Undo",
+            onClick: async () => {
+              try {
+                const u = await undoFn({ data: { moves } });
+                toast.success(`Restored ${u.restored} visit(s)`);
+                qc.invalidateQueries({ queryKey: ["weather"] });
+              } catch (e) {
+                toast.error((e as Error).message);
+              }
+            },
+          },
+        });
+      } else {
+        toast.success(`Rebalanced ${total} visit(s).`);
+      }
       setPreview(null);
       qc.invalidateQueries({ queryKey: ["weather"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
 
   return (
     <div className="ml-auto flex items-center gap-2">

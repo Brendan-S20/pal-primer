@@ -181,6 +181,7 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
     const orgId = await resolveOrgId(supabase, userId);
     let moved = 0;
     const errors: string[] = [];
+    const moves: { visitId: string; from: string; to: string }[] = [];
 
     // Snapshot pre-move dates + client refs for email
     const { data: preRows } = await supabase
@@ -197,7 +198,11 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
         _note: data.note ?? undefined,
       });
       if (error) errors.push(error.message);
-      else moved++;
+      else {
+        moved++;
+        const pre = preMap.get(id);
+        if (pre) moves.push({ visitId: id, from: pre.scheduled_on, to: data.newDate });
+      }
     }
 
     // Fire weather-reschedule emails (best-effort)
@@ -228,8 +233,36 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
       console.error("weather reschedule emails failed", e);
     }
 
-    return { moved, errors };
+    return { moved, errors, moves };
   });
+
+export const undoReschedule = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        moves: z
+          .array(z.object({ visitId: z.string().uuid(), from: z.string(), to: z.string() }))
+          .min(1),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    let restored = 0;
+    const errors: string[] = [];
+    for (const m of data.moves) {
+      const { error } = await supabase.rpc("reschedule_visit", {
+        _visit_id: m.visitId,
+        _new_date: m.from,
+        _note: "Undo weather reschedule",
+      });
+      if (error) errors.push(error.message);
+      else restored++;
+    }
+    return { restored, errors };
+  });
+
 
 export const updateZoneCoords = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
