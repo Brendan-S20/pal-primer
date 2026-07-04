@@ -199,25 +199,36 @@ function Dashboard() {
             {groups.length === 0 ? (
               <p className="text-xs text-muted-foreground">No routes yet.</p>
             ) : (
-              <ul className="space-y-2 text-sm">
+              <ul className="space-y-3 text-sm">
                 {groups.map((g) => {
+                  const total = g.visits.length;
                   const done = g.visits.filter((v) => v.status === "completed").length;
+                  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
                   return (
-                    <li key={g.staffId ?? "unassigned"} className="flex items-center justify-between">
-                      <span className="flex items-center gap-2">
-                        <span
-                          className="inline-block h-2.5 w-2.5 rounded-full"
-                          style={{ background: g.color }}
+                    <li key={g.staffId ?? "unassigned"} className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-2 truncate">
+                          <span
+                            className="inline-block h-2.5 w-2.5 rounded-full"
+                            style={{ background: g.color }}
+                          />
+                          <span className="truncate">{g.name}</span>
+                        </span>
+                        <Badge variant="outline" className="tabular-nums">
+                          {done}/{total}
+                        </Badge>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${pct}%`, background: g.color }}
                         />
-                        {g.name}
-                      </span>
-                      <Badge variant="outline">
-                        {done}/{g.visits.length}
-                      </Badge>
+                      </div>
                     </li>
                   );
                 })}
               </ul>
+
             )}
           </div>
 
