@@ -50,6 +50,7 @@ import { Route as AuthenticatedInvoicesIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedImportsIndexRouteImport } from './routes/_authenticated/imports.index'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
 import { Route as PortalTokenVisitsRouteImport } from './routes/portal.$token.visits'
+import { Route as PortalTokenBillingRouteImport } from './routes/portal.$token.billing'
 import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
 import { Route as AuthenticatedSettingsUsersRouteImport } from './routes/_authenticated/settings.users'
 import { Route as AuthenticatedSettingsSmsRouteImport } from './routes/_authenticated/settings.sms'
@@ -291,6 +292,11 @@ const PortalTokenVisitsRoute = PortalTokenVisitsRouteImport.update({
   path: '/visits',
   getParentRoute: () => PortalTokenRoute,
 } as any)
+const PortalTokenBillingRoute = PortalTokenBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
+  getParentRoute: () => PortalTokenRoute,
+} as any)
 const LovableEmailSuppressionRoute = LovableEmailSuppressionRouteImport.update({
   id: '/lovable/email/suppression',
   path: '/lovable/email/suppression',
@@ -524,6 +530,7 @@ export interface FileRoutesByFullPath {
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/portal/$token/billing': typeof PortalTokenBillingRoute
   '/portal/$token/visits': typeof PortalTokenVisitsRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
   '/imports/': typeof AuthenticatedImportsIndexRoute
@@ -592,6 +599,7 @@ export interface FileRoutesByTo {
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/portal/$token/billing': typeof PortalTokenBillingRoute
   '/portal/$token/visits': typeof PortalTokenVisitsRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
   '/imports': typeof AuthenticatedImportsIndexRoute
@@ -667,6 +675,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/_authenticated/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/portal/$token/billing': typeof PortalTokenBillingRoute
   '/portal/$token/visits': typeof PortalTokenVisitsRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
   '/_authenticated/imports/': typeof AuthenticatedImportsIndexRoute
@@ -742,6 +751,7 @@ export interface FileRouteTypes {
     | '/settings/sms'
     | '/settings/users'
     | '/lovable/email/suppression'
+    | '/portal/$token/billing'
     | '/portal/$token/visits'
     | '/clients/'
     | '/imports/'
@@ -810,6 +820,7 @@ export interface FileRouteTypes {
     | '/settings/sms'
     | '/settings/users'
     | '/lovable/email/suppression'
+    | '/portal/$token/billing'
     | '/portal/$token/visits'
     | '/clients'
     | '/imports'
@@ -884,6 +895,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/sms'
     | '/_authenticated/settings/users'
     | '/lovable/email/suppression'
+    | '/portal/$token/billing'
     | '/portal/$token/visits'
     | '/_authenticated/clients/'
     | '/_authenticated/imports/'
@@ -1222,6 +1234,13 @@ declare module '@tanstack/react-router' {
       path: '/visits'
       fullPath: '/portal/$token/visits'
       preLoaderRoute: typeof PortalTokenVisitsRouteImport
+      parentRoute: typeof PortalTokenRoute
+    }
+    '/portal/$token/billing': {
+      id: '/portal/$token/billing'
+      path: '/billing'
+      fullPath: '/portal/$token/billing'
+      preLoaderRoute: typeof PortalTokenBillingRouteImport
       parentRoute: typeof PortalTokenRoute
     }
     '/lovable/email/suppression': {
@@ -1584,11 +1603,13 @@ const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
 interface PortalTokenRouteChildren {
+  PortalTokenBillingRoute: typeof PortalTokenBillingRoute
   PortalTokenVisitsRoute: typeof PortalTokenVisitsRoute
   PortalTokenIndexRoute: typeof PortalTokenIndexRoute
 }
 
 const PortalTokenRouteChildren: PortalTokenRouteChildren = {
+  PortalTokenBillingRoute: PortalTokenBillingRoute,
   PortalTokenVisitsRoute: PortalTokenVisitsRoute,
   PortalTokenIndexRoute: PortalTokenIndexRoute,
 }
