@@ -52,12 +52,14 @@ function AnalyticsPage() {
           <TabsTrigger value="zones">Zone profitability</TabsTrigger>
           <TabsTrigger value="churn">Churn drivers</TabsTrigger>
           <TabsTrigger value="winback">Win-back</TabsTrigger>
+          <TabsTrigger value="digest">Weekly digest</TabsTrigger>
         </TabsList>
         <TabsContent value="retention"><CohortTab /></TabsContent>
         <TabsContent value="ltv"><LtvTab /></TabsContent>
         <TabsContent value="zones"><ZoneTab /></TabsContent>
         <TabsContent value="churn"><ChurnTab /></TabsContent>
         <TabsContent value="winback"><WinBackTab /></TabsContent>
+        <TabsContent value="digest"><DigestTab /></TabsContent>
       </Tabs>
     </div>
   );
