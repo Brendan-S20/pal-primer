@@ -24,7 +24,9 @@ import { Route as PlatformIndexRouteImport } from './routes/platform.index'
 import { Route as SignupSuccessRouteImport } from './routes/signup.success'
 import { Route as SignupSlugRouteImport } from './routes/signup.$slug'
 import { Route as PortalTokenRouteImport } from './routes/portal.$token'
+import { Route as PlatformTenantsRouteImport } from './routes/platform.tenants'
 import { Route as PlatformRevenueRouteImport } from './routes/platform.revenue'
+import { Route as PlatformOverviewRouteImport } from './routes/platform.overview'
 import { Route as PlatformHealthRouteImport } from './routes/platform.health'
 import { Route as PlatformAuditRouteImport } from './routes/platform.audit'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
@@ -166,9 +168,19 @@ const PortalTokenRoute = PortalTokenRouteImport.update({
   path: '/portal/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PlatformTenantsRoute = PlatformTenantsRouteImport.update({
+  id: '/tenants',
+  path: '/tenants',
+  getParentRoute: () => PlatformRoute,
+} as any)
 const PlatformRevenueRoute = PlatformRevenueRouteImport.update({
   id: '/revenue',
   path: '/revenue',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformOverviewRoute = PlatformOverviewRouteImport.update({
+  id: '/overview',
+  path: '/overview',
   getParentRoute: () => PlatformRoute,
 } as any)
 const PlatformHealthRoute = PlatformHealthRouteImport.update({
@@ -565,7 +577,9 @@ export interface FileRoutesByFullPath {
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/health': typeof PlatformHealthRoute
+  '/platform/overview': typeof PlatformOverviewRoute
   '/platform/revenue': typeof PlatformRevenueRoute
+  '/platform/tenants': typeof PlatformTenantsRoute
   '/portal/$token': typeof PortalTokenRouteWithChildren
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
@@ -643,7 +657,9 @@ export interface FileRoutesByTo {
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/health': typeof PlatformHealthRoute
+  '/platform/overview': typeof PlatformOverviewRoute
   '/platform/revenue': typeof PlatformRevenueRoute
+  '/platform/tenants': typeof PlatformTenantsRoute
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/platform': typeof PlatformIndexRoute
@@ -727,7 +743,9 @@ export interface FileRoutesById {
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/health': typeof PlatformHealthRoute
+  '/platform/overview': typeof PlatformOverviewRoute
   '/platform/revenue': typeof PlatformRevenueRoute
+  '/platform/tenants': typeof PlatformTenantsRoute
   '/portal/$token': typeof PortalTokenRouteWithChildren
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
@@ -812,7 +830,9 @@ export interface FileRouteTypes {
     | '/email/unsubscribe'
     | '/platform/audit'
     | '/platform/health'
+    | '/platform/overview'
     | '/platform/revenue'
+    | '/platform/tenants'
     | '/portal/$token'
     | '/signup/$slug'
     | '/signup/success'
@@ -890,7 +910,9 @@ export interface FileRouteTypes {
     | '/email/unsubscribe'
     | '/platform/audit'
     | '/platform/health'
+    | '/platform/overview'
     | '/platform/revenue'
+    | '/platform/tenants'
     | '/signup/$slug'
     | '/signup/success'
     | '/platform'
@@ -973,7 +995,9 @@ export interface FileRouteTypes {
     | '/email/unsubscribe'
     | '/platform/audit'
     | '/platform/health'
+    | '/platform/overview'
     | '/platform/revenue'
+    | '/platform/tenants'
     | '/portal/$token'
     | '/signup/$slug'
     | '/signup/success'
@@ -1162,11 +1186,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/platform/tenants': {
+      id: '/platform/tenants'
+      path: '/tenants'
+      fullPath: '/platform/tenants'
+      preLoaderRoute: typeof PlatformTenantsRouteImport
+      parentRoute: typeof PlatformRoute
+    }
     '/platform/revenue': {
       id: '/platform/revenue'
       path: '/revenue'
       fullPath: '/platform/revenue'
       preLoaderRoute: typeof PlatformRevenueRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/overview': {
+      id: '/platform/overview'
+      path: '/overview'
+      fullPath: '/platform/overview'
+      preLoaderRoute: typeof PlatformOverviewRouteImport
       parentRoute: typeof PlatformRoute
     }
     '/platform/health': {
@@ -1776,14 +1814,18 @@ const AuthenticatedRouteRouteWithChildren =
 interface PlatformRouteChildren {
   PlatformAuditRoute: typeof PlatformAuditRoute
   PlatformHealthRoute: typeof PlatformHealthRoute
+  PlatformOverviewRoute: typeof PlatformOverviewRoute
   PlatformRevenueRoute: typeof PlatformRevenueRoute
+  PlatformTenantsRoute: typeof PlatformTenantsRoute
   PlatformIndexRoute: typeof PlatformIndexRoute
 }
 
 const PlatformRouteChildren: PlatformRouteChildren = {
   PlatformAuditRoute: PlatformAuditRoute,
   PlatformHealthRoute: PlatformHealthRoute,
+  PlatformOverviewRoute: PlatformOverviewRoute,
   PlatformRevenueRoute: PlatformRevenueRoute,
+  PlatformTenantsRoute: PlatformTenantsRoute,
   PlatformIndexRoute: PlatformIndexRoute,
 }
 
