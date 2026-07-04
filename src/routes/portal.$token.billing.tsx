@@ -10,9 +10,10 @@ export const Route = createFileRoute("/portal/$token/billing")({
 });
 
 function PortalBilling() {
+  const { token } = Route.useParams();
   const {
     clientQ, invoicesQ, subsQ,
-    startSetupMut, setAutopayMut, removeCardMut, paySavedMut, payMut, topupMut, promoMut,
+    startSetupMut, setAutopayMut, removeCardMut, paySavedMut, topupMut, promoMut,
   } = usePortalCtx();
   const c = clientQ.data as any;
 
