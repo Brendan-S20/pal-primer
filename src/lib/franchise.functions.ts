@@ -53,7 +53,7 @@ async function computeRowForOrg(supabase: any, orgId: string, name: string): Pro
 
   const [clients, techs, visitsToday, visitsDone, mtdPayments, arInvoices] = await Promise.all([
     supabase.from("clients").select("id", { count: "exact", head: true })
-      .eq("organization_id", orgId).eq("status", "active"),
+      .eq("organization_id", orgId).eq("active", true),
     supabase.from("staff").select("id", { count: "exact", head: true })
       .eq("organization_id", orgId).eq("active", true),
     supabase.from("visits").select("id", { count: "exact", head: true })
