@@ -243,7 +243,40 @@ function NeighborsPage() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Canvassing list</CardTitle></CardHeader>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base">Canvassing list</CardTitle>
+          <div className="flex gap-1 rounded-md border p-0.5">
+            <Button size="sm" variant={view === "list" ? "secondary" : "ghost"} className="h-7 px-2" onClick={() => setView("list")}>
+              <List className="mr-1 h-3.5 w-3.5" /> List
+            </Button>
+            <Button size="sm" variant={view === "map" ? "secondary" : "ghost"} className="h-7 px-2" onClick={() => setView("map")}>
+              <MapIcon className="mr-1 h-3.5 w-3.5" /> Map
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {view === "map" ? (
+            <div className="p-3">
+              {rows.every((r) => r.latitude == null || r.longitude == null) ? (
+                <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  No mapped leads yet. Seed from a client with a geocoded property to place pins.
+                </div>
+              ) : (
+                <NeighborMap
+                  pins={rows.map<NeighborPin>((r) => ({
+                    id: r.id,
+                    address: r.address_line,
+                    status: r.status,
+                    latitude: r.latitude,
+                    longitude: r.longitude,
+                    seedClientName: r.seed_client_name,
+                    isSeed: false,
+                  }))}
+                />
+              )}
+            </div>
+          ) : (
+
         <CardContent className="p-0">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
