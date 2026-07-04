@@ -87,13 +87,13 @@ export async function computeDigestMetrics(orgId: string): Promise<DigestMetrics
       .from("payments")
       .select("amount_cents, paid_at")
       .eq("organization_id", orgId)
-      .eq("status", "paid")
+      .eq("status", "succeeded")
       .gte("paid_at", weekStartIso),
     supabaseAdmin
       .from("payments")
       .select("amount_cents, paid_at")
       .eq("organization_id", orgId)
-      .eq("status", "paid")
+      .eq("status", "succeeded")
       .gte("paid_at", prevStartIso)
       .lt("paid_at", weekStartIso),
   ]);
@@ -106,10 +106,10 @@ export async function computeDigestMetrics(orgId: string): Promise<DigestMetrics
   // Visits this week
   const { data: visits } = await supabaseAdmin
     .from("visits")
-    .select("id, status, scheduled_date, zone_id")
+    .select("id, status, scheduled_on")
     .eq("organization_id", orgId)
-    .gte("scheduled_date", weekStartDate)
-    .lte("scheduled_date", todayDate);
+    .gte("scheduled_on", weekStartDate)
+    .lte("scheduled_on", todayDate);
   const visitsCompleted = (visits ?? []).filter((v: any) => v.status === "completed").length;
   const visitsSkipped = (visits ?? []).filter(
     (v: any) => v.status === "skipped" || v.status === "no_show",
@@ -144,35 +144,17 @@ export async function computeDigestMetrics(orgId: string): Promise<DigestMetrics
     .eq("active", true)
     .gte("churn_score", 60);
 
-  // Complaints (quality events) this week
-  let complaintsCount = 0;
-  {
-    const { count } = await supabaseAdmin
-      .from("visit_quality_events")
-      .select("id", { count: "exact", head: true })
-      .eq("organization_id", orgId)
-      .eq("kind", "complaint")
-      .gte("created_at", weekStartIso);
-    complaintsCount = count ?? 0;
-  }
+  // Complaints — count QC tickets opened this week
+  const { count: complaintsCountRaw } = await supabaseAdmin
+    .from("qc_tickets")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", orgId)
+    .gte("created_at", weekStartIso);
+  const complaintsCount = complaintsCountRaw ?? 0;
 
-  // Top zones by revenue (from visits' zone_id → invoice items? Approximate via visit counts)
-  const zoneCounts = new Map<string, number>();
-  for (const v of visits ?? []) {
-    if (v.zone_id) zoneCounts.set(v.zone_id, (zoneCounts.get(v.zone_id) ?? 0) + 1);
-  }
-  const topZoneIds = [...zoneCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
+  // Top zones intentionally omitted — visits schema has no zone_id.
   const topZones: Array<{ name: string; revenueCents: number }> = [];
-  if (topZoneIds.length) {
-    const { data: zones } = await supabaseAdmin
-      .from("service_zones")
-      .select("id, name")
-      .in(
-        "id",
-        topZoneIds.map(([id]) => id),
-      );
-    const nameById = new Map((zones ?? []).map((z: any) => [z.id, z.name]));
-    for (const [id, ct] of topZoneIds) {
+
       topZones.push({ name: (nameById.get(id) as string) ?? "Zone", revenueCents: ct });
     }
   }
