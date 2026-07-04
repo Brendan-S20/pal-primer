@@ -84,6 +84,7 @@ import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/e
 import { Route as LovableEmailAuthWebhookRouteImport } from './routes/lovable/email/auth/webhook'
 import { Route as LovableEmailAuthPreviewRouteImport } from './routes/lovable/email/auth/preview'
 import { Route as ApiPublicHooksXeroCallbackRouteImport } from './routes/api/public/hooks/xero-callback'
+import { Route as ApiPublicHooksWeeklyDigestRouteImport } from './routes/api/public/hooks/weekly-digest'
 import { Route as ApiPublicHooksTwilioVoiceRouteImport } from './routes/api/public/hooks/twilio-voice'
 import { Route as ApiPublicHooksTwilioRouteImport } from './routes/api/public/hooks/twilio'
 import { Route as ApiPublicHooksStripeRouteImport } from './routes/api/public/hooks/stripe'
@@ -491,6 +492,12 @@ const ApiPublicHooksXeroCallbackRoute =
     path: '/api/public/hooks/xero-callback',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksWeeklyDigestRoute =
+  ApiPublicHooksWeeklyDigestRouteImport.update({
+    id: '/api/public/hooks/weekly-digest',
+    path: '/api/public/hooks/weekly-digest',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksTwilioVoiceRoute =
   ApiPublicHooksTwilioVoiceRouteImport.update({
     id: '/api/public/hooks/twilio-voice',
@@ -599,6 +606,7 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
+  '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
   '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
   '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
@@ -675,6 +683,7 @@ export interface FileRoutesByTo {
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
+  '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
   '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
   '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
@@ -759,6 +768,7 @@ export interface FileRoutesById {
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
+  '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
   '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
   '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
   '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
@@ -843,6 +853,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
+    | '/api/public/hooks/weekly-digest'
     | '/api/public/hooks/xero-callback'
     | '/lovable/email/auth/preview'
     | '/lovable/email/auth/webhook'
@@ -919,6 +930,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
+    | '/api/public/hooks/weekly-digest'
     | '/api/public/hooks/xero-callback'
     | '/lovable/email/auth/preview'
     | '/lovable/email/auth/webhook'
@@ -1002,6 +1014,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
+    | '/api/public/hooks/weekly-digest'
     | '/api/public/hooks/xero-callback'
     | '/lovable/email/auth/preview'
     | '/lovable/email/auth/webhook'
@@ -1033,6 +1046,7 @@ export interface RootRouteChildren {
   ApiPublicHooksStripeRoute: typeof ApiPublicHooksStripeRoute
   ApiPublicHooksTwilioRoute: typeof ApiPublicHooksTwilioRoute
   ApiPublicHooksTwilioVoiceRoute: typeof ApiPublicHooksTwilioVoiceRoute
+  ApiPublicHooksWeeklyDigestRoute: typeof ApiPublicHooksWeeklyDigestRoute
   ApiPublicHooksXeroCallbackRoute: typeof ApiPublicHooksXeroCallbackRoute
   LovableEmailAuthPreviewRoute: typeof LovableEmailAuthPreviewRoute
   LovableEmailAuthWebhookRoute: typeof LovableEmailAuthWebhookRoute
@@ -1568,6 +1582,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksXeroCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/weekly-digest': {
+      id: '/api/public/hooks/weekly-digest'
+      path: '/api/public/hooks/weekly-digest'
+      fullPath: '/api/public/hooks/weekly-digest'
+      preLoaderRoute: typeof ApiPublicHooksWeeklyDigestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/twilio-voice': {
       id: '/api/public/hooks/twilio-voice'
       path: '/api/public/hooks/twilio-voice'
@@ -1816,6 +1837,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksStripeRoute: ApiPublicHooksStripeRoute,
   ApiPublicHooksTwilioRoute: ApiPublicHooksTwilioRoute,
   ApiPublicHooksTwilioVoiceRoute: ApiPublicHooksTwilioVoiceRoute,
+  ApiPublicHooksWeeklyDigestRoute: ApiPublicHooksWeeklyDigestRoute,
   ApiPublicHooksXeroCallbackRoute: ApiPublicHooksXeroCallbackRoute,
   LovableEmailAuthPreviewRoute: LovableEmailAuthPreviewRoute,
   LovableEmailAuthWebhookRoute: LovableEmailAuthWebhookRoute,
