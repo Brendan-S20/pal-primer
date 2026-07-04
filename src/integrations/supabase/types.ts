@@ -1779,12 +1779,14 @@ export type Database = {
           created_at: string
           currency: string
           current_period_end: string | null
+          digest_recipient_email: string | null
           dunning_pause_after_failures: number
           dunning_retry_days: number[]
           frequency_multipliers: Json
           google_review_url: string | null
           id: string
           is_franchise_parent: boolean
+          last_digest_sent_at: string | null
           logo_url: string | null
           name: string
           notify_email_invoice_sent: boolean
@@ -1792,6 +1794,7 @@ export type Database = {
           notify_email_payment_received: boolean
           notify_email_visit_completed: boolean
           notify_email_weather_reschedule: boolean
+          notify_email_weekly_digest: boolean
           notify_email_welcome: boolean
           notify_email_win_back: boolean
           notify_sms_on_my_way: boolean
@@ -1843,12 +1846,14 @@ export type Database = {
           created_at?: string
           currency?: string
           current_period_end?: string | null
+          digest_recipient_email?: string | null
           dunning_pause_after_failures?: number
           dunning_retry_days?: number[]
           frequency_multipliers?: Json
           google_review_url?: string | null
           id?: string
           is_franchise_parent?: boolean
+          last_digest_sent_at?: string | null
           logo_url?: string | null
           name: string
           notify_email_invoice_sent?: boolean
@@ -1856,6 +1861,7 @@ export type Database = {
           notify_email_payment_received?: boolean
           notify_email_visit_completed?: boolean
           notify_email_weather_reschedule?: boolean
+          notify_email_weekly_digest?: boolean
           notify_email_welcome?: boolean
           notify_email_win_back?: boolean
           notify_sms_on_my_way?: boolean
@@ -1907,12 +1913,14 @@ export type Database = {
           created_at?: string
           currency?: string
           current_period_end?: string | null
+          digest_recipient_email?: string | null
           dunning_pause_after_failures?: number
           dunning_retry_days?: number[]
           frequency_multipliers?: Json
           google_review_url?: string | null
           id?: string
           is_franchise_parent?: boolean
+          last_digest_sent_at?: string | null
           logo_url?: string | null
           name?: string
           notify_email_invoice_sent?: boolean
@@ -1920,6 +1928,7 @@ export type Database = {
           notify_email_payment_received?: boolean
           notify_email_visit_completed?: boolean
           notify_email_weather_reschedule?: boolean
+          notify_email_weekly_digest?: boolean
           notify_email_welcome?: boolean
           notify_email_win_back?: boolean
           notify_sms_on_my_way?: boolean
