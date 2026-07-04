@@ -24,11 +24,18 @@ import { Route as PlatformIndexRouteImport } from './routes/platform.index'
 import { Route as SignupSuccessRouteImport } from './routes/signup.success'
 import { Route as SignupSlugRouteImport } from './routes/signup.$slug'
 import { Route as PortalTokenRouteImport } from './routes/portal.$token'
+import { Route as PlatformUsersRouteImport } from './routes/platform.users'
 import { Route as PlatformTenantsRouteImport } from './routes/platform.tenants'
+import { Route as PlatformSignupRequestsRouteImport } from './routes/platform.signup-requests'
 import { Route as PlatformRevenueRouteImport } from './routes/platform.revenue'
+import { Route as PlatformPlansRouteImport } from './routes/platform.plans'
 import { Route as PlatformOverviewRouteImport } from './routes/platform.overview'
+import { Route as PlatformInvoicesRouteImport } from './routes/platform.invoices'
+import { Route as PlatformInvitesRouteImport } from './routes/platform.invites'
 import { Route as PlatformHealthRouteImport } from './routes/platform.health'
+import { Route as PlatformCouponsRouteImport } from './routes/platform.coupons'
 import { Route as PlatformAuditRouteImport } from './routes/platform.audit'
+import { Route as PlatformAnnouncementsRouteImport } from './routes/platform.announcements'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as AuthenticatedZonesRouteImport } from './routes/_authenticated/zones'
 import { Route as AuthenticatedWeatherRouteImport } from './routes/_authenticated/weather'
@@ -60,6 +67,7 @@ import { Route as PortalTokenRequestsRouteImport } from './routes/portal.$token.
 import { Route as PortalTokenPropertyRouteImport } from './routes/portal.$token.property'
 import { Route as PortalTokenBillingRouteImport } from './routes/portal.$token.billing'
 import { Route as PortalTokenAccountRouteImport } from './routes/portal.$token.account'
+import { Route as PlatformTenantsIdRouteImport } from './routes/platform.tenants.$id'
 import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
 import { Route as AuthenticatedSettingsUsersRouteImport } from './routes/_authenticated/settings.users'
 import { Route as AuthenticatedSettingsSmsRouteImport } from './routes/_authenticated/settings.sms'
@@ -168,9 +176,19 @@ const PortalTokenRoute = PortalTokenRouteImport.update({
   path: '/portal/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PlatformUsersRoute = PlatformUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => PlatformRoute,
+} as any)
 const PlatformTenantsRoute = PlatformTenantsRouteImport.update({
   id: '/tenants',
   path: '/tenants',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformSignupRequestsRoute = PlatformSignupRequestsRouteImport.update({
+  id: '/signup-requests',
+  path: '/signup-requests',
   getParentRoute: () => PlatformRoute,
 } as any)
 const PlatformRevenueRoute = PlatformRevenueRouteImport.update({
@@ -178,9 +196,24 @@ const PlatformRevenueRoute = PlatformRevenueRouteImport.update({
   path: '/revenue',
   getParentRoute: () => PlatformRoute,
 } as any)
+const PlatformPlansRoute = PlatformPlansRouteImport.update({
+  id: '/plans',
+  path: '/plans',
+  getParentRoute: () => PlatformRoute,
+} as any)
 const PlatformOverviewRoute = PlatformOverviewRouteImport.update({
   id: '/overview',
   path: '/overview',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformInvoicesRoute = PlatformInvoicesRouteImport.update({
+  id: '/invoices',
+  path: '/invoices',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformInvitesRoute = PlatformInvitesRouteImport.update({
+  id: '/invites',
+  path: '/invites',
   getParentRoute: () => PlatformRoute,
 } as any)
 const PlatformHealthRoute = PlatformHealthRouteImport.update({
@@ -188,9 +221,19 @@ const PlatformHealthRoute = PlatformHealthRouteImport.update({
   path: '/health',
   getParentRoute: () => PlatformRoute,
 } as any)
+const PlatformCouponsRoute = PlatformCouponsRouteImport.update({
+  id: '/coupons',
+  path: '/coupons',
+  getParentRoute: () => PlatformRoute,
+} as any)
 const PlatformAuditRoute = PlatformAuditRouteImport.update({
   id: '/audit',
   path: '/audit',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformAnnouncementsRoute = PlatformAnnouncementsRouteImport.update({
+  id: '/announcements',
+  path: '/announcements',
   getParentRoute: () => PlatformRoute,
 } as any)
 const EmailUnsubscribeRoute = EmailUnsubscribeRouteImport.update({
@@ -352,6 +395,11 @@ const PortalTokenAccountRoute = PortalTokenAccountRouteImport.update({
   id: '/account',
   path: '/account',
   getParentRoute: () => PortalTokenRoute,
+} as any)
+const PlatformTenantsIdRoute = PlatformTenantsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => PlatformTenantsRoute,
 } as any)
 const LovableEmailSuppressionRoute = LovableEmailSuppressionRouteImport.update({
   id: '/lovable/email/suppression',
@@ -575,11 +623,18 @@ export interface FileRoutesByFullPath {
   '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
+  '/platform/coupons': typeof PlatformCouponsRoute
   '/platform/health': typeof PlatformHealthRoute
+  '/platform/invites': typeof PlatformInvitesRoute
+  '/platform/invoices': typeof PlatformInvoicesRoute
   '/platform/overview': typeof PlatformOverviewRoute
+  '/platform/plans': typeof PlatformPlansRoute
   '/platform/revenue': typeof PlatformRevenueRoute
-  '/platform/tenants': typeof PlatformTenantsRoute
+  '/platform/signup-requests': typeof PlatformSignupRequestsRoute
+  '/platform/tenants': typeof PlatformTenantsRouteWithChildren
+  '/platform/users': typeof PlatformUsersRoute
   '/portal/$token': typeof PortalTokenRouteWithChildren
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
@@ -603,6 +658,7 @@ export interface FileRoutesByFullPath {
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/platform/tenants/$id': typeof PlatformTenantsIdRoute
   '/portal/$token/account': typeof PortalTokenAccountRoute
   '/portal/$token/billing': typeof PortalTokenBillingRoute
   '/portal/$token/property': typeof PortalTokenPropertyRoute
@@ -655,11 +711,18 @@ export interface FileRoutesByTo {
   '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
+  '/platform/coupons': typeof PlatformCouponsRoute
   '/platform/health': typeof PlatformHealthRoute
+  '/platform/invites': typeof PlatformInvitesRoute
+  '/platform/invoices': typeof PlatformInvoicesRoute
   '/platform/overview': typeof PlatformOverviewRoute
+  '/platform/plans': typeof PlatformPlansRoute
   '/platform/revenue': typeof PlatformRevenueRoute
-  '/platform/tenants': typeof PlatformTenantsRoute
+  '/platform/signup-requests': typeof PlatformSignupRequestsRoute
+  '/platform/tenants': typeof PlatformTenantsRouteWithChildren
+  '/platform/users': typeof PlatformUsersRoute
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/platform': typeof PlatformIndexRoute
@@ -682,6 +745,7 @@ export interface FileRoutesByTo {
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/platform/tenants/$id': typeof PlatformTenantsIdRoute
   '/portal/$token/account': typeof PortalTokenAccountRoute
   '/portal/$token/billing': typeof PortalTokenBillingRoute
   '/portal/$token/property': typeof PortalTokenPropertyRoute
@@ -741,11 +805,18 @@ export interface FileRoutesById {
   '/_authenticated/weather': typeof AuthenticatedWeatherRoute
   '/_authenticated/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
+  '/platform/coupons': typeof PlatformCouponsRoute
   '/platform/health': typeof PlatformHealthRoute
+  '/platform/invites': typeof PlatformInvitesRoute
+  '/platform/invoices': typeof PlatformInvoicesRoute
   '/platform/overview': typeof PlatformOverviewRoute
+  '/platform/plans': typeof PlatformPlansRoute
   '/platform/revenue': typeof PlatformRevenueRoute
-  '/platform/tenants': typeof PlatformTenantsRoute
+  '/platform/signup-requests': typeof PlatformSignupRequestsRoute
+  '/platform/tenants': typeof PlatformTenantsRouteWithChildren
+  '/platform/users': typeof PlatformUsersRoute
   '/portal/$token': typeof PortalTokenRouteWithChildren
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
@@ -769,6 +840,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/_authenticated/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/platform/tenants/$id': typeof PlatformTenantsIdRoute
   '/portal/$token/account': typeof PortalTokenAccountRoute
   '/portal/$token/billing': typeof PortalTokenBillingRoute
   '/portal/$token/property': typeof PortalTokenPropertyRoute
@@ -828,11 +900,18 @@ export interface FileRouteTypes {
     | '/weather'
     | '/zones'
     | '/email/unsubscribe'
+    | '/platform/announcements'
     | '/platform/audit'
+    | '/platform/coupons'
     | '/platform/health'
+    | '/platform/invites'
+    | '/platform/invoices'
     | '/platform/overview'
+    | '/platform/plans'
     | '/platform/revenue'
+    | '/platform/signup-requests'
     | '/platform/tenants'
+    | '/platform/users'
     | '/portal/$token'
     | '/signup/$slug'
     | '/signup/success'
@@ -856,6 +935,7 @@ export interface FileRouteTypes {
     | '/settings/sms'
     | '/settings/users'
     | '/lovable/email/suppression'
+    | '/platform/tenants/$id'
     | '/portal/$token/account'
     | '/portal/$token/billing'
     | '/portal/$token/property'
@@ -908,11 +988,18 @@ export interface FileRouteTypes {
     | '/weather'
     | '/zones'
     | '/email/unsubscribe'
+    | '/platform/announcements'
     | '/platform/audit'
+    | '/platform/coupons'
     | '/platform/health'
+    | '/platform/invites'
+    | '/platform/invoices'
     | '/platform/overview'
+    | '/platform/plans'
     | '/platform/revenue'
+    | '/platform/signup-requests'
     | '/platform/tenants'
+    | '/platform/users'
     | '/signup/$slug'
     | '/signup/success'
     | '/platform'
@@ -935,6 +1022,7 @@ export interface FileRouteTypes {
     | '/settings/sms'
     | '/settings/users'
     | '/lovable/email/suppression'
+    | '/platform/tenants/$id'
     | '/portal/$token/account'
     | '/portal/$token/billing'
     | '/portal/$token/property'
@@ -993,11 +1081,18 @@ export interface FileRouteTypes {
     | '/_authenticated/weather'
     | '/_authenticated/zones'
     | '/email/unsubscribe'
+    | '/platform/announcements'
     | '/platform/audit'
+    | '/platform/coupons'
     | '/platform/health'
+    | '/platform/invites'
+    | '/platform/invoices'
     | '/platform/overview'
+    | '/platform/plans'
     | '/platform/revenue'
+    | '/platform/signup-requests'
     | '/platform/tenants'
+    | '/platform/users'
     | '/portal/$token'
     | '/signup/$slug'
     | '/signup/success'
@@ -1021,6 +1116,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/sms'
     | '/_authenticated/settings/users'
     | '/lovable/email/suppression'
+    | '/platform/tenants/$id'
     | '/portal/$token/account'
     | '/portal/$token/billing'
     | '/portal/$token/property'
@@ -1186,11 +1282,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/platform/users': {
+      id: '/platform/users'
+      path: '/users'
+      fullPath: '/platform/users'
+      preLoaderRoute: typeof PlatformUsersRouteImport
+      parentRoute: typeof PlatformRoute
+    }
     '/platform/tenants': {
       id: '/platform/tenants'
       path: '/tenants'
       fullPath: '/platform/tenants'
       preLoaderRoute: typeof PlatformTenantsRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/signup-requests': {
+      id: '/platform/signup-requests'
+      path: '/signup-requests'
+      fullPath: '/platform/signup-requests'
+      preLoaderRoute: typeof PlatformSignupRequestsRouteImport
       parentRoute: typeof PlatformRoute
     }
     '/platform/revenue': {
@@ -1200,11 +1310,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlatformRevenueRouteImport
       parentRoute: typeof PlatformRoute
     }
+    '/platform/plans': {
+      id: '/platform/plans'
+      path: '/plans'
+      fullPath: '/platform/plans'
+      preLoaderRoute: typeof PlatformPlansRouteImport
+      parentRoute: typeof PlatformRoute
+    }
     '/platform/overview': {
       id: '/platform/overview'
       path: '/overview'
       fullPath: '/platform/overview'
       preLoaderRoute: typeof PlatformOverviewRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/invoices': {
+      id: '/platform/invoices'
+      path: '/invoices'
+      fullPath: '/platform/invoices'
+      preLoaderRoute: typeof PlatformInvoicesRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/invites': {
+      id: '/platform/invites'
+      path: '/invites'
+      fullPath: '/platform/invites'
+      preLoaderRoute: typeof PlatformInvitesRouteImport
       parentRoute: typeof PlatformRoute
     }
     '/platform/health': {
@@ -1214,11 +1345,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlatformHealthRouteImport
       parentRoute: typeof PlatformRoute
     }
+    '/platform/coupons': {
+      id: '/platform/coupons'
+      path: '/coupons'
+      fullPath: '/platform/coupons'
+      preLoaderRoute: typeof PlatformCouponsRouteImport
+      parentRoute: typeof PlatformRoute
+    }
     '/platform/audit': {
       id: '/platform/audit'
       path: '/audit'
       fullPath: '/platform/audit'
       preLoaderRoute: typeof PlatformAuditRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/announcements': {
+      id: '/platform/announcements'
+      path: '/announcements'
+      fullPath: '/platform/announcements'
+      preLoaderRoute: typeof PlatformAnnouncementsRouteImport
       parentRoute: typeof PlatformRoute
     }
     '/email/unsubscribe': {
@@ -1437,6 +1582,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/portal/$token/account'
       preLoaderRoute: typeof PortalTokenAccountRouteImport
       parentRoute: typeof PortalTokenRoute
+    }
+    '/platform/tenants/$id': {
+      id: '/platform/tenants/$id'
+      path: '/$id'
+      fullPath: '/platform/tenants/$id'
+      preLoaderRoute: typeof PlatformTenantsIdRouteImport
+      parentRoute: typeof PlatformTenantsRoute
     }
     '/lovable/email/suppression': {
       id: '/lovable/email/suppression'
@@ -1811,21 +1963,47 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
 const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
+interface PlatformTenantsRouteChildren {
+  PlatformTenantsIdRoute: typeof PlatformTenantsIdRoute
+}
+
+const PlatformTenantsRouteChildren: PlatformTenantsRouteChildren = {
+  PlatformTenantsIdRoute: PlatformTenantsIdRoute,
+}
+
+const PlatformTenantsRouteWithChildren = PlatformTenantsRoute._addFileChildren(
+  PlatformTenantsRouteChildren,
+)
+
 interface PlatformRouteChildren {
+  PlatformAnnouncementsRoute: typeof PlatformAnnouncementsRoute
   PlatformAuditRoute: typeof PlatformAuditRoute
+  PlatformCouponsRoute: typeof PlatformCouponsRoute
   PlatformHealthRoute: typeof PlatformHealthRoute
+  PlatformInvitesRoute: typeof PlatformInvitesRoute
+  PlatformInvoicesRoute: typeof PlatformInvoicesRoute
   PlatformOverviewRoute: typeof PlatformOverviewRoute
+  PlatformPlansRoute: typeof PlatformPlansRoute
   PlatformRevenueRoute: typeof PlatformRevenueRoute
-  PlatformTenantsRoute: typeof PlatformTenantsRoute
+  PlatformSignupRequestsRoute: typeof PlatformSignupRequestsRoute
+  PlatformTenantsRoute: typeof PlatformTenantsRouteWithChildren
+  PlatformUsersRoute: typeof PlatformUsersRoute
   PlatformIndexRoute: typeof PlatformIndexRoute
 }
 
 const PlatformRouteChildren: PlatformRouteChildren = {
+  PlatformAnnouncementsRoute: PlatformAnnouncementsRoute,
   PlatformAuditRoute: PlatformAuditRoute,
+  PlatformCouponsRoute: PlatformCouponsRoute,
   PlatformHealthRoute: PlatformHealthRoute,
+  PlatformInvitesRoute: PlatformInvitesRoute,
+  PlatformInvoicesRoute: PlatformInvoicesRoute,
   PlatformOverviewRoute: PlatformOverviewRoute,
+  PlatformPlansRoute: PlatformPlansRoute,
   PlatformRevenueRoute: PlatformRevenueRoute,
-  PlatformTenantsRoute: PlatformTenantsRoute,
+  PlatformSignupRequestsRoute: PlatformSignupRequestsRoute,
+  PlatformTenantsRoute: PlatformTenantsRouteWithChildren,
+  PlatformUsersRoute: PlatformUsersRoute,
   PlatformIndexRoute: PlatformIndexRoute,
 }
 

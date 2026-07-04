@@ -105,14 +105,14 @@ function PlatformLayout() {
       <main className="min-w-0 flex-1">
         {/* mobile nav — simple horizontal scroll fallback */}
         <div className="flex gap-1 overflow-x-auto border-b bg-card/40 px-3 py-2 md:hidden">
-          {NAV.flatMap((g) => g.items).map(({ to, label }) => (
+          {NAV.flatMap((g) => g.items as ReadonlyArray<(typeof g.items)[number]>).map((item) => (
             <Link
-              key={to}
-              to={to}
+              key={item.to}
+              to={item.to}
               className="whitespace-nowrap rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted data-[active=true]:bg-muted data-[active=true]:text-foreground"
               activeProps={{ "data-active": "true" } as never}
             >
-              {label}
+              {item.label}
             </Link>
           ))}
         </div>
