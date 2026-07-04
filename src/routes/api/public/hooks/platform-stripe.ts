@@ -110,14 +110,14 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
               const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null;
               const orgId = await orgFromCustomer(customerId);
               if (orgId) {
-                const statusMap: Record<string, string> = {
-                  trialing: "trialing",
+                const statusMap: Record<string, "active" | "past_due" | "canceled" | "free"> = {
+                  trialing: "active",
                   active: "active",
                   past_due: "past_due",
                   canceled: "canceled",
                   unpaid: "past_due",
-                  paused: "paused",
-                  incomplete: "trialing",
+                  paused: "canceled",
+                  incomplete: "past_due",
                   incomplete_expired: "canceled",
                 };
                 const currentPeriodEnd = (sub as any).current_period_end as number | undefined;
