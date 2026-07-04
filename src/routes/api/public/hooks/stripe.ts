@@ -293,9 +293,20 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               const { data: inv } = await supabaseAdmin
                 .from("invoices").select("client_id, organization_id").eq("id", invoiceId).single();
               if (inv?.client_id) {
+                // Dunning: increment failure count, pause autopay if past org threshold.
+                const [{ data: c }, { data: orgCfg }] = await Promise.all([
+                  supabaseAdmin.from("clients")
+                    .select("autopay_failure_count").eq("id", inv.client_id).single(),
+                  supabaseAdmin.from("organizations")
+                    .select("dunning_pause_after_failures").eq("id", inv.organization_id).single(),
+                ]);
+                const nextCount = (c?.autopay_failure_count ?? 0) + 1;
+                const threshold = orgCfg?.dunning_pause_after_failures ?? 3;
                 await supabaseAdmin.from("clients").update({
                   autopay_last_error: err,
                   autopay_last_attempt_at: new Date().toISOString(),
+                  autopay_failure_count: nextCount,
+                  autopay_paused: nextCount >= threshold,
                 }).eq("id", inv.client_id);
 
                 // Optional SMS alert to client (org toggle)
