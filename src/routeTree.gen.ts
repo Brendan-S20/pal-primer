@@ -103,6 +103,7 @@ import { Route as ApiPublicHooksStripeRouteImport } from './routes/api/public/ho
 import { Route as ApiPublicHooksQboCallbackRouteImport } from './routes/api/public/hooks/qbo-callback'
 import { Route as ApiPublicHooksPlatformStripeRouteImport } from './routes/api/public/hooks/platform-stripe'
 import { Route as ApiPublicHooksNightlyRouteImport } from './routes/api/public/hooks/nightly'
+import { Route as ApiPublicHooksAnnouncementEmailsRouteImport } from './routes/api/public/hooks/announcement-emails'
 import { Route as AuthenticatedPropertiesPropertyIdBoundaryRouteImport } from './routes/_authenticated/properties.$propertyId.boundary'
 
 const UnsubscribeRoute = UnsubscribeRouteImport.update({
@@ -604,6 +605,12 @@ const ApiPublicHooksNightlyRoute = ApiPublicHooksNightlyRouteImport.update({
   path: '/api/public/hooks/nightly',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHooksAnnouncementEmailsRoute =
+  ApiPublicHooksAnnouncementEmailsRouteImport.update({
+    id: '/api/public/hooks/announcement-emails',
+    path: '/api/public/hooks/announcement-emails',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AuthenticatedPropertiesPropertyIdBoundaryRoute =
   AuthenticatedPropertiesPropertyIdBoundaryRouteImport.update({
     id: '/properties/$propertyId/boundary',
@@ -692,6 +699,7 @@ export interface FileRoutesByFullPath {
   '/settings/': typeof AuthenticatedSettingsIndexRoute
   '/portal/$token/': typeof PortalTokenIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
+  '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
@@ -782,6 +790,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/portal/$token': typeof PortalTokenIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
+  '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
@@ -880,6 +889,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
   '/portal/$token/': typeof PortalTokenIndexRoute
   '/_authenticated/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
+  '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
@@ -978,6 +988,7 @@ export interface FileRouteTypes {
     | '/settings/'
     | '/portal/$token/'
     | '/properties/$propertyId/boundary'
+    | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/platform-stripe'
     | '/api/public/hooks/qbo-callback'
@@ -1068,6 +1079,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/portal/$token'
     | '/properties/$propertyId/boundary'
+    | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/platform-stripe'
     | '/api/public/hooks/qbo-callback'
@@ -1165,6 +1177,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/'
     | '/portal/$token/'
     | '/_authenticated/properties/$propertyId/boundary'
+    | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/nightly'
     | '/api/public/hooks/platform-stripe'
     | '/api/public/hooks/qbo-callback'
@@ -1200,6 +1213,7 @@ export interface RootRouteChildren {
   SignupSlugRoute: typeof SignupSlugRoute
   SignupSuccessRoute: typeof SignupSuccessRoute
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
+  ApiPublicHooksAnnouncementEmailsRoute: typeof ApiPublicHooksAnnouncementEmailsRoute
   ApiPublicHooksNightlyRoute: typeof ApiPublicHooksNightlyRoute
   ApiPublicHooksPlatformStripeRoute: typeof ApiPublicHooksPlatformStripeRoute
   ApiPublicHooksQboCallbackRoute: typeof ApiPublicHooksQboCallbackRoute
@@ -1875,6 +1889,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksNightlyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/announcement-emails': {
+      id: '/api/public/hooks/announcement-emails'
+      path: '/api/public/hooks/announcement-emails'
+      fullPath: '/api/public/hooks/announcement-emails'
+      preLoaderRoute: typeof ApiPublicHooksAnnouncementEmailsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/properties/$propertyId/boundary': {
       id: '/_authenticated/properties/$propertyId/boundary'
       path: '/properties/$propertyId/boundary'
@@ -2115,6 +2136,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupSlugRoute: SignupSlugRoute,
   SignupSuccessRoute: SignupSuccessRoute,
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
+  ApiPublicHooksAnnouncementEmailsRoute: ApiPublicHooksAnnouncementEmailsRoute,
   ApiPublicHooksNightlyRoute: ApiPublicHooksNightlyRoute,
   ApiPublicHooksPlatformStripeRoute: ApiPublicHooksPlatformStripeRoute,
   ApiPublicHooksQboCallbackRoute: ApiPublicHooksQboCallbackRoute,
