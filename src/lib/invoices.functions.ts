@@ -230,7 +230,7 @@ export const getClientBillingSummary = createServerFn({ method: "GET" })
     const [clientRes, invoicesRes] = await Promise.all([
       supabase
         .from("clients")
-        .select("autopay_enabled, default_card_brand, default_card_last4, default_payment_method_id, stripe_customer_id, primary_email")
+        .select("autopay_enabled, default_card_brand, default_card_last4, default_payment_method_id, stripe_customer_id, primary_email, autopay_paused, autopay_failure_count, autopay_last_error, autopay_last_attempt_at")
         .eq("id", data.clientId)
         .single(),
       supabase
@@ -262,4 +262,23 @@ export const getClientBillingSummary = createServerFn({ method: "GET" })
       openCount: openInvoices.length,
       openTotalCents: openInvoices.reduce((s, i) => s + (i.total_cents ?? 0), 0),
     };
+  });
+
+// Manual override: staff can reset a client's dunning ladder (clears the
+// failure count + paused flag) so the next nightly run tries again. Useful
+// after the client updates their card outside the portal.
+export const resumeAutopay = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase
+      .from("clients")
+      .update({
+        autopay_paused: false,
+        autopay_failure_count: 0,
+        autopay_last_error: null,
+      })
+      .eq("id", data.clientId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
   });

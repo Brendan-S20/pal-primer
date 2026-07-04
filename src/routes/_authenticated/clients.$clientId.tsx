@@ -6,7 +6,7 @@ import { getClient } from "@/lib/clients.functions";
 import { createProperty, listPropertiesForClient } from "@/lib/properties.functions";
 import { createSubscription, listSubscriptionsForClient } from "@/lib/subscriptions.functions";
 import { listZones } from "@/lib/zones.functions";
-import { getClientCredit, generatePrepaidInvoice, getClientBillingSummary, generateInvoiceForClient, createCheckoutForInvoice, voidInvoice } from "@/lib/invoices.functions";
+import { getClientCredit, generatePrepaidInvoice, getClientBillingSummary, generateInvoiceForClient, createCheckoutForInvoice, voidInvoice, resumeAutopay } from "@/lib/invoices.functions";
 import { sendReviewRequest, applyReferralCode } from "@/lib/reviews.functions";
 import {
   listAddonServices,
@@ -1175,6 +1175,9 @@ function BillingPanel({ clientId }: { clientId: string }) {
                 <Badge variant={c.autopay_enabled ? "default" : "outline"} className="mt-1">
                   Autopay {c.autopay_enabled ? "on" : "off"}
                 </Badge>
+                {(c as any).autopay_paused && (
+                  <AutopayResume clientId={clientId} lastError={(c as any).autopay_last_error} onDone={invalidate} />
+                )}
               </div>
             ) : (
               <span className="text-muted-foreground">No card on file</span>
@@ -1269,5 +1272,25 @@ function BillingPanel({ clientId }: { clientId: string }) {
         )}
       </section>
     </>
+  );
+}
+
+function AutopayResume({ clientId, lastError, onDone }: { clientId: string; lastError?: string | null; onDone: () => void }) {
+  const resumeFn = useServerFn(resumeAutopay);
+  const mut = useMutation({
+    mutationFn: () => resumeFn({ data: { clientId } }),
+    onSuccess: () => { toast.success("Autopay resumed — next nightly run will retry"); onDone(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  return (
+    <div className="mt-2 space-y-1 text-right">
+      <Badge variant="destructive" className="text-[10px]">Paused after failed charges</Badge>
+      {lastError && (
+        <div className="max-w-[220px] truncate text-[10px] text-muted-foreground" title={lastError}>{lastError}</div>
+      )}
+      <Button size="sm" variant="outline" onClick={() => mut.mutate()} disabled={mut.isPending}>
+        {mut.isPending ? "Resuming…" : "Resume autopay"}
+      </Button>
+    </div>
   );
 }
