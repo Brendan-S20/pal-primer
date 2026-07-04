@@ -103,6 +103,8 @@ function NeighborsPage() {
   const rows = data?.rows ?? [];
   const s = data?.summary ?? { total: 0 };
   const [walkMode, setWalkMode] = useState(false);
+  const [view, setView] = useState<"list" | "map">("list");
+
   const [walkIdx, setWalkIdx] = useState(0);
   const walkQueue = rows.filter((r) => r.status === "new" || r.status === "contacted");
   const current = walkQueue[walkIdx];
