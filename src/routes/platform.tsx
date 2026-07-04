@@ -1,12 +1,20 @@
-import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   Shield, AlertCircle, LayoutDashboard, Building2, UserPlus, Mailbox, Package,
   Ticket, FileText, Users, Megaphone, TrendingUp, Activity, ScrollText,
+  ArrowLeft, LogOut, Loader2,
 } from "lucide-react";
 import { getPlatformContext } from "@/lib/platform.functions";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
+  SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
+  SidebarProvider, SidebarTrigger, SidebarFooter,
+} from "@/components/ui/sidebar";
 
 export const Route = createFileRoute("/platform")({
   head: () => ({ meta: [{ title: "Platform admin" }, { name: "robots", content: "noindex" }] }),
@@ -47,18 +55,24 @@ function PlatformLayout() {
   const ctxFn = useServerFn(getPlatformContext);
   const ctx = useQuery({ queryKey: ["platform", "ctx"], queryFn: () => ctxFn() });
 
-  if (ctx.isLoading) return <div className="p-6 text-muted-foreground">Loading…</div>;
+  if (ctx.isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6 text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading platform admin…
+      </div>
+    );
+  }
 
   if (!ctx.data?.isPlatformAdmin) {
     return (
-      <div className="p-6">
+      <div className="mx-auto max-w-lg p-4 sm:p-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Shield className="h-5 w-5" /> Platform admin
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
             <div className="flex items-start gap-2">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
               <div>
@@ -66,6 +80,11 @@ function PlatformLayout() {
                 superadmins who manage all tenants across the platform.
               </div>
             </div>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/dashboard">
+                <ArrowLeft className="mr-1 h-4 w-4" /> Back to app
+              </Link>
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -73,53 +92,110 @@ function PlatformLayout() {
   }
 
   return (
-    <div className="flex min-h-screen w-full bg-background">
-      <aside className="hidden w-60 shrink-0 border-r bg-card/40 md:block">
-        <div className="flex h-14 items-center gap-2 border-b px-4">
-          <Shield className="h-5 w-5" />
-          <span className="font-semibold">Platform admin</span>
-        </div>
-        <nav className="p-3 text-sm">
-          {NAV.map((group) => (
-            <div key={group.section} className="mb-4">
-              <div className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {group.section}
-              </div>
-              <div className="flex flex-col gap-0.5">
-                {group.items.map(({ to, label, icon: Icon }) => (
-                  <Link
-                    key={to}
-                    to={to}
-                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground data-[active=true]:bg-muted data-[active=true]:text-foreground"
-                    activeProps={{ "data-active": "true" } as never}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{label}</span>
-                  </Link>
-                ))}
-              </div>
+    <SidebarProvider>
+      <div className="flex min-h-screen w-full bg-background">
+        <PlatformSidebar />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <PlatformHeader />
+          <main className="min-w-0 flex-1 px-3 py-4 sm:px-6 sm:py-6">
+            <div className="mx-auto w-full max-w-6xl">
+              <Outlet />
             </div>
-          ))}
-        </nav>
-      </aside>
-      <main className="min-w-0 flex-1">
-        {/* mobile nav — simple horizontal scroll fallback */}
-        <div className="flex gap-1 overflow-x-auto border-b bg-card/40 px-3 py-2 md:hidden">
-          {NAV.flatMap((g) => g.items as ReadonlyArray<(typeof g.items)[number]>).map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className="whitespace-nowrap rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted data-[active=true]:bg-muted data-[active=true]:text-foreground"
-              activeProps={{ "data-active": "true" } as never}
-            >
-              {item.label}
-            </Link>
-          ))}
+          </main>
         </div>
-        <div className="p-4 sm:p-6">
-          <Outlet />
-        </div>
-      </main>
-    </div>
+      </div>
+    </SidebarProvider>
   );
 }
+
+function PlatformSidebar() {
+  const currentPath = useRouterState({ select: (r) => r.location.pathname });
+  return (
+    <Sidebar collapsible="offcanvas">
+      <SidebarHeader className="border-b">
+        <div className="flex items-center gap-2 px-2 py-1.5">
+          <Shield className="h-5 w-5 text-primary" />
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold">Platform admin</div>
+            <div className="truncate text-[11px] text-muted-foreground">Scoop CRM</div>
+          </div>
+        </div>
+      </SidebarHeader>
+      <SidebarContent>
+        {NAV.map((group) => (
+          <SidebarGroup key={group.section}>
+            <SidebarGroupLabel>{group.section}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map(({ to, label, icon: Icon }) => {
+                  const active = currentPath === to || currentPath.startsWith(to + "/");
+                  return (
+                    <SidebarMenuItem key={to}>
+                      <SidebarMenuButton asChild isActive={active}>
+                        <Link to={to} className="flex items-center gap-2">
+                          <Icon className="h-4 w-4 shrink-0" />
+                          <span className="truncate">{label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
+      </SidebarContent>
+      <SidebarFooter className="border-t">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild>
+              <Link to="/dashboard" className="flex items-center gap-2">
+                <ArrowLeft className="h-4 w-4 shrink-0" />
+                <span className="truncate">Back to app</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    </Sidebar>
+  );
+}
+
+function PlatformHeader() {
+  const currentPath = useRouterState({ select: (r) => r.location.pathname });
+  const all: Array<{ to: string; label: string }> = NAV.flatMap((g) =>
+    g.items.map((i) => ({ to: i.to as string, label: i.label })),
+  );
+  const label = all.find((i) => currentPath === i.to || currentPath.startsWith(i.to + "/"))?.label
+    ?? "Platform";
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    window.location.href = "/auth";
+  };
+
+  return (
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-card/80 px-3 backdrop-blur sm:px-4">
+      <SidebarTrigger className="min-h-11 min-w-11" />
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <Shield className="h-4 w-4 shrink-0 text-primary sm:hidden" />
+        <div className="truncate text-sm font-semibold sm:text-base">{label}</div>
+      </div>
+      <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
+        <Link to="/dashboard">
+          <ArrowLeft className="mr-1 h-4 w-4" /> Back to app
+        </Link>
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Sign out"
+        className="min-h-11 min-w-11"
+        onClick={handleSignOut}
+      >
+        <LogOut className="h-4 w-4" />
+      </Button>
+    </header>
+  );
+}
+

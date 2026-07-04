@@ -75,20 +75,20 @@ function TenantsPage() {
           <CardTitle className="text-base">
             {q.isLoading ? "Loading…" : `${filtered.length} tenants`}
           </CardTitle>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <div className="relative">
               <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search by name…"
-                className="w-56 pl-8"
+                className="w-full pl-8 sm:w-56"
               />
             </div>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-md border bg-background px-2 py-1 text-sm"
+              className="rounded-md border bg-background px-2 py-2 text-sm sm:py-1"
             >
               <option value="all">All statuses</option>
               {Object.entries(STATUS_LABEL).map(([k, v]) => (
@@ -100,7 +100,47 @@ function TenantsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          {/* Mobile: card list */}
+          <div className="flex flex-col gap-2 md:hidden">
+            {filtered.map((r) => (
+              <Link
+                key={r.id}
+                to="/platform/tenants/$id"
+                params={{ id: r.id }}
+                className="rounded-lg border p-3 transition-colors hover:bg-muted/50"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">{r.name}</div>
+                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {r.plan_name ?? "No plan"} · {r.active_client_count.toLocaleString()} clients · {r.users_count.toLocaleString()} users
+                    </div>
+                  </div>
+                  <Badge variant={STATUS_VARIANT[r.billing_status] ?? "outline"} className="shrink-0">
+                    {STATUS_LABEL[r.billing_status] ?? r.billing_status}
+                  </Badge>
+                </div>
+                <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                  <span>
+                    {r.stripe_subscription_id ? (
+                      <span className="text-emerald-600">Stripe connected</span>
+                    ) : (
+                      <span>No Stripe</span>
+                    )}
+                  </span>
+                  <span>Last: {formatWhen(r.last_activity_at)}</span>
+                </div>
+              </Link>
+            ))}
+            {!q.isLoading && filtered.length === 0 ? (
+              <div className="rounded-lg border p-6 text-center text-sm text-muted-foreground">
+                No tenants match.
+              </div>
+            ) : null}
+          </div>
+
+          {/* Desktop: table */}
+          <div className="hidden overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 <TableRow>
