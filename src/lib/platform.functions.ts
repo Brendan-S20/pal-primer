@@ -336,8 +336,8 @@ export type PlatformAuditRow = {
   organization_id: string | null;
   organization_name: string | null;
   action: string;
-  before_json: unknown;
-  after_json: unknown;
+  before_json: any;
+  after_json: any;
   created_at: string;
 };
 
