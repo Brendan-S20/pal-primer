@@ -290,23 +290,24 @@ export const getViolationNotice = createServerFn({ method: "GET" })
         .single(),
     ]);
     if (mErr) throw new Error(mErr.message);
-    const dog = (m as any).matched_dog;
+    const row: any = m;
+    const dog = row.matched_dog;
     const dogClient = dog?.properties?.clients;
     return {
-      matchId: m.id,
+      matchId: row.id,
       orgName: (org as any)?.name ?? "Your service",
-      clientName: dogClient?.display_name ?? (m as any).clients?.display_name ?? "Resident",
-      clientEmail: dogClient?.primary_email ?? (m as any).clients?.primary_email ?? null,
+      clientName: dogClient?.display_name ?? row.clients?.display_name ?? "Resident",
+      clientEmail: dogClient?.primary_email ?? row.clients?.primary_email ?? null,
       dogName: dog?.name ?? null,
       breed: dog?.breed ?? null,
       registryId: dog?.dna_registry_id ?? null,
-      street: dog?.properties?.street ?? (m as any).properties?.street ?? null,
-      collectedAt: m.collected_at,
-      matchedAt: m.matched_at,
-      labReference: m.lab_reference,
-      locationNote: m.location_note,
-      fineCents: m.fine_cents ?? 0,
-      notes: m.notes,
+      street: dog?.properties?.street ?? row.properties?.street ?? null,
+      collectedAt: row.collected_at,
+      matchedAt: row.matched_at,
+      labReference: row.lab_reference,
+      locationNote: row.location_note,
+      fineCents: row.fine_cents ?? 0,
+      notes: row.notes,
     };
   });
 
