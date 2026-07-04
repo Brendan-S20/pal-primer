@@ -1772,6 +1772,7 @@ export type Database = {
           auto_generate_visits: boolean
           auto_invoice_enabled: boolean
           avg_speed_kmh: number
+          billing_status: Database["public"]["Enums"]["org_billing_status"]
           billing_tier: string | null
           brand_color: string | null
           contact_email: string | null
@@ -1779,11 +1780,13 @@ export type Database = {
           created_at: string
           currency: string
           current_period_end: string | null
+          deleted_at: string | null
           digest_recipient_email: string | null
           dunning_pause_after_failures: number
           dunning_retry_days: number[]
           frequency_multipliers: Json
           google_review_url: string | null
+          grace_expires_at: string | null
           id: string
           is_franchise_parent: boolean
           last_digest_sent_at: string | null
@@ -1806,6 +1809,7 @@ export type Database = {
           overdue_reminder_days: number
           overdue_reminders_enabled: boolean
           parent_organization_id: string | null
+          plan_id: string | null
           plan_status: Database["public"]["Enums"]["org_plan_status"]
           portal_allow_frequency_change: boolean
           portal_allow_self_reschedule: boolean
@@ -1823,7 +1827,10 @@ export type Database = {
           sms_from_number: string | null
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
+          suspended_at: string | null
+          suspended_reason: string | null
           traffic_profile: string
+          trial_ends_at: string | null
           updated_at: string
           workday_end: string
           workday_start: string
@@ -1839,6 +1846,7 @@ export type Database = {
           auto_generate_visits?: boolean
           auto_invoice_enabled?: boolean
           avg_speed_kmh?: number
+          billing_status?: Database["public"]["Enums"]["org_billing_status"]
           billing_tier?: string | null
           brand_color?: string | null
           contact_email?: string | null
@@ -1846,11 +1854,13 @@ export type Database = {
           created_at?: string
           currency?: string
           current_period_end?: string | null
+          deleted_at?: string | null
           digest_recipient_email?: string | null
           dunning_pause_after_failures?: number
           dunning_retry_days?: number[]
           frequency_multipliers?: Json
           google_review_url?: string | null
+          grace_expires_at?: string | null
           id?: string
           is_franchise_parent?: boolean
           last_digest_sent_at?: string | null
@@ -1873,6 +1883,7 @@ export type Database = {
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
           parent_organization_id?: string | null
+          plan_id?: string | null
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
           portal_allow_frequency_change?: boolean
           portal_allow_self_reschedule?: boolean
@@ -1890,7 +1901,10 @@ export type Database = {
           sms_from_number?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
+          suspended_at?: string | null
+          suspended_reason?: string | null
           traffic_profile?: string
+          trial_ends_at?: string | null
           updated_at?: string
           workday_end?: string
           workday_start?: string
@@ -1906,6 +1920,7 @@ export type Database = {
           auto_generate_visits?: boolean
           auto_invoice_enabled?: boolean
           avg_speed_kmh?: number
+          billing_status?: Database["public"]["Enums"]["org_billing_status"]
           billing_tier?: string | null
           brand_color?: string | null
           contact_email?: string | null
@@ -1913,11 +1928,13 @@ export type Database = {
           created_at?: string
           currency?: string
           current_period_end?: string | null
+          deleted_at?: string | null
           digest_recipient_email?: string | null
           dunning_pause_after_failures?: number
           dunning_retry_days?: number[]
           frequency_multipliers?: Json
           google_review_url?: string | null
+          grace_expires_at?: string | null
           id?: string
           is_franchise_parent?: boolean
           last_digest_sent_at?: string | null
@@ -1940,6 +1957,7 @@ export type Database = {
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
           parent_organization_id?: string | null
+          plan_id?: string | null
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
           portal_allow_frequency_change?: boolean
           portal_allow_self_reschedule?: boolean
@@ -1957,7 +1975,10 @@ export type Database = {
           sms_from_number?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
+          suspended_at?: string | null
+          suspended_reason?: string | null
           traffic_profile?: string
+          trial_ends_at?: string | null
           updated_at?: string
           workday_end?: string
           workday_start?: string
@@ -1968,6 +1989,13 @@ export type Database = {
             columns: ["parent_organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organizations_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "platform_plans"
             referencedColumns: ["id"]
           },
         ]
@@ -2066,6 +2094,458 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "platform_admin_audit_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_announcement_reads: {
+        Row: {
+          announcement_id: string
+          read_at: string
+          user_id: string
+        }
+        Insert: {
+          announcement_id: string
+          read_at?: string
+          user_id: string
+        }
+        Update: {
+          announcement_id?: string
+          read_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_announcement_reads_announcement_id_fkey"
+            columns: ["announcement_id"]
+            isOneToOne: false
+            referencedRelation: "platform_announcements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_announcements: {
+        Row: {
+          audience: string
+          body: string
+          created_at: string
+          created_by: string | null
+          email_sent_at: string | null
+          ends_at: string | null
+          id: string
+          send_email: boolean
+          severity: string
+          starts_at: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          audience?: string
+          body: string
+          created_at?: string
+          created_by?: string | null
+          email_sent_at?: string | null
+          ends_at?: string | null
+          id?: string
+          send_email?: boolean
+          severity?: string
+          starts_at?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          audience?: string
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          email_sent_at?: string | null
+          ends_at?: string | null
+          id?: string
+          send_email?: boolean
+          severity?: string
+          starts_at?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_coupons: {
+        Row: {
+          amount_off_cents: number | null
+          applies_to_plan_ids: string[]
+          code: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          duration: string
+          duration_in_months: number | null
+          expires_at: string | null
+          id: string
+          is_active: boolean
+          max_redemptions: number | null
+          percent_off: number | null
+          stripe_coupon_id: string | null
+          times_redeemed: number
+          updated_at: string
+        }
+        Insert: {
+          amount_off_cents?: number | null
+          applies_to_plan_ids?: string[]
+          code: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          duration?: string
+          duration_in_months?: number | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          max_redemptions?: number | null
+          percent_off?: number | null
+          stripe_coupon_id?: string | null
+          times_redeemed?: number
+          updated_at?: string
+        }
+        Update: {
+          amount_off_cents?: number | null
+          applies_to_plan_ids?: string[]
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          duration?: string
+          duration_in_months?: number | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean
+          max_redemptions?: number | null
+          percent_off?: number | null
+          stripe_coupon_id?: string | null
+          times_redeemed?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_feature_flags: {
+        Row: {
+          created_at: string
+          default_value: boolean
+          description: string | null
+          id: string
+          key: string
+          label: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          default_value?: boolean
+          description?: string | null
+          id?: string
+          key: string
+          label: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          default_value?: boolean
+          description?: string | null
+          id?: string
+          key?: string
+          label?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_invites: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string | null
+          organization_id: string | null
+          organization_name: string | null
+          revoked_at: string | null
+          role: string
+          token: string
+          updated_at: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          organization_id?: string | null
+          organization_name?: string | null
+          revoked_at?: string | null
+          role?: string
+          token: string
+          updated_at?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          organization_id?: string | null
+          organization_name?: string | null
+          revoked_at?: string | null
+          role?: string
+          token?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_invites_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_invoices: {
+        Row: {
+          amount_due_cents: number
+          amount_paid_cents: number
+          created_at: string
+          currency: string
+          due_at: string | null
+          hosted_invoice_url: string | null
+          id: string
+          invoice_pdf: string | null
+          issued_at: string | null
+          number: string | null
+          organization_id: string
+          paid_at: string | null
+          period_end: string | null
+          period_start: string | null
+          status: string
+          stripe_invoice_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount_due_cents?: number
+          amount_paid_cents?: number
+          created_at?: string
+          currency?: string
+          due_at?: string | null
+          hosted_invoice_url?: string | null
+          id?: string
+          invoice_pdf?: string | null
+          issued_at?: string | null
+          number?: string | null
+          organization_id: string
+          paid_at?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          status?: string
+          stripe_invoice_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount_due_cents?: number
+          amount_paid_cents?: number
+          created_at?: string
+          currency?: string
+          due_at?: string | null
+          hosted_invoice_url?: string | null
+          id?: string
+          invoice_pdf?: string | null
+          issued_at?: string | null
+          number?: string | null
+          organization_id?: string
+          paid_at?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          status?: string
+          stripe_invoice_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_invoices_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_org_feature_flags: {
+        Row: {
+          justification: string | null
+          key: string
+          organization_id: string
+          updated_at: string
+          updated_by: string | null
+          value: boolean
+        }
+        Insert: {
+          justification?: string | null
+          key: string
+          organization_id: string
+          updated_at?: string
+          updated_by?: string | null
+          value: boolean
+        }
+        Update: {
+          justification?: string | null
+          key?: string
+          organization_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_org_feature_flags_key_fkey"
+            columns: ["key"]
+            isOneToOne: false
+            referencedRelation: "platform_feature_flags"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "platform_org_feature_flags_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_plans: {
+        Row: {
+          client_limit_max: number | null
+          client_limit_min: number
+          created_at: string
+          currency: string
+          description: string | null
+          features: Json
+          id: string
+          interval: string
+          is_active: boolean
+          is_free: boolean
+          name: string
+          price_cents: number | null
+          price_per_client_cents: number | null
+          slug: string
+          sort_order: number
+          stripe_price_id: string | null
+          stripe_product_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          client_limit_max?: number | null
+          client_limit_min: number
+          created_at?: string
+          currency?: string
+          description?: string | null
+          features?: Json
+          id?: string
+          interval?: string
+          is_active?: boolean
+          is_free?: boolean
+          name: string
+          price_cents?: number | null
+          price_per_client_cents?: number | null
+          slug: string
+          sort_order?: number
+          stripe_price_id?: string | null
+          stripe_product_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          client_limit_max?: number | null
+          client_limit_min?: number
+          created_at?: string
+          currency?: string
+          description?: string | null
+          features?: Json
+          id?: string
+          interval?: string
+          is_active?: boolean
+          is_free?: boolean
+          name?: string
+          price_cents?: number | null
+          price_per_client_cents?: number | null
+          slug?: string
+          sort_order?: number
+          stripe_price_id?: string | null
+          stripe_product_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_stripe_events: {
+        Row: {
+          error: string | null
+          id: string
+          payload: Json
+          processed_at: string | null
+          received_at: string
+          type: string
+        }
+        Insert: {
+          error?: string | null
+          id: string
+          payload: Json
+          processed_at?: string | null
+          received_at?: string
+          type: string
+        }
+        Update: {
+          error?: string | null
+          id?: string
+          payload?: Json
+          processed_at?: string | null
+          received_at?: string
+          type?: string
+        }
+        Relationships: []
+      }
+      platform_support_notes: {
+        Row: {
+          author_user_id: string | null
+          body: string
+          created_at: string
+          id: string
+          kind: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          author_user_id?: string | null
+          body: string
+          created_at?: string
+          id?: string
+          kind?: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          author_user_id?: string | null
+          body?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_support_notes_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -3848,6 +4328,13 @@ export type Database = {
       invoice_status: "draft" | "open" | "paid" | "void" | "uncollectible"
       message_direction: "outbound" | "inbound"
       message_status: "queued" | "sent" | "delivered" | "failed" | "received"
+      org_billing_status:
+        | "free"
+        | "active"
+        | "past_due"
+        | "grace"
+        | "suspended"
+        | "canceled"
       org_plan_status: "free" | "active" | "past_due" | "canceled"
       payment_status: "pending" | "succeeded" | "failed" | "refunded"
       service_frequency:
@@ -4045,6 +4532,14 @@ export const Constants = {
       invoice_status: ["draft", "open", "paid", "void", "uncollectible"],
       message_direction: ["outbound", "inbound"],
       message_status: ["queued", "sent", "delivered", "failed", "received"],
+      org_billing_status: [
+        "free",
+        "active",
+        "past_due",
+        "grace",
+        "suspended",
+        "canceled",
+      ],
       org_plan_status: ["free", "active", "past_due", "canceled"],
       payment_status: ["pending", "succeeded", "failed", "refunded"],
       service_frequency: [
