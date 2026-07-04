@@ -440,3 +440,168 @@ function WinBackTab() {
     </Card>
   );
 }
+
+function DigestTab() {
+  const previewFn = useServerFn(previewWeeklyDigest);
+  const sendFn = useServerFn(sendWeeklyDigestNow);
+  const settingsFn = useServerFn(getDigestSettings);
+  const updateFn = useServerFn(updateDigestSettings);
+  const qc = useQueryClient();
+
+  const settings = useQuery({
+    queryKey: ["digest", "settings"],
+    queryFn: () => settingsFn(),
+  });
+
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [recipient, setRecipient] = useState<string>("");
+  const initialized = useMemo(() => settings.data != null, [settings.data]);
+  if (initialized && enabled === null) {
+    setEnabled(settings.data!.enabled);
+    setRecipient(settings.data!.recipientEmail ?? "");
+  }
+
+  const preview = useMutation({
+    mutationFn: () => previewFn(),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const send = useMutation({
+    mutationFn: () => sendFn({ data: recipient ? { recipientOverride: recipient } : {} }),
+    onSuccess: (r) => toast.success(`Digest queued to ${r.recipient}`),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const save = useMutation({
+    mutationFn: () =>
+      updateFn({
+        data: { enabled: enabled ?? true, recipientEmail: recipient.trim() || null },
+      }),
+    onSuccess: () => {
+      toast.success("Digest settings saved");
+      qc.invalidateQueries({ queryKey: ["digest", "settings"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const p = preview.data;
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Weekly AI digest</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Every Monday morning, we email a plain-language summary of the past week — revenue,
+            visits, new clients, at-risk accounts, and 2–3 AI-generated recommendations.
+          </p>
+
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+            <div>
+              <Label htmlFor="digest-email">Send to</Label>
+              <Input
+                id="digest-email"
+                type="email"
+                placeholder="owner@yourbusiness.com"
+                value={recipient}
+                onChange={(e) => setRecipient(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                id="digest-enabled"
+                type="checkbox"
+                checked={enabled ?? true}
+                onChange={(e) => setEnabled(e.target.checked)}
+                className="h-4 w-4"
+              />
+              <Label htmlFor="digest-enabled" className="text-sm">
+                Enabled
+              </Label>
+            </div>
+            <Button variant="outline" onClick={() => save.mutate()} disabled={save.isPending}>
+              {save.isPending ? "Saving…" : "Save"}
+            </Button>
+          </div>
+
+          {settings.data?.lastSentAt && (
+            <p className="text-xs text-muted-foreground">
+              Last sent {new Date(settings.data.lastSentAt).toLocaleString()}.
+            </p>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => preview.mutate()} disabled={preview.isPending}>
+              {preview.isPending ? "Generating preview…" : "Preview this week"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => send.mutate()}
+              disabled={send.isPending || (!recipient && !settings.data?.recipientEmail)}
+            >
+              {send.isPending ? "Sending…" : "Send now"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {p && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              Preview — {p.metrics.orgName} · {p.metrics.weekLabel}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm font-medium">{p.insights.headline}</p>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {p.metrics.stats.map((s) => (
+                <div key={s.label} className="rounded-md border p-3">
+                  <div className="text-xs text-muted-foreground">{s.label}</div>
+                  <div className="text-lg font-semibold">{s.value}</div>
+                  {s.delta && <div className="text-xs text-emerald-600">{s.delta}</div>}
+                </div>
+              ))}
+            </div>
+
+            {p.insights.insights.length > 0 && (
+              <div>
+                <h4 className="mb-1 text-sm font-semibold">What stood out</h4>
+                <ul className="list-disc space-y-1 pl-5 text-sm">
+                  {p.insights.insights.map((line, i) => (
+                    <li key={i}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {p.insights.recommendations.length > 0 && (
+              <div>
+                <h4 className="mb-1 text-sm font-semibold">Suggested next steps</h4>
+                <ol className="list-decimal space-y-1 pl-5 text-sm">
+                  {p.insights.recommendations.map((line, i) => (
+                    <li key={i}>{line}</li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
+            {p.metrics.alerts.length > 0 && (
+              <div>
+                <h4 className="mb-1 text-sm font-semibold text-amber-700">Needs attention</h4>
+                <ul className="list-disc space-y-1 pl-5 text-sm text-amber-800">
+                  {p.metrics.alerts.map((line, i) => (
+                    <li key={i}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
