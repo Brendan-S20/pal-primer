@@ -41,39 +41,11 @@ const money = (c: number | null | undefined) =>
 const PLAN_STATUSES = ["trialing", "active", "past_due", "canceled", "paused"] as const;
 
 function PlatformPage() {
-  const ctxFn = useServerFn(getPlatformContext);
   const statsFn = useServerFn(getPlatformStats);
-  const ctx = useQuery({ queryKey: ["platform", "ctx"], queryFn: () => ctxFn() });
   const stats = useQuery({
     queryKey: ["platform", "stats"],
     queryFn: () => statsFn(),
-    enabled: !!ctx.data?.isPlatformAdmin,
   });
-
-  if (ctx.isLoading) return <div className="p-6 text-muted-foreground">Loading…</div>;
-
-  if (!ctx.data?.isPlatformAdmin) {
-    return (
-      <div className="p-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5" /> Platform admin
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <div>
-                You don't have platform admin access. This console is reserved for
-                superadmins who manage all tenants across the platform.
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   const rows: PlatformOrgRow[] = stats.data?.rows ?? [];
   const totals = rows.reduce(
@@ -87,12 +59,7 @@ function PlatformPage() {
   );
 
   return (
-    <div className="space-y-6 p-2">
-      <div className="flex items-center gap-2">
-        <Shield className="h-6 w-6" />
-        <h1 className="text-2xl font-semibold">Platform admin</h1>
-      </div>
-
+    <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard icon={Building2} label="Organizations" value={String(rows.length)} />
         <StatCard icon={Users} label="Active clients" value={totals.clients.toLocaleString()} />

@@ -26,6 +26,7 @@ import { Route as SignupSlugRouteImport } from './routes/signup.$slug'
 import { Route as PortalTokenRouteImport } from './routes/portal.$token'
 import { Route as PlatformRevenueRouteImport } from './routes/platform.revenue'
 import { Route as PlatformHealthRouteImport } from './routes/platform.health'
+import { Route as PlatformAuditRouteImport } from './routes/platform.audit'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as AuthenticatedZonesRouteImport } from './routes/_authenticated/zones'
 import { Route as AuthenticatedWeatherRouteImport } from './routes/_authenticated/weather'
@@ -172,6 +173,11 @@ const PlatformRevenueRoute = PlatformRevenueRouteImport.update({
 const PlatformHealthRoute = PlatformHealthRouteImport.update({
   id: '/health',
   path: '/health',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformAuditRoute = PlatformAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
   getParentRoute: () => PlatformRoute,
 } as any)
 const EmailUnsubscribeRoute = EmailUnsubscribeRouteImport.update({
@@ -550,6 +556,7 @@ export interface FileRoutesByFullPath {
   '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/platform/audit': typeof PlatformAuditRoute
   '/platform/health': typeof PlatformHealthRoute
   '/platform/revenue': typeof PlatformRevenueRoute
   '/portal/$token': typeof PortalTokenRouteWithChildren
@@ -626,6 +633,7 @@ export interface FileRoutesByTo {
   '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/platform/audit': typeof PlatformAuditRoute
   '/platform/health': typeof PlatformHealthRoute
   '/platform/revenue': typeof PlatformRevenueRoute
   '/signup/$slug': typeof SignupSlugRoute
@@ -708,6 +716,7 @@ export interface FileRoutesById {
   '/_authenticated/weather': typeof AuthenticatedWeatherRoute
   '/_authenticated/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/platform/audit': typeof PlatformAuditRoute
   '/platform/health': typeof PlatformHealthRoute
   '/platform/revenue': typeof PlatformRevenueRoute
   '/portal/$token': typeof PortalTokenRouteWithChildren
@@ -791,6 +800,7 @@ export interface FileRouteTypes {
     | '/weather'
     | '/zones'
     | '/email/unsubscribe'
+    | '/platform/audit'
     | '/platform/health'
     | '/platform/revenue'
     | '/portal/$token'
@@ -867,6 +877,7 @@ export interface FileRouteTypes {
     | '/weather'
     | '/zones'
     | '/email/unsubscribe'
+    | '/platform/audit'
     | '/platform/health'
     | '/platform/revenue'
     | '/signup/$slug'
@@ -948,6 +959,7 @@ export interface FileRouteTypes {
     | '/_authenticated/weather'
     | '/_authenticated/zones'
     | '/email/unsubscribe'
+    | '/platform/audit'
     | '/platform/health'
     | '/platform/revenue'
     | '/portal/$token'
@@ -1148,6 +1160,13 @@ declare module '@tanstack/react-router' {
       path: '/health'
       fullPath: '/platform/health'
       preLoaderRoute: typeof PlatformHealthRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/audit': {
+      id: '/platform/audit'
+      path: '/audit'
+      fullPath: '/platform/audit'
+      preLoaderRoute: typeof PlatformAuditRouteImport
       parentRoute: typeof PlatformRoute
     }
     '/email/unsubscribe': {
@@ -1734,12 +1753,14 @@ const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
 interface PlatformRouteChildren {
+  PlatformAuditRoute: typeof PlatformAuditRoute
   PlatformHealthRoute: typeof PlatformHealthRoute
   PlatformRevenueRoute: typeof PlatformRevenueRoute
   PlatformIndexRoute: typeof PlatformIndexRoute
 }
 
 const PlatformRouteChildren: PlatformRouteChildren = {
+  PlatformAuditRoute: PlatformAuditRoute,
   PlatformHealthRoute: PlatformHealthRoute,
   PlatformRevenueRoute: PlatformRevenueRoute,
   PlatformIndexRoute: PlatformIndexRoute,
