@@ -1,0 +1,147 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertTriangle, MailWarning, CalendarClock, PhoneOff, UserPlus, Activity, DollarSign, Clock } from "lucide-react";
+import { getPlatformHealth } from "@/lib/platform.functions";
+
+export const Route = createFileRoute("/platform/health")({
+  head: () => ({ meta: [{ title: "Health · Platform admin" }, { name: "robots", content: "noindex" }] }),
+  component: HealthPage,
+});
+
+const money = (c: number | null | undefined) =>
+  `$${((c ?? 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+
+function HealthPage() {
+  const fn = useServerFn(getPlatformHealth);
+  const q = useQuery({
+    queryKey: ["platform", "health"],
+    queryFn: () => fn(),
+    refetchInterval: 60_000,
+  });
+
+  if (q.isLoading) return <div className="text-sm text-muted-foreground">Loading health…</div>;
+  if (q.isError) return <div className="text-sm text-destructive">{(q.error as Error).message}</div>;
+  const h = q.data!;
+
+  const cards: Array<{
+    label: string;
+    value: string;
+    sub?: string;
+    icon: any;
+    tone?: "ok" | "warn" | "bad";
+  }> = [
+    {
+      label: "Open invoices",
+      value: String(h.open_invoices_count),
+      sub: money(h.open_invoices_total) + " outstanding",
+      icon: DollarSign,
+      tone: h.open_invoices_count > 0 ? "warn" : "ok",
+    },
+    {
+      label: "Overdue > 30d",
+      value: String(h.overdue_invoices_count),
+      sub: money(h.overdue_invoices_total),
+      icon: Clock,
+      tone: h.overdue_invoices_count > 0 ? "bad" : "ok",
+    },
+    {
+      label: "Stuck visits",
+      value: String(h.stuck_visits),
+      sub: "scheduled in the past & still open",
+      icon: CalendarClock,
+      tone: h.stuck_visits > 0 ? "bad" : "ok",
+    },
+    {
+      label: "AI receptionist · 24h",
+      value: `${h.ai_errors_24h} / ${h.ai_calls_24h}`,
+      sub: "errors / total calls",
+      icon: PhoneOff,
+      tone: h.ai_errors_24h > 0 ? "warn" : "ok",
+    },
+    {
+      label: "Pending signups",
+      value: String(h.pending_signups),
+      sub: "awaiting approval",
+      icon: UserPlus,
+      tone: h.pending_signups > 0 ? "warn" : "ok",
+    },
+    {
+      label: "Suppressed emails",
+      value: String(h.suppressed_emails),
+      sub: "bounces + unsubscribes",
+      icon: MailWarning,
+      tone: "ok",
+    },
+    {
+      label: "Admin actions · 24h",
+      value: String(h.admin_actions_24h),
+      sub: "impersonations, plan edits, etc.",
+      icon: Activity,
+      tone: "ok",
+    },
+  ];
+
+  const anyBad = cards.some((c) => c.tone === "bad");
+  const anyWarn = cards.some((c) => c.tone === "warn");
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center justify-between">
+            <span>System health</span>
+            <span
+              className={
+                "rounded-full px-2 py-0.5 text-xs font-medium " +
+                (anyBad
+                  ? "bg-destructive/15 text-destructive"
+                  : anyWarn
+                  ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400"
+                  : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400")
+              }
+            >
+              {anyBad ? "Attention" : anyWarn ? "Watch" : "All clear"}
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {cards.map((c) => <HealthTile key={c.label} {...c} />)}
+          </div>
+          <p className="mt-4 flex items-center gap-1 text-xs text-muted-foreground">
+            <AlertTriangle className="h-3.5 w-3.5" /> Refreshes every 60 seconds.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function HealthTile({
+  label, value, sub, icon: Icon, tone = "ok",
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  icon: any;
+  tone?: "ok" | "warn" | "bad";
+}) {
+  const toneClass =
+    tone === "bad"
+      ? "border-destructive/40 bg-destructive/5"
+      : tone === "warn"
+      ? "border-yellow-500/40 bg-yellow-500/5"
+      : "border-border bg-card";
+  return (
+    <div className={`rounded-lg border p-3 ${toneClass}`}>
+      <div className="flex items-center justify-between">
+        <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
+      {sub && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}
+    </div>
+  );
+}

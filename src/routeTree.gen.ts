@@ -24,6 +24,7 @@ import { Route as PlatformIndexRouteImport } from './routes/platform.index'
 import { Route as SignupSuccessRouteImport } from './routes/signup.success'
 import { Route as SignupSlugRouteImport } from './routes/signup.$slug'
 import { Route as PortalTokenRouteImport } from './routes/portal.$token'
+import { Route as PlatformRevenueRouteImport } from './routes/platform.revenue'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as AuthenticatedZonesRouteImport } from './routes/_authenticated/zones'
 import { Route as AuthenticatedWeatherRouteImport } from './routes/_authenticated/weather'
@@ -161,6 +162,11 @@ const PortalTokenRoute = PortalTokenRouteImport.update({
   id: '/portal/$token',
   path: '/portal/$token',
   getParentRoute: () => rootRouteImport,
+} as any)
+const PlatformRevenueRoute = PlatformRevenueRouteImport.update({
+  id: '/revenue',
+  path: '/revenue',
+  getParentRoute: () => PlatformRoute,
 } as any)
 const EmailUnsubscribeRoute = EmailUnsubscribeRouteImport.update({
   id: '/email/unsubscribe',
@@ -538,6 +544,7 @@ export interface FileRoutesByFullPath {
   '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/platform/revenue': typeof PlatformRevenueRoute
   '/portal/$token': typeof PortalTokenRouteWithChildren
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
@@ -612,6 +619,7 @@ export interface FileRoutesByTo {
   '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/platform/revenue': typeof PlatformRevenueRoute
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/platform': typeof PlatformIndexRoute
@@ -692,6 +700,7 @@ export interface FileRoutesById {
   '/_authenticated/weather': typeof AuthenticatedWeatherRoute
   '/_authenticated/zones': typeof AuthenticatedZonesRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
+  '/platform/revenue': typeof PlatformRevenueRoute
   '/portal/$token': typeof PortalTokenRouteWithChildren
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
@@ -773,6 +782,7 @@ export interface FileRouteTypes {
     | '/weather'
     | '/zones'
     | '/email/unsubscribe'
+    | '/platform/revenue'
     | '/portal/$token'
     | '/signup/$slug'
     | '/signup/success'
@@ -847,6 +857,7 @@ export interface FileRouteTypes {
     | '/weather'
     | '/zones'
     | '/email/unsubscribe'
+    | '/platform/revenue'
     | '/signup/$slug'
     | '/signup/success'
     | '/platform'
@@ -926,6 +937,7 @@ export interface FileRouteTypes {
     | '/_authenticated/weather'
     | '/_authenticated/zones'
     | '/email/unsubscribe'
+    | '/platform/revenue'
     | '/portal/$token'
     | '/signup/$slug'
     | '/signup/success'
@@ -1111,6 +1123,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/portal/$token'
       preLoaderRoute: typeof PortalTokenRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/platform/revenue': {
+      id: '/platform/revenue'
+      path: '/revenue'
+      fullPath: '/platform/revenue'
+      preLoaderRoute: typeof PlatformRevenueRouteImport
+      parentRoute: typeof PlatformRoute
     }
     '/email/unsubscribe': {
       id: '/email/unsubscribe'
@@ -1696,10 +1715,12 @@ const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
 interface PlatformRouteChildren {
+  PlatformRevenueRoute: typeof PlatformRevenueRoute
   PlatformIndexRoute: typeof PlatformIndexRoute
 }
 
 const PlatformRouteChildren: PlatformRouteChildren = {
+  PlatformRevenueRoute: PlatformRevenueRoute,
   PlatformIndexRoute: PlatformIndexRoute,
 }
 
