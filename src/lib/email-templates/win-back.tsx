@@ -22,7 +22,7 @@ const WinBack = ({
 }: Props) => (
   <Html lang="en">
     <Head />
-    <Preview>We miss you at {orgName} — {discountPercent}% off to come back</Preview>
+    <Preview>{`We miss you at ${orgName} — ${discountPercent}% off to come back`}</Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
         <Heading style={styles.h1}>We miss you, {clientName}</Heading>
