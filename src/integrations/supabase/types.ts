@@ -3815,6 +3815,10 @@ export type Database = {
         Args: { _code: string; _new_client_id: string }
         Returns: Json
       }
+      assign_billing_tier_for_org: {
+        Args: { _org_id: string }
+        Returns: string
+      }
       assign_route_for_day: {
         Args: {
           _day: string
@@ -4290,6 +4294,7 @@ export type Database = {
           read_ct: number
         }[]
       }
+      reassign_all_billing_tiers: { Args: never; Returns: number }
       reassign_visit: {
         Args: { _staff_id: string; _visit_id: string }
         Returns: undefined

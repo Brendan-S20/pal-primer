@@ -101,6 +101,7 @@ import { Route as ApiPublicHooksTwilioVoiceRouteImport } from './routes/api/publ
 import { Route as ApiPublicHooksTwilioRouteImport } from './routes/api/public/hooks/twilio'
 import { Route as ApiPublicHooksStripeRouteImport } from './routes/api/public/hooks/stripe'
 import { Route as ApiPublicHooksQboCallbackRouteImport } from './routes/api/public/hooks/qbo-callback'
+import { Route as ApiPublicHooksPlatformStripeRouteImport } from './routes/api/public/hooks/platform-stripe'
 import { Route as ApiPublicHooksNightlyRouteImport } from './routes/api/public/hooks/nightly'
 import { Route as AuthenticatedPropertiesPropertyIdBoundaryRouteImport } from './routes/_authenticated/properties.$propertyId.boundary'
 
@@ -592,6 +593,12 @@ const ApiPublicHooksQboCallbackRoute =
     path: '/api/public/hooks/qbo-callback',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksPlatformStripeRoute =
+  ApiPublicHooksPlatformStripeRouteImport.update({
+    id: '/api/public/hooks/platform-stripe',
+    path: '/api/public/hooks/platform-stripe',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksNightlyRoute = ApiPublicHooksNightlyRouteImport.update({
   id: '/api/public/hooks/nightly',
   path: '/api/public/hooks/nightly',
@@ -686,6 +693,7 @@ export interface FileRoutesByFullPath {
   '/portal/$token/': typeof PortalTokenIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
+  '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
@@ -775,6 +783,7 @@ export interface FileRoutesByTo {
   '/portal/$token': typeof PortalTokenIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
+  '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
@@ -872,6 +881,7 @@ export interface FileRoutesById {
   '/portal/$token/': typeof PortalTokenIndexRoute
   '/_authenticated/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
+  '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
@@ -969,6 +979,7 @@ export interface FileRouteTypes {
     | '/portal/$token/'
     | '/properties/$propertyId/boundary'
     | '/api/public/hooks/nightly'
+    | '/api/public/hooks/platform-stripe'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
@@ -1058,6 +1069,7 @@ export interface FileRouteTypes {
     | '/portal/$token'
     | '/properties/$propertyId/boundary'
     | '/api/public/hooks/nightly'
+    | '/api/public/hooks/platform-stripe'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
@@ -1154,6 +1166,7 @@ export interface FileRouteTypes {
     | '/portal/$token/'
     | '/_authenticated/properties/$propertyId/boundary'
     | '/api/public/hooks/nightly'
+    | '/api/public/hooks/platform-stripe'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
     | '/api/public/hooks/twilio'
@@ -1188,6 +1201,7 @@ export interface RootRouteChildren {
   SignupSuccessRoute: typeof SignupSuccessRoute
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
   ApiPublicHooksNightlyRoute: typeof ApiPublicHooksNightlyRoute
+  ApiPublicHooksPlatformStripeRoute: typeof ApiPublicHooksPlatformStripeRoute
   ApiPublicHooksQboCallbackRoute: typeof ApiPublicHooksQboCallbackRoute
   ApiPublicHooksStripeRoute: typeof ApiPublicHooksStripeRoute
   ApiPublicHooksTwilioRoute: typeof ApiPublicHooksTwilioRoute
@@ -1847,6 +1861,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksQboCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/platform-stripe': {
+      id: '/api/public/hooks/platform-stripe'
+      path: '/api/public/hooks/platform-stripe'
+      fullPath: '/api/public/hooks/platform-stripe'
+      preLoaderRoute: typeof ApiPublicHooksPlatformStripeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/nightly': {
       id: '/api/public/hooks/nightly'
       path: '/api/public/hooks/nightly'
@@ -2095,6 +2116,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupSuccessRoute: SignupSuccessRoute,
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
   ApiPublicHooksNightlyRoute: ApiPublicHooksNightlyRoute,
+  ApiPublicHooksPlatformStripeRoute: ApiPublicHooksPlatformStripeRoute,
   ApiPublicHooksQboCallbackRoute: ApiPublicHooksQboCallbackRoute,
   ApiPublicHooksStripeRoute: ApiPublicHooksStripeRoute,
   ApiPublicHooksTwilioRoute: ApiPublicHooksTwilioRoute,
