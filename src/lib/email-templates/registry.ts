@@ -6,6 +6,8 @@ import { template as paymentReceivedTemplate } from "./payment-received";
 import { template as visitCompletedTemplate } from "./visit-completed";
 import { template as weatherRescheduleTemplate } from "./weather-reschedule";
 import { template as overdueReminderTemplate } from "./overdue-reminder";
+import { template as winBackTemplate } from "./win-back";
+
 
 export interface TemplateEntry {
   component: ComponentType<any>;
