@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { X, Info, AlertTriangle, AlertOctagon, CheckCircle2 } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   listActiveAnnouncements,
   dismissAnnouncement,
@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const SEV_STYLE: Record<string, { wrap: string; icon: JSX.Element }> = {
+const SEV_STYLE: Record<string, { wrap: string; icon: ReactNode }> = {
   info: {
     wrap: "border-blue-500/30 bg-blue-500/10 text-blue-900 dark:text-blue-100",
     icon: <Info className="h-4 w-4 shrink-0" />,
