@@ -73,6 +73,7 @@ import { Route as AuthenticatedInvoicesInvoiceIdRouteImport } from './routes/_au
 import { Route as AuthenticatedImportsBatchIdRouteImport } from './routes/_authenticated/imports.$batchId'
 import { Route as AuthenticatedClientsNewRouteImport } from './routes/_authenticated/clients.new'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
+import { Route as PortalTokenPayInvoiceIdRouteImport } from './routes/portal.$token.pay.$invoiceId'
 import { Route as LovableEmailTransactionalSendRouteImport } from './routes/lovable/email/transactional/send'
 import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/lovable/email/transactional/preview'
 import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
@@ -427,6 +428,11 @@ const AuthenticatedClientsClientIdRoute =
     path: '/$clientId',
     getParentRoute: () => AuthenticatedClientsRoute,
   } as any)
+const PortalTokenPayInvoiceIdRoute = PortalTokenPayInvoiceIdRouteImport.update({
+  id: '/pay/$invoiceId',
+  path: '/pay/$invoiceId',
+  getParentRoute: () => PortalTokenRoute,
+} as any)
 const LovableEmailTransactionalSendRoute =
   LovableEmailTransactionalSendRouteImport.update({
     id: '/lovable/email/transactional/send',
@@ -571,6 +577,7 @@ export interface FileRoutesByFullPath {
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
+  '/portal/$token/pay/$invoiceId': typeof PortalTokenPayInvoiceIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -643,6 +650,7 @@ export interface FileRoutesByTo {
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
+  '/portal/$token/pay/$invoiceId': typeof PortalTokenPayInvoiceIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -722,6 +730,7 @@ export interface FileRoutesById {
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
+  '/portal/$token/pay/$invoiceId': typeof PortalTokenPayInvoiceIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -801,6 +810,7 @@ export interface FileRouteTypes {
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
     | '/lovable/email/transactional/send'
+    | '/portal/$token/pay/$invoiceId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -873,6 +883,7 @@ export interface FileRouteTypes {
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
     | '/lovable/email/transactional/send'
+    | '/portal/$token/pay/$invoiceId'
   id:
     | '__root__'
     | '/'
@@ -951,6 +962,7 @@ export interface FileRouteTypes {
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
     | '/lovable/email/transactional/send'
+    | '/portal/$token/pay/$invoiceId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1433,6 +1445,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClientsClientIdRouteImport
       parentRoute: typeof AuthenticatedClientsRoute
     }
+    '/portal/$token/pay/$invoiceId': {
+      id: '/portal/$token/pay/$invoiceId'
+      path: '/pay/$invoiceId'
+      fullPath: '/portal/$token/pay/$invoiceId'
+      preLoaderRoute: typeof PortalTokenPayInvoiceIdRouteImport
+      parentRoute: typeof PortalTokenRoute
+    }
     '/lovable/email/transactional/send': {
       id: '/lovable/email/transactional/send'
       path: '/lovable/email/transactional/send'
@@ -1666,6 +1685,7 @@ interface PortalTokenRouteChildren {
   PortalTokenRequestsRoute: typeof PortalTokenRequestsRoute
   PortalTokenVisitsRoute: typeof PortalTokenVisitsRoute
   PortalTokenIndexRoute: typeof PortalTokenIndexRoute
+  PortalTokenPayInvoiceIdRoute: typeof PortalTokenPayInvoiceIdRoute
 }
 
 const PortalTokenRouteChildren: PortalTokenRouteChildren = {
@@ -1675,6 +1695,7 @@ const PortalTokenRouteChildren: PortalTokenRouteChildren = {
   PortalTokenRequestsRoute: PortalTokenRequestsRoute,
   PortalTokenVisitsRoute: PortalTokenVisitsRoute,
   PortalTokenIndexRoute: PortalTokenIndexRoute,
+  PortalTokenPayInvoiceIdRoute: PortalTokenPayInvoiceIdRoute,
 }
 
 const PortalTokenRouteWithChildren = PortalTokenRoute._addFileChildren(
