@@ -259,6 +259,13 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                   paid_at: new Date().toISOString(),
                   raw_event: JSON.parse(JSON.stringify(event)),
                 });
+                // Successful autopay clears the dunning failure ladder.
+                await supabaseAdmin.from("clients").update({
+                  autopay_failure_count: 0,
+                  autopay_paused: false,
+                  autopay_last_error: null,
+                  autopay_last_attempt_at: new Date().toISOString(),
+                }).eq("id", inv.client_id);
                 try {
                   const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
                   await enqueueAppEmail({
