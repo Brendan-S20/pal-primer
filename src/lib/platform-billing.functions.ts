@@ -97,7 +97,7 @@ export const createPlatformCoupon = createServerFn({ method: "POST" })
       duration_in_months: data.duration_in_months ?? null,
       max_redemptions: data.max_redemptions ?? null,
       expires_at: data.expires_at ?? null,
-      applies_to_plan_ids: data.applies_to_plan_ids ?? null,
+      applies_to_plan_ids: data.applies_to_plan_ids ?? undefined,
       is_active: true,
       created_by: context.userId,
     });
