@@ -65,7 +65,7 @@ function UsersPage() {
                 <SelectItem value="office_manager">Office manager</SelectItem>
                 <SelectItem value="dispatcher">Dispatcher</SelectItem>
                 <SelectItem value="tech">Tech</SelectItem>
-                <SelectItem value="platform_admin">Platform admin</SelectItem>
+                
               </SelectContent>
             </Select>
           </div>
