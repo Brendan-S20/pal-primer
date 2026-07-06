@@ -7,6 +7,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { RoleGuard } from "@/components/RoleGuard";
 import { CommandPalette } from "@/components/CommandPalette";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
+import { SuspensionBanner } from "@/components/SuspensionBanner";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Search } from "lucide-react";
@@ -88,6 +89,7 @@ function AppShell() {
               Sign out
             </Button>
           </header>
+          <SuspensionBanner />
           <AnnouncementBanner />
           <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 sm:py-8">
             <div className="mx-auto w-full max-w-6xl">
