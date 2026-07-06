@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Copy, Send, X, Plus, Link2 } from "lucide-react";
 import { toast } from "sonner";
@@ -170,7 +170,10 @@ function NewInviteDialog() {
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
       <DialogTrigger asChild><Button><Plus className="mr-1 h-4 w-4" /> New invite</Button></DialogTrigger>
       <DialogContent>
-        <DialogHeader><DialogTitle>New platform invite</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>New platform invite</DialogTitle>
+          <DialogDescription>Create a single-use invite link and email it to a new tenant owner.</DialogDescription>
+        </DialogHeader>
         {createdLink ? (
           <div className="space-y-3">
             <div className="text-sm text-muted-foreground">Invite created. Share this single-use link:</div>
