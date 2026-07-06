@@ -14,8 +14,8 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/request-access")({
   head: () => ({
     meta: [
-      { title: "Request access · Scoop CRM" },
-      { name: "description", content: "Apply to get access to the Scoop CRM platform for your pet-waste service business." },
+      { title: "Request a workspace · Scoop CRM" },
+      { name: "description", content: "Self-serve signup for Scoop CRM. Skip the demo call and get straight into your own workspace once approved." },
     ],
   }),
   component: RequestAccessPage,
@@ -70,9 +70,11 @@ function RequestAccessPage() {
         ) : (
           <>
             <CardHeader>
-              <CardTitle>Request platform access</CardTitle>
+              <CardTitle>Skip the call — request a workspace</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Tell us about your business and we'll send an invite once approved.
+                Self-serve signup. Tell us about your business and we'll approve your Scoop CRM workspace,
+                usually within one business day. Prefer a walkthrough first?{" "}
+                <a href="/contact" className="font-medium underline underline-offset-2">Book a demo</a>.
               </p>
             </CardHeader>
             <CardContent>
