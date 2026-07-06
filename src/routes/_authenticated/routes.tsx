@@ -54,8 +54,12 @@ export const Route = createFileRoute("/_authenticated/routes")({
 const UNASSIGNED = "__unassigned__";
 type Visit = any;
 
+function toLocalISO(d: Date) {
+  const off = d.getTimezoneOffset();
+  return new Date(d.getTime() - off * 60_000).toISOString().slice(0, 10);
+}
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return toLocalISO(new Date());
 }
 
 function RoutesPage() {
@@ -63,7 +67,7 @@ function RoutesPage() {
   const [through, setThrough] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 30);
-    return d.toISOString().slice(0, 10);
+    return toLocalISO(d);
   });
   const [assignStaffId, setAssignStaffId] = useState<string>("");
   const [activeId, setActiveId] = useState<string | null>(null);
