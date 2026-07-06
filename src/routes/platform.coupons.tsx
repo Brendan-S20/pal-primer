@@ -177,8 +177,16 @@ function CouponsPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {!q.isLoading && (q.data?.rows ?? []).length === 0 ? (
-                  <TableRow><TableCell colSpan={7} className="text-center text-sm text-muted-foreground">No coupons yet.</TableCell></TableRow>
+                {q.isLoading ? (
+                  <TableRow><TableCell colSpan={7}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
+                ) : (q.data?.rows ?? []).length === 0 ? (
+                  <TableRow><TableCell colSpan={7} className="py-6">
+                    <EmptyState
+                      icon={<TicketPercent className="h-5 w-5" />}
+                      title="No coupons yet"
+                      description="Create a discount code to run promos or comp specific tenants."
+                    />
+                  </TableCell></TableRow>
                 ) : null}
               </TableBody>
             </Table>
