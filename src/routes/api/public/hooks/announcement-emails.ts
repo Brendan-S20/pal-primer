@@ -59,9 +59,8 @@ export const Route = createFileRoute("/api/public/hooks/announcement-emails")({
           // Audience: admins → email platform admins by looking up user_roles.
           if (a.audience === "admins") {
             const { data: admins } = await supabaseAdmin
-              .from("user_roles")
-              .select("user_id")
-              .eq("role", "platform_admin");
+              .from("platform_admins")
+              .select("user_id");
             const uids = Array.from(new Set((admins ?? []).map((r) => r.user_id)));
             const emails: Array<{ email: string; org_name: string }> = [];
             for (const uid of uids) {
