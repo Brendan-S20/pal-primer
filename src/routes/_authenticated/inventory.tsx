@@ -133,6 +133,9 @@ function InventoryPage() {
         </TabsContent>
 
         <TabsContent value="assignments" className="mt-4">
+          <div className="mb-3 flex justify-end">
+            <AssignDialog items={(items.data ?? []).filter((i) => i.active)} staffList={staff.data ?? []} />
+          </div>
           <div className="rounded-lg border bg-card">
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
@@ -339,6 +342,76 @@ function MovementDialog({ item, staffList }: { item: Item; staffList: Array<{ id
         </div>
         <DialogFooter>
           <Button onClick={() => m.mutate()} disabled={m.isPending || (needsStaff && !staffId)}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AssignDialog({ items, staffList }: { items: Item[]; staffList: Array<{ id: string; display_name: string }> }) {
+  const [open, setOpen] = useState(false);
+  const [itemId, setItemId] = useState<string>("");
+  const [staffId, setStaffId] = useState<string>("");
+  const [qty, setQty] = useState(1);
+  const [note, setNote] = useState("");
+  const rec = useServerFn(recordMovement);
+  const qc = useQueryClient();
+  const m = useMutation({
+    mutationFn: () => rec({ data: {
+      item_id: itemId,
+      kind: "assign" as const,
+      quantity: qty,
+      staff_id: staffId || null,
+      note: note || null,
+    } }),
+    onSuccess: () => {
+      toast.success("Assigned to tech");
+      setOpen(false);
+      setItemId(""); setStaffId(""); setQty(1); setNote("");
+      qc.invalidateQueries({ queryKey: ["inv-items"] });
+      qc.invalidateQueries({ queryKey: ["inv-assigns"] });
+      qc.invalidateQueries({ queryKey: ["inv-moves"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const selected = items.find((i) => i.id === itemId);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm"><Plus className="mr-1 h-4 w-4" /> Assign to tech</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Assign inventory to a tech</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-muted-foreground">Item</label>
+            <Select value={itemId} onValueChange={setItemId}>
+              <SelectTrigger><SelectValue placeholder="Select item" /></SelectTrigger>
+              <SelectContent>
+                {items.map((i) => <SelectItem key={i.id} value={i.id}>{i.name} ({Number(i.on_hand).toFixed(2)} {i.unit} on hand)</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Tech</label>
+            <Select value={staffId} onValueChange={setStaffId}>
+              <SelectTrigger><SelectValue placeholder="Select tech" /></SelectTrigger>
+              <SelectContent>
+                {staffList.map((s) => <SelectItem key={s.id} value={s.id}>{s.display_name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Quantity{selected ? ` (${selected.unit})` : ""}</label>
+            <Input type="number" value={qty} onChange={(e) => setQty(Number(e.target.value))} />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Note</label>
+            <Input value={note} onChange={(e) => setNote(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={() => m.mutate()} disabled={m.isPending || !itemId || !staffId || qty <= 0}>Assign</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
