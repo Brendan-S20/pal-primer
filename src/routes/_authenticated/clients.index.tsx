@@ -153,74 +153,125 @@ function ClientsList() {
           )}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border bg-card">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 font-medium">Name</th>
-                <th className="px-4 py-2 font-medium">Type</th>
-                <th className="px-4 py-2 font-medium">Dogs</th>
-                <th className="px-4 py-2 font-medium">Subs</th>
-                <th className="px-4 py-2 font-medium">Balance</th>
-                <th className="px-4 py-2 font-medium">Contact</th>
-                <th className="px-4 py-2 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((c: any) => (
-                <tr key={c.id} className="border-t hover:bg-muted/30">
-                  <td className="px-4 py-3">
-                    <Link
-                      to="/clients/$clientId"
-                      params={{ clientId: c.id }}
-                      className="font-medium hover:underline"
-                    >
-                      {c.display_name}
-                    </Link>
-                    {(c.churn_score ?? 0) >= 60 && (
-                      <Badge variant="destructive" className="ml-2 text-[10px]">
-                        At risk
+        <>
+          {/* Mobile: stacked cards */}
+          <div className="space-y-3 sm:hidden">
+            {filtered.map((c: any) => (
+              <Link
+                key={c.id}
+                to="/clients/$clientId"
+                params={{ clientId: c.id }}
+                className="block rounded-lg border bg-card p-4 hover:bg-muted/30"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{c.display_name}</span>
+                      <Badge variant={c.account_type === "commercial" ? "default" : "secondary"} className="text-[10px]">
+                        {c.account_type}
                       </Badge>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variant={c.account_type === "commercial" ? "default" : "secondary"}>
-                      {c.account_type}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{c.dog_count}</td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {c.active_subscription_count}
-                  </td>
-                  <td className="px-4 py-3">
-                    {c.outstanding_cents > 0 ? (
-                      <span className="font-medium text-amber-600">
-                        {money(c.outstanding_cents)}
-                      </span>
-                    ) : c.credit_balance_cents > 0 ? (
-                      <span className="text-emerald-600">
-                        +{money(c.credit_balance_cents)}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    <div className="truncate max-w-[220px]">{c.primary_email ?? "—"}</div>
-                    <div className="text-xs">{c.primary_phone ?? ""}</div>
-                  </td>
-                  <td className="px-4 py-3">
+                      {(c.churn_score ?? 0) >= 60 && (
+                        <Badge variant="destructive" className="text-[10px]">At risk</Badge>
+                      )}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground truncate">{c.primary_email ?? "—"}</div>
+                    <div className="text-xs text-muted-foreground">{c.primary_phone ?? ""}</div>
+                  </div>
+                  <div className="text-right">
                     {c.active ? (
-                      <span className="text-emerald-600">Active</span>
+                      <span className="text-xs text-emerald-600">Active</span>
                     ) : (
-                      <span className="text-muted-foreground">Inactive</span>
+                      <span className="text-xs text-muted-foreground">Inactive</span>
                     )}
-                  </td>
+                    <div className="mt-1 text-sm">
+                      {c.outstanding_cents > 0 ? (
+                        <span className="font-medium text-amber-600">{money(c.outstanding_cents)}</span>
+                      ) : c.credit_balance_cents > 0 ? (
+                        <span className="text-emerald-600">+{money(c.credit_balance_cents)}</span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-2 flex gap-3 text-xs text-muted-foreground">
+                  <span>{c.dog_count} dogs</span>
+                  <span>{c.active_subscription_count} subs</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+
+          {/* Desktop: table */}
+          <div className="hidden overflow-x-auto rounded-lg border bg-card sm:block">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Name</th>
+                  <th className="px-4 py-2 font-medium">Type</th>
+                  <th className="px-4 py-2 font-medium">Dogs</th>
+                  <th className="px-4 py-2 font-medium">Subs</th>
+                  <th className="px-4 py-2 font-medium">Balance</th>
+                  <th className="px-4 py-2 font-medium">Contact</th>
+                  <th className="px-4 py-2 font-medium">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filtered.map((c: any) => (
+                  <tr key={c.id} className="border-t hover:bg-muted/30">
+                    <td className="px-4 py-3">
+                      <Link
+                        to="/clients/$clientId"
+                        params={{ clientId: c.id }}
+                        className="font-medium hover:underline"
+                      >
+                        {c.display_name}
+                      </Link>
+                      {(c.churn_score ?? 0) >= 60 && (
+                        <Badge variant="destructive" className="ml-2 text-[10px]">
+                          At risk
+                        </Badge>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant={c.account_type === "commercial" ? "default" : "secondary"}>
+                        {c.account_type}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{c.dog_count}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {c.active_subscription_count}
+                    </td>
+                    <td className="px-4 py-3">
+                      {c.outstanding_cents > 0 ? (
+                        <span className="font-medium text-amber-600">
+                          {money(c.outstanding_cents)}
+                        </span>
+                      ) : c.credit_balance_cents > 0 ? (
+                        <span className="text-emerald-600">
+                          +{money(c.credit_balance_cents)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      <div className="truncate max-w-[220px]">{c.primary_email ?? "—"}</div>
+                      <div className="text-xs">{c.primary_phone ?? ""}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {c.active ? (
+                        <span className="text-emerald-600">Active</span>
+                      ) : (
+                        <span className="text-muted-foreground">Inactive</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

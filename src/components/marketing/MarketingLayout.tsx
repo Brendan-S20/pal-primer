@@ -1,8 +1,11 @@
 import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { Menu, X } from "lucide-react";
 import { APP_NAME } from "@/lib/scoop";
 
 export function MarketingLayout({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const close = () => setOpen(false);
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/75 backdrop-blur">
@@ -35,12 +38,39 @@ export function MarketingLayout({ children }: { children: ReactNode }) {
             </Link>
             <Link
               to="/contact"
-              className="rounded-full bg-brand px-4 py-2 text-sm font-medium text-brand-foreground shadow-sm hover:opacity-90 transition"
+              className="hidden rounded-full bg-brand px-4 py-2 text-sm font-medium text-brand-foreground shadow-sm hover:opacity-90 transition sm:inline-block"
             >
               Get a demo
             </Link>
+            <button
+              type="button"
+              aria-label={open ? "Close menu" : "Open menu"}
+              aria-expanded={open}
+              onClick={() => setOpen((v) => !v)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-md border md:hidden"
+            >
+              {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
           </div>
         </div>
+        {open && (
+          <div className="border-t bg-background md:hidden">
+            <nav className="mx-auto flex max-w-6xl flex-col px-6 py-3 text-sm">
+              <Link to="/services" onClick={close} className="py-2 hover:text-foreground">Services</Link>
+              <Link to="/pricing" onClick={close} className="py-2 hover:text-foreground">Pricing</Link>
+              <Link to="/about" onClick={close} className="py-2 hover:text-foreground">About</Link>
+              <Link to="/contact" onClick={close} className="py-2 hover:text-foreground">Contact</Link>
+              <Link to="/auth" onClick={close} className="py-2 hover:text-foreground">Sign in</Link>
+              <Link
+                to="/contact"
+                onClick={close}
+                className="mt-2 rounded-full bg-brand px-4 py-2 text-center font-medium text-brand-foreground"
+              >
+                Get a demo
+              </Link>
+            </nav>
+          </div>
+        )}
       </header>
       <main>{children}</main>
       <footer className="mt-24 border-t bg-muted/30">
