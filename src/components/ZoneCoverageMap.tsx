@@ -61,6 +61,7 @@ export function ZoneCoverageMap({
   const [radius, setRadius] = useState<number>(initial.radiusMeters ?? 5000);
   const [minutes, setMinutes] = useState<number>(initial.driveTimeMinutes ?? 15);
   const [tick, setTick] = useState(0);
+  const fittedRef = useRef(false);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
