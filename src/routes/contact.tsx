@@ -75,16 +75,22 @@ function ContactPage() {
             <div className="inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand-soft px-3 py-1 text-xs font-medium text-brand-ink">
               Talk to a human
             </div>
-            <h1 className="mt-6 text-4xl font-semibold tracking-tight sm:text-5xl">Let's talk.</h1>
+            <h1 className="mt-6 text-4xl font-semibold tracking-tight sm:text-5xl">Book a demo or ask a question.</h1>
             <p className="mt-4 max-w-md text-muted-foreground">
-              Tell us about your route and we'll set up a short walkthrough. No pitch decks,
-              no pressure — just a live tour of {APP_NAME} on your data.
+              Want a live walkthrough of {APP_NAME} on your data, or just have a question before signing up?
+              Send us a note — we reply within one business day.
+            </p>
+            <p className="mt-3 max-w-md text-sm text-muted-foreground">
+              Ready to skip the call and get straight into a workspace?{" "}
+              <a href="/request-access" className="font-medium text-brand-ink underline underline-offset-2">
+                Request access instead
+              </a>.
             </p>
             <ul className="mt-8 space-y-3 text-sm">
               {[
                 "15-minute demo, screen-shared",
                 "We import your first 20 clients for free",
-                "Cancel anytime — your data is yours",
+                "No pitch decks, no pressure",
               ].map((t) => (
                 <li key={t} className="flex items-start gap-2.5">
                   <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-soft text-brand-ink">
