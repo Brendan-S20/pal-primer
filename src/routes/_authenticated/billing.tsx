@@ -6,18 +6,39 @@ import {
   createBillingCheckout,
   createBillingPortal,
   refreshBillingStatus,
-  PRO_PRICE_CENTS,
 } from "@/lib/billing.functions";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/billing")({
   component: BillingPage,
 });
 
-function formatUsd(cents: number) {
-  return `$${(cents / 100).toFixed(2)}`;
+function formatUsd(cents: number | null | undefined) {
+  if (cents == null) return "—";
+  return `$${(cents / 100).toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
 }
+
+const STATUS_LABEL: Record<string, string> = {
+  free: "Free",
+  active: "Active",
+  past_due: "Past due",
+  grace: "Grace period",
+  canceled: "Canceled",
+  suspended: "Suspended",
+};
+const STATUS_TONE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
+  free: "outline",
+  active: "default",
+  past_due: "destructive",
+  grace: "secondary",
+  canceled: "outline",
+  suspended: "destructive",
+};
 
 function BillingPage() {
   const qc = useQueryClient();
@@ -33,25 +54,37 @@ function BillingPage() {
 
   const checkout = useMutation({
     mutationFn: () => checkoutFn({ data: { returnUrl: window.location.href } }),
-    onSuccess: (r) => { if (r.url) window.location.href = r.url; },
+    onSuccess: (r) => {
+      if (r.url) window.location.href = r.url;
+      else toast.error("No checkout URL returned");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const portal = useMutation({
     mutationFn: () => portalFn({ data: { returnUrl: window.location.href } }),
-    onSuccess: (r) => { if (r.url) window.location.href = r.url; },
+    onSuccess: (r) => {
+      if (r.url) window.location.href = r.url;
+      else toast.error("No portal URL returned");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const refresh = useMutation({
     mutationFn: () => refreshFn(),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["billing-status"] }); toast.success("Refreshed"); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["billing-status"] });
+      toast.success("Refreshed");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
   if (isLoading || !data) return <p className="text-muted-foreground">Loading…</p>;
 
-  const overLimit = data.activeClientCount > data.freeLimit;
-  const atLimit = data.activeClientCount >= data.freeLimit;
-  const isPaid = data.planStatus === "active" || data.planStatus === "past_due";
+  const bandLabel = (() => {
+    const min = data.requiredPlanBandMin ?? 0;
+    const max = data.requiredPlanBandMax;
+    if (max == null) return `${min}+ clients`;
+    return `${min}–${max} clients`;
+  })();
 
   return (
     <div className="space-y-6">
@@ -61,16 +94,26 @@ function BillingPage() {
       </div>
 
       <div className="rounded-lg border bg-card p-6">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
             <p className="text-sm text-muted-foreground">Current plan</p>
-            <p className="text-xl font-semibold capitalize">
-              {isPaid ? "Pro" : data.planStatus === "canceled" ? "Free (canceled)" : "Free"}
-            </p>
-            {data.planStatus === "past_due" && (
-              <p className="mt-1 text-sm text-destructive">Payment past due — update your card in the portal.</p>
+            <div className="mt-1 flex items-center gap-2">
+              <p className="text-xl font-semibold">{data.planName}</p>
+              <Badge variant={STATUS_TONE[data.billingStatus] ?? "outline"}>
+                {STATUS_LABEL[data.billingStatus] ?? data.billingStatus}
+              </Badge>
+            </div>
+            {data.monthlyEstimateCents != null && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                {formatUsd(data.monthlyEstimateCents)}/mo · {bandLabel}
+              </p>
             )}
-            {data.currentPeriodEnd && isPaid && (
+            {data.billingStatus === "past_due" && (
+              <p className="mt-2 text-sm text-destructive">
+                Payment past due — update your card in the customer portal.
+              </p>
+            )}
+            {data.currentPeriodEnd && data.isPaidTier && (
               <p className="mt-1 text-xs text-muted-foreground">
                 Renews {new Date(data.currentPeriodEnd).toLocaleDateString()}
               </p>
@@ -80,34 +123,35 @@ function BillingPage() {
             <p className="text-sm text-muted-foreground">Active clients</p>
             <p className="text-xl font-semibold">
               {data.activeClientCount}
-              {!isPaid && <span className="text-muted-foreground"> / {data.freeLimit}</span>}
+              {!data.isPaidTier && (
+                <span className="text-muted-foreground"> / {data.freeLimit}</span>
+              )}
             </p>
           </div>
         </div>
       </div>
 
-      {!isPaid && (
+      {data.needsUpgrade && (
         <div className="rounded-lg border bg-card p-6">
-          <h2 className="text-lg font-semibold">Pro — {formatUsd(PRO_PRICE_CENTS)}/mo</h2>
+          <h2 className="text-lg font-semibold">
+            {data.requiredPlanName ?? "Upgrade required"}
+            {data.monthlyEstimateCents != null && ` — ${formatUsd(data.monthlyEstimateCents)}/mo`}
+          </h2>
           <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
-            <li>• Unlimited active clients</li>
-            <li>• Required once you exceed {data.freeLimit} active clients</li>
+            <li>• Covers {bandLabel}</li>
+            <li>• Unlimited staff on every tier</li>
             <li>• Cancel anytime from the customer portal</li>
           </ul>
-          {atLimit && (
-            <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {overLimit
-                ? `You have ${data.activeClientCount} active clients but the free plan allows ${data.freeLimit}. Upgrade to keep adding.`
-                : `You have reached the ${data.freeLimit}-client free limit. Upgrade to add more.`}
-            </p>
-          )}
+          <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            You have {data.activeClientCount} active clients — above the current plan limit. Upgrade to keep adding.
+          </p>
           <Button className="mt-4" onClick={() => checkout.mutate()} disabled={checkout.isPending}>
-            {checkout.isPending ? "Redirecting…" : "Upgrade to Pro"}
+            {checkout.isPending ? "Redirecting…" : `Upgrade to ${data.requiredPlanName ?? "paid plan"}`}
           </Button>
         </div>
       )}
 
-      {isPaid && (
+      {data.isPaidTier && (
         <div className="rounded-lg border bg-card p-6">
           <h2 className="text-lg font-semibold">Manage subscription</h2>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -116,6 +160,16 @@ function BillingPage() {
           <Button className="mt-4" onClick={() => portal.mutate()} disabled={portal.isPending}>
             {portal.isPending ? "Opening…" : "Open customer portal"}
           </Button>
+        </div>
+      )}
+
+      {!data.isPaidTier && !data.needsUpgrade && (
+        <div className="rounded-lg border bg-card p-6">
+          <h2 className="text-lg font-semibold">You're on the free plan</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            First {data.freeLimit} active clients are on us. You'll be prompted to upgrade
+            when you cross that threshold.
+          </p>
         </div>
       )}
 

@@ -1,13 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { getOrgBillingState } from "./billing-state.server";
 
-// Pro plan price — created via Stripe MCP.
-export const PRO_PRICE_ID = "price_1ToRCUHJRMTjWv4jF7zBWszG";
-export const PRO_PRODUCT_ID = "prod_Uo3JI79ExIL9Ff";
-export const PRO_PRICE_CENTS = 4900;
+// Kept for back-compat with anything still importing this.
+export const PRO_PRICE_CENTS = 5900;
 
-async function getOrgForCaller(supabase: any, userId: string) {
+async function resolveOrgIdForCaller(supabase: any, userId: string): Promise<string> {
   const { data: role, error } = await supabase
     .from("user_roles")
     .select("organization_id, role")
@@ -18,28 +17,36 @@ async function getOrgForCaller(supabase: any, userId: string) {
   if (!["owner", "office_manager"].includes(role.role)) {
     throw new Error("Only owners or office managers can manage billing");
   }
-  const { data: org, error: oErr } = await supabase
-    .from("organizations")
-    .select("id, name, stripe_customer_id, stripe_subscription_id, plan_status, current_period_end, active_client_count")
-    .eq("id", role.organization_id)
-    .single();
-  if (oErr) throw new Error(oErr.message);
-  return org;
+  return role.organization_id as string;
 }
-
 
 export const getBillingStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const org = await getOrgForCaller(context.supabase, context.userId);
+    const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
+    const s = await getOrgBillingState(context.supabase, orgId);
     return {
-      orgId: org.id,
-      planStatus: org.plan_status as "free" | "active" | "past_due" | "canceled",
-      currentPeriodEnd: org.current_period_end,
-      activeClientCount: org.active_client_count ?? 0,
-      freeLimit: 3,
-      priceCents: PRO_PRICE_CENTS,
-      needsUpgrade: (org.active_client_count ?? 0) >= 3 && org.plan_status === "free",
+      orgId: s.orgId,
+      orgName: s.orgName,
+      planName: s.planName,
+      planSlug: s.planSlug,
+      billingStatus: s.billingStatus,
+      isPaidTier: s.isPaidTier,
+      // Kept for back-compat with the old UI shape.
+      planStatus: s.billingStatus,
+      currentPeriodEnd: s.currentPeriodEnd,
+      activeClientCount: s.activeClientCount,
+      freeLimit: s.freeLimit,
+      priceCents: s.priceCents,
+      pricePerClientCents: s.pricePerClientCents,
+      monthlyEstimateCents: s.monthlyEstimateCents,
+      needsUpgrade: s.needsUpgrade,
+      overBandLimit: s.overBandLimit,
+      requiredPlanName: s.requiredPlan?.name ?? null,
+      requiredPlanBandMin: s.requiredPlan?.client_limit_min ?? null,
+      requiredPlanBandMax: s.requiredPlan?.client_limit_max ?? null,
+      nextPlanName: s.nextPlan?.name ?? null,
+      stripePriceId: s.stripePriceId,
     };
   });
 
@@ -47,57 +54,75 @@ export const createBillingCheckout = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ returnUrl: z.string().url() }).parse(d))
   .handler(async ({ data, context }) => {
-    const org = await getOrgForCaller(context.supabase, context.userId);
+    const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
+    const s = await getOrgBillingState(context.supabase, orgId);
+
+    // If the org is already at free size with no paid tier needed, block early
+    // with a friendly message rather than a Stripe error.
+    const targetPlan = s.requiredPlan && !s.requiredPlan.is_free
+      ? s.requiredPlan
+      : s.nextPlan;
+    if (!targetPlan || !targetPlan.stripe_price_id) {
+      throw new Error("No paid plan available for your current client count.");
+    }
+
     const secret = process.env.STRIPE_SECRET_KEY;
-    if (!secret) throw new Error("STRIPE_SECRET_KEY not configured");
+    if (!secret) throw new Error("Billing is not configured. Contact support.");
     const Stripe = (await import("stripe")).default;
     const stripe = new Stripe(secret);
 
-    // Reuse existing customer if we have one, else let Stripe create one keyed to email.
     const { data: userData } = await context.supabase.auth.getUser();
     const email = userData.user?.email ?? undefined;
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    let customerId = org.stripe_customer_id;
-    if (!customerId) {
+    // Reuse existing Stripe customer if we have a real one; ignore obvious
+    // seed placeholders like "cus_demo_seed".
+    let customerId = s.stripeCustomerId;
+    const looksReal = customerId && /^cus_[A-Za-z0-9]{6,}$/.test(customerId) && !customerId.includes("demo");
+    if (!looksReal) {
       const customer = await stripe.customers.create({
         email,
-        name: org.name,
-        metadata: { organization_id: org.id },
+        name: s.orgName,
+        metadata: { organization_id: orgId },
       });
       customerId = customer.id;
-      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       await supabaseAdmin.from("organizations")
         .update({ stripe_customer_id: customerId })
-        .eq("id", org.id);
+        .eq("id", orgId);
     }
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
-      customer: customerId,
-      line_items: [{ price: PRO_PRICE_ID, quantity: 1 }],
+      customer: customerId!,
+      line_items: [{ price: targetPlan.stripe_price_id, quantity: 1 }],
       success_url: `${data.returnUrl}?upgraded=1`,
       cancel_url: data.returnUrl,
-      client_reference_id: org.id,
+      client_reference_id: orgId,
       subscription_data: {
-        metadata: { organization_id: org.id },
+        metadata: { organization_id: orgId, plan_id: targetPlan.id },
       },
-      metadata: { organization_id: org.id, kind: "org_saas" },
+      metadata: { organization_id: orgId, plan_id: targetPlan.id, kind: "org_saas" },
     });
-    return { url: session.url as string };
+    return { url: session.url as string, planName: targetPlan.name };
   });
 
 export const createBillingPortal = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ returnUrl: z.string().url() }).parse(d))
   .handler(async ({ data, context }) => {
-    const org = await getOrgForCaller(context.supabase, context.userId);
-    if (!org.stripe_customer_id) throw new Error("No Stripe customer yet — subscribe first");
+    const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
+    const s = await getOrgBillingState(context.supabase, orgId);
+    const customerId = s.stripeCustomerId;
+    const looksReal = customerId && /^cus_[A-Za-z0-9]{6,}$/.test(customerId) && !customerId.includes("demo");
+    if (!looksReal) {
+      throw new Error("No active subscription yet — start a subscription first.");
+    }
     const secret = process.env.STRIPE_SECRET_KEY;
-    if (!secret) throw new Error("STRIPE_SECRET_KEY not configured");
+    if (!secret) throw new Error("Billing is not configured.");
     const Stripe = (await import("stripe")).default;
     const stripe = new Stripe(secret);
     const portal = await stripe.billingPortal.sessions.create({
-      customer: org.stripe_customer_id,
+      customer: customerId!,
       return_url: data.returnUrl,
     });
     return { url: portal.url };
@@ -106,13 +131,16 @@ export const createBillingPortal = createServerFn({ method: "POST" })
 export const refreshBillingStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const org = await getOrgForCaller(context.supabase, context.userId);
-    if (!org.stripe_customer_id) return { planStatus: "free" as const };
+    const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
+    const s = await getOrgBillingState(context.supabase, orgId);
+    const customerId = s.stripeCustomerId;
+    const looksReal = customerId && /^cus_[A-Za-z0-9]{6,}$/.test(customerId) && !customerId.includes("demo");
+    if (!looksReal) return { billingStatus: s.billingStatus };
     const secret = process.env.STRIPE_SECRET_KEY;
-    if (!secret) throw new Error("STRIPE_SECRET_KEY not configured");
+    if (!secret) throw new Error("Billing is not configured.");
     const Stripe = (await import("stripe")).default;
     const stripe = new Stripe(secret);
-    const subs = await stripe.subscriptions.list({ customer: org.stripe_customer_id, status: "all", limit: 5 });
+    const subs = await stripe.subscriptions.list({ customer: customerId!, status: "all", limit: 5 });
     const active = subs.data.find((s) => ["active", "trialing", "past_due"].includes(s.status));
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     if (active) {
@@ -120,14 +148,16 @@ export const refreshBillingStatus = createServerFn({ method: "POST" })
       const periodEnd = (active as unknown as { current_period_end?: number }).current_period_end;
       await supabaseAdmin.from("organizations").update({
         stripe_subscription_id: active.id,
+        billing_status: status,
         plan_status: status,
         current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
-      }).eq("id", org.id);
-      return { planStatus: status as "active" | "past_due" };
+      }).eq("id", orgId);
+      return { billingStatus: status };
     }
     await supabaseAdmin.from("organizations").update({
+      billing_status: "canceled",
       plan_status: "canceled",
       stripe_subscription_id: null,
-    }).eq("id", org.id);
-    return { planStatus: "canceled" as const };
+    }).eq("id", orgId);
+    return { billingStatus: "canceled" as const };
   });
