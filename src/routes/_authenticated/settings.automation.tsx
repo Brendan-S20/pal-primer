@@ -15,7 +15,7 @@ import { toast } from "sonner";
 const key = ["automation"] as const;
 
 export const Route = createFileRoute("/_authenticated/settings/automation")({
-  head: () => ({ meta: [{ title: "Automation · ScoopCRM" }] }),
+  head: () => ({ meta: [{ title: "Automation · Scoop CRM" }] }),
   component: AutomationPage,
 });
 
