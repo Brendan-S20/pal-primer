@@ -14,7 +14,7 @@ import {
 import { Search } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export const Route = createFileRoute("/platform/tenants")({
+export const Route = createFileRoute("/platform/tenants/")({
   component: TenantsPage,
 });
 
