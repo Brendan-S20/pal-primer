@@ -111,7 +111,7 @@ export const listPlatformInvites = createServerFn({ method: "GET" })
 
 const createInviteSchema = z.object({
   email: z.string().trim().email().max(255),
-  role: z.enum(["owner", "office_manager", "dispatcher", "tech", "platform_admin"]).default("owner"),
+  role: z.enum(["owner", "office_manager", "dispatcher", "tech"]).default("owner"),
   // When organization_id is set, invite joins that org. Otherwise organization_name creates a NEW org on acceptance.
   organization_id: z.string().uuid().nullable().optional(),
   organization_name: z.string().trim().min(1).max(200).nullable().optional(),
