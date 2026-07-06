@@ -133,6 +133,9 @@ function InventoryPage() {
         </TabsContent>
 
         <TabsContent value="assignments" className="mt-4">
+          <div className="mb-3 flex justify-end">
+            <AssignDialog items={(items.data ?? []).filter((i) => i.active)} staffList={staff.data ?? []} />
+          </div>
           <div className="rounded-lg border bg-card">
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
