@@ -111,7 +111,7 @@ export type PlatformUserRow = {
 
 const listUsersSchema = z.object({
   search: z.string().max(200).optional(),
-  role: z.enum(["owner", "office_manager", "dispatcher", "tech", "platform_admin"]).optional(),
+  role: z.enum(["owner", "office_manager", "dispatcher", "tech"]).optional(),
   organization_id: z.string().uuid().optional(),
   limit: z.number().int().min(1).max(200).default(100),
 });
