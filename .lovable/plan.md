@@ -1,70 +1,52 @@
-# Session J — Audit & Polish Pass
+# Wrap-Up Plan
 
-Cross-referenced against `CLAUDE.md` and `pooper-scooper-crm-spec.md`. Groups the fixes you called out plus the spec gaps still visible in code.
+Five focused batches to get the platform ship-ready. Each is independent; I'll do them in order.
 
----
+## 1. Cron scheduling
+Schedule the three existing endpoints via `pg_cron` + `pg_net` so automation runs unattended:
+- `POST /api/public/hooks/announcement-emails` — every 15 min
+- `POST /api/public/hooks/nightly` — daily 2:00 AM UTC
+- `POST /api/public/hooks/weekly-digest` — Mondays 8:00 AM UTC
 
-## 1. Field tech language — move to Settings
+Uses the stable `project--{id}.lovable.app` URL and the anon `apikey` header (canonical pattern — no new secret).
 
-- Remove `<LanguageToggle />` from the My Day sticky header.
-- Add a new tab **Settings → Preferences** (`/settings/preferences`) that owns:
-  - Language (English / Spanish, per-user, persisted to the same storage the toggle already uses so techs keep their selection across devices via profile row later).
-  - Haptics on/off, "keep screen awake on route" toggle (already partly wired), default map app for directions (Google / Apple / Waze).
-- Insert "Preferences" as the first tab in `settings.tsx` so techs land there quickly.
+## 2. Suspension side-effects
+- New `SuspensionBanner` mounted in `_authenticated/route.tsx` above content.
+- Reads `plan_status` via `getBillingStatus`; shows:
+  - `past_due` → yellow warning "Payment failed — update card" + link to `/billing`
+  - `canceled` → red banner "Subscription canceled — reactivate to keep adding clients"
+- No hard lockout; the client-limit gate in `createBillingCheckout`/client-add flow already enforces access.
 
-## 2. Client Service Portal — finish the surface
+## 3. Tenant detail admin actions
+On `platform.tenants.$id.tsx`, add action buttons (owner/platform_admin only) that call new server fns in `platform-tenant.functions.ts`:
+- **Force plan change** — set `plan_status` to `active`/`free`/`past_due`/`canceled` with audit log entry.
+- **Add credit** — insert into `credit_ledger` with reason + admin note.
+- **Suspend / Reactivate** — toggles `plan_status` = `canceled` / `active`, writes audit.
+- **Impersonate** — generates a short-lived magic link via Supabase admin; opens in new tab. (Uses `supabaseAdmin.auth.admin.generateLink`.)
 
-The portal today handles visits, plan, add-ons, top-ups, cards, autopay, invoices. Spec §6.7 and §7 want more. Add:
+Every action writes to `platform_admin_audit` with `actor_id`, `action`, `target_org_id`, `payload`.
 
-1. **Service history with photos** — new "Service history" section listing last 20 completed visits with before/after photo thumbnails from `visit_photos` (already stored). Tap to open lightbox. Directly supports "photo-verified proof of service, client-facing."
-2. **Report a concern** — button on any completed visit → modal (missed spot / gate left open / other + free text + optional photo upload) → creates an internal QC ticket (new lightweight `qc_tickets` table) and surfaces on staff dashboard alerts strip.
-3. **Dogs & property panel** — read-only list of dogs on file (name, breed, temperament badge, photo) plus property access notes (gate code masked behind reveal, hazard flags). Lets the client verify what the tech sees.
-4. **Refer a neighbor** — pulls the client's existing referral code, shows share card ("$X off for you and your neighbor"), copy-link + native share button. Sets up the §7 growth loop without the map canvassing (that's staff-side).
-5. **Approve a quote / initial cleanup** — if the account has a pending `invoices.kind = 'quote'` or an unapproved initial cleanup, surface it at the top with Accept / Decline (Accept flips status to open + optional autopay charge). Matches Jobber's "Client Hub" best feature.
-6. **Header polish** — next visit countdown ("Next visit: Tue Jul 7, arriving ~10–12"), current plan summary chip.
-7. **Sign in link for the client** — small footer link so returning clients can bookmark & re-authenticate without hunting for the emailed link (uses portal token + email verify, no full auth account required).
+## 4. Signup requests & invites
+On `platform.signup-requests.tsx` and `platform.invites.tsx`:
+- **Approve signup request** — creates organization + owner invite via existing `enqueueAppEmail` (`invite` template), marks request approved, audit entry.
+- **Reject signup request** — sets status + optional reason, audit entry.
+- **Resend invite** — bumps `expires_at`, re-enqueues invite email.
+- **Revoke invite** — sets status to `revoked`, audit entry.
 
-## 3. Platform Admin login
+## 5. Polish
+- Empty states on Announcements, Coupons, Invoices, Users (using `EmptyState` component that already exists).
+- Loading skeletons on tenant list + tenant detail.
+- Confirm `errorComponent` + `notFoundComponent` present on all `_authenticated/*` and `platform.*` routes; add where missing.
 
-Today `/platform` is gated by the `platform_admin` role but shares the regular `/auth` form and reuses the customer app shell. Add:
+## Technical notes
+- All new server fns use `requireSupabaseAuth` + explicit `has_role(_user_id, 'platform_admin')` check before privileged writes.
+- `supabaseAdmin` loaded via `await import()` inside handlers (never top-level in `.functions.ts`).
+- Cron scheduling goes through `supabase--insert` on `cron.job` (not migration, per guidance).
+- No new secrets required — platform Stripe keys are already saved.
 
-- **Dedicated login route** `/admin` (public) with its own branded form, separate copy ("Platform operator sign-in"), and a distinct redirect to `/platform` on success. Refuses non-`platform_admin` users with a clear message and signs them out.
-- **Platform shell** — wrap `/platform` in a minimal own layout (no client sidebar, "Platform admin" header, sign-out) so operators never see tenant navigation.
-- **Impersonation audit stub** — add `platform_admin_audit` table and log every plan change (already the only mutation) with actor, org, before/after. Foundation for the spec's audit-logged impersonation feature later.
-- Sidebar link removed from tenant app to avoid tenant users even seeing "Platform admin" in the sidebar chrome.
+## Out of scope (this pass)
+- Stripe test-mode E2E verification (do after cron is live).
+- Full mobile pass beyond tenants list (already done).
+- Analytics/observability dashboards.
 
-## 4. Loose ends visible in the current build
-
-- **Auth page**: no forgot-password link, no `/reset-password` route, no Google sign-in. Add the reset flow (required by rules) and a Google button (behind `configure_social_auth`).
-- **Settings index redirect** currently sends to `/settings/skip-rules`. After adding Preferences, redirect there instead — more useful landing.
-- **Franchise page**: shows "not a franchise parent" but no CTA. Add "Mark this org as a franchise parent" button (owner-only) that flips `is_franchise_parent`.
-- **Dashboard**: "Techs today" list has no completion progress bar per tech — trivial add, uses the numbers we already fetch.
-- **Weather × Routes**: batch reschedule works, but no toast summary of what moved. Add "Moved N visits to Jul 8" summary + undo (7-day soft window).
-- **Visit detail drawer**: no direct link to property boundary sketch. Add "View yard boundary" if a boundary polygon exists.
-- **Imports**: only generic CSV path exists — spec calls out **named importers** (Sweep&Go, Jobber, TTP, Housecall Pro, GorillaDesk). Add a picker screen listing the 5 named sources with per-source column presets; even shipping the picker + Sweep&Go/Jobber presets is a big marketing/UX win.
-- **AR / dunning**: no failed-payment retry ladder. Add configurable dunning rules (retry Day 1/3/7, pause on 3rd failure) under Settings → Automation.
-
-## 5. Spec gaps we haven't shipped yet (call out, don't build in this pass)
-
-Flag these so the roadmap stays honest — decide later which to prioritize:
-
-- Neighbor-canvassing map tool (§7 #8) — staff-side map, "invite 5 neighbors on this street" flow.
-- Predictive churn score + auto win-back automation (§6.1 P2, §8).
-- Seasonal deep-clean campaign trigger (§7 #9).
-- AI-drafted marketing copy generation and review responses (§8).
-- Weekly AI business digest (§8, "Analyst AI"-style).
-- Value-aware AI dispatch (§8, ServiceTitan pattern).
-- Commercial DNA-testing compliance integration (§7 #5).
-- Native React Native tech + client apps (locked decision in CLAUDE.md #4; web is a stopgap).
-
----
-
-## Suggested build order this session
-
-1. Move language toggle → Settings → Preferences.
-2. Portal completion (service history + concerns + dogs + referral + quote approval).
-3. Platform admin login split + audit log.
-4. Auth polish (forgot password + Google) and the small loose-end fixes.
-5. Named-importer picker scaffold with Sweep&Go + Jobber presets.
-
-Reply "go" to build all five, or name which subset to tackle first.
+Say **go** and I'll execute batches 1→5 in order.
