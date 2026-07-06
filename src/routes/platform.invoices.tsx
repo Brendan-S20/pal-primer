@@ -12,6 +12,9 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { EmptyState } from "@/components/EmptyState";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Receipt } from "lucide-react";
 
 export const Route = createFileRoute("/platform/invoices")({
   component: InvoicesPage,
@@ -108,9 +111,15 @@ function InvoicesPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {!q.isLoading && (q.data?.rows ?? []).length === 0 ? (
-                  <TableRow><TableCell colSpan={7} className="text-center text-sm text-muted-foreground">
-                    No invoices yet. Once tenants subscribe, Stripe events will populate this list via the platform webhook.
+                {q.isLoading ? (
+                  <TableRow><TableCell colSpan={7}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
+                ) : (q.data?.rows ?? []).length === 0 ? (
+                  <TableRow><TableCell colSpan={7} className="py-6">
+                    <EmptyState
+                      icon={<Receipt className="h-5 w-5" />}
+                      title="No invoices yet"
+                      description="Once tenants subscribe, Stripe events will populate this list via the platform webhook."
+                    />
                   </TableCell></TableRow>
                 ) : null}
               </TableBody>

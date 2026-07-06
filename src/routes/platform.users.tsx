@@ -12,6 +12,9 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { EmptyState } from "@/components/EmptyState";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Users } from "lucide-react";
 
 export const Route = createFileRoute("/platform/users")({
   component: UsersPage,
@@ -107,8 +110,16 @@ function UsersPage() {
                     <TableCell className="text-sm">{u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}</TableCell>
                   </TableRow>
                 ))}
-                {!q.isLoading && filtered.length === 0 ? (
-                  <TableRow><TableCell colSpan={4} className="text-center text-sm text-muted-foreground">No users match.</TableCell></TableRow>
+                {q.isLoading ? (
+                  <TableRow><TableCell colSpan={4}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
+                ) : filtered.length === 0 ? (
+                  <TableRow><TableCell colSpan={4} className="py-6">
+                    <EmptyState
+                      icon={<Users className="h-5 w-5" />}
+                      title="No users match"
+                      description="Try clearing the search or picking a different role filter."
+                    />
+                  </TableCell></TableRow>
                 ) : null}
               </TableBody>
             </Table>

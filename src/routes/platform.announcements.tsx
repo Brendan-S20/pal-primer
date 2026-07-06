@@ -19,7 +19,9 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Trash2 } from "lucide-react";
+import { Trash2, Megaphone } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export const Route = createFileRoute("/platform/announcements")({
   component: AnnouncementsPage,
@@ -162,8 +164,17 @@ function AnnouncementsPage() {
             </Card>
           );
         })}
-        {!q.isLoading && (q.data?.rows ?? []).length === 0 ? (
-          <div className="text-sm text-muted-foreground">No announcements yet.</div>
+        {q.isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </div>
+        ) : (q.data?.rows ?? []).length === 0 ? (
+          <EmptyState
+            icon={<Megaphone className="h-5 w-5" />}
+            title="No announcements yet"
+            description="Publish a banner to notify tenants about maintenance, new features, or important updates."
+          />
         ) : null}
       </div>
     </div>
