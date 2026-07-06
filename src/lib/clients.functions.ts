@@ -30,9 +30,12 @@ export const listClients = createServerFn({ method: "GET" })
     const ids = clients.map((c: any) => c.id);
 
     // Fetch aggregate side-data in parallel; ignore individual failures.
-    const [dogsRes, subsRes, invRes] = await Promise.all([
+    const [propsRes, subsRes, invRes] = await Promise.all([
       ids.length
-        ? supabase.from("dogs").select("client_id").in("client_id", ids)
+        ? supabase
+            .from("properties")
+            .select("id, client_id, dogs(id)")
+            .in("client_id", ids)
         : Promise.resolve({ data: [] as any[] }),
       ids.length
         ? supabase
@@ -49,9 +52,13 @@ export const listClients = createServerFn({ method: "GET" })
         : Promise.resolve({ data: [] as any[] }),
     ]);
 
+    // Dogs live on properties (dogs.property_id), so aggregate through the
+    // property → client relationship instead of a non-existent dogs.client_id.
     const dogsByClient = new Map<string, number>();
-    for (const d of dogsRes.data ?? []) {
-      dogsByClient.set(d.client_id, (dogsByClient.get(d.client_id) ?? 0) + 1);
+    for (const p of (propsRes.data ?? []) as Array<{ client_id: string; dogs: unknown[] | null }>) {
+      const n = Array.isArray(p.dogs) ? p.dogs.length : 0;
+      if (!p.client_id) continue;
+      dogsByClient.set(p.client_id, (dogsByClient.get(p.client_id) ?? 0) + n);
     }
     const activeSubsByClient = new Map<string, number>();
     for (const s of subsRes.data ?? []) {
