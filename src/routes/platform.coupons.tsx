@@ -22,7 +22,12 @@ import {
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { EmptyState } from "@/components/EmptyState";
+import { Skeleton } from "@/components/ui/skeleton";
+import { TicketPercent } from "lucide-react";
 
 export const Route = createFileRoute("/platform/coupons")({
   component: CouponsPage,
