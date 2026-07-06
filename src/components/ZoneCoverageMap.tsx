@@ -130,7 +130,10 @@ export function ZoneCoverageMap({
           setTick((t) => t + 1);
         });
       });
-      if (pts.length >= 3) map.fitBounds(L.latLngBounds(pts), { padding: [30, 30], maxZoom: 15 });
+      if (pts.length >= 3 && !fittedRef.current) {
+        try { map.fitBounds(L.latLngBounds(pts), { padding: [30, 30], maxZoom: 15 }); } catch { /* ignore */ }
+        fittedRef.current = true;
+      }
     } else {
       const c = centerRef.current;
       if (c) {
@@ -143,10 +146,17 @@ export function ZoneCoverageMap({
           centerRef.current = ev.target.getLatLng();
           setTick((t) => t + 1);
         });
-        map.fitBounds(L.circle(c, { radius: r }).getBounds(), { padding: [30, 30], maxZoom: 14 });
+        if (!fittedRef.current) {
+          try { map.fitBounds(L.circle(c, { radius: r }).getBounds(), { padding: [30, 30], maxZoom: 14 }); } catch { /* ignore */ }
+          fittedRef.current = true;
+        }
       }
     }
   }, [tick, mode, radius, minutes]);
+
+  // Reset the fit-once guard whenever the drawing mode changes so a fresh
+  // mode gets one fit; individual drags/edits do not refit.
+  useEffect(() => { fittedRef.current = false; }, [mode]);
 
   const save = () => {
     let polygon: PolygonGeoJSON | null = null;
