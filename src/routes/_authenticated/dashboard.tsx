@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { getMyOrg } from "@/lib/org.functions";
 import { getDashboardSummary } from "@/lib/dashboard.functions";
+import { getBillingStatus } from "@/lib/billing.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { OnboardingChecklist } from "@/components/OnboardingChecklist";
@@ -30,6 +31,7 @@ function fmtMoney(cents: number) {
 function Dashboard() {
   const orgFn = useServerFn(getMyOrg);
   const sumFn = useServerFn(getDashboardSummary);
+  const billingFn = useServerFn(getBillingStatus);
   const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
 
   const { data: orgData, isLoading: orgLoading } = useQuery({
@@ -40,6 +42,12 @@ function Dashboard() {
     queryKey: ["dashboard-summary"],
     queryFn: () => sumFn(),
     refetchInterval: 60_000,
+  });
+  const { data: billing } = useQuery({
+    queryKey: ["billing-status"],
+    queryFn: () => billingFn(),
+    staleTime: 60_000,
+    retry: false,
   });
 
   if (orgLoading) return <p className="text-muted-foreground">Loading…</p>;
@@ -146,7 +154,7 @@ function Dashboard() {
           icon={Users}
           label="Active clients"
           value={sum ? String(sum.activeClients) : "—"}
-          hint={org.active_client_count <= 3 ? "Free tier (≤3)" : "Paid tier"}
+          hint={billing?.planName ? `${billing.planName} plan` : undefined}
         />
         <KpiCard
           icon={DollarSign}

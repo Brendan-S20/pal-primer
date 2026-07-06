@@ -137,7 +137,7 @@ function NewInviteDialog() {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"new" | "existing">("new");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"owner" | "office_manager" | "dispatcher" | "tech" | "platform_admin">("owner");
+  const [role, setRole] = useState<"owner" | "office_manager" | "dispatcher" | "tech">("owner");
   const [orgName, setOrgName] = useState("");
   const [orgId, setOrgId] = useState("");
   const [createdLink, setCreatedLink] = useState<string | null>(null);
@@ -204,7 +204,7 @@ function NewInviteDialog() {
                 <option value="office_manager">Office manager</option>
                 <option value="dispatcher">Dispatcher</option>
                 <option value="tech">Tech</option>
-                <option value="platform_admin">Platform admin</option>
+                
               </select>
             </div>
             {mode === "new" ? (

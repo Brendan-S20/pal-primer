@@ -26,7 +26,6 @@ import { Route as SignupSuccessRouteImport } from './routes/signup.success'
 import { Route as SignupSlugRouteImport } from './routes/signup.$slug'
 import { Route as PortalTokenRouteImport } from './routes/portal.$token'
 import { Route as PlatformUsersRouteImport } from './routes/platform.users'
-import { Route as PlatformTenantsRouteImport } from './routes/platform.tenants'
 import { Route as PlatformSignupRequestsRouteImport } from './routes/platform.signup-requests'
 import { Route as PlatformRevenueRouteImport } from './routes/platform.revenue'
 import { Route as PlatformPlansRouteImport } from './routes/platform.plans'
@@ -59,6 +58,7 @@ import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedAiToolsRouteImport } from './routes/_authenticated/ai-tools'
 import { Route as PortalTokenIndexRouteImport } from './routes/portal.$token.index'
+import { Route as PlatformTenantsIndexRouteImport } from './routes/platform.tenants.index'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings.index'
 import { Route as AuthenticatedMessagesIndexRouteImport } from './routes/_authenticated/messages.index'
 import { Route as AuthenticatedInvoicesIndexRouteImport } from './routes/_authenticated/invoices.index'
@@ -188,11 +188,6 @@ const PortalTokenRoute = PortalTokenRouteImport.update({
 const PlatformUsersRoute = PlatformUsersRouteImport.update({
   id: '/users',
   path: '/users',
-  getParentRoute: () => PlatformRoute,
-} as any)
-const PlatformTenantsRoute = PlatformTenantsRouteImport.update({
-  id: '/tenants',
-  path: '/tenants',
   getParentRoute: () => PlatformRoute,
 } as any)
 const PlatformSignupRequestsRoute = PlatformSignupRequestsRouteImport.update({
@@ -355,6 +350,11 @@ const PortalTokenIndexRoute = PortalTokenIndexRouteImport.update({
   path: '/',
   getParentRoute: () => PortalTokenRoute,
 } as any)
+const PlatformTenantsIndexRoute = PlatformTenantsIndexRouteImport.update({
+  id: '/tenants/',
+  path: '/tenants/',
+  getParentRoute: () => PlatformRoute,
+} as any)
 const AuthenticatedSettingsIndexRoute =
   AuthenticatedSettingsIndexRouteImport.update({
     id: '/',
@@ -411,9 +411,9 @@ const PortalTokenAccountRoute = PortalTokenAccountRouteImport.update({
   getParentRoute: () => PortalTokenRoute,
 } as any)
 const PlatformTenantsIdRoute = PlatformTenantsIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
-  getParentRoute: () => PlatformTenantsRoute,
+  id: '/tenants/$id',
+  path: '/tenants/$id',
+  getParentRoute: () => PlatformRoute,
 } as any)
 const LovableEmailSuppressionRoute = LovableEmailSuppressionRouteImport.update({
   id: '/lovable/email/suppression',
@@ -661,7 +661,6 @@ export interface FileRoutesByFullPath {
   '/platform/plans': typeof PlatformPlansRoute
   '/platform/revenue': typeof PlatformRevenueRoute
   '/platform/signup-requests': typeof PlatformSignupRequestsRoute
-  '/platform/tenants': typeof PlatformTenantsRouteWithChildren
   '/platform/users': typeof PlatformUsersRoute
   '/portal/$token': typeof PortalTokenRouteWithChildren
   '/signup/$slug': typeof SignupSlugRoute
@@ -697,6 +696,7 @@ export interface FileRoutesByFullPath {
   '/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/messages/': typeof AuthenticatedMessagesIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/platform/tenants/': typeof PlatformTenantsIndexRoute
   '/portal/$token/': typeof PortalTokenIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
@@ -753,7 +753,6 @@ export interface FileRoutesByTo {
   '/platform/plans': typeof PlatformPlansRoute
   '/platform/revenue': typeof PlatformRevenueRoute
   '/platform/signup-requests': typeof PlatformSignupRequestsRoute
-  '/platform/tenants': typeof PlatformTenantsRouteWithChildren
   '/platform/users': typeof PlatformUsersRoute
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
@@ -788,6 +787,7 @@ export interface FileRoutesByTo {
   '/invoices': typeof AuthenticatedInvoicesIndexRoute
   '/messages': typeof AuthenticatedMessagesIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
+  '/platform/tenants': typeof PlatformTenantsIndexRoute
   '/portal/$token': typeof PortalTokenIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
@@ -851,7 +851,6 @@ export interface FileRoutesById {
   '/platform/plans': typeof PlatformPlansRoute
   '/platform/revenue': typeof PlatformRevenueRoute
   '/platform/signup-requests': typeof PlatformSignupRequestsRoute
-  '/platform/tenants': typeof PlatformTenantsRouteWithChildren
   '/platform/users': typeof PlatformUsersRoute
   '/portal/$token': typeof PortalTokenRouteWithChildren
   '/signup/$slug': typeof SignupSlugRoute
@@ -887,6 +886,7 @@ export interface FileRoutesById {
   '/_authenticated/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/_authenticated/messages/': typeof AuthenticatedMessagesIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
+  '/platform/tenants/': typeof PlatformTenantsIndexRoute
   '/portal/$token/': typeof PortalTokenIndexRoute
   '/_authenticated/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
@@ -950,7 +950,6 @@ export interface FileRouteTypes {
     | '/platform/plans'
     | '/platform/revenue'
     | '/platform/signup-requests'
-    | '/platform/tenants'
     | '/platform/users'
     | '/portal/$token'
     | '/signup/$slug'
@@ -986,6 +985,7 @@ export interface FileRouteTypes {
     | '/invoices/'
     | '/messages/'
     | '/settings/'
+    | '/platform/tenants/'
     | '/portal/$token/'
     | '/properties/$propertyId/boundary'
     | '/api/public/hooks/announcement-emails'
@@ -1042,7 +1042,6 @@ export interface FileRouteTypes {
     | '/platform/plans'
     | '/platform/revenue'
     | '/platform/signup-requests'
-    | '/platform/tenants'
     | '/platform/users'
     | '/signup/$slug'
     | '/signup/success'
@@ -1077,6 +1076,7 @@ export interface FileRouteTypes {
     | '/invoices'
     | '/messages'
     | '/settings'
+    | '/platform/tenants'
     | '/portal/$token'
     | '/properties/$propertyId/boundary'
     | '/api/public/hooks/announcement-emails'
@@ -1139,7 +1139,6 @@ export interface FileRouteTypes {
     | '/platform/plans'
     | '/platform/revenue'
     | '/platform/signup-requests'
-    | '/platform/tenants'
     | '/platform/users'
     | '/portal/$token'
     | '/signup/$slug'
@@ -1175,6 +1174,7 @@ export interface FileRouteTypes {
     | '/_authenticated/invoices/'
     | '/_authenticated/messages/'
     | '/_authenticated/settings/'
+    | '/platform/tenants/'
     | '/portal/$token/'
     | '/_authenticated/properties/$propertyId/boundary'
     | '/api/public/hooks/announcement-emails'
@@ -1348,13 +1348,6 @@ declare module '@tanstack/react-router' {
       path: '/users'
       fullPath: '/platform/users'
       preLoaderRoute: typeof PlatformUsersRouteImport
-      parentRoute: typeof PlatformRoute
-    }
-    '/platform/tenants': {
-      id: '/platform/tenants'
-      path: '/tenants'
-      fullPath: '/platform/tenants'
-      preLoaderRoute: typeof PlatformTenantsRouteImport
       parentRoute: typeof PlatformRoute
     }
     '/platform/signup-requests': {
@@ -1581,6 +1574,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalTokenIndexRouteImport
       parentRoute: typeof PortalTokenRoute
     }
+    '/platform/tenants/': {
+      id: '/platform/tenants/'
+      path: '/tenants'
+      fullPath: '/platform/tenants/'
+      preLoaderRoute: typeof PlatformTenantsIndexRouteImport
+      parentRoute: typeof PlatformRoute
+    }
     '/_authenticated/settings/': {
       id: '/_authenticated/settings/'
       path: '/'
@@ -1653,10 +1653,10 @@ declare module '@tanstack/react-router' {
     }
     '/platform/tenants/$id': {
       id: '/platform/tenants/$id'
-      path: '/$id'
+      path: '/tenants/$id'
       fullPath: '/platform/tenants/$id'
       preLoaderRoute: typeof PlatformTenantsIdRouteImport
-      parentRoute: typeof PlatformTenantsRoute
+      parentRoute: typeof PlatformRoute
     }
     '/lovable/email/suppression': {
       id: '/lovable/email/suppression'
@@ -2045,18 +2045,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
 const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
-interface PlatformTenantsRouteChildren {
-  PlatformTenantsIdRoute: typeof PlatformTenantsIdRoute
-}
-
-const PlatformTenantsRouteChildren: PlatformTenantsRouteChildren = {
-  PlatformTenantsIdRoute: PlatformTenantsIdRoute,
-}
-
-const PlatformTenantsRouteWithChildren = PlatformTenantsRoute._addFileChildren(
-  PlatformTenantsRouteChildren,
-)
-
 interface PlatformRouteChildren {
   PlatformAnnouncementsRoute: typeof PlatformAnnouncementsRoute
   PlatformAuditRoute: typeof PlatformAuditRoute
@@ -2068,9 +2056,10 @@ interface PlatformRouteChildren {
   PlatformPlansRoute: typeof PlatformPlansRoute
   PlatformRevenueRoute: typeof PlatformRevenueRoute
   PlatformSignupRequestsRoute: typeof PlatformSignupRequestsRoute
-  PlatformTenantsRoute: typeof PlatformTenantsRouteWithChildren
   PlatformUsersRoute: typeof PlatformUsersRoute
   PlatformIndexRoute: typeof PlatformIndexRoute
+  PlatformTenantsIdRoute: typeof PlatformTenantsIdRoute
+  PlatformTenantsIndexRoute: typeof PlatformTenantsIndexRoute
 }
 
 const PlatformRouteChildren: PlatformRouteChildren = {
@@ -2084,9 +2073,10 @@ const PlatformRouteChildren: PlatformRouteChildren = {
   PlatformPlansRoute: PlatformPlansRoute,
   PlatformRevenueRoute: PlatformRevenueRoute,
   PlatformSignupRequestsRoute: PlatformSignupRequestsRoute,
-  PlatformTenantsRoute: PlatformTenantsRouteWithChildren,
   PlatformUsersRoute: PlatformUsersRoute,
   PlatformIndexRoute: PlatformIndexRoute,
+  PlatformTenantsIdRoute: PlatformTenantsIdRoute,
+  PlatformTenantsIndexRoute: PlatformTenantsIndexRoute,
 }
 
 const PlatformRouteWithChildren = PlatformRoute._addFileChildren(
@@ -2154,13 +2144,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

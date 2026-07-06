@@ -36,8 +36,8 @@ function RevenuePage() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard icon={TrendingUp} label="ARR estimate" value={money(d.arrEstimateCents)} sub="(avg last 3 mo × 12)" />
         <StatCard icon={DollarSign} label="Avg monthly rev" value={money(d.avgMonthlyCents)} sub="last 3 months" />
-        <StatCard icon={Building2} label="Paying orgs" value={`${d.payingOrgs} / ${d.totalOrgs}`} sub="plan_status = active" />
-        <StatCard icon={AlertCircle} label="AR open" value={money(d.arOpenCents)} sub="unpaid invoices" />
+        <StatCard icon={Building2} label="Paying orgs" value={`${d.payingOrgs} / ${d.totalOrgs}`} sub="active, past_due, or grace" />
+        <StatCard icon={AlertCircle} label="Platform AR" value={money(d.arOpenCents)} sub="unpaid SaaS invoices" />
       </div>
 
       <Card>

@@ -180,9 +180,9 @@ export const getPlatformRevenueTrend = createServerFn({ method: "GET" })
         .select("id, name, created_at, billing_tier")
         .gte("created_at", startIso),
       supabaseAdmin
-        .from("invoices")
-        .select("total_cents")
-        .eq("status", "open"),
+        .from("platform_invoices")
+        .select("amount_due_cents, amount_paid_cents")
+        .in("status", ["open", "uncollectible"]),
       supabaseAdmin
         .from("payments")
         .select("amount_cents, organization_id, paid_at, status")
@@ -190,7 +190,7 @@ export const getPlatformRevenueTrend = createServerFn({ method: "GET" })
         .gte("paid_at", new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString()),
       supabaseAdmin
         .from("organizations")
-        .select("id, name, billing_tier, plan_status"),
+        .select("id, name, billing_tier, billing_status, plan_status"),
     ]);
 
     if (paymentsRes.error) throw new Error(paymentsRes.error.message);
@@ -234,9 +234,14 @@ export const getPlatformRevenueTrend = createServerFn({ method: "GET" })
       ? Math.round(last3.reduce((s, m) => s + m.revenue_cents, 0) / last3.length)
       : 0;
 
-    const ar_open_cents = (arRes.data ?? []).reduce((s, r) => s + (r.total_cents ?? 0), 0);
+    const ar_open_cents = (arRes.data ?? []).reduce(
+      (s, r) => s + Math.max(0, (r.amount_due_cents ?? 0) - (r.amount_paid_cents ?? 0)),
+      0,
+    );
     const total_orgs = (topRes.data ?? []).length;
-    const paying_orgs = (topRes.data ?? []).filter((o) => o.plan_status === "active").length;
+    const paying_orgs = (topRes.data ?? []).filter(
+      (o) => o.billing_status === "active" || o.billing_status === "past_due" || o.billing_status === "grace",
+    ).length;
 
     // Revenue-by-tier (MTD)
     const tierRev = new Map<string, number>();
@@ -273,11 +278,12 @@ export const getPlatformHealth = createServerFn({ method: "GET" })
 
     const [openInvRes, overdueRes, stuckVisitsRes, suppressedRes, aiErrRes, aiTotalRes, signupRes, recentAuditRes] =
       await Promise.all([
-        supabaseAdmin.from("invoices").select("total_cents", { count: "exact" }).eq("status", "open"),
+        // Platform SaaS AR — invoices Scoop CRM billed to tenants, not tenant client invoices.
+        supabaseAdmin.from("platform_invoices").select("amount_due_cents, amount_paid_cents", { count: "exact" }).in("status", ["open", "uncollectible"]),
         supabaseAdmin
-          .from("invoices")
-          .select("total_cents", { count: "exact" })
-          .eq("status", "open")
+          .from("platform_invoices")
+          .select("amount_due_cents, amount_paid_cents", { count: "exact" })
+          .in("status", ["open", "uncollectible"])
           .lt("issued_at", thirtyDaysAgo),
         supabaseAdmin
           .from("visits")
@@ -294,8 +300,9 @@ export const getPlatformHealth = createServerFn({ method: "GET" })
           .from("ai_receptionist_logs")
           .select("id", { count: "exact", head: true })
           .gte("created_at", yesterday),
+        // Same table as /platform/signup-requests so counts always agree.
         supabaseAdmin
-          .from("signup_requests")
+          .from("platform_signup_requests")
           .select("id", { count: "exact", head: true })
           .eq("status", "pending"),
         supabaseAdmin
@@ -304,10 +311,12 @@ export const getPlatformHealth = createServerFn({ method: "GET" })
           .gte("created_at", yesterday),
       ]);
 
+    const dueMinusPaid = (r: { amount_due_cents: number | null; amount_paid_cents: number | null }) =>
+      Math.max(0, (r.amount_due_cents ?? 0) - (r.amount_paid_cents ?? 0));
     const open_invoices_count = openInvRes.count ?? 0;
-    const open_invoices_total = (openInvRes.data ?? []).reduce((s, r) => s + (r.total_cents ?? 0), 0);
+    const open_invoices_total = (openInvRes.data ?? []).reduce((s, r) => s + dueMinusPaid(r), 0);
     const overdue_invoices_count = overdueRes.count ?? 0;
-    const overdue_invoices_total = (overdueRes.data ?? []).reduce((s, r) => s + (r.total_cents ?? 0), 0);
+    const overdue_invoices_total = (overdueRes.data ?? []).reduce((s, r) => s + dueMinusPaid(r), 0);
     const stuck_visits = stuckVisitsRes.count ?? 0;
     const suppressed_emails = suppressedRes.count ?? 0;
     const ai_errors_24h = aiErrRes.count ?? 0;

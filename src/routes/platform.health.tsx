@@ -33,14 +33,14 @@ function HealthPage() {
     tone?: "ok" | "warn" | "bad";
   }> = [
     {
-      label: "Open invoices",
+      label: "Open SaaS invoices",
       value: String(h.open_invoices_count),
       sub: money(h.open_invoices_total) + " outstanding",
       icon: DollarSign,
       tone: h.open_invoices_count > 0 ? "warn" : "ok",
     },
     {
-      label: "Overdue > 30d",
+      label: "SaaS overdue > 30d",
       value: String(h.overdue_invoices_count),
       sub: money(h.overdue_invoices_total),
       icon: Clock,
