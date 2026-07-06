@@ -3837,6 +3837,10 @@ export type Database = {
         Args: { _org_id: string }
         Returns: string
       }
+      assign_demo_visits_to_staff: {
+        Args: { _org_id: string }
+        Returns: undefined
+      }
       assign_route_for_day: {
         Args: {
           _day: string
