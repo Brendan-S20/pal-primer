@@ -132,11 +132,16 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <Link to="/dashboard" className="flex items-center gap-2 px-2 py-1.5 text-sm font-semibold">
-          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
-            <Truck className="h-4 w-4" />
-          </div>
-          {!collapsed && <span className="truncate">{APP_NAME}</span>}
+        <Link
+          to="/dashboard"
+          className="flex items-center gap-2 px-2 py-1.5 text-sidebar-foreground"
+          aria-label={APP_NAME}
+        >
+          {collapsed ? (
+            <Logo variant="mark" className="h-7 w-7 shrink-0" />
+          ) : (
+            <Logo variant="logo" className="h-8 w-auto" />
+          )}
         </Link>
       </SidebarHeader>
       <SidebarContent>
