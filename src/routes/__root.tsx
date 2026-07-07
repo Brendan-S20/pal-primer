@@ -79,7 +79,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "HoundStack — Field service for pet waste removal" },
+      { title: "HoundStack - Field Service App" },
       {
         name: "description",
         content:
@@ -88,6 +88,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "robots", content: "noindex" },
       { property: "og:site_name", content: "HoundStack" },
       { property: "og:type", content: "website" },
+      { property: "og:title", content: "HoundStack - Field Service App" },
+      { name: "twitter:title", content: "HoundStack - Field Service App" },
+      { name: "description", content: "HoundStack runs routes, recurring visits, per-dog billing, and the field app for pet waste removal companies." },
+      { property: "og:description", content: "HoundStack runs routes, recurring visits, per-dog billing, and the field app for pet waste removal companies." },
+      { name: "twitter:description", content: "HoundStack runs routes, recurring visits, per-dog billing, and the field app for pet waste removal companies." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/d738d3ca-536c-4967-b44c-bf028c9433d0/id-preview-8a55964b--da34c6c7-a052-492e-a400-8085bfb98730.lovable.app-1783452013336.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/d738d3ca-536c-4967-b44c-bf028c9433d0/id-preview-8a55964b--da34c6c7-a052-492e-a400-8085bfb98730.lovable.app-1783452013336.png" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
