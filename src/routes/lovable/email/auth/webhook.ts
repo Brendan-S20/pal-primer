@@ -31,7 +31,7 @@ const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
 }
 
 // Configuration
-const SITE_NAME = "pal-primer"
+const SITE_NAME = "HoundStack"
 const SENDER_DOMAIN = "notify.thenorth.consulting"
 const ROOT_DOMAIN = "thenorth.consulting"
 const FROM_DOMAIN = "notify.thenorth.consulting"

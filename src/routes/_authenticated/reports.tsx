@@ -23,7 +23,7 @@ function defaultRange() {
 const reportsKey = (from: string, to: string) => ["reports", from, to] as const;
 
 export const Route = createFileRoute("/_authenticated/reports")({
-  head: () => ({ meta: [{ title: "Reports · Scoop CRM" }] }),
+  head: () => ({ meta: [{ title: "Reports · HoundStack" }] }),
   component: ReportsPage,
 });
 

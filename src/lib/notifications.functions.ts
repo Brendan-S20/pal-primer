@@ -14,7 +14,7 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
       .eq("id", data.invoiceId)
       .single();
     if (error) throw new Error(error.message);
-    const appUrl = process.env.APP_URL || "https://pal-primer.lovable.app";
+    const appUrl = process.env.APP_URL || "https://app.houndstack.com";
     const token = (inv as any).clients?.portal_token as string | undefined;
     const invoiceUrl = token ? `${appUrl}/portal/${token}` : appUrl;
     const period =

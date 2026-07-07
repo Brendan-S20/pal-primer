@@ -34,7 +34,7 @@ import { FlaskConical, Trash2, Dna, Receipt, FileText, Printer } from "lucide-re
 export const Route = createFileRoute("/_authenticated/dna")({
   head: () => ({
     meta: [
-      { title: "DNA compliance · Scoop CRM" },
+      { title: "DNA compliance · HoundStack" },
       {
         name: "description",
         content: "Register dogs, log DNA samples, match pile evidence, and issue violation notices with fines.",

@@ -79,33 +79,19 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Scoop CRM — Field service for pet waste removal" },
+      { title: "HoundStack — Field service for pet waste removal" },
       {
         name: "description",
         content:
-          "Field service CRM built exclusively for pet waste removal companies. Routes, recurring visits, per-dog pricing, and AI, done right for the trade.",
+          "HoundStack runs routes, recurring visits, per-dog billing, and the field app for pet waste removal companies.",
       },
-      { property: "og:title", content: "Scoop CRM — Field service for pet waste removal" },
-      {
-        property: "og:description",
-        content: "Field service CRM built exclusively for pet waste removal companies.",
-      },
+      { name: "robots", content: "noindex" },
+      { property: "og:site_name", content: "HoundStack" },
       { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "Scoop CRM — Field service for pet waste removal" },
-      {
-        name: "twitter:description",
-        content: "Field service CRM built exclusively for pet waste removal companies.",
-      },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/5db1fefc-e2e3-47a9-b6fe-874a92d3bd9f/id-preview-6276cc7b--da34c6c7-a052-492e-a400-8085bfb98730.lovable.app-1782922042889.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/5db1fefc-e2e3-47a9-b6fe-874a92d3bd9f/id-preview-6276cc7b--da34c6c7-a052-492e-a400-8085bfb98730.lovable.app-1782922042889.png" },
     ],
     links: [
-      {
-        rel: "stylesheet",
-        href: appCss,
-      },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "stylesheet", href: appCss },
+      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
     ],
   }),
   shellComponent: RootShell,

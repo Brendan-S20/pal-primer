@@ -1,0 +1,82 @@
+// Public JSON endpoint for the external marketing site to submit contact leads.
+// POST https://app.houndstack.com/api/public/leads
+// CORS: allow all origins (the marketing site is not deployed yet). Lock down
+// later by echoing the request Origin against an allow-list.
+import { createFileRoute } from "@tanstack/react-router";
+import { z } from "zod";
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Max-Age": "86400",
+} as const;
+
+const jsonHeaders = { "Content-Type": "application/json", ...CORS };
+
+const leadSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  email: z.string().trim().email().max(255),
+  phone: z.string().trim().max(40).optional().or(z.literal("")),
+  company: z.string().trim().max(120).optional().or(z.literal("")),
+  location: z.string().trim().max(200).optional().or(z.literal("")),
+  dog_count: z.coerce.number().int().min(0).max(999).optional().nullable(),
+  frequency: z.string().trim().max(40).optional().or(z.literal("")),
+  message: z.string().trim().max(2000).optional().or(z.literal("")),
+  source: z.string().trim().max(60).optional(),
+});
+
+export const Route = createFileRoute("/api/public/leads")({
+  server: {
+    handlers: {
+      OPTIONS: async () => new Response(null, { status: 204, headers: CORS }),
+      POST: async ({ request }) => {
+        let body: unknown;
+        try {
+          body = await request.json();
+        } catch {
+          return new Response(JSON.stringify({ error: "Invalid JSON" }), {
+            status: 400,
+            headers: jsonHeaders,
+          });
+        }
+        const parsed = leadSchema.safeParse(body);
+        if (!parsed.success) {
+          return new Response(
+            JSON.stringify({ error: "Invalid input", details: parsed.error.flatten() }),
+            { status: 400, headers: jsonHeaders },
+          );
+        }
+        const data = parsed.data;
+        const supabase = createClient<Database>(
+          process.env.SUPABASE_URL!,
+          process.env.SUPABASE_PUBLISHABLE_KEY!,
+          { auth: { persistSession: false } },
+        );
+        const { error } = await supabase.from("leads").insert({
+          name: data.name,
+          email: data.email.toLowerCase(),
+          phone: data.phone || null,
+          company: data.company || null,
+          location: data.location || null,
+          dog_count: data.dog_count ?? null,
+          frequency: data.frequency || null,
+          message: data.message || null,
+          source: data.source || "marketing_site",
+        });
+        if (error) {
+          return new Response(JSON.stringify({ error: error.message }), {
+            status: 500,
+            headers: jsonHeaders,
+          });
+        }
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 201,
+          headers: jsonHeaders,
+        });
+      },
+    },
+  },
+});

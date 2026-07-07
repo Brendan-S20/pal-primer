@@ -87,7 +87,7 @@ async function provisionSignup(
 
     // Best-effort welcome email
     try {
-      const appUrl = process.env.APP_URL || "https://pal-primer.lovable.app";
+      const appUrl = process.env.APP_URL || "https://app.houndstack.com";
       const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
       await enqueueAppEmail({
         organizationId: sr.organization_id,
@@ -330,7 +330,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                       .eq("id", inv.client_id).single();
                     if (c && !c.sms_opt_out && c.primary_phone) {
                       const { sendTwilioSms } = await import("@/lib/twilio.server");
-                      const url = `${process.env.APP_URL || "https://pal-primer.lovable.app"}/portal/${c.portal_token}`;
+                      const url = `${process.env.APP_URL || "https://app.houndstack.com"}/portal/${c.portal_token}`;
                       const body = `Hi ${c.display_name}, your card on file was declined. Please update your payment method: ${url}`;
                       const r = await sendTwilioSms({ from: org.sms_from_number, to: c.primary_phone, body });
                       await supabaseAdmin.from("messages").insert({

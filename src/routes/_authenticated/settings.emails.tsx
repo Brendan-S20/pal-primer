@@ -10,7 +10,7 @@ import { toast } from "sonner";
 const key = ["email-settings"] as const;
 
 export const Route = createFileRoute("/_authenticated/settings/emails")({
-  head: () => ({ meta: [{ title: "Email notifications · Scoop CRM" }] }),
+  head: () => ({ meta: [{ title: "Email notifications · HoundStack" }] }),
   component: EmailSettingsPage,
 });
 

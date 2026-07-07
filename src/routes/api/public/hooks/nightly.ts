@@ -177,7 +177,7 @@ async function sendOverdueReminders(
 }
 
 function appUrl() {
-  return process.env.APP_URL || "https://pal-primer.lovable.app";
+  return process.env.APP_URL || "https://app.houndstack.com";
 }
 
 async function sendOverdueEmails(

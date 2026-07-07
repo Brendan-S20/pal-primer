@@ -278,7 +278,7 @@ export const getPlatformHealth = createServerFn({ method: "GET" })
 
     const [openInvRes, overdueRes, stuckVisitsRes, suppressedRes, aiErrRes, aiTotalRes, signupRes, recentAuditRes] =
       await Promise.all([
-        // Platform SaaS AR — invoices Scoop CRM billed to tenants, not tenant client invoices.
+        // Platform SaaS AR — invoices HoundStack billed to tenants, not tenant client invoices.
         supabaseAdmin.from("platform_invoices").select("amount_due_cents, amount_paid_cents", { count: "exact" }).in("status", ["open", "uncollectible"]),
         supabaseAdmin
           .from("platform_invoices")

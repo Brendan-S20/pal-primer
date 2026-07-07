@@ -66,7 +66,7 @@ export const Route = createFileRoute("/api/public/hooks/announcement-emails")({
             for (const uid of uids) {
               try {
                 const { data: u } = await supabaseAdmin.auth.admin.getUserById(uid);
-                if (u?.user?.email) emails.push({ email: u.user.email, org_name: "Scoop CRM" });
+                if (u?.user?.email) emails.push({ email: u.user.email, org_name: "HoundStack" });
               } catch { /* ignore */ }
             }
             recipients = emails;
@@ -87,7 +87,7 @@ export const Route = createFileRoute("/api/public/hooks/announcement-emails")({
 
           const html = renderAnnouncementHtml(a.title, a.body, a.severity);
           const text = `${a.title}\n\n${a.body}`;
-          const subject = `[Scoop CRM] ${a.title}`;
+          const subject = `[HoundStack] ${a.title}`;
 
           let enqueued = 0;
           for (const r of list) {
@@ -104,7 +104,7 @@ export const Route = createFileRoute("/api/public/hooks/announcement-emails")({
               payload: {
                 message_id: messageId,
                 to: r.email,
-                from: `Scoop CRM <noreply@notify.thenorth.consulting>`,
+                from: `HoundStack <noreply@notify.thenorth.consulting>`,
                 sender_domain: "notify.thenorth.consulting",
                 subject,
                 html,
@@ -146,7 +146,7 @@ function renderAnnouncementHtml(title: string, body: string, severity: string) {
   <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
     <div style="background:${color};color:#fff;padding:16px 20px;font-weight:600">${title}</div>
     <div style="padding:20px;line-height:1.55;font-size:15px">${safeBody}</div>
-    <div style="padding:12px 20px;font-size:12px;color:#64748b;border-top:1px solid #e2e8f0">Sent by Scoop CRM · Platform announcement</div>
+    <div style="padding:12px 20px;font-size:12px;color:#64748b;border-top:1px solid #e2e8f0">Sent by HoundStack · Platform announcement</div>
   </div></body></html>`;
 }
 

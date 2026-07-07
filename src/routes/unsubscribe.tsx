@@ -6,7 +6,7 @@ const searchSchema = z.object({ token: z.string().optional() });
 
 export const Route = createFileRoute("/unsubscribe")({
   validateSearch: (s) => searchSchema.parse(s),
-  head: () => ({ meta: [{ title: "Unsubscribe · Scoop CRM" }] }),
+  head: () => ({ meta: [{ title: "Unsubscribe · HoundStack" }] }),
   component: UnsubscribePage,
 });
 
