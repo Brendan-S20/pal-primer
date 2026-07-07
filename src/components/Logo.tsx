@@ -1,6 +1,6 @@
-import markSvg from "/houndstack-mark.svg?raw";
-import wordmarkSvg from "/houndstack-wordmark.svg?raw";
-import logoSvg from "/houndstack-logo.svg?raw";
+import markSvg from "@/assets/houndstack-mark.svg?raw";
+import wordmarkSvg from "@/assets/houndstack-wordmark.svg?raw";
+import logoSvg from "@/assets/houndstack-logo.svg?raw";
 import { cn } from "@/lib/utils";
 
 type Variant = "mark" | "wordmark" | "logo";
