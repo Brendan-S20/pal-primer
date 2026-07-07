@@ -104,9 +104,9 @@ function AuthPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-md space-y-6">
-        <div className="text-center">
-          <h1 className="text-3xl font-semibold">{APP_NAME}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{APP_DESCRIPTION}</p>
+        <div className="flex flex-col items-center text-center">
+          <Logo variant="logo" className="h-14 w-auto text-primary" />
+          <p className="mt-3 text-sm text-muted-foreground">{APP_DESCRIPTION}</p>
         </div>
 
         <div className="space-y-3 rounded-lg border bg-card p-4">
