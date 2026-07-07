@@ -39,6 +39,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { APP_NAME } from "@/lib/scoop";
+import { Logo } from "@/components/Logo";
 
 type NavItem = { title: string; url: string; icon: React.ComponentType<{ className?: string }> };
 
