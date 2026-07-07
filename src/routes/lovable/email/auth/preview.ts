@@ -18,7 +18,7 @@ const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
 }
 
 // Configuration
-const SITE_NAME = "pal-primer"
+const SITE_NAME = "HoundStack"
 const ROOT_DOMAIN = "thenorth.consulting"
 
 // Sample data for preview mode ONLY (not used in actual email sending).
