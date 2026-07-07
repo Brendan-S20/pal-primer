@@ -10,7 +10,7 @@ import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
 import { TEMPLATES } from "@/lib/email-templates/registry";
 
 const MODEL_ID = "google/gemini-3-flash-preview";
-const SITE_NAME = "Scoop CRM";
+const SITE_NAME = "HoundStack";
 const SENDER_DOMAIN = "notify.thenorth.consulting";
 const FROM_DOMAIN = "notify.thenorth.consulting";
 

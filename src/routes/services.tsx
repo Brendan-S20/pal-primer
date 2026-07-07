@@ -9,12 +9,12 @@ export const Route = createFileRoute("/services")({
       {
         name: "description",
         content:
-          "Everything included with Scoop CRM: recurring visits, dispatch, billing, SMS, portal, weather rescheduling, and more.",
+          "Everything included with HoundStack: recurring visits, dispatch, billing, SMS, portal, weather rescheduling, and more.",
       },
       { property: "og:title", content: `Services — ${APP_NAME}` },
       {
         property: "og:description",
-        content: "Every feature that ships with Scoop CRM for pet waste removal companies.",
+        content: "Every feature that ships with HoundStack for pet waste removal companies.",
       },
       { property: "og:url", content: "https://pal-primer.lovable.app/services" },
     ],

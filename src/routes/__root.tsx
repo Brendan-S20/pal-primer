@@ -79,20 +79,20 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Scoop CRM — Field service for pet waste removal" },
+      { title: "HoundStack — Field service for pet waste removal" },
       {
         name: "description",
         content:
           "Field service CRM built exclusively for pet waste removal companies. Routes, recurring visits, per-dog pricing, and AI, done right for the trade.",
       },
-      { property: "og:title", content: "Scoop CRM — Field service for pet waste removal" },
+      { property: "og:title", content: "HoundStack — Field service for pet waste removal" },
       {
         property: "og:description",
         content: "Field service CRM built exclusively for pet waste removal companies.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "Scoop CRM — Field service for pet waste removal" },
+      { name: "twitter:title", content: "HoundStack — Field service for pet waste removal" },
       {
         name: "twitter:description",
         content: "Field service CRM built exclusively for pet waste removal companies.",

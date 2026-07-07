@@ -34,7 +34,7 @@ function pct(n: number, d: number) {
 }
 
 export const Route = createFileRoute("/_authenticated/analytics")({
-  head: () => ({ meta: [{ title: "Advanced analytics · Scoop CRM" }] }),
+  head: () => ({ meta: [{ title: "Advanced analytics · HoundStack" }] }),
   component: AnalyticsPage,
 });
 

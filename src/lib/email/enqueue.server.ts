@@ -8,7 +8,7 @@ import * as React from "react";
 import { render } from "react-email";
 import { TEMPLATES } from "@/lib/email-templates/registry";
 
-const SITE_NAME = "Scoop CRM";
+const SITE_NAME = "HoundStack";
 const SENDER_DOMAIN = "notify.thenorth.consulting";
 const FROM_DOMAIN = "notify.thenorth.consulting";
 

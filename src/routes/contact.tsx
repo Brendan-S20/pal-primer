@@ -21,7 +21,7 @@ export const Route = createFileRoute("/contact")({
           "Request a demo or ask a question. We reply within one business day, usually much faster.",
       },
       { property: "og:title", content: `Contact — ${APP_NAME}` },
-      { property: "og:description", content: "Request a demo of Scoop CRM." },
+      { property: "og:description", content: "Request a demo of HoundStack." },
       { property: "og:url", content: "https://pal-primer.lovable.app/contact" },
     ],
     links: [{ rel: "canonical", href: "https://pal-primer.lovable.app/contact" }],

@@ -12,7 +12,7 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/invite/$token")({
   head: () => ({ meta: [
-    { title: "Accept invite · Scoop CRM" },
+    { title: "Accept invite · HoundStack" },
     { name: "robots", content: "noindex" },
   ] }),
   component: InvitePage,

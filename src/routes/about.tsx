@@ -9,7 +9,7 @@ export const Route = createFileRoute("/about")({
       {
         name: "description",
         content:
-          "Why we built Scoop CRM: field-service tools designed exclusively for the pet waste removal trade.",
+          "Why we built HoundStack: field-service tools designed exclusively for the pet waste removal trade.",
       },
       { property: "og:title", content: `About — ${APP_NAME}` },
       {

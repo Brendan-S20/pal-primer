@@ -25,7 +25,7 @@ import { NeighborMap, type NeighborPin } from "@/components/NeighborMap";
 export const Route = createFileRoute("/_authenticated/neighbors")({
   head: () => ({
     meta: [
-      { title: "Neighbor canvassing · Scoop CRM" },
+      { title: "Neighbor canvassing · HoundStack" },
       { name: "description", content: "Turn happy clients into whole-street routes with door-to-door canvassing." },
     ],
   }),
