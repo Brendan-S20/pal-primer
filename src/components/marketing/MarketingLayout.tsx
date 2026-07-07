@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { APP_NAME } from "@/lib/scoop";
+import { Logo } from "@/components/Logo";
 
 // Minimal shell used by the signup flow. The public marketing site is hosted
 // separately (houndstack.com); this app lives at app.houndstack.com and only
@@ -12,9 +13,10 @@ export function MarketingLayout({ children }: { children: ReactNode }) {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <a
             href="https://houndstack.com"
-            className="text-lg font-semibold tracking-tight"
+            aria-label={APP_NAME}
+            className="text-primary"
           >
-            {APP_NAME}
+            <Logo variant="logo" className="h-8 w-auto" />
           </a>
           <Link
             to="/auth"
