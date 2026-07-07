@@ -66,6 +66,8 @@ import { Route as PortalTokenBillingRouteImport } from './routes/portal.$token.b
 import { Route as PortalTokenAccountRouteImport } from './routes/portal.$token.account'
 import { Route as PlatformTenantsIdRouteImport } from './routes/platform.tenants.$id'
 import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
+import { Route as ApiPublicSignupRequestsRouteImport } from './routes/api/public/signup-requests'
+import { Route as ApiPublicLeadsRouteImport } from './routes/api/public/leads'
 import { Route as AuthenticatedSettingsUsersRouteImport } from './routes/_authenticated/settings.users'
 import { Route as AuthenticatedSettingsSmsRouteImport } from './routes/_authenticated/settings.sms'
 import { Route as AuthenticatedSettingsSkipRulesRouteImport } from './routes/_authenticated/settings.skip-rules'
@@ -390,6 +392,16 @@ const LovableEmailSuppressionRoute = LovableEmailSuppressionRouteImport.update({
   path: '/lovable/email/suppression',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicSignupRequestsRoute = ApiPublicSignupRequestsRouteImport.update({
+  id: '/api/public/signup-requests',
+  path: '/api/public/signup-requests',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicLeadsRoute = ApiPublicLeadsRouteImport.update({
+  id: '/api/public/leads',
+  path: '/api/public/leads',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedSettingsUsersRoute =
   AuthenticatedSettingsUsersRouteImport.update({
     id: '/users',
@@ -649,6 +661,8 @@ export interface FileRoutesByFullPath {
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
+  '/api/public/leads': typeof ApiPublicLeadsRoute
+  '/api/public/signup-requests': typeof ApiPublicSignupRequestsRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/platform/tenants/$id': typeof PlatformTenantsIdRoute
   '/portal/$token/account': typeof PortalTokenAccountRoute
@@ -735,6 +749,8 @@ export interface FileRoutesByTo {
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
+  '/api/public/leads': typeof ApiPublicLeadsRoute
+  '/api/public/signup-requests': typeof ApiPublicSignupRequestsRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/platform/tenants/$id': typeof PlatformTenantsIdRoute
   '/portal/$token/account': typeof PortalTokenAccountRoute
@@ -829,6 +845,8 @@ export interface FileRoutesById {
   '/_authenticated/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/_authenticated/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/_authenticated/settings/users': typeof AuthenticatedSettingsUsersRoute
+  '/api/public/leads': typeof ApiPublicLeadsRoute
+  '/api/public/signup-requests': typeof ApiPublicSignupRequestsRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/platform/tenants/$id': typeof PlatformTenantsIdRoute
   '/portal/$token/account': typeof PortalTokenAccountRoute
@@ -923,6 +941,8 @@ export interface FileRouteTypes {
     | '/settings/skip-rules'
     | '/settings/sms'
     | '/settings/users'
+    | '/api/public/leads'
+    | '/api/public/signup-requests'
     | '/lovable/email/suppression'
     | '/platform/tenants/$id'
     | '/portal/$token/account'
@@ -1009,6 +1029,8 @@ export interface FileRouteTypes {
     | '/settings/skip-rules'
     | '/settings/sms'
     | '/settings/users'
+    | '/api/public/leads'
+    | '/api/public/signup-requests'
     | '/lovable/email/suppression'
     | '/platform/tenants/$id'
     | '/portal/$token/account'
@@ -1102,6 +1124,8 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/skip-rules'
     | '/_authenticated/settings/sms'
     | '/_authenticated/settings/users'
+    | '/api/public/leads'
+    | '/api/public/signup-requests'
     | '/lovable/email/suppression'
     | '/platform/tenants/$id'
     | '/portal/$token/account'
@@ -1147,6 +1171,8 @@ export interface RootRouteChildren {
   PortalTokenRoute: typeof PortalTokenRouteWithChildren
   SignupSlugRoute: typeof SignupSlugRoute
   SignupSuccessRoute: typeof SignupSuccessRoute
+  ApiPublicLeadsRoute: typeof ApiPublicLeadsRoute
+  ApiPublicSignupRequestsRoute: typeof ApiPublicSignupRequestsRoute
   LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
   ApiPublicHooksAnnouncementEmailsRoute: typeof ApiPublicHooksAnnouncementEmailsRoute
   ApiPublicHooksNightlyRoute: typeof ApiPublicHooksNightlyRoute
@@ -1563,6 +1589,20 @@ declare module '@tanstack/react-router' {
       path: '/lovable/email/suppression'
       fullPath: '/lovable/email/suppression'
       preLoaderRoute: typeof LovableEmailSuppressionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/signup-requests': {
+      id: '/api/public/signup-requests'
+      path: '/api/public/signup-requests'
+      fullPath: '/api/public/signup-requests'
+      preLoaderRoute: typeof ApiPublicSignupRequestsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/leads': {
+      id: '/api/public/leads'
+      path: '/api/public/leads'
+      fullPath: '/api/public/leads'
+      preLoaderRoute: typeof ApiPublicLeadsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/settings/users': {
@@ -2020,6 +2060,8 @@ const rootRouteChildren: RootRouteChildren = {
   PortalTokenRoute: PortalTokenRouteWithChildren,
   SignupSlugRoute: SignupSlugRoute,
   SignupSuccessRoute: SignupSuccessRoute,
+  ApiPublicLeadsRoute: ApiPublicLeadsRoute,
+  ApiPublicSignupRequestsRoute: ApiPublicSignupRequestsRoute,
   LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
   ApiPublicHooksAnnouncementEmailsRoute: ApiPublicHooksAnnouncementEmailsRoute,
   ApiPublicHooksNightlyRoute: ApiPublicHooksNightlyRoute,
