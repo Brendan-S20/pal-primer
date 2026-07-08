@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { PushToggle } from "@/components/PushToggle";
 import {
-  PortalProvider, usePortalCtx, money, fmtDayShort, fmtTime, friendlyFrequency,
+  PortalProvider, usePortalCtx, PortalVerifyGate, money, fmtDayShort, fmtTime, friendlyFrequency,
   isHex, relativeFromToday,
 } from "@/lib/portal-ui";
 
@@ -38,8 +38,19 @@ function PortalLayout() {
 }
 
 function PortalShell() {
-  const { token, clientQ } = usePortalCtx();
+  const { token, clientQ, contextQ, verified } = usePortalCtx();
 
+  // Auth gate (finding #4): resolve the session before anything else.
+  if (contextQ.isLoading) {
+    return <div className="mx-auto max-w-3xl p-8 text-center text-sm text-muted-foreground">Loading your portal…</div>;
+  }
+  const ctx = contextQ.data as any;
+  if (!ctx || ctx.valid === false) {
+    return <div className="mx-auto max-w-md p-8 text-center">Invalid or expired portal link.</div>;
+  }
+  if (!verified) {
+    return <PortalVerifyGate />;
+  }
   if (clientQ.isLoading) {
     return <div className="mx-auto max-w-3xl p-8 text-center text-sm text-muted-foreground">Loading your portal…</div>;
   }

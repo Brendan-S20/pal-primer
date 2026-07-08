@@ -11,4 +11,4 @@ export TEST_SUPABASE_URL="${API_URL:?supabase stack not running — run 'supabas
 export TEST_SUPABASE_ANON_KEY="${ANON_KEY:?}"
 export TEST_SUPABASE_SERVICE_KEY="${SERVICE_ROLE_KEY:?}"
 
-exec bun x vitest run tests/integration/leaks.db.test.ts "$@"
+exec bun x vitest run tests/integration/leaks.db.test.ts tests/integration/portal-auth.db.test.ts "$@"

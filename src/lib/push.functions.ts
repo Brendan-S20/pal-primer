@@ -64,6 +64,8 @@ const portalSubSchema = subSchema.extend({ token: z.string().uuid() });
 export const subscribeClientPush = createServerFn({ method: "POST" })
   .inputValidator((d) => portalSubSchema.parse(d))
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await import("@/lib/portal-auth.server");
+    await requirePortalSession(data.token);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: client, error: cErr } = await supabaseAdmin
       .from("clients")
@@ -95,6 +97,8 @@ export const subscribeClientPush = createServerFn({ method: "POST" })
 export const unsubscribeClientPush = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ token: z.string().uuid(), endpoint: z.string().url() }).parse(d))
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await import("@/lib/portal-auth.server");
+    await requirePortalSession(data.token);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: client } = await supabaseAdmin
       .from("clients")
@@ -148,6 +152,8 @@ export const subscribeStaffNativePush = createServerFn({ method: "POST" })
 export const subscribeClientNativePush = createServerFn({ method: "POST" })
   .inputValidator((d) => nativeSchema.extend({ token: z.string().min(10), portalToken: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await import("@/lib/portal-auth.server");
+    await requirePortalSession(data.portalToken);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: client, error: cErr } = await supabaseAdmin
       .from("clients")

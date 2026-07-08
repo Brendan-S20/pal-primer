@@ -1,23 +1,79 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { createClient } from "@supabase/supabase-js";
-import type { Database } from "@/integrations/supabase/types";
+import {
+  requirePortalSession,
+  getPortalSession,
+  portalContactChannels,
+  issuePortalOtp,
+  verifyPortalOtp,
+  PortalVerificationRequired,
+} from "@/lib/portal-auth.server";
 
-// Anonymous supabase client — safe on server for calling anon-granted RPCs.
-function anonClient() {
-  return createClient<Database>(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_PUBLISHABLE_KEY!,
-    { auth: { storage: undefined, persistSession: false, autoRefreshToken: false } },
-  );
+// All portal_* RPCs are revoked from anon (finding #4) and run via
+// service_role after a session check. supabaseAdmin bypasses RLS; every
+// handler that touches client data first calls requirePortalSession(token),
+// and every RPC still filters internally by portal_token.
+async function admin() {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  return supabaseAdmin;
 }
 
 const tokenSchema = z.object({ token: z.string().uuid() });
 
+// ============ Auth entry points (no session required) ============
+
+/**
+ * Bootstrap the portal. Returns whether this device is already verified. When
+ * verified, includes the full client payload; when not, returns ONLY the org
+ * name and masked contact channels — no client name, balance, or schedule
+ * leaks before the OTP is passed.
+ */
+export const portalContext = createServerFn({ method: "GET" })
+  .inputValidator((d) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    const contact = await portalContactChannels(data.token);
+    if (!contact) return { verified: false as const, valid: false as const, channels: [] };
+
+    const session = await getPortalSession(data.token);
+    if (!session) {
+      return {
+        verified: false as const,
+        valid: true as const,
+        channels: contact.channels,
+      };
+    }
+    const sb = await admin();
+    const { data: rows, error } = await sb.rpc("portal_get_client", { _token: data.token });
+    if (error) throw new Error(error.message);
+    const client = rows?.[0];
+    if (!client) return { verified: false as const, valid: false as const, channels: [] };
+    return { verified: true as const, valid: true as const, client };
+  });
+
+export const portalRequestOtp = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z.object({ token: z.string().uuid(), channel: z.enum(["sms", "email"]) }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    return issuePortalOtp(data.token, data.channel);
+  });
+
+export const portalVerifyOtp = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z.object({ token: z.string().uuid(), code: z.string().min(4).max(10) }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const ok = await verifyPortalOtp(data.token, data.code);
+    return { verified: ok };
+  });
+
+// ============ Client data + the original client loader (session-gated) ============
+
 export const portalGetClient = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_get_client", { _token: data.token });
     if (error) throw new Error(error.message);
     const row = rows?.[0];
@@ -28,7 +84,8 @@ export const portalGetClient = createServerFn({ method: "GET" })
 export const portalListUpcomingVisits = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_upcoming_visits", { _token: data.token });
     if (error) throw new Error(error.message);
     return rows ?? [];
@@ -37,7 +94,8 @@ export const portalListUpcomingVisits = createServerFn({ method: "GET" })
 export const portalListInvoices = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_invoices", { _token: data.token });
     if (error) throw new Error(error.message);
     return rows ?? [];
@@ -46,7 +104,8 @@ export const portalListInvoices = createServerFn({ method: "GET" })
 export const portalListPrepaidSubs = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_prepaid_subscriptions", { _token: data.token });
     if (error) throw new Error(error.message);
     return rows ?? [];
@@ -61,7 +120,8 @@ export const portalRequestSkip = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { error } = await sb.rpc("portal_request_skip", {
       _token: data.token, _visit_id: data.visitId, _reason: data.reason,
     });
@@ -78,7 +138,8 @@ export const portalStartPrepaidTopup = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { data: id, error } = await sb.rpc("portal_start_prepaid_topup", {
       _token: data.token, _subscription_id: data.subscriptionId, _visit_count: data.visitCount,
     });
@@ -95,44 +156,37 @@ export const portalCreateCheckout = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data }) => {
-    // 1) Verify token, get client_id + org_id
-    const sb = anonClient();
-    const { data: rows, error } = await sb.rpc("portal_get_client", { _token: data.token });
-    if (error) throw new Error(error.message);
-    const client = rows?.[0];
-    if (!client) throw new Error("Invalid portal link");
-
-    // 2) Load invoice via admin, verify it belongs to this client
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const session = await requirePortalSession(data.token);
+    const supabaseAdmin = await admin();
     const { data: invoice, error: iErr } = await supabaseAdmin
       .from("invoices")
       .select("id, organization_id, client_id, total_cents, currency, status, stripe_checkout_session_id, checkout_url")
       .eq("id", data.invoiceId)
       .single();
     if (iErr) throw new Error(iErr.message);
-    if (invoice.client_id !== client.client_id) throw new Error("Invoice not found");
+    if (invoice.client_id !== session.clientId) throw new Error("Invoice not found");
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
     if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
 
     const secret = process.env.STRIPE_SECRET_KEY;
     if (!secret) throw new Error("Payments not configured");
+    const { data: client } = await supabaseAdmin
+      .from("clients").select("display_name").eq("id", session.clientId).single();
     const Stripe = (await import("stripe")).default;
     const stripe = new Stripe(secret);
-    const session = await stripe.checkout.sessions.create({
+    const checkout = await stripe.checkout.sessions.create({
       mode: "payment",
       success_url: `${data.returnUrl}?paid=1`,
       cancel_url: data.returnUrl,
       client_reference_id: invoice.id,
-      // Cards + ACH (us_bank_account requires enabling ACH in the connected Stripe
-      // account; if disabled, Stripe silently falls back to cards only).
       payment_method_types: ["card", "us_bank_account"],
       line_items: [{
         quantity: 1,
         price_data: {
           currency: invoice.currency ?? "usd",
           unit_amount: invoice.total_cents,
-          product_data: { name: `Invoice ${invoice.id.slice(0, 8)} — ${client.display_name}` },
+          product_data: { name: `Invoice ${invoice.id.slice(0, 8)} — ${client?.display_name ?? "Service"}` },
         },
       }],
       metadata: { invoice_id: invoice.id, organization_id: invoice.organization_id, source: "portal" },
@@ -141,13 +195,13 @@ export const portalCreateCheckout = createServerFn({ method: "POST" })
     await supabaseAdmin
       .from("invoices")
       .update({
-        stripe_checkout_session_id: session.id,
-        checkout_url: session.url,
+        stripe_checkout_session_id: checkout.id,
+        checkout_url: checkout.url,
         status: "open",
       })
       .eq("id", invoice.id);
 
-    return { url: session.url as string };
+    return { url: checkout.url as string };
   });
 
 const frequencyEnum = z.enum(["weekly", "biweekly", "twice_weekly", "monthly"]);
@@ -162,7 +216,8 @@ export const portalRescheduleVisit = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { error } = await sb.rpc("portal_reschedule_visit", {
       _token: data.token, _visit_id: data.visitId, _new_date: data.newDate,
     });
@@ -179,7 +234,8 @@ export const portalChangeFrequency = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { error } = await sb.rpc("portal_change_frequency", {
       _token: data.token, _subscription_id: data.subscriptionId, _new_frequency: data.frequency,
     });
@@ -190,7 +246,8 @@ export const portalChangeFrequency = createServerFn({ method: "POST" })
 export const portalListAddonCatalog = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_addon_catalog", { _token: data.token });
     if (error) throw new Error(error.message);
     return rows ?? [];
@@ -199,7 +256,8 @@ export const portalListAddonCatalog = createServerFn({ method: "GET" })
 export const portalListClientAddons = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_client_addons", { _token: data.token });
     if (error) throw new Error(error.message);
     return rows ?? [];
@@ -215,7 +273,8 @@ export const portalSubscribeAddon = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { data: id, error } = await sb.rpc("portal_subscribe_addon", {
       _token: data.token,
       _addon_service_id: data.addonServiceId,
@@ -234,7 +293,8 @@ export const portalCancelAddon = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { error } = await sb.rpc("portal_cancel_addon", {
       _token: data.token, _addon_subscription_id: data.addonSubscriptionId,
     });
@@ -242,7 +302,7 @@ export const portalCancelAddon = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// ============ Saved cards + autopay (Session 30) ============
+// ============ Saved cards + autopay ============
 
 async function loadStripe() {
   const secret = process.env.STRIPE_SECRET_KEY;
@@ -251,27 +311,17 @@ async function loadStripe() {
   return new Stripe(secret);
 }
 
-async function loadClientByToken(token: string) {
-  const sb = anonClient();
-  const { data: rows, error } = await sb.rpc("portal_get_client", { _token: token });
-  if (error) throw new Error(error.message);
-  const row = rows?.[0];
-  if (!row) throw new Error("Invalid portal link");
-  return row;
-}
-
 /** Kick off a Stripe Checkout session in mode=setup to save a card. */
 export const portalStartCardSetup = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ token: z.string().uuid(), returnUrl: z.string().url() }).parse(d))
   .handler(async ({ data }) => {
-    const client = await loadClientByToken(data.token);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const session = await requirePortalSession(data.token);
+    const supabaseAdmin = await admin();
 
-    // Ensure a Stripe customer exists for this client
     const { data: cRow } = await supabaseAdmin
       .from("clients")
       .select("id, stripe_customer_id, primary_email, display_name")
-      .eq("id", client.client_id)
+      .eq("id", session.clientId)
       .single();
     if (!cRow) throw new Error("Client not found");
 
@@ -281,13 +331,13 @@ export const portalStartCardSetup = createServerFn({ method: "POST" })
       const cust = await stripe.customers.create({
         email: cRow.primary_email ?? undefined,
         name: cRow.display_name ?? undefined,
-        metadata: { client_id: cRow.id, organization_id: client.organization_id },
+        metadata: { client_id: cRow.id, organization_id: session.organizationId },
       });
       customerId = cust.id;
       await supabaseAdmin.from("clients").update({ stripe_customer_id: customerId }).eq("id", cRow.id);
     }
 
-    const session = await stripe.checkout.sessions.create({
+    const checkout = await stripe.checkout.sessions.create({
       mode: "setup",
       customer: customerId,
       payment_method_types: ["card"],
@@ -296,17 +346,18 @@ export const portalStartCardSetup = createServerFn({ method: "POST" })
       metadata: {
         source: "portal_setup",
         client_id: cRow.id,
-        organization_id: client.organization_id,
+        organization_id: session.organizationId,
       },
     });
-    return { url: session.url as string };
+    return { url: checkout.url as string };
   });
 
 /** Toggle autopay preference. Requires a saved card to enable. */
 export const portalSetAutopay = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ token: z.string().uuid(), enabled: z.boolean() }).parse(d))
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { error } = await sb.rpc("portal_set_autopay", { _token: data.token, _enabled: data.enabled });
     if (error) throw new Error(error.message);
     return { enabled: data.enabled };
@@ -316,10 +367,10 @@ export const portalSetAutopay = createServerFn({ method: "POST" })
 export const portalRemoveCard = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ token: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
-    const client = await loadClientByToken(data.token);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const session = await requirePortalSession(data.token);
+    const supabaseAdmin = await admin();
     const { data: cRow } = await supabaseAdmin
-      .from("clients").select("id, default_payment_method_id").eq("id", client.client_id).single();
+      .from("clients").select("id, default_payment_method_id").eq("id", session.clientId).single();
     if (cRow?.default_payment_method_id) {
       try {
         const stripe = await loadStripe();
@@ -331,7 +382,7 @@ export const portalRemoveCard = createServerFn({ method: "POST" })
       default_card_brand: null,
       default_card_last4: null,
       autopay_enabled: false,
-    }).eq("id", client.client_id);
+    }).eq("id", session.clientId);
     return { ok: true };
   });
 
@@ -339,11 +390,11 @@ export const portalRemoveCard = createServerFn({ method: "POST" })
 export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ token: z.string().uuid(), invoiceId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
-    const client = await loadClientByToken(data.token);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const session = await requirePortalSession(data.token);
+    const supabaseAdmin = await admin();
     const { data: c } = await supabaseAdmin
       .from("clients").select("id, stripe_customer_id, default_payment_method_id")
-      .eq("id", client.client_id).single();
+      .eq("id", session.clientId).single();
     if (!c?.stripe_customer_id || !c.default_payment_method_id) throw new Error("No saved card on file");
 
     const { data: invoice, error: iErr } = await supabaseAdmin
@@ -370,6 +421,9 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
           organization_id: invoice.organization_id,
           source: "portal_saved_card",
         },
+      }, {
+        // Prevent a double-tap (or a retried request) from charging twice.
+        idempotencyKey: `portal-saved-card-${invoice.id}-${invoice.total_cents}`,
       });
       await supabaseAdmin.from("invoices").update({
         stripe_payment_intent_id: pi.id, status: "open",
@@ -378,7 +432,6 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
         autopay_last_attempt_at: new Date().toISOString(),
         autopay_last_error: null,
       }).eq("id", c.id);
-      // Webhook payment_intent.succeeded will finalize the invoice + insert payment row
       return { ok: true, status: pi.status };
     } catch (e) {
       const msg = (e as Error).message || "Card charge failed";
@@ -395,7 +448,8 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
 export const portalListRecentVisits = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_recent_visits", { _token: data.token });
     if (error) throw new Error(error.message);
     return (rows ?? []) as Array<{
@@ -406,7 +460,8 @@ export const portalListRecentVisits = createServerFn({ method: "GET" })
 export const portalListDogs = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_dogs", { _token: data.token });
     if (error) throw new Error(error.message);
     return (rows ?? []) as Array<{
@@ -425,11 +480,11 @@ export const portalReportConcern = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { data: id, error } = await sb.rpc("portal_report_concern", {
       _token: data.token,
       _visit_id: data.visitId as string,
-
       _category: data.category,
       _message: data.message,
     });
@@ -442,40 +497,46 @@ export const portalSignPhotoUrls = createServerFn({ method: "POST" })
     z.object({ token: z.string().uuid(), paths: z.array(z.string()).max(60) }).parse(d),
   )
   .handler(async ({ data }) => {
-    // Verify token is valid before signing
-    const sb = anonClient();
-    const { data: rows } = await sb.rpc("portal_get_client", { _token: data.token });
-    if (!rows?.[0]) throw new Error("Invalid token");
+    const session = await requirePortalSession(data.token);
     if (data.paths.length === 0) return { urls: {} as Record<string, string> };
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const supabaseAdmin = await admin();
+    // Only sign photos that belong to this client's own visits — never sign an
+    // arbitrary caller-supplied storage path.
+    const { data: ownRows, error: ownErr } = await supabaseAdmin.rpc("portal_list_recent_visits", { _token: data.token });
+    if (ownErr) throw new Error(ownErr.message);
+    const allowed = new Set<string>();
+    for (const r of (ownRows ?? []) as Array<{ photo_paths: string[] }>) {
+      for (const p of r.photo_paths ?? []) allowed.add(p);
+    }
+    const safePaths = data.paths.filter((p) => allowed.has(p));
+    if (safePaths.length === 0) return { urls: {} as Record<string, string> };
     const { data: signed, error } = await supabaseAdmin.storage
       .from("visit-photos")
-      .createSignedUrls(data.paths, 600);
+      .createSignedUrls(safePaths, 600);
     if (error) throw new Error(error.message);
     const urls: Record<string, string> = {};
     for (const s of signed ?? []) if (s.path && s.signedUrl) urls[s.path] = s.signedUrl;
+    void session;
     return { urls };
   });
 
 export const portalGetReferral = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_get_referral", { _token: data.token });
     if (error) throw new Error(error.message);
     return (rows?.[0] ?? { referral_code: null }) as { referral_code: string | null };
   });
-
-
-
-
 
 // ── Portal: stations, requests, vacation hold, promo redemption ─────────────
 
 export const portalListStations = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_stations" as any, { _token: data.token });
     if (error) throw new Error(error.message);
     return (rows ?? []) as Array<{
@@ -488,7 +549,8 @@ export const portalListStations = createServerFn({ method: "GET" })
 export const portalListMyRequests = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_my_requests" as any, { _token: data.token });
     if (error) throw new Error(error.message);
     return (rows ?? []) as Array<{
@@ -509,7 +571,8 @@ export const portalRequestVacationHold = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { data: n, error } = await sb.rpc("portal_request_vacation_hold" as any, {
       _token: data.token, _start: data.startDate, _end: data.endDate, _reason: data.reason,
     });
@@ -522,7 +585,8 @@ export const portalRedeemPromo = createServerFn({ method: "POST" })
     z.object({ token: z.string().uuid(), code: z.string().min(2).max(60) }).parse(d),
   )
   .handler(async ({ data }) => {
-    const sb = anonClient();
+    await requirePortalSession(data.token);
+    const sb = await admin();
     const { data: amt, error } = await sb.rpc("portal_redeem_promo" as any, {
       _token: data.token, _code: data.code,
     });
@@ -530,14 +594,8 @@ export const portalRedeemPromo = createServerFn({ method: "POST" })
     return { creditCents: (amt as number) ?? 0 };
   });
 
-// ── R11: In-app Payment Element (inline card/ACH) ───────────────────────────
+// ── In-app Payment Element (inline card/ACH) ───────────────────────────────
 
-/**
- * Create (or reuse) a PaymentIntent for an open invoice so the portal can
- * mount Stripe's Payment Element inline. Returns the client_secret plus the
- * publishable key so the browser can init Stripe without any hardcoding.
- * Card + ACH are enabled via automatic_payment_methods.
- */
 export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" })
   .inputValidator((d) =>
     z.object({
@@ -546,29 +604,27 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     }).parse(d),
   )
   .handler(async ({ data }) => {
+    const session = await requirePortalSession(data.token);
     const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY;
     const secret = process.env.STRIPE_SECRET_KEY;
     if (!publishableKey || !secret) throw new Error("Payments not configured");
 
-    const client = await loadClientByToken(data.token);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
+    const supabaseAdmin = await admin();
     const { data: invoice, error: iErr } = await supabaseAdmin
       .from("invoices")
       .select("id, organization_id, client_id, total_cents, currency, status, stripe_payment_intent_id")
       .eq("id", data.invoiceId)
       .single();
     if (iErr) throw new Error(iErr.message);
-    if (invoice.client_id !== client.client_id) throw new Error("Invoice not found");
+    if (invoice.client_id !== session.clientId) throw new Error("Invoice not found");
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
     if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
 
-    // Ensure a Stripe customer for saving payment methods after checkout
     const { data: cRow } = await supabaseAdmin
       .from("clients")
       .select("id, stripe_customer_id, primary_email, display_name")
-      .eq("id", client.client_id)
+      .eq("id", session.clientId)
       .single();
     if (!cRow) throw new Error("Client not found");
 
@@ -580,7 +636,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
       const cust = await stripe.customers.create({
         email: cRow.primary_email ?? undefined,
         name: cRow.display_name ?? undefined,
-        metadata: { client_id: cRow.id, organization_id: client.organization_id },
+        metadata: { client_id: cRow.id, organization_id: invoice.organization_id },
       });
       customerId = cust.id;
       await supabaseAdmin.from("clients").update({ stripe_customer_id: customerId }).eq("id", cRow.id);
@@ -593,7 +649,6 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
       source: "portal_inline",
     };
 
-    // Reuse an existing intent when it's still usable, otherwise create fresh.
     let pi: import("stripe").Stripe.PaymentIntent | null = null;
     if (invoice.stripe_payment_intent_id) {
       try {
@@ -603,7 +658,6 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
           existing.status === "requires_confirmation" ||
           existing.status === "requires_action"
         ) {
-          // Keep the same intent; sync amount if it changed.
           if (existing.amount !== invoice.total_cents || existing.currency !== currency) {
             pi = await stripe.paymentIntents.update(existing.id, {
               amount: invoice.total_cents,
@@ -634,12 +688,17 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
       }).eq("id", invoice.id);
     }
 
+    const { data: client } = await supabaseAdmin
+      .from("clients").select("display_name").eq("id", session.clientId).single();
+
     return {
       clientSecret: pi.client_secret as string,
       publishableKey,
       amountCents: invoice.total_cents,
       currency,
       invoiceId: invoice.id,
-      businessName: client.display_name as string,
+      businessName: client?.display_name as string,
     };
   });
+
+export { PortalVerificationRequired };

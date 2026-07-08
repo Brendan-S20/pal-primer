@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
-import { getClient } from "@/lib/clients.functions";
+import { getClient, regeneratePortalLink, readPortalVerificationCode } from "@/lib/clients.functions";
 import { createProperty, listPropertiesForClient } from "@/lib/properties.functions";
 import { createSubscription, listSubscriptionsForClient } from "@/lib/subscriptions.functions";
 import { listZones } from "@/lib/zones.functions";
@@ -186,34 +186,8 @@ function ClientDetail() {
             {client.account_type}
           </Badge>
         </div>
-        {(client as any).portal_token && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 p-2 text-xs">
-            <span className="font-medium">Client portal link:</span>
-            <code className="max-w-full truncate rounded bg-background px-2 py-1">
-              {typeof window !== "undefined" ? `${window.location.origin}/portal/${(client as any).portal_token}` : `/portal/${(client as any).portal_token}`}
-            </code>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                const url = `${window.location.origin}/portal/${(client as any).portal_token}`;
-                navigator.clipboard.writeText(url).then(
-                  () => toast.success("Portal link copied"),
-                  () => toast.error("Copy failed"),
-                );
-              }}
-            >
-              Copy
-            </Button>
-            <a
-              className="text-primary underline"
-              href={`/portal/${(client as any).portal_token}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open
-            </a>
-          </div>
+        {(client as any).portal_token && canBill && (
+          <PortalLinkPanel clientId={clientId} portalToken={(client as any).portal_token} />
         )}
       </div>
 
@@ -715,6 +689,81 @@ function ReviewsReferralPanel({ client }: { client: any }) {
         </div>
       </div>
     </section>
+  );
+}
+
+function PortalLinkPanel({ clientId, portalToken }: { clientId: string; portalToken: string }) {
+  const qc = useQueryClient();
+  const [token, setToken] = useState(portalToken);
+  const [code, setCode] = useState<string | null>(null);
+  const regenFn = useServerFn(regeneratePortalLink);
+  const readCodeFn = useServerFn(readPortalVerificationCode);
+
+  const url = typeof window !== "undefined" ? `${window.location.origin}/portal/${token}` : `/portal/${token}`;
+
+  const regenMut = useMutation({
+    mutationFn: () => regenFn({ data: { clientId } }),
+    onSuccess: (r) => {
+      setToken(r.portalToken);
+      setCode(null);
+      qc.invalidateQueries({ queryKey: ["client", clientId] });
+      toast.success("Portal link regenerated — the old link and any signed-in devices are now locked out.");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const codeMut = useMutation({
+    mutationFn: () => readCodeFn({ data: { clientId } }),
+    onSuccess: (r) => setCode(r.code),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <div className="mt-3 space-y-2 rounded-md border bg-muted/30 p-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium">Client portal link:</span>
+        <code className="max-w-full truncate rounded bg-background px-2 py-1">{url}</code>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() =>
+            navigator.clipboard.writeText(url).then(
+              () => toast.success("Portal link copied"),
+              () => toast.error("Copy failed"),
+            )
+          }
+        >
+          Copy
+        </Button>
+        <a className="text-primary underline" href={`/portal/${token}`} target="_blank" rel="noreferrer">
+          Open
+        </a>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={regenMut.isPending}
+          onClick={() => {
+            if (confirm("Regenerate this client's portal link? The current link stops working and any device already signed in is logged out. Use this if the link may have leaked.")) {
+              regenMut.mutate();
+            }
+          }}
+        >
+          {regenMut.isPending ? "Regenerating…" : "Regenerate link"}
+        </Button>
+        <Button size="sm" variant="ghost" disabled={codeMut.isPending} onClick={() => codeMut.mutate()}>
+          {codeMut.isPending ? "…" : "Read verification code"}
+        </Button>
+      </div>
+      <p className="text-muted-foreground">
+        The link opens the portal but the client must verify with a one-time code sent to their
+        phone or email before seeing any account details.
+      </p>
+      {code && (
+        <p className="rounded bg-background p-2 font-mono text-sm">
+          Read this code to the client (valid 10 min): <strong className="tracking-widest">{code}</strong>
+        </p>
+      )}
+    </div>
   );
 }
 

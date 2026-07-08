@@ -157,6 +157,43 @@ export const getClient = createServerFn({ method: "GET" })
     return { client };
   });
 
+/**
+ * Rotate a client's portal token, invalidating the old link and every device
+ * session minted from it (finding #4). Use when a client reports their link
+ * may have leaked.
+ */
+export const regeneratePortalLink = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => getClientSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { data: newToken, error } = await context.supabase.rpc("regenerate_portal_token" as any, {
+      _client_id: data.clientId,
+    });
+    if (error) throw new Error(error.message);
+    return { portalToken: newToken as string };
+  });
+
+/**
+ * Read the most recent unconsumed verification code for a client, so the
+ * office can read it aloud when a client can't receive SMS/email. Returns null
+ * if none is active. Gated + never exposed to the portal itself.
+ */
+export const readPortalVerificationCode = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => getClientSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { orgId } = await requirePermission(context.supabase, context.userId, "view_client_directory");
+    // Confirm the client is in the caller's org before touching it via admin.
+    const { data: client } = await context.supabase
+      .from("clients").select("id").eq("id", data.clientId).eq("organization_id", orgId).maybeSingle();
+    if (!client) throw new Error("Client not found");
+    // Stored codes are hashed, so we can't reveal an existing one — mint a
+    // fresh single-use code the office reads aloud and the client enters.
+    const { issueOfficeReadCode } = await import("@/lib/portal-auth.server");
+    return issueOfficeReadCode(data.clientId);
+  });
+
 // ---------- Internal quote (for authenticated onboarding wizard) ----------
 
 const internalQuoteSchema = z.object({

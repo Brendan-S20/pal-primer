@@ -24,6 +24,9 @@ import {
 } from "@/components/ui/dialog";
 
 import {
+  portalContext,
+  portalRequestOtp,
+  portalVerifyOtp,
   portalGetClient,
   portalListUpcomingVisits,
   portalListInvoices,
@@ -153,63 +156,91 @@ export function usePortal(token: string) {
 
   const staleTime = 30_000;
 
+  // Auth gate (finding #4): a device is unverified until it passes an OTP.
+  // Every data query below is disabled until the session cookie is valid, so
+  // no client data is fetched behind the verify screen.
+  const contextFn = useServerFn(portalContext);
+  const requestOtpFn = useServerFn(portalRequestOtp);
+  const verifyOtpFn = useServerFn(portalVerifyOtp);
+  const contextQ = useQuery({
+    queryKey: ["portal", token, "context"],
+    queryFn: () => contextFn({ data: { token } }),
+    staleTime,
+    retry: false,
+  });
+  const verified = !!(contextQ.data && "verified" in contextQ.data && contextQ.data.verified);
+  const gated = { staleTime, enabled: verified };
+
   const clientQ = useQuery({
     queryKey: ["portal", token, "client"],
     queryFn: () => getClientFn({ data: { token } }),
-    staleTime,
+    ...gated,
   });
   const visitsQ = useQuery({
     queryKey: ["portal", token, "visits"],
     queryFn: () => listVisitsFn({ data: { token } }),
-    staleTime,
+    ...gated,
   });
   const invoicesQ = useQuery({
     queryKey: ["portal", token, "invoices"],
     queryFn: () => listInvoicesFn({ data: { token } }),
-    staleTime,
+    ...gated,
   });
   const subsQ = useQuery({
     queryKey: ["portal", token, "subs"],
     queryFn: () => listSubsFn({ data: { token } }),
-    staleTime,
+    ...gated,
   });
   const catalogQ = useQuery({
     queryKey: ["portal", token, "catalog"],
     queryFn: () => listAddonCatalogFn({ data: { token } }),
-    staleTime,
+    ...gated,
   });
   const clientAddonsQ = useQuery({
     queryKey: ["portal", token, "clientAddons"],
     queryFn: () => listClientAddonsFn({ data: { token } }),
-    staleTime,
+    ...gated,
   });
   const historyQ = useQuery({
     queryKey: ["portal", token, "history"],
     queryFn: () => historyFn({ data: { token } }),
-    staleTime,
+    ...gated,
   });
   const dogsQ = useQuery({
     queryKey: ["portal", token, "dogs"],
     queryFn: () => dogsFn({ data: { token } }),
-    staleTime,
+    ...gated,
   });
   const referralQ = useQuery({
     queryKey: ["portal", token, "referral"],
     queryFn: () => referralFn({ data: { token } }),
-    staleTime,
+    ...gated,
   });
   const stationsQ = useQuery({
     queryKey: ["portal", token, "stations"],
     queryFn: () => stationsFn({ data: { token } }),
-    staleTime,
+    ...gated,
   });
   const requestsQ = useQuery({
     queryKey: ["portal", token, "requests"],
     queryFn: () => requestsFn({ data: { token } }),
-    staleTime,
+    ...gated,
   });
 
   const invalidatePortal = () => qc.invalidateQueries({ queryKey: ["portal", token] });
+
+  const requestOtpMut = useMutation({
+    mutationFn: (channel: "sms" | "email") => requestOtpFn({ data: { token, channel } }),
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const verifyOtpMut = useMutation({
+    mutationFn: (code: string) => verifyOtpFn({ data: { token, code } }),
+    onSuccess: async () => {
+      await contextQ.refetch();
+      invalidatePortal();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
   const concernMut = useMutation({
     mutationFn: (v: { visitId: string | null; category: any; message: string }) =>
@@ -296,6 +327,7 @@ export function usePortal(token: string) {
 
   return {
     token, signPhotosFn,
+    contextQ, verified, requestOtpMut, verifyOtpMut,
     clientQ, visitsQ, invoicesQ, subsQ, catalogQ, clientAddonsQ,
     historyQ, dogsQ, referralQ, stationsQ, requestsQ,
     concernMut, skipMut, topupMut, payMut, rescheduleMut, freqMut,
@@ -303,6 +335,106 @@ export function usePortal(token: string) {
     removeCardMut, paySavedMut, vacationMut, promoMut,
     invalidatePortal,
   };
+}
+
+/* ───────────────────────── verify screen ───────────────────────── */
+
+export function PortalVerifyGate() {
+  const { contextQ, requestOtpMut, verifyOtpMut } = usePortalCtx();
+  const [step, setStep] = useState<"choose" | "code">("choose");
+  const [channel, setChannel] = useState<"sms" | "email">("sms");
+  const [code, setCode] = useState("");
+
+  const ctx = contextQ.data as any;
+  const channels: Array<{ channel: "sms" | "email"; hint: string }> = ctx?.channels ?? [];
+
+  useEffect(() => {
+    if (channels.length && !channels.some((c) => c.channel === channel)) {
+      setChannel(channels[0].channel);
+    }
+  }, [channels, channel]);
+
+  const sentHint = requestOtpMut.data?.hint;
+
+  return (
+    <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-6">
+      <div className="rounded-2xl border bg-card p-6 shadow-sm">
+        <h1 className="text-xl font-semibold">Verify it's you</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          For your security, we'll send a one-time code to the contact on file before showing
+          your account.
+        </p>
+
+        {channels.length === 0 ? (
+          <p className="mt-4 rounded-md bg-muted p-3 text-sm">
+            We don't have a phone or email on file to verify you. Please contact us and we'll help
+            you in.
+          </p>
+        ) : step === "choose" ? (
+          <div className="mt-5 space-y-3">
+            {channels.map((c) => (
+              <button
+                key={c.channel}
+                onClick={() => setChannel(c.channel)}
+                className={`flex w-full items-center justify-between rounded-lg border p-3 text-left text-sm ${
+                  channel === c.channel ? "border-primary ring-1 ring-primary" : ""
+                }`}
+              >
+                <span>{c.channel === "sms" ? "Text me a code" : "Email me a code"}</span>
+                <span className="text-muted-foreground">{c.hint}</span>
+              </button>
+            ))}
+            <Button
+              className="w-full"
+              disabled={requestOtpMut.isPending}
+              onClick={() =>
+                requestOtpMut.mutate(channel, { onSuccess: () => setStep("code") })
+              }
+            >
+              {requestOtpMut.isPending ? "Sending…" : "Send code"}
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-5 space-y-3">
+            <p className="text-sm text-muted-foreground">
+              We sent a 6-digit code to {sentHint ?? "your contact on file"}. Enter it below.
+            </p>
+            <Input
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="123456"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+              className="text-center text-lg tracking-[0.3em]"
+            />
+            <Button
+              className="w-full"
+              disabled={verifyOtpMut.isPending || code.length < 6}
+              onClick={() => verifyOtpMut.mutate(code)}
+            >
+              {verifyOtpMut.isPending ? "Verifying…" : "Verify"}
+            </Button>
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <button className="hover:underline" onClick={() => setStep("choose")}>
+                ← Use a different method
+              </button>
+              <button
+                className="hover:underline disabled:opacity-50"
+                disabled={requestOtpMut.isPending}
+                onClick={() => requestOtpMut.mutate(channel)}
+              >
+                Resend code
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      <p className="mt-4 text-center text-xs text-muted-foreground">
+        Trouble getting the code? Call or text us and we can read it to you.
+      </p>
+    </div>
+  );
 }
 
 /* ───────────────────────── context ───────────────────────── */
