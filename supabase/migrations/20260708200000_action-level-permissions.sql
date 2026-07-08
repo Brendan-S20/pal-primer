@@ -37,6 +37,7 @@ ALTER TABLE public.organizations
 -- ── 3. Tightened RLS ─────────────────────────────────────────────────────────
 -- Zones: dispatcher becomes read-only ("Members read zones" stays as-is).
 DROP POLICY IF EXISTS "Managers write zones" ON public.zones;
+DROP POLICY IF EXISTS "Pricing managers write zones" ON public.zones;
 CREATE POLICY "Pricing managers write zones" ON public.zones
   FOR ALL TO authenticated
   USING (public.has_permission(auth.uid(), organization_id, 'manage_pricing'))
@@ -45,11 +46,13 @@ CREATE POLICY "Pricing managers write zones" ON public.zones
 -- Invoices: reads and writes are billing/finance-only (previously any member
 -- could read and any dispatcher could write).
 DROP POLICY IF EXISTS "invoices writable by managers" ON public.invoices;
+DROP POLICY IF EXISTS "invoices writable by billing managers" ON public.invoices;
 CREATE POLICY "invoices writable by billing managers" ON public.invoices
   FOR ALL TO authenticated
   USING (public.has_permission(auth.uid(), organization_id, 'manage_client_billing'))
   WITH CHECK (public.has_permission(auth.uid(), organization_id, 'manage_client_billing'));
 DROP POLICY IF EXISTS "invoices readable by org members" ON public.invoices;
+DROP POLICY IF EXISTS "invoices readable by billing and finance roles" ON public.invoices;
 CREATE POLICY "invoices readable by billing and finance roles" ON public.invoices
   FOR SELECT TO authenticated
   USING (
@@ -57,6 +60,7 @@ CREATE POLICY "invoices readable by billing and finance roles" ON public.invoice
     OR public.has_permission(auth.uid(), organization_id, 'view_financials')
   );
 
+DROP POLICY IF EXISTS "line items writable via parent invoice" ON public.invoice_line_items;
 DROP POLICY IF EXISTS "line items writable via parent invoice" ON public.invoice_line_items;
 CREATE POLICY "line items writable via parent invoice" ON public.invoice_line_items
   FOR ALL TO authenticated
@@ -71,6 +75,7 @@ CREATE POLICY "line items writable via parent invoice" ON public.invoice_line_it
       AND public.has_permission(auth.uid(), i.organization_id, 'manage_client_billing')
   ));
 DROP POLICY IF EXISTS "line items readable via parent invoice" ON public.invoice_line_items;
+DROP POLICY IF EXISTS "line items readable via parent invoice" ON public.invoice_line_items;
 CREATE POLICY "line items readable via parent invoice" ON public.invoice_line_items
   FOR SELECT TO authenticated
   USING (EXISTS (
@@ -83,11 +88,13 @@ CREATE POLICY "line items readable via parent invoice" ON public.invoice_line_it
   ));
 
 DROP POLICY IF EXISTS "payments writable by managers" ON public.payments;
+DROP POLICY IF EXISTS "payments writable by billing managers" ON public.payments;
 CREATE POLICY "payments writable by billing managers" ON public.payments
   FOR ALL TO authenticated
   USING (public.has_permission(auth.uid(), organization_id, 'manage_client_billing'))
   WITH CHECK (public.has_permission(auth.uid(), organization_id, 'manage_client_billing'));
 DROP POLICY IF EXISTS "payments readable by org members" ON public.payments;
+DROP POLICY IF EXISTS "payments readable by billing and finance roles" ON public.payments;
 CREATE POLICY "payments readable by billing and finance roles" ON public.payments
   FOR SELECT TO authenticated
   USING (
@@ -98,10 +105,12 @@ CREATE POLICY "payments readable by billing and finance roles" ON public.payment
 -- Credit ledger: system paths (complete_visit debits, Stripe webhooks) run as
 -- SECURITY DEFINER / service_role and are unaffected by these policies.
 DROP POLICY IF EXISTS "managers write ledger" ON public.credit_ledger;
+DROP POLICY IF EXISTS "billing managers write ledger" ON public.credit_ledger;
 CREATE POLICY "billing managers write ledger" ON public.credit_ledger
   FOR INSERT TO authenticated
   WITH CHECK (public.has_permission(auth.uid(), organization_id, 'manage_client_billing'));
 DROP POLICY IF EXISTS "org members read ledger" ON public.credit_ledger;
+DROP POLICY IF EXISTS "billing managers read ledger" ON public.credit_ledger;
 CREATE POLICY "billing managers read ledger" ON public.credit_ledger
   FOR SELECT TO authenticated
   USING (public.has_permission(auth.uid(), organization_id, 'manage_client_billing'));
@@ -109,11 +118,13 @@ CREATE POLICY "billing managers read ledger" ON public.credit_ledger
 -- Add-on charges/subscriptions: table access is billing-only; the technician
 -- field path goes exclusively through the create_addon_charge RPC below.
 DROP POLICY IF EXISTS "addon_charges writable by org staff" ON public.addon_charges;
+DROP POLICY IF EXISTS "addon_charges writable by billing managers" ON public.addon_charges;
 CREATE POLICY "addon_charges writable by billing managers" ON public.addon_charges
   FOR ALL TO authenticated
   USING (public.has_permission(auth.uid(), organization_id, 'manage_client_billing'))
   WITH CHECK (public.has_permission(auth.uid(), organization_id, 'manage_client_billing'));
 DROP POLICY IF EXISTS "addon_charges readable by org" ON public.addon_charges;
+DROP POLICY IF EXISTS "addon_charges readable by billing and finance roles" ON public.addon_charges;
 CREATE POLICY "addon_charges readable by billing and finance roles" ON public.addon_charges
   FOR SELECT TO authenticated
   USING (
@@ -122,6 +133,7 @@ CREATE POLICY "addon_charges readable by billing and finance roles" ON public.ad
   );
 
 DROP POLICY IF EXISTS "addon_subs writable by managers" ON public.addon_subscriptions;
+DROP POLICY IF EXISTS "addon_subs writable by billing managers" ON public.addon_subscriptions;
 CREATE POLICY "addon_subs writable by billing managers" ON public.addon_subscriptions
   FOR ALL TO authenticated
   USING (public.has_permission(auth.uid(), organization_id, 'manage_client_billing'))

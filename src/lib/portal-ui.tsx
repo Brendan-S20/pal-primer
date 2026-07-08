@@ -366,10 +366,28 @@ export function PortalVerifyGate() {
         </p>
 
         {channels.length === 0 ? (
-          <p className="mt-4 rounded-md bg-muted p-3 text-sm">
-            We don't have a phone or email on file to verify you. Please contact us and we'll help
-            you in.
-          </p>
+          <div className="mt-5 space-y-3">
+            <p className="rounded-md bg-muted p-3 text-sm">
+              We don't have a phone or email on file to text or email you a code. Call or text us
+              and we can read you a code to enter here.
+            </p>
+            <Input
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="123456"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+              className="text-center text-lg tracking-[0.3em]"
+            />
+            <Button
+              className="w-full"
+              disabled={verifyOtpMut.isPending || code.length < 6}
+              onClick={() => verifyOtpMut.mutate(code)}
+            >
+              {verifyOtpMut.isPending ? "Verifying…" : "Verify"}
+            </Button>
+          </div>
         ) : step === "choose" ? (
           <div className="mt-5 space-y-3">
             {channels.map((c) => (

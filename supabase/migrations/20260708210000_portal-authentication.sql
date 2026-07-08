@@ -93,7 +93,14 @@ DECLARE _org uuid; _new uuid;
 BEGIN
   SELECT organization_id INTO _org FROM public.clients WHERE id = _client_id;
   IF _org IS NULL THEN RAISE EXCEPTION 'Client not found'; END IF;
-  IF NOT public.has_permission(auth.uid(), _org, 'manage_settings') THEN
+  -- Inline owner/office_manager check (equivalent to has_permission
+  -- 'manage_settings') so this migration is self-contained and does not depend
+  -- on the finding-#1 migration having been applied first.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.user_roles
+     WHERE user_id = auth.uid() AND organization_id = _org
+       AND role IN ('owner', 'office_manager')
+  ) THEN
     RAISE EXCEPTION 'Not authorized';
   END IF;
   _new := gen_random_uuid();
