@@ -30,6 +30,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { FlaskConical, Trash2, Dna, Receipt, FileText, Printer } from "lucide-react";
+import { usePermissions } from "@/hooks/useMyRole";
 
 export const Route = createFileRoute("/_authenticated/dna")({
   head: () => ({
@@ -62,6 +63,8 @@ const STATUS_TONE: Record<DnaMatch["status"], "default" | "secondary" | "outline
 };
 
 function DnaPage() {
+  const { can } = usePermissions();
+  const canBillDna = can("manage_dna_billing");
   const listFn = useServerFn(listDnaMatches);
   const dogsFn = useServerFn(listRegisteredDogs);
   const allDogsFn = useServerFn(listAllDogsForDna);
@@ -234,9 +237,12 @@ function DnaPage() {
                             onChange={(e) => update.mutate({ id: r.id, status: e.target.value as any })}
                             className="rounded border bg-background px-2 py-1 text-xs"
                           >
-                            {Object.entries(STATUS_LABEL).map(([k, v]) => (
-                              <option key={k} value={k}>{v}</option>
-                            ))}
+                            {Object.entries(STATUS_LABEL)
+                              // Marking a sample billed is a billing action — office only.
+                              .filter(([k]) => canBillDna || k !== "billed" || r.status === "billed")
+                              .map(([k, v]) => (
+                                <option key={k} value={k}>{v}</option>
+                              ))}
                           </select>
                           <Badge variant={STATUS_TONE[r.status]} className="ml-2">{STATUS_LABEL[r.status]}</Badge>
                         </td>
@@ -266,18 +272,24 @@ function DnaPage() {
                           )}
                         </td>
                         <td className="px-3 py-2">
-                          <Input
-                            type="number"
-                            min={0}
-                            step={5}
-                            value={r.fine_cents / 100}
-                            onChange={(e) => update.mutate({ id: r.id, fineCents: Math.round(Number(e.target.value) * 100) })}
-                            className="h-8 w-20 text-xs"
-                          />
+                          {canBillDna ? (
+                            <Input
+                              type="number"
+                              min={0}
+                              step={5}
+                              value={r.fine_cents / 100}
+                              onChange={(e) => update.mutate({ id: r.id, fineCents: Math.round(Number(e.target.value) * 100) })}
+                              className="h-8 w-20 text-xs"
+                            />
+                          ) : (
+                            <span className="text-xs">
+                              {r.fine_cents > 0 ? `$${(r.fine_cents / 100).toFixed(2)}` : "—"}
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-1">
-                            {r.status === "matched" && (
+                            {canBillDna && r.status === "matched" && (
                               <>
                                 <Button
                                   size="sm"
@@ -297,7 +309,7 @@ function DnaPage() {
                                 </Button>
                               </>
                             )}
-                            {r.status === "billed" && (
+                            {canBillDna && r.status === "billed" && (
                               <Button
                                 size="sm"
                                 variant="outline"

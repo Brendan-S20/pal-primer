@@ -1,16 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-
-async function resolveOrgId(supabase: any, userId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("organization_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("No organization for user");
-  return data.organization_id as string;
-}
+import { resolveCaller } from "@/lib/authz.server";
+import { hasPermission } from "@/lib/permissions";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -25,9 +16,13 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const orgId = await resolveOrgId(supabase, userId);
+    const { orgId, role } = await resolveCaller(supabase, userId);
+    // Financial KPIs are scoped server-side: roles without view_financials
+    // (e.g. dispatcher) get null for these fields, and the queries never run.
+    const canViewFinancials = hasPermission(role, "view_financials");
     const today = todayISO();
     const monthStart = firstOfMonthISO();
+    const emptyRes = { data: [] as any[], error: null as any };
 
     const [activeClientsRes, todayVisitsRes, mtdInvoicesRes, openInvoicesRes, staffRes, openTicketsRes] =
       await Promise.all([
@@ -45,18 +40,22 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
           .eq("scheduled_on", today)
           .order("assigned_staff_id", { ascending: true, nullsFirst: true })
           .order("sequence", { ascending: true, nullsFirst: false }),
-        supabase
-          .from("invoices")
-          .select("total_cents, status, issued_at")
-          .eq("organization_id", orgId)
-          .eq("status", "paid")
-          .gte("issued_at", `${monthStart}T00:00:00`),
-        supabase
-          .from("invoices")
-          .select("id, total_cents, issued_at, client_id, clients(display_name)")
-          .eq("organization_id", orgId)
-          .eq("status", "open")
-          .order("issued_at", { ascending: true }),
+        canViewFinancials
+          ? supabase
+              .from("invoices")
+              .select("total_cents, status, issued_at")
+              .eq("organization_id", orgId)
+              .eq("status", "paid")
+              .gte("issued_at", `${monthStart}T00:00:00`)
+          : Promise.resolve(emptyRes),
+        canViewFinancials
+          ? supabase
+              .from("invoices")
+              .select("id, total_cents, issued_at, client_id, clients(display_name)")
+              .eq("organization_id", orgId)
+              .eq("status", "open")
+              .order("issued_at", { ascending: true })
+          : Promise.resolve(emptyRes),
         supabase
           .from("staff")
           .select("id, display_name")
@@ -107,17 +106,21 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
     return {
       today,
       activeClients: activeClientsRes.count ?? 0,
-      mtdRevenueCents,
-      arOpenCents,
-      overdueCount: openInvoices.filter(
-        (r: any) => r.issued_at && (now - new Date(r.issued_at).getTime()) / 86400000 > 30,
-      ).length,
+      // null (not 0) when the caller can't view financials, so the UI can
+      // distinguish "hidden for this role" from a real zero.
+      mtdRevenueCents: canViewFinancials ? mtdRevenueCents : null,
+      arOpenCents: canViewFinancials ? arOpenCents : null,
+      overdueCount: canViewFinancials
+        ? openInvoices.filter(
+            (r: any) => r.issued_at && (now - new Date(r.issued_at).getTime()) / 86400000 > 30,
+          ).length
+        : null,
       visitCounts,
       unassignedToday: unassigned,
       weatherFlaggedToday: weatherFlagged,
       todayVisits: visits,
       staff: staffRes.data ?? [],
-      overdueInvoices,
+      overdueInvoices: canViewFinancials ? overdueInvoices : [],
       openConcerns: (openTicketsRes.data ?? []).map((r: any) => ({
         id: r.id,
         category: r.category,

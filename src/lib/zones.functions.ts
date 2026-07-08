@@ -1,16 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission, resolveCaller } from "@/lib/authz.server";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("organization_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("No organization for user");
-  return data.organization_id as string;
+  return (await resolveCaller(supabase, userId)).orgId;
 }
 
 function normalizeZips(input: string[] | undefined): string[] {
@@ -72,7 +66,7 @@ export const createZone = createServerFn({ method: "POST" })
   .inputValidator((d) => zoneWriteSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const orgId = await resolveOrgId(supabase, userId);
+    const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
     const { data: row, error } = await supabase
       .from("zones")
       .insert({
@@ -111,7 +105,7 @@ export const updateZone = createServerFn({ method: "POST" })
   .inputValidator((d) => updateZoneSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const orgId = await resolveOrgId(supabase, userId);
+    const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
     const patch: Record<string, any> = {};
     if (data.name !== undefined) patch.name = data.name;
     if (data.zipCodes !== undefined) patch.zip_codes = normalizeZips(data.zipCodes);
@@ -149,7 +143,7 @@ export const deleteZone = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const orgId = await resolveOrgId(supabase, userId);
+    const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
     const { error } = await supabase
       .from("zones")
       .delete()

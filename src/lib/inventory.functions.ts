@@ -1,10 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission } from "@/lib/authz.server";
 
 export const listStaff = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    await requirePermission(context.supabase, context.userId, "manage_inventory");
     const { data, error } = await context.supabase
       .from("staff")
       .select("id, display_name")
@@ -17,6 +19,7 @@ export const listStaff = createServerFn({ method: "GET" })
 export const listItems = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    await requirePermission(context.supabase, context.userId, "manage_inventory");
     const { data, error } = await context.supabase
       .from("inventory_items")
       .select("*")
@@ -28,6 +31,7 @@ export const listItems = createServerFn({ method: "GET" })
 export const listAssignments = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    await requirePermission(context.supabase, context.userId, "manage_inventory");
     const { data, error } = await context.supabase
       .from("inventory_assignments")
       .select("id, item_id, staff_id, quantity, inventory_items(name, unit), staff(display_name)")
@@ -39,6 +43,7 @@ export const listAssignments = createServerFn({ method: "GET" })
 export const listRecentMovements = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    await requirePermission(context.supabase, context.userId, "manage_inventory");
     const { data, error } = await context.supabase
       .from("inventory_movements")
       .select("id, kind, quantity, note, created_at, item_id, staff_id, inventory_items(name, unit), staff(display_name)")
@@ -62,6 +67,7 @@ export const upsertItem = createServerFn({ method: "POST" })
     notes: z.string().optional().nullable(),
   }).parse(d))
   .handler(async ({ data, context }) => {
+    await requirePermission(context.supabase, context.userId, "manage_inventory");
     const { supabase, userId } = context;
     const { data: staff } = await supabase
       .from("staff")
@@ -89,6 +95,7 @@ export const recordMovement = createServerFn({ method: "POST" })
     note: z.string().optional().nullable(),
   }).parse(d))
   .handler(async ({ data, context }) => {
+    await requirePermission(context.supabase, context.userId, "manage_inventory");
     const { supabase, userId } = context;
     const { data: item, error: iErr } = await supabase
       .from("inventory_items")

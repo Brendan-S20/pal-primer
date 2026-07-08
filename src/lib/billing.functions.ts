@@ -2,22 +2,16 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { getOrgBillingState } from "./billing-state.server";
+import { requirePermission } from "@/lib/authz.server";
 
 // Kept for back-compat with anything still importing this.
 export const PRO_PRICE_CENTS = 5900;
 
+// The org's own SaaS subscription is owner-only (manage_org_billing),
+// matching the /billing route boundary — this previously also allowed
+// office_manager, contradicting the route map.
 async function resolveOrgIdForCaller(supabase: any, userId: string): Promise<string> {
-  const { data: role, error } = await supabase
-    .from("user_roles")
-    .select("organization_id, role")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!role) throw new Error("No organization");
-  if (!["owner", "office_manager"].includes(role.role)) {
-    throw new Error("Only owners or office managers can manage billing");
-  }
-  return role.organization_id as string;
+  return (await requirePermission(supabase, userId, "manage_org_billing")).orgId;
 }
 
 export const getBillingStatus = createServerFn({ method: "GET" })

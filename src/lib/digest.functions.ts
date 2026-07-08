@@ -1,29 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission } from "@/lib/authz.server";
 import { z } from "zod";
 
-async function resolveOrgId(supabase: any, userId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("organization_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("No organization for user");
-  return data.organization_id as string;
-}
-
 async function requireOwnerOrManager(supabase: any, userId: string): Promise<string> {
-  const orgId = await resolveOrgId(supabase, userId);
-  const { data } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId);
-  const roles = (data ?? []).map((r: any) => r.role);
-  if (!roles.some((r: string) => r === "owner" || r === "office_manager" || r === "admin")) {
-    throw new Error("Not authorized");
-  }
-  return orgId;
+  return (await requirePermission(supabase, userId, "view_financials")).orgId;
 }
 
 /** Preview the current week's digest metrics + AI insights without sending. */
@@ -108,7 +89,7 @@ export const updateDigestSettings = createServerFn({ method: "POST" })
 export const getDigestSettings = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const orgId = await requireOwnerOrManager(context.supabase, context.userId);
     const { data } = await context.supabase
       .from("organizations")
       .select("notify_email_weekly_digest, digest_recipient_email, last_digest_sent_at")

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyOrg } from "@/lib/org.functions";
+import { hasPermission, type Permission } from "@/lib/permissions";
 
 export type AppRole = "owner" | "office_manager" | "dispatcher" | "tech";
 
@@ -14,6 +15,20 @@ export function useMyRole(): { role: AppRole | null; orgId: string | null; loadi
   const role = (data?.organization?.role as AppRole | undefined) ?? null;
   const orgId = data?.organization?.id ?? null;
   return { role, orgId, loading: isLoading };
+}
+
+/**
+ * Action-level permission check for UI gating (hiding controls the caller
+ * can't use). This is cosmetic — the same capability is enforced server-side
+ * by requirePermission; never rely on this alone.
+ */
+export function usePermissions(): {
+  can: (permission: Permission) => boolean;
+  role: AppRole | null;
+  loading: boolean;
+} {
+  const { role, loading } = useMyRole();
+  return { can: (permission) => hasPermission(role, permission), role, loading };
 }
 
 // Route → minimum roles allowed. Undefined = everyone signed in.

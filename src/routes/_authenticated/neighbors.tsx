@@ -20,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, UserPlus, Trash2, Footprints, ArrowRight, ArrowLeft, Navigation2, Map as MapIcon, List } from "lucide-react";
 import { NeighborMap, type NeighborPin } from "@/components/NeighborMap";
+import { usePermissions } from "@/hooks/useMyRole";
 
 
 export const Route = createFileRoute("/_authenticated/neighbors")({
@@ -60,9 +61,13 @@ function NeighborsPage() {
     queryKey: ["neighbor-leads"],
     queryFn: () => listFn(),
   });
+  const { can } = usePermissions();
+  const canSeeDirectory = can("view_client_directory");
   const clientsQ = useQuery({
     queryKey: ["clients", "for-canvass"],
     queryFn: () => clientsFn(),
+    // The seed picker needs the client roster — techs don't get it.
+    enabled: canSeeDirectory,
   });
 
   const [address, setAddress] = useState("");
@@ -198,6 +203,7 @@ function NeighborsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
+        {canSeeDirectory && (
         <Card>
           <CardHeader><CardTitle className="text-base">Seed from an existing client</CardTitle></CardHeader>
           <CardContent className="space-y-3">
@@ -225,6 +231,7 @@ function NeighborsPage() {
             <p className="text-xs text-muted-foreground">Generates addresses at even offsets from the client's house number on the same street.</p>
           </CardContent>
         </Card>
+        )}
 
         <Card>
           <CardHeader><CardTitle className="text-base">Add a door manually</CardTitle></CardHeader>

@@ -1,15 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission } from "@/lib/authz.server";
 
+// Franchise rollup is owner-only — every function in this file is gated on
+// manage_franchise, matching the /franchise route boundary.
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("organization_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("No organization for user");
-  return data.organization_id as string;
+  return (await requirePermission(supabase, userId, "manage_franchise")).orgId;
 }
 
 export type FranchiseRow = {

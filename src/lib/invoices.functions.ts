@@ -1,11 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission } from "@/lib/authz.server";
 
 export const listInvoices = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase } = context;
+    await requirePermission(supabase, context.userId, "manage_client_billing");
     const { data, error } = await supabase
       .from("invoices")
       .select("id, client_id, status, subtotal_cents, total_cents, currency, period_start, period_end, issued_at, paid_at, checkout_url, clients(display_name)")
@@ -19,6 +21,7 @@ export const getInvoice = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
+    await requirePermission(supabase, context.userId, "manage_client_billing");
     const { data: invoice, error } = await supabase
       .from("invoices")
       .select("*, clients(display_name, primary_email)")
@@ -44,6 +47,8 @@ export const generateInvoicesForOrg = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ orgId: z.string().uuid(), through: z.string() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
+    const { orgId } = await requirePermission(supabase, context.userId, "manage_client_billing");
+    if (orgId !== data.orgId) throw new Error("Not authorized");
     const { data: count, error } = await supabase.rpc("generate_invoices_for_org", {
       _org_id: data.orgId,
       _through: data.through,
@@ -57,6 +62,7 @@ export const generateInvoiceForClient = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ clientId: z.string().uuid(), through: z.string() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
+    await requirePermission(supabase, context.userId, "manage_client_billing");
     const { data: id, error } = await supabase.rpc("generate_invoice_for_client", {
       _client_id: data.clientId,
       _through: data.through,
@@ -69,6 +75,7 @@ export const voidInvoice = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
+    await requirePermission(context.supabase, context.userId, "manage_client_billing");
     const { error } = await context.supabase.rpc("void_invoice", { _invoice_id: data.id });
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -78,6 +85,7 @@ export const bulkVoidInvoices = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ ids: z.array(z.string().uuid()).min(1).max(500) }).parse(d))
   .handler(async ({ data, context }) => {
+    await requirePermission(context.supabase, context.userId, "manage_client_billing");
     let ok = 0, failed = 0;
     for (const id of data.ids) {
       const { error } = await context.supabase.rpc("void_invoice", { _invoice_id: id });
@@ -91,6 +99,7 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ ids: z.array(z.string().uuid()).min(1).max(500), note: z.string().optional() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
+    await requirePermission(supabase, context.userId, "manage_client_billing");
     const nowIso = new Date().toISOString();
     let ok = 0, failed = 0;
     for (const id of data.ids) {
@@ -125,6 +134,7 @@ export const createCheckoutForInvoice = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().uuid(), returnUrl: z.string().url() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
+    await requirePermission(supabase, context.userId, "manage_client_billing");
     // Read invoice + verify access via RLS
     const { data: invoice, error } = await supabase
       .from("invoices")
@@ -178,6 +188,7 @@ export const listUnbilledForClient = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
+    await requirePermission(supabase, context.userId, "manage_client_billing");
     const { data: visits, error } = await supabase
       .from("visits")
       .select("id, scheduled_on, completed_at, subscription_id, subscriptions(price_cents), invoice_line_items(id)")
@@ -192,6 +203,7 @@ export const generatePrepaidInvoice = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ subscriptionId: z.string().uuid(), visitCount: z.number().int().min(1).max(52) }).parse(d))
   .handler(async ({ data, context }) => {
+    await requirePermission(context.supabase, context.userId, "manage_client_billing");
     const { data: id, error } = await context.supabase.rpc("generate_prepaid_invoice", {
       _subscription_id: data.subscriptionId,
       _visit_count: data.visitCount,
@@ -205,6 +217,7 @@ export const getClientCredit = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
+    await requirePermission(supabase, context.userId, "manage_client_billing");
     const { data: client, error } = await supabase
       .from("clients")
       .select("credit_balance_cents")
@@ -226,6 +239,7 @@ export const getClientBillingSummary = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
+    await requirePermission(supabase, context.userId, "manage_client_billing");
 
     const [clientRes, invoicesRes] = await Promise.all([
       supabase
@@ -271,6 +285,7 @@ export const resumeAutopay = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
+    await requirePermission(context.supabase, context.userId, "manage_client_billing");
     const { error } = await context.supabase
       .from("clients")
       .update({

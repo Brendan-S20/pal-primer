@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission } from "@/lib/authz.server";
 import type { Database } from "@/integrations/supabase/types";
 
 const STATUSES = ["new", "contacted", "qualified", "converted", "archived"] as const;
@@ -48,6 +49,7 @@ export const submitLead = createServerFn({ method: "POST" })
 export const listLeads = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    await requirePermission(context.supabase, context.userId, "manage_leads");
     const { data, error } = await context.supabase
       .from("leads")
       .select("*")
@@ -68,6 +70,7 @@ export const updateLeadStatus = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    await requirePermission(context.supabase, context.userId, "manage_leads");
     const patch: {
       status: (typeof STATUSES)[number];
       contacted_at?: string;

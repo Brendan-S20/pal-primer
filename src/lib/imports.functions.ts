@@ -1,16 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission } from "@/lib/authz.server";
 
+// Bulk import creates/overwrites client data — every function in this file
+// is gated on manage_imports, matching the /imports route boundary.
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("organization_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("No organization found for this user.");
-  return data.organization_id as string;
+  return (await requirePermission(supabase, userId, "manage_imports")).orgId;
 }
 
 export const IMPORT_SOURCES = [
@@ -436,6 +432,7 @@ export const getImportBatch = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ batchId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
+    await resolveOrgId(supabase, context.userId);
     const { data: batch, error: be } = await supabase
       .from("import_batches")
       .select("*")
@@ -731,6 +728,7 @@ export const cancelImport = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ batchId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
+    await resolveOrgId(supabase, context.userId);
     const { error } = await supabase
       .from("import_batches")
       .update({ status: "cancelled" })

@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { X, Plus, Trash2, MapPin } from "lucide-react";
 import { toast } from "sonner";
+import { usePermissions } from "@/hooks/useMyRole";
 import { ZoneCoverageMap, type CoverageValue } from "@/components/ZoneCoverageMap";
 
 export const Route = createFileRoute("/_authenticated/zones")({
@@ -91,6 +92,8 @@ function ZonesPage() {
   const create = useServerFn(createZone);
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["zones"], queryFn: () => list() });
+  const { can } = usePermissions();
+  const canEdit = can("manage_pricing");
 
   const [showNew, setShowNew] = useState(false);
   const [name, setName] = useState("");
@@ -136,13 +139,16 @@ function ZonesPage() {
         <div>
           <h1 className="text-2xl font-semibold">Zones</h1>
           <p className="text-sm text-muted-foreground">
-            Group service areas by ZIP code. Pricing here powers the instant quote for new
-            clients.
+            {canEdit
+              ? "Group service areas by ZIP code. Pricing here powers the instant quote for new clients."
+              : "View-only: zone boundaries and rates for routing context. Pricing changes require an owner or office manager."}
           </p>
         </div>
-        <Button onClick={() => setShowNew((v) => !v)} variant={showNew ? "outline" : "default"}>
-          <Plus className="mr-1 h-4 w-4" /> {showNew ? "Cancel" : "New zone"}
-        </Button>
+        {canEdit && (
+          <Button onClick={() => setShowNew((v) => !v)} variant={showNew ? "outline" : "default"}>
+            <Plus className="mr-1 h-4 w-4" /> {showNew ? "Cancel" : "New zone"}
+          </Button>
+        )}
       </div>
 
       {showNew && (
@@ -237,7 +243,7 @@ function ZonesPage() {
 
       <div className="grid gap-3">
         {(data?.zones ?? []).map((z: any) => (
-          <ZoneCard key={z.id} zone={z} />
+          <ZoneCard key={z.id} zone={z} canEdit={canEdit} />
         ))}
         {data && data.zones.length === 0 && !showNew && (
           <Card className="p-10 text-center text-muted-foreground">
@@ -250,7 +256,7 @@ function ZonesPage() {
   );
 }
 
-function ZoneCard({ zone }: { zone: any }) {
+function ZoneCard({ zone, canEdit }: { zone: any; canEdit: boolean }) {
   const update = useServerFn(updateZone);
   const del = useServerFn(deleteZone);
   const qc = useQueryClient();
@@ -366,22 +372,24 @@ function ZoneCard({ zone }: { zone: any }) {
             )}
           </div>
         </div>
-        <ZoneCoverageSection zone={zone} />
-        <div className="mt-3 flex justify-end gap-2 border-t pt-3">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              if (confirm(`Delete zone "${zone.name}"?`)) delMut.mutate();
-            }}
-            disabled={delMut.isPending}
-          >
-            <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
-            Edit
-          </Button>
-        </div>
+        <ZoneCoverageSection zone={zone} canEdit={canEdit} />
+        {canEdit && (
+          <div className="mt-3 flex justify-end gap-2 border-t pt-3">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                if (confirm(`Delete zone "${zone.name}"?`)) delMut.mutate();
+              }}
+              disabled={delMut.isPending}
+            >
+              <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+              Edit
+            </Button>
+          </div>
+        )}
       </Card>
     );
   }
@@ -491,7 +499,7 @@ function ZoneCard({ zone }: { zone: any }) {
   );
 }
 
-function ZoneCoverageSection({ zone }: { zone: any }) {
+function ZoneCoverageSection({ zone, canEdit }: { zone: any; canEdit: boolean }) {
   const update = useServerFn(updateZone);
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -556,16 +564,18 @@ function ZoneCoverageSection({ zone }: { zone: any }) {
             {summary}
           </Badge>
         </div>
-        <div className="flex gap-2">
-          {mode !== "zip" && (
-            <Button size="sm" variant="ghost" onClick={() => clearMut.mutate()} disabled={clearMut.isPending}>
-              Clear
+        {canEdit && (
+          <div className="flex gap-2">
+            {mode !== "zip" && (
+              <Button size="sm" variant="ghost" onClick={() => clearMut.mutate()} disabled={clearMut.isPending}>
+                Clear
+              </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={() => setOpen((v) => !v)}>
+              {open ? "Close map" : "Set on map"}
             </Button>
-          )}
-          <Button size="sm" variant="outline" onClick={() => setOpen((v) => !v)}>
-            {open ? "Close map" : "Set on map"}
-          </Button>
-        </div>
+          </div>
+        )}
       </div>
       {open && (
         <div className="mt-3">

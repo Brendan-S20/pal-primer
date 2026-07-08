@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission } from "@/lib/authz.server";
 
 const bootstrapSchema = z.object({
   orgName: z.string().min(1).max(120),
@@ -84,11 +85,7 @@ export const updateOrgBranding = createServerFn({ method: "POST" })
   .inputValidator((d) => brandingSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const { data: role } = await supabase.from("user_roles")
-      .select("organization_id, role").eq("user_id", userId).maybeSingle();
-    if (!role) throw new Error("No org");
-    if (role.role !== "owner" && role.role !== "office_manager")
-      throw new Error("Not permitted");
+    const { orgId } = await requirePermission(supabase, userId, "manage_settings");
     const patch: Record<string, unknown> = {};
     if (data.brandColor !== undefined) patch.brand_color = data.brandColor;
     if (data.logoUrl !== undefined) patch.logo_url = data.logoUrl;
@@ -100,7 +97,7 @@ export const updateOrgBranding = createServerFn({ method: "POST" })
     if (data.portalAllowFrequencyChange !== undefined) patch.portal_allow_frequency_change = data.portalAllowFrequencyChange;
     if (data.portalAutoApplyChanges !== undefined) patch.portal_auto_apply_changes = data.portalAutoApplyChanges;
     const { error } = await supabase.from("organizations")
-      .update(patch as any).eq("id", role.organization_id);
+      .update(patch as any).eq("id", orgId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

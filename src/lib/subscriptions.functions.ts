@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission } from "@/lib/authz.server";
 
 const createSubSchema = z
   .object({
@@ -74,17 +75,7 @@ export const listSubscriptionsForClient = createServerFn({ method: "GET" })
 // ── Seasonal deep-clean settings ─────────────────────────────────────────
 
 async function loadOrgForCaller(supabase: any, userId: string) {
-  const { data: role, error } = await supabase
-    .from("user_roles")
-    .select("organization_id, role")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!role) throw new Error("No organization");
-  if (!["owner", "office_manager"].includes(role.role)) {
-    throw new Error("Only owners or office managers can change pricing settings");
-  }
-  return role.organization_id as string;
+  return (await requirePermission(supabase, userId, "manage_pricing")).orgId;
 }
 
 export const getDeepCleanSettings = createServerFn({ method: "GET" })

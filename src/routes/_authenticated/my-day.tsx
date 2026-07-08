@@ -695,39 +695,58 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
             </div>
           )}
 
-          {showAddon && (
-            <div className="space-y-2 rounded-md border bg-muted/30 p-3">
-              <div className="text-xs font-medium text-muted-foreground">Bill an add-on to this client</div>
-              <div className="grid grid-cols-6 gap-2">
-                <select
-                  className="col-span-4 h-9 rounded-md border bg-background px-2 text-sm"
-                  value={addonSvcId}
-                  onChange={(e) => setAddonSvcId(e.target.value)}
-                >
-                  <option value="">Select service…</option>
-                  {addonServices.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} — ${(s.unit_price_cents / 100).toFixed(2)}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="number" min="1"
-                  className="col-span-1 h-9 rounded-md border bg-background px-2 text-sm"
-                  value={addonQty}
-                  onChange={(e) => setAddonQty(e.target.value)}
-                />
-                <Button size="sm" className="col-span-1"
-                  disabled={!addonSvcId || addonMut.isPending}
-                  onClick={() => addonMut.mutate()}>
-                  Bill
-                </Button>
+          {showAddon && (() => {
+            const svc = addonServices.find((s) => s.id === addonSvcId);
+            const qtyNum = Math.max(1, parseInt(addonQty, 10) || 1);
+            const totalCents = svc ? svc.unit_price_cents * qtyNum : 0;
+            return (
+              <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+                <div className="text-xs font-medium text-muted-foreground">Bill an add-on to this client</div>
+                <div className="grid grid-cols-6 gap-2">
+                  <select
+                    className="col-span-4 h-9 rounded-md border bg-background px-2 text-sm"
+                    value={addonSvcId}
+                    onChange={(e) => setAddonSvcId(e.target.value)}
+                  >
+                    <option value="">Select service…</option>
+                    {addonServices.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} — ${(s.unit_price_cents / 100).toFixed(2)}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number" min="1"
+                    className="col-span-1 h-9 rounded-md border bg-background px-2 text-sm"
+                    value={addonQty}
+                    onChange={(e) => setAddonQty(e.target.value)}
+                  />
+                  <Button size="sm" className="col-span-1"
+                    disabled={!addonSvcId || addonMut.isPending}
+                    onClick={() => {
+                      if (!svc) return;
+                      // Real money hits the client's account — always confirm.
+                      const who = visit.clients?.display_name ?? "this client";
+                      if (confirm(`Bill $${(totalCents / 100).toFixed(2)} (${svc.name}${qtyNum > 1 ? ` × ${qtyNum}` : ""}) to ${who}? The office will see this charge for review.`)) {
+                        addonMut.mutate();
+                      }
+                    }}>
+                    Bill
+                  </Button>
+                </div>
+                {svc && (
+                  <p className="text-[11px] font-medium">
+                    Total: ${(totalCents / 100).toFixed(2)} at the catalog price
+                  </p>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  Prepaid clients are debited immediately; postpaid clients see it on the next
+                  invoice. Field charges are capped per charge and reviewed by the office —
+                  anything larger needs the office to bill it.
+                </p>
               </div>
-              <p className="text-[11px] text-muted-foreground">
-                Prepaid clients are debited immediately; postpaid clients see it on the next invoice.
-              </p>
-            </div>
-          )}
+            );
+          })()}
           {showStations && <StationsSubpanel visitId={visit.id} />}
         </div>
       )}

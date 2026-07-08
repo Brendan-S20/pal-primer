@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission, resolveCaller } from "@/lib/authz.server";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   const { data, error } = await supabase
@@ -17,7 +18,8 @@ export const listClients = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const orgId = await resolveOrgId(supabase, userId);
+    // Full roster with contact info and balances — not for field techs.
+    const { orgId } = await requirePermission(supabase, userId, "view_client_directory");
     const { data, error } = await supabase
       .from("clients")
       .select(
@@ -144,6 +146,8 @@ export const getClient = createServerFn({ method: "GET" })
   .inputValidator((data) => getClientSchema.parse(data))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
+    // Contact info, notes, and the portal token — not for field techs.
+    await requirePermission(supabase, context.userId, "view_client_directory");
     const { data: client, error } = await supabase
       .from("clients")
       .select("id, display_name, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at")

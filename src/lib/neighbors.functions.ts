@@ -1,16 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { resolveCaller } from "@/lib/authz.server";
+import { hasPermission } from "@/lib/permissions";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("organization_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("No organization for user");
-  return data.organization_id as string;
+  return (await resolveCaller(supabase, userId)).orgId;
 }
 
 export type NeighborLead = {
@@ -29,7 +24,8 @@ export type NeighborLead = {
 export const listNeighborLeads = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { orgId, role } = await resolveCaller(context.supabase, context.userId);
+    const canSeeDirectory = hasPermission(role, "view_client_directory");
     const { data, error } = await context.supabase
       .from("neighbor_leads")
       .select("id, seed_client_id, address_line, latitude, longitude, status, notes, contacted_at, created_at, clients:seed_client_id(display_name)")
@@ -39,8 +35,8 @@ export const listNeighborLeads = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     const rows: NeighborLead[] = (data ?? []).map((r: any) => ({
       id: r.id,
-      seed_client_id: r.seed_client_id,
-      seed_client_name: r.clients?.display_name ?? null,
+      seed_client_id: canSeeDirectory ? r.seed_client_id : null,
+      seed_client_name: canSeeDirectory ? (r.clients?.display_name ?? null) : null,
       address_line: r.address_line,
       latitude: r.latitude,
       longitude: r.longitude,

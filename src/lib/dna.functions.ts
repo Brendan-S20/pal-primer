@@ -1,17 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-
-async function resolveOrgId(supabase: any, userId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("organization_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("No organization for user");
-  return data.organization_id as string;
-}
+import { requirePermission, resolveCaller } from "@/lib/authz.server";
+import { hasPermission } from "@/lib/permissions";
 
 export type DnaMatch = {
   id: string;
@@ -36,7 +27,8 @@ export type DnaMatch = {
 export const listDnaMatches = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { orgId, role } = await resolveCaller(context.supabase, context.userId);
+    const canSeeDirectory = hasPermission(role, "view_client_directory");
     const { data, error } = await context.supabase
       .from("dna_matches")
       .select(
@@ -57,14 +49,16 @@ export const listDnaMatches = createServerFn({ method: "GET" })
       status: r.status,
       matched_dog_id: r.matched_dog_id,
       matched_dog_name: r.matched_dog?.name ?? null,
-      matched_client_name: r.matched_dog?.properties?.clients?.display_name ?? null,
+      matched_client_name: canSeeDirectory
+        ? (r.matched_dog?.properties?.clients?.display_name ?? null)
+        : null,
       matched_at: r.matched_at,
       fine_cents: r.fine_cents,
       notes: r.notes,
       property_id: r.property_id,
-      property_street: r.properties?.street ?? null,
+      property_street: canSeeDirectory ? (r.properties?.street ?? null) : null,
       client_id: r.client_id,
-      client_name: r.clients?.display_name ?? null,
+      client_name: canSeeDirectory ? (r.clients?.display_name ?? null) : null,
       created_at: r.collected_at,
     }));
     const summary = rows.reduce(
@@ -92,7 +86,7 @@ export const createDnaMatch = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => createSchema.parse(d))
   .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { orgId } = await resolveCaller(context.supabase, context.userId);
     const { data: row, error } = await context.supabase
       .from("dna_matches")
       .insert({
@@ -126,6 +120,12 @@ export const updateDnaMatch = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => updateSchema.parse(d))
   .handler(async ({ data, context }) => {
+    // Setting a fine amount or marking a sample billed is a billing action,
+    // not a field-collection update — gate it separately from status moves
+    // like sent_to_lab/matched that techs legitimately perform.
+    if (data.fineCents !== undefined || data.status === "billed") {
+      await requirePermission(context.supabase, context.userId, "manage_dna_billing");
+    }
     const patch: any = {};
     if (data.status) {
       patch.status = data.status;
@@ -144,6 +144,18 @@ export const deleteDnaMatch = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
+    // Deleting a matched/fined/billed sample erases a billing record — only
+    // unprocessed field samples can be removed without the billing capability.
+    const { data: existing, error: rErr } = await context.supabase
+      .from("dna_matches")
+      .select("status, fine_cents")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (rErr) throw new Error(rErr.message);
+    if (!existing) throw new Error("Sample not found");
+    if (existing.status !== "new" && existing.status !== "sent_to_lab") {
+      await requirePermission(context.supabase, context.userId, "manage_dna_billing");
+    }
     const { error } = await context.supabase.from("dna_matches").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -152,7 +164,8 @@ export const deleteDnaMatch = createServerFn({ method: "POST" })
 export const listRegisteredDogs = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { orgId, role } = await resolveCaller(context.supabase, context.userId);
+    const canSeeDirectory = hasPermission(role, "view_client_directory");
     const { data, error } = await context.supabase
       .from("dogs")
       .select("id, name, breed, dna_registry_id, properties:property_id(street, clients:client_id(display_name))")
@@ -165,15 +178,16 @@ export const listRegisteredDogs = createServerFn({ method: "GET" })
       name: d.name,
       breed: d.breed,
       registry_id: d.dna_registry_id,
-      client_name: d.properties?.clients?.display_name ?? null,
-      street: d.properties?.street ?? null,
+      client_name: canSeeDirectory ? (d.properties?.clients?.display_name ?? null) : null,
+      street: canSeeDirectory ? (d.properties?.street ?? null) : null,
     }));
   });
 
 export const listAllDogsForDna = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { orgId, role } = await resolveCaller(context.supabase, context.userId);
+    const canSeeDirectory = hasPermission(role, "view_client_directory");
     const { data, error } = await context.supabase
       .from("dogs")
       .select("id, name, breed, dna_registered, dna_registry_id, property_id, properties:property_id(street, clients:client_id(display_name))")
@@ -186,8 +200,8 @@ export const listAllDogsForDna = createServerFn({ method: "GET" })
       breed: d.breed,
       dna_registered: !!d.dna_registered,
       registry_id: d.dna_registry_id,
-      client_name: d.properties?.clients?.display_name ?? null,
-      street: d.properties?.street ?? null,
+      client_name: canSeeDirectory ? (d.properties?.clients?.display_name ?? null) : null,
+      street: canSeeDirectory ? (d.properties?.street ?? null) : null,
     }));
   });
 
@@ -196,7 +210,7 @@ export const billDnaViolation = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ matchId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
-    const orgId = await resolveOrgId(supabase, context.userId);
+    const { orgId } = await requirePermission(supabase, context.userId, "manage_dna_billing");
     const { data: m, error: mErr } = await supabase
       .from("dna_matches")
       .select("id, status, matched_dog_id, client_id, property_id, fine_cents, lab_reference, location_note, matched_at, collected_at")
@@ -276,7 +290,7 @@ export const getViolationNotice = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ matchId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }): Promise<ViolationNotice> => {
     const { supabase } = context;
-    const orgId = await resolveOrgId(supabase, context.userId);
+    const { orgId } = await requirePermission(supabase, context.userId, "manage_dna_billing");
     const [{ data: org }, { data: m, error: mErr }] = await Promise.all([
       supabase.from("organizations").select("name").eq("id", orgId).single(),
       supabase

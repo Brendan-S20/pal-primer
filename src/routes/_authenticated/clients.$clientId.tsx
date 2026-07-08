@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { usePermissions } from "@/hooks/useMyRole";
 
 export const Route = createFileRoute("/_authenticated/clients/$clientId")({
   component: ClientDetail,
@@ -40,6 +41,8 @@ const FREQ_LABELS: Record<string, string> = {
 function ClientDetail() {
   const { clientId } = Route.useParams();
   const qc = useQueryClient();
+  const { can } = usePermissions();
+  const canBill = can("manage_client_billing");
 
   const getClientFn = useServerFn(getClient);
   const listPropsFn = useServerFn(listPropertiesForClient);
@@ -66,6 +69,7 @@ function ClientDetail() {
   const { data: credit } = useQuery({
     queryKey: ["credit", clientId],
     queryFn: () => getCreditFn({ data: { clientId } }),
+    enabled: canBill,
   });
   const prepayMut = useMutation({
     mutationFn: (v: { subscriptionId: string; visitCount: number }) =>
@@ -217,24 +221,26 @@ function ClientDetail() {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="service">Service</TabsTrigger>
-          <TabsTrigger value="billing">Billing</TabsTrigger>
+          {canBill && <TabsTrigger value="billing">Billing</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
           <ReviewsReferralPanel client={client} />
-          <section className="rounded-lg border bg-card p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-medium">Prepaid credit balance</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  See full ledger in the Billing tab.
-                </p>
+          {canBill && (
+            <section className="rounded-lg border bg-card p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-medium">Prepaid credit balance</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    See full ledger in the Billing tab.
+                  </p>
+                </div>
+                <span className={`text-2xl font-semibold ${((credit?.balanceCents ?? 0) < 0) ? "text-destructive" : ""}`}>
+                  ${((credit?.balanceCents ?? 0) / 100).toFixed(2)}
+                </span>
               </div>
-              <span className={`text-2xl font-semibold ${((credit?.balanceCents ?? 0) < 0) ? "text-destructive" : ""}`}>
-                ${((credit?.balanceCents ?? 0) / 100).toFixed(2)}
-              </span>
-            </div>
-          </section>
+            </section>
+          )}
         </TabsContent>
 
         <TabsContent value="service" className="space-y-6">
@@ -391,7 +397,7 @@ function ClientDetail() {
               </span>
               <span className="flex items-center gap-3 text-muted-foreground">
                 <span>${(s.price_cents / 100).toFixed(2)} · {s.status}</span>
-                {s.billing_cadence === "prepaid" && s.status === "active" && (
+                {canBill && s.billing_cadence === "prepaid" && s.status === "active" && (
                   <PrepayInline
                     disabled={prepayMut.isPending}
                     onSubmit={(n) => prepayMut.mutate({ subscriptionId: s.id, visitCount: n })}
@@ -520,6 +526,7 @@ function ClientDetail() {
           <StationsPanel clientId={clientId} properties={properties} />
         </TabsContent>
 
+        {canBill && (
         <TabsContent value="billing" className="space-y-6">
           {/* Credit balance */}
           <section className="rounded-lg border bg-card p-5">
@@ -552,6 +559,7 @@ function ClientDetail() {
 
           <AddonsPanel clientId={clientId} />
         </TabsContent>
+        )}
       </Tabs>
     </div>
 
@@ -907,6 +915,35 @@ function AddonsPanel({ clientId }: { clientId: string }) {
                 </div>
               </li>
             ))}
+          </ul>
+        </div>
+      )}
+
+      {charges.some((c) => c.source === "field" && c.status !== "invoiced" && c.status !== "voided") && (
+        <div className="mt-6 rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
+          <div className="text-xs font-medium text-amber-700 dark:text-amber-400">
+            Field add-ons to review
+          </div>
+          <ul className="mt-2 divide-y text-sm">
+            {charges
+              .filter((c) => c.source === "field" && c.status !== "invoiced" && c.status !== "voided")
+              .slice(0, 8)
+              .map((c) => (
+                <li key={c.id} className="flex items-center justify-between py-1.5">
+                  <span>
+                    <span className="text-muted-foreground">{c.occurred_on}</span>
+                    <span className="ml-2">{c.description}</span>
+                    {c.quantity > 1 && (
+                      <span className="ml-1 text-xs text-muted-foreground">× {c.quantity}</span>
+                    )}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="font-medium">{money(c.amount_cents)}</span>
+                    <Button size="sm" variant="ghost"
+                      onClick={() => voidMut.mutate(c.id)} disabled={voidMut.isPending}>Void</Button>
+                  </span>
+                </li>
+              ))}
           </ul>
         </div>
       )}

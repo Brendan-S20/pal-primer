@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission } from "@/lib/authz.server";
 import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
 import { generateText, Output } from "ai";
 
@@ -38,6 +39,7 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    await requirePermission(context.supabase, context.userId, "use_ai_tools");
     const staff = await callerOrg(context);
     const { data: org } = await context.supabase
       .from("organizations")
@@ -79,6 +81,7 @@ export const draftReviewReply = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    await requirePermission(context.supabase, context.userId, "use_ai_tools");
     const staff = await callerOrg(context);
     const { data: org } = await context.supabase
       .from("organizations")
@@ -175,6 +178,7 @@ export const scoreChurn = createServerFn({ method: "POST" })
     z.object({ clientId: z.string().uuid().optional() }).parse(d ?? {}),
   )
   .handler(async ({ data, context }) => {
+    await requirePermission(context.supabase, context.userId, "use_ai_tools");
     const staff = await callerOrg(context);
     const signals = await gatherChurnSignals(context.supabase, staff.organization_id, data.clientId);
     if (!signals.length) return { scored: 0 };
@@ -213,6 +217,7 @@ export const scoreChurn = createServerFn({ method: "POST" })
 export const listChurnRisk = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    await requirePermission(context.supabase, context.userId, "use_ai_tools");
     const staff = await callerOrg(context);
     const { data, error } = await context.supabase
       .from("clients")
@@ -230,6 +235,7 @@ export const listChurnRisk = createServerFn({ method: "GET" })
 export const generateWeeklyDigest = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    await requirePermission(context.supabase, context.userId, "use_ai_tools");
     const staff = await callerOrg(context);
     const orgId = staff.organization_id;
     const now = new Date();
@@ -320,6 +326,7 @@ export const suggestDispatch = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ day: z.string().min(8).max(10) }).parse(d))
   .handler(async ({ data, context }) => {
+    await requirePermission(context.supabase, context.userId, "use_ai_tools");
     const staff = await callerOrg(context);
     const orgId = staff.organization_id;
 
@@ -421,6 +428,7 @@ export const applyDispatchSuggestions = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
+    await requirePermission(context.supabase, context.userId, "use_ai_tools");
     let applied = 0;
     for (const c of data.changes) {
       const { error } = await context.supabase.rpc("reassign_visit", {
@@ -438,6 +446,7 @@ export const suggestZonePricing = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({}).parse(d ?? {}))
   .handler(async ({ context }) => {
+    await requirePermission(context.supabase, context.userId, "use_ai_tools");
     const staff = await callerOrg(context);
     const orgId = staff.organization_id;
     const since = new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10);
@@ -521,6 +530,7 @@ export const applyZonePricing = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
+    await requirePermission(context.supabase, context.userId, "use_ai_tools");
     const staff = await callerOrg(context);
     let applied = 0;
     for (const c of data.changes) {

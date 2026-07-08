@@ -5,6 +5,8 @@ import { useState } from "react";
 import { getMyOrg } from "@/lib/org.functions";
 import { getDashboardSummary } from "@/lib/dashboard.functions";
 import { getBillingStatus } from "@/lib/billing.functions";
+import { hasPermission } from "@/lib/permissions";
+import type { AppRole } from "@/hooks/useMyRole";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { OnboardingChecklist } from "@/components/OnboardingChecklist";
@@ -43,11 +45,13 @@ function Dashboard() {
     queryFn: () => sumFn(),
     refetchInterval: 60_000,
   });
+  const role = orgData?.organization?.role as AppRole | undefined;
   const { data: billing } = useQuery({
     queryKey: ["billing-status"],
     queryFn: () => billingFn(),
     staleTime: 60_000,
     retry: false,
+    enabled: hasPermission(role ?? null, "manage_org_billing"),
   });
 
   if (orgLoading) return <p className="text-muted-foreground">Loading…</p>;
@@ -86,7 +90,7 @@ function Dashboard() {
         tone: "warn",
       });
     }
-    if (sum.overdueCount > 0) {
+    if ((sum.overdueCount ?? 0) > 0) {
       alerts.push({
         icon: AlertTriangle,
         text: `${sum.overdueCount} overdue invoice${sum.overdueCount === 1 ? "" : "s"}`,
@@ -156,24 +160,39 @@ function Dashboard() {
           value={sum ? String(sum.activeClients) : "—"}
           hint={billing?.planName ? `${billing.planName} plan` : undefined}
         />
-        <KpiCard
-          icon={DollarSign}
-          label="MTD revenue"
-          value={sum ? fmtMoney(sum.mtdRevenueCents) : "—"}
-        />
-        <KpiCard
-          icon={Receipt}
-          label="AR open"
-          value={sum ? fmtMoney(sum.arOpenCents) : "—"}
-          hint={sum && sum.overdueCount > 0 ? `${sum.overdueCount} overdue` : undefined}
-          tone={sum && sum.overdueCount > 0 ? "danger" : undefined}
-        />
+        {/* Financial KPIs are null for roles without view_financials — the
+            server never computes them, so there is nothing to hide client-side. */}
+        {(!sum || sum.mtdRevenueCents !== null) && (
+          <KpiCard
+            icon={DollarSign}
+            label="MTD revenue"
+            value={sum ? fmtMoney(sum.mtdRevenueCents ?? 0) : "—"}
+          />
+        )}
+        {(!sum || sum.arOpenCents !== null) && (
+          <KpiCard
+            icon={Receipt}
+            label="AR open"
+            value={sum ? fmtMoney(sum.arOpenCents ?? 0) : "—"}
+            hint={sum && (sum.overdueCount ?? 0) > 0 ? `${sum.overdueCount} overdue` : undefined}
+            tone={sum && (sum.overdueCount ?? 0) > 0 ? "danger" : undefined}
+          />
+        )}
         <KpiCard
           icon={CalendarCheck}
           label="Visits today"
           value={sum ? `${completed} / ${total}` : "—"}
           hint={total > 0 ? `${pct}% done` : "None scheduled"}
         />
+        {sum && sum.mtdRevenueCents === null && (
+          <KpiCard
+            icon={UserX}
+            label="Unassigned today"
+            value={String(sum.unassignedToday)}
+            hint={sum.unassignedToday > 0 ? "Needs assignment" : "All covered"}
+            tone={sum.unassignedToday > 0 ? "danger" : undefined}
+          />
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
