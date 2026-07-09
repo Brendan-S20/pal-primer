@@ -235,12 +235,26 @@ export async function issuePortalOtp(
   const hint = channel === "sms" ? maskPhone(dest) : maskEmail(dest);
   const ip = await callerIp();
   const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
+  const nowIso = new Date().toISOString();
+
+  // Expired, unused codes are not deliverable anymore. Remove them before
+  // applying the per-client limiter so old failed/unusable sends cannot keep a
+  // customer locked out for the rest of the hour.
+  await supabaseAdmin
+    .from("portal_otps")
+    .delete()
+    .eq("client_id", contact.client_id)
+    .is("consumed_at", null)
+    .lt("expires_at", nowIso)
+    .then(() => {}, () => {});
 
   // Rate limits.
   const { data: recent } = await supabaseAdmin
     .from("portal_otps")
     .select("created_at")
     .eq("client_id", contact.client_id)
+    .is("consumed_at", null)
+    .gte("expires_at", nowIso)
     .order("created_at", { ascending: false })
     .limit(OTP_MAX_PER_CLIENT_HOUR);
   const recentRows = recent ?? [];
@@ -262,7 +276,7 @@ export async function issuePortalOtp(
   }
 
   const code = genOtp();
-  const { data: otpRow } = await supabaseAdmin
+  const { data: otpRow, error: otpInsertError } = await supabaseAdmin
     .from("portal_otps")
     .insert({
       client_id: contact.client_id,
@@ -274,6 +288,7 @@ export async function issuePortalOtp(
     })
     .select("id")
     .single();
+  if (otpInsertError) throw new Error(otpInsertError.message);
   const otpRowId = (otpRow as { id?: string } | null)?.id ?? null;
   const rollbackOtp = async () => {
     if (!otpRowId) return;
