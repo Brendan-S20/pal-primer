@@ -92,6 +92,7 @@
     "react-resizable-panels": "^4.6.5",
     "recharts": "^2.15.4",
     "sonner": "^2.0.7",
+    "standardwebhooks": "^1.0.0",
     "stripe": "^22.3.0",
     "svix": "^1.96.1",
     "tailwind-merge": "^3.5.0",
