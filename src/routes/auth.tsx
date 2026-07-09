@@ -20,6 +20,31 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
+// If the user has no org membership yet (email-confirmation flow: bootstrap was
+// deferred from signup), create the org + owner role now using the metadata
+// captured at signup. Idempotent server-side via bootstrap_organization().
+async function ensureBootstrapped(user: { id: string; email?: string | null; user_metadata?: Record<string, any> | null }): Promise<void> {
+  const { data: existing } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (existing) return;
+
+  const md = user.user_metadata ?? {};
+  const emailLocal = (user.email ?? "").split("@")[0] || "Owner";
+  const displayName: string =
+    (typeof md.display_name === "string" && md.display_name.trim()) ||
+    (typeof md.full_name === "string" && md.full_name.trim()) ||
+    (typeof md.name === "string" && md.name.trim()) ||
+    emailLocal;
+  const orgName: string =
+    (typeof md.org_name === "string" && md.org_name.trim()) ||
+    `${displayName}'s Organization`;
+
+  await bootstrapOrganization({ data: { orgName, displayName } });
+}
+
 // Where a given role should land immediately after sign-in.
 async function landingPathForUser(userId: string): Promise<string> {
   // Platform admins always land in the platform console — never inside a tenant
@@ -50,12 +75,16 @@ function AuthPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // If already signed in, bounce to the right landing page for our role.
+    // If already signed in, ensure org bootstrap (deferred from signup) then land.
     supabase.auth.getUser().then(async ({ data }) => {
-      if (data.user) {
-        const to = await landingPathForUser(data.user.id);
-        navigate({ to });
+      if (!data.user) return;
+      try {
+        await ensureBootstrapped(data.user as any);
+      } catch (err) {
+        console.error("bootstrap on landing failed", err);
       }
+      const to = await landingPathForUser(data.user.id);
+      navigate({ to });
     });
   }, [navigate]);
 
@@ -64,8 +93,19 @@ function AuthPage() {
     setError(null);
     setLoading(true);
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setLoading(false);
+      return setError(error.message);
+    }
+    if (data.user) {
+      try {
+        await ensureBootstrapped(data.user as any);
+      } catch (err) {
+        setLoading(false);
+        return setError(err instanceof Error ? err.message : "Failed to create organization");
+      }
+    }
     setLoading(false);
-    if (error) return setError(error.message);
     const to = data.user ? await landingPathForUser(data.user.id) : "/dashboard";
     navigate({ to });
   };
@@ -78,13 +118,17 @@ function AuthPage() {
     const { error: signUpErr } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: window.location.origin },
+      options: {
+        emailRedirectTo: window.location.origin,
+        // Stash so we can bootstrap the org on first sign-in after email confirmation.
+        data: { org_name: orgName, display_name: displayName },
+      },
     });
     if (signUpErr) {
       setLoading(false);
       return setError(signUpErr.message);
     }
-    // If email confirmation is off, we have a session and can bootstrap.
+    // If email confirmation is off, we have a session and can bootstrap immediately.
     const { data: sess } = await supabase.auth.getSession();
     if (sess.session) {
       try {
@@ -127,8 +171,16 @@ function AuthPage() {
                   return setError(result.error.message ?? "Google sign-in failed");
                 }
                 if (result.redirected) return; // browser will redirect
-                // Popup flow completed with session → role-aware landing.
+                // Popup flow completed with session → bootstrap if needed, then role-aware landing.
                 const { data } = await supabase.auth.getUser();
+                if (data.user) {
+                  try {
+                    await ensureBootstrapped(data.user as any);
+                  } catch (err) {
+                    setLoading(false);
+                    return setError(err instanceof Error ? err.message : "Failed to create organization");
+                  }
+                }
                 const to = data.user ? await landingPathForUser(data.user.id) : "/dashboard";
                 navigate({ to });
               } catch (err) {
