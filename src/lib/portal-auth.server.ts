@@ -298,8 +298,9 @@ export async function issuePortalOtp(
         subject: `Your ${contact.org_name} verification code`,
         html: `<p>Your verification code is <strong style="font-size:20px;letter-spacing:2px">${code}</strong>.</p><p>It expires in ${OTP_TTL_MINUTES} minutes. If you didn't request this, ignore this email.</p>`,
         text: message,
-        purpose: "transactional",
+        purpose: "transactional" as const,
         label: "portal-otp",
+        idempotency_key: logMessageId,
       };
       try {
         const { sendLovableEmail } = await import("@lovable.dev/email-js");
