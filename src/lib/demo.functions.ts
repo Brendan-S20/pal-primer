@@ -19,9 +19,9 @@ export const reseedDemoData = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = data.organizationId ?? (await resolveOrgId(supabase, userId));
-    const { data: result, error } = await supabase.rpc("seed_demo_org", { _org_id: orgId });
+    const { data: result, error } = await (supabase.rpc as any)("seed_demo_org", { _org_id: orgId });
     if (error) throw new Error(error.message);
     const { error: assignError } = await supabase.rpc("assign_demo_visits_to_staff", { _org_id: orgId });
     if (assignError) throw new Error(assignError.message);
-    return result as { ok: boolean; clients: number; visits_created: number; invoices_created: number };
+    return result as unknown as { ok: boolean; clients: number; visits_created: number; invoices_created: number };
   });
