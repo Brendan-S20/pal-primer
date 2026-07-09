@@ -262,14 +262,23 @@ export async function issuePortalOtp(
   }
 
   const code = genOtp();
-  await supabaseAdmin.from("portal_otps").insert({
-    client_id: contact.client_id,
-    code_hash: sha256(code),
-    channel,
-    destination_hint: hint,
-    expires_at: new Date(Date.now() + OTP_TTL_MINUTES * 60_000).toISOString(),
-    request_ip: ip,
-  });
+  const { data: otpRow } = await supabaseAdmin
+    .from("portal_otps")
+    .insert({
+      client_id: contact.client_id,
+      code_hash: sha256(code),
+      channel,
+      destination_hint: hint,
+      expires_at: new Date(Date.now() + OTP_TTL_MINUTES * 60_000).toISOString(),
+      request_ip: ip,
+    })
+    .select("id")
+    .single();
+  const otpRowId = (otpRow as { id?: string } | null)?.id ?? null;
+  const rollbackOtp = async () => {
+    if (!otpRowId) return;
+    await supabaseAdmin.from("portal_otps").delete().eq("id", otpRowId).then(() => {}, () => {});
+  };
 
   const message = `${contact.org_name}: your verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`;
   try {
