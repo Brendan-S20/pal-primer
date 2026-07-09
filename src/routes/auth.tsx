@@ -75,12 +75,16 @@ function AuthPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // If already signed in, bounce to the right landing page for our role.
+    // If already signed in, ensure org bootstrap (deferred from signup) then land.
     supabase.auth.getUser().then(async ({ data }) => {
-      if (data.user) {
-        const to = await landingPathForUser(data.user.id);
-        navigate({ to });
+      if (!data.user) return;
+      try {
+        await ensureBootstrapped(data.user as any);
+      } catch (err) {
+        console.error("bootstrap on landing failed", err);
       }
+      const to = await landingPathForUser(data.user.id);
+      navigate({ to });
     });
   }, [navigate]);
 
@@ -89,8 +93,19 @@ function AuthPage() {
     setError(null);
     setLoading(true);
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setLoading(false);
+      return setError(error.message);
+    }
+    if (data.user) {
+      try {
+        await ensureBootstrapped(data.user as any);
+      } catch (err) {
+        setLoading(false);
+        return setError(err instanceof Error ? err.message : "Failed to create organization");
+      }
+    }
     setLoading(false);
-    if (error) return setError(error.message);
     const to = data.user ? await landingPathForUser(data.user.id) : "/dashboard";
     navigate({ to });
   };
@@ -103,13 +118,17 @@ function AuthPage() {
     const { error: signUpErr } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: window.location.origin },
+      options: {
+        emailRedirectTo: window.location.origin,
+        // Stash so we can bootstrap the org on first sign-in after email confirmation.
+        data: { org_name: orgName, display_name: displayName },
+      },
     });
     if (signUpErr) {
       setLoading(false);
       return setError(signUpErr.message);
     }
-    // If email confirmation is off, we have a session and can bootstrap.
+    // If email confirmation is off, we have a session and can bootstrap immediately.
     const { data: sess } = await supabase.auth.getSession();
     if (sess.session) {
       try {
