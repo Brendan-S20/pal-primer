@@ -1,6 +1,11 @@
 import * as React from 'react'
 import { render } from 'react-email'
-import { parseEmailWebhookPayload } from '@lovable.dev/email-js'
+// Inline parser (replaces parseEmailWebhookPayload from @lovable.dev/email-js).
+function parseEmailWebhookPayload(body: string) {
+  const parsed = JSON.parse(body)
+  if (!parsed || typeof parsed !== 'object') throw new Error('Invalid payload')
+  return parsed as any
+}
 import { WebhookError, verifyWebhookRequest } from '@lovable.dev/webhooks-js'
 import { createClient } from '@supabase/supabase-js'
 import { createFileRoute } from '@tanstack/react-router'
@@ -43,7 +48,7 @@ function redactEmail(email: string | null | undefined): string {
   return `${localPart[0]}***@${domain}`
 }
 
-export const Route = createFileRoute("/lovable/email/auth/webhook")({
+export const Route = createFileRoute("/email/auth/webhook")({
   server: {
     handlers: {
       POST: async ({ request }) => {

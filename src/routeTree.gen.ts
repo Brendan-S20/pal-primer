@@ -33,6 +33,7 @@ import { Route as PlatformAuditRouteImport } from './routes/platform.audit'
 import { Route as PlatformAnnouncementsRouteImport } from './routes/platform.announcements'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
+import { Route as EmailSuppressionRouteImport } from './routes/email/suppression'
 import { Route as AuthenticatedZonesRouteImport } from './routes/_authenticated/zones'
 import { Route as AuthenticatedWeatherRouteImport } from './routes/_authenticated/weather'
 import { Route as AuthenticatedWasteLogRouteImport } from './routes/_authenticated/waste-log'
@@ -61,7 +62,11 @@ import { Route as AuthenticatedImportsIndexRouteImport } from './routes/_authent
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
 import { Route as PortalSlugTokenRouteImport } from './routes/portal.$slug.$token'
 import { Route as PlatformTenantsIdRouteImport } from './routes/platform.tenants.$id'
-import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
+import { Route as EmailTransactionalSendRouteImport } from './routes/email/transactional/send'
+import { Route as EmailTransactionalPreviewRouteImport } from './routes/email/transactional/preview'
+import { Route as EmailQueueProcessRouteImport } from './routes/email/queue/process'
+import { Route as EmailAuthWebhookRouteImport } from './routes/email/auth/webhook'
+import { Route as EmailAuthPreviewRouteImport } from './routes/email/auth/preview'
 import { Route as ApiPublicSignupRequestsRouteImport } from './routes/api/public/signup-requests'
 import { Route as ApiPublicLeadsRouteImport } from './routes/api/public/leads'
 import { Route as AuthenticatedSettingsUsersRouteImport } from './routes/_authenticated/settings.users'
@@ -88,11 +93,6 @@ import { Route as PortalSlugTokenRequestsRouteImport } from './routes/portal.$sl
 import { Route as PortalSlugTokenPropertyRouteImport } from './routes/portal.$slug.$token.property'
 import { Route as PortalSlugTokenBillingRouteImport } from './routes/portal.$slug.$token.billing'
 import { Route as PortalSlugTokenAccountRouteImport } from './routes/portal.$slug.$token.account'
-import { Route as LovableEmailTransactionalSendRouteImport } from './routes/lovable/email/transactional/send'
-import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/lovable/email/transactional/preview'
-import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
-import { Route as LovableEmailAuthWebhookRouteImport } from './routes/lovable/email/auth/webhook'
-import { Route as LovableEmailAuthPreviewRouteImport } from './routes/lovable/email/auth/preview'
 import { Route as ApiPublicHooksXeroCallbackRouteImport } from './routes/api/public/hooks/xero-callback'
 import { Route as ApiPublicHooksWeeklyDigestRouteImport } from './routes/api/public/hooks/weekly-digest'
 import { Route as ApiPublicHooksTwilioVoiceRouteImport } from './routes/api/public/hooks/twilio-voice'
@@ -222,6 +222,11 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
 const EmailUnsubscribeRoute = EmailUnsubscribeRouteImport.update({
   id: '/email/unsubscribe',
   path: '/email/unsubscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EmailSuppressionRoute = EmailSuppressionRouteImport.update({
+  id: '/email/suppression',
+  path: '/email/suppression',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedZonesRoute = AuthenticatedZonesRouteImport.update({
@@ -369,9 +374,30 @@ const PlatformTenantsIdRoute = PlatformTenantsIdRouteImport.update({
   path: '/tenants/$id',
   getParentRoute: () => PlatformRoute,
 } as any)
-const LovableEmailSuppressionRoute = LovableEmailSuppressionRouteImport.update({
-  id: '/lovable/email/suppression',
-  path: '/lovable/email/suppression',
+const EmailTransactionalSendRoute = EmailTransactionalSendRouteImport.update({
+  id: '/email/transactional/send',
+  path: '/email/transactional/send',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EmailTransactionalPreviewRoute =
+  EmailTransactionalPreviewRouteImport.update({
+    id: '/email/transactional/preview',
+    path: '/email/transactional/preview',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const EmailQueueProcessRoute = EmailQueueProcessRouteImport.update({
+  id: '/email/queue/process',
+  path: '/email/queue/process',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EmailAuthWebhookRoute = EmailAuthWebhookRouteImport.update({
+  id: '/email/auth/webhook',
+  path: '/email/auth/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EmailAuthPreviewRoute = EmailAuthPreviewRouteImport.update({
+  id: '/email/auth/preview',
+  path: '/email/auth/preview',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicSignupRequestsRoute = ApiPublicSignupRequestsRouteImport.update({
@@ -521,34 +547,6 @@ const PortalSlugTokenAccountRoute = PortalSlugTokenAccountRouteImport.update({
   path: '/account',
   getParentRoute: () => PortalSlugTokenRoute,
 } as any)
-const LovableEmailTransactionalSendRoute =
-  LovableEmailTransactionalSendRouteImport.update({
-    id: '/lovable/email/transactional/send',
-    path: '/lovable/email/transactional/send',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const LovableEmailTransactionalPreviewRoute =
-  LovableEmailTransactionalPreviewRouteImport.update({
-    id: '/lovable/email/transactional/preview',
-    path: '/lovable/email/transactional/preview',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const LovableEmailQueueProcessRoute =
-  LovableEmailQueueProcessRouteImport.update({
-    id: '/lovable/email/queue/process',
-    path: '/lovable/email/queue/process',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const LovableEmailAuthWebhookRoute = LovableEmailAuthWebhookRouteImport.update({
-  id: '/lovable/email/auth/webhook',
-  path: '/lovable/email/auth/webhook',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LovableEmailAuthPreviewRoute = LovableEmailAuthPreviewRouteImport.update({
-  id: '/lovable/email/auth/preview',
-  path: '/lovable/email/auth/preview',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiPublicHooksXeroCallbackRoute =
   ApiPublicHooksXeroCallbackRouteImport.update({
     id: '/api/public/hooks/xero-callback',
@@ -639,6 +637,7 @@ export interface FileRoutesByFullPath {
   '/waste-log': typeof AuthenticatedWasteLogRoute
   '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
+  '/email/suppression': typeof EmailSuppressionRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
@@ -676,7 +675,11 @@ export interface FileRoutesByFullPath {
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/signup-requests': typeof ApiPublicSignupRequestsRoute
-  '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/email/auth/preview': typeof EmailAuthPreviewRoute
+  '/email/auth/webhook': typeof EmailAuthWebhookRoute
+  '/email/queue/process': typeof EmailQueueProcessRoute
+  '/email/transactional/preview': typeof EmailTransactionalPreviewRoute
+  '/email/transactional/send': typeof EmailTransactionalSendRoute
   '/platform/tenants/$id': typeof PlatformTenantsIdRoute
   '/portal/$slug/$token': typeof PortalSlugTokenRouteWithChildren
   '/clients/': typeof AuthenticatedClientsIndexRoute
@@ -696,11 +699,6 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
   '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
-  '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
-  '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
-  '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
-  '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
-  '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
   '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
@@ -730,6 +728,7 @@ export interface FileRoutesByTo {
   '/waste-log': typeof AuthenticatedWasteLogRoute
   '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
+  '/email/suppression': typeof EmailSuppressionRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
@@ -766,7 +765,11 @@ export interface FileRoutesByTo {
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/signup-requests': typeof ApiPublicSignupRequestsRoute
-  '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/email/auth/preview': typeof EmailAuthPreviewRoute
+  '/email/auth/webhook': typeof EmailAuthWebhookRoute
+  '/email/queue/process': typeof EmailQueueProcessRoute
+  '/email/transactional/preview': typeof EmailTransactionalPreviewRoute
+  '/email/transactional/send': typeof EmailTransactionalSendRoute
   '/platform/tenants/$id': typeof PlatformTenantsIdRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
   '/imports': typeof AuthenticatedImportsIndexRoute
@@ -785,11 +788,6 @@ export interface FileRoutesByTo {
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
   '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
-  '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
-  '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
-  '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
-  '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
-  '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
   '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
@@ -826,6 +824,7 @@ export interface FileRoutesById {
   '/_authenticated/waste-log': typeof AuthenticatedWasteLogRoute
   '/_authenticated/weather': typeof AuthenticatedWeatherRoute
   '/_authenticated/zones': typeof AuthenticatedZonesRoute
+  '/email/suppression': typeof EmailSuppressionRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
@@ -863,7 +862,11 @@ export interface FileRoutesById {
   '/_authenticated/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/signup-requests': typeof ApiPublicSignupRequestsRoute
-  '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
+  '/email/auth/preview': typeof EmailAuthPreviewRoute
+  '/email/auth/webhook': typeof EmailAuthWebhookRoute
+  '/email/queue/process': typeof EmailQueueProcessRoute
+  '/email/transactional/preview': typeof EmailTransactionalPreviewRoute
+  '/email/transactional/send': typeof EmailTransactionalSendRoute
   '/platform/tenants/$id': typeof PlatformTenantsIdRoute
   '/portal/$slug/$token': typeof PortalSlugTokenRouteWithChildren
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
@@ -883,11 +886,6 @@ export interface FileRoutesById {
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
   '/api/public/hooks/xero-callback': typeof ApiPublicHooksXeroCallbackRoute
-  '/lovable/email/auth/preview': typeof LovableEmailAuthPreviewRoute
-  '/lovable/email/auth/webhook': typeof LovableEmailAuthWebhookRoute
-  '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
-  '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
-  '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
   '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
@@ -924,6 +922,7 @@ export interface FileRouteTypes {
     | '/waste-log'
     | '/weather'
     | '/zones'
+    | '/email/suppression'
     | '/email/unsubscribe'
     | '/invite/$token'
     | '/platform/announcements'
@@ -961,7 +960,11 @@ export interface FileRouteTypes {
     | '/settings/users'
     | '/api/public/leads'
     | '/api/public/signup-requests'
-    | '/lovable/email/suppression'
+    | '/email/auth/preview'
+    | '/email/auth/webhook'
+    | '/email/queue/process'
+    | '/email/transactional/preview'
+    | '/email/transactional/send'
     | '/platform/tenants/$id'
     | '/portal/$slug/$token'
     | '/clients/'
@@ -981,11 +984,6 @@ export interface FileRouteTypes {
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/weekly-digest'
     | '/api/public/hooks/xero-callback'
-    | '/lovable/email/auth/preview'
-    | '/lovable/email/auth/webhook'
-    | '/lovable/email/queue/process'
-    | '/lovable/email/transactional/preview'
-    | '/lovable/email/transactional/send'
     | '/portal/$slug/$token/account'
     | '/portal/$slug/$token/billing'
     | '/portal/$slug/$token/property'
@@ -1015,6 +1013,7 @@ export interface FileRouteTypes {
     | '/waste-log'
     | '/weather'
     | '/zones'
+    | '/email/suppression'
     | '/email/unsubscribe'
     | '/invite/$token'
     | '/platform/announcements'
@@ -1051,7 +1050,11 @@ export interface FileRouteTypes {
     | '/settings/users'
     | '/api/public/leads'
     | '/api/public/signup-requests'
-    | '/lovable/email/suppression'
+    | '/email/auth/preview'
+    | '/email/auth/webhook'
+    | '/email/queue/process'
+    | '/email/transactional/preview'
+    | '/email/transactional/send'
     | '/platform/tenants/$id'
     | '/clients'
     | '/imports'
@@ -1070,11 +1073,6 @@ export interface FileRouteTypes {
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/weekly-digest'
     | '/api/public/hooks/xero-callback'
-    | '/lovable/email/auth/preview'
-    | '/lovable/email/auth/webhook'
-    | '/lovable/email/queue/process'
-    | '/lovable/email/transactional/preview'
-    | '/lovable/email/transactional/send'
     | '/portal/$slug/$token/account'
     | '/portal/$slug/$token/billing'
     | '/portal/$slug/$token/property'
@@ -1110,6 +1108,7 @@ export interface FileRouteTypes {
     | '/_authenticated/waste-log'
     | '/_authenticated/weather'
     | '/_authenticated/zones'
+    | '/email/suppression'
     | '/email/unsubscribe'
     | '/invite/$token'
     | '/platform/announcements'
@@ -1147,7 +1146,11 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/users'
     | '/api/public/leads'
     | '/api/public/signup-requests'
-    | '/lovable/email/suppression'
+    | '/email/auth/preview'
+    | '/email/auth/webhook'
+    | '/email/queue/process'
+    | '/email/transactional/preview'
+    | '/email/transactional/send'
     | '/platform/tenants/$id'
     | '/portal/$slug/$token'
     | '/_authenticated/clients/'
@@ -1167,11 +1170,6 @@ export interface FileRouteTypes {
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/weekly-digest'
     | '/api/public/hooks/xero-callback'
-    | '/lovable/email/auth/preview'
-    | '/lovable/email/auth/webhook'
-    | '/lovable/email/queue/process'
-    | '/lovable/email/transactional/preview'
-    | '/lovable/email/transactional/send'
     | '/portal/$slug/$token/account'
     | '/portal/$slug/$token/billing'
     | '/portal/$slug/$token/property'
@@ -1189,6 +1187,7 @@ export interface RootRouteChildren {
   PlatformRoute: typeof PlatformRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
+  EmailSuppressionRoute: typeof EmailSuppressionRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   InviteTokenRoute: typeof InviteTokenRoute
   PortalSlugRoute: typeof PortalSlugRouteWithChildren
@@ -1196,7 +1195,11 @@ export interface RootRouteChildren {
   SignupSuccessRoute: typeof SignupSuccessRoute
   ApiPublicLeadsRoute: typeof ApiPublicLeadsRoute
   ApiPublicSignupRequestsRoute: typeof ApiPublicSignupRequestsRoute
-  LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
+  EmailAuthPreviewRoute: typeof EmailAuthPreviewRoute
+  EmailAuthWebhookRoute: typeof EmailAuthWebhookRoute
+  EmailQueueProcessRoute: typeof EmailQueueProcessRoute
+  EmailTransactionalPreviewRoute: typeof EmailTransactionalPreviewRoute
+  EmailTransactionalSendRoute: typeof EmailTransactionalSendRoute
   ApiPublicHooksAnnouncementEmailsRoute: typeof ApiPublicHooksAnnouncementEmailsRoute
   ApiPublicHooksNightlyRoute: typeof ApiPublicHooksNightlyRoute
   ApiPublicHooksPlatformStripeRoute: typeof ApiPublicHooksPlatformStripeRoute
@@ -1206,11 +1209,6 @@ export interface RootRouteChildren {
   ApiPublicHooksTwilioVoiceRoute: typeof ApiPublicHooksTwilioVoiceRoute
   ApiPublicHooksWeeklyDigestRoute: typeof ApiPublicHooksWeeklyDigestRoute
   ApiPublicHooksXeroCallbackRoute: typeof ApiPublicHooksXeroCallbackRoute
-  LovableEmailAuthPreviewRoute: typeof LovableEmailAuthPreviewRoute
-  LovableEmailAuthWebhookRoute: typeof LovableEmailAuthWebhookRoute
-  LovableEmailQueueProcessRoute: typeof LovableEmailQueueProcessRoute
-  LovableEmailTransactionalPreviewRoute: typeof LovableEmailTransactionalPreviewRoute
-  LovableEmailTransactionalSendRoute: typeof LovableEmailTransactionalSendRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1381,6 +1379,13 @@ declare module '@tanstack/react-router' {
       path: '/email/unsubscribe'
       fullPath: '/email/unsubscribe'
       preLoaderRoute: typeof EmailUnsubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/email/suppression': {
+      id: '/email/suppression'
+      path: '/email/suppression'
+      fullPath: '/email/suppression'
+      preLoaderRoute: typeof EmailSuppressionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/zones': {
@@ -1579,11 +1584,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlatformTenantsIdRouteImport
       parentRoute: typeof PlatformRoute
     }
-    '/lovable/email/suppression': {
-      id: '/lovable/email/suppression'
-      path: '/lovable/email/suppression'
-      fullPath: '/lovable/email/suppression'
-      preLoaderRoute: typeof LovableEmailSuppressionRouteImport
+    '/email/transactional/send': {
+      id: '/email/transactional/send'
+      path: '/email/transactional/send'
+      fullPath: '/email/transactional/send'
+      preLoaderRoute: typeof EmailTransactionalSendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/email/transactional/preview': {
+      id: '/email/transactional/preview'
+      path: '/email/transactional/preview'
+      fullPath: '/email/transactional/preview'
+      preLoaderRoute: typeof EmailTransactionalPreviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/email/queue/process': {
+      id: '/email/queue/process'
+      path: '/email/queue/process'
+      fullPath: '/email/queue/process'
+      preLoaderRoute: typeof EmailQueueProcessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/email/auth/webhook': {
+      id: '/email/auth/webhook'
+      path: '/email/auth/webhook'
+      fullPath: '/email/auth/webhook'
+      preLoaderRoute: typeof EmailAuthWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/email/auth/preview': {
+      id: '/email/auth/preview'
+      path: '/email/auth/preview'
+      fullPath: '/email/auth/preview'
+      preLoaderRoute: typeof EmailAuthPreviewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/signup-requests': {
@@ -1767,41 +1800,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/portal/$slug/$token/account'
       preLoaderRoute: typeof PortalSlugTokenAccountRouteImport
       parentRoute: typeof PortalSlugTokenRoute
-    }
-    '/lovable/email/transactional/send': {
-      id: '/lovable/email/transactional/send'
-      path: '/lovable/email/transactional/send'
-      fullPath: '/lovable/email/transactional/send'
-      preLoaderRoute: typeof LovableEmailTransactionalSendRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/lovable/email/transactional/preview': {
-      id: '/lovable/email/transactional/preview'
-      path: '/lovable/email/transactional/preview'
-      fullPath: '/lovable/email/transactional/preview'
-      preLoaderRoute: typeof LovableEmailTransactionalPreviewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/lovable/email/queue/process': {
-      id: '/lovable/email/queue/process'
-      path: '/lovable/email/queue/process'
-      fullPath: '/lovable/email/queue/process'
-      preLoaderRoute: typeof LovableEmailQueueProcessRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/lovable/email/auth/webhook': {
-      id: '/lovable/email/auth/webhook'
-      path: '/lovable/email/auth/webhook'
-      fullPath: '/lovable/email/auth/webhook'
-      preLoaderRoute: typeof LovableEmailAuthWebhookRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/lovable/email/auth/preview': {
-      id: '/lovable/email/auth/preview'
-      path: '/lovable/email/auth/preview'
-      fullPath: '/lovable/email/auth/preview'
-      preLoaderRoute: typeof LovableEmailAuthPreviewRouteImport
-      parentRoute: typeof rootRouteImport
     }
     '/api/public/hooks/xero-callback': {
       id: '/api/public/hooks/xero-callback'
@@ -2106,6 +2104,7 @@ const rootRouteChildren: RootRouteChildren = {
   PlatformRoute: PlatformRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,
   UnsubscribeRoute: UnsubscribeRoute,
+  EmailSuppressionRoute: EmailSuppressionRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   InviteTokenRoute: InviteTokenRoute,
   PortalSlugRoute: PortalSlugRouteWithChildren,
@@ -2113,7 +2112,11 @@ const rootRouteChildren: RootRouteChildren = {
   SignupSuccessRoute: SignupSuccessRoute,
   ApiPublicLeadsRoute: ApiPublicLeadsRoute,
   ApiPublicSignupRequestsRoute: ApiPublicSignupRequestsRoute,
-  LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
+  EmailAuthPreviewRoute: EmailAuthPreviewRoute,
+  EmailAuthWebhookRoute: EmailAuthWebhookRoute,
+  EmailQueueProcessRoute: EmailQueueProcessRoute,
+  EmailTransactionalPreviewRoute: EmailTransactionalPreviewRoute,
+  EmailTransactionalSendRoute: EmailTransactionalSendRoute,
   ApiPublicHooksAnnouncementEmailsRoute: ApiPublicHooksAnnouncementEmailsRoute,
   ApiPublicHooksNightlyRoute: ApiPublicHooksNightlyRoute,
   ApiPublicHooksPlatformStripeRoute: ApiPublicHooksPlatformStripeRoute,
@@ -2123,22 +2126,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksTwilioVoiceRoute: ApiPublicHooksTwilioVoiceRoute,
   ApiPublicHooksWeeklyDigestRoute: ApiPublicHooksWeeklyDigestRoute,
   ApiPublicHooksXeroCallbackRoute: ApiPublicHooksXeroCallbackRoute,
-  LovableEmailAuthPreviewRoute: LovableEmailAuthPreviewRoute,
-  LovableEmailAuthWebhookRoute: LovableEmailAuthWebhookRoute,
-  LovableEmailQueueProcessRoute: LovableEmailQueueProcessRoute,
-  LovableEmailTransactionalPreviewRoute: LovableEmailTransactionalPreviewRoute,
-  LovableEmailTransactionalSendRoute: LovableEmailTransactionalSendRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
