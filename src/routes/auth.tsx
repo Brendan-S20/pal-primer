@@ -171,8 +171,16 @@ function AuthPage() {
                   return setError(result.error.message ?? "Google sign-in failed");
                 }
                 if (result.redirected) return; // browser will redirect
-                // Popup flow completed with session → role-aware landing.
+                // Popup flow completed with session → bootstrap if needed, then role-aware landing.
                 const { data } = await supabase.auth.getUser();
+                if (data.user) {
+                  try {
+                    await ensureBootstrapped(data.user as any);
+                  } catch (err) {
+                    setLoading(false);
+                    return setError(err instanceof Error ? err.message : "Failed to create organization");
+                  }
+                }
                 const to = data.user ? await landingPathForUser(data.user.id) : "/dashboard";
                 navigate({ to });
               } catch (err) {
