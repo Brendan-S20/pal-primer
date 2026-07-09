@@ -76,7 +76,7 @@ export const Route = createFileRoute("/email/suppression")({
       POST: async ({ request }) => {
         const signingSecret = process.env.RESEND_WEBHOOK_SECRET
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+        const supabaseServiceKey = process.env.SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
 
         if (!supabaseUrl || !supabaseServiceKey) {
           console.error('Missing Supabase environment variables')

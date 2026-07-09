@@ -151,7 +151,7 @@ export const Route = createFileRoute('/email/auth/webhook')({
         const html = await render(element)
         const text = await render(element, { plainText: true })
 
-        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+        const supabaseServiceKey = process.env.SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
         if (!supabaseUrl || !supabaseServiceKey) {
           console.error('Missing Supabase environment variables')
           return Response.json({ error: 'Server configuration error' }, { status: 500 })
