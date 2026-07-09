@@ -1,4 +1,3 @@
-import { sendLovableEmail } from '@lovable.dev/email-js'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { createFileRoute } from '@tanstack/react-router'
 
@@ -8,29 +7,107 @@ const DEFAULT_SEND_DELAY_MS = 200
 const DEFAULT_AUTH_TTL_MINUTES = 15
 const DEFAULT_TRANSACTIONAL_TTL_MINUTES = 60
 
-// Check if an error is a rate-limit (429) response.
-// Uses EmailAPIError.status when available (email-js >=0.x with structured errors),
-// falls back to parsing the error message for older versions.
+const RESEND_URL = 'https://api.resend.com/emails'
+
+interface SendResult {
+  ok: true
+  providerMessageId: string | null
+}
+
+class SendError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly retryAfterSeconds: number | null,
+    readonly body: string,
+  ) {
+    super(message)
+  }
+}
+
+async function sendViaResend(
+  apiKey: string,
+  payload: Record<string, any>,
+): Promise<SendResult> {
+  // Build List-Unsubscribe header from the unsubscribe token when present.
+  const headers: Record<string, string> = {}
+  if (payload.unsubscribe_token) {
+    const url = `https://app.houndstack.com/unsubscribe?token=${encodeURIComponent(payload.unsubscribe_token)}`
+    headers['List-Unsubscribe'] = `<${url}>`
+    headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click'
+  }
+
+  const body: Record<string, any> = {
+    from: payload.from,
+    to: Array.isArray(payload.to) ? payload.to : [payload.to],
+    subject: payload.subject,
+    html: payload.html,
+    text: payload.text,
+  }
+  if (Object.keys(headers).length) body.headers = headers
+  if (payload.idempotency_key) {
+    // Resend supports Idempotency-Key header for POST /emails
+  }
+
+  const fetchHeaders: Record<string, string> = {
+    Authorization: `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+  }
+  if (payload.idempotency_key) {
+    fetchHeaders['Idempotency-Key'] = String(payload.idempotency_key)
+  }
+
+  const res = await fetch(RESEND_URL, {
+    method: 'POST',
+    headers: fetchHeaders,
+    body: JSON.stringify(body),
+  })
+
+  const text = await res.text()
+
+  if (!res.ok) {
+    let retryAfterSeconds: number | null = null
+    const raHeader = res.headers.get('retry-after')
+    if (raHeader) {
+      const n = Number(raHeader)
+      retryAfterSeconds = Number.isFinite(n)
+        ? n
+        : Math.max(0, Math.round((new Date(raHeader).getTime() - Date.now()) / 1000))
+    }
+    throw new SendError(
+      `Resend ${res.status}: ${text.slice(0, 500)}`,
+      res.status,
+      retryAfterSeconds,
+      text,
+    )
+  }
+
+  let providerMessageId: string | null = null
+  try {
+    const parsed = JSON.parse(text)
+    providerMessageId = typeof parsed?.id === 'string' ? parsed.id : null
+  } catch {
+    // Non-JSON success? Treat as ok, log nothing to correlate.
+  }
+  return { ok: true, providerMessageId }
+}
+
 function isRateLimited(error: unknown): boolean {
-  if (error && typeof error === 'object' && 'status' in error) {
-    return (error as { status: number }).status === 429
-  }
-  return error instanceof Error && error.message.includes('429')
+  return error instanceof SendError && error.status === 429
 }
 
-// Check if an error is a forbidden (403) response. Retrying won't help.
-// Move straight to DLQ.
-function isForbidden(error: unknown): boolean {
-  if (error && typeof error === 'object' && 'status' in error) {
-    return (error as { status: number }).status === 403
-  }
-  return error instanceof Error && error.message.includes('403')
+// 4xx auth/permission errors — retrying won't help. Move to DLQ.
+// (Resend uses 401 for missing/invalid key, 403 for domain/permission issues,
+// 422 for validation errors that also won't succeed on retry.)
+function isPermanentClientError(error: unknown): boolean {
+  if (!(error instanceof SendError)) return false
+  const s = error.status
+  return s === 400 || s === 401 || s === 403 || s === 404 || s === 422
 }
 
-// Extract Retry-After seconds from a structured EmailAPIError, or default to 60s.
 function getRetryAfterSeconds(error: unknown): number {
-  if (error && typeof error === 'object' && 'retryAfterSeconds' in error) {
-    return (error as { retryAfterSeconds: number | null }).retryAfterSeconds ?? 60
+  if (error instanceof SendError && error.retryAfterSeconds != null) {
+    return error.retryAfterSeconds
   }
   return 60
 }
@@ -64,12 +141,12 @@ export const Route = createFileRoute("/email/queue/process")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const apiKey = process.env.LOVABLE_API_KEY
+        const resendApiKey = process.env.RESEND_API_KEY
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
         const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-        if (!apiKey || !supabaseUrl || !supabaseServiceKey) {
-          console.error('Missing required environment variables')
+        if (!resendApiKey || !supabaseUrl || !supabaseServiceKey) {
+          console.error('Missing required environment variables (RESEND_API_KEY, SUPABASE_*)')
           return Response.json(
             { error: 'Server configuration error' },
             { status: 500 }
@@ -77,7 +154,7 @@ export const Route = createFileRoute("/email/queue/process")({
         }
 
         // Verify the caller is authorized with the service role key.
-        // In the TanStack stack, the pg_cron job sends the service role key as a Bearer token.
+        // pg_cron sends the service role key as a Bearer token.
         const authHeader = request.headers.get('Authorization')
         if (!authHeader?.startsWith('Bearer ')) {
           return Response.json({ error: 'Unauthorized' }, { status: 401 })
@@ -170,8 +247,6 @@ export const Route = createFileRoute("/email/queue/process")({
                 : msg.read_ct ?? 0
 
             // Drop expired messages (TTL exceeded).
-            // Prefer payload.queued_at when present; fall back to PGMQ's enqueued_at
-            // which is always set by the queue.
             const queuedAt = payload.queued_at ?? msg.enqueued_at
             if (queuedAt) {
               const ageMs = Date.now() - new Date(queuedAt).getTime()
@@ -221,30 +296,15 @@ export const Route = createFileRoute("/email/queue/process")({
             }
 
             try {
-              await sendLovableEmail(
-                {
-                  run_id: payload.run_id,
-                  to: payload.to,
-                  from: payload.from,
-                  sender_domain: payload.sender_domain,
-                  subject: payload.subject,
-                  html: payload.html,
-                  text: payload.text,
-                  purpose: payload.purpose,
-                  label: payload.label,
-                  idempotency_key: payload.idempotency_key,
-                  unsubscribe_token: payload.unsubscribe_token,
-                  message_id: payload.message_id,
-                },
-                { apiKey, sendUrl: process.env.LOVABLE_SEND_URL }
-              )
+              const result = await sendViaResend(resendApiKey, payload)
 
-              // Log success
+              // Log success — store Resend's provider id for later bounce/complaint correlation.
               await supabase.from('email_send_log').insert({
                 message_id: payload.message_id,
                 template_name: payload.label || queue,
                 recipient_email: payload.to,
                 status: 'sent',
+                metadata: { provider: 'resend', provider_message_id: result.providerMessageId },
               })
 
               // Delete from queue
@@ -258,11 +318,13 @@ export const Route = createFileRoute("/email/queue/process")({
               totalProcessed++
             } catch (error) {
               const errorMsg = error instanceof Error ? error.message : String(error)
+              const status = error instanceof SendError ? error.status : undefined
               console.error('Email send failed', {
                 queue,
                 msg_id: msg.msg_id,
                 read_ct: msg.read_ct,
                 failed_attempts: failedAttempts,
+                status,
                 error: errorMsg,
               })
 
@@ -286,18 +348,21 @@ export const Route = createFileRoute("/email/queue/process")({
                   })
                   .eq('id', 1)
 
-                // Stop processing — remaining messages stay in queue (VT expires, retried next cycle)
                 return Response.json({ processed: totalProcessed, stopped: 'rate_limited' })
               }
 
-              // 403s are permanent configuration or authorization failures for this
-              // message, so move straight to DLQ and stop processing the rest of the batch.
-              if (isForbidden(error)) {
+              // 4xx auth/permission/validation — retrying won't help. Straight to DLQ.
+              if (isPermanentClientError(error)) {
                 await moveToDlq(supabase, queue, msg, errorMsg.slice(0, 1000))
-                return Response.json({ processed: totalProcessed, stopped: 'forbidden' })
+                // Keep processing the rest of the batch — a bad recipient shouldn't
+                // block sends to other recipients (unlike a 401/403 which will).
+                if (status === 401 || status === 403) {
+                  return Response.json({ processed: totalProcessed, stopped: 'auth_error' })
+                }
+                continue
               }
 
-              // Log non-429 failures to track real retry attempts.
+              // Log 5xx / transient failures — message stays invisible until VT expires.
               await supabase.from('email_send_log').insert({
                 message_id: payload.message_id,
                 template_name: payload.label || queue,
@@ -308,8 +373,6 @@ export const Route = createFileRoute("/email/queue/process")({
               if (payload?.message_id && typeof payload.message_id === 'string') {
                 failedAttemptsByMessageId.set(payload.message_id, failedAttempts + 1)
               }
-
-              // Non-429 errors: message stays invisible until VT expires, then retried
             }
 
             // Small delay between sends to smooth bursts
