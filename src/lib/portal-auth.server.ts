@@ -307,43 +307,49 @@ export async function issuePortalOtp(
       const { sendTwilioSms } = await import("@/lib/twilio.server");
       await sendTwilioSms({ from: org.sms_from_number, to: dest, body: message });
     } else {
-      // Send OTP email DIRECTLY (synchronous) via the provider, and LOG the
+      // Send OTP email DIRECTLY (synchronous) via Resend, and LOG the
       // provider's response to email_send_log so every send is provable
-      // (cross-reference the provider_message_id in the email dashboard). No
+      // (cross-reference the provider_message_id in the Resend dashboard). No
       // silent queue fallback — a failure is logged AND surfaced, never masked.
-      const apiKey = process.env.LOVABLE_API_KEY;
-      if (!apiKey) throw new Error("Email isn't configured for this company — ask us to read you the code.");
+      const resendApiKey = process.env.RESEND_API_KEY;
+      if (!resendApiKey) throw new Error("Email isn't configured for this company — ask us to read you the code.");
       const logMessageId = `portal-otp-${randomBytes(8).toString("hex")}`;
       const unsubscribeToken = randomBytes(32).toString("hex");
       await supabaseAdmin
         .from("email_unsubscribe_tokens")
         .insert({ email: dest.trim().toLowerCase(), token: unsubscribeToken });
-      const emailPayload = {
-        message_id: logMessageId,
-        to: dest,
+      const unsubUrl = `https://app.houndstack.com/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`;
+      const emailBody = {
         from: `${contact.org_name} <noreply@notify.houndstack.com>`,
-        sender_domain: "notify.houndstack.com",
+        to: [dest],
         subject: `Your ${contact.org_name} verification code`,
         html: `<p>Your verification code is <strong style="font-size:20px;letter-spacing:2px">${code}</strong>.</p><p>It expires in ${OTP_TTL_MINUTES} minutes. If you didn't request this, ignore this email.</p>`,
         text: message,
-        purpose: "transactional" as const,
-        label: "portal-otp",
-        idempotency_key: logMessageId,
-        unsubscribe_token: unsubscribeToken,
+        headers: {
+          "List-Unsubscribe": `<${unsubUrl}>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
       };
       try {
-        const { sendLovableEmail } = await import("@lovable.dev/email-js");
-        const res = await sendLovableEmail(emailPayload, {
-          apiKey,
-          sendUrl: process.env.LOVABLE_SEND_URL,
+        const res = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${resendApiKey}`,
+            "Content-Type": "application/json",
+            "Idempotency-Key": logMessageId,
+          },
+          body: JSON.stringify(emailBody),
         });
-        if (!res?.success) throw new Error(`provider rejected (status: ${res?.status ?? "unknown"})`);
+        const bodyText = await res.text();
+        if (!res.ok) throw new Error(`Resend ${res.status}: ${bodyText.slice(0, 300)}`);
+        let providerId: string | null = null;
+        try { providerId = JSON.parse(bodyText)?.id ?? null; } catch { /* noop */ }
         await supabaseAdmin.from("email_send_log").insert({
           message_id: logMessageId,
           template_name: "portal-otp",
           recipient_email: dest,
           status: "sent",
-          metadata: { provider_message_id: res.message_id ?? null, workflow_id: res.workflow_id ?? null },
+          metadata: { provider: "resend", provider_message_id: providerId },
         });
       } catch (sendErr) {
         const msg = (sendErr as Error).message ?? "send failed";
