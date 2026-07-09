@@ -52,10 +52,10 @@ export const Route = createFileRoute("/email/auth/webhook")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const apiKey = process.env.LOVABLE_API_KEY
+        const hookSecret = process.env.AUTH_HOOK_SECRET
 
-        if (!apiKey) {
-          console.error('LOVABLE_API_KEY not configured')
+        if (!hookSecret) {
+          console.error('AUTH_HOOK_SECRET not configured')
           return Response.json(
             { error: 'Server configuration error' },
             { status: 500 }
@@ -68,7 +68,7 @@ export const Route = createFileRoute("/email/auth/webhook")({
         try {
           const verified = await verifyWebhookRequest({
             req: request,
-            secret: apiKey,
+            secret: hookSecret,
             parser: parseEmailWebhookPayload,
           })
           payload = verified.payload
