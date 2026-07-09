@@ -1,6 +1,6 @@
 // Server-only helper used to render + enqueue a transactional (app) email
 // on behalf of the SYSTEM (webhooks, cron, RPC completion), rather than a
-// signed-in user. Bypasses /lovable/email/transactional/send auth by writing
+// signed-in user. Bypasses /email/transactional/send auth by writing
 // directly to the pgmq queue via supabaseAdmin. Do NOT import from route
 // files; import inside handlers with `await import(...)`.
 
