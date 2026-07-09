@@ -290,6 +290,10 @@ export async function issuePortalOtp(
       const apiKey = process.env.LOVABLE_API_KEY;
       if (!apiKey) throw new Error("Email isn't configured for this company — ask us to read you the code.");
       const logMessageId = `portal-otp-${randomBytes(8).toString("hex")}`;
+      const unsubscribeToken = randomBytes(32).toString("hex");
+      await supabaseAdmin
+        .from("email_unsubscribe_tokens")
+        .insert({ email: dest.trim().toLowerCase(), token: unsubscribeToken });
       const emailPayload = {
         message_id: logMessageId,
         to: dest,
@@ -301,6 +305,7 @@ export async function issuePortalOtp(
         purpose: "transactional" as const,
         label: "portal-otp",
         idempotency_key: logMessageId,
+        unsubscribe_token: unsubscribeToken,
       };
       try {
         const { sendLovableEmail } = await import("@lovable.dev/email-js");
