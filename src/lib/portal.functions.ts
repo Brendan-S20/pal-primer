@@ -1,13 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import {
-  requirePortalSession,
-  getPortalSession,
-  portalContactChannels,
-  issuePortalOtp,
-  verifyPortalOtp,
-  PortalVerificationRequired,
-} from "@/lib/portal-auth.server";
+
+// portal-auth.server.ts imports server-only @tanstack/react-start/server, which
+// is denied in the client bundle. This file (a *.functions.ts) is reachable
+// from client code, so portal-auth MUST be imported ONLY inside handler bodies
+// (which the TanStack compiler strips from the client build) — never at module
+// scope. Same reason we import client.server dynamically below.
+async function portalAuth() {
+  return import("@/lib/portal-auth.server");
+}
 
 // All portal_* RPCs are revoked from anon (finding #4) and run via
 // service_role after a session check. supabaseAdmin bypasses RLS; every
@@ -31,6 +32,7 @@ const tokenSchema = z.object({ token: z.string().uuid() });
 export const portalContext = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
+    const { portalContactChannels, getPortalSession } = await portalAuth();
     const contact = await portalContactChannels(data.token);
     if (!contact) return { verified: false as const, valid: false as const, channels: [] };
 
@@ -55,6 +57,7 @@ export const portalRequestOtp = createServerFn({ method: "POST" })
     z.object({ token: z.string().uuid(), channel: z.enum(["sms", "email"]) }).parse(d),
   )
   .handler(async ({ data }) => {
+    const { issuePortalOtp } = await portalAuth();
     return issuePortalOtp(data.token, data.channel);
   });
 
@@ -63,6 +66,7 @@ export const portalVerifyOtp = createServerFn({ method: "POST" })
     z.object({ token: z.string().uuid(), code: z.string().min(4).max(10) }).parse(d),
   )
   .handler(async ({ data }) => {
+    const { verifyPortalOtp } = await portalAuth();
     const ok = await verifyPortalOtp(data.token, data.code);
     return { verified: ok };
   });
@@ -72,6 +76,7 @@ export const portalVerifyOtp = createServerFn({ method: "POST" })
 export const portalGetClient = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_get_client", { _token: data.token });
@@ -84,6 +89,7 @@ export const portalGetClient = createServerFn({ method: "GET" })
 export const portalListUpcomingVisits = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_upcoming_visits", { _token: data.token });
@@ -94,6 +100,7 @@ export const portalListUpcomingVisits = createServerFn({ method: "GET" })
 export const portalListInvoices = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_invoices", { _token: data.token });
@@ -104,6 +111,7 @@ export const portalListInvoices = createServerFn({ method: "GET" })
 export const portalListPrepaidSubs = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_prepaid_subscriptions", { _token: data.token });
@@ -120,6 +128,7 @@ export const portalRequestSkip = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { error } = await sb.rpc("portal_request_skip", {
@@ -138,6 +147,7 @@ export const portalStartPrepaidTopup = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: id, error } = await sb.rpc("portal_start_prepaid_topup", {
@@ -156,6 +166,7 @@ export const portalCreateCheckout = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     const session = await requirePortalSession(data.token);
     const supabaseAdmin = await admin();
     const { data: invoice, error: iErr } = await supabaseAdmin
@@ -216,6 +227,7 @@ export const portalRescheduleVisit = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { error } = await sb.rpc("portal_reschedule_visit", {
@@ -234,6 +246,7 @@ export const portalChangeFrequency = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { error } = await sb.rpc("portal_change_frequency", {
@@ -246,6 +259,7 @@ export const portalChangeFrequency = createServerFn({ method: "POST" })
 export const portalListAddonCatalog = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_addon_catalog", { _token: data.token });
@@ -256,6 +270,7 @@ export const portalListAddonCatalog = createServerFn({ method: "GET" })
 export const portalListClientAddons = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_client_addons", { _token: data.token });
@@ -273,6 +288,7 @@ export const portalSubscribeAddon = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: id, error } = await sb.rpc("portal_subscribe_addon", {
@@ -293,6 +309,7 @@ export const portalCancelAddon = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { error } = await sb.rpc("portal_cancel_addon", {
@@ -315,6 +332,7 @@ async function loadStripe() {
 export const portalStartCardSetup = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ token: z.string().uuid(), returnUrl: z.string().url() }).parse(d))
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     const session = await requirePortalSession(data.token);
     const supabaseAdmin = await admin();
 
@@ -356,6 +374,7 @@ export const portalStartCardSetup = createServerFn({ method: "POST" })
 export const portalSetAutopay = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ token: z.string().uuid(), enabled: z.boolean() }).parse(d))
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { error } = await sb.rpc("portal_set_autopay", { _token: data.token, _enabled: data.enabled });
@@ -367,6 +386,7 @@ export const portalSetAutopay = createServerFn({ method: "POST" })
 export const portalRemoveCard = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ token: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     const session = await requirePortalSession(data.token);
     const supabaseAdmin = await admin();
     const { data: cRow } = await supabaseAdmin
@@ -390,6 +410,7 @@ export const portalRemoveCard = createServerFn({ method: "POST" })
 export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ token: z.string().uuid(), invoiceId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     const session = await requirePortalSession(data.token);
     const supabaseAdmin = await admin();
     const { data: c } = await supabaseAdmin
@@ -448,6 +469,7 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
 export const portalListRecentVisits = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_recent_visits", { _token: data.token });
@@ -460,6 +482,7 @@ export const portalListRecentVisits = createServerFn({ method: "GET" })
 export const portalListDogs = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_dogs", { _token: data.token });
@@ -480,6 +503,7 @@ export const portalReportConcern = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: id, error } = await sb.rpc("portal_report_concern", {
@@ -497,6 +521,7 @@ export const portalSignPhotoUrls = createServerFn({ method: "POST" })
     z.object({ token: z.string().uuid(), paths: z.array(z.string()).max(60) }).parse(d),
   )
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     const session = await requirePortalSession(data.token);
     if (data.paths.length === 0) return { urls: {} as Record<string, string> };
     const supabaseAdmin = await admin();
@@ -523,6 +548,7 @@ export const portalSignPhotoUrls = createServerFn({ method: "POST" })
 export const portalGetReferral = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_get_referral", { _token: data.token });
@@ -535,6 +561,7 @@ export const portalGetReferral = createServerFn({ method: "GET" })
 export const portalListStations = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_stations" as any, { _token: data.token });
@@ -549,6 +576,7 @@ export const portalListStations = createServerFn({ method: "GET" })
 export const portalListMyRequests = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_list_my_requests" as any, { _token: data.token });
@@ -571,6 +599,7 @@ export const portalRequestVacationHold = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: n, error } = await sb.rpc("portal_request_vacation_hold" as any, {
@@ -585,6 +614,7 @@ export const portalRedeemPromo = createServerFn({ method: "POST" })
     z.object({ token: z.string().uuid(), code: z.string().min(2).max(60) }).parse(d),
   )
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: amt, error } = await sb.rpc("portal_redeem_promo" as any, {
@@ -604,6 +634,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     }).parse(d),
   )
   .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
     const session = await requirePortalSession(data.token);
     const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY;
     const secret = process.env.STRIPE_SECRET_KEY;
@@ -700,5 +731,3 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
       businessName: client?.display_name as string,
     };
   });
-
-export { PortalVerificationRequired };

@@ -5,7 +5,14 @@
 //
 // Import inside server-function handlers only (uses service_role + cookies).
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { getCookie, setCookie, getRequestIP, getRequestHeader } from "@tanstack/react-start/server";
+
+// @tanstack/react-start/server is server-only and denied in the client bundle.
+// portal.functions.ts (which ships to the client) statically imports this
+// module, so we must not import that specifier at the top level — load the
+// request/response helpers lazily inside the functions that need them.
+async function reqres() {
+  return import("@tanstack/react-start/server");
+}
 
 const COOKIE_PREFIX = "hs_portal_";
 const SESSION_TTL_DAYS = 30;
@@ -41,8 +48,9 @@ function cookieName(token: string): string {
   return COOKIE_PREFIX + sha256(token).slice(0, 16);
 }
 
-function callerIp(): string | null {
+async function callerIp(): Promise<string | null> {
   try {
+    const { getRequestIP } = await reqres();
     return getRequestIP({ xForwardedFor: true }) ?? null;
   } catch {
     return null;
@@ -101,6 +109,7 @@ export async function portalContactChannels(token: string): Promise<PortalContac
  * orphans every old session.
  */
 export async function getPortalSession(token: string): Promise<{ clientId: string; organizationId: string } | null> {
+  const { getCookie } = await reqres();
   const raw = getCookie(cookieName(token));
   if (!raw) return null;
   const supabaseAdmin = await sbAdmin();
@@ -152,7 +161,7 @@ export async function issuePortalOtp(
   const dest = channel === "sms" ? contact.primary_phone : contact.primary_email;
   if (!dest) throw new Error(`No ${channel === "sms" ? "phone" : "email"} on file for this account`);
   const hint = channel === "sms" ? maskPhone(dest) : maskEmail(dest);
-  const ip = callerIp();
+  const ip = await callerIp();
   const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
 
   // Rate limits.
@@ -300,6 +309,7 @@ export async function verifyPortalOtp(token: string, code: string): Promise<bool
 
   await supabaseAdmin.from("portal_otps").update({ consumed_at: new Date().toISOString() }).eq("id", otp.id);
 
+  const { setCookie, getRequestHeader } = await reqres();
   const secret = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 86_400_000);
   await supabaseAdmin.from("portal_sessions").insert({
@@ -307,7 +317,7 @@ export async function verifyPortalOtp(token: string, code: string): Promise<bool
     organization_id: contact.organization_id,
     token_hash: sha256(secret),
     expires_at: expiresAt.toISOString(),
-    ip: callerIp(),
+    ip: await callerIp(),
     user_agent: (() => {
       try {
         return getRequestHeader("user-agent") ?? null;
@@ -317,11 +327,15 @@ export async function verifyPortalOtp(token: string, code: string): Promise<bool
     })(),
   });
 
+  // path MUST be "/" — the session is read by TanStack server functions served
+  // from /_serverFn/*, NOT under /portal. A path="/portal" cookie is never sent
+  // to those requests, so verification would appear to fail (session never
+  // seen) even though it succeeded. This was the finding-#4 verify incident.
   setCookie(cookieName(token), secret, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",
-    path: "/portal",
+    path: "/",
     maxAge: SESSION_TTL_DAYS * 86_400,
   });
   return true;
