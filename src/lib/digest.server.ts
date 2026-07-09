@@ -11,8 +11,8 @@ import { TEMPLATES } from "@/lib/email-templates/registry";
 
 const MODEL_ID = "google/gemini-3-flash-preview";
 const SITE_NAME = "HoundStack";
-const SENDER_DOMAIN = "notify.thenorth.consulting";
-const FROM_DOMAIN = "notify.thenorth.consulting";
+const SENDER_DOMAIN = "notify.houndstack.com";
+const FROM_DOMAIN = "notify.houndstack.com";
 
 const DAY = 86_400_000;
 
