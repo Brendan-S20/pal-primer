@@ -343,11 +343,6 @@ export async function issuePortalOtp(
         throw new Error("We couldn't email your code right now. Try SMS, or ask us to read it to you.");
       }
     }
-        }).then(() => {}, () => {});
-        console.error("portal OTP email send failed", msg);
-        throw new Error("We couldn't email your code right now. Try SMS, or ask us to read it to you.");
-      }
-    }
   } catch (e) {
     // Delivery failed — remove the pending OTP so it doesn't count against
     // the client's hourly rate limit and lock them out of retrying.
