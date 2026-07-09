@@ -125,22 +125,16 @@ export const Route = createFileRoute("/email/suppression")({
         const providerMessageId = event.data?.email_id ?? null
 
         // For non-suppression events (delivered, delivery_delayed, etc.), just
-        // log and ack. This keeps a full audit trail without mutating suppression.
+        // log to console and ack. email_send_log's status CHECK doesn't allow
+        // 'delivered'/'info' — keep the row-level audit trail focused on
+        // outbound sends and suppression events.
         const reason = mapEventToReason(event.type)
         if (!reason) {
-          if (recipient) {
-            const { error: insertError } = await supabase.from('email_send_log').insert({
-              message_id: providerMessageId, // provider id, not our internal one
-              template_name: 'resend-webhook',
-              recipient_email: recipient,
-              status: event.type === 'email.delivered' ? 'delivered' : 'info',
-              error_message: event.type,
-              metadata: { provider: 'resend', event: event.type, data: event.data },
-            })
-            if (insertError) {
-              console.warn('Failed to log non-suppression Resend event', { error: insertError, type: event.type })
-            }
-          }
+          console.log('Resend non-suppression event', {
+            type: event.type,
+            email_redacted: recipient ? recipient[0] + '***@' + recipient.split('@')[1] : null,
+            provider_message_id: providerMessageId,
+          })
           return Response.json({ success: true, handled: false, event: event.type })
         }
 
