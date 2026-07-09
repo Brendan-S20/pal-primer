@@ -104,8 +104,8 @@ export const Route = createFileRoute("/api/public/hooks/announcement-emails")({
               payload: {
                 message_id: messageId,
                 to: r.email,
-                from: `HoundStack <noreply@notify.thenorth.consulting>`,
-                sender_domain: "notify.thenorth.consulting",
+                from: `HoundStack <noreply@notify.houndstack.com>`,
+                sender_domain: "notify.houndstack.com",
                 subject,
                 html,
                 text,

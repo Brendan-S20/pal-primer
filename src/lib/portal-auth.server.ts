@@ -321,8 +321,8 @@ export async function issuePortalOtp(
       const emailPayload = {
         message_id: logMessageId,
         to: dest,
-        from: `${contact.org_name} <noreply@notify.thenorth.consulting>`,
-        sender_domain: "notify.thenorth.consulting",
+        from: `${contact.org_name} <noreply@notify.houndstack.com>`,
+        sender_domain: "notify.houndstack.com",
         subject: `Your ${contact.org_name} verification code`,
         html: `<p>Your verification code is <strong style="font-size:20px;letter-spacing:2px">${code}</strong>.</p><p>It expires in ${OTP_TTL_MINUTES} minutes. If you didn't request this, ignore this email.</p>`,
         text: message,
