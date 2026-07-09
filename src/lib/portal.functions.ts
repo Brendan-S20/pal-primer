@@ -34,7 +34,7 @@ export const portalContext = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const { portalContactChannels, getPortalSession } = await portalAuth();
     const contact = await portalContactChannels(data.token);
-    if (!contact) return { verified: false as const, valid: false as const, channels: [] };
+    if (!contact) return { verified: false as const, valid: false as const, channels: [], branding: null };
 
     const session = await getPortalSession(data.token);
     if (!session) {
@@ -42,14 +42,70 @@ export const portalContext = createServerFn({ method: "GET" })
         verified: false as const,
         valid: true as const,
         channels: contact.channels,
+        branding: contact.branding,
       };
     }
     const sb = await admin();
     const { data: rows, error } = await sb.rpc("portal_get_client", { _token: data.token });
     if (error) throw new Error(error.message);
     const client = rows?.[0];
-    if (!client) return { verified: false as const, valid: false as const, channels: [] };
-    return { verified: true as const, valid: true as const, client };
+    if (!client) return { verified: false as const, valid: false as const, channels: [], branding: null };
+    return { verified: true as const, valid: true as const, client, branding: contact.branding };
+  });
+
+// ── Generic company sign-in (/portal/{slug}) ────────────────────────────────
+
+/** Org branding for the generic sign-in page, by slug. */
+export const portalOrgBySlug = createServerFn({ method: "GET" })
+  .inputValidator((d) => z.object({ slug: z.string().min(1).max(120) }).parse(d))
+  .handler(async ({ data }) => {
+    const { orgBrandingBySlug } = await portalAuth();
+    const org = await orgBrandingBySlug(data.slug);
+    if (!org) return { found: false as const };
+    return { found: true as const, branding: org };
+  });
+
+/** Resolve a legacy bare token to its org slug so /portal/{uuid} can redirect. */
+export const portalResolveLegacy = createServerFn({ method: "GET" })
+  .inputValidator((d) => z.object({ token: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    const { slugForToken } = await portalAuth();
+    const slug = await slugForToken(data.token);
+    return { slug };
+  });
+
+/** Identify a client in ONE org by phone/email and send an OTP. */
+export const portalIdentify = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z.object({ slug: z.string().min(1).max(120), contact: z.string().min(3).max(200) }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { portalIdentify: identify } = await portalAuth();
+    return identify(data.slug, data.contact);
+  });
+
+/** Verify a generic-entry code: establishes a session, or returns a picker. */
+export const portalVerifyGenericOtp = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z
+      .object({
+        slug: z.string().min(1).max(120),
+        contact: z.string().min(3).max(200),
+        code: z.string().min(4).max(10),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { portalVerifyGeneric } = await portalAuth();
+    return portalVerifyGeneric(data.slug, data.contact, data.code);
+  });
+
+/** After a multi-match verify, mint the session for the chosen account. */
+export const portalChooseAccount = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    const { portalChooseClient } = await portalAuth();
+    return portalChooseClient(data.clientId);
   });
 
 export const portalRequestOtp = createServerFn({ method: "POST" })

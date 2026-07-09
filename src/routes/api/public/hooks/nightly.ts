@@ -146,12 +146,15 @@ async function sendOverdueReminders(
   const byId = new Map((clients ?? []).map((c: any) => [c.id, c]));
 
   const { sendTwilioSms } = await import("@/lib/twilio.server");
+  const { buildPortalLink, ensureOrgSlug } = await import("@/lib/portal-links.server");
+  const slug = await ensureOrgSlug(orgId).catch(() => null);
   let sent = 0;
   for (const inv of eligible) {
     const client = byId.get(inv.client_id) as any;
     if (!client || client.sms_opt_out || !client.primary_phone) continue;
     const dollars = ((inv.total_cents ?? 0) / 100).toFixed(2);
-    const body = `Hi ${client.display_name}, this is a friendly reminder that invoice for $${dollars} is past due. Pay: ${appUrl()}/portal/${client.portal_token}`;
+    const link = await buildPortalLink(orgId, client.portal_token, slug);
+    const body = `Hi ${client.display_name}, this is a friendly reminder that invoice for $${dollars} is past due. Pay: ${link}`;
     try {
       const res = await sendTwilioSms({ from, to: client.primary_phone, body });
       await supabaseAdmin.from("messages").insert({
@@ -210,11 +213,13 @@ async function sendOverdueEmails(
   const byId = new Map((clients ?? []).map((c: any) => [c.id, c]));
 
   const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+  const { buildPortalLink, ensureOrgSlug } = await import("@/lib/portal-links.server");
+  const slug = await ensureOrgSlug(orgId).catch(() => null);
   let sent = 0;
   for (const inv of eligible) {
     const client = byId.get(inv.client_id) as any;
     if (!client) continue;
-    const invoiceUrl = client.portal_token ? `${appUrl()}/portal/${client.portal_token}` : appUrl();
+    const invoiceUrl = (await buildPortalLink(orgId, client.portal_token, slug)) ?? appUrl();
     const daysPastDue = Math.floor(
       (Date.now() - new Date(inv.issued_at).getTime()) / 86400000,
     );

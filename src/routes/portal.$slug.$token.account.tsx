@@ -3,7 +3,7 @@ import { Gift, Bell } from "lucide-react";
 import { PushToggle } from "@/components/PushToggle";
 import { usePortalCtx, ReferralCard, EmptyBox } from "@/lib/portal-ui";
 
-export const Route = createFileRoute("/portal/$token/account")({
+export const Route = createFileRoute("/portal/$slug/$token/account")({
   component: PortalAccount,
 });
 

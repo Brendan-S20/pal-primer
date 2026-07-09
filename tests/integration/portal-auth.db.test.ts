@@ -130,6 +130,21 @@ describe.skipIf(!enabled)("DB backstop for portal auth (finding #4)", () => {
     const { data } = await admin.rpc("portal_get_client", { _token: stale });
     expect((data as any[]) ?? []).toHaveLength(0);
   });
+
+  // ── Phase 2: portal_slug column + uniqueness + slugify() ──────────────────
+  it("the slugify() SQL function produces URL-safe slugs", async () => {
+    const { data, error } = await admin.rpc("slugify", { _txt: "Acme Scoop Co. #2!" });
+    expect(error).toBeNull();
+    expect(data).toBe("acme-scoop-co-2");
+  });
+
+  it("the unique index rejects a duplicate portal_slug", async () => {
+    const slug = `dup-${runId}`;
+    const a = await admin.from("organizations").insert({ name: `A ${runId}`, portal_slug: slug });
+    expect(a.error).toBeNull();
+    const b = await admin.from("organizations").insert({ name: `B ${runId}`, portal_slug: slug });
+    expect(b.error).not.toBeNull(); // unique violation
+  });
 });
 
 function cryptoRandomUuid(): string {

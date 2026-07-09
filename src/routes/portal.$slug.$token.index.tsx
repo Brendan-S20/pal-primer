@@ -6,12 +6,12 @@ import {
   money,
 } from "@/lib/portal-ui";
 
-export const Route = createFileRoute("/portal/$token/")({
+export const Route = createFileRoute("/portal/$slug/$token/")({
   component: PortalHome,
 });
 
 function PortalHome() {
-  const { token, visitsQ, historyQ, invoicesQ, clientQ } = usePortalCtx();
+  const { token, slug, visitsQ, historyQ, invoicesQ, clientQ } = usePortalCtx();
   const c = clientQ.data as any;
   const nextVisit = (visitsQ.data ?? [])[0];
   const openInvoice = (invoicesQ.data ?? []).find((i) => i.status !== "paid" && i.status !== "void");
@@ -33,7 +33,7 @@ function PortalHome() {
               {nextVisit.tech_name && <span>with <strong>{nextVisit.tech_name}</strong></span>}
             </div>
             <div className="mt-3">
-              <Link to="/portal/$token/visits" params={{ token }}>
+              <Link to="/portal/$slug/$token/visits" params={{ slug, token }}>
                 <Button size="sm" variant="outline" className="gap-1">
                   Manage visits <ArrowRight className="h-3.5 w-3.5" />
                 </Button>
@@ -60,7 +60,7 @@ function PortalHome() {
                   {openInvoice.issued_at ? `Issued ${fmtDayShort(openInvoice.issued_at)}` : "Ready to pay"}
                 </div>
               </div>
-              <Link to="/portal/$token/billing" params={{ token }}>
+              <Link to="/portal/$slug/$token/billing" params={{ slug, token }}>
                 <Button size="sm">Pay now</Button>
               </Link>
             </div>
@@ -93,7 +93,7 @@ function PortalHome() {
           </ul>
         )}
         <div className="mt-3">
-          <Link to="/portal/$token/requests" params={{ token }}>
+          <Link to="/portal/$slug/$token/requests" params={{ slug, token }}>
             <Button size="sm" variant="outline" className="gap-1">
               View full history <ArrowRight className="h-3.5 w-3.5" />
             </Button>

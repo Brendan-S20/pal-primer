@@ -34,14 +34,49 @@ export const getMyOrg = createServerFn({ method: "GET" })
     if (roleErr) throw new Error(roleErr.message);
     if (!role) return { organization: null as null };
 
-    const { data: org, error: orgErr } = await supabase
+    const { data: org, error: orgErr } = await (supabase as any)
       .from("organizations")
-      .select("id, name, active_client_count, billing_tier, plan_status, current_period_end, stripe_customer_id, stripe_subscription_id")
+      .select("id, name, portal_slug, active_client_count, billing_tier, plan_status, current_period_end, stripe_customer_id, stripe_subscription_id")
       .eq("id", role.organization_id)
       .single();
     if (orgErr) throw new Error(orgErr.message);
 
     return { organization: { ...org, role: role.role as string } };
+  });
+
+const slugSchema = z.object({ slug: z.string().trim().min(3).max(63) });
+
+/** Owner/office-manager: set the org's portal slug (unique, URL-safe). */
+export const setPortalSlug = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => slugSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { slugify, isUuid } = await import("@/lib/portal-links.server");
+    const clean = slugify(data.slug);
+    if (clean.length < 3) throw new Error("Use at least 3 letters or numbers.");
+    if (isUuid(clean)) throw new Error("That format isn't allowed.");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const admin = supabaseAdmin as any;
+    const { data: taken } = await admin
+      .from("organizations")
+      .select("id")
+      .eq("portal_slug", clean)
+      .neq("id", orgId)
+      .maybeSingle();
+    if (taken) throw new Error("That address is already taken — try another.");
+    const { error } = await admin.from("organizations").update({ portal_slug: clean }).eq("id", orgId);
+    if (error) throw new Error(error.message);
+    return { slug: clean };
+  });
+
+/** Suggest an available slug from the org's current name (for the Settings UI). */
+export const suggestPortalSlug = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { ensureOrgSlug } = await import("@/lib/portal-links.server");
+    return { slug: await ensureOrgSlug(orgId) };
   });
 
 

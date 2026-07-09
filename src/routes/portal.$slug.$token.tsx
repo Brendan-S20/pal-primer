@@ -9,7 +9,7 @@ import {
   isHex, relativeFromToday,
 } from "@/lib/portal-ui";
 
-export const Route = createFileRoute("/portal/$token")({
+export const Route = createFileRoute("/portal/$slug/$token")({
   head: () => ({
     meta: [
       { title: "Your service portal" },
@@ -29,16 +29,16 @@ export const Route = createFileRoute("/portal/$token")({
 });
 
 function PortalLayout() {
-  const { token } = Route.useParams();
+  const { slug, token } = Route.useParams();
   return (
-    <PortalProvider token={token}>
+    <PortalProvider token={token} slug={slug}>
       <PortalShell />
     </PortalProvider>
   );
 }
 
 function PortalShell() {
-  const { token, clientQ, contextQ, verified } = usePortalCtx();
+  const { token, slug, clientQ, contextQ, verified } = usePortalCtx();
 
   // Auth gate (finding #4): resolve the session before anything else.
   if (contextQ.isLoading) {
@@ -90,7 +90,7 @@ function PortalShell() {
 
               <div className="mt-3 flex flex-wrap gap-2 text-sm">
                 {nextVisitDate ? (
-                  <Link to="/portal/$token/visits" params={{ token }}
+                  <Link to="/portal/$slug/$token/visits" params={{ slug, token }}
                     className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur hover:bg-white/25">
                     <CalendarDays className="h-3.5 w-3.5" />
                     <span>
@@ -105,12 +105,12 @@ function PortalShell() {
                   </div>
                 )}
                 {c.primary_frequency && (
-                  <Link to="/portal/$token/visits" params={{ token }}
+                  <Link to="/portal/$slug/$token/visits" params={{ slug, token }}
                     className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur hover:bg-white/25">
                     {planChip}
                   </Link>
                 )}
-                <Link to="/portal/$token/billing" params={{ token }}
+                <Link to="/portal/$slug/$token/billing" params={{ slug, token }}
                   className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur hover:bg-white/25">
                   <span className="opacity-80">{c.credit_balance_cents >= 0 ? "Balance" : "Amount due"}</span>
                   <span className="font-semibold">{money(Math.abs(c.credit_balance_cents))}</span>
@@ -150,21 +150,21 @@ function PortalShell() {
       </div>
 
       {/* Sticky bottom tab bar */}
-      <BottomTabs token={token} isCommercial={isCommercial} />
+      <BottomTabs token={token} slug={slug} isCommercial={isCommercial} />
     </div>
   );
 }
 
 const TABS = [
-  { to: "/portal/$token", label: "Home", icon: Home, end: true },
-  { to: "/portal/$token/visits", label: "Visits", icon: CalendarDays, end: false },
-  { to: "/portal/$token/billing", label: "Billing", icon: Receipt, end: false },
-  { to: "/portal/$token/property", label: "Property", icon: MapPinIcon, end: false },
-  { to: "/portal/$token/requests", label: "Requests", icon: MessageCircleWarning, end: false },
-  { to: "/portal/$token/account", label: "Account", icon: User, end: false },
+  { to: "/portal/$slug/$token", label: "Home", icon: Home, end: true },
+  { to: "/portal/$slug/$token/visits", label: "Visits", icon: CalendarDays, end: false },
+  { to: "/portal/$slug/$token/billing", label: "Billing", icon: Receipt, end: false },
+  { to: "/portal/$slug/$token/property", label: "Property", icon: MapPinIcon, end: false },
+  { to: "/portal/$slug/$token/requests", label: "Requests", icon: MessageCircleWarning, end: false },
+  { to: "/portal/$slug/$token/account", label: "Account", icon: User, end: false },
 ] as const;
 
-function BottomTabs({ token, isCommercial }: { token: string; isCommercial: boolean }) {
+function BottomTabs({ token, slug, isCommercial }: { token: string; slug: string; isCommercial: boolean }) {
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   return (
     <nav aria-label="Portal sections"
@@ -172,13 +172,13 @@ function BottomTabs({ token, isCommercial }: { token: string; isCommercial: bool
       <div className="mx-auto max-w-3xl">
         <ul className="grid grid-cols-6">
           {TABS.map((t) => {
-            const target = t.to.replace("$token", token);
+            const target = t.to.replace("$slug", slug).replace("$token", token);
             const active = t.end ? pathname === target : pathname === target || pathname.startsWith(target + "/");
             const Icon = t.icon;
             const label = t.label === "Property" && isCommercial ? "Property" : t.label;
             return (
               <li key={t.to}>
-                <Link to={t.to} params={{ token }}
+                <Link to={t.to} params={{ slug, token }}
                   className={`flex flex-col items-center gap-0.5 px-1 py-2 text-[10px] font-medium transition-colors ${
                     active ? "text-primary" : "text-muted-foreground hover:text-foreground"
                   }`}>

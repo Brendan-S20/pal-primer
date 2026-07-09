@@ -4,7 +4,7 @@ import {
   usePortalCtx, ServiceHistorySection, RequestsList, ReportGeneralConcern,
 } from "@/lib/portal-ui";
 
-export const Route = createFileRoute("/portal/$token/requests")({
+export const Route = createFileRoute("/portal/$slug/$token/requests")({
   component: PortalRequests,
 });
 

@@ -120,7 +120,7 @@ export const createClient = createServerFn({ method: "POST" })
     // Fire welcome email (best-effort; never block client creation)
     if (data.primaryEmail) {
       try {
-        const appUrl = process.env.APP_URL || "https://app.houndstack.com";
+        const { buildPortalLink } = await import("@/lib/portal-links.server");
         const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
         await enqueueAppEmail({
           organizationId: orgId,
@@ -129,7 +129,7 @@ export const createClient = createServerFn({ method: "POST" })
           notifyKey: "notify_email_welcome",
           idempotencyKey: `welcome-${row.id}`,
           templateData: {
-            portalUrl: row.portal_token ? `${appUrl}/portal/${row.portal_token}` : undefined,
+            portalUrl: await buildPortalLink(orgId, row.portal_token as string | null),
           },
         });
       } catch (e) {
@@ -478,7 +478,7 @@ export const onboardClient = createServerFn({ method: "POST" })
     // welcome email (best-effort)
     if (data.primaryEmail) {
       try {
-        const appUrl = process.env.APP_URL || "https://app.houndstack.com";
+        const { buildPortalLink } = await import("@/lib/portal-links.server");
         const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
         await enqueueAppEmail({
           organizationId: orgId,
@@ -487,7 +487,7 @@ export const onboardClient = createServerFn({ method: "POST" })
           notifyKey: "notify_email_welcome",
           idempotencyKey: `welcome-${clientId}`,
           templateData: {
-            portalUrl: cRow.portal_token ? `${appUrl}/portal/${cRow.portal_token}` : undefined,
+            portalUrl: await buildPortalLink(orgId, cRow.portal_token as string | null),
           },
         });
       } catch (e) {

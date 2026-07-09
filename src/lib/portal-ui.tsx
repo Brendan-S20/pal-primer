@@ -23,10 +23,15 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 
+import { useNavigate } from "@tanstack/react-router";
 import {
   portalContext,
   portalRequestOtp,
   portalVerifyOtp,
+  portalOrgBySlug,
+  portalIdentify,
+  portalVerifyGenericOtp,
+  portalChooseAccount,
   portalGetClient,
   portalListUpcomingVisits,
   portalListInvoices,
@@ -124,7 +129,7 @@ export function isHex(s: string | null | undefined): s is string {
 
 /* ─────────────────────── shared data hook ─────────────────────── */
 
-export function usePortal(token: string) {
+export function usePortal(token: string, slug?: string) {
   const qc = useQueryClient();
 
   const getClientFn = useServerFn(portalGetClient);
@@ -326,7 +331,7 @@ export function usePortal(token: string) {
   });
 
   return {
-    token, signPhotosFn,
+    token, slug: slug ?? "", signPhotosFn,
     contextQ, verified, requestOtpMut, verifyOtpMut,
     clientQ, visitsQ, invoicesQ, subsQ, catalogQ, clientAddonsQ,
     historyQ, dogsQ, referralQ, stationsQ, requestsQ,
@@ -337,124 +342,35 @@ export function usePortal(token: string) {
   };
 }
 
-/* ───────────────────────── verify screen ───────────────────────── */
+/* ───────────────── verify / sign-in (always company-branded) ───────────── */
 
-export function PortalVerifyGate() {
-  const { contextQ, requestOtpMut, verifyOtpMut } = usePortalCtx();
-  const [step, setStep] = useState<"choose" | "code">("choose");
-  const [channel, setChannel] = useState<"sms" | "email">("sms");
-  const [code, setCode] = useState("");
+type Branding = {
+  orgName: string;
+  orgSlug: string | null;
+  logoUrl: string | null;
+  brandColor: string | null;
+} | null;
 
-  const ctx = contextQ.data as any;
-  const channels: Array<{ channel: "sms" | "email"; hint: string }> = ctx?.channels ?? [];
-
-  useEffect(() => {
-    if (channels.length && !channels.some((c) => c.channel === channel)) {
-      setChannel(channels[0].channel);
-    }
-  }, [channels, channel]);
-
-  const sentHint = requestOtpMut.data?.hint;
-
+/** Branded wrapper used by BOTH the verify gate and the generic sign-in page,
+ *  so no unbranded portal page exists anywhere. */
+function PortalBrandedShell({ branding, children }: { branding: Branding; children: React.ReactNode }) {
+  const brand = branding && isHex(branding.brandColor) ? (branding.brandColor as string) : "#16a34a";
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-6">
-      <div className="rounded-2xl border bg-card p-6 shadow-sm">
-        <h1 className="text-xl font-semibold">Verify it's you</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          For your security, we'll send a one-time code to the contact on file before showing
-          your account.
-        </p>
-
-        {channels.length === 0 ? (
-          <div className="mt-5 space-y-3">
-            <p className="rounded-md bg-muted p-3 text-sm">
-              We don't have a phone or email on file to text or email you a code. Call or text us
-              and we can read you a code to enter here.
-            </p>
-            <Input
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              placeholder="123456"
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-              className="text-center text-lg tracking-[0.3em]"
-            />
-            <Button
-              className="w-full"
-              disabled={verifyOtpMut.isPending || code.length < 6}
-              onClick={() => verifyOtpMut.mutate(code)}
-            >
-              {verifyOtpMut.isPending ? "Verifying…" : "Verify"}
-            </Button>
-          </div>
-        ) : step === "choose" ? (
-          <div className="mt-5 space-y-3">
-            {channels.map((c) => (
-              <button
-                key={c.channel}
-                onClick={() => setChannel(c.channel)}
-                className={`flex w-full items-center justify-between rounded-lg border p-3 text-left text-sm ${
-                  channel === c.channel ? "border-primary ring-1 ring-primary" : ""
-                }`}
-              >
-                <span>{c.channel === "sms" ? "Text me a code" : "Email me a code"}</span>
-                <span className="text-muted-foreground">{c.hint}</span>
-              </button>
-            ))}
-            <Button
-              className="w-full"
-              disabled={requestOtpMut.isPending}
-              onClick={() =>
-                requestOtpMut.mutate(channel, { onSuccess: () => setStep("code") })
-              }
-            >
-              {requestOtpMut.isPending ? "Sending…" : "Send code"}
-            </Button>
-            <button
-              className="w-full text-center text-xs text-muted-foreground hover:underline"
-              onClick={() => setStep("code")}
-            >
-              Already have a code from us? Enter it
-            </button>
-          </div>
+      <div className="mb-5 flex flex-col items-center text-center">
+        {branding?.logoUrl ? (
+          <img src={branding.logoUrl} alt={branding.orgName}
+            className="h-14 w-14 rounded-xl object-contain" style={{ background: `${brand}14` }} />
         ) : (
-          <div className="mt-5 space-y-3">
-            <p className="text-sm text-muted-foreground">
-              {sentHint
-                ? `We sent a 6-digit code to ${sentHint}. Enter it below.`
-                : "Enter the 6-digit code we gave you."}
-            </p>
-            <Input
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              placeholder="123456"
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-              className="text-center text-lg tracking-[0.3em]"
-            />
-            <Button
-              className="w-full"
-              disabled={verifyOtpMut.isPending || code.length < 6}
-              onClick={() => verifyOtpMut.mutate(code)}
-            >
-              {verifyOtpMut.isPending ? "Verifying…" : "Verify"}
-            </Button>
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <button className="hover:underline" onClick={() => setStep("choose")}>
-                ← Use a different method
-              </button>
-              <button
-                className="hover:underline disabled:opacity-50"
-                disabled={requestOtpMut.isPending}
-                onClick={() => requestOtpMut.mutate(channel)}
-              >
-                Resend code
-              </button>
-            </div>
+          <div className="flex h-14 w-14 items-center justify-center rounded-xl text-xl font-bold text-white"
+            style={{ background: brand }}>
+            {(branding?.orgName ?? "•").slice(0, 1).toUpperCase()}
           </div>
         )}
+        <div className="mt-2 text-lg font-semibold">{branding?.orgName ?? "Client portal"}</div>
+      </div>
+      <div className="rounded-2xl border bg-card p-6 shadow-sm" style={{ borderTopColor: brand, borderTopWidth: 3 }}>
+        {children}
       </div>
       <p className="mt-4 text-center text-xs text-muted-foreground">
         Trouble getting the code? Call or text us and we can read it to you.
@@ -463,13 +379,250 @@ export function PortalVerifyGate() {
   );
 }
 
+/** The 6-digit code input + verify/resend/back controls, shared by both flows. */
+function CodeEntry({
+  sentHint, pending, onVerify, onResend, onBack, resending,
+}: {
+  sentHint?: string | null;
+  pending: boolean;
+  onVerify: (code: string) => void;
+  onResend?: () => void;
+  onBack?: () => void;
+  resending?: boolean;
+}) {
+  const [code, setCode] = useState("");
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">
+        {sentHint ? `We sent a 6-digit code to ${sentHint}. Enter it below.` : "Enter the 6-digit code we gave you."}
+      </p>
+      <Input
+        inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="123456"
+        value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+        className="text-center text-lg tracking-[0.3em]"
+      />
+      <Button className="w-full" disabled={pending || code.length < 6} onClick={() => onVerify(code)}>
+        {pending ? "Verifying…" : "Verify"}
+      </Button>
+      <div className="flex justify-between text-xs text-muted-foreground">
+        {onBack ? (
+          <button className="hover:underline" onClick={onBack}>← Back</button>
+        ) : <span />}
+        {onResend ? (
+          <button className="hover:underline disabled:opacity-50" disabled={resending} onClick={onResend}>
+            Resend code
+          </button>
+        ) : <span />}
+      </div>
+    </div>
+  );
+}
+
+/** Channel picker ("text me" / "email me") + the "already have a code" path. */
+function ChannelChooser({
+  channels, channel, setChannel, onSend, sending, onHaveCode,
+}: {
+  channels: Array<{ channel: "sms" | "email"; hint: string }>;
+  channel: "sms" | "email";
+  setChannel: (c: "sms" | "email") => void;
+  onSend: () => void;
+  sending: boolean;
+  onHaveCode: () => void;
+}) {
+  return (
+    <div className="space-y-3">
+      {channels.map((c) => (
+        <button key={c.channel} onClick={() => setChannel(c.channel)}
+          className={`flex w-full items-center justify-between rounded-lg border p-3 text-left text-sm ${
+            channel === c.channel ? "border-primary ring-1 ring-primary" : ""
+          }`}>
+          <span>{c.channel === "sms" ? "Text me a code" : "Email me a code"}</span>
+          <span className="text-muted-foreground">{c.hint}</span>
+        </button>
+      ))}
+      <Button className="w-full" disabled={sending} onClick={onSend}>
+        {sending ? "Sending…" : "Send code"}
+      </Button>
+      <button className="w-full text-center text-xs text-muted-foreground hover:underline" onClick={onHaveCode}>
+        Already have a code from us? Enter it
+      </button>
+    </div>
+  );
+}
+
+/** Deep-link verify gate: client is pre-identified by the token. Branded. */
+export function PortalVerifyGate() {
+  const { contextQ, requestOtpMut, verifyOtpMut } = usePortalCtx();
+  const [step, setStep] = useState<"choose" | "code">("choose");
+  const [channel, setChannel] = useState<"sms" | "email">("sms");
+
+  const ctx = contextQ.data as any;
+  const branding: Branding = ctx?.branding ?? null;
+  const channels: Array<{ channel: "sms" | "email"; hint: string }> = ctx?.channels ?? [];
+
+  useEffect(() => {
+    if (channels.length && !channels.some((c) => c.channel === channel)) setChannel(channels[0].channel);
+  }, [channels, channel]);
+
+  return (
+    <PortalBrandedShell branding={branding}>
+      <h1 className="text-xl font-semibold">Verify it's you</h1>
+      <p className="mt-2 text-sm text-muted-foreground">
+        For your security, we'll send a one-time code to the contact on file before showing your account.
+      </p>
+      <div className="mt-5">
+        {channels.length === 0 ? (
+          <div className="space-y-3">
+            <p className="rounded-md bg-muted p-3 text-sm">
+              We don't have a phone or email on file to text or email you a code. Call or text us and
+              we can read you a code to enter here.
+            </p>
+            <CodeEntry pending={verifyOtpMut.isPending} onVerify={(c) => verifyOtpMut.mutate(c)} />
+          </div>
+        ) : step === "choose" ? (
+          <ChannelChooser
+            channels={channels} channel={channel} setChannel={setChannel}
+            sending={requestOtpMut.isPending}
+            onSend={() => requestOtpMut.mutate(channel, { onSuccess: () => setStep("code") })}
+            onHaveCode={() => setStep("code")}
+          />
+        ) : (
+          <CodeEntry
+            sentHint={requestOtpMut.data?.hint}
+            pending={verifyOtpMut.isPending}
+            resending={requestOtpMut.isPending}
+            onVerify={(c) => verifyOtpMut.mutate(c)}
+            onResend={() => requestOtpMut.mutate(channel)}
+            onBack={() => setStep("choose")}
+          />
+        )}
+      </div>
+    </PortalBrandedShell>
+  );
+}
+
+/** Generic company sign-in (/portal/{slug}): identify → OTP → (picker) → portal. */
+export function PortalGenericEntry({ slug }: { slug: string }) {
+  const navigate = useNavigate();
+  const orgFn = useServerFn(portalOrgBySlug);
+  const identifyFn = useServerFn(portalIdentify);
+  const verifyFn = useServerFn(portalVerifyGenericOtp);
+  const chooseFn = useServerFn(portalChooseAccount);
+
+  const [contact, setContact] = useState("");
+  const [step, setStep] = useState<"identify" | "code" | "pick">("identify");
+  const [candidates, setCandidates] = useState<Array<{ id: string; label: string }>>([]);
+
+  const orgQ = useQuery({
+    queryKey: ["portal-org", slug],
+    queryFn: () => orgFn({ data: { slug } }),
+    retry: false,
+  });
+  const org = orgQ.data as any;
+  const branding: Branding = org?.found ? org.branding : null;
+
+  const goToPortal = (s: string, token: string) =>
+    navigate({ to: "/portal/$slug/$token", params: { slug: s || slug, token } });
+
+  const identifyMut = useMutation({
+    mutationFn: () => identifyFn({ data: { slug, contact } }),
+    onSuccess: () => setStep("code"),
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const verifyMut = useMutation({
+    mutationFn: (code: string) => verifyFn({ data: { slug, contact, code } }),
+    onSuccess: (r: any) => {
+      if (r.status === "verified") goToPortal(r.slug, r.token);
+      else { setCandidates(r.candidates); setStep("pick"); }
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const chooseMut = useMutation({
+    mutationFn: (clientId: string) => chooseFn({ data: { clientId } }),
+    onSuccess: (r: any) => goToPortal(r.slug, r.token),
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  if (orgQ.isLoading) {
+    return <div className="mx-auto max-w-md p-8 text-center text-sm text-muted-foreground">Loading…</div>;
+  }
+  if (!org?.found) {
+    return (
+      <PortalBrandedShell branding={null}>
+        <h1 className="text-xl font-semibold">Company not found</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          This sign-in link doesn't match a company. Double-check the address, or contact your
+          service provider.
+        </p>
+      </PortalBrandedShell>
+    );
+  }
+
+  return (
+    <PortalBrandedShell branding={branding}>
+      {step === "identify" && (
+        <>
+          <h1 className="text-xl font-semibold">Sign in to your portal</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Enter the phone number or email on your account and we'll send you a one-time code.
+          </p>
+          <form className="mt-5 space-y-3" onSubmit={(e) => { e.preventDefault(); if (contact.trim()) identifyMut.mutate(); }}>
+            <Input
+              type="text" inputMode="email" autoComplete="email" placeholder="you@example.com or (555) 123-4567"
+              value={contact} onChange={(e) => setContact(e.target.value)}
+            />
+            <Button type="submit" className="w-full" disabled={identifyMut.isPending || !contact.trim()}>
+              {identifyMut.isPending ? "Sending…" : "Send code"}
+            </Button>
+          </form>
+        </>
+      )}
+
+      {step === "code" && (
+        <>
+          <h1 className="text-xl font-semibold">Verify it's you</h1>
+          <div className="mt-5">
+            <CodeEntry
+              sentHint={(identifyMut.data as any)?.hint}
+              pending={verifyMut.isPending}
+              resending={identifyMut.isPending}
+              onVerify={(c) => verifyMut.mutate(c)}
+              onResend={() => identifyMut.mutate()}
+              onBack={() => setStep("identify")}
+            />
+          </div>
+        </>
+      )}
+
+      {step === "pick" && (
+        <>
+          <h1 className="text-xl font-semibold">Choose your account</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            More than one account uses that contact. Pick which one to open.
+          </p>
+          <div className="mt-5 space-y-2">
+            {candidates.map((c) => (
+              <button key={c.id} disabled={chooseMut.isPending}
+                onClick={() => chooseMut.mutate(c.id)}
+                className="flex w-full items-center justify-between rounded-lg border p-3 text-left text-sm hover:border-primary disabled:opacity-50">
+                <span>{c.label}</span>
+                <span className="text-muted-foreground">Open →</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </PortalBrandedShell>
+  );
+}
+
 /* ───────────────────────── context ───────────────────────── */
 
 type PortalCtx = ReturnType<typeof usePortal>;
 const PortalContext = createContext<PortalCtx | null>(null);
 
-export function PortalProvider({ token, children }: { token: string; children: React.ReactNode }) {
-  const portal = usePortal(token);
+export function PortalProvider({ token, slug, children }: { token: string; slug?: string; children: React.ReactNode }) {
+  const portal = usePortal(token, slug);
   return <PortalContext.Provider value={portal}>{children}</PortalContext.Provider>;
 }
 

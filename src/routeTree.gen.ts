@@ -19,7 +19,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as PlatformIndexRouteImport } from './routes/platform.index'
 import { Route as SignupSuccessRouteImport } from './routes/signup.success'
 import { Route as SignupSlugRouteImport } from './routes/signup.$slug'
-import { Route as PortalTokenRouteImport } from './routes/portal.$token'
+import { Route as PortalSlugRouteImport } from './routes/portal.$slug'
 import { Route as PlatformUsersRouteImport } from './routes/platform.users'
 import { Route as PlatformSignupRequestsRouteImport } from './routes/platform.signup-requests'
 import { Route as PlatformRevenueRouteImport } from './routes/platform.revenue'
@@ -52,18 +52,14 @@ import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedAiToolsRouteImport } from './routes/_authenticated/ai-tools'
-import { Route as PortalTokenIndexRouteImport } from './routes/portal.$token.index'
+import { Route as PortalSlugIndexRouteImport } from './routes/portal.$slug.index'
 import { Route as PlatformTenantsIndexRouteImport } from './routes/platform.tenants.index'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings.index'
 import { Route as AuthenticatedMessagesIndexRouteImport } from './routes/_authenticated/messages.index'
 import { Route as AuthenticatedInvoicesIndexRouteImport } from './routes/_authenticated/invoices.index'
 import { Route as AuthenticatedImportsIndexRouteImport } from './routes/_authenticated/imports.index'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
-import { Route as PortalTokenVisitsRouteImport } from './routes/portal.$token.visits'
-import { Route as PortalTokenRequestsRouteImport } from './routes/portal.$token.requests'
-import { Route as PortalTokenPropertyRouteImport } from './routes/portal.$token.property'
-import { Route as PortalTokenBillingRouteImport } from './routes/portal.$token.billing'
-import { Route as PortalTokenAccountRouteImport } from './routes/portal.$token.account'
+import { Route as PortalSlugTokenRouteImport } from './routes/portal.$slug.$token'
 import { Route as PlatformTenantsIdRouteImport } from './routes/platform.tenants.$id'
 import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
 import { Route as ApiPublicSignupRequestsRouteImport } from './routes/api/public/signup-requests'
@@ -86,7 +82,12 @@ import { Route as AuthenticatedInvoicesInvoiceIdRouteImport } from './routes/_au
 import { Route as AuthenticatedImportsBatchIdRouteImport } from './routes/_authenticated/imports.$batchId'
 import { Route as AuthenticatedClientsNewRouteImport } from './routes/_authenticated/clients.new'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
-import { Route as PortalTokenPayInvoiceIdRouteImport } from './routes/portal.$token.pay.$invoiceId'
+import { Route as PortalSlugTokenIndexRouteImport } from './routes/portal.$slug.$token.index'
+import { Route as PortalSlugTokenVisitsRouteImport } from './routes/portal.$slug.$token.visits'
+import { Route as PortalSlugTokenRequestsRouteImport } from './routes/portal.$slug.$token.requests'
+import { Route as PortalSlugTokenPropertyRouteImport } from './routes/portal.$slug.$token.property'
+import { Route as PortalSlugTokenBillingRouteImport } from './routes/portal.$slug.$token.billing'
+import { Route as PortalSlugTokenAccountRouteImport } from './routes/portal.$slug.$token.account'
 import { Route as LovableEmailTransactionalSendRouteImport } from './routes/lovable/email/transactional/send'
 import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/lovable/email/transactional/preview'
 import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
@@ -102,6 +103,7 @@ import { Route as ApiPublicHooksPlatformStripeRouteImport } from './routes/api/p
 import { Route as ApiPublicHooksNightlyRouteImport } from './routes/api/public/hooks/nightly'
 import { Route as ApiPublicHooksAnnouncementEmailsRouteImport } from './routes/api/public/hooks/announcement-emails'
 import { Route as AuthenticatedPropertiesPropertyIdBoundaryRouteImport } from './routes/_authenticated/properties.$propertyId.boundary'
+import { Route as PortalSlugTokenPayInvoiceIdRouteImport } from './routes/portal.$slug.$token.pay.$invoiceId'
 
 const UnsubscribeRoute = UnsubscribeRouteImport.update({
   id: '/unsubscribe',
@@ -152,9 +154,9 @@ const SignupSlugRoute = SignupSlugRouteImport.update({
   path: '/signup/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PortalTokenRoute = PortalTokenRouteImport.update({
-  id: '/portal/$token',
-  path: '/portal/$token',
+const PortalSlugRoute = PortalSlugRouteImport.update({
+  id: '/portal/$slug',
+  path: '/portal/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PlatformUsersRoute = PlatformUsersRouteImport.update({
@@ -317,10 +319,10 @@ const AuthenticatedAiToolsRoute = AuthenticatedAiToolsRouteImport.update({
   path: '/ai-tools',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const PortalTokenIndexRoute = PortalTokenIndexRouteImport.update({
+const PortalSlugIndexRoute = PortalSlugIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => PortalTokenRoute,
+  getParentRoute: () => PortalSlugRoute,
 } as any)
 const PlatformTenantsIndexRoute = PlatformTenantsIndexRouteImport.update({
   id: '/tenants/',
@@ -357,30 +359,10 @@ const AuthenticatedClientsIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedClientsRoute,
   } as any)
-const PortalTokenVisitsRoute = PortalTokenVisitsRouteImport.update({
-  id: '/visits',
-  path: '/visits',
-  getParentRoute: () => PortalTokenRoute,
-} as any)
-const PortalTokenRequestsRoute = PortalTokenRequestsRouteImport.update({
-  id: '/requests',
-  path: '/requests',
-  getParentRoute: () => PortalTokenRoute,
-} as any)
-const PortalTokenPropertyRoute = PortalTokenPropertyRouteImport.update({
-  id: '/property',
-  path: '/property',
-  getParentRoute: () => PortalTokenRoute,
-} as any)
-const PortalTokenBillingRoute = PortalTokenBillingRouteImport.update({
-  id: '/billing',
-  path: '/billing',
-  getParentRoute: () => PortalTokenRoute,
-} as any)
-const PortalTokenAccountRoute = PortalTokenAccountRouteImport.update({
-  id: '/account',
-  path: '/account',
-  getParentRoute: () => PortalTokenRoute,
+const PortalSlugTokenRoute = PortalSlugTokenRouteImport.update({
+  id: '/$token',
+  path: '/$token',
+  getParentRoute: () => PortalSlugRoute,
 } as any)
 const PlatformTenantsIdRoute = PlatformTenantsIdRouteImport.update({
   id: '/tenants/$id',
@@ -509,10 +491,35 @@ const AuthenticatedClientsClientIdRoute =
     path: '/$clientId',
     getParentRoute: () => AuthenticatedClientsRoute,
   } as any)
-const PortalTokenPayInvoiceIdRoute = PortalTokenPayInvoiceIdRouteImport.update({
-  id: '/pay/$invoiceId',
-  path: '/pay/$invoiceId',
-  getParentRoute: () => PortalTokenRoute,
+const PortalSlugTokenIndexRoute = PortalSlugTokenIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PortalSlugTokenRoute,
+} as any)
+const PortalSlugTokenVisitsRoute = PortalSlugTokenVisitsRouteImport.update({
+  id: '/visits',
+  path: '/visits',
+  getParentRoute: () => PortalSlugTokenRoute,
+} as any)
+const PortalSlugTokenRequestsRoute = PortalSlugTokenRequestsRouteImport.update({
+  id: '/requests',
+  path: '/requests',
+  getParentRoute: () => PortalSlugTokenRoute,
+} as any)
+const PortalSlugTokenPropertyRoute = PortalSlugTokenPropertyRouteImport.update({
+  id: '/property',
+  path: '/property',
+  getParentRoute: () => PortalSlugTokenRoute,
+} as any)
+const PortalSlugTokenBillingRoute = PortalSlugTokenBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
+  getParentRoute: () => PortalSlugTokenRoute,
+} as any)
+const PortalSlugTokenAccountRoute = PortalSlugTokenAccountRouteImport.update({
+  id: '/account',
+  path: '/account',
+  getParentRoute: () => PortalSlugTokenRoute,
 } as any)
 const LovableEmailTransactionalSendRoute =
   LovableEmailTransactionalSendRouteImport.update({
@@ -599,6 +606,12 @@ const AuthenticatedPropertiesPropertyIdBoundaryRoute =
     path: '/properties/$propertyId/boundary',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const PortalSlugTokenPayInvoiceIdRoute =
+  PortalSlugTokenPayInvoiceIdRouteImport.update({
+    id: '/pay/$invoiceId',
+    path: '/pay/$invoiceId',
+    getParentRoute: () => PortalSlugTokenRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -639,7 +652,7 @@ export interface FileRoutesByFullPath {
   '/platform/revenue': typeof PlatformRevenueRoute
   '/platform/signup-requests': typeof PlatformSignupRequestsRoute
   '/platform/users': typeof PlatformUsersRoute
-  '/portal/$token': typeof PortalTokenRouteWithChildren
+  '/portal/$slug': typeof PortalSlugRouteWithChildren
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/platform/': typeof PlatformIndexRoute
@@ -665,18 +678,14 @@ export interface FileRoutesByFullPath {
   '/api/public/signup-requests': typeof ApiPublicSignupRequestsRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/platform/tenants/$id': typeof PlatformTenantsIdRoute
-  '/portal/$token/account': typeof PortalTokenAccountRoute
-  '/portal/$token/billing': typeof PortalTokenBillingRoute
-  '/portal/$token/property': typeof PortalTokenPropertyRoute
-  '/portal/$token/requests': typeof PortalTokenRequestsRoute
-  '/portal/$token/visits': typeof PortalTokenVisitsRoute
+  '/portal/$slug/$token': typeof PortalSlugTokenRouteWithChildren
   '/clients/': typeof AuthenticatedClientsIndexRoute
   '/imports/': typeof AuthenticatedImportsIndexRoute
   '/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/messages/': typeof AuthenticatedMessagesIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
   '/platform/tenants/': typeof PlatformTenantsIndexRoute
-  '/portal/$token/': typeof PortalTokenIndexRoute
+  '/portal/$slug/': typeof PortalSlugIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
@@ -692,7 +701,13 @@ export interface FileRoutesByFullPath {
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
-  '/portal/$token/pay/$invoiceId': typeof PortalTokenPayInvoiceIdRoute
+  '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
+  '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
+  '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
+  '/portal/$slug/$token/requests': typeof PortalSlugTokenRequestsRoute
+  '/portal/$slug/$token/visits': typeof PortalSlugTokenVisitsRoute
+  '/portal/$slug/$token/': typeof PortalSlugTokenIndexRoute
+  '/portal/$slug/$token/pay/$invoiceId': typeof PortalSlugTokenPayInvoiceIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -753,18 +768,13 @@ export interface FileRoutesByTo {
   '/api/public/signup-requests': typeof ApiPublicSignupRequestsRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/platform/tenants/$id': typeof PlatformTenantsIdRoute
-  '/portal/$token/account': typeof PortalTokenAccountRoute
-  '/portal/$token/billing': typeof PortalTokenBillingRoute
-  '/portal/$token/property': typeof PortalTokenPropertyRoute
-  '/portal/$token/requests': typeof PortalTokenRequestsRoute
-  '/portal/$token/visits': typeof PortalTokenVisitsRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
   '/imports': typeof AuthenticatedImportsIndexRoute
   '/invoices': typeof AuthenticatedInvoicesIndexRoute
   '/messages': typeof AuthenticatedMessagesIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/platform/tenants': typeof PlatformTenantsIndexRoute
-  '/portal/$token': typeof PortalTokenIndexRoute
+  '/portal/$slug': typeof PortalSlugIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
@@ -780,7 +790,13 @@ export interface FileRoutesByTo {
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
-  '/portal/$token/pay/$invoiceId': typeof PortalTokenPayInvoiceIdRoute
+  '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
+  '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
+  '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
+  '/portal/$slug/$token/requests': typeof PortalSlugTokenRequestsRoute
+  '/portal/$slug/$token/visits': typeof PortalSlugTokenVisitsRoute
+  '/portal/$slug/$token': typeof PortalSlugTokenIndexRoute
+  '/portal/$slug/$token/pay/$invoiceId': typeof PortalSlugTokenPayInvoiceIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -823,7 +839,7 @@ export interface FileRoutesById {
   '/platform/revenue': typeof PlatformRevenueRoute
   '/platform/signup-requests': typeof PlatformSignupRequestsRoute
   '/platform/users': typeof PlatformUsersRoute
-  '/portal/$token': typeof PortalTokenRouteWithChildren
+  '/portal/$slug': typeof PortalSlugRouteWithChildren
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/platform/': typeof PlatformIndexRoute
@@ -849,18 +865,14 @@ export interface FileRoutesById {
   '/api/public/signup-requests': typeof ApiPublicSignupRequestsRoute
   '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/platform/tenants/$id': typeof PlatformTenantsIdRoute
-  '/portal/$token/account': typeof PortalTokenAccountRoute
-  '/portal/$token/billing': typeof PortalTokenBillingRoute
-  '/portal/$token/property': typeof PortalTokenPropertyRoute
-  '/portal/$token/requests': typeof PortalTokenRequestsRoute
-  '/portal/$token/visits': typeof PortalTokenVisitsRoute
+  '/portal/$slug/$token': typeof PortalSlugTokenRouteWithChildren
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
   '/_authenticated/imports/': typeof AuthenticatedImportsIndexRoute
   '/_authenticated/invoices/': typeof AuthenticatedInvoicesIndexRoute
   '/_authenticated/messages/': typeof AuthenticatedMessagesIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
   '/platform/tenants/': typeof PlatformTenantsIndexRoute
-  '/portal/$token/': typeof PortalTokenIndexRoute
+  '/portal/$slug/': typeof PortalSlugIndexRoute
   '/_authenticated/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
@@ -876,7 +888,13 @@ export interface FileRoutesById {
   '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
   '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
   '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
-  '/portal/$token/pay/$invoiceId': typeof PortalTokenPayInvoiceIdRoute
+  '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
+  '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
+  '/portal/$slug/$token/property': typeof PortalSlugTokenPropertyRoute
+  '/portal/$slug/$token/requests': typeof PortalSlugTokenRequestsRoute
+  '/portal/$slug/$token/visits': typeof PortalSlugTokenVisitsRoute
+  '/portal/$slug/$token/': typeof PortalSlugTokenIndexRoute
+  '/portal/$slug/$token/pay/$invoiceId': typeof PortalSlugTokenPayInvoiceIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -919,7 +937,7 @@ export interface FileRouteTypes {
     | '/platform/revenue'
     | '/platform/signup-requests'
     | '/platform/users'
-    | '/portal/$token'
+    | '/portal/$slug'
     | '/signup/$slug'
     | '/signup/success'
     | '/platform/'
@@ -945,18 +963,14 @@ export interface FileRouteTypes {
     | '/api/public/signup-requests'
     | '/lovable/email/suppression'
     | '/platform/tenants/$id'
-    | '/portal/$token/account'
-    | '/portal/$token/billing'
-    | '/portal/$token/property'
-    | '/portal/$token/requests'
-    | '/portal/$token/visits'
+    | '/portal/$slug/$token'
     | '/clients/'
     | '/imports/'
     | '/invoices/'
     | '/messages/'
     | '/settings/'
     | '/platform/tenants/'
-    | '/portal/$token/'
+    | '/portal/$slug/'
     | '/properties/$propertyId/boundary'
     | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/nightly'
@@ -972,7 +986,13 @@ export interface FileRouteTypes {
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
     | '/lovable/email/transactional/send'
-    | '/portal/$token/pay/$invoiceId'
+    | '/portal/$slug/$token/account'
+    | '/portal/$slug/$token/billing'
+    | '/portal/$slug/$token/property'
+    | '/portal/$slug/$token/requests'
+    | '/portal/$slug/$token/visits'
+    | '/portal/$slug/$token/'
+    | '/portal/$slug/$token/pay/$invoiceId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1033,18 +1053,13 @@ export interface FileRouteTypes {
     | '/api/public/signup-requests'
     | '/lovable/email/suppression'
     | '/platform/tenants/$id'
-    | '/portal/$token/account'
-    | '/portal/$token/billing'
-    | '/portal/$token/property'
-    | '/portal/$token/requests'
-    | '/portal/$token/visits'
     | '/clients'
     | '/imports'
     | '/invoices'
     | '/messages'
     | '/settings'
     | '/platform/tenants'
-    | '/portal/$token'
+    | '/portal/$slug'
     | '/properties/$propertyId/boundary'
     | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/nightly'
@@ -1060,7 +1075,13 @@ export interface FileRouteTypes {
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
     | '/lovable/email/transactional/send'
-    | '/portal/$token/pay/$invoiceId'
+    | '/portal/$slug/$token/account'
+    | '/portal/$slug/$token/billing'
+    | '/portal/$slug/$token/property'
+    | '/portal/$slug/$token/requests'
+    | '/portal/$slug/$token/visits'
+    | '/portal/$slug/$token'
+    | '/portal/$slug/$token/pay/$invoiceId'
   id:
     | '__root__'
     | '/'
@@ -1102,7 +1123,7 @@ export interface FileRouteTypes {
     | '/platform/revenue'
     | '/platform/signup-requests'
     | '/platform/users'
-    | '/portal/$token'
+    | '/portal/$slug'
     | '/signup/$slug'
     | '/signup/success'
     | '/platform/'
@@ -1128,18 +1149,14 @@ export interface FileRouteTypes {
     | '/api/public/signup-requests'
     | '/lovable/email/suppression'
     | '/platform/tenants/$id'
-    | '/portal/$token/account'
-    | '/portal/$token/billing'
-    | '/portal/$token/property'
-    | '/portal/$token/requests'
-    | '/portal/$token/visits'
+    | '/portal/$slug/$token'
     | '/_authenticated/clients/'
     | '/_authenticated/imports/'
     | '/_authenticated/invoices/'
     | '/_authenticated/messages/'
     | '/_authenticated/settings/'
     | '/platform/tenants/'
-    | '/portal/$token/'
+    | '/portal/$slug/'
     | '/_authenticated/properties/$propertyId/boundary'
     | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/nightly'
@@ -1155,7 +1172,13 @@ export interface FileRouteTypes {
     | '/lovable/email/queue/process'
     | '/lovable/email/transactional/preview'
     | '/lovable/email/transactional/send'
-    | '/portal/$token/pay/$invoiceId'
+    | '/portal/$slug/$token/account'
+    | '/portal/$slug/$token/billing'
+    | '/portal/$slug/$token/property'
+    | '/portal/$slug/$token/requests'
+    | '/portal/$slug/$token/visits'
+    | '/portal/$slug/$token/'
+    | '/portal/$slug/$token/pay/$invoiceId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1168,7 +1191,7 @@ export interface RootRouteChildren {
   UnsubscribeRoute: typeof UnsubscribeRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   InviteTokenRoute: typeof InviteTokenRoute
-  PortalTokenRoute: typeof PortalTokenRouteWithChildren
+  PortalSlugRoute: typeof PortalSlugRouteWithChildren
   SignupSlugRoute: typeof SignupSlugRoute
   SignupSuccessRoute: typeof SignupSuccessRoute
   ApiPublicLeadsRoute: typeof ApiPublicLeadsRoute
@@ -1262,11 +1285,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignupSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/portal/$token': {
-      id: '/portal/$token'
-      path: '/portal/$token'
-      fullPath: '/portal/$token'
-      preLoaderRoute: typeof PortalTokenRouteImport
+    '/portal/$slug': {
+      id: '/portal/$slug'
+      path: '/portal/$slug'
+      fullPath: '/portal/$slug'
+      preLoaderRoute: typeof PortalSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/platform/users': {
@@ -1493,12 +1516,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAiToolsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/portal/$token/': {
-      id: '/portal/$token/'
+    '/portal/$slug/': {
+      id: '/portal/$slug/'
       path: '/'
-      fullPath: '/portal/$token/'
-      preLoaderRoute: typeof PortalTokenIndexRouteImport
-      parentRoute: typeof PortalTokenRoute
+      fullPath: '/portal/$slug/'
+      preLoaderRoute: typeof PortalSlugIndexRouteImport
+      parentRoute: typeof PortalSlugRoute
     }
     '/platform/tenants/': {
       id: '/platform/tenants/'
@@ -1542,40 +1565,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClientsIndexRouteImport
       parentRoute: typeof AuthenticatedClientsRoute
     }
-    '/portal/$token/visits': {
-      id: '/portal/$token/visits'
-      path: '/visits'
-      fullPath: '/portal/$token/visits'
-      preLoaderRoute: typeof PortalTokenVisitsRouteImport
-      parentRoute: typeof PortalTokenRoute
-    }
-    '/portal/$token/requests': {
-      id: '/portal/$token/requests'
-      path: '/requests'
-      fullPath: '/portal/$token/requests'
-      preLoaderRoute: typeof PortalTokenRequestsRouteImport
-      parentRoute: typeof PortalTokenRoute
-    }
-    '/portal/$token/property': {
-      id: '/portal/$token/property'
-      path: '/property'
-      fullPath: '/portal/$token/property'
-      preLoaderRoute: typeof PortalTokenPropertyRouteImport
-      parentRoute: typeof PortalTokenRoute
-    }
-    '/portal/$token/billing': {
-      id: '/portal/$token/billing'
-      path: '/billing'
-      fullPath: '/portal/$token/billing'
-      preLoaderRoute: typeof PortalTokenBillingRouteImport
-      parentRoute: typeof PortalTokenRoute
-    }
-    '/portal/$token/account': {
-      id: '/portal/$token/account'
-      path: '/account'
-      fullPath: '/portal/$token/account'
-      preLoaderRoute: typeof PortalTokenAccountRouteImport
-      parentRoute: typeof PortalTokenRoute
+    '/portal/$slug/$token': {
+      id: '/portal/$slug/$token'
+      path: '/$token'
+      fullPath: '/portal/$slug/$token'
+      preLoaderRoute: typeof PortalSlugTokenRouteImport
+      parentRoute: typeof PortalSlugRoute
     }
     '/platform/tenants/$id': {
       id: '/platform/tenants/$id'
@@ -1731,12 +1726,47 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClientsClientIdRouteImport
       parentRoute: typeof AuthenticatedClientsRoute
     }
-    '/portal/$token/pay/$invoiceId': {
-      id: '/portal/$token/pay/$invoiceId'
-      path: '/pay/$invoiceId'
-      fullPath: '/portal/$token/pay/$invoiceId'
-      preLoaderRoute: typeof PortalTokenPayInvoiceIdRouteImport
-      parentRoute: typeof PortalTokenRoute
+    '/portal/$slug/$token/': {
+      id: '/portal/$slug/$token/'
+      path: '/'
+      fullPath: '/portal/$slug/$token/'
+      preLoaderRoute: typeof PortalSlugTokenIndexRouteImport
+      parentRoute: typeof PortalSlugTokenRoute
+    }
+    '/portal/$slug/$token/visits': {
+      id: '/portal/$slug/$token/visits'
+      path: '/visits'
+      fullPath: '/portal/$slug/$token/visits'
+      preLoaderRoute: typeof PortalSlugTokenVisitsRouteImport
+      parentRoute: typeof PortalSlugTokenRoute
+    }
+    '/portal/$slug/$token/requests': {
+      id: '/portal/$slug/$token/requests'
+      path: '/requests'
+      fullPath: '/portal/$slug/$token/requests'
+      preLoaderRoute: typeof PortalSlugTokenRequestsRouteImport
+      parentRoute: typeof PortalSlugTokenRoute
+    }
+    '/portal/$slug/$token/property': {
+      id: '/portal/$slug/$token/property'
+      path: '/property'
+      fullPath: '/portal/$slug/$token/property'
+      preLoaderRoute: typeof PortalSlugTokenPropertyRouteImport
+      parentRoute: typeof PortalSlugTokenRoute
+    }
+    '/portal/$slug/$token/billing': {
+      id: '/portal/$slug/$token/billing'
+      path: '/billing'
+      fullPath: '/portal/$slug/$token/billing'
+      preLoaderRoute: typeof PortalSlugTokenBillingRouteImport
+      parentRoute: typeof PortalSlugTokenRoute
+    }
+    '/portal/$slug/$token/account': {
+      id: '/portal/$slug/$token/account'
+      path: '/account'
+      fullPath: '/portal/$slug/$token/account'
+      preLoaderRoute: typeof PortalSlugTokenAccountRouteImport
+      parentRoute: typeof PortalSlugTokenRoute
     }
     '/lovable/email/transactional/send': {
       id: '/lovable/email/transactional/send'
@@ -1842,6 +1872,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/properties/$propertyId/boundary'
       preLoaderRoute: typeof AuthenticatedPropertiesPropertyIdBoundaryRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/portal/$slug/$token/pay/$invoiceId': {
+      id: '/portal/$slug/$token/pay/$invoiceId'
+      path: '/pay/$invoiceId'
+      fullPath: '/portal/$slug/$token/pay/$invoiceId'
+      preLoaderRoute: typeof PortalSlugTokenPayInvoiceIdRouteImport
+      parentRoute: typeof PortalSlugTokenRoute
     }
   }
 }
@@ -2023,28 +2060,42 @@ const PlatformRouteWithChildren = PlatformRoute._addFileChildren(
   PlatformRouteChildren,
 )
 
-interface PortalTokenRouteChildren {
-  PortalTokenAccountRoute: typeof PortalTokenAccountRoute
-  PortalTokenBillingRoute: typeof PortalTokenBillingRoute
-  PortalTokenPropertyRoute: typeof PortalTokenPropertyRoute
-  PortalTokenRequestsRoute: typeof PortalTokenRequestsRoute
-  PortalTokenVisitsRoute: typeof PortalTokenVisitsRoute
-  PortalTokenIndexRoute: typeof PortalTokenIndexRoute
-  PortalTokenPayInvoiceIdRoute: typeof PortalTokenPayInvoiceIdRoute
+interface PortalSlugTokenRouteChildren {
+  PortalSlugTokenAccountRoute: typeof PortalSlugTokenAccountRoute
+  PortalSlugTokenBillingRoute: typeof PortalSlugTokenBillingRoute
+  PortalSlugTokenPropertyRoute: typeof PortalSlugTokenPropertyRoute
+  PortalSlugTokenRequestsRoute: typeof PortalSlugTokenRequestsRoute
+  PortalSlugTokenVisitsRoute: typeof PortalSlugTokenVisitsRoute
+  PortalSlugTokenIndexRoute: typeof PortalSlugTokenIndexRoute
+  PortalSlugTokenPayInvoiceIdRoute: typeof PortalSlugTokenPayInvoiceIdRoute
 }
 
-const PortalTokenRouteChildren: PortalTokenRouteChildren = {
-  PortalTokenAccountRoute: PortalTokenAccountRoute,
-  PortalTokenBillingRoute: PortalTokenBillingRoute,
-  PortalTokenPropertyRoute: PortalTokenPropertyRoute,
-  PortalTokenRequestsRoute: PortalTokenRequestsRoute,
-  PortalTokenVisitsRoute: PortalTokenVisitsRoute,
-  PortalTokenIndexRoute: PortalTokenIndexRoute,
-  PortalTokenPayInvoiceIdRoute: PortalTokenPayInvoiceIdRoute,
+const PortalSlugTokenRouteChildren: PortalSlugTokenRouteChildren = {
+  PortalSlugTokenAccountRoute: PortalSlugTokenAccountRoute,
+  PortalSlugTokenBillingRoute: PortalSlugTokenBillingRoute,
+  PortalSlugTokenPropertyRoute: PortalSlugTokenPropertyRoute,
+  PortalSlugTokenRequestsRoute: PortalSlugTokenRequestsRoute,
+  PortalSlugTokenVisitsRoute: PortalSlugTokenVisitsRoute,
+  PortalSlugTokenIndexRoute: PortalSlugTokenIndexRoute,
+  PortalSlugTokenPayInvoiceIdRoute: PortalSlugTokenPayInvoiceIdRoute,
 }
 
-const PortalTokenRouteWithChildren = PortalTokenRoute._addFileChildren(
-  PortalTokenRouteChildren,
+const PortalSlugTokenRouteWithChildren = PortalSlugTokenRoute._addFileChildren(
+  PortalSlugTokenRouteChildren,
+)
+
+interface PortalSlugRouteChildren {
+  PortalSlugTokenRoute: typeof PortalSlugTokenRouteWithChildren
+  PortalSlugIndexRoute: typeof PortalSlugIndexRoute
+}
+
+const PortalSlugRouteChildren: PortalSlugRouteChildren = {
+  PortalSlugTokenRoute: PortalSlugTokenRouteWithChildren,
+  PortalSlugIndexRoute: PortalSlugIndexRoute,
+}
+
+const PortalSlugRouteWithChildren = PortalSlugRoute._addFileChildren(
+  PortalSlugRouteChildren,
 )
 
 const rootRouteChildren: RootRouteChildren = {
@@ -2057,7 +2108,7 @@ const rootRouteChildren: RootRouteChildren = {
   UnsubscribeRoute: UnsubscribeRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   InviteTokenRoute: InviteTokenRoute,
-  PortalTokenRoute: PortalTokenRouteWithChildren,
+  PortalSlugRoute: PortalSlugRouteWithChildren,
   SignupSlugRoute: SignupSlugRoute,
   SignupSuccessRoute: SignupSuccessRoute,
   ApiPublicLeadsRoute: ApiPublicLeadsRoute,

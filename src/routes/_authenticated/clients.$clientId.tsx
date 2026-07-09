@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { getClient, regeneratePortalLink, readPortalVerificationCode } from "@/lib/clients.functions";
+import { getMyOrg } from "@/lib/org.functions";
 import { createProperty, listPropertiesForClient } from "@/lib/properties.functions";
 import { createSubscription, listSubscriptionsForClient } from "@/lib/subscriptions.functions";
 import { listZones } from "@/lib/zones.functions";
@@ -698,8 +699,15 @@ function PortalLinkPanel({ clientId, portalToken }: { clientId: string; portalTo
   const [code, setCode] = useState<string | null>(null);
   const regenFn = useServerFn(regeneratePortalLink);
   const readCodeFn = useServerFn(readPortalVerificationCode);
+  const orgFn = useServerFn(getMyOrg);
+  const { data: orgData } = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
+  const slug = (orgData?.organization as any)?.portal_slug as string | undefined;
 
-  const url = typeof window !== "undefined" ? `${window.location.origin}/portal/${token}` : `/portal/${token}`;
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  // Canonical pretty URL; falls back to the legacy form only if the org has no
+  // slug yet (the legacy path redirects to the pretty URL anyway).
+  const path = slug ? `/portal/${slug}/${token}` : `/portal/${token}`;
+  const url = `${origin}${path}`;
 
   const regenMut = useMutation({
     mutationFn: () => regenFn({ data: { clientId } }),
@@ -735,7 +743,7 @@ function PortalLinkPanel({ clientId, portalToken }: { clientId: string; portalTo
         >
           Copy
         </Button>
-        <a className="text-primary underline" href={`/portal/${token}`} target="_blank" rel="noreferrer">
+        <a className="text-primary underline" href={path} target="_blank" rel="noreferrer">
           Open
         </a>
         <Button

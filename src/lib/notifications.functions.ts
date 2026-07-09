@@ -14,9 +14,11 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
       .eq("id", data.invoiceId)
       .single();
     if (error) throw new Error(error.message);
-    const appUrl = process.env.APP_URL || "https://app.houndstack.com";
     const token = (inv as any).clients?.portal_token as string | undefined;
-    const invoiceUrl = token ? `${appUrl}/portal/${token}` : appUrl;
+    const { buildPortalLink } = await import("@/lib/portal-links.server");
+    const invoiceUrl =
+      (await buildPortalLink(inv.organization_id, token)) ??
+      (process.env.APP_URL || "https://app.houndstack.com");
     const period =
       inv.period_start && inv.period_end
         ? `Services from ${inv.period_start} to ${inv.period_end}`

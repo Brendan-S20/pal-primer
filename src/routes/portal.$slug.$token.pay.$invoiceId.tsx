@@ -14,7 +14,7 @@ import { Loader2, ArrowLeft, ShieldCheck } from "lucide-react";
 import { portalCreateInvoicePaymentIntent } from "@/lib/portal.functions";
 import { money } from "@/lib/portal-ui";
 
-export const Route = createFileRoute("/portal/$token/pay/$invoiceId")({
+export const Route = createFileRoute("/portal/$slug/$token/pay/$invoiceId")({
   head: () => ({ meta: [{ title: "Pay invoice" }] }),
   component: PayInvoice,
 });
@@ -31,7 +31,7 @@ function getStripe(pk: string) {
 }
 
 function PayInvoice() {
-  const { token, invoiceId } = Route.useParams();
+  const { slug, token, invoiceId } = Route.useParams();
   const createIntent = useServerFn(portalCreateInvoicePaymentIntent);
 
   const intentQ = useQuery({
@@ -49,8 +49,8 @@ function PayInvoice() {
   return (
     <div className="mx-auto max-w-lg space-y-4 p-4">
       <Link
-        to="/portal/$token/billing"
-        params={{ token }}
+        to="/portal/$slug/$token/billing"
+        params={{ slug, token }}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" /> Back to billing
@@ -88,7 +88,7 @@ function PayInvoice() {
             appearance: { theme: "stripe" },
           }}
         >
-          <PayForm token={token} invoiceId={invoiceId} amountCents={intentQ.data.amountCents} />
+          <PayForm slug={slug} token={token} invoiceId={invoiceId} amountCents={intentQ.data.amountCents} />
         </Elements>
       )}
 
@@ -101,10 +101,12 @@ function PayInvoice() {
 }
 
 function PayForm({
+  slug,
   token,
   invoiceId,
   amountCents,
 }: {
+  slug: string;
   token: string;
   invoiceId: string;
   amountCents: number;
@@ -123,8 +125,8 @@ function PayForm({
     const redirectStatus = url.searchParams.get("redirect_status");
     if (redirectStatus === "succeeded" || redirectStatus === "processing") {
       navigate({
-        to: "/portal/$token/billing",
-        params: { token },
+        to: "/portal/$slug/$token/billing",
+        params: { slug, token },
         search: { paid: "1" } as never,
       });
     }
@@ -143,7 +145,7 @@ function PayForm({
       return;
     }
 
-    const returnUrl = `${window.location.origin}/portal/${token}/pay/${invoiceId}`;
+    const returnUrl = `${window.location.origin}/portal/${slug}/${token}/pay/${invoiceId}`;
     const { error: confirmError } = await stripe.confirmPayment({
       elements,
       confirmParams: { return_url: returnUrl },
@@ -158,8 +160,8 @@ function PayForm({
 
     // No redirect needed → charge succeeded (or is processing, e.g. ACH).
     navigate({
-      to: "/portal/$token/billing",
-      params: { token },
+      to: "/portal/$slug/$token/billing",
+      params: { slug, token },
       search: { paid: "1" } as never,
     });
   }

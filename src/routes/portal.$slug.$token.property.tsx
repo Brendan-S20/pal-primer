@@ -6,7 +6,7 @@ import {
   money, fmtDayShort,
 } from "@/lib/portal-ui";
 
-export const Route = createFileRoute("/portal/$token/property")({
+export const Route = createFileRoute("/portal/$slug/$token/property")({
   component: PortalProperty,
 });
 

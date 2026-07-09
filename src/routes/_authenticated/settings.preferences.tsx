@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useMyRole } from "@/hooks/useMyRole";
 import { reseedDemoData } from "@/lib/demo.functions";
-import { getOrgBranding, updateOrgBranding } from "@/lib/org.functions";
+import { getOrgBranding, updateOrgBranding, getMyOrg, setPortalSlug, suggestPortalSlug } from "@/lib/org.functions";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 
@@ -128,9 +128,71 @@ function PreferencesPage() {
         </CardContent>
       </Card>
 
+      <PortalAddressCard />
       <BrandingCard />
       <DemoDataCard />
     </div>
+  );
+}
+
+function PortalAddressCard() {
+  const qc = useQueryClient();
+  const orgFn = useServerFn(getMyOrg);
+  const setFn = useServerFn(setPortalSlug);
+  const suggestFn = useServerFn(suggestPortalSlug);
+  const { role } = useMyRole();
+  const canEdit = role === "owner" || role === "office_manager";
+
+  const q = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
+  const currentSlug = (q.data?.organization as any)?.portal_slug as string | undefined;
+  const [slug, setSlug] = useState("");
+  useEffect(() => { if (currentSlug) setSlug(currentSlug); }, [currentSlug]);
+
+  const mut = useMutation({
+    mutationFn: () => setFn({ data: { slug } }),
+    onSuccess: (r) => { setSlug(r.slug); toast.success("Portal address saved"); qc.invalidateQueries({ queryKey: ["my-org"] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const suggestMut = useMutation({
+    mutationFn: () => suggestFn(),
+    onSuccess: (r) => setSlug(r.slug),
+  });
+
+  if (!canEdit) return null;
+  const base = typeof window !== "undefined" ? window.location.origin : "https://app.houndstack.com";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Portal sign-in address</CardTitle>
+        <CardDescription>
+          Your company's permanent portal link. Put it on your website so clients can sign in
+          anytime — they'll enter their phone or email and get a one-time code.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap items-center gap-1 text-sm">
+          <span className="text-muted-foreground">{base.replace(/^https?:\/\//, "")}/portal/</span>
+          <Input
+            value={slug}
+            onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+            className="h-8 w-48"
+            placeholder="your-company"
+          />
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" disabled={mut.isPending || !slug || slug === currentSlug} onClick={() => mut.mutate()}>
+            {mut.isPending ? "Saving…" : "Save address"}
+          </Button>
+          <Button size="sm" variant="outline" disabled={suggestMut.isPending} onClick={() => suggestMut.mutate()}>
+            Suggest from name
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Letters, numbers, and hyphens only. Existing client links keep working automatically.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 

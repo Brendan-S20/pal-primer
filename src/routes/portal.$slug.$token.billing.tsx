@@ -5,12 +5,12 @@ import {
   fmtDayShort, money,
 } from "@/lib/portal-ui";
 
-export const Route = createFileRoute("/portal/$token/billing")({
+export const Route = createFileRoute("/portal/$slug/$token/billing")({
   component: PortalBilling,
 });
 
 function PortalBilling() {
-  const { token } = Route.useParams();
+  const { slug, token } = Route.useParams();
   const {
     clientQ, invoicesQ, subsQ,
     startSetupMut, setAutopayMut, removeCardMut, paySavedMut, topupMut, promoMut,
@@ -108,7 +108,7 @@ function PortalBilling() {
                         </Button>
                       )}
                       <Button asChild size="sm" variant={c?.has_saved_card ? "outline" : "default"}>
-                        <Link to="/portal/$token/pay/$invoiceId" params={{ token, invoiceId: i.invoice_id }}>
+                        <Link to="/portal/$slug/$token/pay/$invoiceId" params={{ slug, token, invoiceId: i.invoice_id }}>
                           Pay now
                         </Link>
                       </Button>

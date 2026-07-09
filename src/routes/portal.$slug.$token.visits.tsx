@@ -4,7 +4,7 @@ import {
   usePortalCtx, UpcomingVisitsList, PlanRow, VacationHoldCard, EmptyBox,
 } from "@/lib/portal-ui";
 
-export const Route = createFileRoute("/portal/$token/visits")({
+export const Route = createFileRoute("/portal/$slug/$token/visits")({
   component: PortalVisits,
 });
 
