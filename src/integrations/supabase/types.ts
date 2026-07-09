@@ -1784,6 +1784,7 @@ export type Database = {
           digest_recipient_email: string | null
           dunning_pause_after_failures: number
           dunning_retry_days: number[]
+          field_addon_cap_cents: number
           frequency_multipliers: Json
           google_review_url: string | null
           grace_expires_at: string | null
@@ -1816,6 +1817,7 @@ export type Database = {
           portal_allow_vacation_hold: boolean
           portal_auto_apply_changes: boolean
           portal_reschedule_cutoff_hours: number
+          portal_slug: string | null
           public_signup_enabled: boolean
           referral_reward_cents: number
           review_ask_enabled: boolean
@@ -1858,6 +1860,7 @@ export type Database = {
           digest_recipient_email?: string | null
           dunning_pause_after_failures?: number
           dunning_retry_days?: number[]
+          field_addon_cap_cents?: number
           frequency_multipliers?: Json
           google_review_url?: string | null
           grace_expires_at?: string | null
@@ -1890,6 +1893,7 @@ export type Database = {
           portal_allow_vacation_hold?: boolean
           portal_auto_apply_changes?: boolean
           portal_reschedule_cutoff_hours?: number
+          portal_slug?: string | null
           public_signup_enabled?: boolean
           referral_reward_cents?: number
           review_ask_enabled?: boolean
@@ -1932,6 +1936,7 @@ export type Database = {
           digest_recipient_email?: string | null
           dunning_pause_after_failures?: number
           dunning_retry_days?: number[]
+          field_addon_cap_cents?: number
           frequency_multipliers?: Json
           google_review_url?: string | null
           grace_expires_at?: string | null
@@ -1964,6 +1969,7 @@ export type Database = {
           portal_allow_vacation_hold?: boolean
           portal_auto_apply_changes?: boolean
           portal_reschedule_cutoff_hours?: number
+          portal_slug?: string | null
           public_signup_enabled?: boolean
           referral_reward_cents?: number
           review_ask_enabled?: boolean
@@ -2632,6 +2638,136 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "platform_support_notes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      portal_code_attempts: {
+        Row: {
+          created_at: string
+          id: string
+          ip: unknown
+          organization_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ip?: unknown
+          organization_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ip?: unknown
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portal_code_attempts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      portal_otps: {
+        Row: {
+          attempts: number
+          channel: string
+          client_id: string
+          code_hash: string
+          consumed_at: string | null
+          created_at: string
+          destination_hint: string | null
+          expires_at: string
+          id: string
+          request_ip: unknown
+        }
+        Insert: {
+          attempts?: number
+          channel: string
+          client_id: string
+          code_hash: string
+          consumed_at?: string | null
+          created_at?: string
+          destination_hint?: string | null
+          expires_at: string
+          id?: string
+          request_ip?: unknown
+        }
+        Update: {
+          attempts?: number
+          channel?: string
+          client_id?: string
+          code_hash?: string
+          consumed_at?: string | null
+          created_at?: string
+          destination_hint?: string | null
+          expires_at?: string
+          id?: string
+          request_ip?: unknown
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portal_otps_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      portal_sessions: {
+        Row: {
+          client_id: string
+          created_at: string
+          expires_at: string
+          id: string
+          ip: unknown
+          last_seen_at: string
+          organization_id: string
+          revoked_at: string | null
+          token_hash: string
+          user_agent: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          ip?: unknown
+          last_seen_at?: string
+          organization_id: string
+          revoked_at?: string | null
+          token_hash: string
+          user_agent?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          ip?: unknown
+          last_seen_at?: string
+          organization_id?: string
+          revoked_at?: string | null
+          token_hash?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portal_sessions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_sessions_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -3959,6 +4095,10 @@ export type Database = {
         Args: { _org_id: string; _through: string }
         Returns: number
       }
+      has_permission: {
+        Args: { _org_id: string; _permission: string; _user_id: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _org_id: string
@@ -4252,6 +4392,17 @@ export type Database = {
         Args: { _new_date: string; _token: string; _visit_id: string }
         Returns: undefined
       }
+      portal_resolve_contact: {
+        Args: { _token: string }
+        Returns: {
+          client_id: string
+          display_name: string
+          org_name: string
+          organization_id: string
+          primary_email: string
+          primary_phone: string
+        }[]
+      }
       portal_set_autopay: {
         Args: { _enabled: boolean; _token: string }
         Returns: boolean
@@ -4339,6 +4490,7 @@ export type Database = {
         Args: { _org_id: string }
         Returns: undefined
       }
+      regenerate_portal_token: { Args: { _client_id: string }; Returns: string }
       reorder_route: {
         Args: { _day: string; _ordered_ids: string[]; _staff_id: string }
         Returns: number
@@ -4362,6 +4514,7 @@ export type Database = {
             }
             Returns: undefined
           }
+      slugify: { Args: { _txt: string }; Returns: string }
       start_visit: { Args: { _visit_id: string }; Returns: undefined }
       void_addon_charge: { Args: { _charge_id: string }; Returns: undefined }
       void_invoice: { Args: { _invoice_id: string }; Returns: undefined }
