@@ -283,13 +283,15 @@ export async function issuePortalOtp(
       const { sendTwilioSms } = await import("@/lib/twilio.server");
       await sendTwilioSms({ from: org.sms_from_number, to: dest, body: message });
     } else {
-      // Send OTP email DIRECTLY (synchronous) rather than via the pgmq queue,
-      // so delivery doesn't depend on the process-email-queue cron running. A
-      // verification code is useless if it sits in a queue for minutes.
+      // Send OTP email DIRECTLY (synchronous) via the provider, and LOG the
+      // provider's response to email_send_log so every send is provable
+      // (cross-reference the provider_message_id in the email dashboard). No
+      // silent queue fallback — a failure is logged AND surfaced, never masked.
       const apiKey = process.env.LOVABLE_API_KEY;
-      if (!apiKey) throw new Error("Email is not configured — ask us to read you the code.");
+      if (!apiKey) throw new Error("Email isn't configured for this company — ask us to read you the code.");
+      const logMessageId = `portal-otp-${randomBytes(8).toString("hex")}`;
       const emailPayload = {
-        message_id: `portal-otp-${sha256(code).slice(0, 12)}`,
+        message_id: logMessageId,
         to: dest,
         from: `${contact.org_name} <noreply@notify.thenorth.consulting>`,
         sender_domain: "notify.thenorth.consulting",
@@ -305,16 +307,25 @@ export async function issuePortalOtp(
           apiKey,
           sendUrl: process.env.LOVABLE_SEND_URL,
         });
-        if (!res?.success) throw new Error(res?.status || "Email provider rejected the message");
-      } catch (directErr) {
-        // Fall back to the queue if direct send is unavailable, so the code is
-        // at least queued rather than lost.
-        console.error("portal OTP direct email failed, falling back to queue", (directErr as Error).message);
-        const { error: qErr } = await supabaseAdmin.rpc("enqueue_email", {
-          queue_name: "transactional_emails",
-          payload: { ...emailPayload, queued_at: new Date().toISOString() },
+        if (!res?.success) throw new Error(`provider rejected (status: ${res?.status ?? "unknown"})`);
+        await supabaseAdmin.from("email_send_log").insert({
+          message_id: logMessageId,
+          template_name: "portal-otp",
+          recipient_email: dest,
+          status: "sent",
+          metadata: { provider_message_id: res.message_id ?? null, workflow_id: res.workflow_id ?? null },
         });
-        if (qErr) throw new Error("Could not send the email code. Ask us to read it to you instead.");
+      } catch (sendErr) {
+        const msg = (sendErr as Error).message ?? "send failed";
+        await supabaseAdmin.from("email_send_log").insert({
+          message_id: logMessageId,
+          template_name: "portal-otp",
+          recipient_email: dest,
+          status: "failed",
+          error_message: msg.slice(0, 500),
+        }).then(() => {}, () => {});
+        console.error("portal OTP email send failed", msg);
+        throw new Error("We couldn't email your code right now. Try SMS, or ask us to read it to you.");
       }
     }
   } catch (e) {
@@ -353,33 +364,11 @@ export async function issueOfficeReadCode(clientId: string): Promise<{ code: str
  * Codes are single-use and attempt-limited.
  */
 export async function verifyPortalOtp(token: string, code: string): Promise<boolean> {
-  const supabaseAdmin = await sbAdmin();
   const contact = await resolveContact(token);
   if (!contact) throw new Error("Invalid portal link");
-
-  const { data: otp } = await supabaseAdmin
-    .from("portal_otps")
-    .select("id, code_hash, expires_at, consumed_at, attempts")
-    .eq("client_id", contact.client_id)
-    .is("consumed_at", null)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (!otp) throw new Error("Request a new code.");
-  if (new Date(otp.expires_at).getTime() < Date.now()) throw new Error("That code expired. Request a new one.");
-  if (otp.attempts >= OTP_MAX_ATTEMPTS) throw new Error("Too many attempts. Request a new code.");
-
-  const submitted = sha256(code.trim());
-  const expected = otp.code_hash as string;
-  const ok =
-    submitted.length === expected.length &&
-    timingSafeEqual(Buffer.from(submitted), Buffer.from(expected));
-  if (!ok) {
-    await supabaseAdmin.from("portal_otps").update({ attempts: otp.attempts + 1 }).eq("id", otp.id);
-    throw new Error("Incorrect code.");
-  }
-
-  await supabaseAdmin.from("portal_otps").update({ consumed_at: new Date().toISOString() }).eq("id", otp.id);
+  // ONE shared OTP check for every flow (deep link, generic identify,
+  // multi-match), then ONE shared session mint. No parallel implementations.
+  await consumeOtpForClient(contact.client_id, code);
   await createPortalSession(token, contact.client_id, contact.organization_id);
   return true;
 }
@@ -562,7 +551,7 @@ export async function portalVerifyGeneric(
 
   // The OTP was issued against the first match's token; verify against it but
   // WITHOUT minting its session (we may mint for a different chosen client).
-  await assertOtpValid(matches[0].client_id, code);
+  await consumeOtpForClient(matches[0].client_id, code);
 
   const slugResolved = org.orgSlug ?? slug;
   if (matches.length === 1) {
@@ -589,8 +578,83 @@ export async function portalVerifyGeneric(
   };
 }
 
+const ORG_CODE_MAX_ATTEMPTS_PER_IP = 10; // per 10-minute window
+
+/**
+ * Generic "I already have a code" entry: the client has a code (e.g. read to
+ * them by the office) but hasn't identified with phone/email. Match the code
+ * against the org's active OTPs and open that client's portal. IP-rate-limited
+ * because a wrong code matches no specific OTP (so there's no per-code attempt
+ * counter to lean on).
+ */
+export async function portalRedeemOrgCode(
+  slug: string,
+  code: string,
+): Promise<{ slug: string; token: string }> {
+  const org = await orgBrandingBySlug(slug);
+  if (!org) throw new Error("We couldn't find that company.");
+  const supabaseAdmin = await sbAdmin();
+  const ip = await callerIp();
+  const windowStart = new Date(Date.now() - 10 * 60_000).toISOString();
+
+  // IP rate limit.
+  if (ip) {
+    const { count } = await supabaseAdmin
+      .from("portal_code_attempts")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", org.organizationId)
+      .eq("ip", ip)
+      .gte("created_at", windowStart);
+    if ((count ?? 0) >= ORG_CODE_MAX_ATTEMPTS_PER_IP) {
+      throw new Error("Too many attempts. Please wait a few minutes, or use your phone/email instead.");
+    }
+  }
+  // Log this attempt regardless of outcome.
+  await supabaseAdmin
+    .from("portal_code_attempts")
+    .insert({ organization_id: org.organizationId, ip });
+
+  // Match the code against the org's active (unconsumed, unexpired) OTPs.
+  const nowIso = new Date().toISOString();
+  const submitted = sha256(code.trim());
+  const { data: candidates } = await supabaseAdmin
+    .from("portal_otps")
+    .select("id, client_id, code_hash, clients!inner(organization_id, portal_token, active)")
+    .is("consumed_at", null)
+    .gte("expires_at", nowIso)
+    .eq("clients.organization_id", org.organizationId)
+    .eq("clients.active", true)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  let matched: { otpId: string; clientId: string; token: string } | null = null;
+  for (const row of (candidates ?? []) as any[]) {
+    const expected = row.code_hash as string;
+    if (
+      submitted.length === expected.length &&
+      timingSafeEqual(Buffer.from(submitted), Buffer.from(expected))
+    ) {
+      const client = Array.isArray(row.clients) ? row.clients[0] : row.clients;
+      matched = { otpId: row.id, clientId: row.client_id, token: client.portal_token };
+      break;
+    }
+  }
+  if (!matched) throw new Error("That code isn't valid or has expired. Request a new one.");
+
+  await supabaseAdmin.from("portal_otps").update({ consumed_at: nowIso }).eq("id", matched.otpId);
+  await createPortalSession(matched.token, matched.clientId, org.organizationId);
+  return { slug: org.orgSlug ?? slug, token: matched.token };
+}
+
 /** Validate + consume an OTP for a client without minting a session. */
-async function assertOtpValid(clientId: string, code: string): Promise<void> {
+/**
+ * THE single OTP verification used by every flow: check the client's latest
+ * unconsumed code (expiry + attempt-limit + constant-time compare), then
+ * consume it. Throws a user-facing message on any failure. Callers mint the
+ * session separately (createPortalSession) so the same check serves both the
+ * pre-identified token flow and the generic/multi-match flows.
+ */
+async function consumeOtpForClient(clientId: string, code: string): Promise<void> {
   const supabaseAdmin = await sbAdmin();
   const { data: otp } = await supabaseAdmin
     .from("portal_otps")

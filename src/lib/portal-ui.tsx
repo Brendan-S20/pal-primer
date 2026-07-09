@@ -32,6 +32,7 @@ import {
   portalIdentify,
   portalVerifyGenericOtp,
   portalChooseAccount,
+  portalRedeemCode,
   portalGetClient,
   portalListUpcomingVisits,
   portalListInvoices,
@@ -240,9 +241,17 @@ export function usePortal(token: string, slug?: string) {
   });
   const verifyOtpMut = useMutation({
     mutationFn: (code: string) => verifyOtpFn({ data: { token, code } }),
-    onSuccess: async () => {
-      await contextQ.refetch();
-      invalidatePortal();
+    onSuccess: () => {
+      // Deterministic transition: a full document load of the canonical portal
+      // URL. The in-place refetch (refetch context + invalidate ~14 queries
+      // while the layout flips gate→Outlet) had a rare router race on first
+      // interaction that could momentarily resolve the index route "/" and hit
+      // its /auth redirect — a client landing on staff login (finding #4). A
+      // hard navigation eliminates the race and always renders the verified
+      // portal from a clean SSR with the freshly-set session cookie.
+      if (typeof window !== "undefined") {
+        window.location.assign(slug ? `/portal/${slug}/${token}` : `/portal/${token}`);
+      }
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -508,9 +517,10 @@ export function PortalGenericEntry({ slug }: { slug: string }) {
   const identifyFn = useServerFn(portalIdentify);
   const verifyFn = useServerFn(portalVerifyGenericOtp);
   const chooseFn = useServerFn(portalChooseAccount);
+  const redeemFn = useServerFn(portalRedeemCode);
 
   const [contact, setContact] = useState("");
-  const [step, setStep] = useState<"identify" | "code" | "pick">("identify");
+  const [step, setStep] = useState<"identify" | "code" | "pick" | "haveCode">("identify");
   const [candidates, setCandidates] = useState<Array<{ id: string; label: string }>>([]);
 
   const orgQ = useQuery({
@@ -539,6 +549,11 @@ export function PortalGenericEntry({ slug }: { slug: string }) {
   });
   const chooseMut = useMutation({
     mutationFn: (clientId: string) => chooseFn({ data: { clientId } }),
+    onSuccess: (r: any) => goToPortal(r.slug, r.token),
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const redeemMut = useMutation({
+    mutationFn: (code: string) => redeemFn({ data: { slug, code } }),
     onSuccess: (r: any) => goToPortal(r.slug, r.token),
     onError: (e) => toast.error((e as Error).message),
   });
@@ -575,6 +590,28 @@ export function PortalGenericEntry({ slug }: { slug: string }) {
               {identifyMut.isPending ? "Sending…" : "Send code"}
             </Button>
           </form>
+          <button
+            className="mt-3 w-full text-center text-xs text-muted-foreground hover:underline"
+            onClick={() => setStep("haveCode")}
+          >
+            Already have a code from us? Enter it
+          </button>
+        </>
+      )}
+
+      {step === "haveCode" && (
+        <>
+          <h1 className="text-xl font-semibold">Enter your code</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Enter the code we gave you and we'll open your account.
+          </p>
+          <div className="mt-5">
+            <CodeEntry
+              pending={redeemMut.isPending}
+              onVerify={(c) => redeemMut.mutate(c)}
+              onBack={() => setStep("identify")}
+            />
+          </div>
         </>
       )}
 

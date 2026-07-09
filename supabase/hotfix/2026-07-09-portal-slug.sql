@@ -1,12 +1,10 @@
 -- ============================================================================
 -- LIVE HOTFIX — run once in Lovable Cloud → Database → SQL editor.
--- Phase 2 of finding #4: company-level portal entry point.
+-- Phase 2 of finding #4: company-level portal entry + generic code entry.
 --
--- Adds organizations.portal_slug (unique) and backfills every existing org
--- from its name (collision-safe), so /portal/{slug} and the canonical
--- /portal/{slug}/{token} links work and legacy /portal/{uuid} links can
--- redirect. This is the ONLY SQL Phase 2 needs; everything else is code.
--- Idempotent — safe to run more than once.
+-- Adds organizations.portal_slug (unique, backfilled) and a small
+-- portal_code_attempts rate-limit table. This is the ONLY SQL Phase 2 needs;
+-- everything else is code. Idempotent — safe to run more than once.
 -- ============================================================================
 
 -- Company-level portal entry point (Phase 2 of finding #4).
@@ -51,3 +49,18 @@ END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS organizations_portal_slug_key
   ON public.organizations (portal_slug);
+
+-- Rate-limit table for the generic "I already have a code" entry, which
+-- matches a code against an org's active OTPs without first identifying the
+-- client. IP-scoped attempt logging bounds brute-force of the 6-digit code.
+CREATE TABLE IF NOT EXISTS public.portal_code_attempts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  ip inet,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS portal_code_attempts_lookup
+  ON public.portal_code_attempts (organization_id, ip, created_at DESC);
+ALTER TABLE public.portal_code_attempts ENABLE ROW LEVEL SECURITY;
+-- No policies: only the service-role server path touches it.
+GRANT ALL ON public.portal_code_attempts TO service_role;

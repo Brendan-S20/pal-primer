@@ -108,6 +108,16 @@ export const portalChooseAccount = createServerFn({ method: "POST" })
     return portalChooseClient(data.clientId);
   });
 
+/** Generic entry: redeem a code the client already has, without identifying. */
+export const portalRedeemCode = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z.object({ slug: z.string().min(1).max(120), code: z.string().min(4).max(10) }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { portalRedeemOrgCode } = await portalAuth();
+    return portalRedeemOrgCode(data.slug, data.code);
+  });
+
 export const portalRequestOtp = createServerFn({ method: "POST" })
   .inputValidator((d) =>
     z.object({ token: z.string().uuid(), channel: z.enum(["sms", "email"]) }).parse(d),
