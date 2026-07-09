@@ -84,7 +84,7 @@ export const Route = createFileRoute('/email/auth/webhook')({
         // Supabase forwards the standard webhook headers (webhook-id,
         // webhook-timestamp, webhook-signature). The standardwebhooks lib
         // expects the secret without the "v1," Supabase-config prefix.
-        const wh = new Webhook(hookSecret.replace(/^v1,/, ''))
+        const wh = new Webhook(hookSecret.replace('v1,whsec_', ''))
         let payload: SupabaseAuthHookPayload
         try {
           payload = wh.verify(rawBody, {
