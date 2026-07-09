@@ -202,21 +202,39 @@ export async function issuePortalOtp(
       const { sendTwilioSms } = await import("@/lib/twilio.server");
       await sendTwilioSms({ from: org.sms_from_number, to: dest, body: message });
     } else {
-      await supabaseAdmin.rpc("enqueue_email", {
-        queue_name: "transactional_emails",
-        payload: {
-          message_id: `portal-otp-${sha256(code).slice(0, 12)}`,
-          to: dest,
-          from: `${contact.org_name} <noreply@notify.thenorth.consulting>`,
-          sender_domain: "notify.thenorth.consulting",
-          subject: `Your ${contact.org_name} verification code`,
-          html: `<p>Your verification code is <strong style="font-size:20px;letter-spacing:2px">${code}</strong>.</p><p>It expires in ${OTP_TTL_MINUTES} minutes. If you didn't request this, ignore this email.</p>`,
-          text: message,
-          purpose: "transactional",
-          label: "portal-otp",
-          queued_at: new Date().toISOString(),
-        },
-      });
+      // Send OTP email DIRECTLY (synchronous) rather than via the pgmq queue,
+      // so delivery doesn't depend on the process-email-queue cron running. A
+      // verification code is useless if it sits in a queue for minutes.
+      const apiKey = process.env.LOVABLE_API_KEY;
+      if (!apiKey) throw new Error("Email is not configured — ask us to read you the code.");
+      const emailPayload = {
+        message_id: `portal-otp-${sha256(code).slice(0, 12)}`,
+        to: dest,
+        from: `${contact.org_name} <noreply@notify.thenorth.consulting>`,
+        sender_domain: "notify.thenorth.consulting",
+        subject: `Your ${contact.org_name} verification code`,
+        html: `<p>Your verification code is <strong style="font-size:20px;letter-spacing:2px">${code}</strong>.</p><p>It expires in ${OTP_TTL_MINUTES} minutes. If you didn't request this, ignore this email.</p>`,
+        text: message,
+        purpose: "transactional",
+        label: "portal-otp",
+      };
+      try {
+        const { sendLovableEmail } = await import("@lovable.dev/email-js");
+        const res = await sendLovableEmail(emailPayload, {
+          apiKey,
+          sendUrl: process.env.LOVABLE_SEND_URL,
+        });
+        if (!res?.success) throw new Error(res?.status || "Email provider rejected the message");
+      } catch (directErr) {
+        // Fall back to the queue if direct send is unavailable, so the code is
+        // at least queued rather than lost.
+        console.error("portal OTP direct email failed, falling back to queue", (directErr as Error).message);
+        const { error: qErr } = await supabaseAdmin.rpc("enqueue_email", {
+          queue_name: "transactional_emails",
+          payload: { ...emailPayload, queued_at: new Date().toISOString() },
+        });
+        if (qErr) throw new Error("Could not send the email code. Ask us to read it to you instead.");
+      }
     }
   } catch (e) {
     // The code is stored regardless, so the owner-side "read code" fallback

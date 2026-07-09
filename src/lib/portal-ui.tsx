@@ -411,11 +411,19 @@ export function PortalVerifyGate() {
             >
               {requestOtpMut.isPending ? "Sending…" : "Send code"}
             </Button>
+            <button
+              className="w-full text-center text-xs text-muted-foreground hover:underline"
+              onClick={() => setStep("code")}
+            >
+              Already have a code from us? Enter it
+            </button>
           </div>
         ) : (
           <div className="mt-5 space-y-3">
             <p className="text-sm text-muted-foreground">
-              We sent a 6-digit code to {sentHint ?? "your contact on file"}. Enter it below.
+              {sentHint
+                ? `We sent a 6-digit code to ${sentHint}. Enter it below.`
+                : "Enter the 6-digit code we gave you."}
             </p>
             <Input
               inputMode="numeric"
