@@ -20,6 +20,31 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
+// If the user has no org membership yet (email-confirmation flow: bootstrap was
+// deferred from signup), create the org + owner role now using the metadata
+// captured at signup. Idempotent server-side via bootstrap_organization().
+async function ensureBootstrapped(user: { id: string; email?: string | null; user_metadata?: Record<string, any> | null }): Promise<void> {
+  const { data: existing } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (existing) return;
+
+  const md = user.user_metadata ?? {};
+  const emailLocal = (user.email ?? "").split("@")[0] || "Owner";
+  const displayName: string =
+    (typeof md.display_name === "string" && md.display_name.trim()) ||
+    (typeof md.full_name === "string" && md.full_name.trim()) ||
+    (typeof md.name === "string" && md.name.trim()) ||
+    emailLocal;
+  const orgName: string =
+    (typeof md.org_name === "string" && md.org_name.trim()) ||
+    `${displayName}'s Organization`;
+
+  await bootstrapOrganization({ data: { orgName, displayName } });
+}
+
 // Where a given role should land immediately after sign-in.
 async function landingPathForUser(userId: string): Promise<string> {
   // Platform admins always land in the platform console — never inside a tenant
