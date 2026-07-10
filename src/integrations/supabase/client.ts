@@ -8,10 +8,41 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
+// --- Impersonation session isolation (QA finding #5) ---------------------
+// A platform admin impersonating a tenant opens a NEW tab whose window.name is
+// stamped with this prefix. window.name is per-tab and survives the in-tab
+// navigation the exchange performs, so we can decide — synchronously, before
+// any auth call — that THIS tab is an impersonation tab. Such a tab persists
+// its Supabase session to sessionStorage (per-tab, never shared with the
+// admin's other tabs) under a distinct storage key, instead of the shared
+// localStorage the admin's own session lives in. That makes it structurally
+// impossible for impersonating a customer to touch or overwrite the admin's
+// own session in any other tab — the incident this finding documents.
+export const IMPERSONATION_WINDOW_PREFIX = 'hs-impersonation:';
+
+export function isImpersonationTab(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.name.startsWith(IMPERSONATION_WINDOW_PREFIX);
+  } catch {
+    return false;
+  }
+}
+
+const impersonating = isImpersonationTab();
+
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
-    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    storage:
+      typeof window !== 'undefined'
+        ? impersonating
+          ? window.sessionStorage
+          : window.localStorage
+        : undefined,
+    // A distinct key so the impersonation session can never collide with a
+    // real admin/owner session that shares the same browser profile.
+    storageKey: impersonating ? 'sb-hs-impersonation-auth' : undefined,
     persistSession: true,
     autoRefreshToken: true,
-  }
+  },
 });

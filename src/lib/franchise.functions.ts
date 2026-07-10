@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 
@@ -158,4 +159,145 @@ export const markSelfAsFranchiseParent = createServerFn({ method: "POST" })
     const { error } = await context.supabase.rpc("mark_franchise_parent", { _org_id: orgId });
     if (error) throw new Error(error.message);
     return { ok: true, orgId };
+  });
+
+// ── Royalty billing (finding #16) ────────────────────────────────────────────
+// houndstack.com markets "automatic royalty billing" as live; this implements
+// it: a per-child royalty rate, and royalty invoices computed against each
+// child's rolled-up (collected) revenue for a period.
+
+/** Previous full calendar month as [start, end] date strings (UTC). */
+function lastMonthRange(): { start: string; end: string } {
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
+}
+
+/** Set a child org's royalty percentage (0–100). Parent-only. */
+export const setChildRoyaltyRate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ childOrgId: z.string().uuid(), percent: z.number().min(0).max(100) }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const orgId = await resolveOrgId(context.supabase, context.userId);
+    // Confirm the target really is a child of the caller's org.
+    const { data: child } = await context.supabase
+      .from("organizations")
+      .select("id, parent_organization_id")
+      .eq("id", data.childOrgId)
+      .maybeSingle();
+    if (!child || child.parent_organization_id !== orgId) {
+      throw new Error("That location isn't part of your franchise.");
+    }
+    const { error } = await (context.supabase.from("organizations") as any)
+      .update({ franchise_royalty_percent: data.percent })
+      .eq("id", data.childOrgId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+/** Child orgs with their configured royalty rate, for the settings UI. */
+export const getFranchiseRoyaltySettings = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { data, error } = await (context.supabase.from("organizations") as any)
+      .select("id, name, franchise_royalty_percent")
+      .eq("parent_organization_id", orgId)
+      .order("name");
+    if (error) throw new Error(error.message);
+    return { children: data ?? [] };
+  });
+
+/**
+ * Generate (or refresh) royalty invoices for every child for a period —
+ * defaults to the previous full calendar month. Royalty = collected revenue in
+ * the period × the child's rate. Idempotent per child+period (upsert on the
+ * unique key). Can be called manually here and from the nightly cron.
+ */
+export const generateRoyaltyInvoices = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ periodStart: z.string().optional(), periodEnd: z.string().optional() }).parse(d ?? {}),
+  )
+  .handler(async ({ data, context }) => {
+    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { start, end } =
+      data.periodStart && data.periodEnd
+        ? { start: data.periodStart, end: data.periodEnd }
+        : lastMonthRange();
+
+    const { data: children, error: cErr } = await (context.supabase.from("organizations") as any)
+      .select("id, name, franchise_royalty_percent")
+      .eq("parent_organization_id", orgId);
+    if (cErr) throw new Error(cErr.message);
+
+    let generated = 0;
+    for (const child of (children ?? []) as any[]) {
+      const percent = Number(child.franchise_royalty_percent ?? 0);
+      // Collected (succeeded) revenue in the period.
+      const { data: pays } = await context.supabase
+        .from("payments")
+        .select("amount_cents")
+        .eq("organization_id", child.id)
+        .eq("status", "succeeded")
+        .gte("created_at", `${start}T00:00:00Z`)
+        .lt("created_at", `${end}T00:00:00Z`);
+      const revenue = (pays ?? []).reduce((s: number, r: any) => s + Number(r.amount_cents ?? 0), 0);
+      const amount = Math.round((revenue * percent) / 100);
+
+      const { error: upErr } = await (context.supabase as any).from("franchise_royalty_invoices")
+        .upsert(
+          {
+            parent_organization_id: orgId,
+            child_organization_id: child.id,
+            period_start: start,
+            period_end: end,
+            revenue_cents: revenue,
+            royalty_percent: percent,
+            amount_cents: amount,
+            status: "draft",
+            created_by: context.userId,
+          },
+          { onConflict: "child_organization_id,period_start,period_end" },
+        );
+      if (upErr) throw new Error(upErr.message);
+      generated += 1;
+    }
+    return { generated, periodStart: start, periodEnd: end };
+  });
+
+/** List generated royalty invoices, newest period first. Parent-only. */
+export const listRoyaltyInvoices = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { data, error } = await (context.supabase as any).from("franchise_royalty_invoices")
+      .select(
+        "id, child_organization_id, period_start, period_end, revenue_cents, royalty_percent, amount_cents, status, created_at, organizations!franchise_royalty_invoices_child_organization_id_fkey(name)",
+      )
+      .eq("parent_organization_id", orgId)
+      .order("period_start", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (error) throw new Error(error.message);
+    return { invoices: data ?? [] };
+  });
+
+/** Mark a royalty invoice issued/paid. Parent-only. */
+export const setRoyaltyInvoiceStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ invoiceId: z.string().uuid(), status: z.enum(["draft", "issued", "paid", "void"]) }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { error } = await (context.supabase as any).from("franchise_royalty_invoices")
+      .update({ status: data.status })
+      .eq("id", data.invoiceId)
+      .eq("parent_organization_id", orgId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
   });

@@ -18,28 +18,33 @@ type Plan = {
   name: string;
   slug: string;
   description: string | null;
-  client_limit_min: number;
-  client_limit_max: number | null;
-  price_per_client_cents: number | null;
   price_cents: number | null;
+  included_seats: number | null;
+  price_per_seat_cents: number | null;
+  is_enterprise: boolean;
   currency: string;
   interval: string;
   is_active: boolean;
-  is_free: boolean;
   sort_order: number;
   stripe_price_id: string | null;
 };
 
-function formatBand(p: Plan): string {
-  if (p.client_limit_max === null) return `${p.client_limit_min}+ clients`;
-  return `${p.client_limit_min}–${p.client_limit_max} clients`;
-}
-
-function formatPrice(p: Plan): string {
-  if (p.is_free) return "Free";
-  if (p.price_per_client_cents !== null) return `$${(p.price_per_client_cents / 100).toFixed(2)}/client/${p.interval}`;
+function formatBase(p: Plan): string {
+  if (p.is_enterprise) return "Custom";
   if (p.price_cents !== null) return `$${(p.price_cents / 100).toFixed(0)}/${p.interval}`;
   return "—";
+}
+
+function formatSeats(p: Plan): string {
+  if (p.is_enterprise) return "Custom";
+  if (p.included_seats === null) return "—";
+  return `${p.included_seats} employee${p.included_seats === 1 ? "" : "s"} included`;
+}
+
+function formatOverage(p: Plan): string {
+  if (p.is_enterprise) return "By contract";
+  if (!p.price_per_seat_cents) return "—";
+  return `$${(p.price_per_seat_cents / 100).toFixed(0)}/employee/${p.interval}`;
 }
 
 function PlansPage() {
@@ -49,11 +54,12 @@ function PlansPage() {
   const q = useQuery({
     queryKey: ["platform", "plans", "list"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("platform_plans")
         .select(
-          "id, name, slug, description, client_limit_min, client_limit_max, price_per_client_cents, price_cents, currency, interval, is_active, is_free, sort_order, stripe_price_id",
+          "id, name, slug, description, price_cents, included_seats, price_per_seat_cents, is_enterprise, currency, interval, is_active, sort_order, stripe_price_id",
         )
+        .eq("is_active", true)
         .order("sort_order", { ascending: true });
       if (error) throw new Error(error.message);
       return (data ?? []) as Plan[];
@@ -65,16 +71,16 @@ function PlansPage() {
       <div>
         <h1 className="text-2xl font-semibold">Plans</h1>
         <p className="text-sm text-muted-foreground">
-          SaaS plan catalog defined by <strong>active-client bands</strong>. Unlimited staff on every plan.
-          Stripe products and prices are mirrored from here once the platform Stripe key is set (step 5).
+          Per-employee SaaS pricing, matching houndstack.com. Each tier includes a set number of
+          employees; additional active employees are billed at the per-employee overage rate.
+          <strong> Customers, dogs, jobs, routes, and zones are unlimited on every plan.</strong>{" "}
+          New signups start on a 14-day free trial. Stripe products/prices are mirrored from here
+          once the platform Stripe key is set.
         </p>
       </div>
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader>
           <CardTitle className="text-base">Catalog</CardTitle>
-          <div className="text-xs text-muted-foreground">
-            Editing lands with step 5 — awaiting pricing bands.
-          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -82,30 +88,31 @@ function PlansPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Plan</TableHead>
-                  <TableHead>Band</TableHead>
-                  <TableHead>Price</TableHead>
-                  <TableHead>Included</TableHead>
+                  <TableHead>Base price</TableHead>
+                  <TableHead>Included employees</TableHead>
+                  <TableHead>Additional employee</TableHead>
+                  <TableHead>Customers</TableHead>
                   <TableHead>Stripe price</TableHead>
-                  <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {(q.data ?? []).map((p) => (
                   <TableRow key={p.id}>
                     <TableCell>
-                      <div className="font-medium">{p.name}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{p.name}</span>
+                        {p.is_enterprise && <Badge variant="outline">Enterprise</Badge>}
+                      </div>
                       {p.description ? (
                         <div className="text-xs text-muted-foreground">{p.description}</div>
                       ) : null}
                     </TableCell>
-                    <TableCell className="text-sm">{formatBand(p)}</TableCell>
-                    <TableCell className="text-sm">{formatPrice(p)}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">Unlimited staff</TableCell>
+                    <TableCell className="text-sm">{formatBase(p)}</TableCell>
+                    <TableCell className="text-sm">{formatSeats(p)}</TableCell>
+                    <TableCell className="text-sm">{formatOverage(p)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">Unlimited</TableCell>
                     <TableCell className="font-mono text-xs">
                       {p.stripe_price_id ?? <span className="text-muted-foreground">—</span>}
-                    </TableCell>
-                    <TableCell>
-                      {p.is_active ? <Badge variant="default">Active</Badge> : <Badge variant="outline">Draft</Badge>}
                     </TableCell>
                   </TableRow>
                 ))}

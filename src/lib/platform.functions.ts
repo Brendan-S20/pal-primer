@@ -96,14 +96,31 @@ export const listPlatformAudit = createServerFn({ method: "GET" })
   });
 
 // ---------- Impersonation ----------
-// Generates a one-time magic link for the org owner. Admin briefly signs in as
-// that user in a new tab; RLS naturally scopes them to that tenant. Every
-// action is written to platform_admin_audit.
+// Finding #5: impersonation must never touch the admin's own session. The admin
+// mints a single-use grant for a SPECIFIC tenant user; a new, tab-scoped window
+// (see IMPERSONATION_WINDOW_PREFIX) exchanges the grant for a session it stores
+// only in its own sessionStorage. The admin's shared-localStorage session is
+// never read or written. Every start/exchange is written to platform_admin_audit.
+
+import { createHash, randomBytes } from "node:crypto";
+
+const GRANT_TTL_MS = 2 * 60_000;
+
+function sha256(v: string): string {
+  return createHash("sha256").update(v).digest("hex");
+}
 
 const impersonateSchema = z.object({
   organization_id: z.string().uuid(),
+  // The exact user to impersonate (picked in the UI). No silent default.
+  target_user_id: z.string().uuid(),
 });
 
+/**
+ * Admin-gated: mint a one-time, 2-minute impersonation grant for a specific
+ * tenant user. Returns an opaque token the caller hands to a NEW tab; nothing
+ * about the admin's own session changes here.
+ */
 export const startImpersonation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => impersonateSchema.parse(d))
@@ -111,46 +128,129 @@ export const startImpersonation = createServerFn({ method: "POST" })
     await assertPlatformAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    // Find an owner or admin for that org.
+    // The chosen user must actually belong to the tenant being viewed.
     const { data: role, error: roleErr } = await supabaseAdmin
       .from("user_roles")
       .select("user_id, role")
       .eq("organization_id", data.organization_id)
-      .in("role", ["owner", "office_manager"])
-      .limit(1)
+      .eq("user_id", data.target_user_id)
       .maybeSingle();
     if (roleErr) throw new Error(roleErr.message);
-    if (!role) throw new Error("No owner/admin found for this organization.");
+    if (!role) throw new Error("That user is not a member of this organization.");
 
-    // Fetch the auth user's email.
     const { data: userRes, error: userErr } = await supabaseAdmin.auth.admin.getUserById(
-      role.user_id,
+      data.target_user_id,
     );
     if (userErr) throw new Error(userErr.message);
     const email = userRes.user?.email;
     if (!email) throw new Error("Target user has no email.");
 
-    // Generate a magic link — short-lived, single-use.
-    const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
-      type: "magiclink",
-      email,
+    const token = randomBytes(32).toString("hex");
+    // impersonation_grants is added by the finding-#5 migration; generated
+    // Supabase types lag until Lovable regenerates them, so talk to it untyped.
+    const { error: insErr } = await (supabaseAdmin as any).from("impersonation_grants").insert({
+      token_hash: sha256(token),
+      organization_id: data.organization_id,
+      target_user_id: data.target_user_id,
+      actor_user_id: context.userId,
+      expires_at: new Date(Date.now() + GRANT_TTL_MS).toISOString(),
     });
-    if (linkErr) throw new Error(linkErr.message);
-    const actionLink = linkData.properties?.action_link;
-    if (!actionLink) throw new Error("Failed to generate impersonation link.");
+    if (insErr) throw new Error(insErr.message);
 
-    // Audit — before/after left null; action carries context.
     try {
       await supabaseAdmin.from("platform_admin_audit").insert({
         actor_user_id: context.userId,
         organization_id: data.organization_id,
         action: "start_impersonation",
         before_json: null,
-        after_json: { target_user_id: role.user_id, target_email: email },
+        after_json: { target_user_id: data.target_user_id, target_email: email, role: role.role },
       });
     } catch { /* ignore */ }
 
-    return { actionLink, targetEmail: email };
+    return { token, targetEmail: email };
+  });
+
+/**
+ * Called FROM the new impersonation tab (which has no session yet, so this
+ * endpoint is authorized purely by possession of the single-use grant token).
+ * Consumes the grant, mints a fresh session for the target user server-side
+ * (never in the admin's browser), and returns the tokens for the tab to load
+ * into its own sessionStorage-scoped client.
+ */
+export const consumeImpersonation = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({ token: z.string().min(32).max(200) }).parse(d))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const nowIso = new Date().toISOString();
+
+    // Atomically claim the grant: only succeeds if unconsumed and unexpired.
+    // (Untyped: generated types lag the finding-#5 migration.)
+    const { data: grant, error: claimErr } = await (supabaseAdmin as any)
+      .from("impersonation_grants")
+      .update({ consumed_at: nowIso })
+      .eq("token_hash", sha256(data.token))
+      .is("consumed_at", null)
+      .gte("expires_at", nowIso)
+      .select("id, organization_id, target_user_id, actor_user_id")
+      .maybeSingle();
+    if (claimErr) throw new Error(claimErr.message);
+    if (!grant) throw new Error("This impersonation link has expired or was already used.");
+
+    const { data: userRes, error: userErr } = await supabaseAdmin.auth.admin.getUserById(
+      grant.target_user_id,
+    );
+    if (userErr) throw new Error(userErr.message);
+    const email = userRes.user?.email;
+    if (!email) throw new Error("Target user has no email.");
+
+    // Mint a real session for the target WITHOUT establishing it in any
+    // browser: generate a magic-link token_hash, then verify it on a throwaway
+    // server-side client to obtain access/refresh tokens.
+    const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+      type: "magiclink",
+      email,
+    });
+    if (linkErr) throw new Error(linkErr.message);
+    const tokenHash = linkData.properties?.hashed_token;
+    if (!tokenHash) throw new Error("Failed to prepare impersonation session.");
+
+    const { createClient } = await import("@supabase/supabase-js");
+    const verifier = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_PUBLISHABLE_KEY!,
+      { auth: { storage: undefined, persistSession: false, autoRefreshToken: false } },
+    );
+    const { data: verified, error: vErr } = await verifier.auth.verifyOtp({
+      type: "magiclink",
+      token_hash: tokenHash,
+    });
+    if (vErr) throw new Error(vErr.message);
+    const session = verified.session;
+    if (!session) throw new Error("Failed to establish impersonation session.");
+
+    // Fetch org name for the banner.
+    const { data: org } = await supabaseAdmin
+      .from("organizations")
+      .select("name")
+      .eq("id", grant.organization_id)
+      .maybeSingle();
+
+    try {
+      await supabaseAdmin.from("platform_admin_audit").insert({
+        actor_user_id: grant.actor_user_id,
+        organization_id: grant.organization_id,
+        action: "enter_impersonation",
+        before_json: null,
+        after_json: { target_user_id: grant.target_user_id, target_email: email },
+      });
+    } catch { /* ignore */ }
+
+    return {
+      accessToken: session.access_token,
+      refreshToken: session.refresh_token,
+      targetEmail: email,
+      orgName: org?.name ?? "this tenant",
+    };
   });
 
 

@@ -3,9 +3,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getInvoice, createCheckoutForInvoice, voidInvoice } from "@/lib/invoices.functions";
 import { syncInvoice } from "@/lib/accounting.functions";
-import { sendInvoiceEmail } from "@/lib/notifications.functions";
+import { sendInvoiceEmail, getEmailSendStatus } from "@/lib/notifications.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/invoices/$invoiceId")({
@@ -44,9 +45,38 @@ function InvoiceDetail() {
   });
 
   const emailFn = useServerFn(sendInvoiceEmail);
+  const statusFn = useServerFn(getEmailSendStatus);
   const emailM = useMutation({
     mutationFn: async () => emailFn({ data: { invoiceId } }),
-    onSuccess: () => toast.success("Invoice emailed to client"),
+    onSuccess: async (r) => {
+      // The send is queued; poll email_send_log for the real outcome so we
+      // confirm "Emailed to X" (or surface a failure) rather than claiming
+      // success on enqueue (finding #32).
+      const to = r.recipient ?? "the client";
+      if (!r.messageId) {
+        toast.success(`Invoice queued for ${to}`);
+        return;
+      }
+      const id = toast.loading(`Sending invoice to ${to}…`);
+      for (let i = 0; i < 20; i++) {
+        await new Promise((res) => setTimeout(res, 3000));
+        let s: { status: string; recipient: string | null; error: string | null };
+        try {
+          s = await statusFn({ data: { messageId: r.messageId } });
+        } catch {
+          continue;
+        }
+        if (s.status === "sent") {
+          toast.success(`Emailed to ${s.recipient ?? to}`, { id });
+          return;
+        }
+        if (s.status === "failed" || s.status === "bounced" || s.status === "dlq") {
+          toast.error(`Couldn't email the invoice${s.error ? `: ${s.error}` : ""}`, { id });
+          return;
+        }
+      }
+      toast.message(`Invoice queued for ${to} — check back shortly`, { id });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -120,7 +150,15 @@ function InvoiceDetail() {
                 {emailM.isPending ? "Sending…" : "Email invoice to client"}
               </Button>
             )}
-            <Button variant="destructive" onClick={() => voidM.mutate()} disabled={voidM.isPending}>Void</Button>
+            <ConfirmButton
+              title="Void this invoice?"
+              description="Voiding removes this invoice from the client's balance and can't be undone."
+              confirmLabel="Void invoice"
+              onConfirm={() => voidM.mutate()}
+              disabled={voidM.isPending}
+            >
+              Void
+            </ConfirmButton>
           </>
         )}
         {invoice.status === "paid" && !(invoice as any).accounting_remote_id && (

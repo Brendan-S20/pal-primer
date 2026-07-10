@@ -1,23 +1,24 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission } from "@/lib/authz.server";
 
 const providerSchema = z.enum(["quickbooks", "xero"]);
 
-async function getOrgId(supabase: any, userId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from("staff")
-    .select("org_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error || !data) throw new Error("No org membership");
-  return data.org_id;
+// Accounting sync connects the tenant's real external financial system
+// (QuickBooks/Xero), so every read and write here is gated at manage_settings
+// (owner/office_manager) rather than bare org membership — a dispatcher or tech
+// must not be able to view, post, or trigger accounting connections (#31).
+async function requireAccountingOrg(supabase: any, userId: string): Promise<string> {
+  const { orgId } = await requirePermission(supabase, userId, "manage_settings");
+  return orgId;
 }
 
 export const listAccountingConnections = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
+    await requireAccountingOrg(supabase, userId);
     const { data, error } = await supabase
       .from("accounting_connections")
       .select("id, provider, realm_id, tenant_id, auto_sync, connected_at, last_sync_at, token_expires_at, default_income_account, default_ar_account, default_payment_account")
@@ -44,7 +45,7 @@ export const upsertAccountingConnection = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const orgId = await getOrgId(supabase, userId);
+    const orgId = await requireAccountingOrg(supabase, userId);
     const { data: existing } = await supabase
       .from("accounting_connections")
       .select("id")
@@ -87,11 +88,13 @@ export const disconnectAccounting = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
+    const orgId = await requireAccountingOrg(supabase, userId);
     const { error } = await supabase
       .from("accounting_connections")
       .delete()
-      .eq("id", data.id);
+      .eq("id", data.id)
+      .eq("org_id", orgId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -99,7 +102,8 @@ export const disconnectAccounting = createServerFn({ method: "POST" })
 export const listSyncLog = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
+    await requireAccountingOrg(supabase, userId);
     const { data, error } = await supabase
       .from("accounting_sync_log")
       .select("id, entity_type, entity_id, direction, status, remote_id, message, created_at")
@@ -119,7 +123,7 @@ export const syncInvoice = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ invoice_id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const orgId = await getOrgId(supabase, userId);
+    const orgId = await requireAccountingOrg(supabase, userId);
 
     const { data: conn } = await supabase
       .from("accounting_connections")
@@ -176,7 +180,7 @@ export const syncAllPaidInvoices = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    await getOrgId(supabase, userId);
+    await requireAccountingOrg(supabase, userId);
     const { data: invoices } = await supabase
       .from("invoices")
       .select("id")

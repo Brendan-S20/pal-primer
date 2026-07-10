@@ -25,6 +25,7 @@ function formatUsd(cents: number | null | undefined) {
 
 const STATUS_LABEL: Record<string, string> = {
   free: "Free",
+  trialing: "Free trial",
   active: "Active",
   past_due: "Past due",
   grace: "Grace period",
@@ -33,6 +34,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 const STATUS_TONE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
   free: "outline",
+  trialing: "secondary",
   active: "default",
   past_due: "destructive",
   grace: "secondary",
@@ -79,13 +81,6 @@ function BillingPage() {
 
   if (isLoading || !data) return <p className="text-muted-foreground">Loading…</p>;
 
-  const bandLabel = (() => {
-    const min = data.requiredPlanBandMin ?? 0;
-    const max = data.requiredPlanBandMax;
-    if (max == null) return `${min}+ clients`;
-    return `${min}–${max} clients`;
-  })();
-
   return (
     <div className="space-y-6">
       <div>
@@ -105,7 +100,12 @@ function BillingPage() {
             </div>
             {data.monthlyEstimateCents != null && (
               <p className="mt-1 text-sm text-muted-foreground">
-                {formatUsd(data.monthlyEstimateCents)}/mo · {bandLabel}
+                {formatUsd(data.monthlyEstimateCents)}/mo · Unlimited customers
+              </p>
+            )}
+            {data.billingStatus === "trialing" && (
+              <p className="mt-2 text-sm text-amber-700">
+                You're on a free trial. Add a plan before it ends to keep full access.
               </p>
             )}
             {data.billingStatus === "past_due" && (
@@ -121,12 +121,9 @@ function BillingPage() {
           </div>
           <div className="text-right">
             <p className="text-sm text-muted-foreground">Active clients</p>
-            <p className="text-xl font-semibold">
-              {data.activeClientCount}
-              {!data.isPaidTier && (
-                <span className="text-muted-foreground"> / {data.freeLimit}</span>
-              )}
-            </p>
+            {/* Customers are unlimited on every plan — no enforced client cap
+                (finding #23; the old "16 / 3" contradicted the plan copy). */}
+            <p className="text-xl font-semibold">{data.activeClientCount}</p>
           </div>
         </div>
       </div>
@@ -138,13 +135,9 @@ function BillingPage() {
             {data.monthlyEstimateCents != null && ` — ${formatUsd(data.monthlyEstimateCents)}/mo`}
           </h2>
           <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
-            <li>• Covers {bandLabel}</li>
-            <li>• Unlimited staff on every tier</li>
+            <li>• Unlimited customers on every tier</li>
             <li>• Cancel anytime from the customer portal</li>
           </ul>
-          <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            You have {data.activeClientCount} active clients — above the current plan limit. Upgrade to keep adding.
-          </p>
           <Button className="mt-4" onClick={() => checkout.mutate()} disabled={checkout.isPending}>
             {checkout.isPending ? "Redirecting…" : `Upgrade to ${data.requiredPlanName ?? "paid plan"}`}
           </Button>
@@ -163,13 +156,20 @@ function BillingPage() {
         </div>
       )}
 
-      {!data.isPaidTier && !data.needsUpgrade && (
+      {!data.isPaidTier && (
         <div className="rounded-lg border bg-card p-6">
-          <h2 className="text-lg font-semibold">You're on the free plan</h2>
+          <h2 className="text-lg font-semibold">
+            {data.billingStatus === "trialing" ? "You're on a free trial" : "Choose a plan"}
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            First {data.freeLimit} active clients are on us. You'll be prompted to upgrade
-            when you cross that threshold.
+            Every plan includes unlimited customers, dogs, jobs, routes, and zones — you're billed
+            per employee. {data.nextPlanName ? `Start on ${data.nextPlanName} whenever you're ready.` : ""}
           </p>
+          {data.stripePriceId && (
+            <Button className="mt-4" onClick={() => checkout.mutate()} disabled={checkout.isPending}>
+              {checkout.isPending ? "Redirecting…" : "Choose a plan"}
+            </Button>
+          )}
         </div>
       )}
 

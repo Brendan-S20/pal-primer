@@ -98,8 +98,17 @@ function WeatherPage() {
               </div>
             </div>
 
-            {z.days.length === 0 ? (
-              <div className="text-xs text-muted-foreground">No forecast available.</div>
+            {(z as any).status === "no_coords" ? (
+              <div className="text-xs text-amber-700">
+                No coordinates on this zone yet — set them below to load its forecast.
+              </div>
+            ) : (z as any).status === "error" ? (
+              <div className="text-xs text-destructive">
+                Couldn't load the forecast (weather service error). Try Refresh in a moment.
+                {(z as any).error ? <span className="block text-muted-foreground">{(z as any).error}</span> : null}
+              </div>
+            ) : z.days.length === 0 ? (
+              <div className="text-xs text-muted-foreground">No forecast available for this date range.</div>
             ) : (
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 {z.days.map((d) => (

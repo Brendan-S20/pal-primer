@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { listZones, createZone, updateZone, deleteZone } from "@/lib/zones.functions";
 import { Button } from "@/components/ui/button";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
@@ -375,16 +376,17 @@ function ZoneCard({ zone, canEdit }: { zone: any; canEdit: boolean }) {
         <ZoneCoverageSection zone={zone} canEdit={canEdit} />
         {canEdit && (
           <div className="mt-3 flex justify-end gap-2 border-t pt-3">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                if (confirm(`Delete zone "${zone.name}"?`)) delMut.mutate();
-              }}
-              disabled={delMut.isPending}
-            >
-              <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
-            </Button>
+            <ConfirmButton
+              trigger={
+                <Button size="sm" variant="ghost" disabled={delMut.isPending}>
+                  <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
+                </Button>
+              }
+              title={`Delete zone "${zone.name}"?`}
+              description="This removes the zone and its pricing. Clients and properties are not deleted, but any pricing tied to this zone will need to be reassigned. This can't be undone."
+              confirmLabel="Delete zone"
+              onConfirm={() => delMut.mutate()}
+            />
             <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
               Edit
             </Button>

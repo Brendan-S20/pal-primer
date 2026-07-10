@@ -28,9 +28,10 @@ async function fetchDayRisk(lat: number, lon: number, date: string): Promise<Day
   const url = new URL("https://api.open-meteo.com/v1/forecast");
   url.searchParams.set("latitude", String(lat));
   url.searchParams.set("longitude", String(lon));
+  // Current Open-Meteo daily variable names (finding #15).
   url.searchParams.set(
     "daily",
-    "precipitation_sum,precipitation_probability_max,windspeed_10m_max,temperature_2m_max,temperature_2m_min,weathercode",
+    "precipitation_sum,precipitation_probability_max,wind_speed_10m_max,temperature_2m_max,temperature_2m_min,weather_code",
   );
   url.searchParams.set("timezone", "auto");
   url.searchParams.set("start_date", date);
@@ -44,10 +45,10 @@ async function fetchDayRisk(lat: number, lon: number, date: string): Promise<Day
     const base = {
       precip_mm: Number(d.precipitation_sum?.[0] ?? 0),
       precip_prob: Number(d.precipitation_probability_max?.[0] ?? 0),
-      wind_max: Number(d.windspeed_10m_max?.[0] ?? 0),
+      wind_max: Number(d.wind_speed_10m_max?.[0] ?? 0),
       temp_max: Number(d.temperature_2m_max?.[0] ?? 0),
       temp_min: Number(d.temperature_2m_min?.[0] ?? 0),
-      weathercode: Number(d.weathercode?.[0] ?? 0),
+      weathercode: Number(d.weather_code?.[0] ?? 0),
     };
     const reasons: string[] = [];
     if (base.precip_mm >= 5) reasons.push(`${base.precip_mm.toFixed(1)}mm rain`);

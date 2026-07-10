@@ -6,8 +6,13 @@ import {
   listOrgUsers,
   changeUserRole,
   setStaffActive,
+  setStaffRouting,
   listStaffAddresses,
   setStaffAddresses,
+  createOrgInvite,
+  listOrgInvites,
+  revokeOrgInvite,
+  resendOrgInvite,
 } from "@/lib/users.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useMyRole } from "@/hooks/useMyRole";
+import { humanizeRole } from "@/lib/humanize";
 import { MapPin, ChevronDown, ChevronRight } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/settings/users")({
@@ -145,7 +151,7 @@ function UsersPage() {
                                 </SelectContent>
                               </Select>
                             ) : (
-                              <Badge variant="secondary">{u.role}</Badge>
+                              <Badge variant="secondary">{humanizeRole(u.role)}</Badge>
                             )}
                           </td>
                           <td className="py-3">
@@ -184,21 +190,115 @@ function UsersPage() {
               </table>
             </div>
           )}
-          <p className="mt-4 text-xs text-muted-foreground">
-            To invite a new teammate, share the sign-up link and then assign their role here after they create an account.
-          </p>
         </CardContent>
       </Card>
+
+      {canEdit && <InvitePanel />}
     </div>
+  );
+}
+
+// Finding #40: real invite flow — email + pre-assigned role, pending list with
+// revoke, and auto-assignment on the invitee's first sign-in.
+function InvitePanel() {
+  const qc = useQueryClient();
+  const createFn = useServerFn(createOrgInvite);
+  const listFn = useServerFn(listOrgInvites);
+  const revokeFn = useServerFn(revokeOrgInvite);
+  const resendFn = useServerFn(resendOrgInvite);
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"office_manager" | "dispatcher" | "tech">("tech");
+
+  const invitesQ = useQuery({ queryKey: ["org-invites"], queryFn: () => listFn() });
+  const invites: any[] = (invitesQ.data as any)?.invites ?? [];
+
+  const createMut = useMutation({
+    mutationFn: () => createFn({ data: { email: email.trim(), role } }),
+    onSuccess: () => { toast.success("Invite sent"); setEmail(""); qc.invalidateQueries({ queryKey: ["org-invites"] }); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const revokeMut = useMutation({
+    mutationFn: (id: string) => revokeFn({ data: { id } }),
+    onSuccess: () => { toast.success("Invite revoked"); qc.invalidateQueries({ queryKey: ["org-invites"] }); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const resendMut = useMutation({
+    mutationFn: (id: string) => resendFn({ data: { id } }),
+    onSuccess: () => toast.success("Invite resent"),
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const roleLabel: Record<string, string> = { office_manager: "Office manager", dispatcher: "Dispatcher", tech: "Technician" };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Invite a teammate</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form
+          className="flex flex-wrap items-end gap-2"
+          onSubmit={(e) => { e.preventDefault(); if (email.trim()) createMut.mutate(); }}
+        >
+          <div className="min-w-56 flex-1">
+            <Label className="text-xs">Email</Label>
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="teammate@example.com" required />
+          </div>
+          <div>
+            <Label className="text-xs">Role</Label>
+            <select value={role} onChange={(e) => setRole(e.target.value as any)} className="h-10 rounded-md border bg-background px-3 text-sm">
+              <option value="tech">Technician</option>
+              <option value="dispatcher">Dispatcher</option>
+              <option value="office_manager">Office manager</option>
+            </select>
+          </div>
+          <Button type="submit" disabled={createMut.isPending || !email.trim()}>
+            {createMut.isPending ? "Sending…" : "Send invite"}
+          </Button>
+        </form>
+        <p className="text-xs text-muted-foreground">
+          They'll get an email; their role is assigned automatically when they sign up with this address.
+        </p>
+
+        {invites.filter((i) => i.status === "pending").length > 0 && (
+          <div>
+            <div className="mb-1 text-xs font-medium uppercase text-muted-foreground">Pending invites</div>
+            <ul className="divide-y">
+              {invites.filter((i) => i.status === "pending").map((i) => (
+                <li key={i.id} className="flex items-center justify-between py-2 text-sm">
+                  <span>{i.email} <span className="text-muted-foreground">· {roleLabel[i.role] ?? i.role}</span></span>
+                  <span className="flex items-center gap-3">
+                    <button className="text-xs underline disabled:opacity-50" onClick={() => resendMut.mutate(i.id)} disabled={resendMut.isPending}>Resend</button>
+                    <button className="text-xs text-destructive underline" onClick={() => revokeMut.mutate(i.id)}>Revoke</button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
 function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }) {
   const qc = useQueryClient();
   const saveFn = useServerFn(setStaffAddresses);
+  const routingFn = useServerFn(setStaffRouting);
   const [start, setStart] = useState(staff.start_address ?? "");
   const [end, setEnd] = useState(staff.end_address ?? "");
   const [saving, setSaving] = useState(false);
+
+  const routingMut = useMutation({
+    mutationFn: (v: { staffId: string; isFieldTech?: boolean; routingAvailable?: boolean }) =>
+      routingFn({ data: v }),
+    onSuccess: () => {
+      toast.success("Routing updated");
+      qc.invalidateQueries({ queryKey: ["staff-addresses"] });
+      qc.invalidateQueries({ queryKey: ["staff"] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
   const save = async () => {
     setSaving(true);
@@ -260,6 +360,27 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
             Pinned: {Number(staff.end_latitude).toFixed(4)}, {Number(staff.end_longitude).toFixed(4)}
           </p>
         )}
+      </div>
+      {/* Routing eligibility (finding #26). */}
+      <div className="sm:col-span-2 flex flex-wrap items-center gap-4 border-t pt-3">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            defaultChecked={staff.is_field_tech ?? true}
+            disabled={!canEdit}
+            onChange={(e) => routingMut.mutate({ staffId: staff.id, isFieldTech: e.target.checked })}
+          />
+          Field technician (can be assigned routes)
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            defaultChecked={staff.routing_available ?? true}
+            disabled={!canEdit}
+            onChange={(e) => routingMut.mutate({ staffId: staff.id, routingAvailable: e.target.checked })}
+          />
+          Available for routing today
+        </label>
       </div>
       {canEdit && (
         <div className="sm:col-span-2 flex justify-end">

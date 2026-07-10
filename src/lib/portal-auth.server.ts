@@ -303,9 +303,14 @@ export async function issuePortalOtp(
         .select("sms_from_number")
         .eq("id", contact.organization_id)
         .single();
-      if (!org?.sms_from_number) throw new Error("SMS is not configured — ask us to read you the code.");
+      // OTP is an auth flow — always sent from the PLATFORM's Twilio (reliable,
+      // A2P-registered), never the tenant's BYOK number. Prefer the platform
+      // sender number; fall back to the org's legacy number only if unset.
+      const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
+      const otpFrom = platformTwilioFrom() ?? org?.sms_from_number ?? null;
+      if (!otpFrom) throw new Error("SMS is not configured — ask us to read you the code.");
       const { sendTwilioSms } = await import("@/lib/twilio.server");
-      await sendTwilioSms({ from: org.sms_from_number, to: dest, body: message });
+      await sendTwilioSms({ from: otpFrom, to: dest, body: message });
     } else {
       // Send OTP email DIRECTLY (synchronous) via Resend, and LOG the
       // provider's response to email_send_log so every send is provable

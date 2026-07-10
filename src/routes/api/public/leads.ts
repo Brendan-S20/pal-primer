@@ -17,6 +17,9 @@ const CORS = {
 const jsonHeaders = { "Content-Type": "application/json", ...CORS };
 
 const leadSchema = z.object({
+  // Which business this lead belongs to (the tenant's portal slug). Required so
+  // an embedded/hosted form routes to the right org (finding #25).
+  slug: z.string().trim().min(1).max(120),
   name: z.string().trim().min(1).max(120),
   email: z.string().trim().email().max(255),
   phone: z.string().trim().max(40).optional().or(z.literal("")),
@@ -55,7 +58,15 @@ export const Route = createFileRoute("/api/public/leads")({
           process.env.SUPABASE_PUBLISHABLE_KEY!,
           { auth: { persistSession: false } },
         );
-        const { error } = await supabase.from("leads").insert({
+        // Resolve the tenant from its public slug (SECURITY DEFINER RPC, so it
+        // works for the anonymous key; requires the org to have public intake on).
+        const { data: orgRows } = await supabase.rpc("public_get_org_by_slug", { _slug: data.slug });
+        const orgId = (orgRows as Array<{ id: string }> | null)?.[0]?.id ?? null;
+        if (!orgId) {
+          return new Response(JSON.stringify({ error: "Unknown business" }), { status: 404, headers: jsonHeaders });
+        }
+        const { error } = await (supabase.from("leads") as any).insert({
+          organization_id: orgId,
           name: data.name,
           email: data.email.toLowerCase(),
           phone: data.phone || null,
@@ -64,7 +75,7 @@ export const Route = createFileRoute("/api/public/leads")({
           dog_count: data.dog_count ?? null,
           frequency: data.frequency || null,
           message: data.message || null,
-          source: data.source || "marketing_site",
+          source: data.source || "website",
         });
         if (error) {
           return new Response(JSON.stringify({ error: error.message }), {

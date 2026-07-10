@@ -58,6 +58,43 @@ export const createSubscription = createServerFn({ method: "POST" })
     return { id: row.id as string };
   });
 
+const updateSubSchema = z.object({
+  subscriptionId: z.string().uuid(),
+  propertyId: z.string().uuid(),
+  frequency: z.enum(["weekly", "biweekly", "twice_weekly", "monthly", "one_time"]),
+  priceCents: z.number().int().min(0),
+  dogCount: z.number().int().min(1).optional(),
+  unitCount: z.number().int().min(1).optional(),
+  zoneId: z.string().uuid().optional(),
+  billingCadence: z.enum(["prepaid", "postpaid"]).optional(),
+  preferredWeekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
+});
+
+export const updateSubscription = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => updateSubSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    // Editing pricing/plan details is an office-manage-pricing action.
+    await requirePermission(supabase, userId, "manage_pricing");
+    const { error } = await supabase
+      .from("subscriptions")
+      .update({
+        property_id: data.propertyId,
+        frequency: data.frequency,
+        price_cents: data.priceCents,
+        dog_count: data.dogCount ?? null,
+        unit_count: data.unitCount ?? null,
+        zone_id: data.zoneId ?? null,
+        billing_cadence: data.billingCadence ?? "postpaid",
+        preferred_weekdays:
+          data.preferredWeekdays && data.preferredWeekdays.length ? data.preferredWeekdays : null,
+      })
+      .eq("id", data.subscriptionId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const listSubscriptionsForClient = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))

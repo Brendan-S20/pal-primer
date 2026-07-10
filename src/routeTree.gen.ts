@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as PlatformRouteImport } from './routes/platform'
+import { Route as ImpersonateRouteImport } from './routes/impersonate'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
@@ -31,6 +32,7 @@ import { Route as PlatformHealthRouteImport } from './routes/platform.health'
 import { Route as PlatformCouponsRouteImport } from './routes/platform.coupons'
 import { Route as PlatformAuditRouteImport } from './routes/platform.audit'
 import { Route as PlatformAnnouncementsRouteImport } from './routes/platform.announcements'
+import { Route as LeadSlugRouteImport } from './routes/lead.$slug'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as EmailSuppressionRouteImport } from './routes/email/suppression'
@@ -49,6 +51,7 @@ import { Route as AuthenticatedInventoryRouteImport } from './routes/_authentica
 import { Route as AuthenticatedFranchiseRouteImport } from './routes/_authenticated/franchise'
 import { Route as AuthenticatedDnaRouteImport } from './routes/_authenticated/dna'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedConcernsRouteImport } from './routes/_authenticated/concerns'
 import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated/clients'
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
@@ -75,11 +78,14 @@ import { Route as AuthenticatedSettingsSkipRulesRouteImport } from './routes/_au
 import { Route as AuthenticatedSettingsReviewsRouteImport } from './routes/_authenticated/settings.reviews'
 import { Route as AuthenticatedSettingsPromotionsRouteImport } from './routes/_authenticated/settings.promotions'
 import { Route as AuthenticatedSettingsPreferencesRouteImport } from './routes/_authenticated/settings.preferences'
+import { Route as AuthenticatedSettingsPaymentsRouteImport } from './routes/_authenticated/settings.payments'
+import { Route as AuthenticatedSettingsLeadFormRouteImport } from './routes/_authenticated/settings.lead-form'
 import { Route as AuthenticatedSettingsEmailsRouteImport } from './routes/_authenticated/settings.emails'
 import { Route as AuthenticatedSettingsDeepCleanRouteImport } from './routes/_authenticated/settings.deep-clean'
 import { Route as AuthenticatedSettingsBlackoutsRouteImport } from './routes/_authenticated/settings.blackouts'
 import { Route as AuthenticatedSettingsAutomationRouteImport } from './routes/_authenticated/settings.automation'
 import { Route as AuthenticatedSettingsAiReceptionistRouteImport } from './routes/_authenticated/settings.ai-receptionist'
+import { Route as AuthenticatedSettingsAiRouteImport } from './routes/_authenticated/settings.ai'
 import { Route as AuthenticatedSettingsAddonsRouteImport } from './routes/_authenticated/settings.addons'
 import { Route as AuthenticatedSettingsAccountingRouteImport } from './routes/_authenticated/settings.accounting'
 import { Route as AuthenticatedMessagesClientIdRouteImport } from './routes/_authenticated/messages.$clientId'
@@ -118,6 +124,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const PlatformRoute = PlatformRouteImport.update({
   id: '/platform',
   path: '/platform',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImpersonateRoute = ImpersonateRouteImport.update({
+  id: '/impersonate',
+  path: '/impersonate',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -214,6 +225,11 @@ const PlatformAnnouncementsRoute = PlatformAnnouncementsRouteImport.update({
   path: '/announcements',
   getParentRoute: () => PlatformRoute,
 } as any)
+const LeadSlugRoute = LeadSlugRouteImport.update({
+  id: '/lead/$slug',
+  path: '/lead/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InviteTokenRoute = InviteTokenRouteImport.update({
   id: '/invite/$token',
   path: '/invite/$token',
@@ -302,6 +318,11 @@ const AuthenticatedDnaRoute = AuthenticatedDnaRouteImport.update({
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedConcernsRoute = AuthenticatedConcernsRouteImport.update({
+  id: '/concerns',
+  path: '/concerns',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedClientsRoute = AuthenticatedClientsRouteImport.update({
@@ -446,6 +467,18 @@ const AuthenticatedSettingsPreferencesRoute =
     path: '/preferences',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedSettingsPaymentsRoute =
+  AuthenticatedSettingsPaymentsRouteImport.update({
+    id: '/payments',
+    path: '/payments',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
+const AuthenticatedSettingsLeadFormRoute =
+  AuthenticatedSettingsLeadFormRouteImport.update({
+    id: '/lead-form',
+    path: '/lead-form',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedSettingsEmailsRoute =
   AuthenticatedSettingsEmailsRouteImport.update({
     id: '/emails',
@@ -476,6 +509,11 @@ const AuthenticatedSettingsAiReceptionistRoute =
     path: '/ai-receptionist',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedSettingsAiRoute = AuthenticatedSettingsAiRouteImport.update({
+  id: '/ai',
+  path: '/ai',
+  getParentRoute: () => AuthenticatedSettingsRoute,
+} as any)
 const AuthenticatedSettingsAddonsRoute =
   AuthenticatedSettingsAddonsRouteImport.update({
     id: '/addons',
@@ -615,6 +653,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/auth': typeof AuthRoute
+  '/impersonate': typeof ImpersonateRoute
   '/platform': typeof PlatformRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -622,6 +661,7 @@ export interface FileRoutesByFullPath {
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/billing': typeof AuthenticatedBillingRoute
   '/clients': typeof AuthenticatedClientsRouteWithChildren
+  '/concerns': typeof AuthenticatedConcernsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dna': typeof AuthenticatedDnaRoute
   '/franchise': typeof AuthenticatedFranchiseRoute
@@ -640,6 +680,7 @@ export interface FileRoutesByFullPath {
   '/email/suppression': typeof EmailSuppressionRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/lead/$slug': typeof LeadSlugRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
@@ -662,11 +703,14 @@ export interface FileRoutesByFullPath {
   '/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
   '/settings/accounting': typeof AuthenticatedSettingsAccountingRoute
   '/settings/addons': typeof AuthenticatedSettingsAddonsRoute
+  '/settings/ai': typeof AuthenticatedSettingsAiRoute
   '/settings/ai-receptionist': typeof AuthenticatedSettingsAiReceptionistRoute
   '/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
+  '/settings/lead-form': typeof AuthenticatedSettingsLeadFormRoute
+  '/settings/payments': typeof AuthenticatedSettingsPaymentsRoute
   '/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute
   '/settings/promotions': typeof AuthenticatedSettingsPromotionsRoute
   '/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
@@ -711,11 +755,13 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/auth': typeof AuthRoute
+  '/impersonate': typeof ImpersonateRoute
   '/reset-password': typeof ResetPasswordRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/ai-tools': typeof AuthenticatedAiToolsRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/billing': typeof AuthenticatedBillingRoute
+  '/concerns': typeof AuthenticatedConcernsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dna': typeof AuthenticatedDnaRoute
   '/franchise': typeof AuthenticatedFranchiseRoute
@@ -731,6 +777,7 @@ export interface FileRoutesByTo {
   '/email/suppression': typeof EmailSuppressionRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/lead/$slug': typeof LeadSlugRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
@@ -752,11 +799,14 @@ export interface FileRoutesByTo {
   '/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
   '/settings/accounting': typeof AuthenticatedSettingsAccountingRoute
   '/settings/addons': typeof AuthenticatedSettingsAddonsRoute
+  '/settings/ai': typeof AuthenticatedSettingsAiRoute
   '/settings/ai-receptionist': typeof AuthenticatedSettingsAiReceptionistRoute
   '/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
+  '/settings/lead-form': typeof AuthenticatedSettingsLeadFormRoute
+  '/settings/payments': typeof AuthenticatedSettingsPaymentsRoute
   '/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute
   '/settings/promotions': typeof AuthenticatedSettingsPromotionsRoute
   '/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
@@ -802,6 +852,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/admin': typeof AdminRoute
   '/auth': typeof AuthRoute
+  '/impersonate': typeof ImpersonateRoute
   '/platform': typeof PlatformRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -809,6 +860,7 @@ export interface FileRoutesById {
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/billing': typeof AuthenticatedBillingRoute
   '/_authenticated/clients': typeof AuthenticatedClientsRouteWithChildren
+  '/_authenticated/concerns': typeof AuthenticatedConcernsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/dna': typeof AuthenticatedDnaRoute
   '/_authenticated/franchise': typeof AuthenticatedFranchiseRoute
@@ -827,6 +879,7 @@ export interface FileRoutesById {
   '/email/suppression': typeof EmailSuppressionRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/lead/$slug': typeof LeadSlugRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
@@ -849,11 +902,14 @@ export interface FileRoutesById {
   '/_authenticated/messages/$clientId': typeof AuthenticatedMessagesClientIdRoute
   '/_authenticated/settings/accounting': typeof AuthenticatedSettingsAccountingRoute
   '/_authenticated/settings/addons': typeof AuthenticatedSettingsAddonsRoute
+  '/_authenticated/settings/ai': typeof AuthenticatedSettingsAiRoute
   '/_authenticated/settings/ai-receptionist': typeof AuthenticatedSettingsAiReceptionistRoute
   '/_authenticated/settings/automation': typeof AuthenticatedSettingsAutomationRoute
   '/_authenticated/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/_authenticated/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/_authenticated/settings/emails': typeof AuthenticatedSettingsEmailsRoute
+  '/_authenticated/settings/lead-form': typeof AuthenticatedSettingsLeadFormRoute
+  '/_authenticated/settings/payments': typeof AuthenticatedSettingsPaymentsRoute
   '/_authenticated/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute
   '/_authenticated/settings/promotions': typeof AuthenticatedSettingsPromotionsRoute
   '/_authenticated/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
@@ -900,6 +956,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/auth'
+    | '/impersonate'
     | '/platform'
     | '/reset-password'
     | '/unsubscribe'
@@ -907,6 +964,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/billing'
     | '/clients'
+    | '/concerns'
     | '/dashboard'
     | '/dna'
     | '/franchise'
@@ -925,6 +983,7 @@ export interface FileRouteTypes {
     | '/email/suppression'
     | '/email/unsubscribe'
     | '/invite/$token'
+    | '/lead/$slug'
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
@@ -947,11 +1006,14 @@ export interface FileRouteTypes {
     | '/messages/$clientId'
     | '/settings/accounting'
     | '/settings/addons'
+    | '/settings/ai'
     | '/settings/ai-receptionist'
     | '/settings/automation'
     | '/settings/blackouts'
     | '/settings/deep-clean'
     | '/settings/emails'
+    | '/settings/lead-form'
+    | '/settings/payments'
     | '/settings/preferences'
     | '/settings/promotions'
     | '/settings/reviews'
@@ -996,11 +1058,13 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/auth'
+    | '/impersonate'
     | '/reset-password'
     | '/unsubscribe'
     | '/ai-tools'
     | '/analytics'
     | '/billing'
+    | '/concerns'
     | '/dashboard'
     | '/dna'
     | '/franchise'
@@ -1016,6 +1080,7 @@ export interface FileRouteTypes {
     | '/email/suppression'
     | '/email/unsubscribe'
     | '/invite/$token'
+    | '/lead/$slug'
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
@@ -1037,11 +1102,14 @@ export interface FileRouteTypes {
     | '/messages/$clientId'
     | '/settings/accounting'
     | '/settings/addons'
+    | '/settings/ai'
     | '/settings/ai-receptionist'
     | '/settings/automation'
     | '/settings/blackouts'
     | '/settings/deep-clean'
     | '/settings/emails'
+    | '/settings/lead-form'
+    | '/settings/payments'
     | '/settings/preferences'
     | '/settings/promotions'
     | '/settings/reviews'
@@ -1086,6 +1154,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/admin'
     | '/auth'
+    | '/impersonate'
     | '/platform'
     | '/reset-password'
     | '/unsubscribe'
@@ -1093,6 +1162,7 @@ export interface FileRouteTypes {
     | '/_authenticated/analytics'
     | '/_authenticated/billing'
     | '/_authenticated/clients'
+    | '/_authenticated/concerns'
     | '/_authenticated/dashboard'
     | '/_authenticated/dna'
     | '/_authenticated/franchise'
@@ -1111,6 +1181,7 @@ export interface FileRouteTypes {
     | '/email/suppression'
     | '/email/unsubscribe'
     | '/invite/$token'
+    | '/lead/$slug'
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
@@ -1133,11 +1204,14 @@ export interface FileRouteTypes {
     | '/_authenticated/messages/$clientId'
     | '/_authenticated/settings/accounting'
     | '/_authenticated/settings/addons'
+    | '/_authenticated/settings/ai'
     | '/_authenticated/settings/ai-receptionist'
     | '/_authenticated/settings/automation'
     | '/_authenticated/settings/blackouts'
     | '/_authenticated/settings/deep-clean'
     | '/_authenticated/settings/emails'
+    | '/_authenticated/settings/lead-form'
+    | '/_authenticated/settings/payments'
     | '/_authenticated/settings/preferences'
     | '/_authenticated/settings/promotions'
     | '/_authenticated/settings/reviews'
@@ -1184,12 +1258,14 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AdminRoute: typeof AdminRoute
   AuthRoute: typeof AuthRoute
+  ImpersonateRoute: typeof ImpersonateRoute
   PlatformRoute: typeof PlatformRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   EmailSuppressionRoute: typeof EmailSuppressionRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   InviteTokenRoute: typeof InviteTokenRoute
+  LeadSlugRoute: typeof LeadSlugRoute
   PortalSlugRoute: typeof PortalSlugRouteWithChildren
   SignupSlugRoute: typeof SignupSlugRoute
   SignupSuccessRoute: typeof SignupSuccessRoute
@@ -1232,6 +1308,13 @@ declare module '@tanstack/react-router' {
       path: '/platform'
       fullPath: '/platform'
       preLoaderRoute: typeof PlatformRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/impersonate': {
+      id: '/impersonate'
+      path: '/impersonate'
+      fullPath: '/impersonate'
+      preLoaderRoute: typeof ImpersonateRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -1367,6 +1450,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlatformAnnouncementsRouteImport
       parentRoute: typeof PlatformRoute
     }
+    '/lead/$slug': {
+      id: '/lead/$slug'
+      path: '/lead/$slug'
+      fullPath: '/lead/$slug'
+      preLoaderRoute: typeof LeadSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/invite/$token': {
       id: '/invite/$token'
       path: '/invite/$token'
@@ -1491,6 +1581,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/concerns': {
+      id: '/_authenticated/concerns'
+      path: '/concerns'
+      fullPath: '/concerns'
+      preLoaderRoute: typeof AuthenticatedConcernsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/clients': {
@@ -1675,6 +1772,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsPreferencesRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/settings/payments': {
+      id: '/_authenticated/settings/payments'
+      path: '/payments'
+      fullPath: '/settings/payments'
+      preLoaderRoute: typeof AuthenticatedSettingsPaymentsRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
+    '/_authenticated/settings/lead-form': {
+      id: '/_authenticated/settings/lead-form'
+      path: '/lead-form'
+      fullPath: '/settings/lead-form'
+      preLoaderRoute: typeof AuthenticatedSettingsLeadFormRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/settings/emails': {
       id: '/_authenticated/settings/emails'
       path: '/emails'
@@ -1708,6 +1819,13 @@ declare module '@tanstack/react-router' {
       path: '/ai-receptionist'
       fullPath: '/settings/ai-receptionist'
       preLoaderRoute: typeof AuthenticatedSettingsAiReceptionistRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
+    '/_authenticated/settings/ai': {
+      id: '/_authenticated/settings/ai'
+      path: '/ai'
+      fullPath: '/settings/ai'
+      preLoaderRoute: typeof AuthenticatedSettingsAiRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
     '/_authenticated/settings/addons': {
@@ -1929,11 +2047,14 @@ const AuthenticatedMessagesRouteWithChildren =
 interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsAccountingRoute: typeof AuthenticatedSettingsAccountingRoute
   AuthenticatedSettingsAddonsRoute: typeof AuthenticatedSettingsAddonsRoute
+  AuthenticatedSettingsAiRoute: typeof AuthenticatedSettingsAiRoute
   AuthenticatedSettingsAiReceptionistRoute: typeof AuthenticatedSettingsAiReceptionistRoute
   AuthenticatedSettingsAutomationRoute: typeof AuthenticatedSettingsAutomationRoute
   AuthenticatedSettingsBlackoutsRoute: typeof AuthenticatedSettingsBlackoutsRoute
   AuthenticatedSettingsDeepCleanRoute: typeof AuthenticatedSettingsDeepCleanRoute
   AuthenticatedSettingsEmailsRoute: typeof AuthenticatedSettingsEmailsRoute
+  AuthenticatedSettingsLeadFormRoute: typeof AuthenticatedSettingsLeadFormRoute
+  AuthenticatedSettingsPaymentsRoute: typeof AuthenticatedSettingsPaymentsRoute
   AuthenticatedSettingsPreferencesRoute: typeof AuthenticatedSettingsPreferencesRoute
   AuthenticatedSettingsPromotionsRoute: typeof AuthenticatedSettingsPromotionsRoute
   AuthenticatedSettingsReviewsRoute: typeof AuthenticatedSettingsReviewsRoute
@@ -1946,12 +2067,15 @@ interface AuthenticatedSettingsRouteChildren {
 const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsAccountingRoute: AuthenticatedSettingsAccountingRoute,
   AuthenticatedSettingsAddonsRoute: AuthenticatedSettingsAddonsRoute,
+  AuthenticatedSettingsAiRoute: AuthenticatedSettingsAiRoute,
   AuthenticatedSettingsAiReceptionistRoute:
     AuthenticatedSettingsAiReceptionistRoute,
   AuthenticatedSettingsAutomationRoute: AuthenticatedSettingsAutomationRoute,
   AuthenticatedSettingsBlackoutsRoute: AuthenticatedSettingsBlackoutsRoute,
   AuthenticatedSettingsDeepCleanRoute: AuthenticatedSettingsDeepCleanRoute,
   AuthenticatedSettingsEmailsRoute: AuthenticatedSettingsEmailsRoute,
+  AuthenticatedSettingsLeadFormRoute: AuthenticatedSettingsLeadFormRoute,
+  AuthenticatedSettingsPaymentsRoute: AuthenticatedSettingsPaymentsRoute,
   AuthenticatedSettingsPreferencesRoute: AuthenticatedSettingsPreferencesRoute,
   AuthenticatedSettingsPromotionsRoute: AuthenticatedSettingsPromotionsRoute,
   AuthenticatedSettingsReviewsRoute: AuthenticatedSettingsReviewsRoute,
@@ -1971,6 +2095,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
   AuthenticatedBillingRoute: typeof AuthenticatedBillingRoute
   AuthenticatedClientsRoute: typeof AuthenticatedClientsRouteWithChildren
+  AuthenticatedConcernsRoute: typeof AuthenticatedConcernsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDnaRoute: typeof AuthenticatedDnaRoute
   AuthenticatedFranchiseRoute: typeof AuthenticatedFranchiseRoute
@@ -1996,6 +2121,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
   AuthenticatedBillingRoute: AuthenticatedBillingRoute,
   AuthenticatedClientsRoute: AuthenticatedClientsRouteWithChildren,
+  AuthenticatedConcernsRoute: AuthenticatedConcernsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDnaRoute: AuthenticatedDnaRoute,
   AuthenticatedFranchiseRoute: AuthenticatedFranchiseRoute,
@@ -2101,12 +2227,14 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AdminRoute: AdminRoute,
   AuthRoute: AuthRoute,
+  ImpersonateRoute: ImpersonateRoute,
   PlatformRoute: PlatformRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   EmailSuppressionRoute: EmailSuppressionRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   InviteTokenRoute: InviteTokenRoute,
+  LeadSlugRoute: LeadSlugRoute,
   PortalSlugRoute: PortalSlugRouteWithChildren,
   SignupSlugRoute: SignupSlugRoute,
   SignupSuccessRoute: SignupSuccessRoute,

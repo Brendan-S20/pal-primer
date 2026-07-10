@@ -102,7 +102,7 @@ function Dashboard() {
       alerts.push({
         icon: AlertTriangle,
         text: `${sum.openConcerns.length} client concern${sum.openConcerns.length === 1 ? "" : "s"} to review`,
-        to: "/messages",
+        to: "/concerns",
         tone: "warn",
       });
     }
@@ -158,7 +158,7 @@ function Dashboard() {
           icon={Users}
           label="Active clients"
           value={sum ? String(sum.activeClients) : "—"}
-          hint={billing?.planName ? `${billing.planName} plan` : undefined}
+          hint={billing?.planName ? `On the ${billing.planName} plan` : undefined}
         />
         {/* Financial KPIs are null for roles without view_financials — the
             server never computes them, so there is nothing to hide client-side. */}

@@ -126,6 +126,7 @@ function BatchDetail() {
                 <th className="px-3 py-2">Type</th>
                 <th className="px-3 py-2">Email</th>
                 <th className="px-3 py-2">Phone</th>
+                <th className="px-3 py-2">Service address</th>
                 <th className="px-3 py-2">External ID</th>
                 <th className="px-3 py-2">Note</th>
               </tr>
@@ -143,6 +144,9 @@ function BatchDetail() {
                     <td className="px-3 py-2 text-muted-foreground">{m.account_type ?? "—"}</td>
                     <td className="px-3 py-2 text-muted-foreground">{m.primary_email ?? "—"}</td>
                     <td className="px-3 py-2 text-muted-foreground">{m.primary_phone ?? "—"}</td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {[m.street, m.city, m.region, m.postal_code].filter(Boolean).join(", ") || "—"}
+                    </td>
                     <td className="px-3 py-2 text-muted-foreground">{m.external_id ?? "—"}</td>
                     <td className="px-3 py-2 text-xs text-red-600">{r.error ?? ""}</td>
                   </tr>

@@ -61,11 +61,14 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             perOrg.invoices_generated = error ? `err: ${error.message}` : (n as number);
           }
 
-          if (org.overdue_reminders_enabled && (org.notify_sms_overdue_invoice ?? true) && org.sms_from_number) {
+          // Overdue reminders are automated notifications → PLATFORM Twilio sender.
+          const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
+          const reminderFrom = platformTwilioFrom() ?? org.sms_from_number;
+          if (org.overdue_reminders_enabled && (org.notify_sms_overdue_invoice ?? true) && reminderFrom) {
             perOrg.reminders_sent = await sendOverdueReminders(
               supabaseAdmin,
               org.id,
-              org.sms_from_number,
+              reminderFrom,
               org.overdue_reminder_days ?? 7,
             );
           }
@@ -79,6 +82,13 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           }
 
           perOrg.autopay_charged = await runAutopayForOrg(supabaseAdmin, org.id);
+
+          // Franchise royalty billing (finding #16): on the 1st of the month,
+          // generate last month's royalty invoices for each franchise parent's
+          // children. Idempotent per child+period.
+          if (today.getUTCDate() === 1) {
+            perOrg.royalties_generated = await generateRoyaltiesForParent(supabaseAdmin, org.id, today);
+          }
 
           // Seasonal deep-cleans: run on the 1st of each configured month.
           if (
@@ -112,6 +122,53 @@ function json(body: unknown, status = 200) {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+// Generate last month's royalty invoices for a franchise parent's children
+// (finding #16). Runs as service-role from the nightly cron (no user session).
+async function generateRoyaltiesForParent(supabaseAdmin: any, parentOrgId: string, today: Date): Promise<number | string> {
+  const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1));
+  const end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+  const startStr = start.toISOString().slice(0, 10);
+  const endStr = end.toISOString().slice(0, 10);
+
+  const { data: children, error } = await supabaseAdmin
+    .from("organizations")
+    .select("id, franchise_royalty_percent")
+    .eq("parent_organization_id", parentOrgId);
+  if (error) return `err: ${error.message}`;
+  if (!children || children.length === 0) return 0;
+
+  let generated = 0;
+  for (const child of children as any[]) {
+    const percent = Number(child.franchise_royalty_percent ?? 0);
+    const { data: pays } = await supabaseAdmin
+      .from("payments")
+      .select("amount_cents")
+      .eq("organization_id", child.id)
+      .eq("status", "succeeded")
+      .gte("created_at", `${startStr}T00:00:00Z`)
+      .lt("created_at", `${endStr}T00:00:00Z`);
+    const revenue = (pays ?? []).reduce((s: number, r: any) => s + Number(r.amount_cents ?? 0), 0);
+    const amount = Math.round((revenue * percent) / 100);
+    const { error: upErr } = await supabaseAdmin
+      .from("franchise_royalty_invoices")
+      .upsert(
+        {
+          parent_organization_id: parentOrgId,
+          child_organization_id: child.id,
+          period_start: startStr,
+          period_end: endStr,
+          revenue_cents: revenue,
+          royalty_percent: percent,
+          amount_cents: amount,
+          status: "draft",
+        },
+        { onConflict: "child_organization_id,period_start,period_end" },
+      );
+    if (!upErr) generated += 1;
+  }
+  return generated;
 }
 
 async function sendOverdueReminders(
@@ -247,8 +304,10 @@ async function sendOverdueEmails(
 }
 
 async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<number> {
-  const secret = process.env.STRIPE_SECRET_KEY;
-  if (!secret) return 0;
+  // Autopay charges the org's own clients → run on its connected account.
+  const { resolveOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
+  const acct = await resolveOrgStripeAccount(orgId);
+  if (!acct || !acct.chargesEnabled) return 0;
   const { data: org } = await supabaseAdmin
     .from("organizations")
     .select("dunning_retry_days, dunning_pause_after_failures")
@@ -267,8 +326,7 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
     .gt("total_cents", 0);
   if (!invoices?.length) return 0;
 
-  const Stripe = (await import("stripe")).default;
-  const stripe = new Stripe(secret);
+  const stripe = await connectStripe();
   const nowMs = Date.now();
   let charged = 0;
 
@@ -301,7 +359,7 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
           organization_id: inv.organization_id,
           source: "autopay",
         },
-      });
+      }, { stripeAccount: acct.accountId });
       // Success bookkeeping happens in the webhook payment_intent.succeeded
       // branch, which also clears failure_count. Just count locally.
       charged++;

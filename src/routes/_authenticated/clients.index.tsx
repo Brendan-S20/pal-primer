@@ -183,12 +183,20 @@ function ClientsList() {
                     ) : (
                       <span className="text-xs text-muted-foreground">Inactive</span>
                     )}
-                    <div className="mt-1 text-sm">
-                      {c.outstanding_cents > 0 ? (
-                        <span className="font-medium text-amber-600">{money(c.outstanding_cents)}</span>
-                      ) : c.credit_balance_cents > 0 ? (
-                        <span className="text-emerald-600">+{money(c.credit_balance_cents)}</span>
-                      ) : (
+                    {/* Show owed and credit distinctly and labeled — a client
+                        can carry both at once (finding #22). */}
+                    <div className="mt-1 space-y-0.5 text-sm">
+                      {c.outstanding_cents > 0 && (
+                        <div className="font-medium text-amber-600">
+                          {money(c.outstanding_cents)} <span className="text-[11px] font-normal">owed</span>
+                        </div>
+                      )}
+                      {c.credit_balance_cents > 0 && (
+                        <div className="text-emerald-600">
+                          +{money(c.credit_balance_cents)} <span className="text-[11px] text-emerald-700/70">credit</span>
+                        </div>
+                      )}
+                      {!(c.outstanding_cents > 0) && !(c.credit_balance_cents > 0) && (
                         <span className="text-muted-foreground">—</span>
                       )}
                     </div>

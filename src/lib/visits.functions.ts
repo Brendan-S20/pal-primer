@@ -69,8 +69,42 @@ export const assignRoute = createServerFn({ method: "POST" })
         console.error("route push failed", e);
       }
     }
-    return { assigned };
+    const warnings = await routeWarningsForDay(supabase, orgId, data.staffId, data.day);
+    return { assigned, warnings };
   });
+
+/** Fetch the tech's stops for the day and flag implausible ones (finding #10). */
+async function routeWarningsForDay(supabase: any, orgId: string, staffId: string, day: string) {
+  const { findRouteWarnings } = await import("@/lib/route-plausibility");
+  const [{ data: visits }, { data: org }] = await Promise.all([
+    supabase
+      .from("visits")
+      .select("id, scheduled_on, travel_km, travel_min, eta_start, clients(display_name)")
+      .eq("organization_id", orgId)
+      .eq("assigned_staff_id", staffId)
+      .eq("scheduled_on", day),
+    (supabase.from("organizations") as any)
+      .select("max_drive_minutes, workday_start")
+      .eq("id", orgId)
+      .maybeSingle(),
+  ]);
+  const rows = (visits ?? []).map((v: any) => ({
+    id: v.id,
+    clientName: v.clients?.display_name ?? null,
+    travel_km: v.travel_km,
+    travel_min: v.travel_min,
+    eta_start: v.eta_start,
+    scheduled_on: v.scheduled_on,
+  }));
+  const workdayStart: string | null = org?.workday_start ?? null;
+  const workdayStartMinutes = workdayStart
+    ? Number(workdayStart.slice(0, 2)) * 60 + Number(workdayStart.slice(3, 5))
+    : undefined;
+  return findRouteWarnings(rows, {
+    maxDriveMinutes: org?.max_drive_minutes ?? undefined,
+    workdayStartMinutes,
+  });
+}
 
 export const optimizeRoute = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -93,7 +127,8 @@ export const optimizeRoute = createServerFn({ method: "POST" })
       _reassign: data.reassign ?? false,
     });
     if (error) throw new Error(error.message);
-    return { assigned: (count as number) ?? 0 };
+    const warnings = await routeWarningsForDay(supabase, orgId, data.staffId, data.day);
+    return { assigned: (count as number) ?? 0, warnings };
   });
 
 export const reoptimizeAll = createServerFn({ method: "POST" })
@@ -231,14 +266,143 @@ export const listStaff = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
-    const { data, error } = await supabase
-      .from("staff")
-      .select("id, display_name, role, active, start_latitude, start_longitude, start_address, end_latitude, end_longitude, end_address")
+    const { data, error } = await (supabase.from("staff") as any)
+      .select("id, display_name, role, active, is_field_tech, routing_available, start_latitude, start_longitude, start_address, end_latitude, end_longitude, end_address")
       .eq("organization_id", orgId)
       .eq("active", true)
       .order("display_name");
     if (error) throw new Error(error.message);
     return { staff: data ?? [] };
+  });
+
+// Finding #28: multi-day overview so office staff can spot overloaded days,
+// gaps, and upcoming volume without stepping through single days.
+export const getVisitRangeSummary = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ from: z.string(), to: z.string() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+    const { data: rows, error } = await supabase
+      .from("visits")
+      .select("scheduled_on, status, assigned_staff_id")
+      .eq("organization_id", orgId)
+      .gte("scheduled_on", data.from)
+      .lte("scheduled_on", data.to);
+    if (error) throw new Error(error.message);
+
+    // Per-day totals: total, completed, unassigned.
+    const byDay = new Map<string, { total: number; completed: number; unassigned: number }>();
+    for (const v of rows ?? []) {
+      const d = (v as any).scheduled_on as string;
+      const cur = byDay.get(d) ?? { total: 0, completed: 0, unassigned: 0 };
+      cur.total += 1;
+      if ((v as any).status === "completed") cur.completed += 1;
+      if (!(v as any).assigned_staff_id) cur.unassigned += 1;
+      byDay.set(d, cur);
+    }
+    return {
+      days: Array.from(byDay.entries())
+        .map(([date, c]) => ({ date, ...c }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+    };
+  });
+
+// Finding #27: capacity-aware planning. Detect field techs whose day exceeds a
+// working-day capacity (drive + service minutes), and move the overflow (their
+// last stops) to the least-loaded available tech under capacity, or to
+// Unassigned. Returns per-tech load and the moves made so the dispatcher can
+// re-optimize the affected routes.
+export const balanceOverloadedRoutes = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ day: z.string(), apply: z.boolean().default(false) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+
+    const [{ data: org }, { data: staff, error: sErr }, { data: visits, error: vErr }] = await Promise.all([
+      (supabase.from("organizations") as any)
+        .select("workday_start, workday_end")
+        .eq("id", orgId)
+        .maybeSingle(),
+      (supabase.from("staff") as any)
+        .select("id, display_name, is_field_tech, routing_available, active")
+        .eq("organization_id", orgId)
+        .eq("active", true),
+      supabase
+        .from("visits")
+        .select("id, assigned_staff_id, sequence, status, travel_min, properties(service_duration_min)")
+        .eq("organization_id", orgId)
+        .eq("scheduled_on", data.day)
+        .in("status", ["scheduled", "in_progress"]),
+    ]);
+    if (sErr) throw new Error(sErr.message);
+    if (vErr) throw new Error(vErr.message);
+
+    const toMin = (t: string | null, def: number) =>
+      t ? Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5)) : def;
+    const capacityMin = Math.max(60, toMin(org?.workday_end ?? null, 17 * 60) - toMin(org?.workday_start ?? null, 8 * 60));
+
+    const routableTechs = (staff ?? []).filter((s: any) => s.is_field_tech && s.routing_available);
+    const techIds = new Set(routableTechs.map((s: any) => s.id));
+
+    const visitMin = (v: any) => Number(v.travel_min ?? 0) + Number(v.properties?.service_duration_min ?? 8);
+    // Per-tech load, visits sorted by sequence.
+    const load = new Map<string, { total: number; visits: any[] }>();
+    for (const t of routableTechs) load.set(t.id, { total: 0, visits: [] });
+    for (const v of visits ?? []) {
+      const sid = (v as any).assigned_staff_id;
+      if (!sid || !load.has(sid)) continue;
+      const entry = load.get(sid)!;
+      entry.total += visitMin(v);
+      entry.visits.push(v);
+    }
+    for (const entry of load.values()) entry.visits.sort((a, b) => (a.sequence ?? 9999) - (b.sequence ?? 9999));
+
+    const moves: Array<{ visitId: string; from: string | null; to: string | null }> = [];
+    // Greedy: for each overloaded tech, peel off trailing stops until under
+    // capacity, placing each on the least-loaded tech that has room, else Unassigned.
+    for (const [techId, entry] of load) {
+      while (entry.total > capacityMin && entry.visits.length > 1) {
+        const v = entry.visits.pop()!;
+        const cost = visitMin(v);
+        entry.total -= cost;
+        // Find the least-loaded OTHER routable tech with room.
+        let target: string | null = null;
+        let best = Infinity;
+        for (const [otherId, other] of load) {
+          if (otherId === techId) continue;
+          if (other.total + cost <= capacityMin && other.total < best) {
+            best = other.total;
+            target = otherId;
+          }
+        }
+        if (target) {
+          load.get(target)!.total += cost;
+          load.get(target)!.visits.push(v);
+        }
+        moves.push({ visitId: v.id, from: techId, to: target });
+      }
+    }
+
+    if (data.apply && moves.length) {
+      for (const m of moves) {
+        await supabase.rpc("reassign_visit", { _visit_id: m.visitId, _staff_id: m.to as string });
+      }
+    }
+
+    return {
+      capacityMinutes: capacityMin,
+      loads: routableTechs.map((t: any) => ({
+        staffId: t.id,
+        name: t.display_name,
+        loadMinutes: Math.round(load.get(t.id)?.total ?? 0),
+        overCapacity: (load.get(t.id)?.total ?? 0) > capacityMin,
+      })),
+      moves,
+      applied: data.apply ? moves.length : 0,
+      techsAvailable: techIds.size,
+    };
   });
 
 export const reassignVisit = createServerFn({ method: "POST" })
@@ -295,9 +459,10 @@ export const getDispatchSettings = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const orgId = await resolveOrgId(context.supabase, context.userId);
-    const { data, error } = await context.supabase
-      .from("organizations")
-      .select("workday_start, workday_end, avg_speed_kmh, traffic_profile")
+    // max_drive_minutes was added by the finding-#10 migration; generated types
+    // lag until Lovable regenerates them, so read it untyped.
+    const { data, error } = await (context.supabase.from("organizations") as any)
+      .select("workday_start, workday_end, avg_speed_kmh, traffic_profile, max_drive_minutes")
       .eq("id", orgId)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -312,11 +477,12 @@ export const updateDispatchSettings = createServerFn({ method: "POST" })
       workday_end: z.string().optional(),
       avg_speed_kmh: z.number().int().min(5).max(120).optional(),
       traffic_profile: z.enum(["light", "normal", "heavy"]).optional(),
+      max_drive_minutes: z.number().int().min(15).max(1440).optional(),
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
     const orgId = await resolveOrgId(context.supabase, context.userId);
-    const { error } = await context.supabase.from("organizations").update(data).eq("id", orgId);
+    const { error } = await (context.supabase.from("organizations") as any).update(data).eq("id", orgId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

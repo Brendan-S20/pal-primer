@@ -246,12 +246,11 @@ export const portalCreateCheckout = createServerFn({ method: "POST" })
     if (invoice.status === "void") throw new Error("Invoice is voided");
     if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
 
-    const secret = process.env.STRIPE_SECRET_KEY;
-    if (!secret) throw new Error("Payments not configured");
+    const { requireOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
+    const acct = await requireOrgStripeAccount(invoice.organization_id);
     const { data: client } = await supabaseAdmin
       .from("clients").select("display_name").eq("id", session.clientId).single();
-    const Stripe = (await import("stripe")).default;
-    const stripe = new Stripe(secret);
+    const stripe = await connectStripe();
     const checkout = await stripe.checkout.sessions.create({
       mode: "payment",
       success_url: `${data.returnUrl}?paid=1`,
@@ -267,7 +266,7 @@ export const portalCreateCheckout = createServerFn({ method: "POST" })
         },
       }],
       metadata: { invoice_id: invoice.id, organization_id: invoice.organization_id, source: "portal" },
-    });
+    }, { stripeAccount: acct.accountId });
 
     await supabaseAdmin
       .from("invoices")
@@ -301,6 +300,56 @@ export const portalRescheduleVisit = createServerFn({ method: "POST" })
     });
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+// Finding #29: a client with 2+ properties saw one undifferentiated portal
+// view with no address labels. This lists their serviced properties so the
+// portal can show each address distinctly.
+export const portalListProperties = createServerFn({ method: "GET" })
+  .inputValidator((d) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
+    const session = await requirePortalSession(data.token);
+    const sb = await admin();
+    const { data: rows, error } = await sb
+      .from("properties")
+      .select("id, label, street, city, region, postal_code")
+      .eq("client_id", session.clientId)
+      .order("created_at");
+    if (error) throw new Error(error.message);
+    return { properties: rows ?? [] };
+  });
+
+// Finding #36: the org's self-serve permission toggles (vacation hold, change
+// frequency) had no matching portal UI. This returns whether each is enabled
+// plus the client's active subscription, so the portal can render (only) the
+// controls the owner has switched on.
+export const portalSelfServeOptions = createServerFn({ method: "GET" })
+  .inputValidator((d) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
+    const session = await requirePortalSession(data.token);
+    const sb = await admin();
+    const [{ data: org }, { data: subs }] = await Promise.all([
+      sb
+        .from("organizations")
+        .select("portal_allow_vacation_hold, portal_allow_frequency_change")
+        .eq("id", session.organizationId)
+        .maybeSingle(),
+      sb
+        .from("subscriptions")
+        .select("id, frequency, status")
+        .eq("client_id", session.clientId)
+        .eq("status", "active")
+        .order("started_on", { ascending: false })
+        .limit(1),
+    ]);
+    const sub = (subs ?? [])[0] ?? null;
+    return {
+      allowVacationHold: !!org?.portal_allow_vacation_hold,
+      allowFrequencyChange: !!org?.portal_allow_frequency_change,
+      subscription: sub ? { id: sub.id as string, frequency: sub.frequency as string } : null,
+    };
   });
 
 export const portalChangeFrequency = createServerFn({ method: "POST" })
@@ -387,11 +436,12 @@ export const portalCancelAddon = createServerFn({ method: "POST" })
 
 // ============ Saved cards + autopay ============
 
-async function loadStripe() {
-  const secret = process.env.STRIPE_SECRET_KEY;
-  if (!secret) throw new Error("Payments not configured");
-  const Stripe = (await import("stripe")).default;
-  return new Stripe(secret);
+// Tenant->client card ops run on the org's own connected Stripe account.
+async function loadStripe(orgId: string): Promise<{ stripe: any; stripeAccount: string }> {
+  const { requireOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
+  const acct = await requireOrgStripeAccount(orgId);
+  const stripe = await connectStripe();
+  return { stripe, stripeAccount: acct.accountId };
 }
 
 /** Kick off a Stripe Checkout session in mode=setup to save a card. */
@@ -409,14 +459,14 @@ export const portalStartCardSetup = createServerFn({ method: "POST" })
       .single();
     if (!cRow) throw new Error("Client not found");
 
-    const stripe = await loadStripe();
+    const { stripe, stripeAccount } = await loadStripe(session.organizationId);
     let customerId = cRow.stripe_customer_id;
     if (!customerId) {
       const cust = await stripe.customers.create({
         email: cRow.primary_email ?? undefined,
         name: cRow.display_name ?? undefined,
         metadata: { client_id: cRow.id, organization_id: session.organizationId },
-      });
+      }, { stripeAccount });
       customerId = cust.id;
       await supabaseAdmin.from("clients").update({ stripe_customer_id: customerId }).eq("id", cRow.id);
     }
@@ -432,7 +482,7 @@ export const portalStartCardSetup = createServerFn({ method: "POST" })
         client_id: cRow.id,
         organization_id: session.organizationId,
       },
-    });
+    }, { stripeAccount });
     return { url: checkout.url as string };
   });
 
@@ -459,8 +509,8 @@ export const portalRemoveCard = createServerFn({ method: "POST" })
       .from("clients").select("id, default_payment_method_id").eq("id", session.clientId).single();
     if (cRow?.default_payment_method_id) {
       try {
-        const stripe = await loadStripe();
-        await stripe.paymentMethods.detach(cRow.default_payment_method_id);
+        const { stripe, stripeAccount } = await loadStripe(session.organizationId);
+        await stripe.paymentMethods.detach(cRow.default_payment_method_id, {}, { stripeAccount });
       } catch (e) { console.warn("detach pm failed", e); }
     }
     await supabaseAdmin.from("clients").update({
@@ -494,7 +544,7 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
     if (invoice.status === "void") throw new Error("Voided");
     if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Zero total");
 
-    const stripe = await loadStripe();
+    const { stripe, stripeAccount } = await loadStripe(invoice.organization_id);
     try {
       const pi = await stripe.paymentIntents.create({
         amount: invoice.total_cents,
@@ -511,6 +561,7 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
       }, {
         // Prevent a double-tap (or a retried request) from charging twice.
         idempotencyKey: `portal-saved-card-${invoice.id}-${invoice.total_cents}`,
+        stripeAccount,
       });
       await supabaseAdmin.from("invoices").update({
         stripe_payment_intent_id: pi.id, status: "open",
@@ -579,8 +630,76 @@ export const portalReportConcern = createServerFn({ method: "POST" })
       _message: data.message,
     });
     if (error) throw new Error(error.message);
+
+    // Notify the office by email (finding #14): a dashboard banner alone isn't
+    // reliable for something that could be a safety/liability issue like a gate
+    // left open. Best-effort — never block the client's submission.
+    try {
+      await notifyOfficeOfConcern(sb, data.token, data.category, data.message);
+    } catch (e) {
+      console.error("concern office notification failed", (e as Error).message);
+    }
     return { ticketId: id as string };
   });
+
+const CONCERN_LABELS: Record<string, string> = {
+  missed_spot: "Missed spot",
+  gate_left_open: "Gate left open",
+  damage: "Property damage",
+  wrong_yard: "Wrong yard",
+  other: "Other",
+};
+
+async function notifyOfficeOfConcern(
+  sb: any,
+  token: string,
+  category: string,
+  message: string,
+): Promise<void> {
+  const resendApiKey = process.env.RESEND_API_KEY;
+  if (!resendApiKey) return; // email not configured — banner + inbox still work
+  const { data: client } = await sb
+    .from("clients")
+    .select("display_name, organization_id, organizations(name, contact_email)")
+    .eq("portal_token", token)
+    .maybeSingle();
+  if (!client) return;
+  const org: any = Array.isArray(client.organizations) ? client.organizations[0] : client.organizations;
+  const to = org?.contact_email;
+  if (!to) return; // no office inbox on file
+
+  const label = CONCERN_LABELS[category] ?? category;
+  const crypto = await import("node:crypto");
+  const messageId = `concern-${crypto.randomBytes(8).toString("hex")}`;
+  const html =
+    `<p><strong>New client concern:</strong> ${label}</p>` +
+    `<p>From: ${client.display_name}</p>` +
+    (message ? `<p>${message.replace(/</g, "&lt;")}</p>` : "") +
+    `<p><a href="https://www.app.houndstack.com/concerns">Open the Concerns inbox</a></p>`;
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": messageId,
+    },
+    body: JSON.stringify({
+      from: `${org?.name ?? "HoundStack"} <noreply@notify.houndstack.com>`,
+      to: [to],
+      subject: `New client concern: ${label}`,
+      html,
+      text: `New client concern (${label}) from ${client.display_name}. ${message}`.trim(),
+    }),
+  });
+  const status = res.ok ? "sent" : "failed";
+  await sb.from("email_send_log").insert({
+    message_id: messageId,
+    template_name: "concern-notification",
+    recipient_email: to,
+    status,
+    error_message: res.ok ? null : `Resend ${res.status}`,
+  }).then(() => {}, () => {});
+}
 
 export const portalSignPhotoUrls = createServerFn({ method: "POST" })
   .inputValidator((d) =>
@@ -702,9 +821,10 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
     const session = await requirePortalSession(data.token);
-    const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY;
-    const secret = process.env.STRIPE_SECRET_KEY;
-    if (!publishableKey || !secret) throw new Error("Payments not configured");
+    // Connect direct charges: the client-side Payment Element initializes with
+    // the platform publishable key scoped to the org's connected account.
+    const publishableKey = process.env.STRIPE_CONNECT_PUBLISHABLE_KEY;
+    if (!publishableKey) throw new Error("Payments not configured");
 
     const supabaseAdmin = await admin();
     const { data: invoice, error: iErr } = await supabaseAdmin
@@ -725,8 +845,10 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
       .single();
     if (!cRow) throw new Error("Client not found");
 
-    const Stripe = (await import("stripe")).default;
-    const stripe = new Stripe(secret);
+    const { requireOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
+    const acct = await requireOrgStripeAccount(invoice.organization_id);
+    const stripe = await connectStripe();
+    const opts = { stripeAccount: acct.accountId };
 
     let customerId = cRow.stripe_customer_id;
     if (!customerId) {
@@ -734,7 +856,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
         email: cRow.primary_email ?? undefined,
         name: cRow.display_name ?? undefined,
         metadata: { client_id: cRow.id, organization_id: invoice.organization_id },
-      });
+      }, opts);
       customerId = cust.id;
       await supabaseAdmin.from("clients").update({ stripe_customer_id: customerId }).eq("id", cRow.id);
     }
@@ -749,7 +871,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     let pi: import("stripe").Stripe.PaymentIntent | null = null;
     if (invoice.stripe_payment_intent_id) {
       try {
-        const existing = await stripe.paymentIntents.retrieve(invoice.stripe_payment_intent_id);
+        const existing = await stripe.paymentIntents.retrieve(invoice.stripe_payment_intent_id, {}, opts);
         if (
           existing.status === "requires_payment_method" ||
           existing.status === "requires_confirmation" ||
@@ -760,7 +882,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
               amount: invoice.total_cents,
               currency,
               metadata,
-            });
+            }, opts);
           } else {
             pi = existing;
           }
@@ -778,7 +900,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
         automatic_payment_methods: { enabled: true },
         setup_future_usage: "off_session",
         metadata,
-      });
+      }, opts);
       await supabaseAdmin.from("invoices").update({
         stripe_payment_intent_id: pi.id,
         status: "open",
@@ -791,6 +913,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     return {
       clientSecret: pi.client_secret as string,
       publishableKey,
+      stripeAccount: acct.accountId,
       amountCents: invoice.total_cents,
       currency,
       invoiceId: invoice.id,

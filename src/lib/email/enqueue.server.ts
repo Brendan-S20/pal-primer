@@ -19,7 +19,8 @@ type NotifyKey =
   | "notify_email_weather_reschedule"
   | "notify_email_welcome"
   | "notify_email_overdue"
-  | "notify_email_win_back";
+  | "notify_email_win_back"
+  | "notify_email_review_request";
 
 
 interface EnqueueParams {

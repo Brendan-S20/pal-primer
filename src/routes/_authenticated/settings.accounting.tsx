@@ -121,7 +121,8 @@ function AccountingSettings() {
           </button>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          You'll be redirected to the provider to authorize. Requires <code>QBO_CLIENT_ID</code>/<code>QBO_CLIENT_SECRET</code> or <code>XERO_CLIENT_ID</code>/<code>XERO_CLIENT_SECRET</code> configured as project secrets.
+          You'll be redirected to QuickBooks or Xero to authorize the connection securely — no
+          credentials are entered here.
         </p>
       </div>
 
@@ -168,8 +169,18 @@ function AccountingSettings() {
         )}
       </div>
 
-      <form onSubmit={save} className="space-y-3 rounded border bg-card p-4">
-        <h2 className="font-medium">Add / update connection</h2>
+      {/* Finding #31: manual OAuth-token entry is a security anti-pattern once
+          the "Connect" OAuth flow above exists. Tucked behind an Advanced
+          disclosure for support/debugging only, with the token fields masked. */}
+      <details className="rounded border bg-card p-4">
+        <summary className="cursor-pointer text-sm font-medium">
+          Advanced: enter connection details manually
+        </summary>
+        <p className="mt-1 mb-3 text-xs text-muted-foreground">
+          For support use only. Prefer the "Connect" buttons above — OAuth tokens should not need to
+          be pasted by hand.
+        </p>
+      <form onSubmit={save} className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <label className="text-sm">
             <span className="mb-1 block text-muted-foreground">Provider</span>
@@ -196,11 +207,11 @@ function AccountingSettings() {
         </div>
         <label className="block text-sm">
           <span className="mb-1 block text-muted-foreground">Access token</span>
-          <textarea rows={2} className="w-full rounded border bg-background px-2 py-1 font-mono text-xs" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} placeholder="Paste OAuth access token" />
+          <input type="password" autoComplete="off" className="w-full rounded border bg-background px-2 py-1 font-mono text-xs" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} placeholder="Paste OAuth access token" />
         </label>
         <label className="block text-sm">
           <span className="mb-1 block text-muted-foreground">Refresh token (optional)</span>
-          <textarea rows={2} className="w-full rounded border bg-background px-2 py-1 font-mono text-xs" value={refreshToken} onChange={(e) => setRefreshToken(e.target.value)} />
+          <input type="password" autoComplete="off" className="w-full rounded border bg-background px-2 py-1 font-mono text-xs" value={refreshToken} onChange={(e) => setRefreshToken(e.target.value)} />
         </label>
         <label className="block text-sm">
           <span className="mb-1 block text-muted-foreground">
@@ -217,6 +228,7 @@ function AccountingSettings() {
         </button>
         {msg && <p className="text-sm">{msg}</p>}
       </form>
+      </details>
 
       <div className="rounded border bg-card p-4">
         <h2 className="mb-3 font-medium">Recent sync activity</h2>

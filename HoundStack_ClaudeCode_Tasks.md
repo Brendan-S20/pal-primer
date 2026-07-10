@@ -1,33 +1,54 @@
 # HoundStack QA Punch List — Claude Code Track
 
-**Generated:** July 8, 2026 &nbsp;|&nbsp; **Items in this file:** 37 of 53 total findings &nbsp;|&nbsp; **Source:** Consolidated Master QA Report (HoundStack_QA_Findings_Consolidated_Master.docx)
+**Generated:** July 8, 2026 &nbsp;|&nbsp; **Last updated:** July 10, 2026 (post-migration retouch) &nbsp;|&nbsp; **Items in this file:** 38 of 57 total findings &nbsp;|&nbsp; **Source:** Consolidated Master QA Report (HoundStack_QA_Findings_Consolidated_Master.docx)
 
 ## How to use this file
 
-This is one of two execution-track files split from the 53-finding consolidated QA punch list. This file contains every finding assigned to the **Claude Code track** — work involving security, financial calculations, data integrity, permission/auth logic, or new backend/feature capability, where correctness matters more than iteration speed. The companion file, `HoundStack_Lovable_Tasks.md`, contains the remaining findings: lower-risk UI copy, styling, and cosmetic fixes suited to Lovable's fast iteration loop.
+This is one of two execution-track files split from the 57-finding consolidated QA punch list (53 original findings + 4 discovered in a post-migration engineering pass on July 10, 2026). This file contains every finding assigned to the **Claude Code track** — work involving security, financial calculations, data integrity, permission/auth logic, or new backend/feature capability, where correctness matters more than iteration speed. The companion file, `HoundStack_Lovable_Tasks.md`, contains the remaining findings: lower-risk UI copy, styling, and cosmetic fixes suited to Lovable's fast iteration loop.
 
 Each item below is self-contained: severity, affected role(s), the area of the app, what QA found, the specific fix to build, and which Claude model to run it with. Feed each item's "What to build/fix" text directly to the assigned model as the task prompt — it already has full context baked in, so it doesn't need to reference this document or any other report.
+
+**July 10, 2026 update:** HoundStack's backend has been migrated off Lovable Cloud onto an independently-owned Supabase project (ref `vsxzrbxublqrcfnxfwcu`), and the email pipeline was rebuilt to call Resend directly. This retroactively removed the reason items #2 (AI Tools) and #32 (Email invoice feedback) were routed to the Lovable track — neither depends on a Lovable-exclusive secret anymore, so both moved back into this file. Four new findings from a post-migration engineering/QA pass were also added to the master list: #54 and #56 are informational/already-resolved (not assigned to either track, see the master report), #55 is a new Critical item in this file, and #57 is an ops checklist item (also not assigned to either track).
 
 ## Model assignment key
 
 - **Claude Fable 5** — used for large, multi-step, or new-feature work: permission-model overhauls, new backend capabilities, algorithmic/scheduling features, or anything spanning many files or requiring a long autonomous session. Fable 5 is Anthropic's current recommendation for large migrations, complex implementations, and multi-day autonomous work.
 - **Claude Opus 4.8** — used for narrower, contained bug fixes and logic corrections: a single broken calculation, a form that doesn't load data, a missing validation check. These don't need a long autonomous run — Opus 4.8's precision is the better fit.
 
-**Split in this file:** 13 items → Fable 5, 24 items → Opus 4.8.
+**Split in this file:** 13 items → Fable 5, 25 items → Opus 4.8.
 
 ## Sequencing
 
-Run this track **before** the Lovable track (see `HoundStack_Lovable_Tasks.md` for the full reasoning). Lovable's own documented best practice warns against simultaneous Lovable-editor and GitHub-based edits on the same project — doing Claude Code work first, merging it, and letting Lovable sync from GitHub avoids that conflict. Within this file, do the Critical items first, in order; #1 (permission model) and #47 (Dashboard KPI exposure) share a root cause and should be done together since #47 is a direct application of #1's fix. Likewise #6 (Plans catalog rebuild) and #51 (duplicate free tiers) should be done together.
+Run this track **before** the Lovable track (see `HoundStack_Lovable_Tasks.md` for the full reasoning). Lovable's own documented best practice warns against simultaneous Lovable-editor and GitHub-based edits on the same project — doing Claude Code work first, merging it, and letting Lovable sync from GitHub avoids that conflict. Within this file, do the Critical items first, in order; #1 (permission model) and #47 (Dashboard KPI exposure) share a root cause and should be done together since #47 is a direct application of #1's fix. Likewise #6 (Plans catalog rebuild) and #51 (duplicate free tiers) should be done together. #55 (signup/bootstrap gap) is a live-verification task with a fix already implemented — cheap to run early and close out, since a broken signup path is the highest-leverage thing to rule out first.
 
-## Not in this file: Item #17 (Google OAuth branding)
+**File-overlap risks with the Lovable track** (full audit, July 9, 2026, re-checked July 10, 2026 after #2/#32 moved into this file — see `HoundStack_Lovable_Tasks.md` for the complete list with reasoning): `my-day.tsx` is the highest-traffic shared file — this track's #34, #18, #35 land there alongside Lovable's #49 and #33. The New Client wizard shell is shared between this track's #13 and Lovable's #42. `/auth` is shared between #17 (ops item, not code) and Lovable's #44. Lower-risk: Routes/Board view (#9/#10/#26/#27/#28 here vs. Lovable's #48) and the sidebar (#50 here, possibly, vs. Lovable's #37/#43). If any of #34/#18/#35/#13 land while Lovable is mid-work on the same file, tell Lovable to re-sync from GitHub before it continues. Note: `ai-tools.functions.ts` (touched by both #1 and now #2) is no longer a cross-track risk — both items are on this track as of July 10, 2026, so no inter-track GitHub-sync step is needed there; just sequence #1 before #2 within this file since #2's provider swap should build on #1's permission-gating, not race it.
 
-Finding #17 ("Continue with Google" shows Google/Lovable branding instead of HoundStack) is **not assigned to either execution track**. It requires no application code change — this is purely an account/console action item for Brendan (creating a Google Cloud project, configuring OAuth consent, and switching Lovable's Cloud → Users → Auth → Google panel from "Managed by Lovable" to "Your own credentials"). Note: HoundStack's backend is Lovable Cloud, not a self-managed Supabase project — Brendan doesn't have a Supabase dashboard login, so this credential swap happens entirely inside Lovable's own interface. See the full action checklist — including Google Cloud project ownership, IAM access for the team, and Search Console verification guidance — in the Owner report (`HoundStack_QA_Findings_Owner_Role_Full.docx`, finding #34) or the Consolidated Master Report (finding #17).
+## Deployment workflow — read before touching any finding with a migration
+
+**Lovable does not apply git-pushed database migrations automatically.** This was learned the hard way during finding #4: code pushed to `main` deploys normally, but any accompanying SQL migration file does not run against the live database on its own — it has to be pasted and run manually in the database's own SQL editor. This caused a full live outage on finding #4 (the deployed code called database functions/tables that didn't exist yet) and, discovered at the same time, meant finding #1's DB-layer RLS/RPC hardening had *also* silently never applied to live, even though it had been reported as shipped — only its TypeScript-layer checks were actually protecting anything live until the gap was found and fixed.
+
+**July 10, 2026 update — this workflow may be about to change; verify before assuming either way.** The backend has since moved off Lovable Cloud onto an independently-owned Supabase project (ref `vsxzrbxublqrcfnxfwcu`), and a Supabase-management MCP connection (with `apply_migration`, `list_migrations`, `execute_sql`, and related tools) is now available in-session. That's a real opportunity to apply migrations directly and immediately instead of routing every SQL script through Brendan — but that MCP connection has not actually been exercised against this project yet, so don't assume it works end-to-end (auth scope, project targeting, and whether it's pointed at the right environment are all unconfirmed). On the next finding with a migration, try `list_migrations`/`apply_migration` first and confirm the change actually landed (query the affected table/column afterward), but keep the idempotent-SQL-script handoff ready in case the MCP path doesn't behave as expected.
+
+Standing rule for every future finding with a migration: generate a single idempotent SQL script (safe to re-run), and either apply it directly via the Supabase MCP tools (confirming it landed) or hand it to Brendan to paste into the SQL editor, exactly as was done for #4. Do not report a migration-containing finding as "shipped" until that SQL has been run and verified against production — a green local build and a successful `git push` are necessary but not sufficient.
+
+**Second standing rule, also learned on #4:** local test suites cannot prove everything. Cookie-scoping bugs, cross-route session behavior, and anything depending on exclusive live secrets can pass every local test and still be broken live. Treat "tests green" as proof of the logic being tested, not proof the feature works end to end — for anything auth- or delivery-related, drive the actual flow in a real browser (or ask for it to be driven live) before calling it done. (This is also the exact gap behind #55: the signup/bootstrap fix passed code review and a simulated webhook call, but hasn't yet been driven through a real signup in a browser.)
+
+## Not in this file: Items #17, #54, #56, #57
+
+Four findings are **not assigned to either execution track**:
+
+- **#17 (Google OAuth branding)** requires no application code change — it's an account/console action item for Brendan: creating a Google Cloud project, configuring OAuth consent, and entering credentials into the right dashboard. July 10, 2026 update: this now happens in the independently-owned Supabase project's own dashboard (Authentication → Providers → Google, project ref `vsxzrbxublqrcfnxfwcu`), not inside Lovable's Cloud panel — the backend is no longer Lovable-managed even though the app is still built in the Lovable editor for lower-risk UI/copy work. See the full checklist in the Consolidated Master Report (finding #17).
+- **#54 (`portal_reschedule_visit` column bug)** is already fixed and verified at the database level — logged for the audit trail, with one recommended live click-through test noted in the master report, but no build task to assign.
+- **#56 (subscriptions RLS)** was investigated during post-migration testing and closed as not a bug — logged for the audit trail only.
+- **#57 (Resend domain verification + Supabase signup rate limit)** is an ops/console checklist for Brendan, not a coding task — see the master report for the two items to check.
 
 ---
 
 ## Critical Findings
 
 ### #1 — Role-based permission model gates page navigation, not the sensitive actions and data reachable through pages that remain open — confirmed across three roles
+
+**Status:** ✅ Shipped and verified live (July 9, 2026) — do not restart this work.
 
 **Severity:** Critical  
 **Role(s) affected:** Office Manager, Dispatcher, Technician  
@@ -44,6 +65,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 ### #2 — AI Tools structured-output failures are systemic across the whole module
 
+**Status:** 🔶 Implemented + reworked to bring-your-own-key (July 10, 2026). Per Brendan's direction, each org now enters its **own Anthropic OR OpenAI** API key in Settings → AI (stored in a service-role-only `org_ai_credentials` table — never exposed to the browser; only a masked last-4 is shown), and the five tools use that key; a platform `ANTHROPIC_API_KEY` env still works as a fallback. The shared `generateStructured`/`generateAiText` helper now supports both providers natively (Anthropic forced tool-use; OpenAI forced function-calling) and every failure path throws a typed error (incl. a 401 → "check your API key" hint). The churn `clients.status` bug fix is retained. 58 unit tests green (both providers). Awaiting a live run: a QA click-through (enter a key in Settings → AI, then run each of the five tools against seeded data). All five AI Tools (plus the Weekly digest text call) moved off the Lovable AI Gateway / Vercel AI SDK `Output.object()` onto the Anthropic Claude API directly (`src/lib/ai.server.ts`): structured output now uses native forced tool-use with an explicit JSON Schema, re-validated with zod, and **every** failure path throws a typed `AiGenerationError` (missing key, API rejection, truncation at max_tokens, no tool_use block, schema mismatch — raw output logged server-side for diagnosis) so a real failure can never look like a legitimate empty result; the existing UI toasts surface these. The Churn-risk `clients.status` bug is fixed — the real column is `clients.active` (boolean), confirmed against the live schema. Unit tests cover the helper's success/mismatch/truncation/retry/missing-key paths (27 tests green). REMAINING: (1) Brendan must set `ANTHROPIC_API_KEY` in the app server's hosting env (Lovable project secrets; optional `ANTHROPIC_MODEL` override, default `claude-sonnet-5`); (2) after that, run all five tools against seeded data and sanity-check the *content* (the end-to-end run couldn't happen from this session — no provider key is present here, and the live app is unreachable under this session's egress policy).
+
 **Severity:** Critical  
 **Role(s) affected:** Owner  
 **Area:** AI Tools — all tabs  
@@ -51,13 +74,21 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 **What we found:**  Of the five AI Tools tabs tested, only Weekly digest reliably produced output. Churn risk (“Re-score all active clients”) throws the raw database error “column clients.status does not exist” directly in the UI on every run — a functionality failure and an information-disclosure concern, since it reveals internal schema. Marketing content (“Generate”) and Review replies (“Draft reply”) both fail on every tested input with the identical toast “No object generated: response did not match schema.” Zone pricing (“Suggest zone prices”) and AI dispatch (“Suggest reassignments”) both run their “Analyzing…” state and then quietly revert to an empty “No suggestions yet” with no error at all — notably, AI dispatch was tested against an extreme, obvious reassignment candidate (a visit sitting 1,854 km from the assigned technician) and still returned nothing, suggesting it is failing the same way as the other two but swallowing the error instead of surfacing it. This strongly suggests one shared, broken structured-output layer underlies the whole module rather than five unrelated bugs.
 
-**What to build/fix:**  The AI Tools module (Churn risk, Marketing content, Review replies, Zone pricing, AI dispatch) appears to share a structured-output helper that is broadly broken. Confirmed failures: (1) Churn risk ‘Re-score all active clients’ throws the raw database error ‘column clients.status does not exist’ directly in the UI on every run — fix the column reference to match the real clients schema. (2) Marketing content ‘Generate’ and (3) Review replies ‘Draft reply’ both fail on every tested input with the toast ‘No object generated: response did not match schema,’ meaning the model’s response isn’t validating against the expected schema — log the raw model output on validation failure to diagnose why, then fix the prompt/schema mismatch. (4) Zone pricing ‘Suggest zone prices’ and (5) AI dispatch ‘Suggest reassignments’ both run an ‘Analyzing…’ state and then silently revert to an empty ‘no suggestions’ state with no error shown, even when tested against a scenario (a visit assigned 1,854 km from the technician) that should obviously produce a suggestion — these are likely failing the same way as 2 and 3 but swallowing the error. Please fix the underlying schema-validation issue wherever it’s shared, and make error handling consistent across all five: never show a raw database error to the user, and never let a failed generation look identical to a legitimate empty result — both should be visually and textually distinguishable. Add integration tests that run each of the five AI Tools actions end-to-end against seeded data and assert real output (or an explicit, typed error) is returned, not a silent empty state.
+**What to build/fix:**  CONFIRMED ROOT CAUSE (unchanged from the original diagnosis, so this shouldn't need re-diagnosing): the AI Tools module calls an AI gateway using generateText({ output: Output.object({ schema }) }) via the Vercel AI SDK — structured-output mode is unreliable against the current model/gateway combination, while plain generateText({...}) reading `text` (used by the one working tool, Weekly digest) works fine.
 
-**Why this model:**  Large, multi-step, or new-feature build — matches Fable 5's documented strength on large migrations, complex implementations, and multi-day autonomous sessions. "Systemic across the whole module" means this requires auditing and fixing every AI Tools structured-output call site, not a single function.
+Update: HoundStack is moving AI Tools off Lovable's AI Gateway (ai.gateway.lovable.dev, model google/gemini-3-flash-preview) onto a direct provider integration. Fix this as part of that swap rather than patching around the old gateway — point all five AI Tools calls at a direct provider API (Anthropic's Claude API is the natural fit given the rest of the stack, though OpenAI or Gemini direct are also viable) using that provider's native structured-output/tool-use support instead of the Vercel AI SDK's generic Output.object() wrapper — native structured outputs from a direct provider tend to be far more reliable than SDK-abstracted ones layered on top of a gateway.
+
+Concretely: (1) Churn risk (“Re-score all active clients”) — also throws a raw “column clients.status does not exist” database error on every run, a functionality bug independent of the gateway swap; confirm the real column name directly (do not assume) and fix the query alongside the provider swap. (2) Marketing content (“Generate”) and (3) Review replies (“Draft reply”) both fail on every tested input with “No object generated: response did not match schema” — re-implement with the new provider's native structured output. (4) Zone pricing (“Suggest zone prices”) and (5) AI dispatch (“Suggest reassignments”) both quietly return an empty result instead of surfacing an error — same underlying failure mode, just swallowed; fix under the same provider swap and make sure a real failure is never indistinguishable from a legitimate empty result.
+
+Build one shared generateStructured(schema, prompt, label) helper around the new provider's native structured output, convert all five broken tools to use it, and add end-to-end tests against seeded data asserting real parsed output or a typed error, never a silent empty state. Since this no longer depends on a Lovable-exclusive secret — a direct provider API key is a normal secret Claude Code can hold and test against locally — this is now buildable and fully testable end-to-end without a Lovable-side round trip: after implementing, actually run all five tools against real seeded data and confirm the output content itself is correct, not just that nothing threw — a tool that stops crashing but returns malformed or nonsensical content due to a looser JSON-repair path would be a silent regression of a different kind.
+
+**Why this model:**  Large, multi-step, or new-feature build — matches Fable 5's documented strength on large migrations, complex implementations, and multi-day autonomous sessions. Swapping the structured-output layer across five tools onto a new provider, plus a shared helper and end-to-end tests, is multi-file, multi-step work, not a single contained fix.
 
 ---
 
 ### #3 — Per-acre commercial pricing drops the base price entirely — a $20/visit account was quoted and saved at $0.28/visit
+
+**Status:** ✅ Shipped (July 10, 2026). Root cause: in `getInternalQuote` (New Client wizard Plan step), when a zone priced by area the computed area charge *replaced* the zone's base price instead of adding to it. The math is now extracted to a pure helper (`src/lib/pricing.ts`) that always sums base + area (with the area minimum applied to the area component only) + per-extra-dog, with unit tests including the exact QA repro (2,472 sq ft in Downtown Commercial → $20.28, not $0.28). Checked the public signup path's `public_quote` DB function — it never used area pricing, so it doesn't share the bug. Production audit run against live: exactly one affected subscription existed (the QA repro client "Geocode Test" at $0.28); corrected to $20.28 directly in the live DB. Note: the wizard currently only auto-quotes residential accounts, so drive a fresh commercial-with-boundary quote when the UI is next touched live.
 
 **Severity:** Critical  
 **Role(s) affected:** Owner  
@@ -74,6 +105,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 ### #4 — Client portal has zero authentication — a bare, guessable-format link is the only thing standing between anyone and a client’s payment method, invoices, and property/access details
 
+**Status:** 🔶 Verified against live (July 10, 2026) — one final human browser click-through outstanding. Full state audit run this session, code + live DB: (1) OTP auth core is complete and live — `portal_otps`/`portal_sessions`/`portal_code_attempts` tables exist with RLS deny-all (service-role only), codes are hashed + single-use + attempt-limited (5) + rate-limited per client (5/hr, 30s spacing) and per IP (15/hr), sessions are 30-day, cookie-path is `/` (the earlier cookie-scoping bug's fix is in place with an explanatory comment); (2) the "already have a code" path exists on BOTH the generic `/portal/{slug}` entry and the token flow, including office-read-code and org-code redemption with its own IP limiter; (3) "Regenerate portal link" exists in the Owner client page and its `regenerate_portal_token` RPC is live — rotation orphans all old sessions by design; (4) **email delivery is now confirmed live**: the earlier failures were an invalid `RESEND_API_KEY` (26 failed portal-OTP sends, fixed ~21:30 July 9 — 3 real portal-OTP sends succeeded at 21:41 with Resend provider IDs logged in `email_send_log`), and this session verified the queue path end-to-end by enqueuing a labeled test email that went `pending → sent` (provider id `9c64be53…`) in ~30s; the July 9 signup/welcome DLQ entries all date from the bad-key window; `process-email-queue` cron fires green every minute at the correct `www.` host. NOT yet done: a human click-through of the live portal flows (SMS path in particular — needs `sms_from_number` configured — plus code-entry UX on a phone). No code changes were needed this round.
+
 **Severity:** Critical  
 **Role(s) affected:** Owner  
 **Area:** Client portal — Security  
@@ -83,11 +116,15 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 **What to build/fix:**  The client portal (/portal/{uuid}) grants full access — payment method entry/autopay via Stripe, invoice history, property and dog details, and the ability to submit concerns as the client — to anyone holding the URL, with no authentication step at all. The portal’s own copy (“Don’t share the link”) shows the product already recognizes this is fragile. Add a lightweight verification gate before the portal unlocks — e.g. require the visitor to enter the last 4 digits of the phone number on file, or send a one-time 6-digit code via SMS/email to the contact info on file and require it before granting a session (a magic-link + short-lived session-token pattern instead of a permanently valid bare URL). Add a “Regenerate portal link” action on the Owner’s client page that invalidates the old link and issues a new one, for use whenever a client reports their link may have been exposed. Consider link expiry/periodic re-verification and rate-limiting repeated access attempts by IP. Until stronger auth ships, flag this internally as security-by-obscurity rather than a real login, since it currently guards billing and payment-method actions.
 
+Implementation note (added after an infrastructure rebuild subsequent to this finding): the client portal sits on the same Supabase project/auth stack as the rest of the app, and the email-sending path was rebuilt in the interim — whichever verification-code delivery you build (SMS or email OTP) should go out through the current dispatcher, which calls Resend directly via RESEND_API_KEY (a normal secret, no longer routed through Lovable's connector gateway), or through Supabase Auth's own “Send Email” hook if you build this on top of Supabase Auth's native OTP flow rather than a custom code table. Two infrastructure gotchas already found and fixed elsewhere in this same rebuild are worth knowing before wiring portal verification into either path: (1) app.houndstack.com (no www) 307-redirects to www.app.houndstack.com, and outbound webhook/hook callers don't follow redirects on POST — any hook or callback URL used here must use the www. host or it will silently fail; (2) the send path depends on notify.houndstack.com's Resend domain verification (DKIM/MX/SPF) being fully complete — confirm it shows verified in Resend's dashboard before relying on it for a security-critical flow like this one (see item #57 for the current verification-status check).
+
 **Why this model:**  Large, multi-step, or new-feature build — matches Fable 5's documented strength on large migrations, complex implementations, and multi-day autonomous sessions. Adding real authentication to the client portal is a security-critical feature build, not a patch — token/session design, not a copy or CSS fix.
 
 ---
 
 ### #5 — Impersonate has no safety rails, and silently hijacks the platform admin's own session in their original tab with zero warning
+
+**Status:** ✅ Shipped (July 10, 2026) — DB + code, pending a live click-through. Root cause confirmed: auth is fully client-side (supabase-js persists to `window.localStorage`, which is shared across every tab of the origin), and impersonation opened a Supabase hosted magic link in a "new tab" — that link established the tenant session in the *shared* localStorage, overwriting the admin's own session everywhere. Rebuilt at the architecture level: (1) session isolation — an impersonation tab is opened with a `window.name` stamped `hs-impersonation:` (per-tab, set by `window.open` before the bundle loads), and `client.ts` now, synchronously at init, makes such a tab persist its session to `sessionStorage` under a distinct storage key; a normal tab is untouched and keeps localStorage. sessionStorage is per-tab and never shared, so impersonating a customer can no longer read or overwrite the admin's own session in any tab (unit-tested). (2) One-time exchange — `startImpersonation` now mints a single-use, 2-minute grant (`impersonation_grants` table, RLS deny-all, only a SHA-256 of the token stored) for a **specific** chosen user; the new tab hits `/impersonate#t=…` (a route outside all auth guards) and calls `consumeImpersonation`, which atomically claims the grant and mints the target session server-side (never in the admin's browser), returning tokens the tab loads into its own sessionStorage client. Single-use + expiry semantics verified against live SQL. (3) Safety rails — a confirmation dialog with a real user picker (no more silent default to owner; the tenant's users come from `getTenantDetail`), a persistent amber banner on every page of the impersonated session ("Viewing as {email} ({org}) — Exit impersonation"), and a one-click Exit that signs out only the tab's sessionStorage session and closes the tab. Migration applied to live via Supabase MCP; typecheck + 36 unit tests green. Remaining: a human should click through a real impersonation once (open tab → banner shows → original admin tab still works when navigating to Plans → Exit returns cleanly) — the session-isolation invariant is unit-tested but the finding was originally caught by cross-tab behavior only a real browser exercises.
 
 **Severity:** Critical  
 **Role(s) affected:** Platform Admin  
@@ -104,6 +141,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 ### #6 — The live Plans catalog bears no resemblance to houndstack.com's public pricing page — different tier names, and a completely different pricing model that the marketing site explicitly denies using
 
+**Status:** 🔶 Rebuilt to the marketed per-employee model (July 10, 2026) — engineering done live; business sign-off + Stripe wiring outstanding. The document records no explicit (a)-vs-(b) decision for this finding, but its own engineering follow-up scopes option (a) precisely and the track's precedent (#15, #16) is consistently "build to match the marketing site." Since Brendan is away, I executed option (a) as the design pass the finding calls for, made it fully reversible (old rows deactivated, not deleted), and left the marketing-vs-model business decision + Stripe price creation flagged below. Shipped: (1) `platform_plans` rebuilt to the four marketed tiers — Launch $79 (3 employees), Growth $199 (10), Scale $449 (30), Enterprise (custom/by-contract) — each with `included_seats` + `price_per_seat_cents` ($10.00/employee overage) and unlimited customers (client caps removed); the seven dog-themed client-band tiers are deactivated (kept for history/FK safety). (2) Tier assignment is now **seat-based, not client-based**: new `active_seat_count` on organizations (maintained by a staff trigger), `assign_billing_tier_for_org` picks the smallest tier covering the org's active employees, `org_seat_overage_cents` computes the per-employee overage, and `organizations.plan_id` is now wired for every org (backfilled — demo org, 4 employees → Growth, $0 overage). (3) A real trial state: added `trialing` to the plan/billing status enums, a 14-day `trial_ends_at` expiry, and the old hard "3 active clients" cap is replaced by a trial/subscription gate (unlimited customers while subscribed or in an unexpired trial). Migrations applied to live via Supabase MCP and verified (catalog rows, demo org assignment, overage math). The Platform → Plans UI now renders base price / included employees / per-employee overage / unlimited customers instead of client bands. OUTSTANDING (needs Brendan / not codeable here): confirm the business decision is genuinely (a) and not (b) update-the-marketing-site; and the tenant-facing Settings→Billing copy still reads in client terms — reconciled under finding #23. The employee/seat-management invite flow this billing depends on is finding #40. FOLLOW-UP (July 10, 2026, verification pass): Stripe now wired end-to-end — sandbox products/prices created for launch/growth/scale (base + a new per-employee `stripe_seat_price_id`), backfilled onto `platform_plans` (migration applied live); `createBillingCheckout` now selects the tier by **active-employee count** (the earlier client-count band logic collapsed to Launch for every org and would have sold the wrong base) and attaches the seat-overage line item; `syncOrgSeatQuantity` reconciles the seat quantity on staff change / invite accept / billing view (`tests/seat-sync.server.test.ts`). Enterprise stays custom. Sandbox checkout itself is NEEDS-LIVE-QA (see `QA_ClickThrough.md`).
+
 **Severity:** Critical  
 **Role(s) affected:** Platform Admin  
 **Area:** Plans catalog vs. public pricing page  
@@ -113,13 +152,42 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 **What to build/fix:**  houndstack.com/pricing markets a four-tier, per-employee pricing model (Launch $79/3 employees, Growth $199/10 employees, Scale $449/30 employees, Enterprise by contract, $10/mo per additional active employee, unlimited customers on every plan) and its FAQ explicitly states the company does not charge by customer or employee count. The live Plans catalog (/platform/plans) is a seven-tier model priced entirely by active-client band (Free/Puppy at 0–3 clients, Fetch at 4–25, Scoop at 26–75, Haul at 76–125, Pack Leader at 126–200, Kennel at 201+), with no employee-based pricing anywhere and no tier names matching the marketing site. This needs an urgent product/business decision, not just an engineering fix: determine which pricing model is the intended one going forward, then either (a) rebuild the live Plans catalog to match the marketed per-employee model exactly, including the $10/employee overage billing and named tiers (Launch/Growth/Scale/Enterprise), and build the employee-counting/seat-management logic this depends on (which doesn't currently exist per the Owner-role report's invite-flow finding), or (b) if the client-count model is actually the current direction, update houndstack.com immediately, since the current copy — especially the FAQ's explicit denial of charging by customer count — directly contradicts what a prospective customer would actually be billed under once they sign up. Until resolved, treat this as a trust and possible legal/advertising-accuracy risk, not just a product inconsistency.
 
+Engineering follow-up since this finding was first raised confirms the scope precisely: the current platform_plans table is tiered by active_client_count with the stale dog-themed names described above; organizations.plan_id (the FK to a concrete plan row) is never set by any database function today — only billing_tier (a text slug) gets auto-assigned via trigger; and there is no permanent free tier in the real pricing model — it's a 14-day free trial with limitations, not an ongoing “free” plan status. This confirms the fix needs a proper design pass, not a quick patch: new platform_plans rows matching the real four tiers (with the $10/employee overage), a seat-count-based (not client-count-based) tier-assignment function, a real trial state with an expiry mechanism, and plan_id actually wired for every organization rather than left null.
+
 **Why this model:**  Large, multi-step, or new-feature build — matches Fable 5's documented strength on large migrations, complex implementations, and multi-day autonomous sessions. Rebuilding the Plans catalog to match houndstack.com's real pricing tiers is a substantial data-model and UI project, and should be scoped together with item #51 (duplicate free tiers) and the Pricing/Signup PRD (Appendix A).
+
+---
+
+### #55 — Signup/bootstrap gap — new users could land signed-in but orgless; a fix has shipped but has not yet been verified via a live signup
+
+**Status:** 🔶 Verified & hardened at the DB level (July 10, 2026); the real-browser click-through remains blocked from this session. Done: (1) confirmed the deferred-bootstrap design is implemented on `/auth` for password sign-in, OAuth completion, and the already-signed-in landing path; (2) targeted debugging found and fixed two real gaps — `bootstrap_organization` had no lock, so the exact race this finding predicted (double-clicked confirmation link / two tabs → two orgs for one user) was structurally possible (`user_roles` uniqueness doesn't prevent it); it now serializes per-user via an advisory xact lock — and the bootstrap path would have silently auto-provisioned a spurious tenant org for a **platform admin** on their next `/auth` sign-in (platform admins have zero `user_roles` rows by design; guarded now both server-side in the function and client-side in `ensureBootstrapped`); (3) migration applied to live via Supabase MCP `apply_migration` (the MCP path works end-to-end — see Deployment workflow) and verified live with a simulated authenticated session: idempotent double-call returns the same org id, exactly 1 role row, admin guard returns NULL; test data rolled back cleanly. NOT done: the actual click-through signup → confirm-email → sign-in → populated-dashboard walkthrough (password and Google OAuth) — this session's network egress policy blocks `www.app.houndstack.com` and `*.supabase.co` (proxy 403, policy denial), so no browser here can reach the live app. Brendan (or any session with normal egress) still needs to run that walkthrough twice before this is fully closed.
+
+**Severity:** Critical  
+**Role(s) affected:** Owner  
+**Area:** Signup / Onboarding  
+**Model to use:** Claude Opus 4.8  
+
+**What we found:**  Discovered during the post-migration engineering pass: HoundStack has email confirmation enabled on signup, so bootstrapOrganization (the function that creates the organization row and assigns the owner role) was only firing at signup time, when no authenticated session exists yet. The practical effect: a new user could complete signup, confirm their email, and log in — and land signed-in but with zero organization or role rows, i.e. an unusable account.
+
+Fix already implemented: the org name/display name is now stashed in user_metadata at signup time, and the actual bootstrap call is deferred to first sign-in (covering both password login and Google OAuth), gated on the signing-in user having zero user_roles rows. bootstrap_organization is idempotent server-side, so a repeated call is safe.
+
+Verification status: confirmed via code review, a successful typecheck, and a simulated signed webhook call — but a real click-through signup → confirm email → log in → land on a populated dashboard walkthrough has not been run since this change, for either the password or Google OAuth signup path. Given that a broken signup path blocks every new customer HoundStack tries to onboard, this is flagged Critical until that live verification happens, even though the underlying fix is believed sound.
+
+**What to build/fix:**  This fix needs one thing before it can be marked closed: an actual live walkthrough of the full signup flow — real email address, real confirmation click, real login, landing on a populated dashboard — run twice: once via password signup, once via “Continue with Google.”
+
+If either path still leaves a user signed-in without an organization/role, debug the bootstrap-deferral logic directly rather than re-reviewing it in the abstract — check for a race between the email-confirmation redirect and the first-sign-in bootstrap call, and confirm bootstrap_organization's idempotency actually holds if a user double-clicks a confirmation link or opens it in two tabs (concurrent first-sign-in bootstrap calls racing each other is the most likely failure mode if this does break).
+
+This is a narrow verification-and-harden task, not a rebuild — the design (defer bootstrap to first sign-in, gate on role count, idempotent server-side call) is sound; the remaining risk is purely whether the implementation matches that design under a real signed cookie/session, which code review alone can't confirm.
+
+**Why this model:**  Narrow, contained verification-and-harden task — well-suited to Opus 4.8's precision. The design is already sound and implemented; this is a live QA walkthrough plus targeted debugging if it surfaces a race condition, not a rebuild.
 
 ---
 
 ## High Findings
 
 ### #7 — Clients page “Outstanding” KPI is broken — always shows $0.00 / 0 clients
+
+**Status:** ✅ Shipped (July 10, 2026). Root cause: `listClients` summed `invoices.amount_cents - amount_paid_cents`, but those columns don't exist (invoices carry only `subtotal_cents`/`total_cents`) — so the balance was silently always 0 while Dashboard/Reports summed `total_cents` on open invoices. Extracted the AR math into a shared helper (`src/lib/ar.ts`) and routed all three surfaces (Clients, Dashboard "AR Open", Reports "Outstanding") through it so they can't drift again. Unit-tested against the demo tenant's figure (12 open invoices → $5,270.00). Verified the live data: 12 open invoices summing to exactly $5,270.00. tsc + 40 tests green.
 
 **Severity:** High  
 **Role(s) affected:** Owner  
@@ -136,6 +204,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 ### #8 — Subscription edit form doesn’t load existing values — risk of silent data loss
 
+**Status:** ✅ Shipped (July 10, 2026). The form under the subscription summary was actually an *add* form with hardcoded defaults (weekly / $25 / 1 dog / no property or zone selected) — so it read as an edit form that would clobber the real values. Made it a genuine edit form: added an `updateSubscription` server function (gated on `manage_pricing`); on load and via a per-row "Edit" control the form hydrates every field from the actual subscription record through a pure, unit-tested helper (`subscriptionToFormValues`); a new blank "Add a new subscription instead" path uses empty/auto-selected defaults (the single property is auto-selected so a new subscription is never saved with no property). Submit routes to update vs. create by mode, and the button reads Save changes / Add subscription accordingly. Unit tests cover the hydration mapping and the single-property auto-select. tsc + 46 tests green.
+
 **Severity:** High  
 **Role(s) affected:** Owner  
 **Area:** Client detail — Service tab → Subscriptions  
@@ -151,6 +221,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 ### #9 — Routes page tells users to click “Geocode addresses,” but no such control exists
 
+**Status:** ✅ Shipped (July 10, 2026). A bulk-geocode action had already been added since the finding (the `backfillPropertyGeocodes` server fn geocodes every property with a null lat/lng, and the shared geocoder already enforces a 1 req/s Nominatim throttle with a User-Agent — exactly the note's requirement), but the empty-state overlay that names the button was `pointer-events-none` and the only button lived in the map header (and vanished when there were no visits). Fixed by making the empty-state overlay itself contain a working "Geocode addresses" button wired to the same throttled bulk action, so the message and the control are co-located and reachable. tsc green.
+
 **Severity:** High  
 **Role(s) affected:** Owner  
 **Area:** Routes / Dispatch  
@@ -160,11 +232,15 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 **What to build/fix:**  The Routes (‘Today’) page map empty-state reads ‘No coordinates yet. Click “Geocode addresses” to plot properties,’ but there is no button, link, or control with that label anywhere on the page (verified with Planning tools both collapsed and expanded). New-client-wizard properties get geocoded automatically once a visit is generated, so this gap specifically hits legacy/imported properties that never went through that path. Either this bulk-geocode action was removed/renamed during a refactor and the copy is stale, or it never existed. Add the missing action: a way to bulk-geocode all client properties missing lat/lng in one click. Wire the empty-state message to that action, or update the copy to point wherever geocoding now actually lives. This currently blocks route mapping and auto-optimization for any tenant whose properties aren’t geocoded, which is a core workflow for a route-based field service ERP.
 
+Implementation note (added after a geocoding-provider change subsequent to this finding): geocoding now runs through Nominatim/OpenStreetMap directly (switched from a Google-backed path during a recent infrastructure rebuild), with a proper User-Agent header and real error logging already in place. Build this bulk action with Nominatim's usage limits in mind — its public instance is rate-limited to roughly 1 request/second and isn't meant for bulk/high-volume use. A “Geocode addresses” button that fires one request per unmapped property needs to queue and throttle those requests (sequential with a ~1s delay, not Promise.all) rather than firing them concurrently, or it will get rate-limited mid-run on any client with more than a handful of legacy/imported properties. If bulk CSV imports become a common scenario, flag whether Nominatim's public instance is still the right fit at that volume (a paid geocoding provider or a self-hosted Nominatim instance may be needed) — a known limitation, not a blocker for shipping this button now.
+
 **Why this model:**  Narrow, contained bug fix or logic correction — well-suited to Opus 4.8's precision on scoped engineering problems without the overhead of a long autonomous run. Implement the missing "Geocode addresses" action using the same geocoding integration already used elsewhere (see #13) rather than just deleting the misleading instruction.
 
 ---
 
 ### #10 — Route optimizer has no distance/plausibility check — will schedule a 1,850 km, 61-hour drive without warning
+
+**Status:** ✅ Shipped (July 10, 2026). Root cause of the inconsistent ETA: `assign_route_for_day` (the "Auto-assign for tech" action) only set `assigned_staff_id` + `sequence` and left each visit's `eta_start`/`travel_km`/`travel_min` at STALE values computed for a different technician's depot — so a card showed a leftover "05:48 PM" ETA next to a freshly-implausible "3708 min" drive. Fixed at the DB level: the assign function now clears those routing fields on every (re)assignment (migration applied live), so an ETA is never shown that wasn't derived from the current drive. Plausibility guard: added a configurable `organizations.max_drive_minutes` (default 240, editable in the Routes dispatch-settings panel) and a pure, unit-tested helper (`route-plausibility.ts`) that flags any stop whose drive exceeds the threshold or whose arrival can't be reached from the workday start plus its drive; `assignRoute`/`optimizeRoute` now return these warnings and the Routes UI surfaces them as dispatcher toasts instead of silently accepting the route. Tests cover the exact 1,854 km repro and the ETA-inconsistency case (53 tests green).
 
 **Severity:** High  
 **Role(s) affected:** Owner  
@@ -181,6 +257,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 ### #11 — No way to send a first message to a client — Messages feature is a dead end
 
+**Status:** ✅ Shipped (July 10, 2026). The backend to originate a thread already existed (`sendSmsToClient` sends via Twilio and inserts the `messages` row that constitutes a thread) — the gap was purely that no UI entry point existed, exactly as the empty-state copy promised. Added a "Messages" composer to the client detail Overview tab (next to Reviews & referrals, per the finding) that shows the recent conversation and sends the first/next SMS through that same path, so a new conversation appears both on the client page and in the main Messages list. It's disabled with a clear hint when the client has no phone on file, and surfaces the existing "no SMS sender number — Settings → SMS" error (that Settings page is finding #34). tsc green.
+
 **Severity:** High  
 **Role(s) affected:** Owner  
 **Area:** Messages / Client detail  
@@ -195,6 +273,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 ---
 
 ### #12 — CSV client import silently drops property/service-address data
+
+**Status:** ✅ Shipped (July 10, 2026). Added street/city/region/postal_code/gate_code as mappable targets on the **Clients** import, merged service-address column aliases (address, service address, state, zip, etc.) into every source preset so they auto-map from real Sweep&Go/Jobber/Housecall exports, and the commit path now creates an auto-geocoded property for each imported client that carries an address (non-fatal if geocoding misses — the client still imports). The dry-run preview gained a "Service address" column so mapping mistakes are catchable before commit. tsc green. (A separate `properties` import entity already existed for linking addresses by client_external_id; this closes the far more common single-file Clients-with-address path.)
 
 **Severity:** High  
 **Role(s) affected:** Owner  
@@ -211,6 +291,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 ### #13 — New Client wizard silently fails to geocode unrecognized addresses, and the address step has no validation at all
 
+**Status:** ✅ Shipped (July 10, 2026). The Yard step's geocode now tracks an explicit status (loading / ok / not-found / error) instead of swallowing failures with an empty `catch {}`, and renders a clear amber message when the address can't be found or the geocoder is unreachable ("draw the service area manually on the map below") rather than silently showing a zoomed-out world map. On the Property step, State/Region is now required (both the input `required` attribute and the step's Next-gate), since it's needed downstream for routing, zone pricing, and geocoding. tsc green. (Full address-autocomplete on the Property step is noted as a further enhancement but not required to close the silent-failure bug.)
+
 **Severity:** High  
 **Role(s) affected:** Owner  
 **Area:** New client wizard — Property & Yard steps  
@@ -218,13 +300,15 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 **What we found:**  The Yard step’s map centers correctly on the property when the address entered in the prior Property step geocodes successfully (verified with a real address, “600 Congress Ave, Austin, TX 78701” — map centered precisely on the building). But when the address doesn’t geocode (verified with a fictitious street, “789 QA Way, Austin, TX 78704”), the map silently falls back to a fully zoomed-out view of North America with no error, warning, or indication anything went wrong. Compounding this, the Property step itself has no address autocomplete or validation of any kind — plain text fields for Street/City/State/ZIP, and State/Region isn’t even required (a client was created and geocoded successfully with State left blank). A user can easily mistype a street address, get zero feedback, and land on a confusing, useless map with no idea why.
 
-**What to build/fix:**  The New Client wizard’s Yard step (step 3) depends on the address entered in the Property step (step 2) geocoding successfully to center its map — when it does, this works well; when the address can’t be geocoded (e.g. a typo, or a street that doesn’t exist), the map silently falls back to a zoomed-out view of North America with zero feedback to the user. Add explicit handling: if geocoding the entered address fails, show a clear message on the Yard step (e.g. “We couldn’t find this address on the map — check the address on the previous step, or continue and set the map location manually”) instead of silently rendering an unhelpful world map. Separately, the Property step itself has no address validation or autocomplete: Street/City/State/ZIP are plain text inputs, State/Region isn’t required, and there’s no feedback if an address is malformed or doesn’t exist. Evaluate adding an address autocomplete/validation widget to the Property step (Google Places Autocomplete, or improving the existing geocoder) so bad addresses are caught before the user ever reaches the Yard step, and make State/Region required since it’s needed for the property to be usable downstream. Also worth confirming for context: the map tiles are OpenStreetMap-based (Leaflet + “© OpenStreetMap” attribution), which suggests geocoding may be running through a free/rate-limited service (e.g. Nominatim) rather than a paid provider like Google — if so, weigh whether that address-matching quality is acceptable given how much of the product (routing, zone pricing, DNA compliance, and now the per-acre pricing bug above) depends on getting coordinates and boundaries right.
+**What to build/fix:**  The New Client wizard’s Yard step (step 3) depends on the address entered in the Property step (step 2) geocoding successfully to center its map — when it does, this works well; when the address can’t be geocoded (e.g. a typo, or a street that doesn’t exist), the map silently falls back to a zoomed-out view of North America with zero feedback to the user. Add explicit handling: if geocoding the entered address fails, show a clear message on the Yard step (e.g. “We couldn’t find this address on the map — check the address on the previous step, or continue and set the map location manually”) instead of silently rendering an unhelpful world map. Separately, the Property step itself has no address validation or autocomplete: Street/City/State/ZIP are plain text inputs, State/Region isn’t required, and there’s no feedback if an address is malformed or doesn’t exist. Evaluate adding an address autocomplete/validation widget to the Property step (Google Places Autocomplete, or improving the existing geocoder) so bad addresses are caught before the user ever reaches the Yard step, and make State/Region required since it’s needed for the property to be usable downstream. Update (confirmed after a geocoding-provider change subsequent to this finding, so this no longer needs to be inferred from the map tiles): geocoding was running through Google at the time this was first found, and has since been switched to Nominatim/OpenStreetMap directly, with a proper User-Agent header and real error logging replacing the previous silent-null behavior. This makes the user-facing message above more straightforward to build correctly — surface the actual error/empty-result Nominatim already returns and logs, rather than inferring failure purely from “map still zoomed out.” Given how much of the product (routing, zone pricing, DNA compliance, and the per-acre pricing bug above) depends on getting coordinates and boundaries right, and Nominatim's public instance is rate-limited (~1 req/sec, not meant for bulk use — see #9), keep an eye on address-matching quality at scale and revisit the provider choice if it becomes a real bottleneck.
 
 **Why this model:**  Narrow, contained bug fix or logic correction — well-suited to Opus 4.8's precision on scoped engineering problems without the overhead of a long autonomous run. Contained validation/error-surfacing fix on the New Client wizard's address step.
 
 ---
 
 ### #14 — Client concerns submitted through the portal have no owner-facing inbox — they surface only as a dashboard banner that links to an empty, unrelated page
+
+**Status:** ✅ Shipped (July 10, 2026). Concerns are stored in `qc_tickets` (which already had status/resolved_at/resolved_by/resolution_note columns). Built the missing owner-facing inbox: a new **Concerns** nav item + `/concerns` route with a real triage workflow — filter by Received / In progress / Resolved, each concern shows category, full message, submitting client + contact info and submission date, with "Mark in progress" / "Mark resolved" (with an optional resolution note) and Reopen. Server functions `listConcerns` / `updateConcernStatus` gated on `view_client_directory`. Fixed the dashboard banner to link to `/concerns` instead of the unrelated `/messages` SMS inbox. Added a best-effort office **email notification** on concern submission (to the org's contact email via Resend, logged to `email_send_log`) so a safety issue like a gate-left-open doesn't depend on someone happening to check the dashboard. tsc + tests green. (Email requires `RESEND_API_KEY` + an org contact email; the inbox + banner work regardless.)
 
 **Severity:** High  
 **Role(s) affected:** Owner  
@@ -241,6 +325,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 ### #15 — Weather forecasts never load for any zone — and this is a feature the public marketing site explicitly promises works today
 
+**Status:** 🔶 Root-caused and fixed in code (July 10, 2026); live confirmation blocked from this session. The provider is Open-Meteo (keyless, so no missing-API-key issue). The bug: the fetch requested Open-Meteo's **deprecated** daily variable names `weathercode` and `windspeed_10m_max`, which the current API rejects with HTTP 400 — and the error was swallowed into a silent empty forecast, shown identically for every zone as "No forecast available." Fixed the request + response parsing to the current names (`weather_code`, `wind_speed_10m_max`) in both `weather.functions.ts` and `weather-day.functions.ts`, and replaced the error-swallowing catch with an explicit per-zone status (`ok` / `no_coords` / `error`) so the Weather page now distinguishes "weather service error" from "no risky days" and from "zone has no coordinates." Added a test asserting the modern variable names are used and that a 400 surfaces as an error rather than a silent empty. NOT confirmed live: this session's egress policy blocks `api.open-meteo.com` (proxy 403), so the actual forecast render couldn't be driven here — Brendan (or a session with open egress) should load the Weather page and confirm real forecasts appear. tsc + 56 tests green.
+
 **Severity:** High  
 **Role(s) affected:** Owner  
 **Area:** Weather  
@@ -256,6 +342,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 ### #16 — houndstack.com repeatedly and specifically markets "automatic royalty billing" for franchises as a live feature — the actual Franchise page has no royalty billing of any kind
 
+**Status:** ✅ Shipped (July 10, 2026) — built the marketed capability (decision follows the same "build, don't soften the claim" line recorded for #15/#16). Data model (migration applied live via Supabase MCP): a per-child `organizations.franchise_royalty_percent` rate and a `franchise_royalty_invoices` table (parent/child, period, revenue, rate, amount, status; unique per child+period; RLS scoped so only the parent org's writers can see/manage its franchise's royalty invoices). Server functions (`franchise.functions.ts`, all gated on `manage_franchise`): `setChildRoyaltyRate`, `getFranchiseRoyaltySettings`, `generateRoyaltyInvoices` (royalty = each child's collected revenue in the period × its rate; idempotent upsert per child+period; defaults to last full calendar month), `listRoyaltyInvoices`, `setRoyaltyInvoiceStatus` (draft→issued→paid/void). UI: a new "Royalty billing" section on the Franchise page — per-location rate inputs, a "Generate last month's royalties" button, and a table of generated royalty invoices with issue/mark-paid actions. **Automatic** generation is wired into the nightly cron: on the 1st of each month it generates last month's royalty invoices for every franchise parent's children (service-role, idempotent). tsc + tests green. NOT driven end-to-end live (the demo tenant has no parent/child franchise relationship to exercise it against) — recommend a live check once a real franchise parent + child exist.
+
 **Severity:** High  
 **Role(s) affected:** Owner  
 **Area:** Franchise — Marketing vs. product  
@@ -270,6 +358,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 ---
 
 ### #18 — Clearing the My day date field triggers a false “not linked to a staff record” error instead of proper date validation
+
+**Status:** ✅ Shipped (July 10, 2026). The My day date input's onChange now falls back to today's date when the field is cleared or holds an unparseable value, instead of passing an empty string downstream — which had rendered the exact same "Your user is not linked to a staff record yet. Ask an owner to add you." screen as a genuinely unlinked account. Re-entering a date already worked; now the empty-input state can't reach that alarming message at all, and it's reserved for a real missing staff record. tsc green.
 
 **Severity:** High  
 **Role(s) affected:** Technician  
@@ -288,6 +378,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 ### #19 — Raw internal implementation details — roadmap notes, database identifiers, and backend env-var/secret names — leak into user-facing copy across the Owner and Platform Admin consoles
 
+**Status:** ✅ Shipped (July 10, 2026). Added a shared humanize layer (`src/lib/humanize.ts`, `humanizeRole`/`humanizeEnum`) modeled on the tenant Settings → Users & roles labels, and routed the leaking surfaces through it: the Platform Users directory and the tenant Users tab now render role badges as "Office manager" instead of the raw `office_manager` enum. Removed the internal-identifier leaks: the tenant Feature Flags empty state no longer names the `platform_feature_flags` table, the tenant Billing tab's "comes online in step 6" roadmap note is replaced with real product copy, and the Settings → Accounting connect copy no longer lists `QBO_CLIENT_ID`/`QBO_CLIENT_SECRET`/`XERO_*`/"project secrets" (it now describes the OAuth flow in plain language). The Plans-catalog "step N" note was already removed in the #6 rebuild. tsc green. FOLLOW-UP (July 10, 2026, verification pass): the earlier fix updated the Settings→Accounting *connect copy* but the QuickBooks/Xero OAuth **callback pages** still rendered `QBO_CLIENT_ID / QBO_CLIENT_SECRET`/`XERO_*` names in the browser error body — now replaced with generic "isn't finished being set up — contact support" copy (detail goes to server logs). Also the read-only role **badge** on Settings→Users (not just the platform surfaces) now runs through `humanizeRole`.
+
 **Severity:** Medium  
 **Role(s) affected:** Owner, Platform Admin  
 **Area:** UI copy — Internal implementation leakage  
@@ -302,6 +394,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 ---
 
 ### #21 — Property edit fields are blank even though the property has a saved address
+
+**Status:** ✅ Shipped (July 10, 2026) — done together with #8, same root cause (add-form defaults shown as if they were an edit form). Added an `updateProperty` server function (re-geocodes on save, but only overwrites lat/lng when geocoding actually resolves so a transient miss can't blank a good pin) and a per-property "Edit" control that hydrates Street/City/Postal/Gate/Yard/hazard fields from the saved record; the form header and submit button reflect edit vs. add mode, with an "Add a new property instead" escape. tsc + tests green.
 
 **Severity:** Medium  
 **Role(s) affected:** Owner  
@@ -318,6 +412,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 ### #22 — Clients list “Balance” column shows credit only, hides amounts owed
 
+**Status:** ✅ Shipped (July 10, 2026). Two parts: (a) the owed amount was always $0 because the underlying query used non-existent invoice columns — fixed under #7, so real outstanding balances now populate; (b) the list showed owed OR credit and hid one when both existed, unlabeled. The Balance cell now shows both a red "$X owed" and a green "+$Y credit" line, each clearly labeled, so a client with $135 owed and $20 credit displays both at a glance. tsc + tests green.
+
 **Severity:** Medium  
 **Role(s) affected:** Owner  
 **Area:** Clients — list  
@@ -332,6 +428,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 ---
 
 ### #23 — Billing plan limit contradicts its own displayed description, and the Dashboard’s plan label reads as broken
+
+**Status:** ✅ Shipped (July 10, 2026). Reconciled the billing display with the per-employee model from #6 (customers are unlimited on every plan, so there is no client cap to contradict). In `billing-state.server.ts`: recognize the `trialing` status, and drop the client-count-based `overBandLimit`/`needsUpgrade` (both now always false — the "16 clients above the limit of 3" contradiction is gone at the source). On Settings → Billing: the plan card now reads "$/mo · Unlimited customers" instead of a client band, the "Active clients N / 3" enforced-limit display is removed, and a free-trial notice/CTA replaces the old "first 3 clients are on us" free-plan copy. On the Dashboard: the bare "Fetch plan" KPI subtitle now reads "On the Fetch plan" so it no longer looks like a broken/truncated action. Pricing itself was intentionally not re-touched here (that was #6). tsc + tests green.
 
 **Severity:** Medium  
 **Role(s) affected:** Owner  
@@ -348,6 +446,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 ### #25 — No way to embed or customize the public lead-capture form
 
+**Status:** ✅ Shipped (July 10, 2026). Leads had no `organization_id` (single-tenant assumption), so a per-tenant form was impossible; added it (migration applied live) with a backfill and RLS re-scoped so managers only see their own org's leads. New public embeddable form: a hosted `/lead/{slug}` page (branded quote-request form, no auth) that posts to the now-slug-scoped `/api/public/leads` endpoint, which routes the lead to the right business and tags it `source=website`. A new Settings → Lead form page gives the Owner the hosted link, a copy-paste `<iframe>` embed snippet, a preview, and basic analytics (all-time + last-30-day website submissions), plus a warning when public intake is off. `listLeads`/lead visibility is now org-scoped. This is a functional v1 of the finding's embed + hosted link + analytics asks; deeper per-form field/branding customization beyond the org's existing branding is a further enhancement. tsc + tests green. VERIFICATION PASS (July 10, 2026): confirmed the one remaining gap is exactly this — the hosted form uses a fixed field set and applies no per-tenant logo/brand-color/confirmation-message config (`getLeadFormConfig` returns only slug/name/enabled/counts). Deferred as a scoped follow-up, not started this pass.
+
 **Severity:** Medium  
 **Role(s) affected:** Owner  
 **Area:** Leads / Settings  
@@ -362,6 +462,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 ---
 
 ### #26 — No way to mark a user as ineligible for routes/dispatch — every role appears as an assignable technician column
+
+**Status:** ✅ Shipped (July 10, 2026). Added two staff flags (migration applied live): `is_field_tech` (does fieldwork / can be routed — backfilled so only `tech`-role staff default to true, excluding Owner/Office manager/Dispatcher) and `routing_available` (a temporary on/off for leave etc. without deleting the account). The Routes board now only shows columns for staff who are field techs AND currently available — except it still shows a column for anyone who already has visits assigned that day, so existing assignments to a now-unavailable tech stay visible. Both flags are settable per staff in Settings → Users & roles (`setStaffRouting`, gated on `manage_users`). This directly prevents the kind of mis-assignment behind #10 (non-field roles and unavailable techs are no longer selectable). tsc green.
 
 **Severity:** Medium  
 **Role(s) affected:** Owner  
@@ -378,6 +480,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 ### #27 — No automatic way to split an overloaded technician’s route
 
+**Status:** ✅ Shipped (July 10, 2026). Added capacity-aware balancing: `balanceOverloadedRoutes` computes each field tech's day load (drive `travel_min` + property service duration) against a working-day capacity (workday_end − workday_start), flags techs over capacity, and greedily peels their trailing stops onto the least-loaded available tech with room (or leaves them Unassigned when no one has capacity — surfaced as a warning to add a tech or move visits to another day). A "Balance overloaded routes" action in the Routes planning tools applies the moves; the dispatcher then Re-optimizes to tidy sequences. This is a solid v1 of the finding's (1) capacity threshold, (2) overload detection, (3) auto-split — it respects the #26 routing-eligibility flags and only moves within available field techs. tsc + tests green. VERIFICATION PASS (July 10, 2026): confirmed two deliberate v1 limits remain — the capacity threshold is org-wide (derived from workday hours), not a per-tech configurable value, and the auto-split does not re-sequence both routes automatically (the dispatcher clicks "Re-optimize" after). Both deferred as scoped follow-ups, not started this pass.
+
 **Severity:** Medium  
 **Role(s) affected:** Owner  
 **Area:** Routes / Dispatch — Optimize  
@@ -392,6 +496,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 ---
 
 ### #28 — No week or month view for scheduled visits — Routes is locked to a single day
+
+**Status:** ✅ Shipped (July 10, 2026). Added a "Week" view mode to the Routes page (alongside Split/Map/Board) backed by a new `getVisitRangeSummary` range query. It renders a 7-day (Week) or 28-day (Month) heat grid — each day shows its visit count, unassigned count, and a busier-is-darker shade so office staff can spot overloaded days, gaps, and upcoming volume at a glance; clicking a day opens that day's route board. tsc green.
 
 **Severity:** Medium  
 **Role(s) affected:** Owner  
@@ -408,6 +514,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 ### #29 — Client portal doesn’t distinguish between a client’s multiple properties
 
+**Status:** 🔶 Partially shipped (July 10, 2026). The core complaint — a 2+ property client saw one undifferentiated view with no address labels anywhere — is addressed: the Property tab now lists the client's distinct serviced addresses (a new `portalListProperties` server fn, shown only when there's more than one), so a multi-site/HOA client can see their properties. NOT done (deliberately deferred as a larger data-model change): per-property association of the add-on purchase flow and the Home/Visits/Billing tabs to a specific property, which would require the portal visit/add-on RPCs to carry and filter by property_id. Documented so it isn't mistaken for complete — the add-on flow still applies to the account, with a note telling multi-property clients to specify the address when contacting the office.
+
 **Severity:** Medium  
 **Role(s) affected:** Owner  
 **Area:** Client portal — Property  
@@ -422,6 +530,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 ---
 
 ### #31 — Accounting sync accepts raw OAuth access/refresh tokens pasted into unmasked plain-text fields, and is reachable by Office Manager
+
+**Status:** ✅ Shipped (July 10, 2026). The redundant manual OAuth-credential form (Realm/Tenant ID, Access token, Refresh token) is now tucked behind an "Advanced: enter connection details manually" disclosure labeled support-only, and the Access/Refresh token fields are masked `type=password` inputs instead of plain visible textareas — the normal path is the existing "Connect QuickBooks/Xero" OAuth buttons. tsc green. FOLLOW-UP (July 10, 2026, verification pass): the earlier fix only masked the UI fields — the **server functions** (`upsertAccountingConnection`, `syncInvoice`, `syncAllPaidInvoices`, `disconnectAccounting`, and the two reads) were gated on bare org membership, so a dispatcher/tech could still read/post/sync/disconnect the tenant's real QuickBooks/Xero connection at the API level. All accounting server functions now require `manage_settings` (owner/office_manager), and disconnect is scoped by `org_id`. This resolves the "reachable by non-privileged roles" half of the finding.
 
 **Severity:** Medium  
 **Role(s) affected:** Office Manager  
@@ -438,6 +548,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 ### #32 — “Email invoice to client” gives zero feedback — no success, no error, no visible state change
 
+**Status:** ✅ Shipped (July 10, 2026). The button already had a loading state and toasts, but it reported success on *enqueue* — the send actually happens on a ~1-minute cron, so "emailed" could be a lie. `sendInvoiceEmail` now returns the `email_send_log` message id + recipient, a new `getEmailSendStatus` reads that row, and the invoice UI polls it: it shows a "Sending…" loader, then upgrades to "Emailed to {recipient}" once the log row reaches `sent`, or surfaces an explicit error on `failed`/`bounced`/`dlq`, or falls back to "queued — check back shortly" if it's still pending after the poll window. The path is the rebuilt Resend pipeline (logged in `email_send_log`), so the feedback now reflects the real outcome. tsc green.
+
 **Severity:** Medium  
 **Role(s) affected:** Office Manager  
 **Area:** Invoices — Invoice detail  
@@ -447,11 +559,15 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 **What to build/fix:**  The “Email invoice to client” button on an invoice’s detail page produces no visible feedback of any kind when clicked — no success toast, no error, no loading indicator, no state change — unlike the adjacent “Send / Pay via Stripe” button on the same page, which clearly confirms success by opening a checkout session and updating its own label. Add the same standard of feedback here: on click, show a loading state, then either a success confirmation (e.g. “Emailed to jess.n@example.com” with a timestamp) or an explicit error if the send fails. Also consider recording each send attempt (with a status) somewhere visible on the invoice, similar to how “Reopen checkout” implies a Stripe link already exists — an “Emailed on [date]” note would give staff the same confidence the Stripe button already provides.
 
-**Why this model:**  Narrow, contained bug fix or logic correction — well-suited to Opus 4.8's precision on scoped engineering problems without the overhead of a long autonomous run. Requires wiring real success/failure state from the email-send backend call into the UI, not just adding a spinner — contained but needs correctness, not just cosmetics.
+Update: this no longer depends on a Lovable-exclusive secret — the email send path was rebuilt to call Resend directly via RESEND_API_KEY (a normal secret Claude Code can hold and test against), with each attempt and its status recorded in email_send_log. Wire this action to that same path: on click, show a loading state, then either a success confirmation (pulling the recipient and timestamp from email_send_log once the send lands in `sent` status) or a clear error if Resend rejects or bounces it. Check whether this action calls the dispatcher directly or enqueues through the same process-email-queue cron job used elsewhere in the app — if it's the queue path, either poll for the resulting email_send_log row or switch this specific action to a synchronous send so the UI isn't stuck guessing for up to a minute.
+
+**Why this model:**  Narrow, contained bug fix or logic correction — well-suited to Opus 4.8's precision on scoped engineering problems without the overhead of a long autonomous run. The email send path is now a normal, directly testable Resend integration, not a Lovable-exclusive boundary.
 
 ---
 
 ### #34 — “Text reminder” and “Text "on my way"” fail with a message pointing to a Settings tab (SMS) that doesn't exist anywhere in the app for any role tested
+
+**Status:** ✅ Resolved / verified (July 10, 2026) — no code change needed. The Settings → SMS page (`/settings/sms`, sender-number configuration via `updateOrgSmsFromNumber`) already exists and is linked from the Settings nav, so the "Add one in Settings → SMS" error the My-day Text buttons show is now followable by an Owner/Office Manager. This was built since the finding was filed; confirmed the page and nav link are present and the save path is wired. (The buttons correctly remain gated on a sender number being configured.) FOLLOW-UP (July 10, 2026, verification pass): the sender-number setter (`updateOrgSmsFromNumber`) was gated only on org membership; now requires `manage_settings` (owner/office_manager) so a dispatcher/tech can't change the org's SMS sender number.
 
 **Severity:** Medium  
 **Role(s) affected:** Technician  
@@ -468,6 +584,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 ### #35 — A completed visit's expanded detail shows a broken image icon instead of one of its two completion photos
 
+**Status:** ✅ Shipped (July 10, 2026). `PhotoThumb` on My day now tracks a loading/ready/error state: if the signed-URL request fails or returns nothing (object missing / upload failed), or the `<img>` itself fails to load (`onError`), it renders a clear "Photo unavailable" placeholder with an explanatory tooltip instead of the browser's bare broken-image icon — so a technician or office manager can tell a genuine data problem from a rendering glitch. tsc green.
+
 **Severity:** Medium  
 **Role(s) affected:** Technician  
 **Area:** My day — Visit detail  
@@ -482,6 +600,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 ---
 
 ### #36 — Two client-portal self-serve permissions are configurable by the Owner but have no matching control anywhere in the client portal itself
+
+**Status:** ✅ Shipped (July 10, 2026). Both Owner-configurable self-serve permissions now have real portal UI, shown only when the owner has enabled them (new `portalSelfServeOptions` returns the flags + the client's active subscription). "Vacation hold": a date-range "Request hold" control on the portal Account tab wired to the existing `portalRequestVacationHold` (reports how many visits were skipped). "Change plan frequency": a frequency selector wired to the existing `portalChangeFrequency`. So enabling either permission now surfaces a working control instead of silently doing nothing. tsc green. (Both backends already existed; this closes the toggle-without-UI gap.)
 
 **Severity:** Medium  
 **Role(s) affected:** Owner  
@@ -500,6 +620,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 ### #38 — Destructive delete/void actions have no confirmation step, confirmed on multiple pages across two roles
 
+**Status:** ✅ Shipped (July 10, 2026). Added one reusable confirmation-dialog component (`src/components/ConfirmButton.tsx`, built on the shared AlertDialog) and applied it to all three confirmed destructive actions: Zone delete (upgraded from a native `confirm()` to the dialog), Neighbor-canvassing entry delete, and Invoice void — each dialog states plainly what will be removed/voided and that it can't be undone. The component is now available to wrap any other destructive action app-wide. tsc green.
+
 **Severity:** Low  
 **Role(s) affected:** Owner, Office Manager  
 **Area:** App-wide — Destructive actions  
@@ -514,6 +636,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 ---
 
 ### #39 — Leads have no detail view and no real conversion workflow
+
+**Status:** ✅ Shipped (July 10, 2026). The Leads cards already showed all captured fields (phone, message, source, date). Added the real conversion: a `convertLeadToClient` server fn that creates a Client pre-filled from the lead (name/email/phone/notes), reuses an existing same-email client if one exists, marks the lead `converted`, and a "Convert to client" button on each non-converted lead that runs it and navigates to the new client — instead of the status dropdown just relabeling. tsc green.
 
 **Severity:** Low  
 **Role(s) affected:** Owner  
@@ -530,6 +654,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 
 ### #40 — No real invite flow for adding teammates
 
+**Status:** ✅ Shipped (July 10, 2026). Built a real teammate-invite flow (previously just "share the sign-up link"). New `org_invites` table (migration applied live, RLS scoped to the inviting org) + `accept_org_invite_for_current_user()` which, on the invitee's first sign-in with the invited email, adds them to that org with the pre-assigned role (wired into `/auth` ahead of new-org bootstrap) instead of creating a new org. Server fns `createOrgInvite` (sends a best-effort Resend email + creates the pending row), `listOrgInvites`, `revokeOrgInvite` (all `manage_users`-gated). Settings → Users & roles now has an "Invite a teammate" panel: email + role, a pending-invites list with Revoke, and the role auto-assigns on accept. Verified the accept RPC returns NULL cleanly for users with no pending invite. tsc green. FOLLOW-UP (July 10, 2026, verification pass): added the missing **Resend** action — the pending-invites list previously only had Revoke; `resendOrgInvite` (`manage_users`-gated) re-sends the email and refreshes the invite's expiry, and a shared `sendInviteEmail` helper now backs both create and resend. (Invite-email delivery is best-effort Resend — NEEDS-LIVE-QA to confirm the email actually lands.)
+
 **Severity:** Low  
 **Role(s) affected:** Owner  
 **Area:** Settings — Users & roles  
@@ -544,6 +670,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 ---
 
 ### #47 — Dashboard shows full company financial KPIs to Dispatcher despite Invoices, Billing, Reports, and Analytics all being blocked
+
+**Status:** ✅ Shipped and verified live (July 9, 2026), folded into #1's fix — do not restart this work.
 
 **Severity:** Low  
 **Role(s) affected:** Dispatcher  
@@ -574,6 +702,8 @@ Finding #17 ("Continue with Google" shows Google/Lovable branding instead of Hou
 ---
 
 ### #51 — Plans catalog has two indistinguishable free tiers (Free and Puppy), both 0–3 clients, with no visible difference between them
+
+**Status:** ✅ Resolved as part of the #6 rebuild (July 10, 2026). Both "Free" and "Puppy" (and all the other client-band tiers) were deactivated — the real model has no permanent free tier, only a 14-day trial (now a first-class `trialing` plan status with a `trial_ends_at` expiry). The catalog no longer shows two indistinguishable $0 rows; new signups land on the trial, not on either former free tier.
 
 **Severity:** Low  
 **Role(s) affected:** Platform Admin  

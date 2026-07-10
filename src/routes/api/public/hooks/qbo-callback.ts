@@ -20,7 +20,12 @@ export const Route = createFileRoute("/api/public/hooks/qbo-callback")({
 
         const clientId = process.env.QBO_CLIENT_ID;
         const clientSecret = process.env.QBO_CLIENT_SECRET;
-        if (!clientId || !clientSecret) return html("QBO_CLIENT_ID / QBO_CLIENT_SECRET not configured", false);
+        if (!clientId || !clientSecret) {
+          // Don't leak backend secret/env-var names into a user-facing page (#19);
+          // the specifics belong in server logs, not the browser.
+          console.error("qbo-callback: QuickBooks OAuth credentials not configured");
+          return html("QuickBooks isn't finished being set up yet. Contact support.", false);
+        }
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 

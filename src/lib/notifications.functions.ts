@@ -37,5 +37,33 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
       },
     });
     if (!res.ok) throw new Error(`Email not sent: ${res.reason}`);
-    return { ok: true };
+    // The email is QUEUED here (a cron flips it to sent/failed within ~1 min).
+    // Return the log id + recipient so the UI can poll for the real outcome
+    // rather than claim "emailed" before it actually sends (finding #32).
+    const { data: recip } = await supabase
+      .from("clients")
+      .select("primary_email")
+      .eq("id", inv.client_id)
+      .maybeSingle();
+    return { ok: true, messageId: res.messageId ?? null, recipient: recip?.primary_email ?? null };
+  });
+
+// Poll the email pipeline's outcome for a queued message (finding #32).
+export const getEmailSendStatus = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ messageId: z.string() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: rows, error } = await context.supabase
+      .from("email_send_log")
+      .select("status, recipient_email, error_message, created_at")
+      .eq("message_id", data.messageId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (error) throw new Error(error.message);
+    const row = rows?.[0];
+    return {
+      status: (row?.status ?? "pending") as string,
+      recipient: row?.recipient_email ?? null,
+      error: row?.error_message ?? null,
+    };
   });

@@ -43,7 +43,7 @@ export type BillingState = {
   // Preferred display: current if paid + healthy, else required.
   planName: string;
   planSlug: string | null;
-  billingStatus: "free" | "active" | "past_due" | "grace" | "canceled" | "suspended";
+  billingStatus: "free" | "trialing" | "active" | "past_due" | "grace" | "canceled" | "suspended";
   isPaidTier: boolean;
   priceCents: number | null;
   pricePerClientCents: number | null;
@@ -159,17 +159,18 @@ function buildBillingState(o: OrgRow, plans: PlanRow[]): BillingState {
   const current = o.plan_id ? plans.find((p) => p.id === o.plan_id) ?? null : null;
 
   // Reconcile status. Prefer explicit terminal states, fall back to derived.
-  const raw = (o.billing_status || "").toLowerCase();
+  const raw = ((o.plan_status || o.billing_status) || "").toLowerCase();
   let status: BillingState["billingStatus"];
   if (o.suspended_at) status = "suspended";
   else if (raw === "canceled") status = "canceled";
   else if (raw === "past_due") status = "past_due";
   else if (raw === "grace") status = "grace";
   else if (raw === "active" || o.stripe_subscription_id) status = "active";
+  else if (raw === "trialing") status = "trialing";
   else status = "free";
 
   const isPaidTier = status === "active" || status === "past_due" || status === "grace";
-  const displayPlan = isPaidTier && current ? current : required;
+  const displayPlan = isPaidTier && current ? current : (current ?? required);
 
   // Effective $ for the display plan.
   const priceCents = displayPlan?.price_cents ?? null;
@@ -177,12 +178,11 @@ function buildBillingState(o: OrgRow, plans: PlanRow[]): BillingState {
   const monthlyEstimateCents = priceCents ??
     (perClientCents != null ? perClientCents * count : null);
 
-  const overBandLimit = !!(
-    displayPlan?.client_limit_max != null && count > displayPlan.client_limit_max
-  );
-  // Needs-upgrade = on free but over free limit, OR on a band whose max is exceeded.
-  const needsUpgrade =
-    (status === "free" && count > FREE_LIMIT) || overBandLimit;
+  // The pricing model prices by employee, not customer count — customers are
+  // unlimited on every plan (finding #6/#23). So there is no client-count
+  // "over the limit" state and no client-count-driven upgrade prompt.
+  const overBandLimit = false;
+  const needsUpgrade = false;
 
   return {
     orgId: o.id,

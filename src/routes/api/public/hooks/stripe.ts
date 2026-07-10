@@ -117,8 +117,12 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const secret = process.env.STRIPE_SECRET_KEY;
-        const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+        // Connect webhook: tenant->client charge events for connected accounts,
+        // verified with the Connect platform's webhook secret. Platform SaaS
+        // billing events go to /api/public/hooks/platform-stripe, not here.
+        // (Falls back to the legacy vars during the Connect cutover.)
+        const secret = process.env.STRIPE_CONNECT_SECRET_KEY ?? process.env.STRIPE_SECRET_KEY;
+        const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET ?? process.env.STRIPE_WEBHOOK_SECRET;
         if (!secret || !webhookSecret) {
           return new Response("Stripe not configured", { status: 500 });
         }
@@ -150,14 +154,16 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 : session.setup_intent?.id ?? null;
               if (clientId && setupIntentId) {
                 try {
-                  const si = await stripe.setupIntents.retrieve(setupIntentId);
+                  // Connect: these objects live on the connected account.
+                  const acctOpts = event.account ? { stripeAccount: event.account } : undefined;
+                  const si = await stripe.setupIntents.retrieve(setupIntentId, undefined, acctOpts);
                   const pmId = typeof si.payment_method === "string" ? si.payment_method : si.payment_method?.id;
                   const customerId = typeof si.customer === "string" ? si.customer : si.customer?.id;
                   if (pmId && customerId) {
-                    const pm = await stripe.paymentMethods.retrieve(pmId);
+                    const pm = await stripe.paymentMethods.retrieve(pmId, undefined, acctOpts);
                     await stripe.customers.update(customerId, {
                       invoice_settings: { default_payment_method: pmId },
-                    });
+                    }, acctOpts);
                     await supabaseAdmin.from("clients").update({
                       stripe_customer_id: customerId,
                       default_payment_method_id: pmId,
@@ -323,7 +329,10 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                     .select("sms_from_number, notify_sms_payment_failed")
                     .eq("id", inv.organization_id)
                     .single();
-                  if (org?.notify_sms_payment_failed && org.sms_from_number) {
+                  // Dunning is an automated notification → PLATFORM Twilio sender.
+                  const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
+                  const dunningFrom = platformTwilioFrom() ?? org?.sms_from_number ?? null;
+                  if (org?.notify_sms_payment_failed && dunningFrom) {
                     const { data: c } = await supabaseAdmin
                       .from("clients")
                       .select("display_name, primary_phone, sms_opt_out, portal_token")
@@ -333,13 +342,13 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                       const { buildPortalLink } = await import("@/lib/portal-links.server");
                       const url = await buildPortalLink(inv.organization_id, c.portal_token as string | null);
                       const body = `Hi ${c.display_name}, your card on file was declined. Please update your payment method: ${url}`;
-                      const r = await sendTwilioSms({ from: org.sms_from_number, to: c.primary_phone, body });
+                      const r = await sendTwilioSms({ from: dunningFrom, to: c.primary_phone, body });
                       await supabaseAdmin.from("messages").insert({
                         organization_id: inv.organization_id,
                         client_id: inv.client_id,
                         direction: "outbound",
                         body,
-                        from_number: org.sms_from_number,
+                        from_number: dunningFrom,
                         to_number: c.primary_phone,
                         twilio_sid: r.sid,
                         status: (r.status as "queued" | "sent" | "delivered" | "failed" | "received" | undefined) ?? "queued",
@@ -350,42 +359,22 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               }
             }
 
-          } else if (
-            event.type === "customer.subscription.created" ||
-            event.type === "customer.subscription.updated" ||
-            event.type === "customer.subscription.deleted"
-          ) {
-            const sub = event.data.object as import("stripe").Stripe.Subscription;
-            const orgId = sub.metadata?.organization_id;
-            const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null;
-            const periodEnd = (sub as unknown as { current_period_end?: number }).current_period_end;
-            let planStatus: "active" | "past_due" | "canceled" = "canceled";
-            if (event.type !== "customer.subscription.deleted") {
-              if (["active", "trialing"].includes(sub.status)) planStatus = "active";
-              else if (sub.status === "past_due") planStatus = "past_due";
-              else if (["canceled", "incomplete_expired", "unpaid"].includes(sub.status)) planStatus = "canceled";
-              else planStatus = "canceled";
-            }
-            // Locate org by metadata, else by customer id
-            let targetOrgId: string | null = orgId ?? null;
-            if (!targetOrgId && customerId) {
-              const { data: found } = await supabaseAdmin
-                .from("organizations")
-                .select("id")
-                .eq("stripe_customer_id", customerId)
-                .maybeSingle();
-              targetOrgId = (found?.id as string | undefined) ?? null;
-            }
-
-            if (targetOrgId) {
-              await supabaseAdmin.from("organizations").update({
-                plan_status: planStatus,
-                stripe_subscription_id: event.type === "customer.subscription.deleted" ? null : sub.id,
-                current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
-                ...(customerId ? { stripe_customer_id: customerId } : {}),
-              }).eq("id", targetOrgId);
-            }
+          } else if (event.type === "account.updated") {
+            // Express onboarding progress: keep the org's charge-readiness fresh
+            // so Settings → Payments flips to "Charges enabled" without a manual
+            // refresh once Stripe finishes verifying the connected account.
+            const acct = event.data.object as import("stripe").Stripe.Account;
+            const { accountStateFrom } = await import("@/lib/stripe-connect.server");
+            const s = accountStateFrom(acct);
+            await (supabaseAdmin as any).from("organizations").update({
+              stripe_connect_charges_enabled: s.chargesEnabled,
+              stripe_connect_status: s.status,
+            }).eq("stripe_connect_account_id", acct.id);
           }
+          // NOTE: customer.subscription.* is intentionally NOT handled here —
+          // the org's own SaaS subscription (bucket A) is billed on the platform
+          // account and reconciled by /api/public/hooks/platform-stripe. Handling
+          // it here would let tenant-account events corrupt org billing state.
 
         } catch (e) {
           console.error("Webhook handler error", e);

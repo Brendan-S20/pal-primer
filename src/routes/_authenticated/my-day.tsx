@@ -142,7 +142,14 @@ function MyDay() {
               <input
                 type="date"
                 value={day}
-                onChange={(e) => setDay(e.target.value)}
+                onChange={(e) => {
+                  // Clearing the field (Backspace/Delete) yields an empty value.
+                  // Fall back to today instead of passing "" downstream, which
+                  // rendered the same "not linked to a staff record" screen as a
+                  // genuinely unlinked account and alarmed techs (finding #18).
+                  const v = e.target.value;
+                  setDay(v && !Number.isNaN(new Date(v).getTime()) ? v : todayISO());
+                }}
                 className="h-10 rounded-md border bg-background px-2 text-sm"
               />
             </div>
@@ -307,22 +314,51 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
 
 function PhotoThumb({ path }: { path: string }) {
   const [url, setUrl] = useState<string | null>(null);
+  // Distinguish "still loading" from "can't be shown" so a broken photo shows a
+  // clear placeholder instead of the browser's broken-image icon (finding #35).
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   useEffect(() => {
     let cancelled = false;
+    setState("loading");
     supabase.storage
       .from("visit-photos")
       .createSignedUrl(path, 300)
-      .then(({ data }) => {
-        if (!cancelled && data) setUrl(data.signedUrl);
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error || !data?.signedUrl) {
+          setState("error"); // object missing / signing failed
+        } else {
+          setUrl(data.signedUrl);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setState("error");
       });
     return () => {
       cancelled = true;
     };
   }, [path]);
-  if (!url) return <div className="h-14 w-14 animate-pulse rounded bg-muted" />;
+
+  if (state === "error") {
+    return (
+      <div
+        className="flex h-14 w-14 flex-col items-center justify-center rounded border bg-muted/50 text-center text-[9px] leading-tight text-muted-foreground"
+        title="This photo couldn't be loaded — it may not have finished uploading."
+      >
+        <span>Photo</span>
+        <span>unavailable</span>
+      </div>
+    );
+  }
+  if (state === "loading" || !url) return <div className="h-14 w-14 animate-pulse rounded bg-muted" />;
   return (
     <a href={url} target="_blank" rel="noreferrer">
-      <img src={url} alt="Visit" className="h-14 w-14 rounded border object-cover" />
+      <img
+        src={url}
+        alt="Visit"
+        className="h-14 w-14 rounded border object-cover"
+        onError={() => setState("error")}
+      />
     </a>
   );
 }

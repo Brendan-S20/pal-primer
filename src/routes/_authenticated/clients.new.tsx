@@ -99,6 +99,9 @@ function NewClientWizard() {
   // yard boundary
   const [boundary, setBoundary] = useState<PolygonGeoJSON | null>(null);
   const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(null);
+  // Geocode outcome for the Yard step, so a failure surfaces a clear message
+  // instead of silently rendering a zoomed-out world map (finding #13).
+  const [geoStatus, setGeoStatus] = useState<"idle" | "loading" | "ok" | "notfound" | "error">("idle");
   const boundaryAreaSqm = useMemo(() => (boundary ? polyAreaSqm(boundary) : null), [boundary]);
 
   // Best-effort geocode when entering the Yard step
@@ -106,17 +109,30 @@ function NewClientWizard() {
     if (step !== 2) return;
     if (geo) return;
     const q = [street, city, region, postalCode].filter(Boolean).join(", ");
-    if (q.length < 6) return;
+    if (q.length < 6) {
+      setGeoStatus("notfound");
+      return;
+    }
     const ac = new AbortController();
+    setGeoStatus("loading");
     (async () => {
       try {
         const r = await fetch(
           `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`,
           { signal: ac.signal, headers: { Accept: "application/json" } },
         );
+        if (!r.ok) throw new Error(`geocoder ${r.status}`);
         const rows = (await r.json()) as Array<{ lat: string; lon: string }>;
-        if (rows?.[0]) setGeo({ lat: Number(rows[0].lat), lng: Number(rows[0].lon) });
-      } catch {}
+        if (rows?.[0]) {
+          setGeo({ lat: Number(rows[0].lat), lng: Number(rows[0].lon) });
+          setGeoStatus("ok");
+        } else {
+          setGeoStatus("notfound");
+        }
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return;
+        setGeoStatus("error");
+      }
     })();
     return () => ac.abort();
   }, [step, street, city, region, postalCode, geo]);
@@ -223,7 +239,9 @@ function NewClientWizard() {
 
   const canNext = (() => {
     if (step === 0) return displayName.trim().length > 0;
-    if (step === 1) return !!(street && city && postalCode);
+    // Region/State is required — the property is unusable downstream without it
+    // (routing, zone pricing, geocoding all need it). Finding #13.
+    if (step === 1) return !!(street && city && region && postalCode);
     if (step === 2) return true; // yard boundary optional
     if (step === 3) return true;
     return true;
@@ -329,7 +347,7 @@ function NewClientWizard() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="rg">State/Region</Label>
-                  <Input id="rg" value={region} onChange={(e) => setRegion(e.target.value)} />
+                  <Input id="rg" required value={region} onChange={(e) => setRegion(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="pc">ZIP / Postal</Label>
@@ -406,6 +424,13 @@ function NewClientWizard() {
                 Draw the service area on the satellite map so the tech and pricing know the exact footprint. Skip to price a flat visit instead.
               </p>
             </div>
+            {(geoStatus === "notfound" || geoStatus === "error") && (
+              <div className="rounded-md border border-amber-400/50 bg-amber-50 p-3 text-sm text-amber-900">
+                {geoStatus === "error"
+                  ? "We couldn't reach the map service to locate this address. Check your connection, or draw the service area manually on the map below."
+                  : "We couldn't find this address on the map — double-check the address on the previous step, or draw the service area manually on the map below."}
+              </div>
+            )}
             <BoundarySketch
               center={geo}
               initial={boundary}

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
+import { humanizeRole } from "@/lib/humanize";
 import { Users } from "lucide-react";
 
 export const Route = createFileRoute("/platform/users")({
@@ -100,7 +101,7 @@ function UsersPage() {
                               className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs hover:bg-accent"
                             >
                               <span>{o.name}</span>
-                              <Badge variant="outline" className="text-[10px]">{o.role}</Badge>
+                              <Badge variant="outline" className="text-[10px]">{humanizeRole(o.role)}</Badge>
                             </Link>
                           ))
                         )}

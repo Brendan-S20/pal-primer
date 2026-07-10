@@ -82,8 +82,6 @@ export const sendSmsToClient = createServerFn({ method: "POST" })
       .eq("id", client.organization_id)
       .single();
     if (oErr) throw new Error(oErr.message);
-    if (!org.sms_from_number)
-      throw new Error("Your organization has no SMS sender number set. Add one in Settings → SMS.");
 
     const { data: staff } = await supabase
       .from("staff")
@@ -92,15 +90,27 @@ export const sendSmsToClient = createServerFn({ method: "POST" })
       .eq("organization_id", client.organization_id)
       .maybeSingle();
 
+    // Conversation channel: prefer the org's own (BYOK) Twilio; fall back to the
+    // platform gateway with the org's legacy sms_from_number until they onboard.
+    const { resolveOrgTwilioConfig } = await import("@/lib/twilio-credentials.server");
+    const tenant = await resolveOrgTwilioConfig(client.organization_id);
+    const fromNumber = tenant?.from ?? org.sms_from_number ?? null;
+    if (!tenant?.messagingServiceSid && !fromNumber)
+      throw new Error("Your organization has no SMS sender configured. Add one in Settings → SMS.");
+
     const { sendTwilioSms } = await import("@/lib/twilio.server");
     let sid: string | null = null;
     let status = "queued";
     let errorText: string | null = null;
     try {
       const res = await sendTwilioSms({
-        from: org.sms_from_number,
         to: client.primary_phone,
         body: data.body,
+        from: fromNumber ?? undefined,
+        messagingServiceSid: tenant?.messagingServiceSid ?? undefined,
+        credentials: tenant
+          ? { mode: "direct", accountSid: tenant.accountSid, authToken: tenant.authToken }
+          : { mode: "gateway" },
       });
       sid = res.sid;
       status = res.status || "sent";
@@ -118,7 +128,7 @@ export const sendSmsToClient = createServerFn({ method: "POST" })
         staff_id: staff?.id ?? null,
         direction: "outbound",
         body: data.body,
-        from_number: org.sms_from_number,
+        from_number: fromNumber,
         to_number: client.primary_phone,
         twilio_sid: sid,
         status: status as any,
@@ -146,16 +156,14 @@ export const updateOrgSmsFromNumber = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const { data: role } = await supabase
-      .from("user_roles")
-      .select("organization_id, role")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (!role) throw new Error("No organization");
+    // Setting the org's SMS sender number is an org-config change — gate it at
+    // manage_settings (owner/office_manager), not bare membership (#34).
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(supabase, userId, "manage_settings");
     const { error } = await supabase
       .from("organizations")
       .update({ sms_from_number: data.number || null })
-      .eq("id", role.organization_id);
+      .eq("id", orgId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -201,8 +209,13 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
       .select("sms_from_number, notify_sms_visit_reminder, notify_sms_on_my_way, notify_sms_visit_completed")
       .eq("id", client.organization_id)
       .single();
-    if (!org?.sms_from_number)
-      throw new Error("Your organization has no SMS sender number set. Add one in Settings → SMS.");
+    if (!org) throw new Error("Organization not found");
+    // Automated notification → PLATFORM Twilio (prefer the platform sender
+    // number; fall back to the org's legacy number only if unset).
+    const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
+    const notifyFrom = platformTwilioFrom() ?? org.sms_from_number ?? null;
+    if (!notifyFrom)
+      throw new Error("No SMS sender is configured for notifications. Add one in Settings → SMS.");
     const kindEnabled =
       data.kind === "reminder" ? org.notify_sms_visit_reminder :
       data.kind === "on_my_way" ? org.notify_sms_on_my_way :
@@ -220,7 +233,7 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
     let status = "queued";
     let err: string | null = null;
     try {
-      const r = await sendTwilioSms({ from: org.sms_from_number, to: client.primary_phone, body });
+      const r = await sendTwilioSms({ from: notifyFrom, to: client.primary_phone, body });
       sid = r.sid;
       status = r.status || "sent";
     } catch (e: any) {
@@ -234,7 +247,7 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
       staff_id: staff?.id ?? null,
       direction: "outbound",
       body,
-      from_number: org.sms_from_number,
+      from_number: notifyFrom,
       to_number: client.primary_phone,
       twilio_sid: sid,
       status: status as any,

@@ -1,14 +1,17 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getClient, regeneratePortalLink, readPortalVerificationCode } from "@/lib/clients.functions";
 import { getMyOrg } from "@/lib/org.functions";
-import { createProperty, listPropertiesForClient } from "@/lib/properties.functions";
-import { createSubscription, listSubscriptionsForClient } from "@/lib/subscriptions.functions";
+import { createProperty, updateProperty, listPropertiesForClient } from "@/lib/properties.functions";
+import { createSubscription, updateSubscription, listSubscriptionsForClient } from "@/lib/subscriptions.functions";
+import { subscriptionToFormValues, blankSubscriptionFormValues } from "@/lib/subscription-form";
 import { listZones } from "@/lib/zones.functions";
 import { getClientCredit, generatePrepaidInvoice, getClientBillingSummary, generateInvoiceForClient, createCheckoutForInvoice, voidInvoice, resumeAutopay } from "@/lib/invoices.functions";
 import { sendReviewRequest, applyReferralCode } from "@/lib/reviews.functions";
+import { sendSmsToClient, listClientMessages } from "@/lib/messages.functions";
+import { Textarea } from "@/components/ui/textarea";
 import {
   listAddonServices,
   listClientAddons,
@@ -101,36 +104,68 @@ function ClientDetail() {
     slippery_surfaces: false,
   });
   const toggleHz = (k: keyof typeof hz) => setHz((s) => ({ ...s, [k]: !s[k] }));
+  // Which existing property the form is editing (null = adding a new one).
+  const [editingPropId, setEditingPropId] = useState<string | null>(null);
+  const updatePropFn = useServerFn(updateProperty);
+
+  function resetPropertyForm() {
+    setEditingPropId(null);
+    setStreet(""); setCity(""); setPostalCode(""); setGateCode("");
+    setYardSize(""); setHazardNotes("");
+    setHz({
+      do_not_enter_if_dog_out: false, aggressive_dog: false, escape_risk: false,
+      invisible_fence: false, dog_in_yard_during_service: false,
+      bees_wasps: false, sharp_objects: false, slippery_surfaces: false,
+    });
+  }
+
+  // Load an existing property's saved values into the edit form (finding #21:
+  // the fields were blank on load even though the property had a saved address).
+  function editProperty(p: any) {
+    setEditingPropId(p.id);
+    setStreet(p.street ?? "");
+    setCity(p.city ?? "");
+    setPostalCode(p.postal_code ?? "");
+    setGateCode(p.gate_code ?? "");
+    setYardSize((p.yard_size ?? "") as typeof yardSize);
+    setHazardNotes(p.hazard_notes ?? "");
+    setHz({
+      do_not_enter_if_dog_out: !!p.do_not_enter_if_dog_out,
+      aggressive_dog: !!p.aggressive_dog,
+      escape_risk: !!p.escape_risk,
+      invisible_fence: !!p.invisible_fence,
+      dog_in_yard_during_service: !!p.dog_in_yard_during_service,
+      bees_wasps: !!p.bees_wasps,
+      sharp_objects: !!p.sharp_objects,
+      slippery_surfaces: !!p.slippery_surfaces,
+    });
+  }
 
   const propMut = useMutation({
-    mutationFn: () =>
-      createPropFn({
-        data: {
-          clientId,
-          street,
-          city,
-          postalCode,
-          gateCode: gateCode || undefined,
-          yardSize: yardSize || undefined,
-          hazardNotes: hazardNotes || undefined,
-          doNotEnterIfDogOut: hz.do_not_enter_if_dog_out,
-          aggressiveDog: hz.aggressive_dog,
-          escapeRisk: hz.escape_risk,
-          invisibleFence: hz.invisible_fence,
-          dogInYardDuringService: hz.dog_in_yard_during_service,
-          beesWasps: hz.bees_wasps,
-          sharpObjects: hz.sharp_objects,
-          slipperySurfaces: hz.slippery_surfaces,
-        },
-      }),
+    mutationFn: () => {
+      const common = {
+        street,
+        city,
+        postalCode,
+        gateCode: gateCode || undefined,
+        yardSize: yardSize || undefined,
+        hazardNotes: hazardNotes || undefined,
+        doNotEnterIfDogOut: hz.do_not_enter_if_dog_out,
+        aggressiveDog: hz.aggressive_dog,
+        escapeRisk: hz.escape_risk,
+        invisibleFence: hz.invisible_fence,
+        dogInYardDuringService: hz.dog_in_yard_during_service,
+        beesWasps: hz.bees_wasps,
+        sharpObjects: hz.sharp_objects,
+        slipperySurfaces: hz.slippery_surfaces,
+      };
+      const run = editingPropId
+        ? updatePropFn({ data: { propertyId: editingPropId, ...common } })
+        : createPropFn({ data: { clientId, ...common } });
+      return run.then(() => ({ ok: true }));
+    },
     onSuccess: () => {
-      setStreet(""); setCity(""); setPostalCode(""); setGateCode("");
-      setYardSize(""); setHazardNotes("");
-      setHz({
-        do_not_enter_if_dog_out: false, aggressive_dog: false, escape_risk: false,
-        invisible_fence: false, dog_in_yard_during_service: false,
-        bees_wasps: false, sharp_objects: false, slippery_surfaces: false,
-      });
+      resetPropertyForm();
       qc.invalidateQueries({ queryKey: ["properties", clientId] });
     },
   });
@@ -138,30 +173,73 @@ function ClientDetail() {
   // subscription form
   const [propertyId, setPropertyId] = useState("");
   const [frequency, setFrequency] = useState("weekly");
-  const [priceDollars, setPriceDollars] = useState("25");
+  const [priceDollars, setPriceDollars] = useState("");
   const [dogCount, setDogCount] = useState("1");
   const [unitCount, setUnitCount] = useState("1");
   const [zoneId, setZoneId] = useState("");
   const [billingCadence, setBillingCadence] = useState<"postpaid" | "prepaid">("postpaid");
   const [preferredWeekdays, setPreferredWeekdays] = useState<number[]>([]);
+  // Which existing subscription the form is editing (null = adding a new one).
+  // Defaults to the client's first subscription so the form always reflects a
+  // real record rather than misleading hardcoded defaults (finding #8).
+  const [editingSubId, setEditingSubId] = useState<string | null>(null);
+  const [subFormInit, setSubFormInit] = useState(false);
+
+  const updateSubFn = useServerFn(updateSubscription);
+
+  function applyFormValues(v: ReturnType<typeof subscriptionToFormValues>) {
+    setPropertyId(v.propertyId);
+    setFrequency(v.frequency);
+    setPriceDollars(v.priceDollars);
+    setDogCount(v.dogCount);
+    setUnitCount(v.unitCount);
+    setZoneId(v.zoneId);
+    setBillingCadence(v.billingCadence);
+    setPreferredWeekdays(v.preferredWeekdays);
+  }
+
+  function editSubscription(sub: any) {
+    setEditingSubId(sub.id);
+    applyFormValues(subscriptionToFormValues(sub));
+  }
+
+  function startNewSubscription(props: Array<{ id: string }>) {
+    setEditingSubId(null);
+    applyFormValues(blankSubscriptionFormValues({ properties: props }));
+  }
+
+  // On first load, hydrate the form from the existing subscription (or blank +
+  // single-property auto-select for a client with none), so the form beneath
+  // the summary line always matches real data instead of stale defaults.
+  useEffect(() => {
+    if (subFormInit || !subsData || !propsData) return;
+    const existing = subsData.subscriptions ?? [];
+    if (existing.length > 0) {
+      editSubscription(existing[0]);
+    } else {
+      startNewSubscription(propsData.properties ?? []);
+    }
+    setSubFormInit(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subsData, propsData, subFormInit]);
 
   const subMut = useMutation({
     mutationFn: () => {
       const accountType = clientData!.client.account_type as "residential" | "commercial";
-      return createSubFn({
-        data: {
-          clientId,
-          propertyId,
-          accountType,
-          frequency: frequency as any,
-          priceCents: Math.round(parseFloat(priceDollars) * 100),
-          dogCount: accountType === "residential" ? parseInt(dogCount, 10) : undefined,
-          unitCount: accountType === "commercial" ? parseInt(unitCount, 10) : undefined,
-          zoneId: zoneId || undefined,
-          billingCadence,
-          preferredWeekdays: preferredWeekdays.length ? preferredWeekdays : undefined,
-        },
-      });
+      const common = {
+        propertyId,
+        frequency: frequency as any,
+        priceCents: Math.round(parseFloat(priceDollars) * 100),
+        dogCount: accountType === "residential" ? parseInt(dogCount, 10) : undefined,
+        unitCount: accountType === "commercial" ? parseInt(unitCount, 10) : undefined,
+        zoneId: zoneId || undefined,
+        billingCadence,
+        preferredWeekdays: preferredWeekdays.length ? preferredWeekdays : undefined,
+      };
+      const run = editingSubId
+        ? updateSubFn({ data: { subscriptionId: editingSubId, ...common } })
+        : createSubFn({ data: { clientId, accountType, ...common } });
+      return run.then(() => ({ ok: true }));
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["subs", clientId] });
@@ -200,6 +278,7 @@ function ClientDetail() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
+          <MessageComposer client={client} />
           <ReviewsReferralPanel client={client} />
           {canBill && (
             <section className="rounded-lg border bg-card p-5">
@@ -239,6 +318,13 @@ function ClientDetail() {
                 <span className="font-medium">{p.street}</span>, {p.city} {p.postal_code}
                 {p.gate_code && <span className="ml-2 text-muted-foreground">gate {p.gate_code}</span>}
                 {p.yard_size && <span className="ml-2 text-muted-foreground">· {p.yard_size} yard</span>}
+                <button
+                  type="button"
+                  onClick={() => editProperty(p)}
+                  className={`ml-2 text-xs underline underline-offset-2 ${editingPropId === p.id ? "font-semibold text-primary" : "text-primary hover:text-foreground"}`}
+                >
+                  {editingPropId === p.id ? "Editing" : "Edit"}
+                </button>
                 {chips.length > 0 && (
                   <div className="mt-1 flex flex-wrap gap-1">
                     {chips.map((c) => (
@@ -265,8 +351,22 @@ function ClientDetail() {
             <li className="py-2 text-sm text-muted-foreground">No properties yet.</li>
           )}
         </ul>
+        <div className="mt-4 flex items-center justify-between">
+          <h3 className="text-xs font-medium uppercase text-muted-foreground">
+            {editingPropId ? "Edit property" : "Add property"}
+          </h3>
+          {editingPropId && (
+            <button
+              type="button"
+              onClick={resetPropertyForm}
+              className="text-xs text-primary underline underline-offset-2"
+            >
+              + Add a new property instead
+            </button>
+          )}
+        </div>
         <form
-          className="mt-4 space-y-3"
+          className="mt-2 space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
             propMut.mutate();
@@ -344,7 +444,7 @@ function ClientDetail() {
 
           <div>
             <Button type="submit" disabled={propMut.isPending}>
-              {propMut.isPending ? "Adding…" : "Add property"}
+              {propMut.isPending ? "Saving…" : editingPropId ? "Save changes" : "Add property"}
             </Button>
             {propMut.error && (
               <span className="ml-3 text-sm text-destructive">{(propMut.error as Error).message}</span>
@@ -372,6 +472,13 @@ function ClientDetail() {
               </span>
               <span className="flex items-center gap-3 text-muted-foreground">
                 <span>${(s.price_cents / 100).toFixed(2)} · {s.status}</span>
+                <button
+                  type="button"
+                  onClick={() => editSubscription(s)}
+                  className={`text-xs underline underline-offset-2 ${editingSubId === s.id ? "font-semibold text-primary" : "hover:text-foreground"}`}
+                >
+                  {editingSubId === s.id ? "Editing" : "Edit"}
+                </button>
                 {canBill && s.billing_cadence === "prepaid" && s.status === "active" && (
                   <PrepayInline
                     disabled={prepayMut.isPending}
@@ -387,8 +494,24 @@ function ClientDetail() {
         </ul>
 
         {properties.length > 0 && (
+          <div className="mt-4 flex items-center justify-between">
+            <h3 className="text-xs font-medium uppercase text-muted-foreground">
+              {editingSubId ? "Edit subscription" : "Add subscription"}
+            </h3>
+            {editingSubId && (
+              <button
+                type="button"
+                onClick={() => startNewSubscription(properties)}
+                className="text-xs text-primary underline underline-offset-2"
+              >
+                + Add a new subscription instead
+              </button>
+            )}
+          </div>
+        )}
+        {properties.length > 0 && (
           <form
-            className="mt-4 grid gap-3 sm:grid-cols-6"
+            className="mt-2 grid gap-3 sm:grid-cols-6"
             onSubmit={(e) => {
               e.preventDefault();
               if (propertyId) subMut.mutate();
@@ -488,7 +611,11 @@ function ClientDetail() {
             </div>
             <div className="sm:col-span-6">
               <Button type="submit" disabled={subMut.isPending || !propertyId}>
-                {subMut.isPending ? "Adding…" : "Add subscription"}
+                {subMut.isPending
+                  ? "Saving…"
+                  : editingSubId
+                    ? "Save changes"
+                    : "Add subscription"}
               </Button>
               {subMut.error && (
                 <span className="ml-3 text-sm text-destructive">{(subMut.error as Error).message}</span>
@@ -570,6 +697,87 @@ function PrepayInline({
         Bill next
       </Button>
     </form>
+  );
+}
+
+// Finding #11: the Messages empty-state points users to "send a first message
+// from a client's detail page," but no composer existed anywhere. This is that
+// entry point — it originates a thread by sending the first SMS via the same
+// path replies use, so the conversation appears on both this page and Messages.
+function MessageComposer({ client }: { client: any }) {
+  const qc = useQueryClient();
+  const listFn = useServerFn(listClientMessages);
+  const sendFn = useServerFn(sendSmsToClient);
+  const [body, setBody] = useState("");
+
+  const messagesQ = useQuery({
+    queryKey: ["client-messages", client.id],
+    queryFn: () => listFn({ data: { clientId: client.id } }),
+  });
+  const messages: any[] = (messagesQ.data as any)?.messages ?? [];
+
+  const sendMut = useMutation({
+    mutationFn: () => sendFn({ data: { clientId: client.id, body: body.trim() } }),
+    onSuccess: () => {
+      setBody("");
+      toast.success("Message sent");
+      qc.invalidateQueries({ queryKey: ["client-messages", client.id] });
+      qc.invalidateQueries({ queryKey: ["message-threads"] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const noPhone = !client.primary_phone;
+  return (
+    <section className="rounded-lg border bg-card p-5">
+      <h2 className="text-sm font-medium">Messages</h2>
+      {messages.length > 0 && (
+        <ul className="mt-3 max-h-48 space-y-2 overflow-y-auto">
+          {messages.slice(-6).map((m) => (
+            <li
+              key={m.id}
+              className={`rounded-md px-3 py-2 text-sm ${m.direction === "outbound" ? "bg-primary/10" : "bg-muted"}`}
+            >
+              <div className="text-[11px] uppercase text-muted-foreground">
+                {m.direction === "outbound" ? "Sent" : "Received"}
+                {m.status ? ` · ${m.status}` : ""}
+              </div>
+              {m.body}
+            </li>
+          ))}
+        </ul>
+      )}
+      <form
+        className="mt-3 space-y-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (body.trim()) sendMut.mutate();
+        }}
+      >
+        <Textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={3}
+          maxLength={1500}
+          placeholder={
+            noPhone
+              ? "Add a phone number to this client to send SMS."
+              : messages.length === 0
+                ? "Send the first message to this client…"
+                : "Write a reply…"
+          }
+          disabled={noPhone}
+        />
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">
+            Sends an SMS from your business number.
+          </span>
+          <Button type="submit" size="sm" disabled={noPhone || !body.trim() || sendMut.isPending}>
+            {sendMut.isPending ? "Sending…" : "Send message"}
+          </Button>
+        </div>
+      </form>
+    </section>
   );
 }
 
