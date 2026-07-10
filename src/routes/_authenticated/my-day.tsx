@@ -142,7 +142,14 @@ function MyDay() {
               <input
                 type="date"
                 value={day}
-                onChange={(e) => setDay(e.target.value)}
+                onChange={(e) => {
+                  // Clearing the field (Backspace/Delete) yields an empty value.
+                  // Fall back to today instead of passing "" downstream, which
+                  // rendered the same "not linked to a staff record" screen as a
+                  // genuinely unlinked account and alarmed techs (finding #18).
+                  const v = e.target.value;
+                  setDay(v && !Number.isNaN(new Date(v).getTime()) ? v : todayISO());
+                }}
                 className="h-10 rounded-md border bg-background px-2 text-sm"
               />
             </div>

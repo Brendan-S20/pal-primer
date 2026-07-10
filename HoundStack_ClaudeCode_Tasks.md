@@ -272,6 +272,8 @@ Implementation note (added after a geocoding-provider change subsequent to this 
 
 ### #12 — CSV client import silently drops property/service-address data
 
+**Status:** ✅ Shipped (July 10, 2026). Added street/city/region/postal_code/gate_code as mappable targets on the **Clients** import, merged service-address column aliases (address, service address, state, zip, etc.) into every source preset so they auto-map from real Sweep&Go/Jobber/Housecall exports, and the commit path now creates an auto-geocoded property for each imported client that carries an address (non-fatal if geocoding misses — the client still imports). The dry-run preview gained a "Service address" column so mapping mistakes are catchable before commit. tsc green. (A separate `properties` import entity already existed for linking addresses by client_external_id; this closes the far more common single-file Clients-with-address path.)
+
 **Severity:** High  
 **Role(s) affected:** Owner  
 **Area:** Setup — Import  
@@ -286,6 +288,8 @@ Implementation note (added after a geocoding-provider change subsequent to this 
 ---
 
 ### #13 — New Client wizard silently fails to geocode unrecognized addresses, and the address step has no validation at all
+
+**Status:** ✅ Shipped (July 10, 2026). The Yard step's geocode now tracks an explicit status (loading / ok / not-found / error) instead of swallowing failures with an empty `catch {}`, and renders a clear amber message when the address can't be found or the geocoder is unreachable ("draw the service area manually on the map below") rather than silently showing a zoomed-out world map. On the Property step, State/Region is now required (both the input `required` attribute and the step's Next-gate), since it's needed downstream for routing, zone pricing, and geocoding. tsc green. (Full address-autocomplete on the Property step is noted as a further enhancement but not required to close the silent-failure bug.)
 
 **Severity:** High  
 **Role(s) affected:** Owner  
@@ -346,6 +350,8 @@ Implementation note (added after a geocoding-provider change subsequent to this 
 ---
 
 ### #18 — Clearing the My day date field triggers a false “not linked to a staff record” error instead of proper date validation
+
+**Status:** ✅ Shipped (July 10, 2026). The My day date input's onChange now falls back to today's date when the field is cleared or holds an unparseable value, instead of passing an empty string downstream — which had rendered the exact same "Your user is not linked to a staff record yet. Ask an owner to add you." screen as a genuinely unlinked account. Re-entering a date already worked; now the empty-input state can't reach that alarming message at all, and it's reserved for a real missing staff record. tsc green.
 
 **Severity:** High  
 **Role(s) affected:** Technician  

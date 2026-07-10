@@ -31,6 +31,14 @@ export const CLIENT_TARGET_FIELDS = [
   "primary_phone",
   "external_id",
   "notes",
+  // Service address — captured here so a Clients import (the primary migration
+  // path off Sweep&Go/Jobber/Housecall) produces clients WITH a property,
+  // instead of silently dropping the address (finding #12).
+  "street",
+  "city",
+  "region",
+  "postal_code",
+  "gate_code",
 ] as const;
 export type ClientTargetField = (typeof CLIENT_TARGET_FIELDS)[number];
 
@@ -123,6 +131,20 @@ const CLIENT_PRESETS: Record<string, PresetMap> = {
     notes: ["Notes"],
   },
 };
+
+// Service-address aliases merged into every Clients preset so the address
+// columns present in real Sweep&Go / Jobber / Housecall exports auto-map and
+// create a property (finding #12).
+const CLIENT_ADDRESS_ALIASES: PresetMap = {
+  street: ["street", "address", "address_line_1", "address line 1", "street address", "service address", "billing address", "address 1"],
+  city: ["city", "town"],
+  region: ["region", "state", "province", "state/province"],
+  postal_code: ["postal_code", "postal code", "zip", "zip_code", "zip code", "postcode"],
+  gate_code: ["gate code", "gate_code", "gate"],
+};
+for (const key of Object.keys(CLIENT_PRESETS)) {
+  CLIENT_PRESETS[key] = { ...CLIENT_ADDRESS_ALIASES, ...CLIENT_PRESETS[key] };
+}
 
 const PROPERTY_PRESETS: Record<string, PresetMap> = {
   generic_csv: {
@@ -350,6 +372,12 @@ function mapClientRow(raw: Record<string, any>, mapping: Record<string, string |
       primary_phone: normalizePhone(getStr(raw, mapping, "primary_phone")),
       external_id: getStr(raw, mapping, "external_id"),
       notes: getStr(raw, mapping, "notes"),
+      // Optional inline service address → a property is created on commit.
+      street: getStr(raw, mapping, "street"),
+      city: getStr(raw, mapping, "city"),
+      region: getStr(raw, mapping, "region"),
+      postal_code: getStr(raw, mapping, "postal_code"),
+      gate_code: getStr(raw, mapping, "gate_code"),
     },
     error: null as string | null,
   };
@@ -643,6 +671,35 @@ export const commitImport = createServerFn({ method: "POST" })
               .select("id").single();
             if (cErr) throw cErr;
             await supabase.from("import_rows").update({ target_id: ins.id }).eq("id", row.id);
+            // If the Clients row carried a service address, create a property
+            // for it (auto-geocoded) so routing/pricing/DNA work downstream —
+            // instead of silently dropping the address (finding #12).
+            if (m.street && m.city) {
+              try {
+                const { geocodeAddress } = await import("./geocode.server");
+                const geo = await geocodeAddress({
+                  street: m.street,
+                  city: m.city,
+                  region: m.region,
+                  postal_code: m.postal_code,
+                });
+                await supabase.from("properties").insert({
+                  organization_id: orgId,
+                  client_id: ins.id,
+                  street: m.street,
+                  city: m.city,
+                  region: m.region || null,
+                  postal_code: m.postal_code || null,
+                  gate_code: m.gate_code || null,
+                  latitude: geo?.latitude ?? null,
+                  longitude: geo?.longitude ?? null,
+                });
+              } catch (pe) {
+                // Non-fatal: the client is created; a failed property/geocode
+                // shouldn't roll back the client. Logged for follow-up.
+                console.error("import: property create/geocode failed", (pe as Error).message);
+              }
+            }
             created += 1;
           } else if (row.action === "update" && row.target_id) {
             const { error: uErr } = await supabase.from("clients").update({
