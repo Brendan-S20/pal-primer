@@ -42,12 +42,26 @@ export const Route = createFileRoute("/api/public/hooks/stripe-connect-callback"
             /* account retrieve can lag OAuth; refresh in Settings → Payments */
           }
 
+          // If this connects a DIFFERENT account than before, saved client cards
+          // (on the old account) are now invalid — clear them so they re-save.
+          const { data: prev } = await (supabaseAdmin as any)
+            .from("organizations")
+            .select("stripe_connect_account_id")
+            .eq("id", st.org_id)
+            .maybeSingle();
+          const changed = prev?.stripe_connect_account_id && prev.stripe_connect_account_id !== accountId;
+
           await (supabaseAdmin as any).from("organizations").update({
             stripe_connect_account_id: accountId,
             stripe_connect_status: status,
             stripe_connect_charges_enabled: chargesEnabled,
             stripe_connect_connected_at: new Date().toISOString(),
           }).eq("id", st.org_id);
+
+          if (changed) {
+            const { clearOrgClientStripeRefs } = await import("@/lib/stripe-connect.server");
+            await clearOrgClientStripeRefs(st.org_id as string);
+          }
 
           await supabaseAdmin.from("oauth_states").delete().eq("state", state);
 

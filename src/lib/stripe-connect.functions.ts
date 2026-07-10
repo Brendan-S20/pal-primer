@@ -94,5 +94,8 @@ export const disconnectStripeConnect = createServerFn({ method: "POST" })
       stripe_connect_charges_enabled: false,
       stripe_connect_connected_at: null,
     }).eq("id", orgId);
+    // Saved client cards belonged to the now-disconnected account — clear them.
+    const { clearOrgClientStripeRefs } = await import("@/lib/stripe-connect.server");
+    await clearOrgClientStripeRefs(orgId);
     return { ok: true };
   });

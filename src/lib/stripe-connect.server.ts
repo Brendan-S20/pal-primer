@@ -51,6 +51,27 @@ export async function requireOrgStripeAccount(orgId: string): Promise<OrgStripeA
   return acct;
 }
 
+/**
+ * Cutover safety: a client's saved Stripe customer + payment method live on the
+ * account that stored them. When an org connects a different account (or
+ * disconnects), those references are invalid on the new account, so clear them
+ * to force a clean re-save. Autopay is turned off since there's no card to
+ * charge until the client re-enters one.
+ */
+export async function clearOrgClientStripeRefs(orgId: string): Promise<void> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  await (supabaseAdmin as any)
+    .from("clients")
+    .update({
+      stripe_customer_id: null,
+      default_payment_method_id: null,
+      default_card_brand: null,
+      default_card_last4: null,
+      autopay_enabled: false,
+    })
+    .eq("organization_id", orgId);
+}
+
 /** Retrieve the connected account and return its charge-readiness + status. */
 export async function fetchConnectAccountState(
   accountId: string,

@@ -304,8 +304,10 @@ async function sendOverdueEmails(
 }
 
 async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<number> {
-  const secret = process.env.STRIPE_SECRET_KEY;
-  if (!secret) return 0;
+  // Autopay charges the org's own clients → run on its connected account.
+  const { resolveOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
+  const acct = await resolveOrgStripeAccount(orgId);
+  if (!acct || !acct.chargesEnabled) return 0;
   const { data: org } = await supabaseAdmin
     .from("organizations")
     .select("dunning_retry_days, dunning_pause_after_failures")
@@ -324,8 +326,7 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
     .gt("total_cents", 0);
   if (!invoices?.length) return 0;
 
-  const Stripe = (await import("stripe")).default;
-  const stripe = new Stripe(secret);
+  const stripe = await connectStripe();
   const nowMs = Date.now();
   let charged = 0;
 
@@ -358,7 +359,7 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
           organization_id: inv.organization_id,
           source: "autopay",
         },
-      });
+      }, { stripeAccount: acct.accountId });
       // Success bookkeeping happens in the webhook payment_intent.succeeded
       // branch, which also clears failure_count. Just count locally.
       charged++;

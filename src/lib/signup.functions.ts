@@ -95,10 +95,10 @@ export const createSignupCheckout = createServerFn({ method: "POST" })
       .single();
     if (srErr) throw new Error(srErr.message);
 
-    const secret = process.env.STRIPE_SECRET_KEY;
-    if (!secret) throw new Error("Payments are not configured yet.");
-    const Stripe = (await import("stripe")).default;
-    const stripe = new Stripe(secret);
+    // Signup prepay charges the tenant's client → the tenant's connected account.
+    const { requireOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
+    const acct = await requireOrgStripeAccount(q.organization_id);
+    const stripe = await connectStripe();
 
     const successUrl = `${data.origin}/signup/success?sr=${sr.id}`;
     const cancelUrl = `${data.origin}/signup/${encodeURIComponent(data.slug)}?canceled=1`;
@@ -136,7 +136,7 @@ export const createSignupCheckout = createServerFn({ method: "POST" })
         signup_request_id: sr.id,
         organization_id: q.organization_id,
       },
-    });
+    }, { stripeAccount: acct.accountId });
 
     await supabaseAdmin
       .from("signup_requests")

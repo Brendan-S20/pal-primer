@@ -1,6 +1,11 @@
 # BYOK Integrations Plan — Stripe & Twilio (per-tenant)
 
-**Status:** 📋 Planned, not started (held at plan per Brendan, July 10, 2026). Two new work items (#58 Stripe, #59 Twilio) scoped from a full read-only audit of the current integrations. Decisions locked below; open questions flagged.
+**Status:** 🔧 Both items BUILT (July 10, 2026) — #59 Twilio and #58 Stripe Connect shipped to the branch; live end-to-end verification (real OAuth connect, real charge, real SMS) still needs the platform Connect app + Twilio numbers provisioned by Brendan. Decisions locked below; open questions still flagged for the live cutover.
+
+**Implemented:**
+- **#59 Twilio** — `org_twilio_credentials` (live), `twilio-credentials.server.ts`, dual-mode `sendTwilioSms`, platform-vs-tenant channel split, per-org `X-Twilio-Signature` inbound validation, `twilio-settings.functions.ts`, Settings → SMS BYOK panel, `tests/twilio.server.test.ts`.
+- **#58 Stripe Connect** — `organizations.stripe_connect_*` (live), `stripe-connect.server.ts` (+ resolver, `requireOrgStripeAccount`, cutover `clearOrgClientStripeRefs`), `stripe-connect.functions.ts` (connect/status/refresh/disconnect), OAuth callback route, Settings → Payments page, all bucket-B charge sites refactored onto the connected account (invoice checkout, portal pay + saved-card + inline Payment Element, autopay, signup prepay), tenant webhook switched to the Connect secret + `event.account`-scoped calls with the bucket-A subscription leak removed, `tests/stripe-connect.server.test.ts`.
+- **Env vars the operator must set for live:** `STRIPE_CONNECT_SECRET_KEY`, `STRIPE_CONNECT_CLIENT_ID`, `STRIPE_CONNECT_PUBLISHABLE_KEY`, `STRIPE_CONNECT_WEBHOOK_SECRET` (Connect); `PLATFORM_SMS_FROM_NUMBER` (platform Twilio notifications/OTP). Legacy `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` remain as fallbacks during cutover.
 
 **Principle:** the **platform** keeps its own Stripe + Twilio for platform-level jobs (billing tenants, auth/OTP, automated notifications). Each **tenant/owner** connects their own Stripe + Twilio for the tenant↔client relationship (charging their clients, conversing with their clients). This mirrors the AI-Tools BYOK already shipped (`org_ai_credentials` + `src/lib/ai-credentials.server.ts`).
 

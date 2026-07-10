@@ -146,11 +146,10 @@ export const createCheckoutForInvoice = createServerFn({ method: "POST" })
     if (invoice.status === "void") throw new Error("Invoice is voided");
     if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
 
-    const secret = process.env.STRIPE_SECRET_KEY;
-    if (!secret) throw new Error("STRIPE_SECRET_KEY not configured");
-
-    const Stripe = (await import("stripe")).default;
-    const stripe = new Stripe(secret);
+    // Tenant->client charge: runs on the org's own connected Stripe account.
+    const { requireOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
+    const acct = await requireOrgStripeAccount(invoice.organization_id);
+    const stripe = await connectStripe();
     const client = Array.isArray(invoice.clients) ? invoice.clients[0] : (invoice.clients as { display_name?: string; primary_email?: string } | null);
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -167,7 +166,7 @@ export const createCheckoutForInvoice = createServerFn({ method: "POST" })
         },
       }],
       metadata: { invoice_id: invoice.id, organization_id: invoice.organization_id },
-    });
+    }, { stripeAccount: acct.accountId });
 
     // Persist checkout session details (RLS: manager)
     const { error: upErr } = await supabase

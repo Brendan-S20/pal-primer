@@ -19,13 +19,16 @@ export const Route = createFileRoute("/portal/$slug/$token/pay/$invoiceId")({
   component: PayInvoice,
 });
 
-// Cache the Stripe.js instance per publishable key (module-scoped, not per render).
+// Cache the Stripe.js instance per (publishable key + connected account),
+// module-scoped, not per render. Connect direct charges require the Payment
+// Element to be initialized scoped to the org's connected account.
 const stripePromiseCache = new Map<string, Promise<StripeJs | null>>();
-function getStripe(pk: string) {
-  let p = stripePromiseCache.get(pk);
+function getStripe(pk: string, stripeAccount?: string) {
+  const cacheKey = `${pk}|${stripeAccount ?? ""}`;
+  let p = stripePromiseCache.get(cacheKey);
   if (!p) {
-    p = loadStripe(pk);
-    stripePromiseCache.set(pk, p);
+    p = loadStripe(pk, stripeAccount ? { stripeAccount } : undefined);
+    stripePromiseCache.set(cacheKey, p);
   }
   return p;
 }
@@ -42,8 +45,8 @@ function PayInvoice() {
   });
 
   const stripePromise = useMemo(
-    () => (intentQ.data ? getStripe(intentQ.data.publishableKey) : null),
-    [intentQ.data?.publishableKey],
+    () => (intentQ.data ? getStripe(intentQ.data.publishableKey, (intentQ.data as any).stripeAccount) : null),
+    [intentQ.data?.publishableKey, (intentQ.data as any)?.stripeAccount],
   );
 
   return (
