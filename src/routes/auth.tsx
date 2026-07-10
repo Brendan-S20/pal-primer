@@ -31,6 +31,12 @@ async function ensureBootstrapped(user: { id: string; email?: string | null; use
     .maybeSingle();
   if (existing) return;
 
+  // Platform admins have zero user_roles rows by design — they must never get
+  // a tenant org auto-provisioned. (bootstrap_organization also guards this
+  // server-side; the check here avoids a pointless org-create round trip.)
+  const { data: isPlatform } = await supabase.rpc("is_platform_admin", { _user_id: user.id });
+  if (isPlatform) return;
+
   const md = user.user_metadata ?? {};
   const emailLocal = (user.email ?? "").split("@")[0] || "Owner";
   const displayName: string =
