@@ -50,13 +50,41 @@ export const setStaffActive = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// Finding #26: routing eligibility flags. is_field_tech = "does fieldwork and
+// can be routed"; routing_available = "available for routing right now"
+// (temporary, e.g. on leave) without deleting the account.
+export const setStaffRouting = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        staffId: z.string().uuid(),
+        isFieldTech: z.boolean().optional(),
+        routingAvailable: z.boolean().optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
+    const patch: Record<string, boolean> = {};
+    if (data.isFieldTech !== undefined) patch.is_field_tech = data.isFieldTech;
+    if (data.routingAvailable !== undefined) patch.routing_available = data.routingAvailable;
+    if (Object.keys(patch).length === 0) return { ok: true };
+    const { error } = await (context.supabase.from("staff") as any)
+      .update(patch)
+      .eq("id", data.staffId)
+      .eq("organization_id", orgId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const listStaffAddresses = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const orgId = await resolveOrgId(context.supabase, context.userId);
-    const { data, error } = await context.supabase
-      .from("staff")
-      .select("id, display_name, role, active, start_address, start_latitude, start_longitude, end_address, end_latitude, end_longitude")
+    const { data, error } = await (context.supabase.from("staff") as any)
+      .select("id, display_name, role, active, is_field_tech, routing_available, start_address, start_latitude, start_longitude, end_address, end_latitude, end_longitude")
       .eq("organization_id", orgId)
       .order("display_name");
     if (error) throw new Error(error.message);

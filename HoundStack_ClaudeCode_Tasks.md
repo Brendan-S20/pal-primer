@@ -461,6 +461,8 @@ Implementation note (added after a geocoding-provider change subsequent to this 
 
 ### #26 — No way to mark a user as ineligible for routes/dispatch — every role appears as an assignable technician column
 
+**Status:** ✅ Shipped (July 10, 2026). Added two staff flags (migration applied live): `is_field_tech` (does fieldwork / can be routed — backfilled so only `tech`-role staff default to true, excluding Owner/Office manager/Dispatcher) and `routing_available` (a temporary on/off for leave etc. without deleting the account). The Routes board now only shows columns for staff who are field techs AND currently available — except it still shows a column for anyone who already has visits assigned that day, so existing assignments to a now-unavailable tech stay visible. Both flags are settable per staff in Settings → Users & roles (`setStaffRouting`, gated on `manage_users`). This directly prevents the kind of mis-assignment behind #10 (non-field roles and unavailable techs are no longer selectable). tsc green.
+
 **Severity:** Medium  
 **Role(s) affected:** Owner  
 **Area:** Routes / Dispatch — Settings & Users  
@@ -556,6 +558,8 @@ Update: this no longer depends on a Lovable-exclusive secret — the email send 
 ---
 
 ### #34 — “Text reminder” and “Text "on my way"” fail with a message pointing to a Settings tab (SMS) that doesn't exist anywhere in the app for any role tested
+
+**Status:** ✅ Resolved / verified (July 10, 2026) — no code change needed. The Settings → SMS page (`/settings/sms`, sender-number configuration via `updateOrgSmsFromNumber`) already exists and is linked from the Settings nav, so the "Add one in Settings → SMS" error the My-day Text buttons show is now followable by an Owner/Office Manager. This was built since the finding was filed; confirmed the page and nav link are present and the save path is wired. (The buttons correctly remain gated on a sender number being configured.)
 
 **Severity:** Medium  
 **Role(s) affected:** Technician  

@@ -120,7 +120,14 @@ function RoutesPage() {
   });
   const { data: staffData } = useQuery({ queryKey: ["staff"], queryFn: () => listS() });
 
-  const staff = staffData?.staff ?? [];
+  const allStaff = staffData?.staff ?? [];
+  // Only field techs who are available today are valid route assignees
+  // (finding #26) — but still show a column for anyone who already has visits
+  // assigned, so existing assignments to a now-unavailable tech stay visible.
+  const assignedIds = new Set((visitsData?.visits ?? []).map((v: any) => v.assigned_staff_id).filter(Boolean));
+  const staff = allStaff.filter(
+    (s: any) => (s.is_field_tech && s.routing_available) || assignedIds.has(s.id),
+  );
   const visits: Visit[] = visitsData?.visits ?? [];
 
   const columns = useMemo(() => {

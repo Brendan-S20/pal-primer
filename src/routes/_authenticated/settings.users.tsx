@@ -6,6 +6,7 @@ import {
   listOrgUsers,
   changeUserRole,
   setStaffActive,
+  setStaffRouting,
   listStaffAddresses,
   setStaffAddresses,
 } from "@/lib/users.functions";
@@ -196,9 +197,21 @@ function UsersPage() {
 function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }) {
   const qc = useQueryClient();
   const saveFn = useServerFn(setStaffAddresses);
+  const routingFn = useServerFn(setStaffRouting);
   const [start, setStart] = useState(staff.start_address ?? "");
   const [end, setEnd] = useState(staff.end_address ?? "");
   const [saving, setSaving] = useState(false);
+
+  const routingMut = useMutation({
+    mutationFn: (v: { staffId: string; isFieldTech?: boolean; routingAvailable?: boolean }) =>
+      routingFn({ data: v }),
+    onSuccess: () => {
+      toast.success("Routing updated");
+      qc.invalidateQueries({ queryKey: ["staff-addresses"] });
+      qc.invalidateQueries({ queryKey: ["staff"] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
   const save = async () => {
     setSaving(true);
@@ -260,6 +273,27 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
             Pinned: {Number(staff.end_latitude).toFixed(4)}, {Number(staff.end_longitude).toFixed(4)}
           </p>
         )}
+      </div>
+      {/* Routing eligibility (finding #26). */}
+      <div className="sm:col-span-2 flex flex-wrap items-center gap-4 border-t pt-3">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            defaultChecked={staff.is_field_tech ?? true}
+            disabled={!canEdit}
+            onChange={(e) => routingMut.mutate({ staffId: staff.id, isFieldTech: e.target.checked })}
+          />
+          Field technician (can be assigned routes)
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            defaultChecked={staff.routing_available ?? true}
+            disabled={!canEdit}
+            onChange={(e) => routingMut.mutate({ staffId: staff.id, routingAvailable: e.target.checked })}
+          />
+          Available for routing today
+        </label>
       </div>
       {canEdit && (
         <div className="sm:col-span-2 flex justify-end">
