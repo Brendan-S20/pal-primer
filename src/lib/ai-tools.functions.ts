@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { generateStructured, generateAiText } from "@/lib/ai.server";
+import { resolveOrgAiConfig } from "@/lib/ai-credentials.server";
 
 async function callerOrg(context: { supabase: any; userId: string }) {
   const { data: staff, error } = await context.supabase
@@ -39,6 +40,7 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
       .single();
 
     const output = await generateStructured({
+      config: await resolveOrgAiConfig(staff.organization_id),
       label: "Marketing content",
       schema: z.object({
         title: z.string(),
@@ -88,6 +90,7 @@ export const draftReviewReply = createServerFn({ method: "POST" })
       .single();
 
     const output = await generateStructured({
+      config: await resolveOrgAiConfig(staff.organization_id),
       label: "Review reply",
       schema: z.object({
         reply: z.string(),
@@ -188,6 +191,7 @@ export const scoreChurn = createServerFn({ method: "POST" })
     if (!signals.length) return { scored: 0 };
 
     const output = await generateStructured({
+      config: await resolveOrgAiConfig(staff.organization_id),
       label: "Churn scoring",
       maxTokens: 16384,
       schema: z.object({
@@ -328,6 +332,7 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
     };
 
     const text = await generateAiText({
+      config: await resolveOrgAiConfig(staff.organization_id),
       label: "Weekly digest",
       prompt:
         `Write a concise weekly owner digest for a pet waste removal business. ` +
@@ -391,6 +396,7 @@ export const suggestDispatch = createServerFn({ method: "POST" })
     }));
 
     const output = await generateStructured({
+      config: await resolveOrgAiConfig(staff.organization_id),
       label: "AI dispatch",
       maxTokens: 8192,
       schema: z.object({
@@ -530,6 +536,7 @@ export const suggestZonePricing = createServerFn({ method: "POST" })
     });
 
     const output = await generateStructured({
+      config: await resolveOrgAiConfig(staff.organization_id),
       label: "Zone pricing",
       maxTokens: 8192,
       schema: z.object({

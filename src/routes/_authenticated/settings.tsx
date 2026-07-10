@@ -15,6 +15,7 @@ const TABS: Tab[] = [
   { label: "Add-ons", to: "/settings/addons" },
   { label: "SMS", to: "/settings/sms" },
   { label: "Emails", to: "/settings/emails" },
+  { label: "AI Tools", to: "/settings/ai" },
   { label: "AI receptionist", to: "/settings/ai-receptionist" },
   { label: "Reviews", to: "/settings/reviews" },
   { label: "Automation", to: "/settings/automation" },
