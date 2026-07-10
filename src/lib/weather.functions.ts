@@ -39,15 +39,22 @@ async function fetchForecast(lat: number, lon: number, from: string, to: string)
   const url = new URL("https://api.open-meteo.com/v1/forecast");
   url.searchParams.set("latitude", String(lat));
   url.searchParams.set("longitude", String(lon));
+  // Open-Meteo's current daily variable names are snake_case with underscores
+  // (weather_code, wind_speed_10m_max). The legacy names (weathercode,
+  // windspeed_10m_max) return HTTP 400 "invalid variable", which was being
+  // swallowed and shown as an empty "No forecast available" (finding #15).
   url.searchParams.set(
     "daily",
-    "precipitation_sum,precipitation_probability_max,windspeed_10m_max,temperature_2m_max,temperature_2m_min,weathercode",
+    "precipitation_sum,precipitation_probability_max,wind_speed_10m_max,temperature_2m_max,temperature_2m_min,weather_code",
   );
   url.searchParams.set("timezone", "auto");
   url.searchParams.set("start_date", from);
   url.searchParams.set("end_date", to);
   const resp = await fetch(url.toString());
-  if (!resp.ok) throw new Error(`Weather API ${resp.status}`);
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => "");
+    throw new Error(`Weather API ${resp.status}${body ? `: ${body.slice(0, 200)}` : ""}`);
+  }
   const j: any = await resp.json();
   const d = j.daily;
   const out: DayForecast[] = [];
@@ -56,10 +63,10 @@ async function fetchForecast(lat: number, lon: number, from: string, to: string)
       date: d.time[i],
       precip_mm: Number(d.precipitation_sum?.[i] ?? 0),
       precip_prob: Number(d.precipitation_probability_max?.[i] ?? 0),
-      wind_max: Number(d.windspeed_10m_max?.[i] ?? 0),
+      wind_max: Number(d.wind_speed_10m_max?.[i] ?? 0),
       temp_max: Number(d.temperature_2m_max?.[i] ?? 0),
       temp_min: Number(d.temperature_2m_min?.[i] ?? 0),
-      weathercode: Number(d.weathercode?.[i] ?? 0),
+      weathercode: Number(d.weather_code?.[i] ?? 0),
     };
     out.push({ ...base, ...assessRisk(base) });
   }
@@ -110,11 +117,19 @@ export const getWeatherForZones = createServerFn({ method: "GET" })
     const results = await Promise.all(
       (zones ?? []).map(async (z: any) => {
         let forecast: DayForecast[] = [];
-        if (z.latitude != null && z.longitude != null) {
+        // Distinguish three states for the UI (finding #15): no coordinates,
+        // a real fetch error, and a genuinely empty/clear forecast.
+        let status: "ok" | "no_coords" | "error" = "ok";
+        let error: string | null = null;
+        if (z.latitude == null || z.longitude == null) {
+          status = "no_coords";
+        } else {
           try {
             forecast = await fetchForecast(z.latitude, z.longitude, data.fromDate, data.toDate);
           } catch (e) {
-            forecast = [];
+            status = "error";
+            error = e instanceof Error ? e.message : "Weather service unavailable";
+            console.error(`weather fetch failed for zone ${z.id}`, error);
           }
         }
         const withCounts = forecast.map((f) => ({
@@ -127,6 +142,8 @@ export const getWeatherForZones = createServerFn({ method: "GET" })
           postal_prefix: z.postal_prefix,
           latitude: z.latitude,
           longitude: z.longitude,
+          status,
+          error,
           days: withCounts,
         };
       }),

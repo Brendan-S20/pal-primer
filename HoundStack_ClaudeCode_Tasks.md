@@ -321,6 +321,8 @@ Implementation note (added after a geocoding-provider change subsequent to this 
 
 ### #15 — Weather forecasts never load for any zone — and this is a feature the public marketing site explicitly promises works today
 
+**Status:** 🔶 Root-caused and fixed in code (July 10, 2026); live confirmation blocked from this session. The provider is Open-Meteo (keyless, so no missing-API-key issue). The bug: the fetch requested Open-Meteo's **deprecated** daily variable names `weathercode` and `windspeed_10m_max`, which the current API rejects with HTTP 400 — and the error was swallowed into a silent empty forecast, shown identically for every zone as "No forecast available." Fixed the request + response parsing to the current names (`weather_code`, `wind_speed_10m_max`) in both `weather.functions.ts` and `weather-day.functions.ts`, and replaced the error-swallowing catch with an explicit per-zone status (`ok` / `no_coords` / `error`) so the Weather page now distinguishes "weather service error" from "no risky days" and from "zone has no coordinates." Added a test asserting the modern variable names are used and that a 400 surfaces as an error rather than a silent empty. NOT confirmed live: this session's egress policy blocks `api.open-meteo.com` (proxy 403), so the actual forecast render couldn't be driven here — Brendan (or a session with open egress) should load the Weather page and confirm real forecasts appear. tsc + 56 tests green.
+
 **Severity:** High  
 **Role(s) affected:** Owner  
 **Area:** Weather  
