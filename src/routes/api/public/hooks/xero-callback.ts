@@ -19,7 +19,11 @@ export const Route = createFileRoute("/api/public/hooks/xero-callback")({
 
         const clientId = process.env.XERO_CLIENT_ID;
         const clientSecret = process.env.XERO_CLIENT_SECRET;
-        if (!clientId || !clientSecret) return html("XERO_CLIENT_ID / XERO_CLIENT_SECRET not configured", false);
+        if (!clientId || !clientSecret) {
+          // Keep backend secret/env-var names out of the user-facing page (#19).
+          console.error("xero-callback: Xero OAuth credentials not configured");
+          return html("Xero isn't finished being set up yet. Contact support.", false);
+        }
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 

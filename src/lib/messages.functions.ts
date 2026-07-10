@@ -146,16 +146,14 @@ export const updateOrgSmsFromNumber = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const { data: role } = await supabase
-      .from("user_roles")
-      .select("organization_id, role")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (!role) throw new Error("No organization");
+    // Setting the org's SMS sender number is an org-config change — gate it at
+    // manage_settings (owner/office_manager), not bare membership (#34).
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(supabase, userId, "manage_settings");
     const { error } = await supabase
       .from("organizations")
       .update({ sms_from_number: data.number || null })
-      .eq("id", role.organization_id);
+      .eq("id", orgId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

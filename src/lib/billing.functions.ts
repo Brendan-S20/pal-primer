@@ -51,13 +51,37 @@ export const createBillingCheckout = createServerFn({ method: "POST" })
     const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
     const s = await getOrgBillingState(context.supabase, orgId);
 
-    // If the org is already at free size with no paid tier needed, block early
-    // with a friendly message rather than a Stripe error.
-    const targetPlan = s.requiredPlan && !s.requiredPlan.is_free
-      ? s.requiredPlan
-      : s.nextPlan;
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Per-employee model (#6): pick the tier by active-employee count, NOT by
+    // client count. Customers are unlimited on every plan, so the old
+    // client-count band logic collapses to the smallest plan for everyone —
+    // which would sell every org the Launch base regardless of headcount.
+    const { count: activeStaff } = await supabaseAdmin
+      .from("staff")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", orgId)
+      .eq("active", true);
+    const seats = activeStaff ?? 0;
+
+    const { data: planRows } = await (supabaseAdmin as any)
+      .from("platform_plans")
+      .select("id, name, stripe_price_id, stripe_seat_price_id, included_seats")
+      .eq("is_active", true)
+      .eq("is_enterprise", false)
+      .not("stripe_price_id", "is", null)
+      .not("included_seats", "is", null)
+      .order("included_seats", { ascending: true });
+    const plans = (planRows ?? []) as Array<{
+      id: string; name: string; stripe_price_id: string;
+      stripe_seat_price_id: string | null; included_seats: number;
+    }>;
+    // Smallest tier whose included seats cover the headcount; if none does (more
+    // employees than the largest tier includes), take the largest and let the
+    // per-seat overage bill the remainder.
+    const targetPlan = plans.find((p) => p.included_seats >= seats) ?? plans[plans.length - 1];
     if (!targetPlan || !targetPlan.stripe_price_id) {
-      throw new Error("No paid plan available for your current client count.");
+      throw new Error("No paid plan is available. Contact support.");
     }
 
     const secret = process.env.STRIPE_SECRET_KEY;
@@ -67,7 +91,6 @@ export const createBillingCheckout = createServerFn({ method: "POST" })
 
     const { data: userData } = await context.supabase.auth.getUser();
     const email = userData.user?.email ?? undefined;
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // Reuse existing Stripe customer if we have a real one; ignore obvious
     // seed placeholders like "cus_demo_seed".
@@ -85,31 +108,17 @@ export const createBillingCheckout = createServerFn({ method: "POST" })
         .eq("id", orgId);
     }
 
-    // Per-employee model (finding #6): the plan bills a flat base that covers a
-    // set number of employees, plus a per-seat overage price for each active
-    // employee beyond that. Attach the seat-overage line item with a quantity
-    // equal to the current overage so the subscription starts out billing the
-    // right amount. (Ongoing seat changes are reconciled through the Stripe
-    // billing portal / a future sync job, not this checkout.)
-    const { data: planExtra } = await supabaseAdmin
-      .from("platform_plans")
-      .select("included_seats, stripe_seat_price_id")
-      .eq("id", targetPlan.id)
-      .single();
-    const includedSeats = (planExtra as any)?.included_seats ?? null;
-    const seatPriceId = (planExtra as any)?.stripe_seat_price_id ?? null;
-
+    // The plan bills a flat base that covers the tier's included employees, plus
+    // a per-seat overage price for each active employee beyond that. Attach the
+    // seat-overage line item with a quantity equal to the current overage so the
+    // subscription starts out billing the right amount; ongoing seat changes are
+    // reconciled by syncOrgSeatQuantity (#6 seat sync).
+    const overage = Math.max(0, seats - targetPlan.included_seats);
     const line_items: { price: string; quantity: number }[] = [
       { price: targetPlan.stripe_price_id, quantity: 1 },
     ];
-    if (seatPriceId && includedSeats != null) {
-      const { count: activeStaff } = await supabaseAdmin
-        .from("staff")
-        .select("id", { count: "exact", head: true })
-        .eq("organization_id", orgId)
-        .eq("active", true);
-      const overage = Math.max(0, (activeStaff ?? 0) - includedSeats);
-      if (overage > 0) line_items.push({ price: seatPriceId, quantity: overage });
+    if (targetPlan.stripe_seat_price_id && overage > 0) {
+      line_items.push({ price: targetPlan.stripe_seat_price_id, quantity: overage });
     }
 
     const session = await stripe.checkout.sessions.create({

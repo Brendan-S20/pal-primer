@@ -12,6 +12,7 @@ import {
   createOrgInvite,
   listOrgInvites,
   revokeOrgInvite,
+  resendOrgInvite,
 } from "@/lib/users.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useMyRole } from "@/hooks/useMyRole";
+import { humanizeRole } from "@/lib/humanize";
 import { MapPin, ChevronDown, ChevronRight } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/settings/users")({
@@ -149,7 +151,7 @@ function UsersPage() {
                                 </SelectContent>
                               </Select>
                             ) : (
-                              <Badge variant="secondary">{u.role}</Badge>
+                              <Badge variant="secondary">{humanizeRole(u.role)}</Badge>
                             )}
                           </td>
                           <td className="py-3">
@@ -203,6 +205,7 @@ function InvitePanel() {
   const createFn = useServerFn(createOrgInvite);
   const listFn = useServerFn(listOrgInvites);
   const revokeFn = useServerFn(revokeOrgInvite);
+  const resendFn = useServerFn(resendOrgInvite);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"office_manager" | "dispatcher" | "tech">("tech");
 
@@ -217,6 +220,11 @@ function InvitePanel() {
   const revokeMut = useMutation({
     mutationFn: (id: string) => revokeFn({ data: { id } }),
     onSuccess: () => { toast.success("Invite revoked"); qc.invalidateQueries({ queryKey: ["org-invites"] }); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const resendMut = useMutation({
+    mutationFn: (id: string) => resendFn({ data: { id } }),
+    onSuccess: () => toast.success("Invite resent"),
     onError: (e) => toast.error((e as Error).message),
   });
 
@@ -259,7 +267,10 @@ function InvitePanel() {
               {invites.filter((i) => i.status === "pending").map((i) => (
                 <li key={i.id} className="flex items-center justify-between py-2 text-sm">
                   <span>{i.email} <span className="text-muted-foreground">· {roleLabel[i.role] ?? i.role}</span></span>
-                  <button className="text-xs text-destructive underline" onClick={() => revokeMut.mutate(i.id)}>Revoke</button>
+                  <span className="flex items-center gap-3">
+                    <button className="text-xs underline disabled:opacity-50" onClick={() => resendMut.mutate(i.id)} disabled={resendMut.isPending}>Resend</button>
+                    <button className="text-xs text-destructive underline" onClick={() => revokeMut.mutate(i.id)}>Revoke</button>
+                  </span>
                 </li>
               ))}
             </ul>

@@ -80,6 +80,31 @@ export const resyncMySeats = createServerFn({ method: "POST" })
 // ── Teammate invites (finding #40) ───────────────────────────────────────────
 const inviteRoleEnum = z.enum(["office_manager", "dispatcher", "tech"]);
 
+// Best-effort Resend invite email. The pending row + link work regardless of
+// whether the email actually sends, so failures are logged, not thrown.
+async function sendInviteEmail(orgName: string, email: string, role: string): Promise<void> {
+  try {
+    const resendApiKey = process.env.RESEND_API_KEY;
+    if (!resendApiKey) return;
+    const link = `https://www.app.houndstack.com/auth`;
+    const label = role.replace(/_/g, " ");
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: `${orgName} <noreply@notify.houndstack.com>`,
+        to: [email],
+        subject: `You've been invited to join ${orgName}`,
+        html: `<p>You've been invited to join <strong>${orgName}</strong> on HoundStack as ${label}.</p>` +
+          `<p>Create your account (or sign in) with <strong>${email}</strong> here: <a href="${link}">${link}</a>. Your role is assigned automatically on first sign-in.</p>`,
+        text: `You've been invited to join ${orgName} on HoundStack. Sign up with ${email} at ${link}.`,
+      }),
+    });
+  } catch (e) {
+    console.error("invite email failed", (e as Error).message);
+  }
+}
+
 export const createOrgInvite = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
@@ -105,29 +130,36 @@ export const createOrgInvite = createServerFn({ method: "POST" })
       .single();
     if (error) throw new Error(error.message);
 
-    // Best-effort invite email (Resend). The pending row + link work regardless.
-    try {
-      const resendApiKey = process.env.RESEND_API_KEY;
-      const { data: org } = await context.supabase.from("organizations").select("name").eq("id", orgId).maybeSingle();
-      if (resendApiKey) {
-        const link = `https://www.app.houndstack.com/auth`;
-        await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            from: `${(org as any)?.name ?? "HoundStack"} <noreply@notify.houndstack.com>`,
-            to: [email],
-            subject: `You've been invited to join ${(org as any)?.name ?? "the team"}`,
-            html: `<p>You've been invited to join <strong>${(org as any)?.name ?? "the team"}</strong> on HoundStack as ${data.role.replace(/_/g, " ")}.</p>` +
-              `<p>Create your account (or sign in) with <strong>${email}</strong> here: <a href="${link}">${link}</a>. Your role is assigned automatically on first sign-in.</p>`,
-            text: `You've been invited to join ${(org as any)?.name ?? "the team"} on HoundStack. Sign up with ${email} at ${link}.`,
-          }),
-        });
-      }
-    } catch (e) {
-      console.error("invite email failed", (e as Error).message);
-    }
+    const { data: org } = await context.supabase.from("organizations").select("name").eq("id", orgId).maybeSingle();
+    await sendInviteEmail((org as any)?.name ?? "HoundStack", email, data.role);
     return { id: row.id as string };
+  });
+
+// Re-send the invite email for a still-pending invite and refresh its expiry.
+export const resendOrgInvite = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
+    const { data: invite, error } = await (context.supabase as any).from("org_invites")
+      .select("email, role, status")
+      .eq("id", data.id)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!invite) throw new Error("Invite not found");
+    if (invite.status !== "pending") throw new Error("Only pending invites can be resent");
+
+    // Push the expiry out so a resent invite isn't immediately stale.
+    await (context.supabase as any).from("org_invites")
+      .update({ expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() })
+      .eq("id", data.id)
+      .eq("organization_id", orgId);
+
+    const { data: org } = await context.supabase.from("organizations").select("name").eq("id", orgId).maybeSingle();
+    await sendInviteEmail((org as any)?.name ?? "HoundStack", invite.email as string, invite.role as string);
+    return { ok: true };
   });
 
 export const listOrgInvites = createServerFn({ method: "GET" })
