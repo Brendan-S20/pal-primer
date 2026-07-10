@@ -85,10 +85,37 @@ export const createBillingCheckout = createServerFn({ method: "POST" })
         .eq("id", orgId);
     }
 
+    // Per-employee model (finding #6): the plan bills a flat base that covers a
+    // set number of employees, plus a per-seat overage price for each active
+    // employee beyond that. Attach the seat-overage line item with a quantity
+    // equal to the current overage so the subscription starts out billing the
+    // right amount. (Ongoing seat changes are reconciled through the Stripe
+    // billing portal / a future sync job, not this checkout.)
+    const { data: planExtra } = await supabaseAdmin
+      .from("platform_plans")
+      .select("included_seats, stripe_seat_price_id")
+      .eq("id", targetPlan.id)
+      .single();
+    const includedSeats = (planExtra as any)?.included_seats ?? null;
+    const seatPriceId = (planExtra as any)?.stripe_seat_price_id ?? null;
+
+    const line_items: { price: string; quantity: number }[] = [
+      { price: targetPlan.stripe_price_id, quantity: 1 },
+    ];
+    if (seatPriceId && includedSeats != null) {
+      const { count: activeStaff } = await supabaseAdmin
+        .from("staff")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .eq("active", true);
+      const overage = Math.max(0, (activeStaff ?? 0) - includedSeats);
+      if (overage > 0) line_items.push({ price: seatPriceId, quantity: overage });
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId!,
-      line_items: [{ price: targetPlan.stripe_price_id, quantity: 1 }],
+      line_items,
       success_url: `${data.returnUrl}?upgraded=1`,
       cancel_url: data.returnUrl,
       client_reference_id: orgId,
