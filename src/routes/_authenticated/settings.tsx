@@ -20,6 +20,7 @@ const TABS: Tab[] = [
   { label: "Reviews", to: "/settings/reviews" },
   { label: "Automation", to: "/settings/automation" },
   { label: "Deep-clean", to: "/settings/deep-clean" },
+  { label: "Payments", to: "/settings/payments" },
   { label: "Accounting", to: "/settings/accounting" },
   { label: "Promotions", to: "/settings/promotions" },
   { label: "Users & roles", to: "/settings/users" },

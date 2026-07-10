@@ -78,6 +78,7 @@ import { Route as AuthenticatedSettingsSkipRulesRouteImport } from './routes/_au
 import { Route as AuthenticatedSettingsReviewsRouteImport } from './routes/_authenticated/settings.reviews'
 import { Route as AuthenticatedSettingsPromotionsRouteImport } from './routes/_authenticated/settings.promotions'
 import { Route as AuthenticatedSettingsPreferencesRouteImport } from './routes/_authenticated/settings.preferences'
+import { Route as AuthenticatedSettingsPaymentsRouteImport } from './routes/_authenticated/settings.payments'
 import { Route as AuthenticatedSettingsLeadFormRouteImport } from './routes/_authenticated/settings.lead-form'
 import { Route as AuthenticatedSettingsEmailsRouteImport } from './routes/_authenticated/settings.emails'
 import { Route as AuthenticatedSettingsDeepCleanRouteImport } from './routes/_authenticated/settings.deep-clean'
@@ -102,6 +103,7 @@ import { Route as ApiPublicHooksXeroCallbackRouteImport } from './routes/api/pub
 import { Route as ApiPublicHooksWeeklyDigestRouteImport } from './routes/api/public/hooks/weekly-digest'
 import { Route as ApiPublicHooksTwilioVoiceRouteImport } from './routes/api/public/hooks/twilio-voice'
 import { Route as ApiPublicHooksTwilioRouteImport } from './routes/api/public/hooks/twilio'
+import { Route as ApiPublicHooksStripeConnectCallbackRouteImport } from './routes/api/public/hooks/stripe-connect-callback'
 import { Route as ApiPublicHooksStripeRouteImport } from './routes/api/public/hooks/stripe'
 import { Route as ApiPublicHooksQboCallbackRouteImport } from './routes/api/public/hooks/qbo-callback'
 import { Route as ApiPublicHooksPlatformStripeRouteImport } from './routes/api/public/hooks/platform-stripe'
@@ -466,6 +468,12 @@ const AuthenticatedSettingsPreferencesRoute =
     path: '/preferences',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedSettingsPaymentsRoute =
+  AuthenticatedSettingsPaymentsRouteImport.update({
+    id: '/payments',
+    path: '/payments',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedSettingsLeadFormRoute =
   AuthenticatedSettingsLeadFormRouteImport.update({
     id: '/lead-form',
@@ -601,6 +609,12 @@ const ApiPublicHooksTwilioRoute = ApiPublicHooksTwilioRouteImport.update({
   path: '/api/public/hooks/twilio',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHooksStripeConnectCallbackRoute =
+  ApiPublicHooksStripeConnectCallbackRouteImport.update({
+    id: '/api/public/hooks/stripe-connect-callback',
+    path: '/api/public/hooks/stripe-connect-callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksStripeRoute = ApiPublicHooksStripeRouteImport.update({
   id: '/api/public/hooks/stripe',
   path: '/api/public/hooks/stripe',
@@ -703,6 +717,7 @@ export interface FileRoutesByFullPath {
   '/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
   '/settings/lead-form': typeof AuthenticatedSettingsLeadFormRoute
+  '/settings/payments': typeof AuthenticatedSettingsPaymentsRoute
   '/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute
   '/settings/promotions': typeof AuthenticatedSettingsPromotionsRoute
   '/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
@@ -731,6 +746,7 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
+  '/api/public/hooks/stripe-connect-callback': typeof ApiPublicHooksStripeConnectCallbackRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
@@ -798,6 +814,7 @@ export interface FileRoutesByTo {
   '/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
   '/settings/lead-form': typeof AuthenticatedSettingsLeadFormRoute
+  '/settings/payments': typeof AuthenticatedSettingsPaymentsRoute
   '/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute
   '/settings/promotions': typeof AuthenticatedSettingsPromotionsRoute
   '/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
@@ -825,6 +842,7 @@ export interface FileRoutesByTo {
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
+  '/api/public/hooks/stripe-connect-callback': typeof ApiPublicHooksStripeConnectCallbackRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
@@ -900,6 +918,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/_authenticated/settings/emails': typeof AuthenticatedSettingsEmailsRoute
   '/_authenticated/settings/lead-form': typeof AuthenticatedSettingsLeadFormRoute
+  '/_authenticated/settings/payments': typeof AuthenticatedSettingsPaymentsRoute
   '/_authenticated/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute
   '/_authenticated/settings/promotions': typeof AuthenticatedSettingsPromotionsRoute
   '/_authenticated/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
@@ -928,6 +947,7 @@ export interface FileRoutesById {
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
+  '/api/public/hooks/stripe-connect-callback': typeof ApiPublicHooksStripeConnectCallbackRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
@@ -1003,6 +1023,7 @@ export interface FileRouteTypes {
     | '/settings/deep-clean'
     | '/settings/emails'
     | '/settings/lead-form'
+    | '/settings/payments'
     | '/settings/preferences'
     | '/settings/promotions'
     | '/settings/reviews'
@@ -1031,6 +1052,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/platform-stripe'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
+    | '/api/public/hooks/stripe-connect-callback'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/weekly-digest'
@@ -1098,6 +1120,7 @@ export interface FileRouteTypes {
     | '/settings/deep-clean'
     | '/settings/emails'
     | '/settings/lead-form'
+    | '/settings/payments'
     | '/settings/preferences'
     | '/settings/promotions'
     | '/settings/reviews'
@@ -1125,6 +1148,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/platform-stripe'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
+    | '/api/public/hooks/stripe-connect-callback'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/weekly-digest'
@@ -1199,6 +1223,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/deep-clean'
     | '/_authenticated/settings/emails'
     | '/_authenticated/settings/lead-form'
+    | '/_authenticated/settings/payments'
     | '/_authenticated/settings/preferences'
     | '/_authenticated/settings/promotions'
     | '/_authenticated/settings/reviews'
@@ -1227,6 +1252,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/platform-stripe'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
+    | '/api/public/hooks/stripe-connect-callback'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/weekly-digest'
@@ -1268,6 +1294,7 @@ export interface RootRouteChildren {
   ApiPublicHooksPlatformStripeRoute: typeof ApiPublicHooksPlatformStripeRoute
   ApiPublicHooksQboCallbackRoute: typeof ApiPublicHooksQboCallbackRoute
   ApiPublicHooksStripeRoute: typeof ApiPublicHooksStripeRoute
+  ApiPublicHooksStripeConnectCallbackRoute: typeof ApiPublicHooksStripeConnectCallbackRoute
   ApiPublicHooksTwilioRoute: typeof ApiPublicHooksTwilioRoute
   ApiPublicHooksTwilioVoiceRoute: typeof ApiPublicHooksTwilioVoiceRoute
   ApiPublicHooksWeeklyDigestRoute: typeof ApiPublicHooksWeeklyDigestRoute
@@ -1759,6 +1786,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsPreferencesRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/settings/payments': {
+      id: '/_authenticated/settings/payments'
+      path: '/payments'
+      fullPath: '/settings/payments'
+      preLoaderRoute: typeof AuthenticatedSettingsPaymentsRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/settings/lead-form': {
       id: '/_authenticated/settings/lead-form'
       path: '/lead-form'
@@ -1927,6 +1961,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksTwilioRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/stripe-connect-callback': {
+      id: '/api/public/hooks/stripe-connect-callback'
+      path: '/api/public/hooks/stripe-connect-callback'
+      fullPath: '/api/public/hooks/stripe-connect-callback'
+      preLoaderRoute: typeof ApiPublicHooksStripeConnectCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/stripe': {
       id: '/api/public/hooks/stripe'
       path: '/api/public/hooks/stripe'
@@ -2034,6 +2075,7 @@ interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsDeepCleanRoute: typeof AuthenticatedSettingsDeepCleanRoute
   AuthenticatedSettingsEmailsRoute: typeof AuthenticatedSettingsEmailsRoute
   AuthenticatedSettingsLeadFormRoute: typeof AuthenticatedSettingsLeadFormRoute
+  AuthenticatedSettingsPaymentsRoute: typeof AuthenticatedSettingsPaymentsRoute
   AuthenticatedSettingsPreferencesRoute: typeof AuthenticatedSettingsPreferencesRoute
   AuthenticatedSettingsPromotionsRoute: typeof AuthenticatedSettingsPromotionsRoute
   AuthenticatedSettingsReviewsRoute: typeof AuthenticatedSettingsReviewsRoute
@@ -2054,6 +2096,7 @@ const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsDeepCleanRoute: AuthenticatedSettingsDeepCleanRoute,
   AuthenticatedSettingsEmailsRoute: AuthenticatedSettingsEmailsRoute,
   AuthenticatedSettingsLeadFormRoute: AuthenticatedSettingsLeadFormRoute,
+  AuthenticatedSettingsPaymentsRoute: AuthenticatedSettingsPaymentsRoute,
   AuthenticatedSettingsPreferencesRoute: AuthenticatedSettingsPreferencesRoute,
   AuthenticatedSettingsPromotionsRoute: AuthenticatedSettingsPromotionsRoute,
   AuthenticatedSettingsReviewsRoute: AuthenticatedSettingsReviewsRoute,
@@ -2228,6 +2271,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksPlatformStripeRoute: ApiPublicHooksPlatformStripeRoute,
   ApiPublicHooksQboCallbackRoute: ApiPublicHooksQboCallbackRoute,
   ApiPublicHooksStripeRoute: ApiPublicHooksStripeRoute,
+  ApiPublicHooksStripeConnectCallbackRoute:
+    ApiPublicHooksStripeConnectCallbackRoute,
   ApiPublicHooksTwilioRoute: ApiPublicHooksTwilioRoute,
   ApiPublicHooksTwilioVoiceRoute: ApiPublicHooksTwilioVoiceRoute,
   ApiPublicHooksWeeklyDigestRoute: ApiPublicHooksWeeklyDigestRoute,
