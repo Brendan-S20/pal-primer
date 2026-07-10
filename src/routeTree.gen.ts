@@ -32,6 +32,7 @@ import { Route as PlatformHealthRouteImport } from './routes/platform.health'
 import { Route as PlatformCouponsRouteImport } from './routes/platform.coupons'
 import { Route as PlatformAuditRouteImport } from './routes/platform.audit'
 import { Route as PlatformAnnouncementsRouteImport } from './routes/platform.announcements'
+import { Route as LeadSlugRouteImport } from './routes/lead.$slug'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as EmailSuppressionRouteImport } from './routes/email/suppression'
@@ -77,6 +78,7 @@ import { Route as AuthenticatedSettingsSkipRulesRouteImport } from './routes/_au
 import { Route as AuthenticatedSettingsReviewsRouteImport } from './routes/_authenticated/settings.reviews'
 import { Route as AuthenticatedSettingsPromotionsRouteImport } from './routes/_authenticated/settings.promotions'
 import { Route as AuthenticatedSettingsPreferencesRouteImport } from './routes/_authenticated/settings.preferences'
+import { Route as AuthenticatedSettingsLeadFormRouteImport } from './routes/_authenticated/settings.lead-form'
 import { Route as AuthenticatedSettingsEmailsRouteImport } from './routes/_authenticated/settings.emails'
 import { Route as AuthenticatedSettingsDeepCleanRouteImport } from './routes/_authenticated/settings.deep-clean'
 import { Route as AuthenticatedSettingsBlackoutsRouteImport } from './routes/_authenticated/settings.blackouts'
@@ -220,6 +222,11 @@ const PlatformAnnouncementsRoute = PlatformAnnouncementsRouteImport.update({
   id: '/announcements',
   path: '/announcements',
   getParentRoute: () => PlatformRoute,
+} as any)
+const LeadSlugRoute = LeadSlugRouteImport.update({
+  id: '/lead/$slug',
+  path: '/lead/$slug',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const InviteTokenRoute = InviteTokenRouteImport.update({
   id: '/invite/$token',
@@ -458,6 +465,12 @@ const AuthenticatedSettingsPreferencesRoute =
     path: '/preferences',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedSettingsLeadFormRoute =
+  AuthenticatedSettingsLeadFormRouteImport.update({
+    id: '/lead-form',
+    path: '/lead-form',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedSettingsEmailsRoute =
   AuthenticatedSettingsEmailsRouteImport.update({
     id: '/emails',
@@ -654,6 +667,7 @@ export interface FileRoutesByFullPath {
   '/email/suppression': typeof EmailSuppressionRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/lead/$slug': typeof LeadSlugRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
@@ -681,6 +695,7 @@ export interface FileRoutesByFullPath {
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
+  '/settings/lead-form': typeof AuthenticatedSettingsLeadFormRoute
   '/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute
   '/settings/promotions': typeof AuthenticatedSettingsPromotionsRoute
   '/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
@@ -747,6 +762,7 @@ export interface FileRoutesByTo {
   '/email/suppression': typeof EmailSuppressionRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/lead/$slug': typeof LeadSlugRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
@@ -773,6 +789,7 @@ export interface FileRoutesByTo {
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
+  '/settings/lead-form': typeof AuthenticatedSettingsLeadFormRoute
   '/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute
   '/settings/promotions': typeof AuthenticatedSettingsPromotionsRoute
   '/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
@@ -845,6 +862,7 @@ export interface FileRoutesById {
   '/email/suppression': typeof EmailSuppressionRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/lead/$slug': typeof LeadSlugRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
@@ -872,6 +890,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/_authenticated/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/_authenticated/settings/emails': typeof AuthenticatedSettingsEmailsRoute
+  '/_authenticated/settings/lead-form': typeof AuthenticatedSettingsLeadFormRoute
   '/_authenticated/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute
   '/_authenticated/settings/promotions': typeof AuthenticatedSettingsPromotionsRoute
   '/_authenticated/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
@@ -945,6 +964,7 @@ export interface FileRouteTypes {
     | '/email/suppression'
     | '/email/unsubscribe'
     | '/invite/$token'
+    | '/lead/$slug'
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
@@ -972,6 +992,7 @@ export interface FileRouteTypes {
     | '/settings/blackouts'
     | '/settings/deep-clean'
     | '/settings/emails'
+    | '/settings/lead-form'
     | '/settings/preferences'
     | '/settings/promotions'
     | '/settings/reviews'
@@ -1038,6 +1059,7 @@ export interface FileRouteTypes {
     | '/email/suppression'
     | '/email/unsubscribe'
     | '/invite/$token'
+    | '/lead/$slug'
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
@@ -1064,6 +1086,7 @@ export interface FileRouteTypes {
     | '/settings/blackouts'
     | '/settings/deep-clean'
     | '/settings/emails'
+    | '/settings/lead-form'
     | '/settings/preferences'
     | '/settings/promotions'
     | '/settings/reviews'
@@ -1135,6 +1158,7 @@ export interface FileRouteTypes {
     | '/email/suppression'
     | '/email/unsubscribe'
     | '/invite/$token'
+    | '/lead/$slug'
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
@@ -1162,6 +1186,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/blackouts'
     | '/_authenticated/settings/deep-clean'
     | '/_authenticated/settings/emails'
+    | '/_authenticated/settings/lead-form'
     | '/_authenticated/settings/preferences'
     | '/_authenticated/settings/promotions'
     | '/_authenticated/settings/reviews'
@@ -1215,6 +1240,7 @@ export interface RootRouteChildren {
   EmailSuppressionRoute: typeof EmailSuppressionRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   InviteTokenRoute: typeof InviteTokenRoute
+  LeadSlugRoute: typeof LeadSlugRoute
   PortalSlugRoute: typeof PortalSlugRouteWithChildren
   SignupSlugRoute: typeof SignupSlugRoute
   SignupSuccessRoute: typeof SignupSuccessRoute
@@ -1398,6 +1424,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/platform/announcements'
       preLoaderRoute: typeof PlatformAnnouncementsRouteImport
       parentRoute: typeof PlatformRoute
+    }
+    '/lead/$slug': {
+      id: '/lead/$slug'
+      path: '/lead/$slug'
+      fullPath: '/lead/$slug'
+      preLoaderRoute: typeof LeadSlugRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/invite/$token': {
       id: '/invite/$token'
@@ -1714,6 +1747,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsPreferencesRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/settings/lead-form': {
+      id: '/_authenticated/settings/lead-form'
+      path: '/lead-form'
+      fullPath: '/settings/lead-form'
+      preLoaderRoute: typeof AuthenticatedSettingsLeadFormRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/settings/emails': {
       id: '/_authenticated/settings/emails'
       path: '/emails'
@@ -1973,6 +2013,7 @@ interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsBlackoutsRoute: typeof AuthenticatedSettingsBlackoutsRoute
   AuthenticatedSettingsDeepCleanRoute: typeof AuthenticatedSettingsDeepCleanRoute
   AuthenticatedSettingsEmailsRoute: typeof AuthenticatedSettingsEmailsRoute
+  AuthenticatedSettingsLeadFormRoute: typeof AuthenticatedSettingsLeadFormRoute
   AuthenticatedSettingsPreferencesRoute: typeof AuthenticatedSettingsPreferencesRoute
   AuthenticatedSettingsPromotionsRoute: typeof AuthenticatedSettingsPromotionsRoute
   AuthenticatedSettingsReviewsRoute: typeof AuthenticatedSettingsReviewsRoute
@@ -1991,6 +2032,7 @@ const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsBlackoutsRoute: AuthenticatedSettingsBlackoutsRoute,
   AuthenticatedSettingsDeepCleanRoute: AuthenticatedSettingsDeepCleanRoute,
   AuthenticatedSettingsEmailsRoute: AuthenticatedSettingsEmailsRoute,
+  AuthenticatedSettingsLeadFormRoute: AuthenticatedSettingsLeadFormRoute,
   AuthenticatedSettingsPreferencesRoute: AuthenticatedSettingsPreferencesRoute,
   AuthenticatedSettingsPromotionsRoute: AuthenticatedSettingsPromotionsRoute,
   AuthenticatedSettingsReviewsRoute: AuthenticatedSettingsReviewsRoute,
@@ -2149,6 +2191,7 @@ const rootRouteChildren: RootRouteChildren = {
   EmailSuppressionRoute: EmailSuppressionRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   InviteTokenRoute: InviteTokenRoute,
+  LeadSlugRoute: LeadSlugRoute,
   PortalSlugRoute: PortalSlugRouteWithChildren,
   SignupSlugRoute: SignupSlugRoute,
   SignupSuccessRoute: SignupSuccessRoute,

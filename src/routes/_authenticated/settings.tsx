@@ -10,6 +10,7 @@ type Tab = { label: string; to: string; techVisible?: boolean };
 const TABS: Tab[] = [
   { label: "Preferences", to: "/settings/preferences", techVisible: true },
   { label: "Skip rules", to: "/settings/skip-rules" },
+  { label: "Lead form", to: "/settings/lead-form" },
   { label: "Blackouts", to: "/settings/blackouts" },
   { label: "Add-ons", to: "/settings/addons" },
   { label: "SMS", to: "/settings/sms" },

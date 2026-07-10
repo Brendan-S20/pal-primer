@@ -446,6 +446,8 @@ Implementation note (added after a geocoding-provider change subsequent to this 
 
 ### #25 — No way to embed or customize the public lead-capture form
 
+**Status:** ✅ Shipped (July 10, 2026). Leads had no `organization_id` (single-tenant assumption), so a per-tenant form was impossible; added it (migration applied live) with a backfill and RLS re-scoped so managers only see their own org's leads. New public embeddable form: a hosted `/lead/{slug}` page (branded quote-request form, no auth) that posts to the now-slug-scoped `/api/public/leads` endpoint, which routes the lead to the right business and tags it `source=website`. A new Settings → Lead form page gives the Owner the hosted link, a copy-paste `<iframe>` embed snippet, a preview, and basic analytics (all-time + last-30-day website submissions), plus a warning when public intake is off. `listLeads`/lead visibility is now org-scoped. This is a functional v1 of the finding's embed + hosted link + analytics asks; deeper per-form field/branding customization beyond the org's existing branding is a further enhancement. tsc + tests green.
+
 **Severity:** Medium  
 **Role(s) affected:** Owner  
 **Area:** Leads / Settings  

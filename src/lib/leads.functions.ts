@@ -9,6 +9,7 @@ const STATUSES = ["new", "contacted", "qualified", "converted", "archived"] as c
 
 
 const leadSchema = z.object({
+  slug: z.string().trim().min(1).max(120), // which business (finding #25)
   name: z.string().trim().min(1).max(120),
   email: z.string().trim().email().max(255),
   phone: z.string().trim().max(40).optional().or(z.literal("")),
@@ -30,7 +31,11 @@ export const submitLead = createServerFn({ method: "POST" })
   .inputValidator((d) => leadSchema.parse(d))
   .handler(async ({ data }) => {
     const supabase = anonClient();
+    const { data: orgRows } = await supabase.rpc("public_get_org_by_slug", { _slug: data.slug });
+    const orgId = (orgRows as Array<{ id: string }> | null)?.[0]?.id ?? null;
+    if (!orgId) throw new Error("Unknown business");
     const payload = {
+      organization_id: orgId,
       name: data.name,
       email: data.email.toLowerCase(),
       phone: data.phone || null,
@@ -41,9 +46,35 @@ export const submitLead = createServerFn({ method: "POST" })
       message: data.message || null,
       source: data.source || "website",
     };
-    const { error } = await supabase.from("leads").insert(payload);
+    const { error } = await (supabase.from("leads") as any).insert(payload);
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+// Finding #25: config + basic analytics for the tenant's embeddable lead form.
+export const getLeadFormConfig = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_leads");
+    const [{ data: org }, totalRes, weekRes] = await Promise.all([
+      (context.supabase.from("organizations") as any)
+        .select("name, portal_slug, public_signup_enabled")
+        .eq("id", orgId)
+        .maybeSingle(),
+      context.supabase.from("leads").select("id", { count: "exact", head: true }).eq("source", "website"),
+      context.supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .eq("source", "website")
+        .gte("created_at", new Date(Date.now() - 30 * 86400000).toISOString()),
+    ]);
+    return {
+      orgName: org?.name ?? null,
+      slug: org?.portal_slug ?? null,
+      publicSignupEnabled: !!org?.public_signup_enabled,
+      submissionsTotal: totalRes.count ?? 0,
+      submissionsLast30: weekRes.count ?? 0,
+    };
   });
 
 export const listLeads = createServerFn({ method: "GET" })
