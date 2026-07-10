@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "vitest run tests/permissions.test.ts tests/authz.server.test.ts",
+    "test": "vitest run tests/permissions.test.ts tests/authz.server.test.ts tests/ai.server.test.ts",
     "test:db": "tests/run-db-tests.sh"
   },
   "dependencies": {

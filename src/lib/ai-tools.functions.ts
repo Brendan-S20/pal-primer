@@ -2,16 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
-import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
-import { generateText, Output } from "ai";
-
-const MODEL = "google/gemini-3-flash-preview";
-
-function gateway() {
-  const key = process.env.LOVABLE_API_KEY;
-  if (!key) throw new Error("LOVABLE_API_KEY missing");
-  return createLovableAiGatewayProvider(key);
-}
+import { generateStructured, generateAiText } from "@/lib/ai.server";
 
 async function callerOrg(context: { supabase: any; userId: string }) {
   const { data: staff, error } = await context.supabase
@@ -47,17 +38,24 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
       .eq("id", staff.organization_id)
       .single();
 
-    const provider = gateway();
-    const { output } = await generateText({
-      model: provider(MODEL),
-      output: Output.object({
-        schema: z.object({
-          title: z.string(),
-          body: z.string(),
-          hashtags: z.array(z.string()).max(8),
-          cta: z.string(),
-        }),
+    const output = await generateStructured({
+      label: "Marketing content",
+      schema: z.object({
+        title: z.string(),
+        body: z.string(),
+        hashtags: z.array(z.string()).max(8),
+        cta: z.string(),
       }),
+      jsonSchema: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          body: { type: "string" },
+          hashtags: { type: "array", items: { type: "string" }, maxItems: 8 },
+          cta: { type: "string", description: "Short call to action (empty string if none requested)." },
+        },
+        required: ["title", "body", "hashtags", "cta"],
+      },
       prompt:
         `Write a ${data.kind.replace(/_/g, " ")} for a pet-waste removal company called "${org?.name ?? "our company"}".\n` +
         `Tone: ${data.tone}. Topic/angle: ${data.topic}.\n` +
@@ -89,15 +87,20 @@ export const draftReviewReply = createServerFn({ method: "POST" })
       .eq("id", staff.organization_id)
       .single();
 
-    const provider = gateway();
-    const { output } = await generateText({
-      model: provider(MODEL),
-      output: Output.object({
-        schema: z.object({
-          reply: z.string(),
-          notes: z.string(),
-        }),
+    const output = await generateStructured({
+      label: "Review reply",
+      schema: z.object({
+        reply: z.string(),
+        notes: z.string(),
       }),
+      jsonSchema: {
+        type: "object",
+        properties: {
+          reply: { type: "string", description: "The public reply text." },
+          notes: { type: "string", description: 'Internal operational follow-up, or "none".' },
+        },
+        required: ["reply", "notes"],
+      },
       prompt:
         `You are the owner of "${org?.name ?? "our pet waste business"}" replying publicly to a Google review.\n` +
         `Reviewer: ${data.reviewerName ?? "the customer"}. Rating: ${data.rating}/5.\n` +
@@ -123,11 +126,12 @@ interface ChurnSignals {
 }
 
 async function gatherChurnSignals(supabase: any, organizationId: string, clientId?: string): Promise<ChurnSignals[]> {
+  // NB: clients has no `status` column — active clients are `active = true`.
   let q = supabase
     .from("clients")
-    .select("id, display_name, created_at, sms_opt_out, status")
+    .select("id, display_name, created_at, sms_opt_out, active")
     .eq("organization_id", organizationId)
-    .eq("status", "active");
+    .eq("active", true);
   if (clientId) q = q.eq("id", clientId);
   const { data: clients, error } = await q.limit(500);
   if (error) throw new Error(error.message);
@@ -183,20 +187,36 @@ export const scoreChurn = createServerFn({ method: "POST" })
     const signals = await gatherChurnSignals(context.supabase, staff.organization_id, data.clientId);
     if (!signals.length) return { scored: 0 };
 
-    const provider = gateway();
-    const { output } = await generateText({
-      model: provider(MODEL),
-      output: Output.object({
-        schema: z.object({
-          scores: z.array(
-            z.object({
-              client_id: z.string(),
-              score: z.number().int().min(0).max(100),
-              reason: z.string(),
-            }),
-          ),
-        }),
+    const output = await generateStructured({
+      label: "Churn scoring",
+      maxTokens: 16384,
+      schema: z.object({
+        scores: z.array(
+          z.object({
+            client_id: z.string(),
+            score: z.number().int().min(0).max(100),
+            reason: z.string(),
+          }),
+        ),
       }),
+      jsonSchema: {
+        type: "object",
+        properties: {
+          scores: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                client_id: { type: "string" },
+                score: { type: "integer", minimum: 0, maximum: 100 },
+                reason: { type: "string", description: "One short sentence." },
+              },
+              required: ["client_id", "score", "reason"],
+            },
+          },
+        },
+        required: ["scores"],
+      },
       prompt:
         `Score churn risk (0-100, higher = more likely to cancel soon) for these pet-waste-removal customers based on activity signals. ` +
         `Weigh unpaid invoices, high skip rate, long gap since last completed visit, and short tenure with skips. Return one short reason per client.\n\n` +
@@ -307,9 +327,8 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
       at_risk: churn ?? [],
     };
 
-    const provider = gateway();
-    const { text } = await generateText({
-      model: provider(MODEL),
+    const text = await generateAiText({
+      label: "Weekly digest",
       prompt:
         `Write a concise weekly owner digest for a pet waste removal business. ` +
         `Use short section headings ("This week", "Money", "Growth", "Watch list") and plain prose bullet points. ` +
@@ -371,22 +390,44 @@ export const suggestDispatch = createServerFn({ method: "POST" })
       start_lat: s.start_latitude, start_lng: s.start_longitude,
     }));
 
-    const provider = gateway();
-    const { output } = await generateText({
-      model: provider(MODEL),
-      output: Output.object({
-        schema: z.object({
-          notes: z.string(),
-          suggestions: z.array(
-            z.object({
-              visit_id: z.string(),
-              suggested_staff_id: z.string().nullable(),
-              reason: z.string(),
-              priority: z.enum(["high", "medium", "low"]),
-            }),
-          ),
-        }),
+    const output = await generateStructured({
+      label: "AI dispatch",
+      maxTokens: 8192,
+      schema: z.object({
+        notes: z.string(),
+        suggestions: z.array(
+          z.object({
+            visit_id: z.string(),
+            suggested_staff_id: z.string().nullable(),
+            reason: z.string(),
+            priority: z.enum(["high", "medium", "low"]),
+          }),
+        ),
       }),
+      jsonSchema: {
+        type: "object",
+        properties: {
+          notes: {
+            type: "string",
+            description: "Brief overall dispatcher notes. If no changes are worth making, say why here.",
+          },
+          suggestions: {
+            type: "array",
+            description: "One entry per visit whose assignment should change. Empty if the current plan is already optimal.",
+            items: {
+              type: "object",
+              properties: {
+                visit_id: { type: "string" },
+                suggested_staff_id: { type: ["string", "null"] },
+                reason: { type: "string", description: "One sentence." },
+                priority: { type: "string", enum: ["high", "medium", "low"] },
+              },
+              required: ["visit_id", "suggested_staff_id", "reason", "priority"],
+            },
+          },
+        },
+        required: ["notes", "suggestions"],
+      },
       prompt:
         `You are a dispatch assistant for a pet-waste-removal business. Suggest visit-to-tech assignments for ${data.day} that:\n` +
         `1) Prioritize high-value clients (higher price_cents) and at-risk clients (churn_score >= 60) for the most experienced techs (role manager/owner over tech).\n` +
@@ -488,23 +529,46 @@ export const suggestZonePricing = createServerFn({ method: "POST" })
       };
     });
 
-    const provider = gateway();
-    const { output } = await generateText({
-      model: provider(MODEL),
-      output: Output.object({
-        schema: z.object({
-          notes: z.string(),
-          suggestions: z.array(
-            z.object({
-              zone_id: z.string(),
-              suggested_price_cents: z.number().int().min(0),
-              delta_pct: z.number().int().min(-50).max(200),
-              confidence: z.enum(["low", "medium", "high"]),
-              reason: z.string(),
-            }),
-          ),
-        }),
+    const output = await generateStructured({
+      label: "Zone pricing",
+      maxTokens: 8192,
+      schema: z.object({
+        notes: z.string(),
+        suggestions: z.array(
+          z.object({
+            zone_id: z.string(),
+            suggested_price_cents: z.number().int().min(0),
+            delta_pct: z.number().int().min(-50).max(200),
+            confidence: z.enum(["low", "medium", "high"]),
+            reason: z.string(),
+          }),
+        ),
       }),
+      jsonSchema: {
+        type: "object",
+        properties: {
+          notes: {
+            type: "string",
+            description: "Brief overall pricing notes. If no changes are recommended, say why here.",
+          },
+          suggestions: {
+            type: "array",
+            description: "One entry per zone with a recommended price.",
+            items: {
+              type: "object",
+              properties: {
+                zone_id: { type: "string" },
+                suggested_price_cents: { type: "integer", minimum: 0 },
+                delta_pct: { type: "integer", minimum: -50, maximum: 200 },
+                confidence: { type: "string", enum: ["low", "medium", "high"] },
+                reason: { type: "string", description: "One sentence." },
+              },
+              required: ["zone_id", "suggested_price_cents", "delta_pct", "confidence", "reason"],
+            },
+          },
+        },
+        required: ["notes", "suggestions"],
+      },
       prompt:
         `You are a pricing analyst for a pet-waste-removal business. Recommend a per-visit price (in cents) for each zone based on the 90-day stats. ` +
         `Raise prices where demand is strong (high completed count, low skip rate) or costs are higher (commercial). Lower or hold where skip rate is high or volume is thin. ` +
