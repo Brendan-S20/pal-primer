@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 
-// Tenant Stripe Connect (OAuth) management. Connecting a Stripe account to
+// Tenant Stripe Connect (Express) management. Connecting a Stripe account to
 // charge the org's own clients is an admin/settings action → manage_settings.
 
 export const getStripeConnectStatus = createServerFn({ method: "GET" })
@@ -25,34 +25,29 @@ export const getStripeConnectStatus = createServerFn({ method: "GET" })
     };
   });
 
-/** Begin the Connect OAuth flow; returns an authorize URL to redirect to. */
+/**
+ * Begin (or resume) Express onboarding. Creates the connected account on first
+ * use, then returns a Stripe-hosted Account Link URL to redirect to. Safe to
+ * call again to refresh an expired link — the account is reused.
+ */
 export const startStripeConnect = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ origin: z.string().url() }).parse(d))
   .handler(async ({ data, context }) => {
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
-    const { connectClientId } = await import("@/lib/stripe-connect.server");
-    const clientId = connectClientId();
+    const { data: userData } = await context.supabase.auth.getUser();
+    const email = userData.user?.email ?? undefined;
 
-    const crypto = await import("node:crypto");
-    const state = crypto.randomBytes(24).toString("hex");
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await supabaseAdmin.from("oauth_states").insert({
-      state,
-      org_id: orgId,
-      provider: "stripe_connect",
-      redirect_to: `${data.origin}/settings/payments`,
+    const { ensureExpressAccount, connectStripe } = await import("@/lib/stripe-connect.server");
+    const accountId = await ensureExpressAccount(orgId, email);
+    const stripe = await connectStripe();
+    const link = await stripe.accountLinks.create({
+      account: accountId,
+      refresh_url: `${data.origin}/settings/payments?stripe_refresh=1`,
+      return_url: `${data.origin}/settings/payments?connected=1`,
+      type: "account_onboarding",
     });
-    if (error) throw new Error(error.message);
-
-    const redirectUri = `${data.origin}/api/public/hooks/stripe-connect-callback`;
-    const url = new URL("https://connect.stripe.com/oauth/authorize");
-    url.searchParams.set("response_type", "code");
-    url.searchParams.set("client_id", clientId);
-    url.searchParams.set("scope", "read_write");
-    url.searchParams.set("redirect_uri", redirectUri);
-    url.searchParams.set("state", state);
-    return { url: url.toString() };
+    return { url: link.url };
   });
 
 /** Re-check the connected account's charge-readiness with Stripe. */
@@ -72,19 +67,21 @@ export const refreshStripeConnect = createServerFn({ method: "POST" })
     return { connected: true, chargesEnabled: state.chargesEnabled, status: state.status };
   });
 
-/** Deauthorize the connected account and clear the org's Connect fields. */
+/** Delete the Express account (platform-owned) and clear the org's fields. */
 export const disconnectStripeConnect = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
-    const { resolveOrgStripeAccount, connectStripe, connectClientId } = await import("@/lib/stripe-connect.server");
+    const { resolveOrgStripeAccount, connectStripe, clearOrgClientStripeRefs } = await import("@/lib/stripe-connect.server");
     const acct = await resolveOrgStripeAccount(orgId);
     if (acct) {
       try {
         const stripe = await connectStripe();
-        await stripe.oauth.deauthorize({ client_id: connectClientId(), stripe_user_id: acct.accountId });
+        await stripe.accounts.del(acct.accountId);
       } catch (e) {
-        console.error("stripe connect deauthorize failed", (e as Error).message);
+        // Express accounts with a balance / activity can't be deleted; we still
+        // drop our reference so the org can reconnect a fresh account.
+        console.error("stripe express account delete failed", (e as Error).message);
       }
     }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -94,8 +91,6 @@ export const disconnectStripeConnect = createServerFn({ method: "POST" })
       stripe_connect_charges_enabled: false,
       stripe_connect_connected_at: null,
     }).eq("id", orgId);
-    // Saved client cards belonged to the now-disconnected account — clear them.
-    const { clearOrgClientStripeRefs } = await import("@/lib/stripe-connect.server");
     await clearOrgClientStripeRefs(orgId);
     return { ok: true };
   });

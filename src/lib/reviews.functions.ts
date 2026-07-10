@@ -19,12 +19,10 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
 
     const { data: client, error: cErr } = await supabase
       .from("clients")
-      .select("id, organization_id, primary_phone, sms_opt_out, display_name, review_asked_at")
+      .select("id, organization_id, primary_phone, sms_opt_out, primary_email, email_opt_out, display_name, review_asked_at")
       .eq("id", data.clientId)
       .single();
     if (cErr) throw new Error(cErr.message);
-    if (!client.primary_phone) throw new Error("Client has no phone number on file");
-    if (client.sms_opt_out) throw new Error("Client has opted out of SMS");
 
     if (!data.force && client.review_asked_at) {
       const ninetyDaysAgo = Date.now() - 90 * 24 * 3600_000;
@@ -35,66 +33,88 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
 
     const { data: org, error: oErr } = await supabase
       .from("organizations")
-      .select("name, sms_from_number, google_review_url, review_ask_template")
+      .select("name, google_review_url, review_ask_template")
       .eq("id", client.organization_id)
       .single();
     if (oErr) throw new Error(oErr.message);
-    // Review asks are automated notifications → PLATFORM Twilio sender.
-    const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
-    const reviewFrom = platformTwilioFrom() ?? org.sms_from_number ?? null;
-    if (!reviewFrom)
-      throw new Error("No SMS sender is configured for notifications (Settings → SMS)");
     if (!org.google_review_url)
       throw new Error("Add a Google review URL in Settings → Reviews first");
 
+    // Review asks go out on the tenant's OWN connected Twilio number; when they
+    // haven't connected one, fall back to email — never the platform SMS number.
+    const { resolveOrgTwilioConfig } = await import("@/lib/twilio-credentials.server");
+    const tenant = await resolveOrgTwilioConfig(client.organization_id);
     const firstName = (client.display_name ?? "").split(/\s+/)[0] || "there";
-    const template =
-      org.review_ask_template?.trim() ||
-      `Hi {name}, thanks for choosing ${org.name ?? "us"}! If we did a great job, a quick review would mean the world: {link} — Reply STOP to opt out.`;
-    const body = template.replace(/\{name\}/g, firstName).replace(/\{link\}/g, org.google_review_url);
 
-    const { data: staff } = await supabase
-      .from("staff")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("organization_id", client.organization_id)
-      .maybeSingle();
+    if (tenant && client.primary_phone && !client.sms_opt_out) {
+      const template =
+        org.review_ask_template?.trim() ||
+        `Hi {name}, thanks for choosing ${org.name ?? "us"}! If we did a great job, a quick review would mean the world: {link} — Reply STOP to opt out.`;
+      const body = template.replace(/\{name\}/g, firstName).replace(/\{link\}/g, org.google_review_url);
+      const fromNumber = tenant.from ?? null;
 
-    const { sendTwilioSms } = await import("@/lib/twilio.server");
-    let sid: string | null = null;
-    let status = "queued";
-    let errorText: string | null = null;
-    try {
-      const res = await sendTwilioSms({
-        from: reviewFrom,
-        to: client.primary_phone,
+      const { data: staff } = await supabase
+        .from("staff").select("id").eq("user_id", userId).eq("organization_id", client.organization_id).maybeSingle();
+
+      const { sendTwilioSms } = await import("@/lib/twilio.server");
+      let sid: string | null = null;
+      let status = "queued";
+      let errorText: string | null = null;
+      try {
+        const res = await sendTwilioSms({
+          to: client.primary_phone,
+          body,
+          from: fromNumber ?? undefined,
+          messagingServiceSid: tenant.messagingServiceSid ?? undefined,
+          credentials: { mode: "direct", accountSid: tenant.accountSid, authToken: tenant.authToken },
+        });
+        sid = res.sid;
+        status = res.status || "sent";
+      } catch (e: any) {
+        errorText = e?.message ?? String(e);
+        status = "failed";
+      }
+      await supabase.from("messages").insert({
+        organization_id: client.organization_id,
+        client_id: client.id,
+        visit_id: data.visitId ?? null,
+        staff_id: staff?.id ?? null,
+        direction: "outbound",
         body,
+        from_number: fromNumber,
+        to_number: client.primary_phone,
+        twilio_sid: sid,
+        status: status as any,
+        error: errorText,
       });
-      sid = res.sid;
-      status = res.status || "sent";
-    } catch (e: any) {
-      errorText = e?.message ?? String(e);
-      status = "failed";
+      if (errorText) throw new Error(errorText);
+      await supabase.rpc("mark_review_asked", { _client_id: data.clientId });
+      return { ok: true, channel: "sms" as const, body };
     }
 
-    await supabase.from("messages").insert({
-      organization_id: client.organization_id,
-      client_id: client.id,
-      visit_id: data.visitId ?? null,
-      staff_id: staff?.id ?? null,
-      direction: "outbound",
-      body,
-      from_number: reviewFrom,
-      to_number: client.primary_phone,
-      twilio_sid: sid,
-      status: status as any,
-      error: errorText,
+    // Email fallback (no tenant Twilio connected, or SMS not available).
+    const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+    const res = await enqueueAppEmail({
+      organizationId: client.organization_id,
+      clientId: client.id,
+      templateName: "review-request",
+      notifyKey: "notify_email_review_request",
+      idempotencyKey: `review-${client.id}-${new Date().toISOString().slice(0, 10)}`,
+      templateData: { reviewUrl: org.google_review_url },
     });
-
-    if (errorText) throw new Error(errorText);
-
+    if (!res.ok) {
+      const msg =
+        res.reason === "no_recipient"
+          ? "This client has no email on file and your Twilio isn't connected — add an email, or connect your Twilio in Settings → SMS."
+          : res.reason === "client_opted_out"
+            ? "This client has opted out of email."
+            : res.reason === "org_toggle_off"
+              ? "Review-request emails are turned off in Settings."
+              : "Couldn't send the review request.";
+      throw new Error(msg);
+    }
     await supabase.rpc("mark_review_asked", { _client_id: data.clientId });
-    return { ok: true, body };
+    return { ok: true, channel: "email" as const };
   });
 
 /** Redeem a referral code for an existing client — grants credit to both parties. */

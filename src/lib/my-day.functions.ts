@@ -94,40 +94,59 @@ export const completeVisit = createServerFn({ method: "POST" })
         .single();
       const c: any = v && (Array.isArray((v as any).clients) ? (v as any).clients[0] : (v as any).clients);
       const o: any = v && (Array.isArray((v as any).organizations) ? (v as any).organizations[0] : (v as any).organizations);
-      // Auto review-ask is an automated notification → PLATFORM Twilio sender.
-      const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
-      const reviewFrom = platformTwilioFrom() ?? o?.sms_from_number ?? null;
       const ninetyDaysAgo = Date.now() - 90 * 24 * 3600_000;
       const eligible =
         o?.review_ask_enabled &&
         o?.google_review_url &&
-        reviewFrom &&
-        c?.primary_phone &&
-        !c?.sms_opt_out &&
+        c?.id &&
         (!c?.review_asked_at || new Date(c.review_asked_at).getTime() < ninetyDaysAgo);
       if (eligible) {
-        const firstName = (c.display_name ?? "").split(/\s+/)[0] || "there";
-        const template =
-          (o.review_ask_template && String(o.review_ask_template).trim()) ||
-          `Hi {name}, thanks for choosing ${o.name ?? "us"}! If we did a great job, a quick review would mean the world: {link} — Reply STOP to opt out.`;
-        const body = template.replace(/\{name\}/g, firstName).replace(/\{link\}/g, o.google_review_url);
-        const { sendTwilioSms } = await import("@/lib/twilio.server");
-        try {
-          const res = await sendTwilioSms({ from: reviewFrom, to: c.primary_phone, body });
-          await context.supabase.from("messages").insert({
-            organization_id: (v as any).organization_id,
-            client_id: c.id,
-            visit_id: data.visitId,
-            direction: "outbound",
-            body,
-            from_number: reviewFrom,
-            to_number: c.primary_phone,
-            twilio_sid: res.sid,
-            status: (res.status || "sent") as any,
+        const orgId = (v as any).organization_id;
+        // Review asks ride the tenant's OWN Twilio number; when not connected,
+        // fall back to email (never the platform SMS number).
+        const { resolveOrgTwilioConfig } = await import("@/lib/twilio-credentials.server");
+        const tenant = await resolveOrgTwilioConfig(orgId);
+        if (tenant && c.primary_phone && !c.sms_opt_out) {
+          const firstName = (c.display_name ?? "").split(/\s+/)[0] || "there";
+          const template =
+            (o.review_ask_template && String(o.review_ask_template).trim()) ||
+            `Hi {name}, thanks for choosing ${o.name ?? "us"}! If we did a great job, a quick review would mean the world: {link} — Reply STOP to opt out.`;
+          const body = template.replace(/\{name\}/g, firstName).replace(/\{link\}/g, o.google_review_url);
+          const { sendTwilioSms } = await import("@/lib/twilio.server");
+          try {
+            const res = await sendTwilioSms({
+              to: c.primary_phone,
+              body,
+              from: tenant.from ?? undefined,
+              messagingServiceSid: tenant.messagingServiceSid ?? undefined,
+              credentials: { mode: "direct", accountSid: tenant.accountSid, authToken: tenant.authToken },
+            });
+            await context.supabase.from("messages").insert({
+              organization_id: orgId,
+              client_id: c.id,
+              visit_id: data.visitId,
+              direction: "outbound",
+              body,
+              from_number: tenant.from ?? null,
+              to_number: c.primary_phone,
+              twilio_sid: res.sid,
+              status: (res.status || "sent") as any,
+            });
+            await context.supabase.rpc("mark_review_asked", { _client_id: c.id });
+          } catch (err) {
+            console.error("auto review SMS failed", err);
+          }
+        } else {
+          const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+          const r = await enqueueAppEmail({
+            organizationId: orgId,
+            clientId: c.id,
+            templateName: "review-request",
+            notifyKey: "notify_email_review_request",
+            idempotencyKey: `review-${c.id}-${new Date().toISOString().slice(0, 10)}`,
+            templateData: { reviewUrl: o.google_review_url },
           });
-          await context.supabase.rpc("mark_review_asked", { _client_id: c.id });
-        } catch (err) {
-          console.error("auto review SMS failed", err);
+          if (r.ok) await context.supabase.rpc("mark_review_asked", { _client_id: c.id });
         }
       }
     } catch (e) {

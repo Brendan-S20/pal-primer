@@ -1,6 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { useEffect } from "react";
 import {
   getStripeConnectStatus,
   startStripeConnect,
@@ -11,11 +12,17 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/settings/payments")({
+  validateSearch: (s: Record<string, unknown>) => ({
+    connected: s.connected ? "1" : undefined,
+    stripe_refresh: s.stripe_refresh ? "1" : undefined,
+  }),
   component: PaymentsSettings,
 });
 
 function PaymentsSettings() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const search = Route.useSearch();
   const statusFn = useServerFn(getStripeConnectStatus);
   const startFn = useServerFn(startStripeConnect);
   const refreshFn = useServerFn(refreshStripeConnect);
@@ -29,6 +36,18 @@ function PaymentsSettings() {
     onSuccess: (r: any) => { if (r?.url) window.location.href = r.url; },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  // Returning from Stripe-hosted Express onboarding: ?connected=1 → pull the
+  // latest charge-readiness; ?stripe_refresh=1 (expired link) → mint a new one.
+  useEffect(() => {
+    if (search.stripe_refresh) {
+      start.mutate();
+    } else if (search.connected) {
+      refreshFn().then(() => qc.invalidateQueries({ queryKey: ["stripe-connect"] })).catch(() => {});
+      navigate({ to: "/settings/payments", search: {}, replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search.connected, search.stripe_refresh]);
   const refresh = useMutation({
     mutationFn: () => refreshFn(),
     onSuccess: () => { toast.success("Status refreshed"); qc.invalidateQueries({ queryKey: ["stripe-connect"] }); },
@@ -78,10 +97,14 @@ function PaymentsSettings() {
             </div>
           </div>
           {!cfg.chargesEnabled && (
-            <p className="text-xs text-muted-foreground">
-              Finish onboarding in your Stripe dashboard, then click <em>Refresh status</em>. Charges
-              won't succeed until Stripe enables them.
-            </p>
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Stripe still needs a few details before you can accept charges.
+              </p>
+              <Button size="sm" onClick={() => start.mutate()} disabled={start.isPending}>
+                {start.isPending ? "Redirecting…" : "Finish Stripe onboarding"}
+              </Button>
+            </div>
           )}
         </div>
       ) : (

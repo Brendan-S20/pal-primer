@@ -359,6 +359,17 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               }
             }
 
+          } else if (event.type === "account.updated") {
+            // Express onboarding progress: keep the org's charge-readiness fresh
+            // so Settings → Payments flips to "Charges enabled" without a manual
+            // refresh once Stripe finishes verifying the connected account.
+            const acct = event.data.object as import("stripe").Stripe.Account;
+            const { accountStateFrom } = await import("@/lib/stripe-connect.server");
+            const s = accountStateFrom(acct);
+            await (supabaseAdmin as any).from("organizations").update({
+              stripe_connect_charges_enabled: s.chargesEnabled,
+              stripe_connect_status: s.status,
+            }).eq("stripe_connect_account_id", acct.id);
           }
           // NOTE: customer.subscription.* is intentionally NOT handled here —
           // the org's own SaaS subscription (bucket A) is billed on the platform

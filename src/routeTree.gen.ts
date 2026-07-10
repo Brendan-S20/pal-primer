@@ -103,7 +103,6 @@ import { Route as ApiPublicHooksXeroCallbackRouteImport } from './routes/api/pub
 import { Route as ApiPublicHooksWeeklyDigestRouteImport } from './routes/api/public/hooks/weekly-digest'
 import { Route as ApiPublicHooksTwilioVoiceRouteImport } from './routes/api/public/hooks/twilio-voice'
 import { Route as ApiPublicHooksTwilioRouteImport } from './routes/api/public/hooks/twilio'
-import { Route as ApiPublicHooksStripeConnectCallbackRouteImport } from './routes/api/public/hooks/stripe-connect-callback'
 import { Route as ApiPublicHooksStripeRouteImport } from './routes/api/public/hooks/stripe'
 import { Route as ApiPublicHooksQboCallbackRouteImport } from './routes/api/public/hooks/qbo-callback'
 import { Route as ApiPublicHooksPlatformStripeRouteImport } from './routes/api/public/hooks/platform-stripe'
@@ -609,12 +608,6 @@ const ApiPublicHooksTwilioRoute = ApiPublicHooksTwilioRouteImport.update({
   path: '/api/public/hooks/twilio',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicHooksStripeConnectCallbackRoute =
-  ApiPublicHooksStripeConnectCallbackRouteImport.update({
-    id: '/api/public/hooks/stripe-connect-callback',
-    path: '/api/public/hooks/stripe-connect-callback',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ApiPublicHooksStripeRoute = ApiPublicHooksStripeRouteImport.update({
   id: '/api/public/hooks/stripe',
   path: '/api/public/hooks/stripe',
@@ -746,7 +739,6 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
-  '/api/public/hooks/stripe-connect-callback': typeof ApiPublicHooksStripeConnectCallbackRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
@@ -842,7 +834,6 @@ export interface FileRoutesByTo {
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
-  '/api/public/hooks/stripe-connect-callback': typeof ApiPublicHooksStripeConnectCallbackRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
@@ -947,7 +938,6 @@ export interface FileRoutesById {
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
-  '/api/public/hooks/stripe-connect-callback': typeof ApiPublicHooksStripeConnectCallbackRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
@@ -1052,7 +1042,6 @@ export interface FileRouteTypes {
     | '/api/public/hooks/platform-stripe'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
-    | '/api/public/hooks/stripe-connect-callback'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/weekly-digest'
@@ -1148,7 +1137,6 @@ export interface FileRouteTypes {
     | '/api/public/hooks/platform-stripe'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
-    | '/api/public/hooks/stripe-connect-callback'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/weekly-digest'
@@ -1252,7 +1240,6 @@ export interface FileRouteTypes {
     | '/api/public/hooks/platform-stripe'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
-    | '/api/public/hooks/stripe-connect-callback'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/weekly-digest'
@@ -1294,7 +1281,6 @@ export interface RootRouteChildren {
   ApiPublicHooksPlatformStripeRoute: typeof ApiPublicHooksPlatformStripeRoute
   ApiPublicHooksQboCallbackRoute: typeof ApiPublicHooksQboCallbackRoute
   ApiPublicHooksStripeRoute: typeof ApiPublicHooksStripeRoute
-  ApiPublicHooksStripeConnectCallbackRoute: typeof ApiPublicHooksStripeConnectCallbackRoute
   ApiPublicHooksTwilioRoute: typeof ApiPublicHooksTwilioRoute
   ApiPublicHooksTwilioVoiceRoute: typeof ApiPublicHooksTwilioVoiceRoute
   ApiPublicHooksWeeklyDigestRoute: typeof ApiPublicHooksWeeklyDigestRoute
@@ -1961,13 +1947,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksTwilioRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/hooks/stripe-connect-callback': {
-      id: '/api/public/hooks/stripe-connect-callback'
-      path: '/api/public/hooks/stripe-connect-callback'
-      fullPath: '/api/public/hooks/stripe-connect-callback'
-      preLoaderRoute: typeof ApiPublicHooksStripeConnectCallbackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/public/hooks/stripe': {
       id: '/api/public/hooks/stripe'
       path: '/api/public/hooks/stripe'
@@ -2271,8 +2250,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksPlatformStripeRoute: ApiPublicHooksPlatformStripeRoute,
   ApiPublicHooksQboCallbackRoute: ApiPublicHooksQboCallbackRoute,
   ApiPublicHooksStripeRoute: ApiPublicHooksStripeRoute,
-  ApiPublicHooksStripeConnectCallbackRoute:
-    ApiPublicHooksStripeConnectCallbackRoute,
   ApiPublicHooksTwilioRoute: ApiPublicHooksTwilioRoute,
   ApiPublicHooksTwilioVoiceRoute: ApiPublicHooksTwilioVoiceRoute,
   ApiPublicHooksWeeklyDigestRoute: ApiPublicHooksWeeklyDigestRoute,
