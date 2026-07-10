@@ -709,6 +709,23 @@ export const portalReportConcern = createServerFn({ method: "POST" })
     } catch (e) {
       console.error("concern office notification failed", (e as Error).message);
     }
+    // In-app notification to owners/managers (concern could be a safety issue).
+    try {
+      const { data: cl } = await sb
+        .from("clients").select("display_name, organization_id").eq("portal_token", data.token).maybeSingle();
+      if (cl?.organization_id) {
+        const { notifyRoles } = await import("@/lib/notify-center.server");
+        await notifyRoles(["owner", "office_manager"], {
+          orgId: cl.organization_id,
+          type: "concern",
+          title: `New concern: ${CONCERN_LABELS[data.category] ?? "Concern"}`,
+          body: `${cl.display_name ?? "A client"}${data.message ? ` — ${data.message.slice(0, 120)}` : ""}`,
+          link: "/concerns",
+        });
+      }
+    } catch (e) {
+      console.error("concern in-app notification failed", (e as Error).message);
+    }
     return { ticketId: id as string };
   });
 

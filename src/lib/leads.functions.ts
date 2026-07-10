@@ -48,6 +48,19 @@ export const submitLead = createServerFn({ method: "POST" })
     };
     const { error } = await (supabase.from("leads") as any).insert(payload);
     if (error) throw new Error(error.message);
+    // In-app notification to the office that a new website lead came in.
+    try {
+      const { notifyRoles } = await import("@/lib/notify-center.server");
+      await notifyRoles(["owner", "office_manager", "dispatcher"], {
+        orgId,
+        type: "lead",
+        title: "New website lead",
+        body: `${data.name}${data.location ? ` · ${data.location}` : ""}`,
+        link: "/leads",
+      });
+    } catch (e) {
+      console.error("lead in-app notification failed", (e as Error).message);
+    }
     return { ok: true };
   });
 

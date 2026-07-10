@@ -356,6 +356,18 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                     }
                   }
                 } catch (e) { console.error("payment-failed SMS failed", e); }
+
+                // In-app notification to owners/managers.
+                try {
+                  const { notifyRoles } = await import("@/lib/notify-center.server");
+                  await notifyRoles(["owner", "office_manager"], {
+                    orgId: inv.organization_id,
+                    type: "payment_failed",
+                    title: "A client payment failed",
+                    body: `Invoice ${invoiceId.slice(0, 8)} — card declined.`,
+                    link: "/invoices",
+                  });
+                } catch (e) { console.error("payment-failed in-app notification failed", e); }
               }
             }
 
