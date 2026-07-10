@@ -1,10 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Building2, Dog, Sparkles, CheckCircle2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { Building2, Dog, Sparkles, CheckCircle2, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   usePortalCtx, StationsPanel, DogsGrid, AddonCard, EmptyBox,
   money, fmtDayShort,
 } from "@/lib/portal-ui";
+import { portalListProperties } from "@/lib/portal.functions";
 
 export const Route = createFileRoute("/portal/$slug/$token/property")({
   component: PortalProperty,
@@ -12,15 +15,42 @@ export const Route = createFileRoute("/portal/$slug/$token/property")({
 
 function PortalProperty() {
   const {
-    clientQ, dogsQ, stationsQ, catalogQ, clientAddonsQ,
+    token, clientQ, dogsQ, stationsQ, catalogQ, clientAddonsQ,
     subscribeAddonMut, cancelAddonMut,
   } = usePortalCtx();
   const c = clientQ.data as any;
   const isCommercial = c?.account_type === "commercial";
   const activeAddons = (clientAddonsQ.data ?? []).filter((a) => a.status === "active");
 
+  // Finding #29: show the client's distinct serviced addresses when they have
+  // more than one, instead of a single undifferentiated view.
+  const propsFn = useServerFn(portalListProperties);
+  const propsQ = useQuery({ queryKey: ["portal-properties", token], queryFn: () => propsFn({ data: { token } }) });
+  const properties: any[] = (propsQ.data as any)?.properties ?? [];
+
   return (
     <div className="space-y-6">
+      {properties.length > 1 && (
+        <section>
+          <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
+            <MapPin className="h-4 w-4" /> Your properties ({properties.length})
+          </h2>
+          <ul className="space-y-2">
+            {properties.map((p) => (
+              <li key={p.id} className="rounded-md border bg-card p-3 text-sm">
+                <div className="font-medium">{p.label || p.street}</div>
+                <div className="text-xs text-muted-foreground">
+                  {[p.street, p.city, p.region, p.postal_code].filter(Boolean).join(", ")}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Dogs, add-ons, and visits below cover your account. To make a change specific to one
+            address, mention which property when you contact us.
+          </p>
+        </section>
+      )}
       {isCommercial ? (
         <section>
           <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">

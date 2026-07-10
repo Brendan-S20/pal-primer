@@ -508,6 +508,8 @@ Implementation note (added after a geocoding-provider change subsequent to this 
 
 ### #29 — Client portal doesn’t distinguish between a client’s multiple properties
 
+**Status:** 🔶 Partially shipped (July 10, 2026). The core complaint — a 2+ property client saw one undifferentiated view with no address labels anywhere — is addressed: the Property tab now lists the client's distinct serviced addresses (a new `portalListProperties` server fn, shown only when there's more than one), so a multi-site/HOA client can see their properties. NOT done (deliberately deferred as a larger data-model change): per-property association of the add-on purchase flow and the Home/Visits/Billing tabs to a specific property, which would require the portal visit/add-on RPCs to carry and filter by property_id. Documented so it isn't mistaken for complete — the add-on flow still applies to the account, with a note telling multi-property clients to specify the address when contacting the office.
+
 **Severity:** Medium  
 **Role(s) affected:** Owner  
 **Area:** Client portal — Property  
@@ -592,6 +594,8 @@ Update: this no longer depends on a Lovable-exclusive secret — the email send 
 ---
 
 ### #36 — Two client-portal self-serve permissions are configurable by the Owner but have no matching control anywhere in the client portal itself
+
+**Status:** ✅ Shipped (July 10, 2026). Both Owner-configurable self-serve permissions now have real portal UI, shown only when the owner has enabled them (new `portalSelfServeOptions` returns the flags + the client's active subscription). "Vacation hold": a date-range "Request hold" control on the portal Account tab wired to the existing `portalRequestVacationHold` (reports how many visits were skipped). "Change plan frequency": a frequency selector wired to the existing `portalChangeFrequency`. So enabling either permission now surfaces a working control instead of silently doing nothing. tsc green. (Both backends already existed; this closes the toggle-without-UI gap.)
 
 **Severity:** Medium  
 **Role(s) affected:** Owner  

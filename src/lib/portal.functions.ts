@@ -303,6 +303,56 @@ export const portalRescheduleVisit = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// Finding #29: a client with 2+ properties saw one undifferentiated portal
+// view with no address labels. This lists their serviced properties so the
+// portal can show each address distinctly.
+export const portalListProperties = createServerFn({ method: "GET" })
+  .inputValidator((d) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
+    const session = await requirePortalSession(data.token);
+    const sb = await admin();
+    const { data: rows, error } = await sb
+      .from("properties")
+      .select("id, label, street, city, region, postal_code")
+      .eq("client_id", session.clientId)
+      .order("created_at");
+    if (error) throw new Error(error.message);
+    return { properties: rows ?? [] };
+  });
+
+// Finding #36: the org's self-serve permission toggles (vacation hold, change
+// frequency) had no matching portal UI. This returns whether each is enabled
+// plus the client's active subscription, so the portal can render (only) the
+// controls the owner has switched on.
+export const portalSelfServeOptions = createServerFn({ method: "GET" })
+  .inputValidator((d) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
+    const session = await requirePortalSession(data.token);
+    const sb = await admin();
+    const [{ data: org }, { data: subs }] = await Promise.all([
+      sb
+        .from("organizations")
+        .select("portal_allow_vacation_hold, portal_allow_frequency_change")
+        .eq("id", session.organizationId)
+        .maybeSingle(),
+      sb
+        .from("subscriptions")
+        .select("id, frequency, status")
+        .eq("client_id", session.clientId)
+        .eq("status", "active")
+        .order("started_on", { ascending: false })
+        .limit(1),
+    ]);
+    const sub = (subs ?? [])[0] ?? null;
+    return {
+      allowVacationHold: !!org?.portal_allow_vacation_hold,
+      allowFrequencyChange: !!org?.portal_allow_frequency_change,
+      subscription: sub ? { id: sub.id as string, frequency: sub.frequency as string } : null,
+    };
+  });
+
 export const portalChangeFrequency = createServerFn({ method: "POST" })
   .inputValidator((d) =>
     z.object({
