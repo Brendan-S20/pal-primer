@@ -8,12 +8,18 @@ import {
   getFranchiseRollup,
   getFranchiseTrend,
   markSelfAsFranchiseParent,
+  getFranchiseRoyaltySettings,
+  setChildRoyaltyRate,
+  generateRoyaltyInvoices,
+  listRoyaltyInvoices,
+  setRoyaltyInvoiceStatus,
   type FranchiseRow,
 } from "@/lib/franchise.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Building2, ArrowUp, ArrowDown } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
@@ -202,7 +208,134 @@ function FranchisePage() {
           </Table>
         </CardContent>
       </Card>
+
+      <RoyaltyBilling />
     </div>
+  );
+}
+
+// Finding #16: real royalty billing (rate per child + generated royalty
+// invoices against rolled-up revenue), matching the marketed capability.
+function RoyaltyBilling() {
+  const settingsFn = useServerFn(getFranchiseRoyaltySettings);
+  const setRateFn = useServerFn(setChildRoyaltyRate);
+  const genFn = useServerFn(generateRoyaltyInvoices);
+  const listFn = useServerFn(listRoyaltyInvoices);
+  const statusFn = useServerFn(setRoyaltyInvoiceStatus);
+
+  const settings = useQuery({ queryKey: ["franchise", "royalty-settings"], queryFn: () => settingsFn() });
+  const invoices = useQuery({ queryKey: ["franchise", "royalty-invoices"], queryFn: () => listFn() });
+
+  const setRate = useMutation({
+    mutationFn: (v: { childOrgId: string; percent: number }) => setRateFn({ data: v }),
+    onSuccess: () => { toast.success("Royalty rate saved"); settings.refetch(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const generate = useMutation({
+    mutationFn: () => genFn({ data: {} }),
+    onSuccess: (r: any) => {
+      toast.success(`Generated ${r.generated} royalty invoice(s) for ${r.periodStart} → ${r.periodEnd}`);
+      invoices.refetch();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const setStatus = useMutation({
+    mutationFn: (v: { invoiceId: string; status: "draft" | "issued" | "paid" | "void" }) => statusFn({ data: v }),
+    onSuccess: () => { toast.success("Updated"); invoices.refetch(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const children: any[] = (settings.data as any)?.children ?? [];
+  const rows: any[] = (invoices.data as any)?.invoices ?? [];
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-base">Royalty billing</CardTitle>
+        <Button size="sm" onClick={() => generate.mutate()} disabled={generate.isPending}>
+          {generate.isPending ? "Generating…" : "Generate last month's royalties"}
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div>
+          <div className="mb-2 text-xs font-medium uppercase text-muted-foreground">Royalty rate per location</div>
+          <div className="space-y-2">
+            {children.map((c) => (
+              <div key={c.id} className="flex items-center gap-3 text-sm">
+                <span className="min-w-40 flex-1">{c.name}</span>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.25}
+                  className="w-24"
+                  defaultValue={Number(c.franchise_royalty_percent ?? 0)}
+                  onBlur={(e) => {
+                    const percent = Number(e.target.value);
+                    if (!Number.isNaN(percent) && percent !== Number(c.franchise_royalty_percent ?? 0)) {
+                      setRate.mutate({ childOrgId: c.id, percent });
+                    }
+                  }}
+                />
+                <span className="text-muted-foreground">% of collected revenue</span>
+              </div>
+            ))}
+            {children.length === 0 && (
+              <p className="text-sm text-muted-foreground">No child locations yet.</p>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 text-xs font-medium uppercase text-muted-foreground">Royalty invoices</div>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Location</TableHead>
+                  <TableHead>Period</TableHead>
+                  <TableHead>Revenue</TableHead>
+                  <TableHead>Rate</TableHead>
+                  <TableHead>Royalty</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((r) => {
+                  const child = Array.isArray(r.organizations) ? r.organizations[0] : r.organizations;
+                  return (
+                    <TableRow key={r.id}>
+                      <TableCell>{child?.name ?? "Location"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{r.period_start} → {r.period_end}</TableCell>
+                      <TableCell>{money(Number(r.revenue_cents))}</TableCell>
+                      <TableCell>{Number(r.royalty_percent)}%</TableCell>
+                      <TableCell className="font-medium">{money(Number(r.amount_cents))}</TableCell>
+                      <TableCell><Badge variant={r.status === "paid" ? "secondary" : r.status === "issued" ? "default" : "outline"}>{r.status}</Badge></TableCell>
+                      <TableCell className="text-right">
+                        {r.status === "draft" && (
+                          <button className="text-xs text-primary underline" onClick={() => setStatus.mutate({ invoiceId: r.id, status: "issued" })}>Issue</button>
+                        )}
+                        {r.status === "issued" && (
+                          <button className="text-xs text-primary underline" onClick={() => setStatus.mutate({ invoiceId: r.id, status: "paid" })}>Mark paid</button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {rows.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-sm text-muted-foreground">
+                      No royalty invoices yet — set rates and click Generate.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

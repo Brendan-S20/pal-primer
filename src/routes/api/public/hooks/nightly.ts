@@ -80,6 +80,13 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
 
           perOrg.autopay_charged = await runAutopayForOrg(supabaseAdmin, org.id);
 
+          // Franchise royalty billing (finding #16): on the 1st of the month,
+          // generate last month's royalty invoices for each franchise parent's
+          // children. Idempotent per child+period.
+          if (today.getUTCDate() === 1) {
+            perOrg.royalties_generated = await generateRoyaltiesForParent(supabaseAdmin, org.id, today);
+          }
+
           // Seasonal deep-cleans: run on the 1st of each configured month.
           if (
             org.seasonal_deepclean_enabled &&
@@ -112,6 +119,53 @@ function json(body: unknown, status = 200) {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+// Generate last month's royalty invoices for a franchise parent's children
+// (finding #16). Runs as service-role from the nightly cron (no user session).
+async function generateRoyaltiesForParent(supabaseAdmin: any, parentOrgId: string, today: Date): Promise<number | string> {
+  const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1));
+  const end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+  const startStr = start.toISOString().slice(0, 10);
+  const endStr = end.toISOString().slice(0, 10);
+
+  const { data: children, error } = await supabaseAdmin
+    .from("organizations")
+    .select("id, franchise_royalty_percent")
+    .eq("parent_organization_id", parentOrgId);
+  if (error) return `err: ${error.message}`;
+  if (!children || children.length === 0) return 0;
+
+  let generated = 0;
+  for (const child of children as any[]) {
+    const percent = Number(child.franchise_royalty_percent ?? 0);
+    const { data: pays } = await supabaseAdmin
+      .from("payments")
+      .select("amount_cents")
+      .eq("organization_id", child.id)
+      .eq("status", "succeeded")
+      .gte("created_at", `${startStr}T00:00:00Z`)
+      .lt("created_at", `${endStr}T00:00:00Z`);
+    const revenue = (pays ?? []).reduce((s: number, r: any) => s + Number(r.amount_cents ?? 0), 0);
+    const amount = Math.round((revenue * percent) / 100);
+    const { error: upErr } = await supabaseAdmin
+      .from("franchise_royalty_invoices")
+      .upsert(
+        {
+          parent_organization_id: parentOrgId,
+          child_organization_id: child.id,
+          period_start: startStr,
+          period_end: endStr,
+          revenue_cents: revenue,
+          royalty_percent: percent,
+          amount_cents: amount,
+          status: "draft",
+        },
+        { onConflict: "child_organization_id,period_start,period_end" },
+      );
+    if (!upErr) generated += 1;
+  }
+  return generated;
 }
 
 async function sendOverdueReminders(
