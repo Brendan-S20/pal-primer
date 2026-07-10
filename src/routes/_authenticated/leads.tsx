@@ -1,7 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { listLeads, updateLeadStatus } from "@/lib/leads.functions";
+import { listLeads, updateLeadStatus, convertLeadToClient } from "@/lib/leads.functions";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -22,7 +23,9 @@ const STATUSES = ["new", "contacted", "qualified", "converted", "archived"] as c
 function LeadsPage() {
   const list = useServerFn(listLeads);
   const upd = useServerFn(updateLeadStatus);
+  const convertFn = useServerFn(convertLeadToClient);
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [filter, setFilter] = useState<string>("all");
 
   const { data, isLoading } = useQuery({ queryKey: ["leads"], queryFn: () => list() });
@@ -32,6 +35,17 @@ function LeadsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["leads"] });
       toast.success("Updated");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const convertMut = useMutation({
+    mutationFn: (id: string) => convertFn({ data: { id } }),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["leads"] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
+      toast.success("Converted to client");
+      navigate({ to: "/clients/$clientId", params: { clientId: r.clientId } });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -105,7 +119,16 @@ function LeadsPage() {
                     {new Date(l.created_at).toLocaleString()} · source: {l.source}
                   </div>
                 </div>
-                <div className="w-40">
+                <div className="flex w-40 flex-col gap-2">
+                  {l.status !== "converted" && (
+                    <Button
+                      size="sm"
+                      onClick={() => convertMut.mutate(l.id)}
+                      disabled={convertMut.isPending}
+                    >
+                      Convert to client
+                    </Button>
+                  )}
                   <Select
                     value={l.status}
                     onValueChange={(v) =>

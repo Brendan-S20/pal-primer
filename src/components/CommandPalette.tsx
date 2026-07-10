@@ -10,6 +10,7 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { supabase } from "@/integrations/supabase/client";
+import { useMyRole, canAccess } from "@/hooks/useMyRole";
 
 type NavEntry = { label: string; to: string; group: string };
 
@@ -48,6 +49,11 @@ export function CommandPalette() {
   const [query, setQuery] = useState("");
   const [clients, setClients] = useState<ClientHit[]>([]);
   const navigate = useNavigate();
+  const { role } = useMyRole();
+  // Don't surface client results to roles that can't open a client page
+  // (e.g. Technician) — searching used to confirm a client exists and then
+  // dead-click back to My day with no explanation (finding #50).
+  const canSearchClients = canAccess(role, "/clients");
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -62,7 +68,7 @@ export function CommandPalette() {
 
   useEffect(() => {
     const q = query.trim();
-    if (!open || q.length < 2) {
+    if (!open || q.length < 2 || !canSearchClients) {
       setClients([]);
       return;
     }
@@ -81,7 +87,7 @@ export function CommandPalette() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [query, open]);
+  }, [query, open, canSearchClients]);
 
   const go = (to: string, params?: Record<string, string>) => {
     setOpen(false);
@@ -89,10 +95,13 @@ export function CommandPalette() {
     navigate({ to, params } as never);
   };
 
-  const groups = NAV.reduce<Record<string, NavEntry[]>>((acc, item) => {
-    (acc[item.group] ||= []).push(item);
-    return acc;
-  }, {});
+  const groups = NAV.filter((item) => canAccess(role, item.to)).reduce<Record<string, NavEntry[]>>(
+    (acc, item) => {
+      (acc[item.group] ||= []).push(item);
+      return acc;
+    },
+    {},
+  );
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>

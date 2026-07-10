@@ -90,6 +90,58 @@ export const listLeads = createServerFn({ method: "GET" })
     return data ?? [];
   });
 
+// Finding #39: actually convert a lead into a Client (pre-filled from the
+// lead), instead of just relabeling its status. Idempotent-ish: a lead already
+// converted with a linked client is not duplicated.
+export const convertLeadToClient = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_leads");
+    const { data: lead, error } = await context.supabase
+      .from("leads")
+      .select("id, name, email, phone, message, status")
+      .eq("id", data.id)
+      .single();
+    if (error) throw new Error(error.message);
+
+    // Reuse an existing client with the same email in this org if one exists.
+    let clientId: string | null = null;
+    if (lead.email) {
+      const { data: existing } = await context.supabase
+        .from("clients")
+        .select("id")
+        .eq("organization_id", orgId)
+        .eq("primary_email", lead.email.toLowerCase())
+        .maybeSingle();
+      clientId = existing?.id ?? null;
+    }
+
+    if (!clientId) {
+      const { data: created, error: cErr } = await context.supabase
+        .from("clients")
+        .insert({
+          organization_id: orgId,
+          display_name: lead.name,
+          account_type: "residential",
+          primary_email: lead.email ? lead.email.toLowerCase() : null,
+          primary_phone: lead.phone || null,
+          notes: lead.message || null,
+        })
+        .select("id")
+        .single();
+      if (cErr) throw new Error(cErr.message);
+      clientId = created.id as string;
+    }
+
+    await context.supabase
+      .from("leads")
+      .update({ status: "converted", converted_at: new Date().toISOString() })
+      .eq("id", data.id);
+
+    return { clientId };
+  });
+
 export const updateLeadStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>

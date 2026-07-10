@@ -14,6 +14,7 @@ import {
 import { listClients } from "@/lib/clients.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -318,9 +319,17 @@ function NeighborsPage() {
                     </td>
                     <td className="px-3 py-2 max-w-[300px] text-xs text-muted-foreground">{r.notes ?? "—"}</td>
                     <td className="px-3 py-2 text-right">
-                      <Button size="sm" variant="ghost" onClick={() => del.mutate(r.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <ConfirmButton
+                        trigger={
+                          <Button size="sm" variant="ghost">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        }
+                        title="Delete this entry?"
+                        description="This removes the canvassing entry permanently and can't be undone."
+                        confirmLabel="Delete"
+                        onConfirm={() => del.mutate(r.id)}
+                      />
                     </td>
                   </tr>
                 ))}

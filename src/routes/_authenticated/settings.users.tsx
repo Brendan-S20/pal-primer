@@ -9,6 +9,9 @@ import {
   setStaffRouting,
   listStaffAddresses,
   setStaffAddresses,
+  createOrgInvite,
+  listOrgInvites,
+  revokeOrgInvite,
 } from "@/lib/users.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -185,12 +188,85 @@ function UsersPage() {
               </table>
             </div>
           )}
-          <p className="mt-4 text-xs text-muted-foreground">
-            To invite a new teammate, share the sign-up link and then assign their role here after they create an account.
-          </p>
         </CardContent>
       </Card>
+
+      {canEdit && <InvitePanel />}
     </div>
+  );
+}
+
+// Finding #40: real invite flow — email + pre-assigned role, pending list with
+// revoke, and auto-assignment on the invitee's first sign-in.
+function InvitePanel() {
+  const qc = useQueryClient();
+  const createFn = useServerFn(createOrgInvite);
+  const listFn = useServerFn(listOrgInvites);
+  const revokeFn = useServerFn(revokeOrgInvite);
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"office_manager" | "dispatcher" | "tech">("tech");
+
+  const invitesQ = useQuery({ queryKey: ["org-invites"], queryFn: () => listFn() });
+  const invites: any[] = (invitesQ.data as any)?.invites ?? [];
+
+  const createMut = useMutation({
+    mutationFn: () => createFn({ data: { email: email.trim(), role } }),
+    onSuccess: () => { toast.success("Invite sent"); setEmail(""); qc.invalidateQueries({ queryKey: ["org-invites"] }); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const revokeMut = useMutation({
+    mutationFn: (id: string) => revokeFn({ data: { id } }),
+    onSuccess: () => { toast.success("Invite revoked"); qc.invalidateQueries({ queryKey: ["org-invites"] }); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const roleLabel: Record<string, string> = { office_manager: "Office manager", dispatcher: "Dispatcher", tech: "Technician" };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Invite a teammate</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form
+          className="flex flex-wrap items-end gap-2"
+          onSubmit={(e) => { e.preventDefault(); if (email.trim()) createMut.mutate(); }}
+        >
+          <div className="min-w-56 flex-1">
+            <Label className="text-xs">Email</Label>
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="teammate@example.com" required />
+          </div>
+          <div>
+            <Label className="text-xs">Role</Label>
+            <select value={role} onChange={(e) => setRole(e.target.value as any)} className="h-10 rounded-md border bg-background px-3 text-sm">
+              <option value="tech">Technician</option>
+              <option value="dispatcher">Dispatcher</option>
+              <option value="office_manager">Office manager</option>
+            </select>
+          </div>
+          <Button type="submit" disabled={createMut.isPending || !email.trim()}>
+            {createMut.isPending ? "Sending…" : "Send invite"}
+          </Button>
+        </form>
+        <p className="text-xs text-muted-foreground">
+          They'll get an email; their role is assigned automatically when they sign up with this address.
+        </p>
+
+        {invites.filter((i) => i.status === "pending").length > 0 && (
+          <div>
+            <div className="mb-1 text-xs font-medium uppercase text-muted-foreground">Pending invites</div>
+            <ul className="divide-y">
+              {invites.filter((i) => i.status === "pending").map((i) => (
+                <li key={i.id} className="flex items-center justify-between py-2 text-sm">
+                  <span>{i.email} <span className="text-muted-foreground">· {roleLabel[i.role] ?? i.role}</span></span>
+                  <button className="text-xs text-destructive underline" onClick={() => revokeMut.mutate(i.id)}>Revoke</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

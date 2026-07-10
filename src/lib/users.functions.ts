@@ -50,6 +50,88 @@ export const setStaffActive = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// ── Teammate invites (finding #40) ───────────────────────────────────────────
+const inviteRoleEnum = z.enum(["office_manager", "dispatcher", "tech"]);
+
+export const createOrgInvite = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ email: z.string().trim().email().max(255), role: inviteRoleEnum }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
+    const email = data.email.toLowerCase();
+    const crypto = await import("node:crypto");
+    const token = crypto.randomBytes(24).toString("hex");
+
+    // Supersede any existing pending invite for this email in this org.
+    await (context.supabase as any).from("org_invites")
+      .update({ status: "revoked" })
+      .eq("organization_id", orgId)
+      .eq("email", email)
+      .eq("status", "pending");
+
+    const { data: row, error } = await (context.supabase as any).from("org_invites")
+      .insert({ organization_id: orgId, email, role: data.role, token, invited_by: context.userId })
+      .select("id, token")
+      .single();
+    if (error) throw new Error(error.message);
+
+    // Best-effort invite email (Resend). The pending row + link work regardless.
+    try {
+      const resendApiKey = process.env.RESEND_API_KEY;
+      const { data: org } = await context.supabase.from("organizations").select("name").eq("id", orgId).maybeSingle();
+      if (resendApiKey) {
+        const link = `https://www.app.houndstack.com/auth`;
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: `${(org as any)?.name ?? "HoundStack"} <noreply@notify.houndstack.com>`,
+            to: [email],
+            subject: `You've been invited to join ${(org as any)?.name ?? "the team"}`,
+            html: `<p>You've been invited to join <strong>${(org as any)?.name ?? "the team"}</strong> on HoundStack as ${data.role.replace(/_/g, " ")}.</p>` +
+              `<p>Create your account (or sign in) with <strong>${email}</strong> here: <a href="${link}">${link}</a>. Your role is assigned automatically on first sign-in.</p>`,
+            text: `You've been invited to join ${(org as any)?.name ?? "the team"} on HoundStack. Sign up with ${email} at ${link}.`,
+          }),
+        });
+      }
+    } catch (e) {
+      console.error("invite email failed", (e as Error).message);
+    }
+    return { id: row.id as string };
+  });
+
+export const listOrgInvites = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
+    const { data, error } = await (context.supabase as any).from("org_invites")
+      .select("id, email, role, status, created_at, expires_at, accepted_at")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error) throw new Error(error.message);
+    return { invites: data ?? [] };
+  });
+
+export const revokeOrgInvite = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
+    const { error } = await (context.supabase as any).from("org_invites")
+      .update({ status: "revoked" })
+      .eq("id", data.id)
+      .eq("organization_id", orgId)
+      .eq("status", "pending");
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 // Finding #26: routing eligibility flags. is_field_tech = "does fieldwork and
 // can be routed"; routing_available = "available for routing right now"
 // (temporary, e.g. on leave) without deleting the account.

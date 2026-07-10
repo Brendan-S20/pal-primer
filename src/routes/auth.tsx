@@ -37,6 +37,12 @@ async function ensureBootstrapped(user: { id: string; email?: string | null; use
   const { data: isPlatform } = await supabase.rpc("is_platform_admin", { _user_id: user.id });
   if (isPlatform) return;
 
+  // Teammate invite (finding #40): if this email was invited to an existing
+  // org, join THAT org with the invited role instead of bootstrapping a new
+  // one. Idempotent server-side; returns null when there's no pending invite.
+  const { data: invitedOrg } = await supabase.rpc("accept_org_invite_for_current_user" as any);
+  if (invitedOrg) return;
+
   const md = user.user_metadata ?? {};
   const emailLocal = (user.email ?? "").split("@")[0] || "Owner";
   const displayName: string =

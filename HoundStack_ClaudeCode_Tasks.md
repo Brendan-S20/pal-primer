@@ -620,6 +620,8 @@ Update: this no longer depends on a Lovable-exclusive secret — the email send 
 
 ### #38 — Destructive delete/void actions have no confirmation step, confirmed on multiple pages across two roles
 
+**Status:** ✅ Shipped (July 10, 2026). Added one reusable confirmation-dialog component (`src/components/ConfirmButton.tsx`, built on the shared AlertDialog) and applied it to all three confirmed destructive actions: Zone delete (upgraded from a native `confirm()` to the dialog), Neighbor-canvassing entry delete, and Invoice void — each dialog states plainly what will be removed/voided and that it can't be undone. The component is now available to wrap any other destructive action app-wide. tsc green.
+
 **Severity:** Low  
 **Role(s) affected:** Owner, Office Manager  
 **Area:** App-wide — Destructive actions  
@@ -635,6 +637,8 @@ Update: this no longer depends on a Lovable-exclusive secret — the email send 
 
 ### #39 — Leads have no detail view and no real conversion workflow
 
+**Status:** ✅ Shipped (July 10, 2026). The Leads cards already showed all captured fields (phone, message, source, date). Added the real conversion: a `convertLeadToClient` server fn that creates a Client pre-filled from the lead (name/email/phone/notes), reuses an existing same-email client if one exists, marks the lead `converted`, and a "Convert to client" button on each non-converted lead that runs it and navigates to the new client — instead of the status dropdown just relabeling. tsc green.
+
 **Severity:** Low  
 **Role(s) affected:** Owner  
 **Area:** Leads  
@@ -649,6 +653,8 @@ Update: this no longer depends on a Lovable-exclusive secret — the email send 
 ---
 
 ### #40 — No real invite flow for adding teammates
+
+**Status:** ✅ Shipped (July 10, 2026). Built a real teammate-invite flow (previously just "share the sign-up link"). New `org_invites` table (migration applied live, RLS scoped to the inviting org) + `accept_org_invite_for_current_user()` which, on the invitee's first sign-in with the invited email, adds them to that org with the pre-assigned role (wired into `/auth` ahead of new-org bootstrap) instead of creating a new org. Server fns `createOrgInvite` (sends a best-effort Resend email + creates the pending row), `listOrgInvites`, `revokeOrgInvite` (all `manage_users`-gated). Settings → Users & roles now has an "Invite a teammate" panel: email + role, a pending-invites list with Revoke, and the role auto-assigns on accept. Verified the accept RPC returns NULL cleanly for users with no pending invite. tsc green.
 
 **Severity:** Low  
 **Role(s) affected:** Owner  

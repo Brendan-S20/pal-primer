@@ -6,6 +6,7 @@ import { syncInvoice } from "@/lib/accounting.functions";
 import { sendInvoiceEmail, getEmailSendStatus } from "@/lib/notifications.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/invoices/$invoiceId")({
@@ -149,7 +150,15 @@ function InvoiceDetail() {
                 {emailM.isPending ? "Sending…" : "Email invoice to client"}
               </Button>
             )}
-            <Button variant="destructive" onClick={() => voidM.mutate()} disabled={voidM.isPending}>Void</Button>
+            <ConfirmButton
+              title="Void this invoice?"
+              description="Voiding removes this invoice from the client's balance and can't be undone."
+              confirmLabel="Void invoice"
+              onConfirm={() => voidM.mutate()}
+              disabled={voidM.isPending}
+            >
+              Void
+            </ConfirmButton>
           </>
         )}
         {invoice.status === "paid" && !(invoice as any).accounting_remote_id && (
