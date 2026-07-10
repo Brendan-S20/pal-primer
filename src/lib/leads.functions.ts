@@ -52,13 +52,43 @@ export const submitLead = createServerFn({ method: "POST" })
   });
 
 // Finding #25: config + basic analytics for the tenant's embeddable lead form.
+
+// Default copy + field visibility for the hosted/embedded lead form. name +
+// email are always required; the rest are toggleable.
+const LEAD_FORM_DEFAULTS = {
+  brandColor: null as string | null,
+  logoUrl: null as string | null,
+  headline: "Request a quote",
+  intro: "Tell us about your yard and we'll get you a quote.",
+  confirmation: "Thanks — we got your request! We'll be in touch shortly to set up your service.",
+  fields: { phone: true, location: true, dogCount: true, message: true },
+};
+
+function normalizeLeadFormConfig(raw: any) {
+  const c = raw && typeof raw === "object" ? raw : {};
+  const f = c.fields && typeof c.fields === "object" ? c.fields : {};
+  return {
+    brandColor: typeof c.brandColor === "string" && c.brandColor ? c.brandColor : LEAD_FORM_DEFAULTS.brandColor,
+    logoUrl: typeof c.logoUrl === "string" && c.logoUrl ? c.logoUrl : LEAD_FORM_DEFAULTS.logoUrl,
+    headline: typeof c.headline === "string" && c.headline.trim() ? c.headline : LEAD_FORM_DEFAULTS.headline,
+    intro: typeof c.intro === "string" && c.intro.trim() ? c.intro : LEAD_FORM_DEFAULTS.intro,
+    confirmation: typeof c.confirmation === "string" && c.confirmation.trim() ? c.confirmation : LEAD_FORM_DEFAULTS.confirmation,
+    fields: {
+      phone: f.phone !== false,
+      location: f.location !== false,
+      dogCount: f.dogCount !== false,
+      message: f.message !== false,
+    },
+  };
+}
+
 export const getLeadFormConfig = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_leads");
     const [{ data: org }, totalRes, weekRes] = await Promise.all([
       (context.supabase.from("organizations") as any)
-        .select("name, portal_slug, public_signup_enabled")
+        .select("name, portal_slug, public_signup_enabled, lead_form_config")
         .eq("id", orgId)
         .maybeSingle(),
       context.supabase.from("leads").select("id", { count: "exact", head: true }).eq("source", "website"),
@@ -74,6 +104,64 @@ export const getLeadFormConfig = createServerFn({ method: "GET" })
       publicSignupEnabled: !!org?.public_signup_enabled,
       submissionsTotal: totalRes.count ?? 0,
       submissionsLast30: weekRes.count ?? 0,
+      config: normalizeLeadFormConfig(org?.lead_form_config),
+    };
+  });
+
+const leadFormConfigSchema = z.object({
+  brandColor: z.string().trim().regex(/^#?[0-9a-fA-F]{6}$/, "Use a hex color like #2563eb").or(z.literal("")).nullable().optional(),
+  logoUrl: z.string().trim().url().or(z.literal("")).nullable().optional(),
+  headline: z.string().trim().max(120).optional(),
+  intro: z.string().trim().max(400).optional(),
+  confirmation: z.string().trim().max(400).optional(),
+  fields: z.object({
+    phone: z.boolean(),
+    location: z.boolean(),
+    dogCount: z.boolean(),
+    message: z.boolean(),
+  }),
+});
+
+export const setLeadFormConfig = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => leadFormConfigSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_leads");
+    const color = data.brandColor ? (data.brandColor.startsWith("#") ? data.brandColor : `#${data.brandColor}`) : null;
+    const config = {
+      brandColor: color,
+      logoUrl: data.logoUrl || null,
+      headline: data.headline || null,
+      intro: data.intro || null,
+      confirmation: data.confirmation || null,
+      fields: data.fields,
+    };
+    const { error } = await (context.supabase.from("organizations") as any)
+      .update({ lead_form_config: config })
+      .eq("id", orgId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+/** Public (no-auth) branding + field config for the hosted lead form. */
+export const getPublicLeadForm = createServerFn({ method: "GET" })
+  .inputValidator((d) => z.object({ slug: z.string().trim().min(1).max(120) }).parse(d))
+  .handler(async ({ data }) => {
+    const supabase = anonClient();
+    const { data: orgRows } = await supabase.rpc("public_get_org_by_slug", { _slug: data.slug });
+    const org = (orgRows as Array<{ id: string; name?: string }> | null)?.[0] ?? null;
+    if (!org) throw new Error("Unknown business");
+    // Read the (public-safe) branding config with the service role — anon can't
+    // select organizations directly under RLS.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: cfgRow } = await (supabaseAdmin as any)
+      .from("organizations")
+      .select("name, lead_form_config")
+      .eq("id", org.id)
+      .maybeSingle();
+    return {
+      orgName: cfgRow?.name ?? org.name ?? null,
+      config: normalizeLeadFormConfig(cfgRow?.lead_form_config),
     };
   });
 

@@ -180,3 +180,70 @@ plan. Stripe is in **sandbox** — no real charges.
 For any failure, note: **section + step number**, what you clicked, what you
 expected, what actually happened, and a screenshot. Include the org/tenant and
 whether you were admin/owner/client at the time.
+
+---
+
+# Part 2 — BYOK integrations, embeds & customization (post-merge)
+
+These flows were added after the original punch-list. They need the deployed app
+plus the `STRIPE_CONNECT_*`, `PLATFORM_SMS_FROM_NUMBER`, and Supabase Google-OAuth
+config in place.
+
+> **Deployment note (CSP):** the embedded Stripe components load scripts from
+> `js.stripe.com` and `connect-js.stripe.com` and render Stripe iframes. If they
+> don't appear, the hosting Content-Security-Policy must allow:
+> `script-src … https://js.stripe.com https://connect-js.stripe.com`,
+> `frame-src … https://*.stripe.com`, `connect-src … https://api.stripe.com https://*.stripe.com`.
+
+## 7. Tenant Stripe via Connect (Express) — embedded
+
+1. As an **owner**, go to **Settings → Payments** → **Set up payments**.
+   - **Expected:** an in-app Stripe **onboarding** flow appears (embedded, no
+     redirect to stripe.com). Complete the test verification.
+2. When onboarding finishes, the page should show **Charges enabled** and an
+   **embedded dashboard**: balances, payments, payouts, and account management —
+   all in-app.
+3. Create an invoice for a client and, from the client portal, **pay it**.
+   - **Expected:** the charge succeeds on the connected account, and (per your
+     Stripe pricing tool) the **0.25% platform fee** is collected.
+4. In **Settings → Payments → Disconnect**, confirm it disconnects and that a
+   previously-saved client card now needs re-entering (cutover).
+
+## 8. Embedded payment method (client portal)
+
+1. Open a client's portal → **Billing** → **Add payment method**.
+   - **Expected:** an **inline card form** appears in the page (Stripe Payment
+     Element) — no redirect. Enter a test card, Save.
+2. Confirm the saved card shows (brand + last 4) and **autopay** can be turned on.
+3. Pay an open invoice with **Pay with saved card**.
+
+## 9. Tenant Twilio (conversation) + review-ask routing
+
+1. **Settings → SMS → Bring your own Twilio**: enter a Twilio Account SID + Auth
+   Token + sender number, Save. Set that number's inbound webhook (shown on the
+   page) in the Twilio console.
+2. Send a manual message to a client and reply inbound.
+   - **Expected:** the conversation uses the **tenant's** number; the AI
+     receptionist replies from it.
+3. Trigger a **review request** (client detail → Request review).
+   - **Expected (Twilio connected):** SMS from the **tenant's** number.
+   - **Expected (no Twilio connected):** an **email** review request instead —
+     never the platform number.
+4. Confirm **OTP + automated notifications** (reminders, on-my-way, overdue) come
+   from the **platform** number `+18668063017`, not the tenant's.
+
+## 10. Lead form customization (#25)
+
+1. **Settings → Lead form → Customize the form**: set a brand color, logo URL,
+   headline/intro/confirmation, and toggle off one optional field (e.g. Message).
+   Save.
+2. Open the hosted form (`/lead/{slug}`) or the embed.
+   - **Expected:** your branding shows (logo + accent color on headline/button),
+     the toggled-off field is gone, and after submitting, your custom
+     confirmation message appears.
+
+## 11. Google sign-in (#17)
+
+1. On the sign-in page, click **Continue with Google**.
+   - **Expected:** Google consent → returns signed in; a brand-new Google user
+     gets an org bootstrapped, an invited one joins their org with the right role.
