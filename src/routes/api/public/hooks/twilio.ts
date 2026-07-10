@@ -69,6 +69,7 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
         const isStart = ["START", "YES", "UNSTOP"].includes(upper);
         let reply: string | null = null;
         let aiHandled = false;
+        let escalated = false;
         if (client && isStop) {
           await supabaseAdmin.from("clients").update({ sms_opt_out: true }).eq("id", client.id);
           reply = "You have been unsubscribed and will not receive further messages. Reply START to resubscribe.";
@@ -123,6 +124,7 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
             reply = result.reply;
             aiHandled = true;
           }
+          escalated = !!result.escalated;
           await supabaseAdmin.from("ai_receptionist_logs").insert({
             organization_id: org.id,
             inbound_message_id: inboundMsg?.id ?? null,
@@ -135,6 +137,23 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
             error: result.error,
             escalated: result.escalated,
           });
+        }
+
+        // Ping the office when a human is needed: the AI escalated, or an
+        // inbound text got no automated answer at all.
+        if (body && (escalated || (!reply && !aiHandled))) {
+          try {
+            const { notifyRoles } = await import("@/lib/notify-center.server");
+            await notifyRoles(["owner", "office_manager", "dispatcher"], {
+              orgId: org.id,
+              type: escalated ? "receptionist_escalation" : "inbound_sms",
+              title: escalated ? "AI receptionist needs a human" : "New text needs a reply",
+              body: `${from}: ${body.slice(0, 120)}`,
+              link: "/messages",
+            });
+          } catch (e) {
+            console.error("inbound in-app notification failed", (e as Error).message);
+          }
         }
 
         if (reply) {

@@ -71,6 +71,21 @@ export const resyncMySeats = createServerFn({ method: "POST" })
       const orgId = await resolveOrgId(context.supabase, context.userId);
       const { syncOrgSeatQuantity } = await import("@/lib/seat-sync.server");
       await syncOrgSeatQuantity(orgId);
+      // Let owners/managers know a teammate joined.
+      try {
+        const { data: userData } = await context.supabase.auth.getUser();
+        const who = userData.user?.email ?? "A teammate";
+        const { notifyRoles } = await import("@/lib/notify-center.server");
+        await notifyRoles(["owner", "office_manager"], {
+          orgId,
+          type: "teammate_joined",
+          title: "A teammate joined",
+          body: `${who} accepted their invite.`,
+          link: "/settings/users",
+        });
+      } catch (e) {
+        console.error("teammate-joined notification failed", (e as Error).message);
+      }
     } catch (e) {
       console.error("resyncMySeats failed", (e as Error).message);
     }
