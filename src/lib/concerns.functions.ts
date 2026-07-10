@@ -31,7 +31,7 @@ export const listConcerns = createServerFn({ method: "GET" })
     let q = context.supabase
       .from("qc_tickets")
       .select(
-        "id, category, message, status, created_at, resolved_at, resolution_note, client_id, visit_id, clients(display_name, primary_phone, primary_email)",
+        "id, category, message, status, created_at, resolved_at, resolution_note, last_reply, last_reply_at, client_id, visit_id, clients(display_name, primary_phone, primary_email)",
       )
       .eq("organization_id", orgId)
       // Unresolved first, then newest.
@@ -48,6 +48,56 @@ export const listConcerns = createServerFn({ method: "GET" })
       if (s in counts) counts[s] += 1;
     }
     return { concerns: rows ?? [], counts };
+  });
+
+/** Reply to the client who submitted a concern (#14). Sends the reply by email
+ *  and records it on the ticket so the inbox shows it was answered. */
+export const replyToConcern = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ ticketId: z.string().uuid(), message: z.string().trim().min(1).max(4000) }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { orgId } = await requirePermission(context.supabase, context.userId, "view_client_directory");
+    const { data: ticket, error: tErr } = await context.supabase
+      .from("qc_tickets")
+      .select("id, status, clients(display_name, primary_email)")
+      .eq("id", data.ticketId)
+      .eq("organization_id", orgId)
+      .single();
+    if (tErr) throw new Error(tErr.message);
+    const client = Array.isArray((ticket as any).clients) ? (ticket as any).clients[0] : (ticket as any).clients;
+    const email = (client?.primary_email ?? "").trim();
+    if (!email) throw new Error("This client has no email on file to reply to.");
+
+    const resendApiKey = process.env.RESEND_API_KEY;
+    if (!resendApiKey) throw new Error("Email isn't configured (RESEND_API_KEY).");
+    const { data: org } = await context.supabase.from("organizations").select("name").eq("id", orgId).maybeSingle();
+    const orgName = (org as any)?.name ?? "Your service";
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: `${orgName} <noreply@notify.houndstack.com>`,
+        to: [email],
+        subject: `Re: your message to ${orgName}`,
+        html: `<p>Hi ${client?.display_name ?? "there"},</p><p>${data.message.replace(/\n/g, "<br>")}</p><p>— ${orgName}</p>`,
+        text: `Hi ${client?.display_name ?? "there"},\n\n${data.message}\n\n— ${orgName}`,
+      }),
+    });
+    if (!res.ok) {
+      const b = await res.text().catch(() => "");
+      throw new Error(`Couldn't send the reply email${b ? `: ${b.slice(0, 140)}` : ""}`);
+    }
+
+    const patch: Record<string, unknown> = {
+      last_reply: data.message,
+      last_reply_at: new Date().toISOString(),
+    };
+    // Answering an untouched concern moves it into progress.
+    if ((ticket as any).status === "open") patch.status = "in_progress";
+    await context.supabase.from("qc_tickets").update(patch as any).eq("id", data.ticketId).eq("organization_id", orgId);
+    return { ok: true, recipient: email };
   });
 
 export const updateConcernStatus = createServerFn({ method: "POST" })

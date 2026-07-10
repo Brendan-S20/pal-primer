@@ -202,15 +202,17 @@ export const setStaffRouting = createServerFn({ method: "POST" })
         staffId: z.string().uuid(),
         isFieldTech: z.boolean().optional(),
         routingAvailable: z.boolean().optional(),
+        dailyCapacityMinutes: z.number().int().min(0).max(1440).nullable().optional(),
       })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { requirePermission } = await import("@/lib/authz.server");
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
-    const patch: Record<string, boolean> = {};
+    const patch: Record<string, boolean | number | null> = {};
     if (data.isFieldTech !== undefined) patch.is_field_tech = data.isFieldTech;
     if (data.routingAvailable !== undefined) patch.routing_available = data.routingAvailable;
+    if (data.dailyCapacityMinutes !== undefined) patch.daily_capacity_minutes = data.dailyCapacityMinutes || null;
     if (Object.keys(patch).length === 0) return { ok: true };
     const { error } = await (context.supabase.from("staff") as any)
       .update(patch)
@@ -225,7 +227,7 @@ export const listStaffAddresses = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const orgId = await resolveOrgId(context.supabase, context.userId);
     const { data, error } = await (context.supabase.from("staff") as any)
-      .select("id, display_name, role, active, is_field_tech, routing_available, start_address, start_latitude, start_longitude, end_address, end_latitude, end_longitude")
+      .select("id, display_name, role, active, is_field_tech, routing_available, daily_capacity_minutes, start_address, start_latitude, start_longitude, end_address, end_latitude, end_longitude")
       .eq("organization_id", orgId)
       .order("display_name");
     if (error) throw new Error(error.message);

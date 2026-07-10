@@ -326,7 +326,7 @@ export const balanceOverloadedRoutes = createServerFn({ method: "POST" })
         .eq("id", orgId)
         .maybeSingle(),
       (supabase.from("staff") as any)
-        .select("id, display_name, is_field_tech, routing_available, active")
+        .select("id, display_name, is_field_tech, routing_available, active, daily_capacity_minutes")
         .eq("organization_id", orgId)
         .eq("active", true),
       supabase
@@ -341,10 +341,17 @@ export const balanceOverloadedRoutes = createServerFn({ method: "POST" })
 
     const toMin = (t: string | null, def: number) =>
       t ? Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5)) : def;
-    const capacityMin = Math.max(60, toMin(org?.workday_end ?? null, 17 * 60) - toMin(org?.workday_start ?? null, 8 * 60));
+    // Org-wide workday length is the fallback; each tech can override it with a
+    // per-tech daily capacity (#27).
+    const orgCapacityMin = Math.max(60, toMin(org?.workday_end ?? null, 17 * 60) - toMin(org?.workday_start ?? null, 8 * 60));
 
     const routableTechs = (staff ?? []).filter((s: any) => s.is_field_tech && s.routing_available);
     const techIds = new Set(routableTechs.map((s: any) => s.id));
+    const capFor = new Map<string, number>();
+    for (const t of routableTechs) {
+      const per = Number((t as any).daily_capacity_minutes);
+      capFor.set(t.id, per > 0 ? per : orgCapacityMin);
+    }
 
     const visitMin = (v: any) => Number(v.travel_min ?? 0) + Number(v.properties?.service_duration_min ?? 8);
     // Per-tech load, visits sorted by sequence.
@@ -361,18 +368,20 @@ export const balanceOverloadedRoutes = createServerFn({ method: "POST" })
 
     const moves: Array<{ visitId: string; from: string | null; to: string | null }> = [];
     // Greedy: for each overloaded tech, peel off trailing stops until under
-    // capacity, placing each on the least-loaded tech that has room, else Unassigned.
+    // their capacity, placing each on the least-loaded tech that has room under
+    // ITS OWN capacity, else Unassigned.
     for (const [techId, entry] of load) {
-      while (entry.total > capacityMin && entry.visits.length > 1) {
+      const cap = capFor.get(techId) ?? orgCapacityMin;
+      while (entry.total > cap && entry.visits.length > 1) {
         const v = entry.visits.pop()!;
         const cost = visitMin(v);
         entry.total -= cost;
-        // Find the least-loaded OTHER routable tech with room.
         let target: string | null = null;
         let best = Infinity;
         for (const [otherId, other] of load) {
           if (otherId === techId) continue;
-          if (other.total + cost <= capacityMin && other.total < best) {
+          const otherCap = capFor.get(otherId) ?? orgCapacityMin;
+          if (other.total + cost <= otherCap && other.total < best) {
             best = other.total;
             target = otherId;
           }
@@ -389,18 +398,33 @@ export const balanceOverloadedRoutes = createServerFn({ method: "POST" })
       for (const m of moves) {
         await supabase.rpc("reassign_visit", { _visit_id: m.visitId, _staff_id: m.to as string });
       }
+      // Re-optimize every route that gained or lost a stop so both sides come
+      // back tidy (#27) — no separate manual "Re-optimize" click needed.
+      const touched = new Set<string>();
+      for (const m of moves) {
+        if (m.from) touched.add(m.from);
+        if (m.to) touched.add(m.to);
+      }
+      for (const staffId of touched) {
+        await supabase.rpc("optimize_route_v2", { _org_id: orgId, _staff_id: staffId, _day: data.day, _reassign: false });
+      }
     }
 
     return {
-      capacityMinutes: capacityMin,
-      loads: routableTechs.map((t: any) => ({
-        staffId: t.id,
-        name: t.display_name,
-        loadMinutes: Math.round(load.get(t.id)?.total ?? 0),
-        overCapacity: (load.get(t.id)?.total ?? 0) > capacityMin,
-      })),
+      capacityMinutes: orgCapacityMin,
+      loads: routableTechs.map((t: any) => {
+        const cap = capFor.get(t.id) ?? orgCapacityMin;
+        return {
+          staffId: t.id,
+          name: t.display_name,
+          loadMinutes: Math.round(load.get(t.id)?.total ?? 0),
+          capacityMinutes: cap,
+          overCapacity: (load.get(t.id)?.total ?? 0) > cap,
+        };
+      }),
       moves,
       applied: data.apply ? moves.length : 0,
+      reoptimized: data.apply ? new Set(moves.flatMap((m) => [m.from, m.to].filter(Boolean))).size : 0,
       techsAvailable: techIds.size,
     };
   });

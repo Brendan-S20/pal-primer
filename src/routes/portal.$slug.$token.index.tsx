@@ -13,7 +13,16 @@ export const Route = createFileRoute("/portal/$slug/$token/")({
 function PortalHome() {
   const { token, slug, visitsQ, historyQ, invoicesQ, clientQ } = usePortalCtx();
   const c = clientQ.data as any;
-  const nextVisit = (visitsQ.data ?? [])[0];
+  const visits = (visitsQ.data ?? []) as any[];
+  const nextVisit = visits[0];
+  // Multi-property clients (#29): label which property the next visit is at.
+  const distinctAddrs = new Set(
+    visits.map((v) => `${v.street ?? ""}|${v.city ?? ""}|${v.postal_code ?? ""}`).filter((s) => s !== "||"),
+  );
+  const showProperty = distinctAddrs.size > 1;
+  const nextAddr = nextVisit
+    ? [nextVisit.street, nextVisit.city, nextVisit.postal_code].filter(Boolean).join(", ")
+    : "";
   const openInvoice = (invoicesQ.data ?? []).find((i) => i.status !== "paid" && i.status !== "void");
   const recent = (historyQ.data ?? []).slice(0, 2);
 
@@ -27,6 +36,9 @@ function PortalHome() {
         {nextVisit ? (
           <div className="rounded-lg border bg-card p-4">
             <div className="text-lg font-semibold">{fmtDay(nextVisit.scheduled_on)}</div>
+            {showProperty && nextAddr && (
+              <div className="mt-0.5 text-sm font-medium text-foreground">{nextAddr}</div>
+            )}
             <div className="mt-1 text-sm text-muted-foreground flex flex-wrap gap-x-3">
               {nextVisit.eta_start && <span>Arriving {fmtTime(nextVisit.eta_start)}–{fmtTime(nextVisit.eta_end)}</span>}
               {relativeFromToday(nextVisit.scheduled_on) && <span>{relativeFromToday(nextVisit.scheduled_on)}</span>}
