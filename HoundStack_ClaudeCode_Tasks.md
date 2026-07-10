@@ -88,6 +88,8 @@ Build one shared generateStructured(schema, prompt, label) helper around the new
 
 ### #3 — Per-acre commercial pricing drops the base price entirely — a $20/visit account was quoted and saved at $0.28/visit
 
+**Status:** ✅ Shipped (July 10, 2026). Root cause: in `getInternalQuote` (New Client wizard Plan step), when a zone priced by area the computed area charge *replaced* the zone's base price instead of adding to it. The math is now extracted to a pure helper (`src/lib/pricing.ts`) that always sums base + area (with the area minimum applied to the area component only) + per-extra-dog, with unit tests including the exact QA repro (2,472 sq ft in Downtown Commercial → $20.28, not $0.28). Checked the public signup path's `public_quote` DB function — it never used area pricing, so it doesn't share the bug. Production audit run against live: exactly one affected subscription existed (the QA repro client "Geocode Test" at $0.28); corrected to $20.28 directly in the live DB. Note: the wizard currently only auto-quotes residential accounts, so drive a fresh commercial-with-boundary quote when the UI is next touched live.
+
 **Severity:** Critical  
 **Role(s) affected:** Owner  
 **Area:** Pricing engine — New Client wizard / per-acre zones  

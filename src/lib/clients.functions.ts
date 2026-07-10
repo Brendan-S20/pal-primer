@@ -275,35 +275,30 @@ export const getInternalQuote = createServerFn({ method: "POST" })
     if (!match) return { available: false as const };
     const z = match.z;
     const mult = Number((org.frequency_multipliers as any)?.[data.frequency] ?? 1);
-    const dogAddl = Math.max(0, data.dogCount - 1) * (z.per_dog_addl_cents ?? 0);
     const mode = (z.pricing_mode ?? "flat") as "flat" | "per_sqft" | "per_acre";
 
-    let baseVisit: number;
-    let areaBasisCents: number | null = null;
-    if (mode !== "flat" && data.boundaryAreaSqm) {
-      const sqft = data.boundaryAreaSqm * 10.7639;
-      const acres = data.boundaryAreaSqm / 4046.8564;
-      const raw =
-        mode === "per_sqft"
-          ? Math.round(sqft * Number(z.price_per_sqft_cents ?? 0))
-          : Math.round(acres * (z.price_per_acre_cents ?? 0));
-      areaBasisCents = raw;
-      baseVisit = Math.max(raw, z.area_min_charge_cents ?? 0);
-    } else {
-      baseVisit = z.base_price_cents ?? 0;
-    }
-    const perVisit = baseVisit + dogAddl;
-    const recurring = Math.round(perVisit * mult);
+    const { computeZoneVisitPrice } = await import("@/lib/pricing");
+    const price = computeZoneVisitPrice(
+      {
+        base_price_cents: z.base_price_cents,
+        per_dog_addl_cents: z.per_dog_addl_cents,
+        pricing_mode: mode,
+        price_per_sqft_cents: Number(z.price_per_sqft_cents ?? 0),
+        price_per_acre_cents: z.price_per_acre_cents,
+        area_min_charge_cents: z.area_min_charge_cents,
+      },
+      { dogCount: data.dogCount, boundaryAreaSqm: data.boundaryAreaSqm, multiplier: mult },
+    );
     return {
       available: true as const,
       quote: {
         zoneId: z.id as string,
         zoneName: z.name as string,
         pricingMode: mode,
-        areaBasisCents,
-        basePriceCents: perVisit,
+        areaBasisCents: price.areaBasisCents,
+        basePriceCents: price.perVisitCents,
         perDogAddlCents: z.per_dog_addl_cents ?? 0,
-        recurringPriceCents: recurring,
+        recurringPriceCents: price.recurringCents,
         initialCleanupCents: z.initial_cleanup_cents ?? 0,
         currency: org.currency as string,
       },
