@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import {
+  balanceOverloadedRoutes,
+  getVisitRangeSummary,
   listVisitsForDay,
   generateVisits,
   assignRoute,
@@ -74,7 +76,7 @@ function RoutesPage() {
   const [localColumns, setLocalColumns] = useState<Record<string, Visit[]> | null>(null);
 
   const [weekDays, setWeekDays] = useState(7);
-  const [viewMode, setViewMode] = useState<"split" | "map" | "board">("split");
+  const [viewMode, setViewMode] = useState<"split" | "map" | "board" | "week">("split");
   const [toolsOpen, setToolsOpen] = useState(false);
   const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
 
@@ -199,6 +201,23 @@ function RoutesPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const balanceFn = useServerFn(balanceOverloadedRoutes);
+  const balanceMut = useMutation({
+    mutationFn: () => balanceFn({ data: { day, apply: true } }),
+    onSuccess: (r: any) => {
+      const over = (r.loads ?? []).filter((l: any) => l.overCapacity).length;
+      if (r.applied > 0) {
+        toast.success(`Rebalanced ${r.applied} overflow stop(s) off overloaded routes. Re-optimize to tidy sequences.`);
+      } else if (over === 0) {
+        toast.success("No overloaded routes — everyone's within capacity.");
+      } else {
+        toast.warning("Some routes are overloaded but no tech has spare capacity — add a tech or move visits to another day.");
+      }
+      setLocalColumns(null);
+      qc.invalidateQueries({ queryKey: ["visits", day] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
   const settingsMut = useMutation({
 
     mutationFn: (patch: any) => updSettings({ data: patch }),
@@ -308,13 +327,13 @@ function RoutesPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Input type="date" value={day} onChange={(e) => { setLocalColumns(null); setDay(e.target.value); }} className="w-[160px]" />
           <div className="inline-flex rounded-md border bg-card p-0.5 text-xs">
-            {(["split", "map", "board"] as const).map((m) => (
+            {(["split", "map", "board", "week"] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => setViewMode(m)}
                 className={`px-3 py-1.5 rounded ${viewMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
-                {m === "split" ? "Split" : m === "map" ? "Map" : "Board"}
+                {m === "split" ? "Split" : m === "map" ? "Map" : m === "board" ? "Board" : "Week"}
               </button>
             ))}
           </div>
@@ -396,6 +415,14 @@ function RoutesPage() {
             >
               {reoptMut.isPending ? "…" : "Re-optimize today"}
             </Button>
+            <Button
+              variant="secondary"
+              onClick={() => balanceMut.mutate()}
+              disabled={balanceMut.isPending}
+              title="Move overflow off any tech whose day exceeds working-hours capacity"
+            >
+              {balanceMut.isPending ? "…" : "Balance overloaded routes"}
+            </Button>
           </div>
           <p className="text-[11px] text-muted-foreground">
             Distributes unassigned visits round-robin by zone, then optimizes each tech's day.
@@ -455,6 +482,10 @@ function RoutesPage() {
           </div>
         </div>
       </div>
+      )}
+
+      {viewMode === "week" && (
+        <WeekOverview day={day} onPickDay={(d) => { setLocalColumns(null); setDay(d); setViewMode("split"); }} />
       )}
 
       {(viewMode === "map" || viewMode === "split") && (
@@ -561,6 +592,80 @@ function MapPanel({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Finding #28: a multi-day overview so office staff can see upcoming volume,
+// overloaded days, and gaps across a week/month without stepping through days.
+function WeekOverview({ day, onPickDay }: { day: string; onPickDay: (d: string) => void }) {
+  const [span, setSpan] = useState<7 | 28>(7);
+  const rangeFn = useServerFn(getVisitRangeSummary);
+
+  // Start from the Monday of the selected day's week.
+  const base = new Date(`${day}T00:00:00`);
+  const dow = (base.getDay() + 6) % 7; // 0 = Monday
+  const start = new Date(base);
+  start.setDate(base.getDate() - dow);
+  const iso = (d: Date) => {
+    const off = d.getTimezoneOffset();
+    return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10);
+  };
+  const days: string[] = [];
+  for (let i = 0; i < span; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    days.push(iso(d));
+  }
+  const from = days[0];
+  const to = days[days.length - 1];
+
+  const q = useQuery({
+    queryKey: ["visit-range", from, to],
+    queryFn: () => rangeFn({ data: { from, to } }),
+  });
+  const byDay = new Map<string, { total: number; completed: number; unassigned: number }>();
+  for (const d of (q.data as any)?.days ?? []) byDay.set(d.date, d);
+  const maxTotal = Math.max(1, ...days.map((d) => byDay.get(d)?.total ?? 0));
+  const todayIso = todayISO();
+
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-semibold">{span === 7 ? "This week" : "Next 4 weeks"}</h2>
+        <div className="inline-flex rounded-md border p-0.5 text-xs">
+          <button onClick={() => setSpan(7)} className={`px-3 py-1 rounded ${span === 7 ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Week</button>
+          <button onClick={() => setSpan(28)} className={`px-3 py-1 rounded ${span === 28 ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Month</button>
+        </div>
+      </div>
+      <div className={`grid gap-2 ${span === 7 ? "grid-cols-7" : "grid-cols-7"}`}>
+        {days.map((d) => {
+          const c = byDay.get(d) ?? { total: 0, completed: 0, unassigned: 0 };
+          const heat = c.total / maxTotal;
+          const dt = new Date(`${d}T00:00:00`);
+          return (
+            <button
+              key={d}
+              onClick={() => onPickDay(d)}
+              className={`flex flex-col rounded-md border p-2 text-left text-xs transition hover:ring-1 hover:ring-primary ${d === todayIso ? "ring-1 ring-primary" : ""}`}
+              style={{ background: c.total ? `rgba(37,99,235,${0.08 + heat * 0.35})` : undefined }}
+              title={`${c.total} visits · ${c.completed} completed · ${c.unassigned} unassigned`}
+            >
+              <span className="text-[10px] uppercase text-muted-foreground">
+                {dt.toLocaleDateString(undefined, { weekday: "short" })}
+              </span>
+              <span className="font-medium">{dt.getDate()}</span>
+              <span className="mt-1 text-[11px]">{c.total} visit{c.total === 1 ? "" : "s"}</span>
+              {c.unassigned > 0 && (
+                <span className="text-[10px] text-amber-700">{c.unassigned} unassigned</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-3 text-[11px] text-muted-foreground">
+        Darker = busier. Click a day to open its route board.
+      </p>
     </div>
   );
 }

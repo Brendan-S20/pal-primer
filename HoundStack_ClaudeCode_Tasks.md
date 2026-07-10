@@ -478,6 +478,8 @@ Implementation note (added after a geocoding-provider change subsequent to this 
 
 ### #27 — No automatic way to split an overloaded technician’s route
 
+**Status:** ✅ Shipped (July 10, 2026). Added capacity-aware balancing: `balanceOverloadedRoutes` computes each field tech's day load (drive `travel_min` + property service duration) against a working-day capacity (workday_end − workday_start), flags techs over capacity, and greedily peels their trailing stops onto the least-loaded available tech with room (or leaves them Unassigned when no one has capacity — surfaced as a warning to add a tech or move visits to another day). A "Balance overloaded routes" action in the Routes planning tools applies the moves; the dispatcher then Re-optimizes to tidy sequences. This is a solid v1 of the finding's (1) capacity threshold, (2) overload detection, (3) auto-split — it respects the #26 routing-eligibility flags and only moves within available field techs. tsc + tests green.
+
 **Severity:** Medium  
 **Role(s) affected:** Owner  
 **Area:** Routes / Dispatch — Optimize  
@@ -492,6 +494,8 @@ Implementation note (added after a geocoding-provider change subsequent to this 
 ---
 
 ### #28 — No week or month view for scheduled visits — Routes is locked to a single day
+
+**Status:** ✅ Shipped (July 10, 2026). Added a "Week" view mode to the Routes page (alongside Split/Map/Board) backed by a new `getVisitRangeSummary` range query. It renders a 7-day (Week) or 28-day (Month) heat grid — each day shows its visit count, unassigned count, and a busier-is-darker shade so office staff can spot overloaded days, gaps, and upcoming volume at a glance; clicking a day opens that day's route board. tsc green.
 
 **Severity:** Medium  
 **Role(s) affected:** Owner  
