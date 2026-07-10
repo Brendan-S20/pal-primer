@@ -11,6 +11,7 @@ import {
   type TenantDetail, type TenantNote, type TenantFlagRow, type TenantInvoiceRow, type TenantAuditRow,
 } from "@/lib/platform-tenant.functions";
 import { startImpersonation } from "@/lib/platform.functions";
+import { IMPERSONATION_WINDOW_PREFIX } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -111,11 +112,30 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
     onSuccess: () => { toast.success("Tenant deleted"); setConfirmName(""); onChange(); },
     onError: (e) => toast.error((e as Error).message),
   });
+  const [impersonateUser, setImpersonateUser] = useState<string>("");
   const impersonateM = useMutation({
-    mutationFn: () => impersonateFn({ data: { organization_id: t.id } }),
+    mutationFn: (targetUserId: string) => {
+      // Open the tab SYNCHRONOUSLY inside the click handler (before the await)
+      // so the browser doesn't treat it as a popup, and stamp its window.name
+      // so the loaded app scopes its session to sessionStorage (finding #5).
+      const winName = `${IMPERSONATION_WINDOW_PREFIX}${crypto.randomUUID()}`;
+      const win = window.open("about:blank", winName);
+      return impersonateFn({ data: { organization_id: t.id, target_user_id: targetUserId } })
+        .then((res) => {
+          if (!win) {
+            throw new Error("Pop-up blocked — allow pop-ups for this site and try again.");
+          }
+          win.location.href = `/impersonate#t=${encodeURIComponent(res.token)}`;
+          return res;
+        })
+        .catch((e) => {
+          try { win?.close(); } catch { /* noop */ }
+          throw e;
+        });
+    },
     onSuccess: (res) => {
-      window.open(res.actionLink, "_blank", "noopener,noreferrer");
-      toast.success(`Impersonation link opened for ${res.targetEmail}`);
+      toast.success(`Impersonating ${res.targetEmail} in a new tab`);
+      setImpersonateUser("");
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -141,9 +161,54 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
           )}
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => impersonateM.mutate()} disabled={impersonateM.isPending || !!t.deleted_at}>
-            <UserCog className="mr-1 h-4 w-4" /> Impersonate
-          </Button>
+          <AlertDialog onOpenChange={(open) => { if (!open) setImpersonateUser(""); }}>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" size="sm" disabled={impersonateM.isPending || !!t.deleted_at}>
+                <UserCog className="mr-1 h-4 w-4" /> Impersonate
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Impersonate a user in {t.name}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  You'll open a read/write session AS the selected user in a new tab. Your own
+                  platform-admin session in this tab is not affected. Everything you do is logged
+                  to the audit trail.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="space-y-1">
+                <Label htmlFor="imp-user">User to impersonate</Label>
+                <select
+                  id="imp-user"
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={impersonateUser}
+                  onChange={(e) => setImpersonateUser(e.target.value)}
+                >
+                  <option value="">Select a user…</option>
+                  {t.users.map((u) => (
+                    <option key={u.user_id} value={u.user_id}>
+                      {(u.email ?? u.user_id)} — {u.role.replace(/_/g, " ")}
+                    </option>
+                  ))}
+                </select>
+                {t.users.length === 0 && (
+                  <p className="text-xs text-muted-foreground">This tenant has no users to impersonate.</p>
+                )}
+              </div>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={!impersonateUser || impersonateM.isPending}
+                  onClick={(e) => {
+                    if (!impersonateUser) { e.preventDefault(); return; }
+                    impersonateM.mutate(impersonateUser);
+                  }}
+                >
+                  {impersonateM.isPending ? "Starting…" : "Impersonate"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           {t.billing_status === "suspended" ? (
             <Button size="sm" onClick={() => reactivateM.mutate()} disabled={reactivateM.isPending || !!t.deleted_at}>
               Reactivate

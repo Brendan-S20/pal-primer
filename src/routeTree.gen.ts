@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as PlatformRouteImport } from './routes/platform'
+import { Route as ImpersonateRouteImport } from './routes/impersonate'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
@@ -118,6 +119,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const PlatformRoute = PlatformRouteImport.update({
   id: '/platform',
   path: '/platform',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImpersonateRoute = ImpersonateRouteImport.update({
+  id: '/impersonate',
+  path: '/impersonate',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -615,6 +621,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/auth': typeof AuthRoute
+  '/impersonate': typeof ImpersonateRoute
   '/platform': typeof PlatformRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -711,6 +718,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/auth': typeof AuthRoute
+  '/impersonate': typeof ImpersonateRoute
   '/reset-password': typeof ResetPasswordRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/ai-tools': typeof AuthenticatedAiToolsRoute
@@ -802,6 +810,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/admin': typeof AdminRoute
   '/auth': typeof AuthRoute
+  '/impersonate': typeof ImpersonateRoute
   '/platform': typeof PlatformRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -900,6 +909,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/auth'
+    | '/impersonate'
     | '/platform'
     | '/reset-password'
     | '/unsubscribe'
@@ -996,6 +1006,7 @@ export interface FileRouteTypes {
     | '/'
     | '/admin'
     | '/auth'
+    | '/impersonate'
     | '/reset-password'
     | '/unsubscribe'
     | '/ai-tools'
@@ -1086,6 +1097,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/admin'
     | '/auth'
+    | '/impersonate'
     | '/platform'
     | '/reset-password'
     | '/unsubscribe'
@@ -1184,6 +1196,7 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AdminRoute: typeof AdminRoute
   AuthRoute: typeof AuthRoute
+  ImpersonateRoute: typeof ImpersonateRoute
   PlatformRoute: typeof PlatformRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
@@ -1232,6 +1245,13 @@ declare module '@tanstack/react-router' {
       path: '/platform'
       fullPath: '/platform'
       preLoaderRoute: typeof PlatformRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/impersonate': {
+      id: '/impersonate'
+      path: '/impersonate'
+      fullPath: '/impersonate'
+      preLoaderRoute: typeof ImpersonateRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -2101,6 +2121,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AdminRoute: AdminRoute,
   AuthRoute: AuthRoute,
+  ImpersonateRoute: ImpersonateRoute,
   PlatformRoute: PlatformRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,
   UnsubscribeRoute: UnsubscribeRoute,
