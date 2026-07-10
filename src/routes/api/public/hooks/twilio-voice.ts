@@ -10,19 +10,18 @@ export const Route = createFileRoute("/api/public/hooks/twilio-voice")({
     handlers: {
       POST: async ({ request }) => {
         const shared = process.env.TWILIO_INBOUND_SECRET;
-        if (!shared) return new Response("not configured", { status: 500 });
-
         const url = new URL(request.url);
-        if (url.searchParams.get("s") !== shared) {
-          return new Response("unauthorized", { status: 401 });
-        }
+        const sharedOk = !!shared && url.searchParams.get("s") === shared;
 
         const form = await request.formData();
-        const from = String(form.get("From") ?? "");
-        const to = String(form.get("To") ?? "");
-        const callSid = String(form.get("CallSid") ?? "");
-        const speech = String(form.get("SpeechResult") ?? "").trim();
+        const params: Record<string, string> = {};
+        for (const [k, v] of form.entries()) params[k] = String(v);
+        const from = params.From ?? "";
+        const to = params.To ?? "";
+        const callSid = params.CallSid ?? "";
+        const speech = (params.SpeechResult ?? "").trim();
         const turn = Number(url.searchParams.get("turn") ?? "0");
+        const signature = request.headers.get("X-Twilio-Signature");
 
         if (!from || !to || !callSid) return xml("<Response><Hangup/></Response>", 200);
 
@@ -43,7 +42,21 @@ export const Route = createFileRoute("/api/public/hooks/twilio-voice")({
           );
         }
 
-        const nextUrl = `/api/public/hooks/twilio-voice?s=${encodeURIComponent(shared)}&turn=${turn + 1}`;
+        // Authn: shared inbound secret (platform-managed) OR a valid Twilio
+        // signature from this org's own (BYOK) auth token.
+        if (!sharedOk) {
+          const { resolveOrgTwilioConfig } = await import("@/lib/twilio-credentials.server");
+          const tenant = await resolveOrgTwilioConfig(org.id);
+          const { twilioSignatureIsValid } = await import("@/lib/twilio-signature.server");
+          const ok = tenant?.authToken
+            ? twilioSignatureIsValid(request.url, params, tenant.authToken, signature)
+            : false;
+          if (!ok) return new Response("unauthorized", { status: 401 });
+        }
+
+        const nextUrl = sharedOk
+          ? `/api/public/hooks/twilio-voice?s=${encodeURIComponent(shared!)}&turn=${turn + 1}`
+          : `/api/public/hooks/twilio-voice?turn=${turn + 1}`;
 
         // Initial call — greet and gather.
         if (turn === 0 || !speech) {

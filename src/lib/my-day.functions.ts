@@ -94,11 +94,14 @@ export const completeVisit = createServerFn({ method: "POST" })
         .single();
       const c: any = v && (Array.isArray((v as any).clients) ? (v as any).clients[0] : (v as any).clients);
       const o: any = v && (Array.isArray((v as any).organizations) ? (v as any).organizations[0] : (v as any).organizations);
+      // Auto review-ask is an automated notification → PLATFORM Twilio sender.
+      const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
+      const reviewFrom = platformTwilioFrom() ?? o?.sms_from_number ?? null;
       const ninetyDaysAgo = Date.now() - 90 * 24 * 3600_000;
       const eligible =
         o?.review_ask_enabled &&
         o?.google_review_url &&
-        o?.sms_from_number &&
+        reviewFrom &&
         c?.primary_phone &&
         !c?.sms_opt_out &&
         (!c?.review_asked_at || new Date(c.review_asked_at).getTime() < ninetyDaysAgo);
@@ -110,14 +113,14 @@ export const completeVisit = createServerFn({ method: "POST" })
         const body = template.replace(/\{name\}/g, firstName).replace(/\{link\}/g, o.google_review_url);
         const { sendTwilioSms } = await import("@/lib/twilio.server");
         try {
-          const res = await sendTwilioSms({ from: o.sms_from_number, to: c.primary_phone, body });
+          const res = await sendTwilioSms({ from: reviewFrom, to: c.primary_phone, body });
           await context.supabase.from("messages").insert({
             organization_id: (v as any).organization_id,
             client_id: c.id,
             visit_id: data.visitId,
             direction: "outbound",
             body,
-            from_number: o.sms_from_number,
+            from_number: reviewFrom,
             to_number: c.primary_phone,
             twilio_sid: res.sid,
             status: (res.status || "sent") as any,

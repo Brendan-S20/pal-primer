@@ -323,7 +323,10 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                     .select("sms_from_number, notify_sms_payment_failed")
                     .eq("id", inv.organization_id)
                     .single();
-                  if (org?.notify_sms_payment_failed && org.sms_from_number) {
+                  // Dunning is an automated notification → PLATFORM Twilio sender.
+                  const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
+                  const dunningFrom = platformTwilioFrom() ?? org?.sms_from_number ?? null;
+                  if (org?.notify_sms_payment_failed && dunningFrom) {
                     const { data: c } = await supabaseAdmin
                       .from("clients")
                       .select("display_name, primary_phone, sms_opt_out, portal_token")
@@ -333,13 +336,13 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                       const { buildPortalLink } = await import("@/lib/portal-links.server");
                       const url = await buildPortalLink(inv.organization_id, c.portal_token as string | null);
                       const body = `Hi ${c.display_name}, your card on file was declined. Please update your payment method: ${url}`;
-                      const r = await sendTwilioSms({ from: org.sms_from_number, to: c.primary_phone, body });
+                      const r = await sendTwilioSms({ from: dunningFrom, to: c.primary_phone, body });
                       await supabaseAdmin.from("messages").insert({
                         organization_id: inv.organization_id,
                         client_id: inv.client_id,
                         direction: "outbound",
                         body,
-                        from_number: org.sms_from_number,
+                        from_number: dunningFrom,
                         to_number: c.primary_phone,
                         twilio_sid: r.sid,
                         status: (r.status as "queued" | "sent" | "delivered" | "failed" | "received" | undefined) ?? "queued",

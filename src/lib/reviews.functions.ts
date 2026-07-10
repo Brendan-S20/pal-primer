@@ -39,8 +39,11 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
       .eq("id", client.organization_id)
       .single();
     if (oErr) throw new Error(oErr.message);
-    if (!org.sms_from_number)
-      throw new Error("Your organization has no SMS sender number set (Settings → SMS)");
+    // Review asks are automated notifications → PLATFORM Twilio sender.
+    const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
+    const reviewFrom = platformTwilioFrom() ?? org.sms_from_number ?? null;
+    if (!reviewFrom)
+      throw new Error("No SMS sender is configured for notifications (Settings → SMS)");
     if (!org.google_review_url)
       throw new Error("Add a Google review URL in Settings → Reviews first");
 
@@ -63,7 +66,7 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
     let errorText: string | null = null;
     try {
       const res = await sendTwilioSms({
-        from: org.sms_from_number,
+        from: reviewFrom,
         to: client.primary_phone,
         body,
       });
@@ -81,7 +84,7 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
       staff_id: staff?.id ?? null,
       direction: "outbound",
       body,
-      from_number: org.sms_from_number,
+      from_number: reviewFrom,
       to_number: client.primary_phone,
       twilio_sid: sid,
       status: status as any,

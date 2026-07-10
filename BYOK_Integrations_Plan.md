@@ -4,6 +4,15 @@
 
 **Principle:** the **platform** keeps its own Stripe + Twilio for platform-level jobs (billing tenants, auth/OTP, automated notifications). Each **tenant/owner** connects their own Stripe + Twilio for the tenant↔client relationship (charging their clients, conversing with their clients). This mirrors the AI-Tools BYOK already shipped (`org_ai_credentials` + `src/lib/ai-credentials.server.ts`).
 
+**Three distinct Stripe roles — kept on separate env vars so they can never collide (noted per Brendan, July 10, 2026):**
+| Role | Purpose | Keys |
+|------|---------|------|
+| **Platform billing (bucket A)** | HoundStack charges tenants for Launch/Growth/Scale subscriptions (the per-employee plans + seat-sync already shipped) | `PLATFORM_STRIPE_SECRET_KEY` / `PLATFORM_STRIPE_WEBHOOK_SECRET` |
+| **Connect platform (bucket B)** | The platform-of-record for Stripe Connect; makes tenant→client charges on connected accounts and receives Connect webhooks | `STRIPE_CONNECT_SECRET_KEY` / `STRIPE_CONNECT_CLIENT_ID` (OAuth) / `STRIPE_CONNECT_WEBHOOK_SECRET` |
+| **Tenant (connected) accounts** | Each owner's own Stripe, authorized via Connect OAuth; funds settle here | `organizations.stripe_connect_account_id` (`acct_…`), no secret stored |
+
+Platform billing and the Connect platform are a **separate Stripe connection** each — bucket A is untouched by this work and never shares keys with bucket B. The bare `STRIPE_SECRET_KEY` (currently doing both) is retired: bucket A moves fully to `PLATFORM_*`, bucket B moves to Connect.
+
 ---
 
 ## Audit baseline (what exists today)

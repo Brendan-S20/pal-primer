@@ -9,18 +9,17 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
     handlers: {
       POST: async ({ request }) => {
         const shared = process.env.TWILIO_INBOUND_SECRET;
-        if (!shared) return new Response("not configured", { status: 500 });
-
         const url = new URL(request.url);
-        if (url.searchParams.get("s") !== shared) {
-          return new Response("unauthorized", { status: 401 });
-        }
+        const sharedOk = !!shared && url.searchParams.get("s") === shared;
 
         const form = await request.formData();
-        const from = String(form.get("From") ?? "");
-        const to = String(form.get("To") ?? "");
-        const body = String(form.get("Body") ?? "").trim();
-        const sid = String(form.get("MessageSid") ?? "") || null;
+        const params: Record<string, string> = {};
+        for (const [k, v] of form.entries()) params[k] = String(v);
+        const from = params.From ?? "";
+        const to = params.To ?? "";
+        const body = (params.Body ?? "").trim();
+        const sid = params.MessageSid || null;
+        const signature = request.headers.get("X-Twilio-Signature");
 
         if (!from || !to) {
           return xml("<Response/>", 200);
@@ -37,6 +36,20 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
         if (!org) {
           console.warn("Inbound SMS: no org for To=", to);
           return xml("<Response/>", 200);
+        }
+
+        // Authn: the shared inbound secret (platform-managed numbers) OR a valid
+        // Twilio signature from this org's own (BYOK) auth token. A single shared
+        // secret can't authenticate N tenant Twilio accounts, so BYOK orgs are
+        // verified per-request against their own token.
+        if (!sharedOk) {
+          const { resolveOrgTwilioConfig } = await import("@/lib/twilio-credentials.server");
+          const tenant = await resolveOrgTwilioConfig(org.id);
+          const { twilioSignatureIsValid } = await import("@/lib/twilio-signature.server");
+          const ok = tenant?.authToken
+            ? twilioSignatureIsValid(request.url, params, tenant.authToken, signature)
+            : false;
+          if (!ok) return new Response("unauthorized", { status: 401 });
         }
 
         // Match client by digits(primary_phone) == digits(from)
