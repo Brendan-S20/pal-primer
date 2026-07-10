@@ -41,7 +41,17 @@ async function ensureBootstrapped(user: { id: string; email?: string | null; use
   // org, join THAT org with the invited role instead of bootstrapping a new
   // one. Idempotent server-side; returns null when there's no pending invite.
   const { data: invitedOrg } = await supabase.rpc("accept_org_invite_for_current_user" as any);
-  if (invitedOrg) return;
+  if (invitedOrg) {
+    // A new employee just joined — reconcile the org's Stripe seat count so
+    // per-employee billing catches up immediately. Best-effort.
+    try {
+      const { resyncMySeats } = await import("@/lib/users.functions");
+      await resyncMySeats();
+    } catch (err) {
+      console.error("seat resync after invite acceptance failed", err);
+    }
+    return;
+  }
 
   const md = user.user_metadata ?? {};
   const emailLocal = (user.email ?? "").split("@")[0] || "Owner";

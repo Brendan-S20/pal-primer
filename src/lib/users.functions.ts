@@ -47,6 +47,33 @@ export const setStaffActive = createServerFn({ method: "POST" })
       _active: data.active,
     });
     if (error) throw new Error(error.message);
+    // Activating/deactivating an employee changes the billable seat count —
+    // reconcile the Stripe seat-overage quantity (best-effort; never blocks the
+    // toggle if billing isn't configured or Stripe hiccups).
+    try {
+      const orgId = await resolveOrgId(context.supabase, context.userId);
+      const { syncOrgSeatQuantity } = await import("@/lib/seat-sync.server");
+      await syncOrgSeatQuantity(orgId);
+    } catch (e) {
+      console.error("seat sync after set_staff_active failed", (e as Error).message);
+    }
+    return { ok: true };
+  });
+
+// Reconcile the caller org's Stripe seat-overage quantity to its current active
+// employee count. Called after invite acceptance (a new employee just joined)
+// so billing catches up without waiting for the next staff toggle. Best-effort:
+// returns { ok: true } even when there's nothing to sync.
+export const resyncMySeats = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    try {
+      const orgId = await resolveOrgId(context.supabase, context.userId);
+      const { syncOrgSeatQuantity } = await import("@/lib/seat-sync.server");
+      await syncOrgSeatQuantity(orgId);
+    } catch (e) {
+      console.error("resyncMySeats failed", (e as Error).message);
+    }
     return { ok: true };
   });
 

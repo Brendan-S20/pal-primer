@@ -173,6 +173,15 @@ export const refreshBillingStatus = createServerFn({ method: "POST" })
         plan_status: status,
         current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
       }).eq("id", orgId);
+      // Self-heal the seat-overage quantity while we're here, so a seat count
+      // that drifted (e.g. an invite accepted since checkout) reconciles the
+      // next time billing is viewed. Best-effort.
+      try {
+        const { syncOrgSeatQuantity } = await import("@/lib/seat-sync.server");
+        await syncOrgSeatQuantity(orgId);
+      } catch (e) {
+        console.error("seat sync during refreshBillingStatus failed", (e as Error).message);
+      }
       return { billingStatus: status };
     }
     await supabaseAdmin.from("organizations").update({

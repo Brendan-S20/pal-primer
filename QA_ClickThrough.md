@@ -91,10 +91,20 @@ plan. Stripe is in **sandbox** — no real charges.
 5. Click **Manage billing** (Stripe portal) — confirm it opens the portal for
    that customer.
 
-> Note: the seat count on the checkout reflects **active employees at the
-> moment of checkout**. Ongoing seat changes are managed via the Stripe portal
-> for now (not auto-synced yet) — so don't file "I added an employee and the
-> subscription didn't change" as a bug; that sync is a separate future item.
+**C. Seat sync (ongoing)**
+6. With an active subscription on a per-employee plan, go to
+   **Settings → Users & roles** and **deactivate** an employee (or activate a
+   previously-inactive one) so the active-employee count crosses the plan's
+   included seats.
+7. In Stripe (sandbox) open that customer's subscription.
+   - **Expected:** the **"Per additional employee"** line item quantity now
+     equals `active employees − included seats` (and the item disappears when
+     the org drops back to/under the included count). Deactivating removes a
+     seat; activating adds one.
+8. As a further check, accept a **teammate invite** for that org (new employee
+   signs in), then reopen the Stripe subscription.
+   - **Expected:** the seat quantity went up by one. (Viewing **/billing** also
+     re-reconciles the count if it ever drifts.)
 
 ---
 
