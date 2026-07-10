@@ -486,6 +486,76 @@ export const portalStartCardSetup = createServerFn({ method: "POST" })
     return { url: checkout.url as string };
   });
 
+/** Inline (embedded) card save: create a SetupIntent on the connected account
+ *  for a Payment Element, instead of redirecting to hosted Checkout. */
+export const portalCreateSetupIntent = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({ token: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
+    const session = await requirePortalSession(data.token);
+    const supabaseAdmin = await admin();
+    const { data: cRow } = await supabaseAdmin
+      .from("clients")
+      .select("id, stripe_customer_id, primary_email, display_name")
+      .eq("id", session.clientId)
+      .single();
+    if (!cRow) throw new Error("Client not found");
+
+    const { requireOrgStripeAccount, connectStripe, connectPublishableKey } = await import("@/lib/stripe-connect.server");
+    const acct = await requireOrgStripeAccount(session.organizationId);
+    const stripe = await connectStripe();
+    const opts = { stripeAccount: acct.accountId };
+
+    let customerId = cRow.stripe_customer_id;
+    if (!customerId) {
+      const cust = await stripe.customers.create({
+        email: cRow.primary_email ?? undefined,
+        name: cRow.display_name ?? undefined,
+        metadata: { client_id: cRow.id, organization_id: session.organizationId },
+      }, opts);
+      customerId = cust.id;
+      await supabaseAdmin.from("clients").update({ stripe_customer_id: customerId }).eq("id", cRow.id);
+    }
+
+    const si = await stripe.setupIntents.create({
+      customer: customerId,
+      payment_method_types: ["card"],
+      usage: "off_session",
+      metadata: { client_id: cRow.id, organization_id: session.organizationId, source: "portal_setup_inline" },
+    }, opts);
+    return { clientSecret: si.client_secret as string, publishableKey: connectPublishableKey(), stripeAccount: acct.accountId };
+  });
+
+/** Finalize an inline card save: mark the confirmed payment method as the
+ *  client's default and record the card details. */
+export const portalFinalizeCardSetup = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({ token: z.string().uuid(), setupIntentId: z.string().min(3) }).parse(d))
+  .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
+    const session = await requirePortalSession(data.token);
+    const supabaseAdmin = await admin();
+    const { requireOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
+    const acct = await requireOrgStripeAccount(session.organizationId);
+    const stripe = await connectStripe();
+    const opts = { stripeAccount: acct.accountId };
+
+    const si = await stripe.setupIntents.retrieve(data.setupIntentId, {}, opts);
+    const pmId = typeof si.payment_method === "string" ? si.payment_method : si.payment_method?.id;
+    const customerId = typeof si.customer === "string" ? si.customer : si.customer?.id;
+    if (!pmId || !customerId) throw new Error("Card wasn't saved — please try again.");
+
+    const pm = await stripe.paymentMethods.retrieve(pmId, {}, opts);
+    await stripe.customers.update(customerId, { invoice_settings: { default_payment_method: pmId } }, opts);
+    await supabaseAdmin.from("clients").update({
+      stripe_customer_id: customerId,
+      default_payment_method_id: pmId,
+      default_card_brand: pm.card?.brand ?? null,
+      default_card_last4: pm.card?.last4 ?? null,
+      autopay_enabled: true,
+    }).eq("id", session.clientId);
+    return { ok: true, brand: pm.card?.brand ?? null, last4: pm.card?.last4 ?? null };
+  });
+
 /** Toggle autopay preference. Requires a saved card to enable. */
 export const portalSetAutopay = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ token: z.string().uuid(), enabled: z.boolean() }).parse(d))

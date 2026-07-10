@@ -1,5 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery } from "@tanstack/react-query";
+import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
+import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { portalCreateSetupIntent, portalFinalizeCardSetup } from "@/lib/portal.functions";
 import {
   usePortalCtx, EmptyBox, InvoiceStatusBadge, PromoRedeemCard, TopupRow,
   fmtDayShort, money,
@@ -9,13 +16,24 @@ export const Route = createFileRoute("/portal/$slug/$token/billing")({
   component: PortalBilling,
 });
 
+// Cache Stripe.js per (publishable key + connected account) — Connect direct
+// charges require the Payment Element scoped to the connected account.
+const stripeCache = new Map<string, Promise<StripeJs | null>>();
+function getStripe(pk: string, stripeAccount?: string) {
+  const key = `${pk}|${stripeAccount ?? ""}`;
+  let p = stripeCache.get(key);
+  if (!p) { p = loadStripe(pk, stripeAccount ? { stripeAccount } : undefined); stripeCache.set(key, p); }
+  return p;
+}
+
 function PortalBilling() {
   const { slug, token } = Route.useParams();
   const {
     clientQ, invoicesQ, subsQ,
-    startSetupMut, setAutopayMut, removeCardMut, paySavedMut, topupMut, promoMut,
+    setAutopayMut, removeCardMut, paySavedMut, topupMut, promoMut,
   } = usePortalCtx();
   const c = clientQ.data as any;
+  const [showCard, setShowCard] = useState(false);
 
   return (
     <div className="space-y-4">
@@ -48,22 +66,25 @@ function PortalBilling() {
                 </Button>
               </div>
             </div>
-            <Button size="sm" variant="ghost"
-              disabled={startSetupMut.isPending}
-              onClick={() => startSetupMut.mutate()}>
-              Replace card
+            <Button size="sm" variant="ghost" onClick={() => setShowCard((v) => !v)}>
+              {showCard ? "Cancel" : "Replace card"}
             </Button>
           </>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-muted-foreground">
-              Save a card or bank account for one-tap payments — or enable autopay.
+              Save a card for one-tap payments — or enable autopay.
             </div>
-            <Button size="sm" disabled={startSetupMut.isPending}
-              onClick={() => startSetupMut.mutate()}>
-              Add payment method
+            <Button size="sm" onClick={() => setShowCard((v) => !v)}>
+              {showCard ? "Cancel" : "Add payment method"}
             </Button>
           </div>
+        )}
+        {showCard && (
+          <CardSetup
+            token={token}
+            onDone={() => { setShowCard(false); clientQ.refetch(); }}
+          />
         )}
         <p className="text-xs text-muted-foreground">
           We accept credit/debit cards and ACH bank transfers via Stripe. Your data never touches our servers.
@@ -134,5 +155,67 @@ function PortalBilling() {
         </div>
       )}
     </div>
+  );
+}
+
+// Inline (embedded) card save via the Stripe Payment Element on the connected
+// account — replaces the old hosted-Checkout redirect.
+function CardSetup({ token, onDone }: { token: string; onDone: () => void }) {
+  const createFn = useServerFn(portalCreateSetupIntent);
+  const q = useQuery({
+    queryKey: ["portal-setup-intent", token],
+    queryFn: () => createFn({ data: { token } }),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+  const stripePromise = useMemo(
+    () => (q.data ? getStripe((q.data as any).publishableKey, (q.data as any).stripeAccount) : null),
+    [(q.data as any)?.publishableKey, (q.data as any)?.stripeAccount],
+  );
+
+  if (q.isLoading) return <p className="text-xs text-muted-foreground">Loading secure card form…</p>;
+  if (q.error) return <p className="text-xs text-destructive">{(q.error as Error).message}</p>;
+  if (!q.data || !stripePromise) return null;
+
+  return (
+    <div className="rounded-md border bg-background p-3">
+      <Elements stripe={stripePromise} options={{ clientSecret: (q.data as any).clientSecret }}>
+        <CardSetupInner token={token} onDone={onDone} />
+      </Elements>
+    </div>
+  );
+}
+
+function CardSetupInner({ token, onDone }: { token: string; onDone: () => void }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const finalizeFn = useServerFn(portalFinalizeCardSetup);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    setBusy(true);
+    try {
+      const { error, setupIntent } = await stripe.confirmSetup({ elements, redirect: "if_required" });
+      if (error) { toast.error(error.message ?? "Couldn't save the card"); return; }
+      if (!setupIntent?.id) { toast.error("Card wasn't saved — please try again."); return; }
+      await finalizeFn({ data: { token, setupIntentId: setupIntent.id } });
+      toast.success("Card saved");
+      onDone();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-3">
+      <PaymentElement />
+      <Button type="submit" size="sm" disabled={busy || !stripe}>
+        {busy ? "Saving…" : "Save card"}
+      </Button>
+    </form>
   );
 }

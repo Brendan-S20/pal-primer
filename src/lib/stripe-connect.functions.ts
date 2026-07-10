@@ -50,6 +50,47 @@ export const startStripeConnect = createServerFn({ method: "POST" })
     return { url: link.url };
   });
 
+/** Ensure the org has an Express account (create on first use), for embedded
+ *  onboarding + dashboard. Returns the account's charge-readiness. */
+export const ensureStripeConnectAccount = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { data: userData } = await context.supabase.auth.getUser();
+    const { ensureExpressAccount, resolveOrgStripeAccount } = await import("@/lib/stripe-connect.server");
+    const accountId = await ensureExpressAccount(orgId, userData.user?.email ?? undefined);
+    const acct = await resolveOrgStripeAccount(orgId);
+    return { accountId, chargesEnabled: !!acct?.chargesEnabled };
+  });
+
+/**
+ * Create a Connect Account Session for embedded components (the in-app Express
+ * dashboard: onboarding, account management, payments, payouts, balances).
+ * Returns the short-lived client_secret + the publishable key to init
+ * @stripe/connect-js on the client.
+ */
+export const createStripeAccountSession = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { resolveOrgStripeAccount, connectStripe, connectPublishableKey } = await import("@/lib/stripe-connect.server");
+    const acct = await resolveOrgStripeAccount(orgId);
+    if (!acct) throw new Error("Connect a Stripe account first.");
+    const stripe = await connectStripe();
+    const session = await stripe.accountSessions.create({
+      account: acct.accountId,
+      components: {
+        account_onboarding: { enabled: true },
+        account_management: { enabled: true },
+        notification_banner: { enabled: true },
+        payments: { enabled: true },
+        payouts: { enabled: true },
+        balances: { enabled: true },
+      },
+    });
+    return { clientSecret: session.client_secret, publishableKey: connectPublishableKey() };
+  });
+
 /** Re-check the connected account's charge-readiness with Stripe. */
 export const refreshStripeConnect = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
