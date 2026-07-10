@@ -12,6 +12,7 @@ import {
 } from "@/lib/platform-tenant.functions";
 import { startImpersonation } from "@/lib/platform.functions";
 import { IMPERSONATION_WINDOW_PREFIX } from "@/integrations/supabase/client";
+import { humanizeRole } from "@/lib/humanize";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -308,7 +309,7 @@ function UsersTab({ t }: { t: TenantDetail }) {
             {t.users.map((u) => (
               <TableRow key={u.user_id + u.role}>
                 <TableCell className="font-medium">{u.email ?? <code className="text-xs">{u.user_id.slice(0, 8)}</code>}</TableCell>
-                <TableCell><Badge variant="outline">{u.role}</Badge></TableCell>
+                <TableCell><Badge variant="outline">{humanizeRole(u.role)}</Badge></TableCell>
                 <TableCell className="text-sm text-muted-foreground">{fmtDate(u.created_at)}</TableCell>
               </TableRow>
             ))}
@@ -341,7 +342,7 @@ function BillingTab({ t }: { t: TenantDetail }) {
           <span className="font-mono text-xs">{t.stripe_subscription_id ?? "—"}</span>
         </div>
         <div className="pt-2 text-xs text-muted-foreground">
-          Change plan, apply coupon, and view Stripe portal come online in step 6 (Stripe integration).
+          Plan changes, coupons, and the Stripe portal are managed from the tenant's own Billing settings.
         </div>
       </CardContent>
     </Card>
@@ -419,7 +420,7 @@ function FlagsTab({ orgId }: { orgId: string }) {
         <div className="text-sm text-muted-foreground">Loading…</div>
       ) : rows.length === 0 ? (
         <div className="text-sm text-muted-foreground">
-          No feature flags defined yet. Add rows to <code>platform_feature_flags</code>.
+          No feature flags have been defined yet.
         </div>
       ) : (
         <ul className="divide-y">

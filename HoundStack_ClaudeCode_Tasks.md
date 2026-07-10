@@ -378,6 +378,8 @@ Implementation note (added after a geocoding-provider change subsequent to this 
 
 ### #19 — Raw internal implementation details — roadmap notes, database identifiers, and backend env-var/secret names — leak into user-facing copy across the Owner and Platform Admin consoles
 
+**Status:** ✅ Shipped (July 10, 2026). Added a shared humanize layer (`src/lib/humanize.ts`, `humanizeRole`/`humanizeEnum`) modeled on the tenant Settings → Users & roles labels, and routed the leaking surfaces through it: the Platform Users directory and the tenant Users tab now render role badges as "Office manager" instead of the raw `office_manager` enum. Removed the internal-identifier leaks: the tenant Feature Flags empty state no longer names the `platform_feature_flags` table, the tenant Billing tab's "comes online in step 6" roadmap note is replaced with real product copy, and the Settings → Accounting connect copy no longer lists `QBO_CLIENT_ID`/`QBO_CLIENT_SECRET`/`XERO_*`/"project secrets" (it now describes the OAuth flow in plain language). The Plans-catalog "step N" note was already removed in the #6 rebuild. tsc green.
+
 **Severity:** Medium  
 **Role(s) affected:** Owner, Platform Admin  
 **Area:** UI copy — Internal implementation leakage  
@@ -519,6 +521,8 @@ Implementation note (added after a geocoding-provider change subsequent to this 
 
 ### #31 — Accounting sync accepts raw OAuth access/refresh tokens pasted into unmasked plain-text fields, and is reachable by Office Manager
 
+**Status:** ✅ Shipped (July 10, 2026). The redundant manual OAuth-credential form (Realm/Tenant ID, Access token, Refresh token) is now tucked behind an "Advanced: enter connection details manually" disclosure labeled support-only, and the Access/Refresh token fields are masked `type=password` inputs instead of plain visible textareas — the normal path is the existing "Connect QuickBooks/Xero" OAuth buttons. tsc green. NOTE (recommendation, not changed): the finding also suggests revisiting whether this page should be Owner-only rather than Office-Manager-accessible given it touches the tenant's real financial system — left as a product decision since narrowing access could disrupt existing office workflows.
+
 **Severity:** Medium  
 **Role(s) affected:** Office Manager  
 **Area:** Settings — Accounting  
@@ -567,6 +571,8 @@ Update: this no longer depends on a Lovable-exclusive secret — the email send 
 ---
 
 ### #35 — A completed visit's expanded detail shows a broken image icon instead of one of its two completion photos
+
+**Status:** ✅ Shipped (July 10, 2026). `PhotoThumb` on My day now tracks a loading/ready/error state: if the signed-URL request fails or returns nothing (object missing / upload failed), or the `<img>` itself fails to load (`onError`), it renders a clear "Photo unavailable" placeholder with an explanatory tooltip instead of the browser's bare broken-image icon — so a technician or office manager can tell a genuine data problem from a rendering glitch. tsc green.
 
 **Severity:** Medium  
 **Role(s) affected:** Technician  
