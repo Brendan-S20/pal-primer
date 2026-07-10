@@ -50,6 +50,7 @@ import { Route as AuthenticatedInventoryRouteImport } from './routes/_authentica
 import { Route as AuthenticatedFranchiseRouteImport } from './routes/_authenticated/franchise'
 import { Route as AuthenticatedDnaRouteImport } from './routes/_authenticated/dna'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedConcernsRouteImport } from './routes/_authenticated/concerns'
 import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated/clients'
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
@@ -308,6 +309,11 @@ const AuthenticatedDnaRoute = AuthenticatedDnaRouteImport.update({
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedConcernsRoute = AuthenticatedConcernsRouteImport.update({
+  id: '/concerns',
+  path: '/concerns',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedClientsRoute = AuthenticatedClientsRouteImport.update({
@@ -629,6 +635,7 @@ export interface FileRoutesByFullPath {
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/billing': typeof AuthenticatedBillingRoute
   '/clients': typeof AuthenticatedClientsRouteWithChildren
+  '/concerns': typeof AuthenticatedConcernsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dna': typeof AuthenticatedDnaRoute
   '/franchise': typeof AuthenticatedFranchiseRoute
@@ -724,6 +731,7 @@ export interface FileRoutesByTo {
   '/ai-tools': typeof AuthenticatedAiToolsRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/billing': typeof AuthenticatedBillingRoute
+  '/concerns': typeof AuthenticatedConcernsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/dna': typeof AuthenticatedDnaRoute
   '/franchise': typeof AuthenticatedFranchiseRoute
@@ -818,6 +826,7 @@ export interface FileRoutesById {
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/billing': typeof AuthenticatedBillingRoute
   '/_authenticated/clients': typeof AuthenticatedClientsRouteWithChildren
+  '/_authenticated/concerns': typeof AuthenticatedConcernsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/dna': typeof AuthenticatedDnaRoute
   '/_authenticated/franchise': typeof AuthenticatedFranchiseRoute
@@ -917,6 +926,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/billing'
     | '/clients'
+    | '/concerns'
     | '/dashboard'
     | '/dna'
     | '/franchise'
@@ -1012,6 +1022,7 @@ export interface FileRouteTypes {
     | '/ai-tools'
     | '/analytics'
     | '/billing'
+    | '/concerns'
     | '/dashboard'
     | '/dna'
     | '/franchise'
@@ -1105,6 +1116,7 @@ export interface FileRouteTypes {
     | '/_authenticated/analytics'
     | '/_authenticated/billing'
     | '/_authenticated/clients'
+    | '/_authenticated/concerns'
     | '/_authenticated/dashboard'
     | '/_authenticated/dna'
     | '/_authenticated/franchise'
@@ -1511,6 +1523,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/concerns': {
+      id: '/_authenticated/concerns'
+      path: '/concerns'
+      fullPath: '/concerns'
+      preLoaderRoute: typeof AuthenticatedConcernsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/clients': {
@@ -1991,6 +2010,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
   AuthenticatedBillingRoute: typeof AuthenticatedBillingRoute
   AuthenticatedClientsRoute: typeof AuthenticatedClientsRouteWithChildren
+  AuthenticatedConcernsRoute: typeof AuthenticatedConcernsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDnaRoute: typeof AuthenticatedDnaRoute
   AuthenticatedFranchiseRoute: typeof AuthenticatedFranchiseRoute
@@ -2016,6 +2036,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
   AuthenticatedBillingRoute: AuthenticatedBillingRoute,
   AuthenticatedClientsRoute: AuthenticatedClientsRouteWithChildren,
+  AuthenticatedConcernsRoute: AuthenticatedConcernsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDnaRoute: AuthenticatedDnaRoute,
   AuthenticatedFranchiseRoute: AuthenticatedFranchiseRoute,

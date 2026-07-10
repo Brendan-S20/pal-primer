@@ -579,8 +579,76 @@ export const portalReportConcern = createServerFn({ method: "POST" })
       _message: data.message,
     });
     if (error) throw new Error(error.message);
+
+    // Notify the office by email (finding #14): a dashboard banner alone isn't
+    // reliable for something that could be a safety/liability issue like a gate
+    // left open. Best-effort — never block the client's submission.
+    try {
+      await notifyOfficeOfConcern(sb, data.token, data.category, data.message);
+    } catch (e) {
+      console.error("concern office notification failed", (e as Error).message);
+    }
     return { ticketId: id as string };
   });
+
+const CONCERN_LABELS: Record<string, string> = {
+  missed_spot: "Missed spot",
+  gate_left_open: "Gate left open",
+  damage: "Property damage",
+  wrong_yard: "Wrong yard",
+  other: "Other",
+};
+
+async function notifyOfficeOfConcern(
+  sb: any,
+  token: string,
+  category: string,
+  message: string,
+): Promise<void> {
+  const resendApiKey = process.env.RESEND_API_KEY;
+  if (!resendApiKey) return; // email not configured — banner + inbox still work
+  const { data: client } = await sb
+    .from("clients")
+    .select("display_name, organization_id, organizations(name, contact_email)")
+    .eq("portal_token", token)
+    .maybeSingle();
+  if (!client) return;
+  const org: any = Array.isArray(client.organizations) ? client.organizations[0] : client.organizations;
+  const to = org?.contact_email;
+  if (!to) return; // no office inbox on file
+
+  const label = CONCERN_LABELS[category] ?? category;
+  const crypto = await import("node:crypto");
+  const messageId = `concern-${crypto.randomBytes(8).toString("hex")}`;
+  const html =
+    `<p><strong>New client concern:</strong> ${label}</p>` +
+    `<p>From: ${client.display_name}</p>` +
+    (message ? `<p>${message.replace(/</g, "&lt;")}</p>` : "") +
+    `<p><a href="https://www.app.houndstack.com/concerns">Open the Concerns inbox</a></p>`;
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": messageId,
+    },
+    body: JSON.stringify({
+      from: `${org?.name ?? "HoundStack"} <noreply@notify.houndstack.com>`,
+      to: [to],
+      subject: `New client concern: ${label}`,
+      html,
+      text: `New client concern (${label}) from ${client.display_name}. ${message}`.trim(),
+    }),
+  });
+  const status = res.ok ? "sent" : "failed";
+  await sb.from("email_send_log").insert({
+    message_id: messageId,
+    template_name: "concern-notification",
+    recipient_email: to,
+    status,
+    error_message: res.ok ? null : `Resend ${res.status}`,
+  }).then(() => {}, () => {});
+}
 
 export const portalSignPhotoUrls = createServerFn({ method: "POST" })
   .inputValidator((d) =>

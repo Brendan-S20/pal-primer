@@ -102,7 +102,7 @@ function Dashboard() {
       alerts.push({
         icon: AlertTriangle,
         text: `${sum.openConcerns.length} client concern${sum.openConcerns.length === 1 ? "" : "s"} to review`,
-        to: "/messages",
+        to: "/concerns",
         tone: "warn",
       });
     }

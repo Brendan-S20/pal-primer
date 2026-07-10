@@ -10,6 +10,8 @@ import { subscriptionToFormValues, blankSubscriptionFormValues } from "@/lib/sub
 import { listZones } from "@/lib/zones.functions";
 import { getClientCredit, generatePrepaidInvoice, getClientBillingSummary, generateInvoiceForClient, createCheckoutForInvoice, voidInvoice, resumeAutopay } from "@/lib/invoices.functions";
 import { sendReviewRequest, applyReferralCode } from "@/lib/reviews.functions";
+import { sendSmsToClient, listClientMessages } from "@/lib/messages.functions";
+import { Textarea } from "@/components/ui/textarea";
 import {
   listAddonServices,
   listClientAddons,
@@ -276,6 +278,7 @@ function ClientDetail() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
+          <MessageComposer client={client} />
           <ReviewsReferralPanel client={client} />
           {canBill && (
             <section className="rounded-lg border bg-card p-5">
@@ -694,6 +697,87 @@ function PrepayInline({
         Bill next
       </Button>
     </form>
+  );
+}
+
+// Finding #11: the Messages empty-state points users to "send a first message
+// from a client's detail page," but no composer existed anywhere. This is that
+// entry point — it originates a thread by sending the first SMS via the same
+// path replies use, so the conversation appears on both this page and Messages.
+function MessageComposer({ client }: { client: any }) {
+  const qc = useQueryClient();
+  const listFn = useServerFn(listClientMessages);
+  const sendFn = useServerFn(sendSmsToClient);
+  const [body, setBody] = useState("");
+
+  const messagesQ = useQuery({
+    queryKey: ["client-messages", client.id],
+    queryFn: () => listFn({ data: { clientId: client.id } }),
+  });
+  const messages: any[] = (messagesQ.data as any)?.messages ?? [];
+
+  const sendMut = useMutation({
+    mutationFn: () => sendFn({ data: { clientId: client.id, body: body.trim() } }),
+    onSuccess: () => {
+      setBody("");
+      toast.success("Message sent");
+      qc.invalidateQueries({ queryKey: ["client-messages", client.id] });
+      qc.invalidateQueries({ queryKey: ["message-threads"] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const noPhone = !client.primary_phone;
+  return (
+    <section className="rounded-lg border bg-card p-5">
+      <h2 className="text-sm font-medium">Messages</h2>
+      {messages.length > 0 && (
+        <ul className="mt-3 max-h-48 space-y-2 overflow-y-auto">
+          {messages.slice(-6).map((m) => (
+            <li
+              key={m.id}
+              className={`rounded-md px-3 py-2 text-sm ${m.direction === "outbound" ? "bg-primary/10" : "bg-muted"}`}
+            >
+              <div className="text-[11px] uppercase text-muted-foreground">
+                {m.direction === "outbound" ? "Sent" : "Received"}
+                {m.status ? ` · ${m.status}` : ""}
+              </div>
+              {m.body}
+            </li>
+          ))}
+        </ul>
+      )}
+      <form
+        className="mt-3 space-y-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (body.trim()) sendMut.mutate();
+        }}
+      >
+        <Textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={3}
+          maxLength={1500}
+          placeholder={
+            noPhone
+              ? "Add a phone number to this client to send SMS."
+              : messages.length === 0
+                ? "Send the first message to this client…"
+                : "Write a reply…"
+          }
+          disabled={noPhone}
+        />
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">
+            Sends an SMS from your business number.
+          </span>
+          <Button type="submit" size="sm" disabled={noPhone || !body.trim() || sendMut.isPending}>
+            {sendMut.isPending ? "Sending…" : "Send message"}
+          </Button>
+        </div>
+      </form>
+    </section>
   );
 }
 

@@ -257,6 +257,8 @@ Implementation note (added after a geocoding-provider change subsequent to this 
 
 ### #11 — No way to send a first message to a client — Messages feature is a dead end
 
+**Status:** ✅ Shipped (July 10, 2026). The backend to originate a thread already existed (`sendSmsToClient` sends via Twilio and inserts the `messages` row that constitutes a thread) — the gap was purely that no UI entry point existed, exactly as the empty-state copy promised. Added a "Messages" composer to the client detail Overview tab (next to Reviews & referrals, per the finding) that shows the recent conversation and sends the first/next SMS through that same path, so a new conversation appears both on the client page and in the main Messages list. It's disabled with a clear hint when the client has no phone on file, and surfaces the existing "no SMS sender number — Settings → SMS" error (that Settings page is finding #34). tsc green.
+
 **Severity:** High  
 **Role(s) affected:** Owner  
 **Area:** Messages / Client detail  
@@ -305,6 +307,8 @@ Implementation note (added after a geocoding-provider change subsequent to this 
 ---
 
 ### #14 — Client concerns submitted through the portal have no owner-facing inbox — they surface only as a dashboard banner that links to an empty, unrelated page
+
+**Status:** ✅ Shipped (July 10, 2026). Concerns are stored in `qc_tickets` (which already had status/resolved_at/resolved_by/resolution_note columns). Built the missing owner-facing inbox: a new **Concerns** nav item + `/concerns` route with a real triage workflow — filter by Received / In progress / Resolved, each concern shows category, full message, submitting client + contact info and submission date, with "Mark in progress" / "Mark resolved" (with an optional resolution note) and Reopen. Server functions `listConcerns` / `updateConcernStatus` gated on `view_client_directory`. Fixed the dashboard banner to link to `/concerns` instead of the unrelated `/messages` SMS inbox. Added a best-effort office **email notification** on concern submission (to the org's contact email via Resend, logged to `email_send_log`) so a safety issue like a gate-left-open doesn't depend on someone happening to check the dashboard. tsc + tests green. (Email requires `RESEND_API_KEY` + an org contact email; the inbox + banner work regardless.)
 
 **Severity:** High  
 **Role(s) affected:** Owner  
