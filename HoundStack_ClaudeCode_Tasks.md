@@ -410,6 +410,8 @@ Implementation note (added after a geocoding-provider change subsequent to this 
 
 ### #22 — Clients list “Balance” column shows credit only, hides amounts owed
 
+**Status:** ✅ Shipped (July 10, 2026). Two parts: (a) the owed amount was always $0 because the underlying query used non-existent invoice columns — fixed under #7, so real outstanding balances now populate; (b) the list showed owed OR credit and hid one when both existed, unlabeled. The Balance cell now shows both a red "$X owed" and a green "+$Y credit" line, each clearly labeled, so a client with $135 owed and $20 credit displays both at a glance. tsc + tests green.
+
 **Severity:** Medium  
 **Role(s) affected:** Owner  
 **Area:** Clients — list  
@@ -424,6 +426,8 @@ Implementation note (added after a geocoding-provider change subsequent to this 
 ---
 
 ### #23 — Billing plan limit contradicts its own displayed description, and the Dashboard’s plan label reads as broken
+
+**Status:** ✅ Shipped (July 10, 2026). Reconciled the billing display with the per-employee model from #6 (customers are unlimited on every plan, so there is no client cap to contradict). In `billing-state.server.ts`: recognize the `trialing` status, and drop the client-count-based `overBandLimit`/`needsUpgrade` (both now always false — the "16 clients above the limit of 3" contradiction is gone at the source). On Settings → Billing: the plan card now reads "$/mo · Unlimited customers" instead of a client band, the "Active clients N / 3" enforced-limit display is removed, and a free-trial notice/CTA replaces the old "first 3 clients are on us" free-plan copy. On the Dashboard: the bare "Fetch plan" KPI subtitle now reads "On the Fetch plan" so it no longer looks like a broken/truncated action. Pricing itself was intentionally not re-touched here (that was #6). tsc + tests green.
 
 **Severity:** Medium  
 **Role(s) affected:** Owner  
