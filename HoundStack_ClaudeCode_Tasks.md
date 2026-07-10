@@ -141,6 +141,8 @@ Implementation note (added after an infrastructure rebuild subsequent to this fi
 
 ### #6 — The live Plans catalog bears no resemblance to houndstack.com's public pricing page — different tier names, and a completely different pricing model that the marketing site explicitly denies using
 
+**Status:** 🔶 Rebuilt to the marketed per-employee model (July 10, 2026) — engineering done live; business sign-off + Stripe wiring outstanding. The document records no explicit (a)-vs-(b) decision for this finding, but its own engineering follow-up scopes option (a) precisely and the track's precedent (#15, #16) is consistently "build to match the marketing site." Since Brendan is away, I executed option (a) as the design pass the finding calls for, made it fully reversible (old rows deactivated, not deleted), and left the marketing-vs-model business decision + Stripe price creation flagged below. Shipped: (1) `platform_plans` rebuilt to the four marketed tiers — Launch $79 (3 employees), Growth $199 (10), Scale $449 (30), Enterprise (custom/by-contract) — each with `included_seats` + `price_per_seat_cents` ($10.00/employee overage) and unlimited customers (client caps removed); the seven dog-themed client-band tiers are deactivated (kept for history/FK safety). (2) Tier assignment is now **seat-based, not client-based**: new `active_seat_count` on organizations (maintained by a staff trigger), `assign_billing_tier_for_org` picks the smallest tier covering the org's active employees, `org_seat_overage_cents` computes the per-employee overage, and `organizations.plan_id` is now wired for every org (backfilled — demo org, 4 employees → Growth, $0 overage). (3) A real trial state: added `trialing` to the plan/billing status enums, a 14-day `trial_ends_at` expiry, and the old hard "3 active clients" cap is replaced by a trial/subscription gate (unlimited customers while subscribed or in an unexpired trial). Migrations applied to live via Supabase MCP and verified (catalog rows, demo org assignment, overage math). The Platform → Plans UI now renders base price / included employees / per-employee overage / unlimited customers instead of client bands. OUTSTANDING (needs Brendan / not codeable here): confirm the business decision is genuinely (a) and not (b) update-the-marketing-site; create the matching Stripe products/prices and backfill `stripe_price_id` per tier; and the tenant-facing Settings→Billing copy still reads in client terms — reconciled under finding #23. The employee/seat-management invite flow this billing depends on is finding #40.
+
 **Severity:** Critical  
 **Role(s) affected:** Platform Admin  
 **Area:** Plans catalog vs. public pricing page  
@@ -646,6 +648,8 @@ Update: this no longer depends on a Lovable-exclusive secret — the email send 
 ---
 
 ### #51 — Plans catalog has two indistinguishable free tiers (Free and Puppy), both 0–3 clients, with no visible difference between them
+
+**Status:** ✅ Resolved as part of the #6 rebuild (July 10, 2026). Both "Free" and "Puppy" (and all the other client-band tiers) were deactivated — the real model has no permanent free tier, only a 14-day trial (now a first-class `trialing` plan status with a `trial_ends_at` expiry). The catalog no longer shows two indistinguishable $0 rows; new signups land on the trial, not on either former free tier.
 
 **Severity:** Low  
 **Role(s) affected:** Platform Admin  
