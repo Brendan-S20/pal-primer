@@ -548,7 +548,7 @@ Implementation note (added after a geocoding-provider change subsequent to this 
 
 ### #32 — “Email invoice to client” gives zero feedback — no success, no error, no visible state change
 
-**Status:** 📤 Reclassified onto this track July 10, 2026 (previously on the Lovable track) — not yet implemented.
+**Status:** ✅ Shipped (July 10, 2026). The button already had a loading state and toasts, but it reported success on *enqueue* — the send actually happens on a ~1-minute cron, so "emailed" could be a lie. `sendInvoiceEmail` now returns the `email_send_log` message id + recipient, a new `getEmailSendStatus` reads that row, and the invoice UI polls it: it shows a "Sending…" loader, then upgrades to "Emailed to {recipient}" once the log row reaches `sent`, or surfaces an explicit error on `failed`/`bounced`/`dlq`, or falls back to "queued — check back shortly" if it's still pending after the poll window. The path is the rebuilt Resend pipeline (logged in `email_send_log`), so the feedback now reflects the real outcome. tsc green.
 
 **Severity:** Medium  
 **Role(s) affected:** Office Manager  
