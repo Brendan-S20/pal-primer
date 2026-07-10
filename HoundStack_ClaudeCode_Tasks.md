@@ -221,6 +221,8 @@ This is a narrow verification-and-harden task, not a rebuild — the design (def
 
 ### #9 — Routes page tells users to click “Geocode addresses,” but no such control exists
 
+**Status:** ✅ Shipped (July 10, 2026). A bulk-geocode action had already been added since the finding (the `backfillPropertyGeocodes` server fn geocodes every property with a null lat/lng, and the shared geocoder already enforces a 1 req/s Nominatim throttle with a User-Agent — exactly the note's requirement), but the empty-state overlay that names the button was `pointer-events-none` and the only button lived in the map header (and vanished when there were no visits). Fixed by making the empty-state overlay itself contain a working "Geocode addresses" button wired to the same throttled bulk action, so the message and the control are co-located and reachable. tsc green.
+
 **Severity:** High  
 **Role(s) affected:** Owner  
 **Area:** Routes / Dispatch  
@@ -237,6 +239,8 @@ Implementation note (added after a geocoding-provider change subsequent to this 
 ---
 
 ### #10 — Route optimizer has no distance/plausibility check — will schedule a 1,850 km, 61-hour drive without warning
+
+**Status:** ✅ Shipped (July 10, 2026). Root cause of the inconsistent ETA: `assign_route_for_day` (the "Auto-assign for tech" action) only set `assigned_staff_id` + `sequence` and left each visit's `eta_start`/`travel_km`/`travel_min` at STALE values computed for a different technician's depot — so a card showed a leftover "05:48 PM" ETA next to a freshly-implausible "3708 min" drive. Fixed at the DB level: the assign function now clears those routing fields on every (re)assignment (migration applied live), so an ETA is never shown that wasn't derived from the current drive. Plausibility guard: added a configurable `organizations.max_drive_minutes` (default 240, editable in the Routes dispatch-settings panel) and a pure, unit-tested helper (`route-plausibility.ts`) that flags any stop whose drive exceeds the threshold or whose arrival can't be reached from the workday start plus its drive; `assignRoute`/`optimizeRoute` now return these warnings and the Routes UI surfaces them as dispatcher toasts instead of silently accepting the route. Tests cover the exact 1,854 km repro and the ETA-inconsistency case (53 tests green).
 
 **Severity:** High  
 **Role(s) affected:** Owner  

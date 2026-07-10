@@ -69,8 +69,42 @@ export const assignRoute = createServerFn({ method: "POST" })
         console.error("route push failed", e);
       }
     }
-    return { assigned };
+    const warnings = await routeWarningsForDay(supabase, orgId, data.staffId, data.day);
+    return { assigned, warnings };
   });
+
+/** Fetch the tech's stops for the day and flag implausible ones (finding #10). */
+async function routeWarningsForDay(supabase: any, orgId: string, staffId: string, day: string) {
+  const { findRouteWarnings } = await import("@/lib/route-plausibility");
+  const [{ data: visits }, { data: org }] = await Promise.all([
+    supabase
+      .from("visits")
+      .select("id, scheduled_on, travel_km, travel_min, eta_start, clients(display_name)")
+      .eq("organization_id", orgId)
+      .eq("assigned_staff_id", staffId)
+      .eq("scheduled_on", day),
+    (supabase.from("organizations") as any)
+      .select("max_drive_minutes, workday_start")
+      .eq("id", orgId)
+      .maybeSingle(),
+  ]);
+  const rows = (visits ?? []).map((v: any) => ({
+    id: v.id,
+    clientName: v.clients?.display_name ?? null,
+    travel_km: v.travel_km,
+    travel_min: v.travel_min,
+    eta_start: v.eta_start,
+    scheduled_on: v.scheduled_on,
+  }));
+  const workdayStart: string | null = org?.workday_start ?? null;
+  const workdayStartMinutes = workdayStart
+    ? Number(workdayStart.slice(0, 2)) * 60 + Number(workdayStart.slice(3, 5))
+    : undefined;
+  return findRouteWarnings(rows, {
+    maxDriveMinutes: org?.max_drive_minutes ?? undefined,
+    workdayStartMinutes,
+  });
+}
 
 export const optimizeRoute = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -93,7 +127,8 @@ export const optimizeRoute = createServerFn({ method: "POST" })
       _reassign: data.reassign ?? false,
     });
     if (error) throw new Error(error.message);
-    return { assigned: (count as number) ?? 0 };
+    const warnings = await routeWarningsForDay(supabase, orgId, data.staffId, data.day);
+    return { assigned: (count as number) ?? 0, warnings };
   });
 
 export const reoptimizeAll = createServerFn({ method: "POST" })
@@ -295,9 +330,10 @@ export const getDispatchSettings = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const orgId = await resolveOrgId(context.supabase, context.userId);
-    const { data, error } = await context.supabase
-      .from("organizations")
-      .select("workday_start, workday_end, avg_speed_kmh, traffic_profile")
+    // max_drive_minutes was added by the finding-#10 migration; generated types
+    // lag until Lovable regenerates them, so read it untyped.
+    const { data, error } = await (context.supabase.from("organizations") as any)
+      .select("workday_start, workday_end, avg_speed_kmh, traffic_profile, max_drive_minutes")
       .eq("id", orgId)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -312,11 +348,12 @@ export const updateDispatchSettings = createServerFn({ method: "POST" })
       workday_end: z.string().optional(),
       avg_speed_kmh: z.number().int().min(5).max(120).optional(),
       traffic_profile: z.enum(["light", "normal", "heavy"]).optional(),
+      max_drive_minutes: z.number().int().min(15).max(1440).optional(),
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
     const orgId = await resolveOrgId(context.supabase, context.userId);
-    const { error } = await context.supabase.from("organizations").update(data).eq("id", orgId);
+    const { error } = await (context.supabase.from("organizations") as any).update(data).eq("id", orgId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

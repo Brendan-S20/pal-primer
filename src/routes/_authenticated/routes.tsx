@@ -146,10 +146,18 @@ function RoutesPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  // Surface implausible-drive / inconsistent-ETA warnings to the dispatcher
+  // instead of silently accepting an impossible route (finding #10).
+  const warnRoute = (warnings?: Array<{ message: string }>) => {
+    for (const w of (warnings ?? []).slice(0, 4)) {
+      toast.warning(w.message, { duration: 8000 });
+    }
+  };
   const assignMut = useMutation({
     mutationFn: () => assign({ data: { staffId: assignStaffId, day, reassign: false } }),
     onSuccess: (r) => {
       toast.success(`Auto-assigned ${r.assigned} visits`);
+      warnRoute((r as any).warnings);
       setLocalColumns(null);
       qc.invalidateQueries({ queryKey: ["visits", day] });
     },
@@ -159,6 +167,7 @@ function RoutesPage() {
     mutationFn: () => optimize({ data: { staffId: assignStaffId, day, reassign: true } }),
     onSuccess: (r) => {
       toast.success(`Optimized ${r.assigned} stops (nearest-neighbor)`);
+      warnRoute((r as any).warnings);
       setLocalColumns(null);
       qc.invalidateQueries({ queryKey: ["visits", day] });
     },
@@ -424,6 +433,19 @@ function RoutesPage() {
               <option value="heavy">Heavy (slower)</option>
             </select>
           </div>
+          <div>
+            <Label className="text-xs">Max drive to a stop (min)</Label>
+            <Input
+              type="number"
+              min={15}
+              max={1440}
+              defaultValue={(settings as any).max_drive_minutes ?? 240}
+              onBlur={(e) => settingsMut.mutate({ max_drive_minutes: Number(e.target.value) })}
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Assignments implying a longer drive are flagged as implausible.
+            </p>
+          </div>
         </div>
       </div>
       )}
@@ -521,8 +543,14 @@ function MapPanel({
       <div className="relative">
         <RouteMap groups={groups} height={420} onVisitClick={onOpenVisit} />
         {mappable === 0 && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-background/70 text-xs text-muted-foreground">
-            No coordinates yet. Click “Geocode addresses” to plot properties.
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-md bg-background/70 text-xs text-muted-foreground">
+            <span>No coordinates yet — geocode your properties to plot them.</span>
+            {onGeocode && (
+              <Button size="sm" variant="outline" onClick={onGeocode} disabled={geocoding}>
+                <MapPin className="mr-1 h-3.5 w-3.5" />
+                {geocoding ? "Geocoding…" : "Geocode addresses"}
+              </Button>
+            )}
           </div>
         )}
       </div>
