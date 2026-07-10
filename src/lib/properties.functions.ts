@@ -74,6 +74,57 @@ export const createProperty = createServerFn({ method: "POST" })
     return { id: row.id as string };
   });
 
+const updatePropSchema = createPropSchema.omit({ clientId: true }).extend({
+  propertyId: z.string().uuid(),
+});
+
+export const updateProperty = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => updatePropSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    // Re-geocode when the address might have changed (cheap, keeps lat/lng fresh).
+    const { geocodeAddress } = await import("./geocode.server");
+    const geo = await geocodeAddress({
+      street: data.street,
+      city: data.city,
+      region: data.region,
+      postal_code: data.postalCode,
+    });
+
+    // Only overwrite coordinates when geocoding actually resolved, so a
+    // transient geocoder miss doesn't blank out a good pin.
+    const geoPatch =
+      geo?.latitude != null && geo?.longitude != null
+        ? { latitude: geo.latitude, longitude: geo.longitude }
+        : {};
+
+    const { error } = await supabase
+      .from("properties")
+      .update({
+        label: data.label || null,
+        street: data.street,
+        city: data.city,
+        region: data.region || null,
+        postal_code: data.postalCode,
+        gate_code: data.gateCode || null,
+        yard_size: data.yardSize ?? null,
+        invisible_fence: !!data.invisibleFence,
+        escape_risk: !!data.escapeRisk,
+        dog_in_yard_during_service: !!data.dogInYardDuringService,
+        aggressive_dog: !!data.aggressiveDog,
+        bees_wasps: !!data.beesWasps,
+        sharp_objects: !!data.sharpObjects,
+        slippery_surfaces: !!data.slipperySurfaces,
+        do_not_enter_if_dog_out: !!data.doNotEnterIfDogOut,
+        hazard_notes: data.hazardNotes || null,
+        ...geoPatch,
+      })
+      .eq("id", data.propertyId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const backfillPropertyGeocodes = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>

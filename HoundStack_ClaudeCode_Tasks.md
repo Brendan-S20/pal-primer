@@ -204,6 +204,8 @@ This is a narrow verification-and-harden task, not a rebuild — the design (def
 
 ### #8 — Subscription edit form doesn’t load existing values — risk of silent data loss
 
+**Status:** ✅ Shipped (July 10, 2026). The form under the subscription summary was actually an *add* form with hardcoded defaults (weekly / $25 / 1 dog / no property or zone selected) — so it read as an edit form that would clobber the real values. Made it a genuine edit form: added an `updateSubscription` server function (gated on `manage_pricing`); on load and via a per-row "Edit" control the form hydrates every field from the actual subscription record through a pure, unit-tested helper (`subscriptionToFormValues`); a new blank "Add a new subscription instead" path uses empty/auto-selected defaults (the single property is auto-selected so a new subscription is never saved with no property). Submit routes to update vs. create by mode, and the button reads Save changes / Add subscription accordingly. Unit tests cover the hydration mapping and the single-property auto-select. tsc + 46 tests green.
+
 **Severity:** High  
 **Role(s) affected:** Owner  
 **Area:** Client detail — Service tab → Subscriptions  
@@ -372,6 +374,8 @@ Implementation note (added after a geocoding-provider change subsequent to this 
 ---
 
 ### #21 — Property edit fields are blank even though the property has a saved address
+
+**Status:** ✅ Shipped (July 10, 2026) — done together with #8, same root cause (add-form defaults shown as if they were an edit form). Added an `updateProperty` server function (re-geocodes on save, but only overwrites lat/lng when geocoding actually resolves so a transient miss can't blank a good pin) and a per-property "Edit" control that hydrates Street/City/Postal/Gate/Yard/hazard fields from the saved record; the form header and submit button reflect edit vs. add mode, with an "Add a new property instead" escape. tsc + tests green.
 
 **Severity:** Medium  
 **Role(s) affected:** Owner  
