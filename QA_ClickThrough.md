@@ -1,0 +1,172 @@
+# HoundStack QA Click-Through
+
+Base URL: **https://app.houndstack.com**
+
+This script covers the items that need a real browser + real credentials to
+confirm (they can't be proven by unit tests alone). Each section lists what to
+click and the **expected** result. Anything that deviates is a bug — note the
+step number and what you saw.
+
+You'll need:
+- A **platform admin** login (for impersonation + plans).
+- An **owner** login for a test tenant org (for AI Tools, billing, settings).
+- A **client/portal** magic link for that org (for portal auth).
+- A test **Anthropic or OpenAI API key** (for AI Tools BYOK). A throwaway key
+  with a few dollars of credit is enough.
+- Stripe test cards (sandbox): success `4242 4242 4242 4242`, any future
+  expiry, any CVC/ZIP.
+
+---
+
+## 1. AI Tools — Bring Your Own Key (BYOK)  *(finding #2)*
+
+The AI features now run on **each org's own** Anthropic **or** OpenAI key,
+entered in Settings. No key = the tools are disabled with a clear prompt.
+
+**A. Add a key**
+1. Log in as the tenant **owner**. Go to **Settings → AI Tools**
+   (`/settings/ai`).
+2. Before entering anything, confirm the status card reads either *"No AI key
+   configured yet…"* or *"Using the platform's default AI key…"* — not an error.
+3. Choose a **Provider** (Anthropic or OpenAI).
+4. Paste your test API key. Confirm the field is masked (password dots) and
+   the placeholder matches the provider (`sk-ant-…` vs `sk-…`).
+5. (Optional) leave **Model** blank — confirm the helper text shows the default
+   model for the chosen provider.
+6. Click **Save key**.
+   - **Expected:** green "AI key saved" toast; the key field clears; the status
+     card now shows *"<provider> key configured · ····<last 4 digits>"* and the
+     model. The full key is **never** shown again.
+
+**B. Use the tools**
+7. Go to **AI Tools** (`/ai-tools`). Try each tool:
+   - **Marketing content** — enter a prompt, generate. Expect real copy back.
+   - **Review reply** — paste a sample review, draft a reply.
+   - **Churn scoring** — run it; expect scored clients.
+   - **Weekly digest** — generate; expect a summary.
+   - **AI dispatch** — run against a day with visits; expect suggestions.
+   - **Zone pricing** — run; expect price suggestions.
+   - **Expected:** each returns a real result within a few seconds. No blank
+     panels, no silent failures.
+
+**C. Error paths (important)**
+8. Go back to **Settings → AI**, click **Remove key**. Confirm the status card
+   flips back to "no key / platform fallback."
+9. Return to **AI Tools** and run any tool with **no key set**.
+   - **Expected:** a clear message telling you to *add your Anthropic or OpenAI
+     API key in Settings → AI* — **not** a crash or an infinite spinner.
+10. Re-add a **deliberately wrong** key (e.g. `sk-ant-broken`) and run a tool.
+    - **Expected:** a friendly error telling you to *check your API key* —
+      again, no crash.
+11. Re-add your real key to leave the org in a working state.
+
+---
+
+## 2. Plans & Billing — per-employee model  *(findings #6 / #51)*
+
+Plans are priced **per employee**: a flat base that includes N employees, plus
+**$10/mo per additional active employee**. Customers are unlimited on every
+plan. Stripe is in **sandbox** — no real charges.
+
+**A. Catalog**
+1. As platform admin, open **/platform/plans**. Confirm the three paid plans:
+   - **Launch** — $79/mo, 3 employees included.
+   - **Growth** — $199/mo, 10 employees included.
+   - **Scale** — $449/mo, 30 employees included.
+   - **Enterprise** — custom (no fixed price).
+   Each paid plan should show *"$10/employee/month"* for overage and *"N
+   employees included."*
+
+**B. Checkout (sandbox)**
+2. As the tenant **owner**, open **/billing**. Start a subscription / upgrade.
+3. On the Stripe checkout page, confirm:
+   - The **base** line item matches the plan price ($79 / $199 / $449).
+   - **If the org has more active employees than the plan includes**, a second
+     line item **"Per additional employee" × (overage count)** at $10 each
+     appears. (If the org is at/under the included seats, there's only the base
+     line — that's correct.)
+4. Pay with test card `4242 4242 4242 4242`.
+   - **Expected:** redirect back with an "upgraded" state; **/billing** shows
+     the plan as **active** with the correct period end.
+5. Click **Manage billing** (Stripe portal) — confirm it opens the portal for
+   that customer.
+
+> Note: the seat count on the checkout reflects **active employees at the
+> moment of checkout**. Ongoing seat changes are managed via the Stripe portal
+> for now (not auto-synced yet) — so don't file "I added an employee and the
+> subscription didn't change" as a bug; that sync is a separate future item.
+
+---
+
+## 3. Signup / bootstrap  *(finding #55)*
+
+1. Open the signup link for a test slug: **/signup/<slug>** (use a fresh slug
+   your team hasn't used).
+2. Complete the signup form and submit.
+   - **Expected:** the org bootstraps cleanly — you land in a working
+     authenticated app (dashboard loads, no 500, no "organization not found").
+3. Log out and log back in with the new credentials.
+   - **Expected:** you return to the same org with your data intact.
+
+---
+
+## 4. Client portal auth  *(finding #4)*
+
+1. Get a portal magic link for a test client:
+   **/portal/<slug>/<token>**.
+2. Open it in a **fresh/incognito** window.
+   - **Expected:** you reach the client portal home for the correct client —
+     no login wall, correct client's data only.
+3. Click through the portal tabs: **Visits**, **Requests**, **Property**,
+   **Billing**, **Account**.
+   - **Expected:** each loads that client's data only. No other client's info
+     is ever visible.
+4. Tamper test: change one character in the **token** in the URL and reload.
+   - **Expected:** access is **denied** (invalid/expired link) — you do **not**
+     get into anyone's portal.
+5. Pay an invoice from **Billing → Pay** with test card `4242…`.
+   - **Expected:** payment succeeds in sandbox and the invoice reflects paid.
+
+---
+
+## 5. Impersonation  *(finding #5)*
+
+1. As **platform admin**, open a tenant: **/platform/tenants/<id>**.
+2. In the impersonation panel, pick a **User to impersonate** and confirm.
+   - **Expected:** a new window opens into that user's session, and a visible
+     **impersonation banner** is shown at the top the entire time.
+3. While impersonating, confirm you're scoped to **that org only** and the
+   banner clearly says who you're impersonating.
+4. Click **Stop impersonating** (or close per the banner's instruction).
+   - **Expected:** you return to your **own** admin session cleanly — your
+     admin session was never replaced/hijacked in the original window.
+5. Tamper test: try loading **/impersonate** directly without a valid token.
+   - **Expected:** denied — no session is granted.
+
+---
+
+## 6. Weather-driven scheduling  *(finding #15)*
+
+1. As owner/dispatcher, open **/weather**.
+   - **Expected:** current + forecast conditions load for the org's service
+     area (no blank widget, no error).
+2. Confirm any weather-based reschedule/skip prompts reference the right dates
+   and read sensibly.
+
+---
+
+## Regression sweep (quick)
+
+- **Dashboard** loads with real numbers.
+- **Concerns** (`/concerns`), **Analytics** (`/analytics`), **DNA**
+  (`/dna`) pages load without errors.
+- **Settings** tabs all open (Preferences, Skip rules, Lead form, Blackouts,
+  Add-ons, SMS, Emails, **AI Tools**, AI receptionist, Reviews, Automation,
+  Deep-clean, Accounting, Promotions, Users & roles).
+
+---
+
+### How to report
+For any failure, note: **section + step number**, what you clicked, what you
+expected, what actually happened, and a screenshot. Include the org/tenant and
+whether you were admin/owner/client at the time.
