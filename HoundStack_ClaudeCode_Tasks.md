@@ -187,6 +187,8 @@ This is a narrow verification-and-harden task, not a rebuild — the design (def
 
 ### #7 — Clients page “Outstanding” KPI is broken — always shows $0.00 / 0 clients
 
+**Status:** ✅ Shipped (July 10, 2026). Root cause: `listClients` summed `invoices.amount_cents - amount_paid_cents`, but those columns don't exist (invoices carry only `subtotal_cents`/`total_cents`) — so the balance was silently always 0 while Dashboard/Reports summed `total_cents` on open invoices. Extracted the AR math into a shared helper (`src/lib/ar.ts`) and routed all three surfaces (Clients, Dashboard "AR Open", Reports "Outstanding") through it so they can't drift again. Unit-tested against the demo tenant's figure (12 open invoices → $5,270.00). Verified the live data: 12 open invoices summing to exactly $5,270.00. tsc + 40 tests green.
+
 **Severity:** High  
 **Role(s) affected:** Owner  
 **Area:** Clients — list summary  

@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
+import { invoiceOutstandingCents } from "@/lib/ar";
 
 const rangeSchema = z.object({
   from: z.string(), // YYYY-MM-DD
@@ -88,7 +89,8 @@ export const getReports = createServerFn({ method: "POST" })
         perClient[inv.client_id] = (perClient[inv.client_id] ?? 0) + (inv.total_cents ?? 0);
       }
       if (inv.status === "open") {
-        outstandingCents += inv.total_cents ?? 0;
+        // Shared AR math (finding #7) so this matches Clients + Dashboard.
+        outstandingCents += invoiceOutstandingCents(inv);
         const ref = inv.issued_at;
         if (ref) {
           const days = Math.floor((today.getTime() - new Date(ref).getTime()) / 86400000);

@@ -91,7 +91,9 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
     );
 
     const openInvoices = openInvoicesRes.data ?? [];
-    const arOpenCents = openInvoices.reduce((s: number, r: any) => s + (r.total_cents ?? 0), 0);
+    // Shared AR math (finding #7) so this matches Clients + Reports exactly.
+    const { sumOutstandingCents } = await import("@/lib/ar");
+    const arOpenCents = sumOutstandingCents(openInvoices as any[]);
     const now = Date.now();
     const overdueInvoices = openInvoices
       .filter((r: any) => r.issued_at && (now - new Date(r.issued_at).getTime()) / 86400000 > 30)

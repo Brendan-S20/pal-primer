@@ -48,7 +48,7 @@ export const listClients = createServerFn({ method: "GET" })
       ids.length
         ? supabase
             .from("invoices")
-            .select("client_id, amount_cents, amount_paid_cents, status")
+            .select("client_id, total_cents, status")
             .in("client_id", ids)
             .eq("status", "open")
         : Promise.resolve({ data: [] as any[] }),
@@ -70,15 +70,9 @@ export const listClients = createServerFn({ method: "GET" })
           (activeSubsByClient.get(s.client_id) ?? 0) + 1,
         );
     }
-    const balanceByClient = new Map<string, number>();
-    for (const inv of invRes.data ?? []) {
-      const owed = (inv.amount_cents ?? 0) - (inv.amount_paid_cents ?? 0);
-      if (owed > 0)
-        balanceByClient.set(
-          inv.client_id,
-          (balanceByClient.get(inv.client_id) ?? 0) + owed,
-        );
-    }
+    // Same AR math as Dashboard "AR Open" and Reports "Outstanding" (finding #7).
+    const { outstandingByClient } = await import("@/lib/ar");
+    const balanceByClient = outstandingByClient((invRes.data ?? []) as any[]);
 
     return {
       clients: clients.map((c: any) => ({
