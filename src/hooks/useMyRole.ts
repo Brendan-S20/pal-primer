@@ -47,6 +47,7 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/invoices": ["owner", "office_manager"],
   "/billing": ["owner"],
   "/payments": ["owner"],
+  "/onboarding": ["owner"],
   // Must precede the "/settings" prefix entry — canAccess takes the first match.
   "/settings/billing": ["owner"],
   "/reports": ["owner", "office_manager"],

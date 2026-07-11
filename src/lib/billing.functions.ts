@@ -136,6 +136,151 @@ export const createBillingCheckout = createServerFn({ method: "POST" })
     return { url: session.url as string, planName: targetPlan.name };
   });
 
+// Plan catalog for the in-app plan picker (embedded billing + onboarding).
+export const listPlatformPlans = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await resolveOrgIdForCaller(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await (supabaseAdmin as any)
+      .from("platform_plans")
+      .select("id, name, slug, description, price_cents, currency, interval, features, included_seats, price_per_seat_cents, is_free, stripe_price_id, sort_order")
+      .eq("is_active", true)
+      .eq("is_enterprise", false)
+      .order("sort_order", { ascending: true });
+    if (error) throw new Error(error.message);
+    return { plans: data ?? [] };
+  });
+
+// Embedded subscription checkout: same seat-aware logic as the redirect flow,
+// but ui_mode embedded so the whole purchase happens in-app — no trip to
+// checkout.stripe.com. Optionally takes an explicit planId from the plan
+// picker (onboarding / Plan & billing) instead of auto-sizing by headcount.
+export const createEmbeddedBillingCheckout = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ returnUrl: z.string().url(), planId: z.string().uuid().optional() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
+    const s = await getOrgBillingState(context.supabase, orgId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const publishableKey =
+      process.env.STRIPE_PUBLISHABLE_KEY ?? process.env.PLATFORM_STRIPE_PUBLISHABLE_KEY;
+    const secret = process.env.STRIPE_SECRET_KEY;
+    if (!secret) throw new Error("Billing is not configured. Contact support.");
+    if (!publishableKey) {
+      throw new Error("Embedded billing needs STRIPE_PUBLISHABLE_KEY set. Contact support.");
+    }
+
+    const { count: activeStaff } = await supabaseAdmin
+      .from("staff")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", orgId)
+      .eq("active", true);
+    const seats = activeStaff ?? 0;
+
+    const { data: planRows } = await (supabaseAdmin as any)
+      .from("platform_plans")
+      .select("id, name, stripe_price_id, stripe_seat_price_id, included_seats")
+      .eq("is_active", true)
+      .eq("is_enterprise", false)
+      .not("stripe_price_id", "is", null)
+      .not("included_seats", "is", null)
+      .order("included_seats", { ascending: true });
+    const plans = (planRows ?? []) as Array<{
+      id: string; name: string; stripe_price_id: string;
+      stripe_seat_price_id: string | null; included_seats: number;
+    }>;
+    const targetPlan = data.planId
+      ? plans.find((p) => p.id === data.planId)
+      : plans.find((p) => p.included_seats >= seats) ?? plans[plans.length - 1];
+    if (!targetPlan || !targetPlan.stripe_price_id) {
+      throw new Error("That plan isn't available. Contact support.");
+    }
+
+    const Stripe = (await import("stripe")).default;
+    const stripe = new Stripe(secret);
+    const { data: userData } = await context.supabase.auth.getUser();
+    const email = userData.user?.email ?? undefined;
+
+    let customerId = s.stripeCustomerId;
+    const looksReal = customerId && /^cus_[A-Za-z0-9]{6,}$/.test(customerId) && !customerId.includes("demo");
+    if (!looksReal) {
+      const customer = await stripe.customers.create({
+        email,
+        name: s.orgName,
+        metadata: { organization_id: orgId },
+      });
+      customerId = customer.id;
+      await supabaseAdmin.from("organizations")
+        .update({ stripe_customer_id: customerId })
+        .eq("id", orgId);
+    }
+
+    const overage = Math.max(0, seats - targetPlan.included_seats);
+    const line_items: { price: string; quantity: number }[] = [
+      { price: targetPlan.stripe_price_id, quantity: 1 },
+    ];
+    if (targetPlan.stripe_seat_price_id && overage > 0) {
+      line_items.push({ price: targetPlan.stripe_seat_price_id, quantity: overage });
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      ui_mode: "embedded_page",
+      customer: customerId!,
+      line_items,
+      return_url: `${data.returnUrl}${data.returnUrl.includes("?") ? "&" : "?"}upgraded=1&session_id={CHECKOUT_SESSION_ID}`,
+      client_reference_id: orgId,
+      subscription_data: {
+        metadata: { organization_id: orgId, plan_id: targetPlan.id },
+      },
+      metadata: { organization_id: orgId, plan_id: targetPlan.id, kind: "org_saas" },
+    });
+    return {
+      clientSecret: session.client_secret as string,
+      publishableKey,
+      planName: targetPlan.name,
+    };
+  });
+
+// In-app cancel/resume (no portal round-trip). Cancels at period end so the
+// org keeps what it paid for; resume undoes it before the period lapses.
+export const cancelBillingSubscription = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
+    const s = await getOrgBillingState(context.supabase, orgId);
+    if (!s.stripeSubscriptionId) throw new Error("No active subscription to cancel.");
+    const secret = process.env.STRIPE_SECRET_KEY;
+    if (!secret) throw new Error("Billing is not configured.");
+    const Stripe = (await import("stripe")).default;
+    const stripe = new Stripe(secret);
+    const sub = await stripe.subscriptions.update(s.stripeSubscriptionId, {
+      cancel_at_period_end: true,
+    });
+    const endsAt = (sub as any).current_period_end
+      ? new Date((sub as any).current_period_end * 1000).toISOString()
+      : null;
+    return { ok: true, endsAt };
+  });
+
+export const resumeBillingSubscription = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
+    const s = await getOrgBillingState(context.supabase, orgId);
+    if (!s.stripeSubscriptionId) throw new Error("No subscription found.");
+    const secret = process.env.STRIPE_SECRET_KEY;
+    if (!secret) throw new Error("Billing is not configured.");
+    const Stripe = (await import("stripe")).default;
+    const stripe = new Stripe(secret);
+    await stripe.subscriptions.update(s.stripeSubscriptionId, {
+      cancel_at_period_end: false,
+    });
+    return { ok: true };
+  });
+
 // In-app invoice history (punch list #10): the platform-stripe webhook mirrors
 // Stripe invoices into platform_invoices; show them here instead of forcing a
 // portal round-trip just to see billing history.

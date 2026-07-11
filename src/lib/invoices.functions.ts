@@ -205,6 +205,65 @@ export const createCheckoutForInvoice = createServerFn({ method: "POST" })
     return { url: session.url as string, sessionId: session.id };
   });
 
+// Embedded in-app checkout for an invoice (re-review): same connected-account
+// session as createCheckoutForInvoice, but ui_mode embedded so staff can take
+// the payment without leaving the app.
+export const createEmbeddedCheckoutForInvoice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid(), returnUrl: z.string().url() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    await requirePermission(supabase, context.userId, "manage_client_billing");
+    const { data: invoice, error } = await supabase
+      .from("invoices")
+      .select("id, organization_id, client_id, total_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id, clients(display_name, primary_email)")
+      .eq("id", data.id)
+      .single();
+    if (error) throw new Error(error.message);
+    if (invoice.status === "paid") throw new Error("Invoice already paid");
+    if (invoice.status === "void") throw new Error("Invoice is voided");
+    if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
+    if (invoice.stripe_checkout_session_id || invoice.stripe_payment_intent_id) {
+      const { reconcileInvoicePayment } = await import("@/lib/invoice-reconcile.server");
+      if ((await reconcileInvoicePayment(invoice.id)) === "marked_paid") {
+        throw new Error("Invoice already paid");
+      }
+    }
+
+    const { requireOrgStripeAccount, connectStripe, connectPublishableKey } = await import("@/lib/stripe-connect.server");
+    const acct = await requireOrgStripeAccount(invoice.organization_id);
+    const stripe = await connectStripe();
+    const client = Array.isArray(invoice.clients) ? invoice.clients[0] : (invoice.clients as { display_name?: string; primary_email?: string } | null);
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      ui_mode: "embedded_page",
+      return_url: `${data.returnUrl}${data.returnUrl.includes("?") ? "&" : "?"}paid=1`,
+      client_reference_id: invoice.id,
+      customer_email: client?.primary_email ?? undefined,
+      line_items: [{
+        quantity: 1,
+        price_data: {
+          currency: invoice.currency ?? "usd",
+          unit_amount: invoice.total_cents,
+          product_data: { name: `Invoice ${invoice.id.slice(0, 8)} — ${client?.display_name ?? "Service"}` },
+        },
+      }],
+      metadata: { invoice_id: invoice.id, organization_id: invoice.organization_id },
+    }, { stripeAccount: acct.accountId });
+
+    const { error: upErr } = await supabase
+      .from("invoices")
+      .update({ stripe_checkout_session_id: session.id, status: "open" })
+      .eq("id", invoice.id);
+    if (upErr) throw new Error(upErr.message);
+
+    return {
+      clientSecret: session.client_secret as string,
+      publishableKey: connectPublishableKey(),
+      stripeAccount: acct.accountId,
+    };
+  });
+
 export const listUnbilledForClient = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))

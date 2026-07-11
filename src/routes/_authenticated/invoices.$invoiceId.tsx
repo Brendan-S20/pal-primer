@@ -1,7 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getInvoice, createCheckoutForInvoice, voidInvoice } from "@/lib/invoices.functions";
+import { useState } from "react";
+import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
+import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
+import { getInvoice, createCheckoutForInvoice, createEmbeddedCheckoutForInvoice, voidInvoice } from "@/lib/invoices.functions";
 import { syncInvoice } from "@/lib/accounting.functions";
 import { sendInvoiceEmail, getEmailSendStatus } from "@/lib/notifications.functions";
 import { Button } from "@/components/ui/button";
@@ -15,6 +18,19 @@ export const Route = createFileRoute("/_authenticated/invoices/$invoiceId")({
 
 function fmtCents(c: number, currency = "usd") {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format((c ?? 0) / 100);
+}
+
+// Connect embedded checkout: stripe.js must be initialized scoped to the org's
+// connected account (the session lives there). Cached per key+account.
+const connectStripeCache = new Map<string, Promise<StripeJs | null>>();
+function getConnectStripe(pk: string, stripeAccount: string) {
+  const key = `${pk}|${stripeAccount}`;
+  let p = connectStripeCache.get(key);
+  if (!p) {
+    p = loadStripe(pk, { stripeAccount });
+    connectStripeCache.set(key, p);
+  }
+  return p;
 }
 
 function InvoiceDetail() {
@@ -32,6 +48,16 @@ function InvoiceDetail() {
       if (r.url) window.open(r.url, "_blank");
       qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
     },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // In-app payment (re-review): embedded Stripe Checkout right on the invoice,
+  // for taking a card over the phone or in person — no checkout.stripe.com tab.
+  const embeddedFn = useServerFn(createEmbeddedCheckoutForInvoice);
+  const [embedded, setEmbedded] = useState<{ clientSecret: string; publishableKey: string; stripeAccount: string } | null>(null);
+  const embeddedM = useMutation({
+    mutationFn: async () => embeddedFn({ data: { id: invoiceId, returnUrl: window.location.href.split("?")[0] } }),
+    onSuccess: (r: any) => setEmbedded(r),
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -138,21 +164,12 @@ function InvoiceDetail() {
       <div className="flex gap-2">
         {invoice.status !== "paid" && invoice.status !== "void" && (
           <>
-            <Button onClick={() => checkoutM.mutate()} disabled={checkoutM.isPending}>
-              {checkoutM.isPending ? "Opening Stripe…" : invoice.checkout_url ? "Reopen checkout" : "Send / Pay via Stripe"}
+            <Button onClick={() => (embedded ? setEmbedded(null) : embeddedM.mutate())} disabled={embeddedM.isPending}>
+              {embeddedM.isPending ? "Preparing…" : embedded ? "Hide payment form" : "Take payment here"}
             </Button>
-            {invoice.checkout_url && (
-              // Stored checkout sessions expire on Stripe's schedule — always
-              // mint a fresh one instead of reopening a possibly-dead link.
-              <button
-                type="button"
-                onClick={() => checkoutM.mutate()}
-                disabled={checkoutM.isPending}
-                className="self-center text-sm text-primary underline disabled:opacity-50"
-              >
-                Open checkout link
-              </button>
-            )}
+            <Button variant="outline" onClick={() => checkoutM.mutate()} disabled={checkoutM.isPending}>
+              {checkoutM.isPending ? "Opening Stripe…" : "Get payment link"}
+            </Button>
             {client?.primary_email && (
               <Button variant="outline" onClick={() => emailM.mutate()} disabled={emailM.isPending}>
                 {emailM.isPending ? "Sending…" : "Email invoice to client"}
@@ -180,6 +197,17 @@ function InvoiceDetail() {
           </span>
         )}
       </div>
+
+      {embedded && invoice.status !== "paid" && (
+        <div className="overflow-hidden rounded-lg border bg-white">
+          <EmbeddedCheckoutProvider
+            stripe={getConnectStripe(embedded.publishableKey, embedded.stripeAccount)}
+            options={{ clientSecret: embedded.clientSecret }}
+          >
+            <EmbeddedCheckout />
+          </EmbeddedCheckoutProvider>
+        </div>
+      )}
 
       {payments.length > 0 && (
         <div>
