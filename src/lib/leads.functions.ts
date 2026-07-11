@@ -31,7 +31,9 @@ export const submitLead = createServerFn({ method: "POST" })
   .inputValidator((d) => leadSchema.parse(d))
   .handler(async ({ data }) => {
     const supabase = anonClient();
-    const { data: orgRows } = await supabase.rpc("public_get_org_by_slug", { _slug: data.slug });
+    // Lead capture resolves by portal_slug (what Settings hands out), not the
+    // signup-gated public_get_org_by_slug (#3).
+    const { data: orgRows } = await supabase.rpc("public_get_org_for_lead_form", { _slug: data.slug });
     const orgId = (orgRows as Array<{ id: string }> | null)?.[0]?.id ?? null;
     if (!orgId) throw new Error("Unknown business");
     const payload = {
@@ -161,7 +163,7 @@ export const getPublicLeadForm = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ slug: z.string().trim().min(1).max(120) }).parse(d))
   .handler(async ({ data }) => {
     const supabase = anonClient();
-    const { data: orgRows } = await supabase.rpc("public_get_org_by_slug", { _slug: data.slug });
+    const { data: orgRows } = await supabase.rpc("public_get_org_for_lead_form", { _slug: data.slug });
     const org = (orgRows as Array<{ id: string; name?: string }> | null)?.[0] ?? null;
     if (!org) throw new Error("Unknown business");
     // Read the (public-safe) branding config with the service role — anon can't
