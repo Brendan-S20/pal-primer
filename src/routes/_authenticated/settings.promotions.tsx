@@ -23,7 +23,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Trash2, Ban, Copy } from "lucide-react";
+import { Trash2, Ban, Copy, Printer } from "lucide-react";
+import { getMyOrg } from "@/lib/org.functions";
 
 export const Route = createFileRoute("/_authenticated/settings/promotions")({
   component: PromotionsPage,
@@ -31,6 +32,53 @@ export const Route = createFileRoute("/_authenticated/settings/promotions")({
 
 function fmtMoney(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+// Print-ready gift card (punch list #20, v1): a clean physical voucher without
+// a third-party print service. A Vistaprint/Canva integration remains a
+// separately scoped follow-up.
+function printGiftCard(card: any, orgName: string) {
+  const w = window.open("", "_blank", "width=700,height=500");
+  if (!w) {
+    toast.error("Pop-up blocked — allow pop-ups for this site to print");
+    return;
+  }
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const amount = fmtMoney(card.initial_balance_cents);
+  const expires = card.expires_at
+    ? `Expires ${new Date(card.expires_at).toLocaleDateString()}`
+    : "";
+  w.document.write(`<!doctype html><html><head><title>Gift card ${esc(card.code)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Georgia, 'Times New Roman', serif; margin: 0; min-height: 96vh;
+         display: flex; align-items: center; justify-content: center; background: #fff; }
+  .card { width: 5in; height: 3in; border: 1.5px solid #1f2937; border-radius: 14px;
+          padding: 0.3in; display: flex; flex-direction: column; justify-content: space-between; }
+  .org { font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: #374151; }
+  .title { font-size: 26px; margin-top: 2px; }
+  .amount { font-size: 34px; font-weight: bold; }
+  .code { font-family: 'Courier New', monospace; font-size: 17px; letter-spacing: 0.12em;
+          border: 1px dashed #6b7280; border-radius: 6px; padding: 6px 10px; display: inline-block; }
+  .foot { font-size: 10.5px; color: #6b7280; }
+  @media print { body { min-height: auto; } }
+</style></head><body>
+  <div class="card">
+    <div>
+      <div class="org">${esc(orgName)}</div>
+      <div class="title">Gift Card</div>
+    </div>
+    <div class="amount">${esc(amount)}</div>
+    <div>
+      <div class="code">${esc(card.code)}</div>
+      ${card.recipient_name ? `<div style="margin-top:6px;font-size:13px;">For ${esc(card.recipient_name)}</div>` : ""}
+    </div>
+    <div class="foot">Redeemable toward services. Present this code at checkout or share it with our office. ${esc(expires)}</div>
+  </div>
+  <script>window.onload = function () { window.print(); };</script>
+</body></html>`);
+  w.document.close();
 }
 
 function PromotionsPage() {
@@ -300,7 +348,10 @@ function GiftSection() {
   const createFn = useServerFn(createGiftCard);
   const voidFn = useServerFn(voidGiftCard);
   const redeemFn = useServerFn(redeemGiftCard);
+  const orgFn = useServerFn(getMyOrg);
   const { data, isLoading } = useQuery({ queryKey: ["gift-cards"], queryFn: () => listFn() });
+  const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
+  const orgName: string = orgQ.data?.organization?.name ?? "Gift card";
 
   const emptyC = {
     amount: 50,
@@ -479,18 +530,30 @@ function GiftSection() {
                     {c.recipient_name ? ` · for ${c.recipient_name}` : ""}
                   </div>
                 </div>
-                {c.status === "active" && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      if (confirm(`Void gift card ${c.code}?`)) voidM.mutate(c.id);
-                    }}
-                    title="Void"
-                  >
-                    <Ban className="h-4 w-4" />
-                  </Button>
-                )}
+                <div className="flex items-center">
+                  {c.status === "active" && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => printGiftCard(c, orgName)}
+                      title="Print gift card"
+                    >
+                      <Printer className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {c.status === "active" && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        if (confirm(`Void gift card ${c.code}?`)) voidM.mutate(c.id);
+                      }}
+                      title="Void"
+                    >
+                      <Ban className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
