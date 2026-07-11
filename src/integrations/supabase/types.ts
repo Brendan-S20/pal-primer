@@ -151,6 +151,7 @@ export type Database = {
           note: string | null
           occurred_on: string
           organization_id: string
+          property_id: string | null
           quantity: number
           source: string
           status: Database["public"]["Enums"]["addon_charge_status"]
@@ -172,6 +173,7 @@ export type Database = {
           note?: string | null
           occurred_on?: string
           organization_id: string
+          property_id?: string | null
           quantity?: number
           source?: string
           status?: Database["public"]["Enums"]["addon_charge_status"]
@@ -193,6 +195,7 @@ export type Database = {
           note?: string | null
           occurred_on?: string
           organization_id?: string
+          property_id?: string | null
           quantity?: number
           source?: string
           status?: Database["public"]["Enums"]["addon_charge_status"]
@@ -241,6 +244,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "addon_charges_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
             referencedColumns: ["id"]
           },
           {
@@ -325,6 +335,7 @@ export type Database = {
           notes: string | null
           organization_id: string
           price_cents: number
+          property_id: string | null
           quantity: number
           started_on: string
           status: string
@@ -340,6 +351,7 @@ export type Database = {
           notes?: string | null
           organization_id: string
           price_cents: number
+          property_id?: string | null
           quantity?: number
           started_on?: string
           status?: string
@@ -355,6 +367,7 @@ export type Database = {
           notes?: string | null
           organization_id?: string
           price_cents?: number
+          property_id?: string | null
           quantity?: number
           started_on?: string
           status?: string
@@ -380,6 +393,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "addon_subscriptions_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
             referencedColumns: ["id"]
           },
         ]
@@ -459,6 +479,68 @@ export type Database = {
             columns: ["outbound_message_id"]
             isOneToOne: false
             referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      app_notification_prefs: {
+        Row: {
+          muted_types: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          muted_types?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          muted_types?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      app_notifications: {
+        Row: {
+          body: string | null
+          created_at: string
+          id: string
+          link: string | null
+          organization_id: string
+          read_at: string | null
+          recipient_user_id: string
+          title: string
+          type: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          link?: string | null
+          organization_id: string
+          read_at?: string | null
+          recipient_user_id: string
+          title: string
+          type: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          link?: string | null
+          organization_id?: string
+          read_at?: string | null
+          recipient_user_id?: string
+          title?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_notifications_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -929,6 +1011,63 @@ export type Database = {
         }
         Relationships: []
       }
+      franchise_royalty_invoices: {
+        Row: {
+          amount_cents: number
+          child_organization_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          parent_organization_id: string
+          period_end: string
+          period_start: string
+          revenue_cents: number
+          royalty_percent: number
+          status: string
+        }
+        Insert: {
+          amount_cents?: number
+          child_organization_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          parent_organization_id: string
+          period_end: string
+          period_start: string
+          revenue_cents?: number
+          royalty_percent?: number
+          status?: string
+        }
+        Update: {
+          amount_cents?: number
+          child_organization_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          parent_organization_id?: string
+          period_end?: string
+          period_start?: string
+          revenue_cents?: number
+          royalty_percent?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "franchise_royalty_invoices_child_organization_id_fkey"
+            columns: ["child_organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "franchise_royalty_invoices_parent_organization_id_fkey"
+            columns: ["parent_organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gift_card_redemptions: {
         Row: {
           amount_cents: number
@@ -1049,6 +1188,47 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "gift_cards_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      impersonation_grants: {
+        Row: {
+          actor_user_id: string
+          consumed_at: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          organization_id: string
+          target_user_id: string
+          token_hash: string
+        }
+        Insert: {
+          actor_user_id: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at: string
+          id?: string
+          organization_id: string
+          target_user_id: string
+          token_hash: string
+        }
+        Update: {
+          actor_user_id?: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          organization_id?: string
+          target_user_id?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "impersonation_grants_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -1497,6 +1677,7 @@ export type Database = {
           location: string | null
           message: string | null
           name: string
+          organization_id: string | null
           phone: string | null
           source: string
           status: string
@@ -1514,6 +1695,7 @@ export type Database = {
           location?: string | null
           message?: string | null
           name: string
+          organization_id?: string | null
           phone?: string | null
           source?: string
           status?: string
@@ -1531,12 +1713,21 @@ export type Database = {
           location?: string | null
           message?: string | null
           name?: string
+          organization_id?: string | null
           phone?: string | null
           source?: string
           status?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "leads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       locations: {
         Row: {
@@ -1760,9 +1951,130 @@ export type Database = {
           },
         ]
       }
+      org_ai_credentials: {
+        Row: {
+          api_key: string
+          model: string | null
+          organization_id: string
+          provider: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          api_key: string
+          model?: string | null
+          organization_id: string
+          provider: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          api_key?: string
+          model?: string | null
+          organization_id?: string
+          provider?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_ai_credentials_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      org_invites: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string | null
+          organization_id: string
+          role: Database["public"]["Enums"]["app_role"]
+          status: string
+          token: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          organization_id: string
+          role: Database["public"]["Enums"]["app_role"]
+          status?: string
+          token: string
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          organization_id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          status?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_invites_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      org_twilio_credentials: {
+        Row: {
+          account_sid: string
+          auth_token: string
+          messaging_service_sid: string | null
+          organization_id: string
+          sms_from_number: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          account_sid: string
+          auth_token: string
+          messaging_service_sid?: string | null
+          organization_id: string
+          sms_from_number?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          account_sid?: string
+          auth_token?: string
+          messaging_service_sid?: string | null
+          organization_id?: string
+          sms_from_number?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_twilio_credentials_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations: {
         Row: {
           active_client_count: number
+          active_seat_count: number
           ai_receptionist_enabled: boolean
           ai_receptionist_faq: string | null
           ai_receptionist_persona: string | null
@@ -1785,17 +2097,21 @@ export type Database = {
           dunning_pause_after_failures: number
           dunning_retry_days: number[]
           field_addon_cap_cents: number
+          franchise_royalty_percent: number
           frequency_multipliers: Json
           google_review_url: string | null
           grace_expires_at: string | null
           id: string
           is_franchise_parent: boolean
           last_digest_sent_at: string | null
+          lead_form_config: Json
           logo_url: string | null
+          max_drive_minutes: number
           name: string
           notify_email_invoice_sent: boolean
           notify_email_overdue: boolean
           notify_email_payment_received: boolean
+          notify_email_review_request: boolean
           notify_email_visit_completed: boolean
           notify_email_weather_reschedule: boolean
           notify_email_weekly_digest: boolean
@@ -1827,6 +2143,10 @@ export type Database = {
           seasonal_deepclean_months: number[]
           slug: string | null
           sms_from_number: string | null
+          stripe_connect_account_id: string | null
+          stripe_connect_charges_enabled: boolean
+          stripe_connect_connected_at: string | null
+          stripe_connect_status: string | null
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
           suspended_at: string | null
@@ -1839,6 +2159,7 @@ export type Database = {
         }
         Insert: {
           active_client_count?: number
+          active_seat_count?: number
           ai_receptionist_enabled?: boolean
           ai_receptionist_faq?: string | null
           ai_receptionist_persona?: string | null
@@ -1861,17 +2182,21 @@ export type Database = {
           dunning_pause_after_failures?: number
           dunning_retry_days?: number[]
           field_addon_cap_cents?: number
+          franchise_royalty_percent?: number
           frequency_multipliers?: Json
           google_review_url?: string | null
           grace_expires_at?: string | null
           id?: string
           is_franchise_parent?: boolean
           last_digest_sent_at?: string | null
+          lead_form_config?: Json
           logo_url?: string | null
+          max_drive_minutes?: number
           name: string
           notify_email_invoice_sent?: boolean
           notify_email_overdue?: boolean
           notify_email_payment_received?: boolean
+          notify_email_review_request?: boolean
           notify_email_visit_completed?: boolean
           notify_email_weather_reschedule?: boolean
           notify_email_weekly_digest?: boolean
@@ -1903,6 +2228,10 @@ export type Database = {
           seasonal_deepclean_months?: number[]
           slug?: string | null
           sms_from_number?: string | null
+          stripe_connect_account_id?: string | null
+          stripe_connect_charges_enabled?: boolean
+          stripe_connect_connected_at?: string | null
+          stripe_connect_status?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           suspended_at?: string | null
@@ -1915,6 +2244,7 @@ export type Database = {
         }
         Update: {
           active_client_count?: number
+          active_seat_count?: number
           ai_receptionist_enabled?: boolean
           ai_receptionist_faq?: string | null
           ai_receptionist_persona?: string | null
@@ -1937,17 +2267,21 @@ export type Database = {
           dunning_pause_after_failures?: number
           dunning_retry_days?: number[]
           field_addon_cap_cents?: number
+          franchise_royalty_percent?: number
           frequency_multipliers?: Json
           google_review_url?: string | null
           grace_expires_at?: string | null
           id?: string
           is_franchise_parent?: boolean
           last_digest_sent_at?: string | null
+          lead_form_config?: Json
           logo_url?: string | null
+          max_drive_minutes?: number
           name?: string
           notify_email_invoice_sent?: boolean
           notify_email_overdue?: boolean
           notify_email_payment_received?: boolean
+          notify_email_review_request?: boolean
           notify_email_visit_completed?: boolean
           notify_email_weather_reschedule?: boolean
           notify_email_weekly_digest?: boolean
@@ -1979,6 +2313,10 @@ export type Database = {
           seasonal_deepclean_months?: number[]
           slug?: string | null
           sms_from_number?: string | null
+          stripe_connect_account_id?: string | null
+          stripe_connect_charges_enabled?: boolean
+          stripe_connect_connected_at?: string | null
+          stripe_connect_status?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           suspended_at?: string | null
@@ -2458,16 +2796,20 @@ export type Database = {
           description: string | null
           features: Json
           id: string
+          included_seats: number | null
           interval: string
           is_active: boolean
+          is_enterprise: boolean
           is_free: boolean
           name: string
           price_cents: number | null
           price_per_client_cents: number | null
+          price_per_seat_cents: number | null
           slug: string
           sort_order: number
           stripe_price_id: string | null
           stripe_product_id: string | null
+          stripe_seat_price_id: string | null
           updated_at: string
         }
         Insert: {
@@ -2478,16 +2820,20 @@ export type Database = {
           description?: string | null
           features?: Json
           id?: string
+          included_seats?: number | null
           interval?: string
           is_active?: boolean
+          is_enterprise?: boolean
           is_free?: boolean
           name: string
           price_cents?: number | null
           price_per_client_cents?: number | null
+          price_per_seat_cents?: number | null
           slug: string
           sort_order?: number
           stripe_price_id?: string | null
           stripe_product_id?: string | null
+          stripe_seat_price_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -2498,16 +2844,20 @@ export type Database = {
           description?: string | null
           features?: Json
           id?: string
+          included_seats?: number | null
           interval?: string
           is_active?: boolean
+          is_enterprise?: boolean
           is_free?: boolean
           name?: string
           price_cents?: number | null
           price_per_client_cents?: number | null
+          price_per_seat_cents?: number | null
           slug?: string
           sort_order?: number
           stripe_price_id?: string | null
           stripe_product_id?: string | null
+          stripe_seat_price_id?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -3032,6 +3382,8 @@ export type Database = {
           client_id: string
           created_at: string
           id: string
+          last_reply: string | null
+          last_reply_at: string | null
           message: string | null
           organization_id: string
           resolution_note: string | null
@@ -3046,6 +3398,8 @@ export type Database = {
           client_id: string
           created_at?: string
           id?: string
+          last_reply?: string | null
+          last_reply_at?: string | null
           message?: string | null
           organization_id: string
           resolution_note?: string | null
@@ -3060,6 +3414,8 @@ export type Database = {
           client_id?: string
           created_at?: string
           id?: string
+          last_reply?: string | null
+          last_reply_at?: string | null
           message?: string | null
           organization_id?: string
           resolution_note?: string | null
@@ -3220,16 +3576,19 @@ export type Database = {
         Row: {
           active: boolean
           created_at: string
+          daily_capacity_minutes: number | null
           display_name: string
           email: string | null
           end_address: string | null
           end_latitude: number | null
           end_longitude: number | null
           id: string
+          is_field_tech: boolean
           location_id: string | null
           organization_id: string
           phone: string | null
           role: Database["public"]["Enums"]["staff_role"]
+          routing_available: boolean
           start_address: string | null
           start_latitude: number | null
           start_longitude: number | null
@@ -3238,16 +3597,19 @@ export type Database = {
         Insert: {
           active?: boolean
           created_at?: string
+          daily_capacity_minutes?: number | null
           display_name: string
           email?: string | null
           end_address?: string | null
           end_latitude?: number | null
           end_longitude?: number | null
           id?: string
+          is_field_tech?: boolean
           location_id?: string | null
           organization_id: string
           phone?: string | null
           role: Database["public"]["Enums"]["staff_role"]
+          routing_available?: boolean
           start_address?: string | null
           start_latitude?: number | null
           start_longitude?: number | null
@@ -3256,16 +3618,19 @@ export type Database = {
         Update: {
           active?: boolean
           created_at?: string
+          daily_capacity_minutes?: number | null
           display_name?: string
           email?: string | null
           end_address?: string | null
           end_latitude?: number | null
           end_longitude?: number | null
           id?: string
+          is_field_tech?: boolean
           location_id?: string | null
           organization_id?: string
           phone?: string | null
           role?: Database["public"]["Enums"]["staff_role"]
+          routing_available?: boolean
           start_address?: string | null
           start_latitude?: number | null
           start_longitude?: number | null
@@ -3953,6 +4318,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_org_invite_for_current_user: { Args: never; Returns: string }
       admin_generate_invoices_for_org: {
         Args: { _org_id: string; _through: string }
         Returns: number
@@ -4189,6 +4555,7 @@ export type Database = {
         }[]
       }
       org_can_add_client: { Args: { _org_id: string }; Returns: boolean }
+      org_seat_overage_cents: { Args: { _org_id: string }; Returns: number }
       phone_digits: { Args: { _p: string }; Returns: string }
       platform_org_stats: {
         Args: never
@@ -4278,6 +4645,7 @@ export type Database = {
           name: string
           next_charge_on: string
           price_cents: number
+          property_label: string
           quantity: number
           status: string
         }[]
@@ -4415,6 +4783,7 @@ export type Database = {
         Args: {
           _addon_service_id: string
           _frequency: Database["public"]["Enums"]["addon_frequency"]
+          _property_id?: string
           _quantity: number
           _token: string
         }
@@ -4487,6 +4856,10 @@ export type Database = {
         }[]
       }
       refresh_active_client_count: {
+        Args: { _org_id: string }
+        Returns: undefined
+      }
+      refresh_active_seat_count: {
         Args: { _org_id: string }
         Returns: undefined
       }
@@ -4582,7 +4955,8 @@ export type Database = {
         | "grace"
         | "suspended"
         | "canceled"
-      org_plan_status: "free" | "active" | "past_due" | "canceled"
+        | "trialing"
+      org_plan_status: "free" | "active" | "past_due" | "canceled" | "trialing"
       payment_status: "pending" | "succeeded" | "failed" | "refunded"
       service_frequency:
         | "weekly"
@@ -4786,8 +5160,9 @@ export const Constants = {
         "grace",
         "suspended",
         "canceled",
+        "trialing",
       ],
-      org_plan_status: ["free", "active", "past_due", "canceled"],
+      org_plan_status: ["free", "active", "past_due", "canceled", "trialing"],
       payment_status: ["pending", "succeeded", "failed", "refunded"],
       service_frequency: [
         "weekly",
