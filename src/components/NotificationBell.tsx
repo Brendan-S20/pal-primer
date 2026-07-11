@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Bell } from "lucide-react";
+import { Bell, Settings } from "lucide-react";
 import {
   listMyNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  getNotificationPrefs,
+  setNotificationPrefs,
 } from "@/lib/notifications-center.functions";
 
 function timeAgo(iso: string): string {
@@ -19,6 +21,7 @@ function timeAgo(iso: string): string {
 export function NotificationBell() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [showPrefs, setShowPrefs] = useState(false);
   const listFn = useServerFn(listMyNotifications);
   const markFn = useServerFn(markNotificationRead);
   const markAllFn = useServerFn(markAllNotificationsRead);
@@ -58,13 +61,21 @@ export function NotificationBell() {
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute right-0 z-50 mt-2 w-80 overflow-hidden rounded-md border bg-card shadow-lg">
             <div className="flex items-center justify-between border-b px-3 py-2">
-              <span className="text-sm font-medium">Notifications</span>
-              {unread > 0 && (
-                <button className="text-xs text-primary hover:underline" onClick={() => markAll.mutate()} disabled={markAll.isPending}>
-                  Mark all read
+              <span className="text-sm font-medium">{showPrefs ? "Notification settings" : "Notifications"}</span>
+              <div className="flex items-center gap-3">
+                {!showPrefs && unread > 0 && (
+                  <button className="text-xs text-primary hover:underline" onClick={() => markAll.mutate()} disabled={markAll.isPending}>
+                    Mark all read
+                  </button>
+                )}
+                <button className="text-muted-foreground hover:text-foreground" aria-label="Notification settings" onClick={() => setShowPrefs((v) => !v)}>
+                  <Settings className="h-3.5 w-3.5" />
                 </button>
-              )}
+              </div>
             </div>
+            {showPrefs ? (
+              <NotificationPrefs />
+            ) : (
             <div className="max-h-96 overflow-y-auto">
               {items.length === 0 ? (
                 <p className="px-3 py-6 text-center text-sm text-muted-foreground">You're all caught up.</p>
@@ -97,9 +108,48 @@ export function NotificationBell() {
                 </ul>
               )}
             </div>
+            )}
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function NotificationPrefs() {
+  const qc = useQueryClient();
+  const getFn = useServerFn(getNotificationPrefs);
+  const setFn = useServerFn(setNotificationPrefs);
+  const q = useQuery({ queryKey: ["notification-prefs"], queryFn: () => getFn() });
+  const data = q.data as any;
+  const muted: string[] = data?.mutedTypes ?? [];
+  const types: Array<{ type: string; label: string }> = data?.types ?? [];
+
+  const save = useMutation({
+    mutationFn: (next: string[]) => setFn({ data: { mutedTypes: next } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notification-prefs"] }),
+  });
+
+  const toggle = (t: string, on: boolean) => {
+    const next = on ? muted.filter((m) => m !== t) : Array.from(new Set([...muted, t]));
+    save.mutate(next);
+  };
+
+  if (q.isLoading) return <p className="px-3 py-4 text-sm text-muted-foreground">Loading…</p>;
+  return (
+    <div className="max-h-96 overflow-y-auto p-3">
+      <p className="mb-2 text-xs text-muted-foreground">Choose what shows up here.</p>
+      <ul className="space-y-2">
+        {types.map((t) => {
+          const on = !muted.includes(t.type);
+          return (
+            <li key={t.type} className="flex items-center justify-between text-sm">
+              <span>{t.label}</span>
+              <input type="checkbox" checked={on} disabled={save.isPending} onChange={(e) => toggle(t.type, e.target.checked)} />
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

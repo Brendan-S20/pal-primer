@@ -1,15 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const h = vi.hoisted(() => ({ userRoles: [] as any[], inserted: [] as any[] }));
+const h = vi.hoisted(() => ({ userRoles: [] as any[], prefs: [] as any[], inserted: [] as any[] }));
 
 vi.mock("@/integrations/supabase/client.server", () => {
   function from(table: string) {
-    if (table === "user_roles") {
+    if (table === "user_roles" || table === "app_notification_prefs") {
+      const rows = () => (table === "user_roles" ? h.userRoles : h.prefs);
       const p: any = {
         select: () => p,
         eq: () => p,
         in: () => p,
-        then: (res: any) => Promise.resolve({ data: h.userRoles }).then(res),
+        then: (res: any) => Promise.resolve({ data: rows() }).then(res),
       };
       return p;
     }
@@ -27,7 +28,7 @@ import { notifyUsers, notifyRoles } from "@/lib/notify-center.server";
 
 const BASE = { orgId: "org-1", type: "concern", title: "New concern", body: "b", link: "/concerns" };
 
-beforeEach(() => { h.userRoles = []; h.inserted = []; });
+beforeEach(() => { h.userRoles = []; h.prefs = []; h.inserted = []; });
 afterEach(() => vi.clearAllMocks());
 
 describe("notifyUsers", () => {
@@ -40,6 +41,12 @@ describe("notifyUsers", () => {
   it("no-ops on an empty recipient list", async () => {
     await notifyUsers([], BASE);
     expect(h.inserted).toHaveLength(0);
+  });
+
+  it("drops recipients who muted this notification type", async () => {
+    h.prefs = [{ user_id: "u2", muted_types: ["concern"] }];
+    await notifyUsers(["u1", "u2"], BASE); // BASE.type === "concern"
+    expect(h.inserted.map((r) => r.recipient_user_id)).toEqual(["u1"]);
   });
 });
 

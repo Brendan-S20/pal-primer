@@ -52,3 +52,37 @@ export const markAllNotificationsRead = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+// The notification types a user can mute (label shown in Settings).
+export const NOTIFICATION_TYPES: Array<{ type: string; label: string }> = [
+  { type: "concern", label: "Client concerns" },
+  { type: "payment_failed", label: "Failed client payments" },
+  { type: "lead", label: "New website leads" },
+  { type: "receptionist_escalation", label: "AI receptionist escalations" },
+  { type: "inbound_sms", label: "Texts needing a reply" },
+  { type: "teammate_joined", label: "Teammate joined" },
+];
+
+export const getNotificationPrefs = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data } = await (context.supabase as any)
+      .from("app_notification_prefs")
+      .select("muted_types")
+      .eq("user_id", context.userId)
+      .maybeSingle();
+    return { mutedTypes: (data?.muted_types as string[]) ?? [], types: NOTIFICATION_TYPES };
+  });
+
+export const setNotificationPrefs = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ mutedTypes: z.array(z.string().max(64)).max(50) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const allowed = new Set(NOTIFICATION_TYPES.map((t) => t.type));
+    const muted = data.mutedTypes.filter((t) => allowed.has(t));
+    const { error } = await (context.supabase as any)
+      .from("app_notification_prefs")
+      .upsert({ user_id: context.userId, muted_types: muted, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
