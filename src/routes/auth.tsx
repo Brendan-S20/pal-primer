@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
@@ -67,6 +67,17 @@ async function ensureBootstrapped(user: { id: string; email?: string | null; use
     `${displayName}'s Organization`;
 
   await bootstrapOrganization({ data: { orgName, displayName } });
+  // Get-started walkthrough stashes texting consent in user metadata when the
+  // email-confirmation flow defers bootstrap — apply it now (best-effort).
+  if (md.sms_consent === true && typeof md.phone === "string" && md.phone.trim()) {
+    try {
+      const { recordSmsConsent } = await import("@/lib/org.functions");
+      const { SMS_CONSENT_TEXT } = await import("@/routes/get-started");
+      await recordSmsConsent({ data: { phone: md.phone.trim(), consentText: SMS_CONSENT_TEXT } });
+    } catch (err) {
+      console.error("deferred sms consent record failed", err);
+    }
+  }
   return true;
 }
 
@@ -94,8 +105,6 @@ function AuthPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [orgName, setOrgName] = useState("");
-  const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -136,42 +145,6 @@ function AuthPage() {
     navigate({ to });
   };
 
-
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-    const { error: signUpErr } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: window.location.origin,
-        // Stash so we can bootstrap the org on first sign-in after email confirmation.
-        data: { org_name: orgName, display_name: displayName },
-      },
-    });
-    if (signUpErr) {
-      setLoading(false);
-      return setError(signUpErr.message);
-    }
-    // If email confirmation is off, we have a session and can bootstrap immediately.
-    const { data: sess } = await supabase.auth.getSession();
-    if (sess.session) {
-      try {
-        await bootstrapOrganization({ data: { orgName, displayName } });
-        setLoading(false);
-        // Fresh workspace → the onboarding path (welcome, plan picker,
-        // embedded checkout) instead of an empty dashboard.
-        navigate({ to: "/onboarding" });
-        return;
-      } catch (err) {
-        setLoading(false);
-        return setError(err instanceof Error ? err.message : "Failed to create organization");
-      }
-    }
-    setLoading(false);
-    setError("Check your email to confirm your account, then sign in.");
-  };
 
   const oauthSignIn = async (provider: "google" | "apple" | "facebook") => {
     const label = provider.charAt(0).toUpperCase() + provider.slice(1);
@@ -305,27 +278,20 @@ function AuthPage() {
 
 
           <TabsContent value="signup">
-            <form onSubmit={handleSignUp} className="space-y-4 rounded-lg border bg-card p-6">
-              <div className="space-y-2">
-                <Label htmlFor="su-org">Company name</Label>
-                <Input id="su-org" required value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="Acme Pet Waste Removal" />
+            {/* Account creation is a guided path now (re-review) — send new
+                owners to the Get-started walkthrough instead of a cramped tab. */}
+            <div className="space-y-4 rounded-lg border bg-card p-6 text-center">
+              <div>
+                <h2 className="text-lg font-semibold">New to {APP_NAME}?</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  We'll walk you through it: your account, your business, texting
+                  preferences, and a plan — about two minutes, no card required to start.
+                </p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="su-name">Your name</Label>
-                <Input id="su-name" required value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="su-email">Email</Label>
-                <Input id="su-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="su-pw">Password</Label>
-                <Input id="su-pw" type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} />
-              </div>
-              <Button type="submit" disabled={loading} className="w-full">
-                {loading ? "Creating…" : "Create account"}
-              </Button>
-            </form>
+              <Link to="/get-started">
+                <Button className="w-full">Get started</Button>
+              </Link>
+            </div>
           </TabsContent>
         </Tabs>
 
