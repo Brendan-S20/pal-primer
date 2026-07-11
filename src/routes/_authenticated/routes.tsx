@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   balanceOverloadedRoutes,
   getVisitRangeSummary,
@@ -76,7 +76,7 @@ function RoutesPage() {
   const [localColumns, setLocalColumns] = useState<Record<string, Visit[]> | null>(null);
 
   const [weekDays, setWeekDays] = useState(7);
-  const [viewMode, setViewMode] = useState<"split" | "map" | "board" | "week">("split");
+  const [viewMode, setViewMode] = useState<"split" | "map" | "board" | "week" | "month">("split");
   const [toolsOpen, setToolsOpen] = useState(false);
   const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
 
@@ -327,13 +327,13 @@ function RoutesPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Input type="date" value={day} onChange={(e) => { setLocalColumns(null); setDay(e.target.value); }} className="w-[160px]" />
           <div className="inline-flex rounded-md border bg-card p-0.5 text-xs">
-            {(["split", "map", "board", "week"] as const).map((m) => (
+            {(["split", "map", "board", "week", "month"] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => setViewMode(m)}
                 className={`px-3 py-1.5 rounded ${viewMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
-                {m === "split" ? "Split" : m === "map" ? "Map" : m === "board" ? "Board" : "Week"}
+                {m === "split" ? "Split" : m === "map" ? "Map" : m === "board" ? "Board" : m === "week" ? "Week" : "Month"}
               </button>
             ))}
           </div>
@@ -484,8 +484,12 @@ function RoutesPage() {
       </div>
       )}
 
-      {viewMode === "week" && (
-        <WeekOverview day={day} onPickDay={(d) => { setLocalColumns(null); setDay(d); setViewMode("split"); }} />
+      {(viewMode === "week" || viewMode === "month") && (
+        <WeekOverview
+          day={day}
+          initialSpan={viewMode === "month" ? "month" : 7}
+          onPickDay={(d) => { setLocalColumns(null); setDay(d); setViewMode("split"); }}
+        />
       )}
 
       {(viewMode === "map" || viewMode === "split") && (
@@ -596,26 +600,44 @@ function MapPanel({
   );
 }
 
-// Finding #28: a multi-day overview so office staff can see upcoming volume,
-// overloaded days, and gaps across a week/month without stepping through days.
-function WeekOverview({ day, onPickDay }: { day: string; onPickDay: (d: string) => void }) {
-  const [span, setSpan] = useState<7 | 28>(7);
-  const rangeFn = useServerFn(getVisitRangeSummary);
+// Finding #28 + punch list #13: a multi-day overview so office staff can see
+// upcoming volume, overloaded days, and gaps across a week, rolling 4 weeks,
+// or a true calendar month — with weekends optionally hidden.
+type OverviewSpan = 7 | 28 | "month";
 
-  // Start from the Monday of the selected day's week.
-  const base = new Date(`${day}T00:00:00`);
-  const dow = (base.getDay() + 6) % 7; // 0 = Monday
-  const start = new Date(base);
-  start.setDate(base.getDate() - dow);
+function WeekOverview({ day, onPickDay, initialSpan = 7 }: { day: string; onPickDay: (d: string) => void; initialSpan?: OverviewSpan }) {
+  const [span, setSpan] = useState<OverviewSpan>(initialSpan);
+  const [hideWeekends, setHideWeekends] = useState<boolean>(
+    () => typeof localStorage !== "undefined" && localStorage.getItem("routes.hideWeekends") === "1",
+  );
+  const rangeFn = useServerFn(getVisitRangeSummary);
+  useEffect(() => { setSpan(initialSpan); }, [initialSpan]);
+
   const iso = (d: Date) => {
     const off = d.getTimezoneOffset();
     return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10);
   };
+  const base = new Date(`${day}T00:00:00`);
   const days: string[] = [];
-  for (let i = 0; i < span; i++) {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    days.push(iso(d));
+  let leadingBlanks = 0;
+  if (span === "month") {
+    // The selected day's calendar month, grid-aligned to Monday.
+    const first = new Date(base.getFullYear(), base.getMonth(), 1);
+    const last = new Date(base.getFullYear(), base.getMonth() + 1, 0);
+    leadingBlanks = (first.getDay() + 6) % 7; // 0 = Monday
+    for (let i = 1; i <= last.getDate(); i++) {
+      days.push(iso(new Date(base.getFullYear(), base.getMonth(), i)));
+    }
+  } else {
+    // Start from the Monday of the selected day's week.
+    const dow = (base.getDay() + 6) % 7;
+    const start = new Date(base);
+    start.setDate(base.getDate() - dow);
+    for (let i = 0; i < span; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      days.push(iso(d));
+    }
   }
   const from = days[0];
   const to = days[days.length - 1];
@@ -629,17 +651,48 @@ function WeekOverview({ day, onPickDay }: { day: string; onPickDay: (d: string) 
   const maxTotal = Math.max(1, ...days.map((d) => byDay.get(d)?.total ?? 0));
   const todayIso = todayISO();
 
+  const isWeekend = (d: string) => {
+    const dow = new Date(`${d}T00:00:00`).getDay();
+    return dow === 0 || dow === 6;
+  };
+  const toggleWeekends = () => {
+    setHideWeekends((v) => {
+      const next = !v;
+      try { localStorage.setItem("routes.hideWeekends", next ? "1" : "0"); } catch { /* private mode */ }
+      return next;
+    });
+  };
+  const cols = hideWeekends ? 5 : 7;
+  // With weekends hidden, Monday-aligned blanks shrink to weekday-only blanks
+  // (Sat/Sun leaders disappear entirely).
+  const monthBlanks = span === "month" ? Math.min(leadingBlanks, 5) : 0;
+  const visibleDays = hideWeekends ? days.filter((d) => !isWeekend(d)) : days;
+  const title =
+    span === 7 ? "This week"
+    : span === 28 ? "Next 4 weeks"
+    : base.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+
   return (
     <div className="rounded-lg border bg-card p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold">{span === 7 ? "This week" : "Next 4 weeks"}</h2>
-        <div className="inline-flex rounded-md border p-0.5 text-xs">
-          <button onClick={() => setSpan(7)} className={`px-3 py-1 rounded ${span === 7 ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Week</button>
-          <button onClick={() => setSpan(28)} className={`px-3 py-1 rounded ${span === 28 ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Month</button>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <input type="checkbox" checked={hideWeekends} onChange={toggleWeekends} />
+            Hide weekends
+          </label>
+          <div className="inline-flex rounded-md border p-0.5 text-xs">
+            <button onClick={() => setSpan(7)} className={`px-3 py-1 rounded ${span === 7 ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Week</button>
+            <button onClick={() => setSpan(28)} className={`px-3 py-1 rounded ${span === 28 ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>4 weeks</button>
+            <button onClick={() => setSpan("month")} className={`px-3 py-1 rounded ${span === "month" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Month</button>
+          </div>
         </div>
       </div>
-      <div className={`grid gap-2 ${span === 7 ? "grid-cols-7" : "grid-cols-7"}`}>
-        {days.map((d) => {
+      <div className={`grid gap-2 ${cols === 5 ? "grid-cols-5" : "grid-cols-7"}`}>
+        {Array.from({ length: monthBlanks }).map((_, i) => (
+          <div key={`blank-${i}`} />
+        ))}
+        {visibleDays.map((d) => {
           const c = byDay.get(d) ?? { total: 0, completed: 0, unassigned: 0 };
           const heat = c.total / maxTotal;
           const dt = new Date(`${d}T00:00:00`);
