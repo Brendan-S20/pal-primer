@@ -400,6 +400,7 @@ export const portalSubscribeAddon = createServerFn({ method: "POST" })
       addonServiceId: z.string().uuid(),
       frequency: addonFreqEnum.nullable().optional(),
       quantity: z.number().int().min(1).max(50).default(1),
+      propertyId: z.string().uuid().nullable().optional(),
     }).parse(d),
   )
   .handler(async ({ data }) => {
@@ -411,6 +412,7 @@ export const portalSubscribeAddon = createServerFn({ method: "POST" })
       _addon_service_id: data.addonServiceId,
       _frequency: (data.frequency ?? null) as any,
       _quantity: data.quantity,
+      _property_id: (data.propertyId ?? null) as any,
     });
     if (error) throw new Error(error.message);
     return { id: id as string };

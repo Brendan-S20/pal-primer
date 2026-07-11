@@ -46,8 +46,8 @@ function PortalProperty() {
             ))}
           </ul>
           <p className="mt-2 text-xs text-muted-foreground">
-            Dogs, add-ons, and visits below cover your account. To make a change specific to one
-            address, mention which property when you contact us.
+            When you add a service below, pick the property it's for. Dogs on file cover your whole
+            account — mention the address if you need a change specific to one property.
           </p>
         </section>
       )}
@@ -88,6 +88,7 @@ function PortalProperty() {
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {money(a.price_cents)} · {a.frequency} · next {fmtDayShort(a.next_charge_on)}
+                    {properties.length > 1 && (a as any).property_label ? ` · ${(a as any).property_label}` : ""}
                   </div>
                 </div>
                 <Button size="sm" variant="outline"
@@ -103,9 +104,9 @@ function PortalProperty() {
         {(catalogQ.data ?? []).length > 0 ? (
           <ul className="grid gap-2">
             {catalogQ.data!.map((a) => (
-              <AddonCard key={a.addon_service_id} a={a}
-                onSubscribe={(freq, qty) => subscribeAddonMut.mutate({
-                  addonServiceId: a.addon_service_id, frequency: freq, quantity: qty,
+              <AddonCard key={a.addon_service_id} a={a} properties={properties}
+                onSubscribe={(freq, qty, propertyId) => subscribeAddonMut.mutate({
+                  addonServiceId: a.addon_service_id, frequency: freq, quantity: qty, propertyId,
                 })}
                 pending={subscribeAddonMut.isPending} />
             ))}

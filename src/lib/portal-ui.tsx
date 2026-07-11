@@ -292,7 +292,7 @@ export function usePortal(token: string, slug?: string) {
     onError: (e) => toast.error((e as Error).message),
   });
   const subscribeAddonMut = useMutation({
-    mutationFn: (v: { addonServiceId: string; frequency: "weekly"|"biweekly"|"monthly"|"quarterly"|"yearly"|null; quantity: number }) =>
+    mutationFn: (v: { addonServiceId: string; frequency: "weekly"|"biweekly"|"monthly"|"quarterly"|"yearly"|null; quantity: number; propertyId?: string | null }) =>
       subscribeAddonFn({ data: { token, ...v } }),
     onSuccess: () => { toast.success("Added to your next visit"); invalidatePortal(); },
     onError: (e) => toast.error((e as Error).message),
@@ -958,13 +958,18 @@ export function StationsPanel({ rows }: { rows: Array<any> }) {
   );
 }
 
-export function AddonCard({ a, onSubscribe, pending }: {
+export function AddonCard({ a, onSubscribe, pending, properties = [] }: {
   a: any;
-  onSubscribe: (freq: "weekly"|"biweekly"|"monthly"|"quarterly"|"yearly"|null, qty: number) => void;
+  onSubscribe: (freq: "weekly"|"biweekly"|"monthly"|"quarterly"|"yearly"|null, qty: number, propertyId: string | null) => void;
   pending: boolean;
+  properties?: Array<{ id: string; label?: string | null; street?: string | null }>;
 }) {
   const [qty, setQty] = useState(1);
   const [freq, setFreq] = useState<string>(a.default_frequency ?? "monthly");
+  // Finding #29: when the client has 2+ properties, let them pick which one an
+  // add-on applies to (default = first). One-property clients see no selector.
+  const multiProp = properties.length > 1;
+  const [propertyId, setPropertyId] = useState<string>(properties[0]?.id ?? "");
   const isRecurring = a.kind === "recurring";
   return (
     <li className="rounded-md border bg-card p-3 text-sm">
@@ -977,6 +982,19 @@ export function AddonCard({ a, onSubscribe, pending }: {
           </div>
         </div>
         <div className="flex flex-wrap items-end gap-2">
+          {multiProp && (
+            <div>
+              <Label className="text-xs">Property</Label>
+              <Select value={propertyId} onValueChange={setPropertyId}>
+                <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {properties.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.label || p.street || "Property"}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div>
             <Label className="text-xs">Qty</Label>
             <Input type="number" min={1} max={50} value={qty}
@@ -998,7 +1016,7 @@ export function AddonCard({ a, onSubscribe, pending }: {
             </div>
           )}
           <Button size="sm" disabled={pending}
-            onClick={() => onSubscribe(isRecurring ? (freq as any) : null, qty)}>
+            onClick={() => onSubscribe(isRecurring ? (freq as any) : null, qty, multiProp ? (propertyId || null) : null)}>
             {isRecurring ? "Subscribe" : "Add"}
           </Button>
         </div>
