@@ -43,6 +43,17 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           );
         if (orgErr) return json({ error: orgErr.message }, 500);
 
+        // Notification retention (punch list #14): in-app notifications are
+        // kept for 30 days, then swept here.
+        try {
+          await supabaseAdmin
+            .from("app_notifications")
+            .delete()
+            .lt("created_at", new Date(Date.now() - 30 * 86400000).toISOString());
+        } catch (e) {
+          console.error("notification retention sweep failed", e);
+        }
+
         const summary: Array<Record<string, unknown>> = [];
 
         for (const org of orgs ?? []) {
