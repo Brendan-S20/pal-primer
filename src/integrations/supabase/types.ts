@@ -4810,6 +4810,13 @@ export type Database = {
           public_signup_enabled: boolean
         }[]
       }
+      public_get_org_for_lead_form: {
+        Args: { _slug: string }
+        Returns: {
+          id: string
+          name: string
+        }[]
+      }
       public_quote: {
         Args: {
           _dog_count: number
