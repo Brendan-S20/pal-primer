@@ -22,12 +22,27 @@ export const getInvoice = createServerFn({ method: "GET" })
   .handler(async ({ data, context }) => {
     const { supabase } = context;
     await requirePermission(supabase, context.userId, "manage_client_billing");
-    const { data: invoice, error } = await supabase
+    const res = await supabase
       .from("invoices")
       .select("*, clients(display_name, primary_email)")
       .eq("id", data.id)
       .single();
-    if (error) throw new Error(error.message);
+    if (res.error) throw new Error(res.error.message);
+    let invoice = res.data;
+    // Webhook-independent safety net: an open invoice with a checkout session
+    // may have been paid without the webhook landing — verify against Stripe
+    // and flip it before rendering.
+    if (invoice.status === "open" && (invoice.stripe_checkout_session_id || invoice.stripe_payment_intent_id)) {
+      const { reconcileInvoicePayment } = await import("@/lib/invoice-reconcile.server");
+      if ((await reconcileInvoicePayment(invoice.id)) === "marked_paid") {
+        const fresh = await supabase
+          .from("invoices")
+          .select("*, clients(display_name, primary_email)")
+          .eq("id", data.id)
+          .single();
+        if (!fresh.error) invoice = fresh.data;
+      }
+    }
     const { data: items, error: iErr } = await supabase
       .from("invoice_line_items")
       .select("id, description, amount_cents, visit_id, subscription_id")
@@ -138,12 +153,20 @@ export const createCheckoutForInvoice = createServerFn({ method: "POST" })
     // Read invoice + verify access via RLS
     const { data: invoice, error } = await supabase
       .from("invoices")
-      .select("id, organization_id, client_id, total_cents, currency, status, clients(display_name, primary_email)")
+      .select("id, organization_id, client_id, total_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id, clients(display_name, primary_email)")
       .eq("id", data.id)
       .single();
     if (error) throw new Error(error.message);
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
+    // If a previous session/intent was already paid but the status is stale
+    // (webhook missed), reconcile instead of minting a second charge.
+    if (invoice.stripe_checkout_session_id || invoice.stripe_payment_intent_id) {
+      const { reconcileInvoicePayment } = await import("@/lib/invoice-reconcile.server");
+      if ((await reconcileInvoicePayment(invoice.id)) === "marked_paid") {
+        throw new Error("Invoice already paid");
+      }
+    }
     if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
 
     // Tenant->client charge: runs on the org's own connected Stripe account.

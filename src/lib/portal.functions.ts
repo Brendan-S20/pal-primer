@@ -167,8 +167,23 @@ export const portalListInvoices = createServerFn({ method: "GET" })
   .inputValidator((d) => tokenSchema.parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
-    await requirePortalSession(data.token);
+    const session = await requirePortalSession(data.token);
     const sb = await admin();
+    // Webhook-independent safety net: the client may have just returned from a
+    // paid Checkout (?paid=1) before the webhook landed — verify this client's
+    // open sessions against Stripe so the list shows the real state.
+    const { data: opens } = await sb
+      .from("invoices")
+      .select("id")
+      .eq("client_id", session.clientId)
+      .eq("status", "open")
+      .or("stripe_checkout_session_id.not.is.null,stripe_payment_intent_id.not.is.null")
+      .order("updated_at", { ascending: false })
+      .limit(5);
+    if (opens?.length) {
+      const { reconcileInvoicePayment } = await import("@/lib/invoice-reconcile.server");
+      for (const r of opens) await reconcileInvoicePayment(r.id);
+    }
     const { data: rows, error } = await sb.rpc("portal_list_invoices", { _token: data.token });
     if (error) throw new Error(error.message);
     return rows ?? [];
@@ -237,7 +252,7 @@ export const portalCreateCheckout = createServerFn({ method: "POST" })
     const supabaseAdmin = await admin();
     const { data: invoice, error: iErr } = await supabaseAdmin
       .from("invoices")
-      .select("id, organization_id, client_id, total_cents, currency, status, stripe_checkout_session_id, checkout_url")
+      .select("id, organization_id, client_id, total_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id, checkout_url")
       .eq("id", data.invoiceId)
       .single();
     if (iErr) throw new Error(iErr.message);
@@ -245,6 +260,14 @@ export const portalCreateCheckout = createServerFn({ method: "POST" })
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
     if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
+    // If a previous session/intent was already paid but the status is stale
+    // (webhook missed), reconcile instead of charging the client a second time.
+    if (invoice.stripe_checkout_session_id || invoice.stripe_payment_intent_id) {
+      const { reconcileInvoicePayment } = await import("@/lib/invoice-reconcile.server");
+      if ((await reconcileInvoicePayment(invoice.id)) === "marked_paid") {
+        throw new Error("Invoice already paid");
+      }
+    }
 
     const { requireOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
     const acct = await requireOrgStripeAccount(invoice.organization_id);
@@ -611,13 +634,21 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
 
     const { data: invoice, error: iErr } = await supabaseAdmin
       .from("invoices")
-      .select("id, organization_id, client_id, total_cents, currency, status")
+      .select("id, organization_id, client_id, total_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id")
       .eq("id", data.invoiceId).single();
     if (iErr) throw new Error(iErr.message);
     if (invoice.client_id !== c.id) throw new Error("Invoice not found");
     if (invoice.status === "paid") throw new Error("Already paid");
     if (invoice.status === "void") throw new Error("Voided");
     if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Zero total");
+    // Stale-open guard: if a prior session/intent already paid this invoice
+    // (webhook missed), reconcile instead of charging the saved card too.
+    if (invoice.stripe_checkout_session_id || invoice.stripe_payment_intent_id) {
+      const { reconcileInvoicePayment } = await import("@/lib/invoice-reconcile.server");
+      if ((await reconcileInvoicePayment(invoice.id)) === "marked_paid") {
+        throw new Error("Already paid");
+      }
+    }
 
     const { stripe, stripeAccount } = await loadStripe(invoice.organization_id);
     try {
@@ -929,6 +960,15 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
     if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
+    // If the stored intent (or an old checkout session) already succeeded but
+    // the status is stale (webhook missed), reconcile instead of minting a new
+    // intent and charging the client a second time.
+    if (invoice.stripe_payment_intent_id) {
+      const { reconcileInvoicePayment } = await import("@/lib/invoice-reconcile.server");
+      if ((await reconcileInvoicePayment(invoice.id)) === "marked_paid") {
+        throw new Error("Invoice already paid");
+      }
+    }
 
     const { data: cRow } = await supabaseAdmin
       .from("clients")

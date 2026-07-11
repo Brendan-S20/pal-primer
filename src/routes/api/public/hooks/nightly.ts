@@ -86,6 +86,15 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             );
           }
 
+          // Reconcile checkout-paid invoices against Stripe BEFORE autopay so a
+          // stale "open" status (missed webhook) can't get double-charged.
+          try {
+            const { reconcileOpenInvoicesForOrg } = await import("@/lib/invoice-reconcile.server");
+            perOrg.invoices_reconciled = await reconcileOpenInvoicesForOrg(org.id, 50);
+          } catch (e) {
+            perOrg.invoices_reconciled = `err: ${(e as Error).message}`;
+          }
+
           perOrg.autopay_charged = canCharge ? await runAutopayForOrg(supabaseAdmin, org.id) : 0;
 
           // Franchise royalty billing (finding #16): on the 1st of the month,

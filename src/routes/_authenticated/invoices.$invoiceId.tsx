@@ -142,9 +142,16 @@ function InvoiceDetail() {
               {checkoutM.isPending ? "Opening Stripe…" : invoice.checkout_url ? "Reopen checkout" : "Send / Pay via Stripe"}
             </Button>
             {invoice.checkout_url && (
-              <a href={invoice.checkout_url} target="_blank" rel="noreferrer" className="text-sm text-primary underline self-center">
-                Open existing checkout link
-              </a>
+              // Stored checkout sessions expire on Stripe's schedule — always
+              // mint a fresh one instead of reopening a possibly-dead link.
+              <button
+                type="button"
+                onClick={() => checkoutM.mutate()}
+                disabled={checkoutM.isPending}
+                className="self-center text-sm text-primary underline disabled:opacity-50"
+              >
+                Open checkout link
+              </button>
             )}
             {client?.primary_email && (
               <Button variant="outline" onClick={() => emailM.mutate()} disabled={emailM.isPending}>
