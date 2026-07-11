@@ -23,19 +23,21 @@ export const Route = createFileRoute("/auth")({
 // If the user has no org membership yet (email-confirmation flow: bootstrap was
 // deferred from signup), create the org + owner role now using the metadata
 // captured at signup. Idempotent server-side via bootstrap_organization().
-async function ensureBootstrapped(user: { id: string; email?: string | null; user_metadata?: Record<string, any> | null }): Promise<void> {
+/** Returns true when a brand-new org was just bootstrapped — that caller
+ *  should route to /onboarding instead of the usual landing page. */
+async function ensureBootstrapped(user: { id: string; email?: string | null; user_metadata?: Record<string, any> | null }): Promise<boolean> {
   const { data: existing } = await supabase
     .from("user_roles")
     .select("role")
     .eq("user_id", user.id)
     .maybeSingle();
-  if (existing) return;
+  if (existing) return false;
 
   // Platform admins have zero user_roles rows by design — they must never get
   // a tenant org auto-provisioned. (bootstrap_organization also guards this
   // server-side; the check here avoids a pointless org-create round trip.)
   const { data: isPlatform } = await supabase.rpc("is_platform_admin", { _user_id: user.id });
-  if (isPlatform) return;
+  if (isPlatform) return false;
 
   // Teammate invite (finding #40): if this email was invited to an existing
   // org, join THAT org with the invited role instead of bootstrapping a new
@@ -50,7 +52,7 @@ async function ensureBootstrapped(user: { id: string; email?: string | null; use
     } catch (err) {
       console.error("seat resync after invite acceptance failed", err);
     }
-    return;
+    return false;
   }
 
   const md = user.user_metadata ?? {};
@@ -65,6 +67,7 @@ async function ensureBootstrapped(user: { id: string; email?: string | null; use
     `${displayName}'s Organization`;
 
   await bootstrapOrganization({ data: { orgName, displayName } });
+  return true;
 }
 
 // Where a given role should land immediately after sign-in.
@@ -119,16 +122,17 @@ function AuthPage() {
       setLoading(false);
       return setError(error.message);
     }
+    let isNewOrg = false;
     if (data.user) {
       try {
-        await ensureBootstrapped(data.user as any);
+        isNewOrg = await ensureBootstrapped(data.user as any);
       } catch (err) {
         setLoading(false);
         return setError(err instanceof Error ? err.message : "Failed to create organization");
       }
     }
     setLoading(false);
-    const to = data.user ? await landingPathForUser(data.user.id) : "/dashboard";
+    const to = isNewOrg ? "/onboarding" : data.user ? await landingPathForUser(data.user.id) : "/dashboard";
     navigate({ to });
   };
 
@@ -156,7 +160,9 @@ function AuthPage() {
       try {
         await bootstrapOrganization({ data: { orgName, displayName } });
         setLoading(false);
-        navigate({ to: "/dashboard" });
+        // Fresh workspace → the onboarding path (welcome, plan picker,
+        // embedded checkout) instead of an empty dashboard.
+        navigate({ to: "/onboarding" });
         return;
       } catch (err) {
         setLoading(false);
@@ -195,15 +201,16 @@ function AuthPage() {
       if (result.redirected) return; // browser will redirect
       // Popup flow completed with session → bootstrap if needed, then role-aware landing.
       const { data } = await supabase.auth.getUser();
+      let isNewOrg = false;
       if (data.user) {
         try {
-          await ensureBootstrapped(data.user as any);
+          isNewOrg = await ensureBootstrapped(data.user as any);
         } catch (err) {
           setLoading(false);
           return setError(err instanceof Error ? err.message : "Failed to create organization");
         }
       }
-      const to = data.user ? await landingPathForUser(data.user.id) : "/dashboard";
+      const to = isNewOrg ? "/onboarding" : data.user ? await landingPathForUser(data.user.id) : "/dashboard";
       navigate({ to });
     } catch (err) {
       setLoading(false);

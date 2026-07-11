@@ -3,11 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   getBillingStatus,
-  createBillingCheckout,
   createBillingPortal,
   refreshBillingStatus,
   listPlatformInvoices,
+  cancelBillingSubscription,
+  resumeBillingSubscription,
 } from "@/lib/billing.functions";
+import { PlanPicker, EmbeddedPlanCheckout } from "@/components/billing/PlanPicker";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -49,7 +52,6 @@ const STATUS_TONE: Record<string, "default" | "outline" | "destructive" | "secon
 function BillingPage() {
   const qc = useQueryClient();
   const statusFn = useServerFn(getBillingStatus);
-  const checkoutFn = useServerFn(createBillingCheckout);
   const portalFn = useServerFn(createBillingPortal);
   const refreshFn = useServerFn(refreshBillingStatus);
 
@@ -58,12 +60,22 @@ function BillingPage() {
     queryFn: () => statusFn(),
   });
 
-  const checkout = useMutation({
-    mutationFn: () => checkoutFn({ data: { returnUrl: window.location.href } }),
-    onSuccess: (r) => {
-      if (r.url) window.location.href = r.url;
-      else toast.error("No checkout URL returned");
+  const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null);
+  const cancelFn = useServerFn(cancelBillingSubscription);
+  const resumeFn = useServerFn(resumeBillingSubscription);
+  const cancelSub = useMutation({
+    mutationFn: () => cancelFn(),
+    onSuccess: (r: any) => {
+      toast.success(r.endsAt
+        ? `Subscription will end ${new Date(r.endsAt).toLocaleDateString()} — access continues until then`
+        : "Subscription set to cancel at period end");
+      qc.invalidateQueries({ queryKey: ["billing-status"] });
     },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const resumeSub = useMutation({
+    mutationFn: () => resumeFn(),
+    onSuccess: () => { toast.success("Subscription resumed"); qc.invalidateQueries({ queryKey: ["billing-status"] }); },
     onError: (e: Error) => toast.error(e.message),
   });
   const portal = useMutation({
@@ -132,48 +144,57 @@ function BillingPage() {
         </div>
       </div>
 
-      {data.needsUpgrade && (
-        <div className="rounded-lg border bg-card p-6">
-          <h2 className="text-lg font-semibold">
-            {data.requiredPlanName ?? "Upgrade required"}
-            {data.monthlyEstimateCents != null && ` — ${formatUsd(data.monthlyEstimateCents)}/mo`}
-          </h2>
-          <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
-            <li>• Unlimited customers on every tier</li>
-            <li>• Cancel anytime from the customer portal</li>
-          </ul>
-          <Button className="mt-4" onClick={() => checkout.mutate()} disabled={checkout.isPending}>
-            {checkout.isPending ? "Redirecting…" : `Upgrade to ${data.requiredPlanName ?? "paid plan"}`}
-          </Button>
+      {/* Embedded plan management: pick, pay, cancel — all in-app, no trip to
+          checkout.stripe.com (Brendan's re-review). */}
+      {checkoutPlanId ? (
+        <EmbeddedPlanCheckout
+          planId={checkoutPlanId}
+          returnUrl={typeof window !== "undefined" ? window.location.href.split("?")[0] : "https://app.houndstack.com/settings/billing"}
+          onCancel={() => setCheckoutPlanId(null)}
+        />
+      ) : (
+        <div className="space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold">
+              {data.isPaidTier ? "Plans" : data.billingStatus === "trialing" ? "You're on a free trial — pick a plan" : "Choose a plan"}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Unlimited customers, dogs, jobs, routes, and zones on every tier — you're billed per employee.
+            </p>
+          </div>
+          <PlanPicker
+            currentSlug={data.planSlug}
+            onSelect={(planId) => setCheckoutPlanId(planId)}
+            chooseLabel={data.isPaidTier ? "Switch to this plan" : "Choose plan"}
+          />
         </div>
       )}
 
       {data.isPaidTier && (
         <div className="rounded-lg border bg-card p-6">
           <h2 className="text-lg font-semibold">Manage subscription</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Update payment method, download invoices, or cancel via the Stripe customer portal.
-          </p>
-          <Button className="mt-4" onClick={() => portal.mutate()} disabled={portal.isPending}>
-            {portal.isPending ? "Opening…" : "Open customer portal"}
-          </Button>
-        </div>
-      )}
-
-      {!data.isPaidTier && (
-        <div className="rounded-lg border bg-card p-6">
-          <h2 className="text-lg font-semibold">
-            {data.billingStatus === "trialing" ? "You're on a free trial" : "Choose a plan"}
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Every plan includes unlimited customers, dogs, jobs, routes, and zones — you're billed
-            per employee. {data.nextPlanName ? `Start on ${data.nextPlanName} whenever you're ready.` : ""}
-          </p>
-          {data.stripePriceId && (
-            <Button className="mt-4" onClick={() => checkout.mutate()} disabled={checkout.isPending}>
-              {checkout.isPending ? "Redirecting…" : "Choose a plan"}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (confirm("Cancel your subscription? You keep access until the end of the paid period.")) {
+                  cancelSub.mutate();
+                }
+              }}
+              disabled={cancelSub.isPending}
+            >
+              {cancelSub.isPending ? "Canceling…" : "Cancel subscription"}
             </Button>
-          )}
+            <Button variant="ghost" onClick={() => resumeSub.mutate()} disabled={resumeSub.isPending}>
+              {resumeSub.isPending ? "Resuming…" : "Resume (undo cancel)"}
+            </Button>
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Need to change the card on file?{" "}
+            <button className="underline" onClick={() => portal.mutate()} disabled={portal.isPending}>
+              {portal.isPending ? "Opening…" : "Update payment method"}
+            </button>
+          </p>
         </div>
       )}
 

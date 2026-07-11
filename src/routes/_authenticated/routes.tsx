@@ -44,6 +44,7 @@ import {
   SortableContext,
   useSortable,
   verticalListSortingStrategy,
+  rectSortingStrategy,
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -77,7 +78,16 @@ function RoutesPage() {
   const [localColumns, setLocalColumns] = useState<Record<string, Visit[]> | null>(null);
 
   const [weekDays, setWeekDays] = useState(7);
-  const [viewMode, setViewMode] = useState<"split" | "map" | "board" | "week" | "month">("split");
+  const [viewMode, setViewMode] = useState<"map" | "board">("map");
+  const [range, setRange] = useState<"today" | "week" | "month">("today");
+  // Gear option: tech lanes as vertical columns or full-width horizontal rows.
+  const [boardLayout, setBoardLayout] = useState<"columns" | "rows">(
+    () => (typeof localStorage !== "undefined" && localStorage.getItem("routes.boardLayout") === "rows" ? "rows" : "columns"),
+  );
+  const setBoardLayoutPersist = (l: "columns" | "rows") => {
+    setBoardLayout(l);
+    try { localStorage.setItem("routes.boardLayout", l); } catch { /* private mode */ }
+  };
   const [toolsOpen, setToolsOpen] = useState(false);
   const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
 
@@ -327,14 +337,28 @@ function RoutesPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Input type="date" value={day} onChange={(e) => { setLocalColumns(null); setDay(e.target.value); }} className="w-[160px]" />
+          {/* Two clean axes instead of five mixed buttons: WHAT you look at
+              (Map = map + load + board, Board = board only) and WHEN
+              (Today / Week / Month). */}
           <div className="inline-flex rounded-md border bg-card p-0.5 text-xs">
-            {(["split", "map", "board", "week", "month"] as const).map((m) => (
+            {(["map", "board"] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => setViewMode(m)}
                 className={`px-3 py-1.5 rounded ${viewMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
-                {m === "split" ? "Split" : m === "map" ? "Map" : m === "board" ? "Board" : m === "week" ? "Week" : "Month"}
+                {m === "map" ? "Map" : "Board"}
+              </button>
+            ))}
+          </div>
+          <div className="inline-flex rounded-md border bg-card p-0.5 text-xs">
+            {(["today", "week", "month"] as const).map((r) => (
+              <button
+                key={r}
+                onClick={() => setRange(r)}
+                className={`px-3 py-1.5 rounded ${range === r ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                {r === "today" ? "Today" : r === "week" ? "Week" : "Month"}
               </button>
             ))}
           </div>
@@ -491,15 +515,15 @@ function RoutesPage() {
       </div>
       )}
 
-      {(viewMode === "week" || viewMode === "month") && (
+      {range !== "today" && (
         <WeekOverview
           day={day}
-          initialSpan={viewMode === "month" ? "month" : 7}
-          onPickDay={(d) => { setLocalColumns(null); setDay(d); setViewMode("split"); }}
+          initialSpan={range === "month" ? "month" : 7}
+          onPickDay={(d) => { setLocalColumns(null); setDay(d); setRange("today"); }}
         />
       )}
 
-      {(viewMode === "map" || viewMode === "split") && (
+      {range === "today" && viewMode === "map" && (
         <>
           <MapPanel
             visits={visits}
@@ -512,7 +536,7 @@ function RoutesPage() {
         </>
       )}
 
-      {(viewMode === "board" || viewMode === "split") && (
+      {range === "today" && (
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -520,12 +544,28 @@ function RoutesPage() {
         onDragEnd={onDragEnd}
       >
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="flex items-center justify-end gap-1.5 text-xs text-muted-foreground">
+          Board layout:
+          <button
+            className={`rounded px-2 py-0.5 ${boardLayout === "columns" ? "bg-muted font-medium text-foreground" : ""}`}
+            onClick={() => setBoardLayoutPersist("columns")}
+          >
+            Columns
+          </button>
+          <button
+            className={`rounded px-2 py-0.5 ${boardLayout === "rows" ? "bg-muted font-medium text-foreground" : ""}`}
+            onClick={() => setBoardLayoutPersist("rows")}
+          >
+            Rows
+          </button>
+        </div>
+        <div className={boardLayout === "rows" ? "grid gap-4 grid-cols-1" : "grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"}>
           <Column
             id={UNASSIGNED}
             title="Unassigned"
             items={columns[UNASSIGNED] ?? []}
             tone="muted"
+            layout={boardLayout}
             onComplete={(id) => completeMut.mutate(id)}
             completingId={completeMut.isPending ? (completeMut.variables as string) : null}
             onOpen={setDetailVisitId}
@@ -537,6 +577,7 @@ function RoutesPage() {
               title={s.display_name}
               subtitle={s.role}
               items={columns[s.id] ?? []}
+              layout={boardLayout}
               onComplete={(id) => completeMut.mutate(id)}
               completingId={completeMut.isPending ? (completeMut.variables as string) : null}
               onOpen={setDetailVisitId}
@@ -731,12 +772,13 @@ function WeekOverview({ day, onPickDay, initialSpan = 7 }: { day: string; onPick
 }
 
 function Column({
-  id, title, subtitle, items, tone, onComplete, completingId, onOpen,
+  id, title, subtitle, items, tone, onComplete, completingId, onOpen, layout = "columns",
 }: {
   id: string; title: string; subtitle?: string; items: Visit[]; tone?: "muted";
   onComplete?: (visitId: string) => void;
   completingId?: string | null;
   onOpen?: (visitId: string) => void;
+  layout?: "columns" | "rows";
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const totalCents = items.reduce((sum, v) => sum + (v.subscriptions?.price_cents ?? 0), 0);
@@ -761,8 +803,8 @@ function Column({
           )}
         </div>
       </div>
-      <SortableContext items={items.map((v) => v.id)} strategy={verticalListSortingStrategy}>
-        <div className="min-h-[80px] space-y-2 p-2">
+      <SortableContext items={items.map((v) => v.id)} strategy={layout === "rows" ? rectSortingStrategy : verticalListSortingStrategy}>
+        <div className={layout === "rows" ? "flex min-h-[80px] flex-wrap gap-2 p-2 [&>*]:w-72" : "min-h-[80px] space-y-2 p-2"}>
           {items.map((v, i) => (
             <SortableVisitCard
               key={v.id}
