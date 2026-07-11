@@ -156,8 +156,26 @@ function UsersPage() {
                           </td>
                           <td className="py-3">
                             {u.active ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}
+                            {/* Surface routing eligibility in the row (punch
+                                list #12) — the controls live in the expander,
+                                but their state shouldn't hide there. */}
+                            {u.active && staff && staff.is_field_tech && !staff.routing_available && (
+                              <Badge variant="outline" className="ml-1.5 border-amber-400 text-amber-700">
+                                Off routes
+                              </Badge>
+                            )}
                           </td>
                           <td className="py-3 text-right">
+                            {isTech && u.staff_id && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="mr-1 text-xs"
+                                onClick={() => toggleExpand(u.staff_id)}
+                              >
+                                Routing & addresses
+                              </Button>
+                            )}
                             {canEdit && u.staff_id && (
                               <Button
                                 size="sm"

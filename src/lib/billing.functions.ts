@@ -136,6 +136,24 @@ export const createBillingCheckout = createServerFn({ method: "POST" })
     return { url: session.url as string, planName: targetPlan.name };
   });
 
+// In-app invoice history (punch list #10): the platform-stripe webhook mirrors
+// Stripe invoices into platform_invoices; show them here instead of forcing a
+// portal round-trip just to see billing history.
+export const listPlatformInvoices = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await (supabaseAdmin as any)
+      .from("platform_invoices")
+      .select("stripe_invoice_id, number, amount_due_cents, amount_paid_cents, currency, status, hosted_invoice_url, invoice_pdf, period_start, period_end, issued_at, paid_at")
+      .eq("organization_id", orgId)
+      .order("issued_at", { ascending: false })
+      .limit(24);
+    if (error) throw new Error(error.message);
+    return { invoices: data ?? [] };
+  });
+
 export const createBillingPortal = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ returnUrl: z.string().url() }).parse(d))

@@ -6,6 +6,7 @@ import {
   createBillingCheckout,
   createBillingPortal,
   refreshBillingStatus,
+  listPlatformInvoices,
 } from "@/lib/billing.functions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -176,6 +177,8 @@ function BillingPage() {
         </div>
       )}
 
+      <InvoiceHistory />
+
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
@@ -186,6 +189,67 @@ function BillingPage() {
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// In-app billing history (punch list #10) — no portal round-trip needed just
+// to see or download an invoice.
+function InvoiceHistory() {
+  const listFn = useServerFn(listPlatformInvoices);
+  const { data, isLoading } = useQuery({
+    queryKey: ["platform-invoices"],
+    queryFn: () => listFn(),
+  });
+  const invoices: any[] = (data as any)?.invoices ?? [];
+
+  return (
+    <div className="rounded-lg border bg-card p-6">
+      <h2 className="text-lg font-semibold">Billing history</h2>
+      {isLoading ? (
+        <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
+      ) : invoices.length === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">
+          No invoices yet — your subscription invoices will appear here once you're billed.
+        </p>
+      ) : (
+        <table className="mt-3 w-full text-sm">
+          <thead className="text-left text-xs uppercase text-muted-foreground">
+            <tr>
+              <th className="py-1.5">Invoice</th>
+              <th className="py-1.5">Period</th>
+              <th className="py-1.5">Amount</th>
+              <th className="py-1.5">Status</th>
+              <th className="py-1.5 text-right">Links</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {invoices.map((inv) => (
+              <tr key={inv.stripe_invoice_id}>
+                <td className="py-2 font-medium">{inv.number ?? inv.stripe_invoice_id.slice(0, 12)}</td>
+                <td className="py-2 text-muted-foreground">
+                  {inv.period_start ? new Date(inv.period_start).toLocaleDateString() : "—"}
+                  {inv.period_end ? ` – ${new Date(inv.period_end).toLocaleDateString()}` : ""}
+                </td>
+                <td className="py-2">{formatUsd(inv.amount_due_cents)}</td>
+                <td className="py-2">
+                  <Badge variant={inv.status === "paid" ? "default" : inv.status === "open" ? "secondary" : "outline"}>
+                    {inv.status}
+                  </Badge>
+                </td>
+                <td className="py-2 text-right">
+                  {inv.hosted_invoice_url && (
+                    <a href={inv.hosted_invoice_url} target="_blank" rel="noreferrer" className="text-primary underline">View</a>
+                  )}
+                  {inv.invoice_pdf && (
+                    <a href={inv.invoice_pdf} target="_blank" rel="noreferrer" className="ml-3 text-primary underline">PDF</a>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
