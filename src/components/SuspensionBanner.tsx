@@ -19,7 +19,7 @@ export function SuspensionBanner() {
   });
 
   if (!data) return null;
-  if (location.pathname.startsWith("/billing")) return null;
+  if (location.pathname.startsWith("/billing") || location.pathname.startsWith("/settings/billing")) return null;
 
   if (data.planStatus === "past_due") {
     return (
@@ -28,7 +28,7 @@ export function SuspensionBanner() {
         <span className="flex-1">
           <strong>Payment failed.</strong> Update your card to keep your subscription active.
         </span>
-        <Link to="/billing" className="shrink-0 rounded-md bg-yellow-600 px-3 py-1 text-xs font-medium text-white hover:bg-yellow-700">
+        <Link to="/settings/billing" className="shrink-0 rounded-md bg-yellow-600 px-3 py-1 text-xs font-medium text-white hover:bg-yellow-700">
           Update payment
         </Link>
       </div>
@@ -42,7 +42,7 @@ export function SuspensionBanner() {
         <span className="flex-1">
           <strong>Subscription canceled.</strong> Reactivate to keep adding clients past the free tier.
         </span>
-        <Link to="/billing" className="shrink-0 rounded-md bg-destructive px-3 py-1 text-xs font-medium text-destructive-foreground hover:opacity-90">
+        <Link to="/settings/billing" className="shrink-0 rounded-md bg-destructive px-3 py-1 text-xs font-medium text-destructive-foreground hover:opacity-90">
           Reactivate
         </Link>
       </div>

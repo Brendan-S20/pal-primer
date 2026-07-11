@@ -42,6 +42,7 @@ import { Route as AuthenticatedWasteLogRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedRoutesRouteImport } from './routes/_authenticated/routes'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
+import { Route as AuthenticatedPaymentsRouteImport } from './routes/_authenticated/payments'
 import { Route as AuthenticatedNeighborsRouteImport } from './routes/_authenticated/neighbors'
 import { Route as AuthenticatedMyDayRouteImport } from './routes/_authenticated/my-day'
 import { Route as AuthenticatedMessagesRouteImport } from './routes/_authenticated/messages'
@@ -83,6 +84,7 @@ import { Route as AuthenticatedSettingsLeadFormRouteImport } from './routes/_aut
 import { Route as AuthenticatedSettingsEmailsRouteImport } from './routes/_authenticated/settings.emails'
 import { Route as AuthenticatedSettingsDeepCleanRouteImport } from './routes/_authenticated/settings.deep-clean'
 import { Route as AuthenticatedSettingsBlackoutsRouteImport } from './routes/_authenticated/settings.blackouts'
+import { Route as AuthenticatedSettingsBillingRouteImport } from './routes/_authenticated/settings.billing'
 import { Route as AuthenticatedSettingsAutomationRouteImport } from './routes/_authenticated/settings.automation'
 import { Route as AuthenticatedSettingsAiReceptionistRouteImport } from './routes/_authenticated/settings.ai-receptionist'
 import { Route as AuthenticatedSettingsAiRouteImport } from './routes/_authenticated/settings.ai'
@@ -273,6 +275,11 @@ const AuthenticatedRoutesRoute = AuthenticatedRoutesRouteImport.update({
 const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedPaymentsRoute = AuthenticatedPaymentsRouteImport.update({
+  id: '/payments',
+  path: '/payments',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedNeighborsRoute = AuthenticatedNeighborsRouteImport.update({
@@ -497,6 +504,12 @@ const AuthenticatedSettingsBlackoutsRoute =
     path: '/blackouts',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedSettingsBillingRoute =
+  AuthenticatedSettingsBillingRouteImport.update({
+    id: '/billing',
+    path: '/billing',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedSettingsAutomationRoute =
   AuthenticatedSettingsAutomationRouteImport.update({
     id: '/automation',
@@ -671,6 +684,7 @@ export interface FileRoutesByFullPath {
   '/messages': typeof AuthenticatedMessagesRouteWithChildren
   '/my-day': typeof AuthenticatedMyDayRoute
   '/neighbors': typeof AuthenticatedNeighborsRoute
+  '/payments': typeof AuthenticatedPaymentsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/routes': typeof AuthenticatedRoutesRoute
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
@@ -706,6 +720,7 @@ export interface FileRoutesByFullPath {
   '/settings/ai': typeof AuthenticatedSettingsAiRoute
   '/settings/ai-receptionist': typeof AuthenticatedSettingsAiReceptionistRoute
   '/settings/automation': typeof AuthenticatedSettingsAutomationRoute
+  '/settings/billing': typeof AuthenticatedSettingsBillingRoute
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
@@ -769,6 +784,7 @@ export interface FileRoutesByTo {
   '/leads': typeof AuthenticatedLeadsRoute
   '/my-day': typeof AuthenticatedMyDayRoute
   '/neighbors': typeof AuthenticatedNeighborsRoute
+  '/payments': typeof AuthenticatedPaymentsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/routes': typeof AuthenticatedRoutesRoute
   '/waste-log': typeof AuthenticatedWasteLogRoute
@@ -802,6 +818,7 @@ export interface FileRoutesByTo {
   '/settings/ai': typeof AuthenticatedSettingsAiRoute
   '/settings/ai-receptionist': typeof AuthenticatedSettingsAiReceptionistRoute
   '/settings/automation': typeof AuthenticatedSettingsAutomationRoute
+  '/settings/billing': typeof AuthenticatedSettingsBillingRoute
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
@@ -870,6 +887,7 @@ export interface FileRoutesById {
   '/_authenticated/messages': typeof AuthenticatedMessagesRouteWithChildren
   '/_authenticated/my-day': typeof AuthenticatedMyDayRoute
   '/_authenticated/neighbors': typeof AuthenticatedNeighborsRoute
+  '/_authenticated/payments': typeof AuthenticatedPaymentsRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/routes': typeof AuthenticatedRoutesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
@@ -905,6 +923,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/ai': typeof AuthenticatedSettingsAiRoute
   '/_authenticated/settings/ai-receptionist': typeof AuthenticatedSettingsAiReceptionistRoute
   '/_authenticated/settings/automation': typeof AuthenticatedSettingsAutomationRoute
+  '/_authenticated/settings/billing': typeof AuthenticatedSettingsBillingRoute
   '/_authenticated/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/_authenticated/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/_authenticated/settings/emails': typeof AuthenticatedSettingsEmailsRoute
@@ -974,6 +993,7 @@ export interface FileRouteTypes {
     | '/messages'
     | '/my-day'
     | '/neighbors'
+    | '/payments'
     | '/reports'
     | '/routes'
     | '/settings'
@@ -1009,6 +1029,7 @@ export interface FileRouteTypes {
     | '/settings/ai'
     | '/settings/ai-receptionist'
     | '/settings/automation'
+    | '/settings/billing'
     | '/settings/blackouts'
     | '/settings/deep-clean'
     | '/settings/emails'
@@ -1072,6 +1093,7 @@ export interface FileRouteTypes {
     | '/leads'
     | '/my-day'
     | '/neighbors'
+    | '/payments'
     | '/reports'
     | '/routes'
     | '/waste-log'
@@ -1105,6 +1127,7 @@ export interface FileRouteTypes {
     | '/settings/ai'
     | '/settings/ai-receptionist'
     | '/settings/automation'
+    | '/settings/billing'
     | '/settings/blackouts'
     | '/settings/deep-clean'
     | '/settings/emails'
@@ -1172,6 +1195,7 @@ export interface FileRouteTypes {
     | '/_authenticated/messages'
     | '/_authenticated/my-day'
     | '/_authenticated/neighbors'
+    | '/_authenticated/payments'
     | '/_authenticated/reports'
     | '/_authenticated/routes'
     | '/_authenticated/settings'
@@ -1207,6 +1231,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/ai'
     | '/_authenticated/settings/ai-receptionist'
     | '/_authenticated/settings/automation'
+    | '/_authenticated/settings/billing'
     | '/_authenticated/settings/blackouts'
     | '/_authenticated/settings/deep-clean'
     | '/_authenticated/settings/emails'
@@ -1520,6 +1545,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReportsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/payments': {
+      id: '/_authenticated/payments'
+      path: '/payments'
+      fullPath: '/payments'
+      preLoaderRoute: typeof AuthenticatedPaymentsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/neighbors': {
       id: '/_authenticated/neighbors'
       path: '/neighbors'
@@ -1807,6 +1839,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsBlackoutsRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/settings/billing': {
+      id: '/_authenticated/settings/billing'
+      path: '/billing'
+      fullPath: '/settings/billing'
+      preLoaderRoute: typeof AuthenticatedSettingsBillingRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/settings/automation': {
       id: '/_authenticated/settings/automation'
       path: '/automation'
@@ -2050,6 +2089,7 @@ interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsAiRoute: typeof AuthenticatedSettingsAiRoute
   AuthenticatedSettingsAiReceptionistRoute: typeof AuthenticatedSettingsAiReceptionistRoute
   AuthenticatedSettingsAutomationRoute: typeof AuthenticatedSettingsAutomationRoute
+  AuthenticatedSettingsBillingRoute: typeof AuthenticatedSettingsBillingRoute
   AuthenticatedSettingsBlackoutsRoute: typeof AuthenticatedSettingsBlackoutsRoute
   AuthenticatedSettingsDeepCleanRoute: typeof AuthenticatedSettingsDeepCleanRoute
   AuthenticatedSettingsEmailsRoute: typeof AuthenticatedSettingsEmailsRoute
@@ -2071,6 +2111,7 @@ const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsAiReceptionistRoute:
     AuthenticatedSettingsAiReceptionistRoute,
   AuthenticatedSettingsAutomationRoute: AuthenticatedSettingsAutomationRoute,
+  AuthenticatedSettingsBillingRoute: AuthenticatedSettingsBillingRoute,
   AuthenticatedSettingsBlackoutsRoute: AuthenticatedSettingsBlackoutsRoute,
   AuthenticatedSettingsDeepCleanRoute: AuthenticatedSettingsDeepCleanRoute,
   AuthenticatedSettingsEmailsRoute: AuthenticatedSettingsEmailsRoute,
@@ -2105,6 +2146,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedMessagesRoute: typeof AuthenticatedMessagesRouteWithChildren
   AuthenticatedMyDayRoute: typeof AuthenticatedMyDayRoute
   AuthenticatedNeighborsRoute: typeof AuthenticatedNeighborsRoute
+  AuthenticatedPaymentsRoute: typeof AuthenticatedPaymentsRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedRoutesRoute: typeof AuthenticatedRoutesRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRouteWithChildren
@@ -2131,6 +2173,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedMessagesRoute: AuthenticatedMessagesRouteWithChildren,
   AuthenticatedMyDayRoute: AuthenticatedMyDayRoute,
   AuthenticatedNeighborsRoute: AuthenticatedNeighborsRoute,
+  AuthenticatedPaymentsRoute: AuthenticatedPaymentsRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedRoutesRoute: AuthenticatedRoutesRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRouteWithChildren,
@@ -2258,3 +2301,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

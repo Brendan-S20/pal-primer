@@ -72,7 +72,7 @@ export const getOnboardingStatus = createServerFn({ method: "GET" })
         label: "Connect Stripe (optional)",
         description: "Bring your own Stripe key to collect payments and enable autopay.",
         done: Boolean(org.data?.stripe_customer_id),
-        to: "/billing",
+        to: "/settings/billing",
         cta: "Set up billing",
       },
     ];

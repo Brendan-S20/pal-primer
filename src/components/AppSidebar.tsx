@@ -82,7 +82,7 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
     label: "Billing",
     items: [
       { title: "Invoices", url: "/invoices", icon: Receipt },
-      { title: "Billing", url: "/billing", icon: CreditCard },
+      { title: "Payments", url: "/payments", icon: CreditCard },
     ],
   },
   {

@@ -148,6 +148,16 @@ function WasteLogPage() {
                   <div className="font-medium">{f.name}{!f.active && <Badge variant="outline" className="ml-2">inactive</Badge>}</div>
                   {f.address && <div className="text-xs text-muted-foreground">{f.address}</div>}
                 </div>
+                {f.address && (
+                  <a
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(f.address)}&travelmode=driving`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-primary underline"
+                  >
+                    Directions
+                  </a>
+                )}
               </li>
             ))}
           </ul>
