@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { AiSection, DigestPanel, MarketingPanel } from "@/components/ai/AiPanels";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -289,6 +290,14 @@ function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Owner-facing AI summaries live on the dashboard (punch list #11). */}
+      <AiSection title="AI: weekly digest" description="Owner-focused summary of the last 7 days.">
+        <DigestPanel />
+      </AiSection>
+      <AiSection title="AI: marketing content" description="Draft posts, captions, and email blasts.">
+        <MarketingPanel />
+      </AiSection>
 
       <VisitDetailDrawer
         visitId={detailVisitId}

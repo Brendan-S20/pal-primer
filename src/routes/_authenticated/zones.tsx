@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { AiSection, PricingPanel } from "@/components/ai/AiPanels";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -595,6 +596,11 @@ function ZoneCoverageSection({ zone, canEdit }: { zone: any; canEdit: boolean })
           />
         </div>
       )}
+
+      {/* Zone pricing suggestions live with the zones they price (punch list #11). */}
+      <AiSection title="AI: zone pricing" description="Suggest per-zone price adjustments from the last 90 days.">
+        <PricingPanel />
+      </AiSection>
     </div>
   );
 }

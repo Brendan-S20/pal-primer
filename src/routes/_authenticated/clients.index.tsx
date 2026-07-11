@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { AiSection, ChurnPanel } from "@/components/ai/AiPanels";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
@@ -287,6 +288,11 @@ function ClientsList() {
           </div>
         </>
       )}
+
+      {/* Churn scoring lives with the client roster it scores (punch list #11). */}
+      <AiSection title="AI: churn risk" description="Score active clients on skip rate, unpaid invoices, and recency.">
+        <ChurnPanel />
+      </AiSection>
     </div>
   );
 }
