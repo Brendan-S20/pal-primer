@@ -217,100 +217,52 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 .eq("id", invoiceId)
                 .single();
               // C1 + M1: the invoice must belong to the event's account, and skip
-              // if already paid (Stripe retries/redelivers).
+              // if already paid (Stripe retries/redelivers). The atomic claim in
+              // markInvoicePaidFromStripe also protects against racing the
+              // reconcile fallback.
               if (inv && inv.status !== "paid" && await accountMatches(inv.organization_id)) {
-                await supabaseAdmin.from("invoices").update({
-                  status: "paid",
-                  paid_at: new Date().toISOString(),
-                  stripe_payment_intent_id: pi,
-                }).eq("id", invoiceId);
-                await supabaseAdmin.from("payments").insert({
-                  organization_id: inv.organization_id,
-                  invoice_id: inv.id,
-                  amount_cents: session.amount_total ?? inv.total_cents,
+                const { markInvoicePaidFromStripe } = await import("@/lib/invoice-reconcile.server");
+                await markInvoicePaidFromStripe(supabaseAdmin, {
+                  invoiceId: inv.id,
+                  organizationId: inv.organization_id,
+                  amountCents: session.amount_total ?? inv.total_cents,
                   currency: session.currency ?? inv.currency,
-                  status: "succeeded",
-                  stripe_checkout_session_id: session.id,
-                  stripe_payment_intent_id: pi,
-                  paid_at: new Date().toISOString(),
-                  raw_event: JSON.parse(JSON.stringify(event)),
+                  paymentIntentId: pi,
+                  checkoutSessionId: session.id,
+                  raw: event,
                 });
-
-                // Fire payment-received receipt (best-effort)
-                try {
-                  const { data: fullInv } = await supabaseAdmin
-                    .from("invoices")
-                    .select("client_id")
-                    .eq("id", invoiceId)
-                    .single();
-                  if (fullInv) {
-                    const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
-                    await enqueueAppEmail({
-                      organizationId: inv.organization_id,
-                      clientId: fullInv.client_id,
-                      templateName: "payment-received",
-                      notifyKey: "notify_email_payment_received",
-                      idempotencyKey: `receipt-${invoiceId}`,
-                      templateData: {
-                        amountCents: session.amount_total ?? inv.total_cents,
-                        paidAt: new Date().toLocaleDateString("en-US", {
-                          month: "short", day: "numeric", year: "numeric",
-                        }),
-                      },
-                    });
-                  }
-                } catch (e) {
-                  console.error("receipt email failed", e);
-                }
               }
             }
           } else if (event.type === "payment_intent.succeeded") {
             const pi = event.data.object as import("stripe").Stripe.PaymentIntent;
             const invoiceId = pi.metadata?.invoice_id;
-            // Only handle off-session/portal-saved-card flows; Checkout flows
-            // are already finalized above via checkout.session.completed.
+            // Only handle PI-first flows (saved card, autopay, inline Payment
+            // Element); Checkout flows are already finalized above via
+            // checkout.session.completed and their PIs carry no invoice metadata.
             const source = pi.metadata?.source;
-            if (invoiceId && (source === "portal_saved_card" || source === "autopay")) {
+            if (invoiceId && (source === "portal_saved_card" || source === "autopay" || source === "portal_inline")) {
               const { data: inv } = await supabaseAdmin
                 .from("invoices").select("id, organization_id, total_cents, currency, status, client_id")
                 .eq("id", invoiceId).single();
               if (inv && inv.status !== "paid" && await accountMatches(inv.organization_id)) {
-                await supabaseAdmin.from("invoices").update({
-                  status: "paid",
-                  paid_at: new Date().toISOString(),
-                  stripe_payment_intent_id: pi.id,
-                }).eq("id", invoiceId);
-                await supabaseAdmin.from("payments").insert({
-                  organization_id: inv.organization_id,
-                  invoice_id: inv.id,
-                  amount_cents: pi.amount,
+                const { markInvoicePaidFromStripe } = await import("@/lib/invoice-reconcile.server");
+                const claimed = await markInvoicePaidFromStripe(supabaseAdmin, {
+                  invoiceId: inv.id,
+                  organizationId: inv.organization_id,
+                  amountCents: pi.amount,
                   currency: pi.currency,
-                  status: "succeeded",
-                  stripe_payment_intent_id: pi.id,
-                  paid_at: new Date().toISOString(),
-                  raw_event: JSON.parse(JSON.stringify(event)),
+                  paymentIntentId: pi.id,
+                  raw: event,
                 });
                 // Successful autopay clears the dunning failure ladder.
-                await supabaseAdmin.from("clients").update({
-                  autopay_failure_count: 0,
-                  autopay_paused: false,
-                  autopay_last_error: null,
-                  autopay_last_attempt_at: new Date().toISOString(),
-                }).eq("id", inv.client_id);
-                try {
-                  const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
-                  await enqueueAppEmail({
-                    organizationId: inv.organization_id,
-                    clientId: inv.client_id,
-                    templateName: "payment-received",
-                    notifyKey: "notify_email_payment_received",
-                    idempotencyKey: `receipt-${invoiceId}`,
-                    templateData: {
-                      amountCents: pi.amount,
-                      paidAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-                    },
-                  });
-                } catch (e) { console.error("receipt email failed", e); }
+                if (claimed) {
+                  await supabaseAdmin.from("clients").update({
+                    autopay_failure_count: 0,
+                    autopay_paused: false,
+                    autopay_last_error: null,
+                    autopay_last_attempt_at: new Date().toISOString(),
+                  }).eq("id", inv.client_id);
+                }
               }
             }
           } else if (event.type === "payment_intent.payment_failed") {

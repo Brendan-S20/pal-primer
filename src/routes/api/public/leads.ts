@@ -59,8 +59,9 @@ export const Route = createFileRoute("/api/public/leads")({
           { auth: { persistSession: false } },
         );
         // Resolve the tenant from its public slug (SECURITY DEFINER RPC, so it
-        // works for the anonymous key; requires the org to have public intake on).
-        const { data: orgRows } = await supabase.rpc("public_get_org_by_slug", { _slug: data.slug });
+        // works for the anonymous key). Lead capture matches portal_slug and is
+        // not gated on public_signup_enabled (#3).
+        const { data: orgRows } = await supabase.rpc("public_get_org_for_lead_form", { _slug: data.slug });
         const orgId = (orgRows as Array<{ id: string }> | null)?.[0]?.id ?? null;
         if (!orgId) {
           return new Response(JSON.stringify({ error: "Unknown business" }), { status: 404, headers: jsonHeaders });
