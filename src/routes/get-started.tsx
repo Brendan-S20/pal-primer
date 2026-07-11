@@ -13,6 +13,10 @@ import { APP_NAME } from "@/lib/scoop";
 // texting consent (Twilio/TCPA compliance) → then straight into /onboarding
 // for the plan picker + embedded payment, one continuous flow.
 export const Route = createFileRoute("/get-started")({
+  // The identifier-first /auth screen hands new emails over via ?email=…
+  validateSearch: (s: Record<string, unknown>) => ({
+    email: typeof s.email === "string" ? s.email : undefined,
+  }),
   head: () => ({
     meta: [
       { title: `Get started — ${APP_NAME}` },
@@ -35,11 +39,12 @@ const STEPS = ["Your account", "Your business", "Texting"] as const;
 
 function GetStartedPage() {
   const navigate = useNavigate();
+  const { email: emailFromAuth } = Route.useSearch();
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(emailFromAuth ?? "");
   const [password, setPassword] = useState("");
   const [orgName, setOrgName] = useState("");
   const [displayName, setDisplayName] = useState("");
