@@ -253,21 +253,94 @@ function ClientDetail() {
   const subs = subsData?.subscriptions ?? [];
   const zones = zonesData?.zones ?? [];
 
+  const activeSubs = subs.filter((s: any) => s.status === "active");
+  const initials = (client.display_name ?? "?")
+    .split(/\s+/)
+    .map((w: string) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
   return (
     <div className="space-y-6">
       <div>
         <Link to="/clients" className="text-sm text-muted-foreground hover:underline">
           ← Clients
         </Link>
-        <div className="mt-2 flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">{client.display_name}</h1>
-          <Badge variant={client.account_type === "commercial" ? "default" : "secondary"}>
-            {client.account_type}
-          </Badge>
+        {/* Identity header (re-review): who they are, how to reach them, and
+            the numbers that matter — before any tab is clicked. */}
+        <div className="mt-2 rounded-xl border bg-card p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary/10 text-lg font-semibold text-primary">
+                {initials}
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-2xl font-semibold">{client.display_name}</h1>
+                  <Badge variant={client.account_type === "commercial" ? "default" : "secondary"}>
+                    {client.account_type}
+                  </Badge>
+                  {client.active === false && <Badge variant="outline">Inactive</Badge>}
+                  {((client as any).churn_score ?? 0) >= 60 && (
+                    <Badge variant="destructive">At risk</Badge>
+                  )}
+                </div>
+                <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-sm text-muted-foreground">
+                  {client.primary_email && (
+                    <a href={`mailto:${client.primary_email}`} className="hover:text-foreground hover:underline">
+                      {client.primary_email}
+                    </a>
+                  )}
+                  {client.primary_phone && (
+                    <a href={`tel:${client.primary_phone}`} className="hover:text-foreground hover:underline">
+                      {client.primary_phone}
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Link to="/messages/$clientId" params={{ clientId }}>
+                <Button variant="outline" size="sm">Message</Button>
+              </Link>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 border-t pt-4 sm:grid-cols-4">
+            <div>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Properties</div>
+              <div className="text-lg font-semibold">{properties.length}</div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Active subs</div>
+              <div className="text-lg font-semibold">
+                {activeSubs.length}
+                {activeSubs.length > 0 && (
+                  <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                    {[...new Set(activeSubs.map((s: any) => String(s.frequency ?? "").replace("_", "-")))].filter(Boolean).join(", ")}
+                  </span>
+                )}
+              </div>
+            </div>
+            {canBill && (
+              <div>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">Credit</div>
+                <div className={`text-lg font-semibold ${((credit?.balanceCents ?? 0) < 0) ? "text-destructive" : ""}`}>
+                  ${((credit?.balanceCents ?? 0) / 100).toFixed(2)}
+                </div>
+              </div>
+            )}
+            <div>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Churn score</div>
+              <div className="text-lg font-semibold">{(client as any).churn_score ?? "—"}</div>
+            </div>
+          </div>
+          {(client as any).portal_token && canBill && (
+            <div className="mt-3 border-t pt-3">
+              <PortalLinkPanel clientId={clientId} portalToken={(client as any).portal_token} />
+            </div>
+          )}
         </div>
-        {(client as any).portal_token && canBill && (
-          <PortalLinkPanel clientId={clientId} portalToken={(client as any).portal_token} />
-        )}
       </div>
 
       <Tabs defaultValue="overview" className="space-y-6">
