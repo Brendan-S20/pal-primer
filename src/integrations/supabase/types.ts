@@ -2145,6 +2145,10 @@ export type Database = {
           sms_from_number: string | null
           stripe_connect_account_id: string | null
           stripe_connect_charges_enabled: boolean
+          email_verified_at: string | null
+          sms_consent_at: string | null
+          sms_consent_phone: string | null
+          sms_consent_text: string | null
           stripe_connect_connected_at: string | null
           stripe_connect_status: string | null
           stripe_customer_id: string | null
@@ -2230,6 +2234,10 @@ export type Database = {
           sms_from_number?: string | null
           stripe_connect_account_id?: string | null
           stripe_connect_charges_enabled?: boolean
+          email_verified_at?: string | null
+          sms_consent_at?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_text?: string | null
           stripe_connect_connected_at?: string | null
           stripe_connect_status?: string | null
           stripe_customer_id?: string | null
@@ -2315,6 +2323,10 @@ export type Database = {
           sms_from_number?: string | null
           stripe_connect_account_id?: string | null
           stripe_connect_charges_enabled?: boolean
+          email_verified_at?: string | null
+          sms_consent_at?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_text?: string | null
           stripe_connect_connected_at?: string | null
           stripe_connect_status?: string | null
           stripe_customer_id?: string | null

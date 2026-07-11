@@ -73,6 +73,7 @@ import { Route as EmailTransactionalPreviewRouteImport } from './routes/email/tr
 import { Route as EmailQueueProcessRouteImport } from './routes/email/queue/process'
 import { Route as EmailAuthWebhookRouteImport } from './routes/email/auth/webhook'
 import { Route as EmailAuthPreviewRouteImport } from './routes/email/auth/preview'
+import { Route as ApiPublicVerifyEmailRouteImport } from './routes/api/public/verify-email'
 import { Route as ApiPublicSignupRequestsRouteImport } from './routes/api/public/signup-requests'
 import { Route as ApiPublicLeadsRouteImport } from './routes/api/public/leads'
 import { Route as AuthenticatedSettingsUsersRouteImport } from './routes/_authenticated/settings.users'
@@ -440,6 +441,11 @@ const EmailAuthPreviewRoute = EmailAuthPreviewRouteImport.update({
   path: '/email/auth/preview',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicVerifyEmailRoute = ApiPublicVerifyEmailRouteImport.update({
+  id: '/api/public/verify-email',
+  path: '/api/public/verify-email',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicSignupRequestsRoute = ApiPublicSignupRequestsRouteImport.update({
   id: '/api/public/signup-requests',
   path: '/api/public/signup-requests',
@@ -748,6 +754,7 @@ export interface FileRoutesByFullPath {
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/signup-requests': typeof ApiPublicSignupRequestsRoute
+  '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
   '/email/auth/preview': typeof EmailAuthPreviewRoute
   '/email/auth/webhook': typeof EmailAuthWebhookRoute
   '/email/queue/process': typeof EmailQueueProcessRoute
@@ -848,6 +855,7 @@ export interface FileRoutesByTo {
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/signup-requests': typeof ApiPublicSignupRequestsRoute
+  '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
   '/email/auth/preview': typeof EmailAuthPreviewRoute
   '/email/auth/webhook': typeof EmailAuthWebhookRoute
   '/email/queue/process': typeof EmailQueueProcessRoute
@@ -955,6 +963,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/signup-requests': typeof ApiPublicSignupRequestsRoute
+  '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
   '/email/auth/preview': typeof EmailAuthPreviewRoute
   '/email/auth/webhook': typeof EmailAuthWebhookRoute
   '/email/queue/process': typeof EmailQueueProcessRoute
@@ -1063,6 +1072,7 @@ export interface FileRouteTypes {
     | '/settings/users'
     | '/api/public/leads'
     | '/api/public/signup-requests'
+    | '/api/public/verify-email'
     | '/email/auth/preview'
     | '/email/auth/webhook'
     | '/email/queue/process'
@@ -1163,6 +1173,7 @@ export interface FileRouteTypes {
     | '/settings/users'
     | '/api/public/leads'
     | '/api/public/signup-requests'
+    | '/api/public/verify-email'
     | '/email/auth/preview'
     | '/email/auth/webhook'
     | '/email/queue/process'
@@ -1269,6 +1280,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/users'
     | '/api/public/leads'
     | '/api/public/signup-requests'
+    | '/api/public/verify-email'
     | '/email/auth/preview'
     | '/email/auth/webhook'
     | '/email/queue/process'
@@ -1321,6 +1333,7 @@ export interface RootRouteChildren {
   SignupSuccessRoute: typeof SignupSuccessRoute
   ApiPublicLeadsRoute: typeof ApiPublicLeadsRoute
   ApiPublicSignupRequestsRoute: typeof ApiPublicSignupRequestsRoute
+  ApiPublicVerifyEmailRoute: typeof ApiPublicVerifyEmailRoute
   EmailAuthPreviewRoute: typeof EmailAuthPreviewRoute
   EmailAuthWebhookRoute: typeof EmailAuthWebhookRoute
   EmailQueueProcessRoute: typeof EmailQueueProcessRoute
@@ -1785,6 +1798,13 @@ declare module '@tanstack/react-router' {
       path: '/email/auth/preview'
       fullPath: '/email/auth/preview'
       preLoaderRoute: typeof EmailAuthPreviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/verify-email': {
+      id: '/api/public/verify-email'
+      path: '/api/public/verify-email'
+      fullPath: '/api/public/verify-email'
+      preLoaderRoute: typeof ApiPublicVerifyEmailRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/signup-requests': {
@@ -2325,6 +2345,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupSuccessRoute: SignupSuccessRoute,
   ApiPublicLeadsRoute: ApiPublicLeadsRoute,
   ApiPublicSignupRequestsRoute: ApiPublicSignupRequestsRoute,
+  ApiPublicVerifyEmailRoute: ApiPublicVerifyEmailRoute,
   EmailAuthPreviewRoute: EmailAuthPreviewRoute,
   EmailAuthWebhookRoute: EmailAuthWebhookRoute,
   EmailQueueProcessRoute: EmailQueueProcessRoute,

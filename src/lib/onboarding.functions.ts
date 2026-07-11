@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 export type OnboardingStep = {
-  id: "zones" | "staff" | "clients" | "route" | "billing";
+  id: "verify_email" | "zones" | "staff" | "clients" | "route" | "billing";
   label: string;
   description: string;
   done: boolean;
@@ -29,12 +29,22 @@ export const getOnboardingStatus = createServerFn({ method: "GET" })
       supabase.from("staff").select("id", { count: "exact", head: true }).eq("organization_id", orgId),
       supabase.from("clients").select("id", { count: "exact", head: true }).eq("organization_id", orgId),
       supabase.from("visits").select("id", { count: "exact", head: true }).eq("organization_id", orgId).not("assigned_staff_id", "is", null),
-      supabase.from("organizations").select("stripe_customer_id, onboarding_dismissed_at").eq("id", orgId).single(),
+      supabase.from("organizations").select("stripe_customer_id, onboarding_dismissed_at, email_verified_at").eq("id", orgId).single(),
     ]);
 
     const dismissed = Boolean(org.data?.onboarding_dismissed_at);
 
     const steps: OnboardingStep[] = [
+      {
+        // Frictionless signup: verification is a to-do, not a wall — but
+        // Stripe Express stays locked until it's done.
+        id: "verify_email",
+        label: "Verify your email",
+        description: "Confirm your address to unlock payments (Stripe). Everything else works meanwhile.",
+        done: Boolean((org.data as any)?.email_verified_at),
+        to: "/payments",
+        cta: "Verify",
+      },
       {
         id: "zones",
         label: "Create service zones",
