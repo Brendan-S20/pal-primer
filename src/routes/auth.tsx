@@ -167,6 +167,50 @@ function AuthPage() {
     setError("Check your email to confirm your account, then sign in.");
   };
 
+  const oauthSignIn = async (provider: "google" | "apple" | "facebook") => {
+    const label = provider.charAt(0).toUpperCase() + provider.slice(1);
+    setError(null);
+    setLoading(true);
+    try {
+      if (provider === "facebook") {
+        // Not in the cloud-auth wrapper — use the Supabase provider directly.
+        // Always a full redirect; errors surface before navigation.
+        const { error: fbErr } = await supabase.auth.signInWithOAuth({
+          provider: "facebook",
+          options: { redirectTo: window.location.origin },
+        });
+        if (fbErr) {
+          setLoading(false);
+          return setError(fbErr.message ?? `${label} sign-in failed`);
+        }
+        return; // browser will redirect
+      }
+      const result = await lovable.auth.signInWithOAuth(provider, {
+        redirect_uri: window.location.origin,
+      });
+      if (result.error) {
+        setLoading(false);
+        return setError(result.error.message ?? `${label} sign-in failed`);
+      }
+      if (result.redirected) return; // browser will redirect
+      // Popup flow completed with session → bootstrap if needed, then role-aware landing.
+      const { data } = await supabase.auth.getUser();
+      if (data.user) {
+        try {
+          await ensureBootstrapped(data.user as any);
+        } catch (err) {
+          setLoading(false);
+          return setError(err instanceof Error ? err.message : "Failed to create organization");
+        }
+      }
+      const to = data.user ? await landingPathForUser(data.user.id) : "/dashboard";
+      navigate({ to });
+    } catch (err) {
+      setLoading(false);
+      setError(err instanceof Error ? err.message : `${label} sign-in failed`);
+    }
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-md space-y-6">
@@ -176,43 +220,37 @@ function AuthPage() {
         </div>
 
         <div className="space-y-3 rounded-lg border bg-card p-4">
+          {/* Punch list #19: Apple and Facebook alongside Google. Google and
+              Apple ride the cloud-auth wrapper; Facebook goes through the
+              Supabase provider directly (not in the wrapper). Unconfigured
+              providers fail with the provider's own error message. */}
           <Button
             type="button"
             variant="outline"
             className="w-full"
             disabled={loading}
-            onClick={async () => {
-              setError(null);
-              setLoading(true);
-              try {
-                const result = await lovable.auth.signInWithOAuth("google", {
-                  redirect_uri: window.location.origin,
-                });
-                if (result.error) {
-                  setLoading(false);
-                  return setError(result.error.message ?? "Google sign-in failed");
-                }
-                if (result.redirected) return; // browser will redirect
-                // Popup flow completed with session → bootstrap if needed, then role-aware landing.
-                const { data } = await supabase.auth.getUser();
-                if (data.user) {
-                  try {
-                    await ensureBootstrapped(data.user as any);
-                  } catch (err) {
-                    setLoading(false);
-                    return setError(err instanceof Error ? err.message : "Failed to create organization");
-                  }
-                }
-                const to = data.user ? await landingPathForUser(data.user.id) : "/dashboard";
-                navigate({ to });
-              } catch (err) {
-                setLoading(false);
-                setError(err instanceof Error ? err.message : "Google sign-in failed");
-              }
-            }}
+            onClick={() => oauthSignIn("google")}
           >
             Continue with Google
           </Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={loading}
+              onClick={() => oauthSignIn("apple")}
+            >
+              Apple
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={loading}
+              onClick={() => oauthSignIn("facebook")}
+            >
+              Facebook
+            </Button>
+          </div>
           <div className="relative text-center text-xs text-muted-foreground">
             <span className="bg-card px-2">or use email</span>
           </div>
