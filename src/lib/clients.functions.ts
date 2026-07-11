@@ -42,7 +42,7 @@ export const listClients = createServerFn({ method: "GET" })
       ids.length
         ? supabase
             .from("subscriptions")
-            .select("client_id, status")
+            .select("client_id, status, frequency")
             .in("client_id", ids)
         : Promise.resolve({ data: [] as any[] }),
       ids.length
@@ -63,12 +63,22 @@ export const listClients = createServerFn({ method: "GET" })
       dogsByClient.set(p.client_id, (dogsByClient.get(p.client_id) ?? 0) + n);
     }
     const activeSubsByClient = new Map<string, number>();
+    // Service-frequency label for the list view (punch list #15): distinct
+    // active-subscription frequencies per client.
+    const freqsByClient = new Map<string, string[]>();
     for (const s of subsRes.data ?? []) {
-      if (s.status === "active")
+      if (s.status === "active") {
         activeSubsByClient.set(
           s.client_id,
           (activeSubsByClient.get(s.client_id) ?? 0) + 1,
         );
+        const f = (s as any).frequency as string | null;
+        if (f) {
+          const list = freqsByClient.get(s.client_id) ?? [];
+          if (!list.includes(f)) list.push(f);
+          freqsByClient.set(s.client_id, list);
+        }
+      }
     }
     // Same AR math as Dashboard "AR Open" and Reports "Outstanding" (finding #7).
     const { outstandingByClient } = await import("@/lib/ar");
@@ -79,6 +89,7 @@ export const listClients = createServerFn({ method: "GET" })
         ...c,
         dog_count: dogsByClient.get(c.id) ?? 0,
         active_subscription_count: activeSubsByClient.get(c.id) ?? 0,
+        frequencies: freqsByClient.get(c.id) ?? [],
         outstanding_cents: balanceByClient.get(c.id) ?? 0,
       })),
     };

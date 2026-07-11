@@ -468,8 +468,14 @@ function GiftSection() {
                     )}
                   </div>
                   <div className="mt-0.5 text-xs text-muted-foreground">
-                    {fmtMoney(c.remaining_balance_cents)} of{" "}
-                    {fmtMoney(c.initial_balance_cents)} remaining
+                    {c.status === "void" ? (
+                      <>Voided — no longer redeemable ({fmtMoney(c.initial_balance_cents)} card)</>
+                    ) : (
+                      <>
+                        {fmtMoney(c.remaining_balance_cents)} of{" "}
+                        {fmtMoney(c.initial_balance_cents)} remaining
+                      </>
+                    )}
                     {c.recipient_name ? ` · for ${c.recipient_name}` : ""}
                   </div>
                 </div>

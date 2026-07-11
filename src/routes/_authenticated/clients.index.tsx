@@ -219,6 +219,7 @@ function ClientsList() {
                   <th className="px-4 py-2 font-medium">Type</th>
                   <th className="px-4 py-2 font-medium">Dogs</th>
                   <th className="px-4 py-2 font-medium">Subs</th>
+                  <th className="px-4 py-2 font-medium">Frequency</th>
                   <th className="px-4 py-2 font-medium">Balance</th>
                   <th className="px-4 py-2 font-medium">Contact</th>
                   <th className="px-4 py-2 font-medium">Status</th>
@@ -249,6 +250,11 @@ function ClientsList() {
                     <td className="px-4 py-3 text-muted-foreground">{c.dog_count}</td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {c.active_subscription_count}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {(c.frequencies ?? []).length
+                        ? (c.frequencies as string[]).map((f) => f.replace("_", "-")).join(", ")
+                        : "—"}
                     </td>
                     <td className="px-4 py-3">
                       {c.outstanding_cents > 0 ? (
