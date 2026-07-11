@@ -19,8 +19,23 @@ import {
   refreshStripeConnect,
   disconnectStripeConnect,
 } from "@/lib/stripe-connect.functions";
+import { sendEmailVerification } from "@/lib/auth-entry.functions";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+
+function ResendVerification() {
+  const sendFn = useServerFn(sendEmailVerification);
+  const m = useMutation({
+    mutationFn: () => sendFn(),
+    onSuccess: () => toast.success("Verification email sent — check your inbox"),
+    onError: (e: Error) => toast.error(e.message),
+  });
+  return (
+    <Button variant="outline" size="sm" onClick={() => m.mutate()} disabled={m.isPending}>
+      {m.isPending ? "Sending…" : "Resend verification email"}
+    </Button>
+  );
+}
 
 // Promoted from Settings -> Payments to the main sidebar (punch list #9): this
 // is the tenant-facing money view (balances, payments, payouts), not app
@@ -74,6 +89,16 @@ function PaymentsSettings() {
 
       {q.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : cfg && cfg.emailVerified === false ? (
+        // Locked until the owner verifies their email (frictionless-signup gate).
+        <div className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-5">
+          <h2 className="font-semibold text-amber-900">Verify your email to unlock payments</h2>
+          <p className="text-sm text-amber-800">
+            You can use everything else right away — but before connecting Stripe and moving money,
+            we need to confirm your email address. Check your inbox for the verification link.
+          </p>
+          <ResendVerification />
+        </div>
       ) : !cfg?.connected ? (
         <div className="space-y-4 rounded-lg border bg-card p-4">
           <p className="text-sm text-muted-foreground">

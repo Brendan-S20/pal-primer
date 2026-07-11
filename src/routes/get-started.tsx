@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { bootstrapOrganization, recordSmsConsent } from "@/lib/org.functions";
+import { registerAccount, sendEmailVerification } from "@/lib/auth-entry.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,29 +59,21 @@ function GetStartedPage() {
     setError(null);
     setBusy(true);
     try {
-      const { error: signUpErr } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: window.location.origin,
-          data: {
-            org_name: orgName,
-            display_name: displayName,
-            phone: phone || undefined,
-            sms_consent: smsConsent && phone ? true : undefined,
-          },
+      // Frictionless signup: the account is created server-side auto-confirmed
+      // so there's no email-confirmation wall. Verifying the address is a
+      // to-do afterwards (and gates Stripe Express until done).
+      await registerAccount({
+        data: {
+          email: email.trim(),
+          password,
+          orgName: orgName.trim(),
+          displayName: displayName.trim(),
+          phone: phone.trim() || undefined,
+          smsConsent: smsConsent && !!phone.trim(),
         },
       });
-      if (signUpErr) throw signUpErr;
-
-      const { data: sess } = await supabase.auth.getSession();
-      if (!sess.session) {
-        // Email confirmation required — consent metadata rides along and is
-        // applied when they first sign in (ensureBootstrapped).
-        setBusy(false);
-        setError("Check your email to confirm your account, then sign in — your setup continues from there.");
-        return;
-      }
+      const { error: signInErr } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (signInErr) throw signInErr;
 
       await bootstrapOrganization({ data: { orgName, displayName } });
       if (smsConsent && phone.trim()) {
@@ -89,6 +82,12 @@ function GetStartedPage() {
         } catch (e) {
           console.error("sms consent record failed", e);
         }
+      }
+      // Fire the verification email in the background — verify now or later.
+      try {
+        await sendEmailVerification();
+      } catch (e) {
+        console.error("verification email send failed", e);
       }
       navigate({ to: "/onboarding" });
     } catch (err) {
