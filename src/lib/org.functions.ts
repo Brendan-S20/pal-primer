@@ -21,6 +21,46 @@ export const bootstrapOrganization = createServerFn({ method: "POST" })
     return { organizationId: orgId as string };
   });
 
+// Twilio/TCPA compliance: persist the owner's express SMS consent collected
+// during the Get-started walkthrough — timestamp, the number it covers, and
+// the exact language they agreed to. Also stamps the phone on their staff row.
+export const recordSmsConsent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({
+      phone: z.string().trim().min(7).max(40),
+      consentText: z.string().min(10).max(1000),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: role, error: roleErr } = await supabase
+      .from("user_roles")
+      .select("organization_id, role")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (roleErr) throw new Error(roleErr.message);
+    if (!role) throw new Error("No organization for user");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await (supabaseAdmin as any)
+      .from("organizations")
+      .update({
+        sms_consent_at: new Date().toISOString(),
+        sms_consent_phone: data.phone,
+        sms_consent_text: data.consentText,
+      })
+      .eq("id", role.organization_id);
+    if (error) throw new Error(error.message);
+
+    await (supabaseAdmin as any)
+      .from("staff")
+      .update({ phone: data.phone })
+      .eq("organization_id", role.organization_id)
+      .eq("user_id", userId);
+    return { ok: true };
+  });
+
 export const getMyOrg = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
