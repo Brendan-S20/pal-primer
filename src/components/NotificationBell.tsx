@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Bell, Settings } from "lucide-react";
+import { Bell, Settings, X } from "lucide-react";
 import {
   listMyNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  deleteNotification,
   getNotificationPrefs,
   setNotificationPrefs,
 } from "@/lib/notifications-center.functions";
@@ -25,6 +26,7 @@ export function NotificationBell() {
   const listFn = useServerFn(listMyNotifications);
   const markFn = useServerFn(markNotificationRead);
   const markAllFn = useServerFn(markAllNotificationsRead);
+  const deleteFn = useServerFn(deleteNotification);
 
   const q = useQuery({
     queryKey: ["notifications"],
@@ -39,6 +41,7 @@ export function NotificationBell() {
   const invalidate = () => qc.invalidateQueries({ queryKey: ["notifications"] });
   const markAll = useMutation({ mutationFn: () => markAllFn(), onSuccess: invalidate });
   const markOne = useMutation({ mutationFn: (id: string) => markFn({ data: { id } }), onSuccess: invalidate });
+  const deleteOne = useMutation({ mutationFn: (id: string) => deleteFn({ data: { id } }), onSuccess: invalidate });
 
   return (
     <div className="relative">
@@ -96,16 +99,31 @@ export function NotificationBell() {
                     );
                     const onClick = () => { if (!n.read_at) markOne.mutate(n.id); setOpen(false); };
                     return (
-                      <li key={n.id}>
+                      <li key={n.id} className="group relative">
                         {n.link ? (
                           <a href={n.link} onClick={onClick} className="block hover:bg-muted">{inner}</a>
                         ) : (
                           <button type="button" onClick={onClick} className="block w-full text-left hover:bg-muted">{inner}</button>
                         )}
+                        <button
+                          type="button"
+                          aria-label="Delete notification"
+                          title="Delete"
+                          onClick={(e) => { e.stopPropagation(); deleteOne.mutate(n.id); }}
+                          disabled={deleteOne.isPending}
+                          className="absolute right-2 top-2 hidden rounded p-0.5 text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground group-hover:block"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
                       </li>
                     );
                   })}
                 </ul>
+              )}
+              {items.length > 0 && (
+                <p className="border-t px-3 py-1.5 text-center text-[10px] text-muted-foreground">
+                  Notifications are kept for 30 days.
+                </p>
               )}
             </div>
             )}
