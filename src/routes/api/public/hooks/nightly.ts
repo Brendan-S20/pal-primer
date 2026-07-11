@@ -11,24 +11,30 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        // Auth: accept either the generated CRON_SECRET (preferred) or the
-        // project anon key (per Lovable scheduled-jobs pattern). Nightly work
-        // is idempotent, so the worst-case if someone triggers it is running
-        // an org's automation early.
+        // Auth: accept the generated CRON_SECRET, the service role key as a
+        // Bearer token (the same pattern pg_cron already uses for
+        // /email/queue/process, read from Supabase Vault), or the project anon
+        // key (per Lovable scheduled-jobs pattern). Nightly work is idempotent,
+        // so the worst-case if someone triggers it is running an org's
+        // automation early.
         const cronSecret = process.env.CRON_SECRET;
         const anonKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+        const serviceKey = process.env.SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
         const providedSecret =
           request.headers.get("x-cron-secret") ??
           new URL(request.url).searchParams.get("s");
         const providedApiKey = request.headers.get("apikey");
+        const authHeader = request.headers.get("authorization");
+        const bearer = authHeader?.startsWith("Bearer ") ? authHeader.slice("Bearer ".length).trim() : null;
         const okSecret = !!(cronSecret && providedSecret === cronSecret);
+        const okService = !!(serviceKey && bearer === serviceKey);
         const okAnon = !!(anonKey && providedApiKey === anonKey);
-        if (!okSecret && !okAnon) return json({ error: "unauthorized" }, 401);
+        if (!okSecret && !okService && !okAnon) return json({ error: "unauthorized" }, 401);
         // Security (C2): the anon key is public (shipped in the browser bundle),
         // so it must NOT authorize real money movement. Autopay charges run only
-        // under the private CRON_SECRET; the anon path can still drive the
-        // idempotent, non-charging automation.
-        const canCharge = okSecret;
+        // under a private credential (CRON_SECRET or the service role key); the
+        // anon path can still drive the idempotent, non-charging automation.
+        const canCharge = okSecret || okService;
 
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");

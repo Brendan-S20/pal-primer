@@ -2,6 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useMyRole } from "@/hooks/useMyRole";
 import { listManifests, createManifest, deleteManifest, listFacilities, upsertFacility } from "@/lib/stations.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +28,7 @@ function WasteLogPage() {
   const mans = useQuery({ queryKey: ["waste-manifests"], queryFn: () => listMans({ data: {} }) });
   const facs = useQuery({ queryKey: ["waste-facilities"], queryFn: () => listFacs() });
 
+  const { orgId } = useMyRole();
   const [draft, setDraft] = useState({
     facilityId: "" as string,
     disposedOn: new Date().toISOString().slice(0, 10),
@@ -34,14 +37,32 @@ function WasteLogPage() {
     ticketNumber: "",
     notes: "",
   });
+  const [receipt, setReceipt] = useState<File | null>(null);
   const [newFacility, setNewFacility] = useState({ name: "", address: "" });
 
   const createMut = useMutation({
-    mutationFn: (v: any) => createFn({ data: v }),
+    // Receipt photo (punch list #16): compress + upload to the org-scoped
+    // waste-receipts bucket, then store the path on the manifest.
+    mutationFn: async (v: any) => {
+      let photoUrl: string | undefined;
+      if (receipt) {
+        if (!orgId) throw new Error("Still loading your organization — try again in a second.");
+        const { compressImage } = await import("@/lib/offline/compressImage");
+        const { file, contentType, ext } = await compressImage(receipt);
+        const path = `${orgId}/${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from("waste-receipts")
+          .upload(path, file, { contentType, upsert: false });
+        if (upErr) throw new Error(`Receipt upload failed: ${upErr.message}`);
+        photoUrl = path;
+      }
+      return createFn({ data: { ...v, photoUrl } });
+    },
     onSuccess: () => {
       toast.success("Manifest logged");
       qc.invalidateQueries({ queryKey: ["waste-manifests"] });
       setDraft({ facilityId: draft.facilityId, disposedOn: draft.disposedOn, weightLbs: "", bagCount: "", ticketNumber: "", notes: "" });
+      setReceipt(null);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -117,7 +138,19 @@ function WasteLogPage() {
             <Textarea rows={2} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
           </div>
           <div className="sm:col-span-6">
-            <Button type="submit" disabled={createMut.isPending}>Log dump</Button>
+            <Label>Receipt photo (optional)</Label>
+            <Input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(e) => setReceipt(e.target.files?.[0] ?? null)}
+            />
+            {receipt && <p className="mt-1 text-xs text-muted-foreground">{receipt.name}</p>}
+          </div>
+          <div className="sm:col-span-6">
+            <Button type="submit" disabled={createMut.isPending}>
+              {createMut.isPending ? "Logging…" : "Log dump"}
+            </Button>
           </div>
         </form>
       </section>
@@ -183,7 +216,27 @@ function WasteLogPage() {
                   </div>
                   {m.notes && <div className="text-xs text-muted-foreground">{m.notes}</div>}
                 </div>
-                <Button size="sm" variant="ghost" onClick={() => delMut.mutate(m.id)}>Delete</Button>
+                <div className="flex items-center gap-1">
+                  {m.photo_url && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={async () => {
+                        const { data, error } = await supabase.storage
+                          .from("waste-receipts")
+                          .createSignedUrl(m.photo_url, 300);
+                        if (error || !data?.signedUrl) {
+                          toast.error("Couldn't open the receipt");
+                          return;
+                        }
+                        window.open(data.signedUrl, "_blank", "noreferrer");
+                      }}
+                    >
+                      Receipt
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" onClick={() => delMut.mutate(m.id)}>Delete</Button>
+                </div>
               </li>
             ))}
           </ul>
