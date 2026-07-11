@@ -1,12 +1,13 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
 import { bootstrapOrganization } from "@/lib/org.functions";
+import { checkEmailAccount } from "@/lib/auth-entry.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/scoop";
 import { Logo } from "@/components/Logo";
 
@@ -105,6 +106,7 @@ function AuthPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [stage, setStage] = useState<"email" | "password">("email");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -191,6 +193,42 @@ function AuthPage() {
     }
   };
 
+  // Identifier-first (ERP-style rework): email first; if the account exists
+  // we reveal the password step, otherwise we hand off to the Get-started
+  // walkthrough with the email carried over.
+  const checkFn = useServerFn(checkEmailAccount);
+  const emailValid = /.+@.+\..+/.test(email);
+
+  const continueWithEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailValid) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const r = await checkFn({ data: { email: email.trim() } });
+      setLoading(false);
+      if (r.exists) {
+        setStage("password");
+      } else {
+        navigate({ to: "/get-started", search: { email: email.trim() } as never });
+      }
+    } catch (err) {
+      setLoading(false);
+      setError(err instanceof Error ? err.message : "Couldn't check that email — try again.");
+    }
+  };
+
+  const forgotPassword = async () => {
+    setError(null);
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setLoading(false);
+    if (error) setError(error.message);
+    else setError("Check your email for a reset link.");
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-md space-y-6">
@@ -199,108 +237,129 @@ function AuthPage() {
           <p className="mt-3 text-sm text-muted-foreground">{APP_DESCRIPTION}</p>
         </div>
 
-        <div className="space-y-3 rounded-lg border bg-card p-4">
-          {/* Punch list #19: Apple and Facebook alongside Google. Google and
-              Apple ride the cloud-auth wrapper; Facebook goes through the
-              Supabase provider directly (not in the wrapper). Unconfigured
-              providers fail with the provider's own error message. */}
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            disabled={loading}
-            onClick={() => oauthSignIn("google")}
-          >
-            Continue with Google
-          </Button>
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={loading}
-              onClick={() => oauthSignIn("apple")}
-            >
-              Apple
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={loading}
-              onClick={() => oauthSignIn("facebook")}
-            >
-              Facebook
-            </Button>
-          </div>
-          <div className="relative text-center text-xs text-muted-foreground">
-            <span className="bg-card px-2">or use email</span>
-          </div>
-        </div>
+        <div className="rounded-xl border bg-card p-6 shadow-sm">
+          <h1 className="text-lg font-semibold">
+            {stage === "email" ? "Sign in or create your account" : "Welcome back"}
+          </h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {stage === "email"
+              ? "Enter your work email to continue."
+              : email}
+          </p>
 
-        <Tabs defaultValue="signin" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="signin">Sign in</TabsTrigger>
-            <TabsTrigger value="signup">Create account</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="signin">
-            <form onSubmit={handleSignIn} className="space-y-4 rounded-lg border bg-card p-6">
+          {stage === "email" ? (
+            <form onSubmit={continueWithEmail} className="mt-4 space-y-3">
               <div className="space-y-2">
-                <Label htmlFor="si-email">Email</Label>
-                <Input id="si-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+                <Label htmlFor="si-email">Work email</Label>
+                <Input
+                  id="si-email"
+                  type="email"
+                  required
+                  autoFocus
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@yourbusiness.com"
+                />
               </div>
+              <Button type="submit" disabled={loading || !emailValid} className="w-full">
+                {loading ? "Checking…" : "Continue"}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={handleSignIn} className="mt-4 space-y-3">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="si-pw">Password</Label>
                   <button
                     type="button"
-                    onClick={async () => {
-                      if (!email) { setError("Enter your email above, then click Forgot password."); return; }
-                      setError(null); setLoading(true);
-                      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                        redirectTo: `${window.location.origin}/reset-password`,
-                      });
-                      setLoading(false);
-                      if (error) setError(error.message);
-                      else setError("Check your email for a reset link.");
-                    }}
+                    onClick={forgotPassword}
+                    disabled={loading}
                     className="text-xs text-muted-foreground underline underline-offset-2 hover:text-primary"
                   >
                     Forgot password?
                   </button>
                 </div>
-                <Input id="si-pw" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+                <Input
+                  id="si-pw"
+                  type="password"
+                  required
+                  autoFocus
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
               </div>
               <Button type="submit" disabled={loading} className="w-full">
                 {loading ? "Signing in…" : "Sign in"}
               </Button>
+              <button
+                type="button"
+                onClick={() => { setStage("email"); setPassword(""); setError(null); }}
+                className="w-full text-center text-xs text-muted-foreground underline underline-offset-2 hover:text-primary"
+              >
+                Use a different email
+              </button>
             </form>
-          </TabsContent>
+          )}
 
-
-          <TabsContent value="signup">
-            {/* Account creation is a guided path now (re-review) — send new
-                owners to the Get-started walkthrough instead of a cramped tab. */}
-            <div className="space-y-4 rounded-lg border bg-card p-6 text-center">
-              <div>
-                <h2 className="text-lg font-semibold">New to {APP_NAME}?</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  We'll walk you through it: your account, your business, texting
-                  preferences, and a plan — about two minutes, no card required to start.
-                </p>
-              </div>
-              <Link to="/get-started">
-                <Button className="w-full">Get started</Button>
-              </Link>
+          {/* OAuth lives under the email sign-in (re-review), with brand marks. */}
+          <div className="relative my-5">
+            <div className="absolute inset-0 flex items-center"><div className="w-full border-t" /></div>
+            <div className="relative flex justify-center">
+              <span className="bg-card px-2 text-xs text-muted-foreground">or continue with</span>
             </div>
-          </TabsContent>
-        </Tabs>
+          </div>
+          <div className="space-y-2">
+            <Button type="button" variant="outline" className="w-full justify-center gap-2" disabled={loading} onClick={() => oauthSignIn("google")}>
+              <GoogleIcon /> Google
+            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" variant="outline" className="justify-center gap-2" disabled={loading} onClick={() => oauthSignIn("apple")}>
+                <AppleIcon /> Apple
+              </Button>
+              <Button type="button" variant="outline" className="justify-center gap-2" disabled={loading} onClick={() => oauthSignIn("facebook")}>
+                <FacebookIcon /> Facebook
+              </Button>
+            </div>
+          </div>
+        </div>
 
         {error && (
           <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
             {error}
           </div>
         )}
+
+        <p className="text-center text-xs text-muted-foreground">
+          New here? Entering your email above walks you straight into account setup.
+        </p>
       </div>
     </div>
+  );
+}
+
+// Brand marks (lucide dropped brand icons) — minimal inline SVGs.
+function GoogleIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.2H12v4.1h6.5c-.1 1.1-.8 2.7-2.4 3.8l-.02.15 3.5 2.7.24.02c2.2-2 3.5-5 3.5-8.6z" />
+      <path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.8-2.9c-1 .7-2.4 1.2-4.1 1.2-3.2 0-5.8-2.1-6.8-4.9l-.14.01-3.6 2.8-.05.13C3.4 21.3 7.4 24 12 24z" />
+      <path fill="#FBBC05" d="M5.2 14.5c-.25-.7-.4-1.5-.4-2.3s.14-1.6.38-2.3l-.01-.16-3.65-2.8-.12.06C.5 8.6 0 10.2 0 12.2s.5 3.6 1.4 5.2l3.8-2.9z" />
+      <path fill="#EA4335" d="M12 4.7c2.3 0 3.8 1 4.7 1.8l3.4-3.3C18 1.2 15.2 0 12 0 7.4 0 3.4 2.7 1.4 6.9l3.8 2.9C6.2 6.9 8.8 4.7 12 4.7z" />
+    </svg>
+  );
+}
+function AppleIcon() {
+  return (
+    <svg className="h-4 w-4 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M16.4 12.8c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.85-1.6.02-3.1 1-4 2.4-1.7 3-0.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3.1 2.4 1.2-.05 1.7-.8 3.2-.8s1.9.8 3.2.75c1.3-.02 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8-.03-.01-2.6-1-2.6-3.9zM14 5.6c.7-.8 1.1-1.9 1-3-1 .04-2.1.65-2.8 1.4-.6.7-1.2 1.9-1 3 1.1.1 2.2-.55 2.8-1.4z" />
+    </svg>
+  );
+}
+function FacebookIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#1877F2" d="M24 12a12 12 0 1 0-13.9 11.9v-8.4H7.1V12h3.1V9.4c0-3 1.8-4.7 4.6-4.7 1.3 0 2.7.24 2.7.24v3h-1.5c-1.5 0-2 .93-2 1.9V12h3.4l-.54 3.5h-2.8v8.4A12 12 0 0 0 24 12z" />
+      <path fill="#fff" d="M16.7 15.5 17.2 12h-3.4V9.7c0-1 .47-1.9 2-1.9h1.5v-3s-1.4-.24-2.7-.24c-2.8 0-4.6 1.7-4.6 4.7V12H7.1v3.5h3.1v8.4a12 12 0 0 0 3.9 0v-8.4h2.8z" />
+    </svg>
   );
 }
