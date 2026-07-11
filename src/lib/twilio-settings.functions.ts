@@ -66,6 +66,13 @@ export const setOrgTwilioSettings = createServerFn({ method: "POST" })
       throw new Error("Enter a sender number or a Messaging Service SID.");
     }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // Security (H1): a Twilio number belongs to exactly one org — reject if
+    // another org already owns it, so a tenant can't blackhole a rival's inbound.
+    if (data.smsFromNumber) {
+      const { data: taken } = await (supabaseAdmin as any)
+        .from("organizations").select("id").eq("sms_from_number", data.smsFromNumber).neq("id", orgId).maybeSingle();
+      if (taken) throw new Error("That number is already in use by another account.");
+    }
     const { error } = await (supabaseAdmin as any).from("org_twilio_credentials").upsert(
       {
         organization_id: orgId,

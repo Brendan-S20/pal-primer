@@ -543,6 +543,9 @@ export const portalFinalizeCardSetup = createServerFn({ method: "POST" })
     const pmId = typeof si.payment_method === "string" ? si.payment_method : si.payment_method?.id;
     const customerId = typeof si.customer === "string" ? si.customer : si.customer?.id;
     if (!pmId || !customerId) throw new Error("Card wasn't saved — please try again.");
+    // Security (M2): the SetupIntent must be the one we minted for THIS client,
+    // so a leaked/guessed seti_… id from another client can't bind their card here.
+    if (si.metadata?.client_id !== session.clientId) throw new Error("Card setup could not be verified.");
 
     const pm = await stripe.paymentMethods.retrieve(pmId, {}, opts);
     await stripe.customers.update(customerId, { invoice_settings: { default_payment_method: pmId } }, opts);

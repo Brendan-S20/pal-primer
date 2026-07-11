@@ -160,6 +160,12 @@ export const updateOrgSmsFromNumber = createServerFn({ method: "POST" })
     // manage_settings (owner/office_manager), not bare membership (#34).
     const { requirePermission } = await import("@/lib/authz.server");
     const { orgId } = await requirePermission(supabase, userId, "manage_settings");
+    // Security (Twilio H1): a sender number belongs to one org only.
+    if (data.number) {
+      const { data: taken } = await (supabase.from("organizations") as any)
+        .select("id").eq("sms_from_number", data.number).neq("id", orgId).maybeSingle();
+      if (taken) throw new Error("That number is already in use by another account.");
+    }
     const { error } = await supabase
       .from("organizations")
       .update({ sms_from_number: data.number || null })

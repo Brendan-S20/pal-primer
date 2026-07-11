@@ -1,4 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
+import crypto from "node:crypto";
+
+function secretEq(a: string, b: string): boolean {
+  const ba = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+}
 
 // Inbound SMS webhook.
 // Configure in Twilio Console for each number as the "A MESSAGE COMES IN" URL:
@@ -10,7 +17,7 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
       POST: async ({ request }) => {
         const shared = process.env.TWILIO_INBOUND_SECRET;
         const url = new URL(request.url);
-        const sharedOk = !!shared && url.searchParams.get("s") === shared;
+        const sharedOk = !!shared && secretEq(url.searchParams.get("s") ?? "", shared);
 
         const form = await request.formData();
         const params: Record<string, string> = {};
@@ -46,14 +53,32 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
           const { resolveOrgTwilioConfig } = await import("@/lib/twilio-credentials.server");
           const tenant = await resolveOrgTwilioConfig(org.id);
           const { twilioSignatureIsValid } = await import("@/lib/twilio-signature.server");
+          // Twilio signs the exact public URL it was configured with; behind a
+          // proxy request.url can differ (scheme/host/www), so validate against
+          // both the raw URL and the canonical public URL to avoid a false 401
+          // that would silently break BYOK inbound (M4).
+          const canonicalUrl = (process.env.PUBLIC_APP_ORIGIN || "https://www.app.houndstack.com") + url.pathname + url.search;
           const ok = tenant?.authToken
-            ? twilioSignatureIsValid(request.url, params, tenant.authToken, signature)
+            ? (twilioSignatureIsValid(request.url, params, tenant.authToken, signature) ||
+               twilioSignatureIsValid(canonicalUrl, params, tenant.authToken, signature))
             : false;
           if (!ok) return new Response("unauthorized", { status: 401 });
         }
 
+        // Replay/idempotency (M2): ignore a MessageSid we've already processed so
+        // a captured request can't re-toggle opt-out or re-invoke the (paid) AI
+        // receptionist.
+        if (sid) {
+          const { data: dup } = await supabaseAdmin
+            .from("messages").select("id").eq("twilio_sid", sid).limit(1).maybeSingle();
+          if (dup) return xml("<Response/>", 200);
+        }
+
         // Match client by digits(primary_phone) == digits(from)
         const fromDigits = from.replace(/\D/g, "");
+        // Sanitized sender for the history filter — strip anything that isn't a
+        // phone char so it can't inject PostgREST .or() filter syntax (L5).
+        const safeFrom = from.replace(/[^+\d]/g, "");
         const { data: candidates } = await supabaseAdmin
           .from("clients")
           .select("id, primary_phone, sms_opt_out")
@@ -98,7 +123,7 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
             .from("messages")
             .select("direction, body, created_at")
             .eq("organization_id", org.id)
-            .or(`from_number.eq.${from},to_number.eq.${from}`)
+            .or(`from_number.eq.${safeFrom},to_number.eq.${safeFrom}`)
             .order("created_at", { ascending: false })
             .limit(10);
           const history = (hist ?? [])

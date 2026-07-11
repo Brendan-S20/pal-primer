@@ -21,9 +21,14 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           request.headers.get("x-cron-secret") ??
           new URL(request.url).searchParams.get("s");
         const providedApiKey = request.headers.get("apikey");
-        const okSecret = cronSecret && providedSecret === cronSecret;
-        const okAnon = anonKey && providedApiKey === anonKey;
+        const okSecret = !!(cronSecret && providedSecret === cronSecret);
+        const okAnon = !!(anonKey && providedApiKey === anonKey);
         if (!okSecret && !okAnon) return json({ error: "unauthorized" }, 401);
+        // Security (C2): the anon key is public (shipped in the browser bundle),
+        // so it must NOT authorize real money movement. Autopay charges run only
+        // under the private CRON_SECRET; the anon path can still drive the
+        // idempotent, non-charging automation.
+        const canCharge = okSecret;
 
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -81,7 +86,7 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             );
           }
 
-          perOrg.autopay_charged = await runAutopayForOrg(supabaseAdmin, org.id);
+          perOrg.autopay_charged = canCharge ? await runAutopayForOrg(supabaseAdmin, org.id) : 0;
 
           // Franchise royalty billing (finding #16): on the 1st of the month,
           // generate last month's royalty invoices for each franchise parent's
@@ -347,6 +352,11 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
     }
 
     try {
+      // Stamp the attempt BEFORE charging so a re-run in the same window (or a
+      // webhook lag) is gated by the dunning wait and can't double-charge (H1).
+      await supabaseAdmin.from("clients")
+        .update({ autopay_last_attempt_at: new Date().toISOString() })
+        .eq("id", c.id);
       await stripe.paymentIntents.create({
         amount: inv.total_cents,
         currency: inv.currency ?? "usd",
@@ -359,7 +369,11 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
           organization_id: inv.organization_id,
           source: "autopay",
         },
-      }, { stripeAccount: acct.accountId });
+      }, {
+        stripeAccount: acct.accountId,
+        // Idempotent per invoice+amount: a retried request never charges twice.
+        idempotencyKey: `autopay-${inv.id}-${inv.total_cents}`,
+      });
       // Success bookkeeping happens in the webhook payment_intent.succeeded
       // branch, which also clears failure_count. Just count locally.
       charged++;
