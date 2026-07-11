@@ -1,7 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getLeadFormConfig } from "@/lib/leads.functions";
+import { useEffect, useState } from "react";
+import { getLeadFormConfig, setLeadFormConfig } from "@/lib/leads.functions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/settings/lead-form")({
@@ -69,6 +73,8 @@ function LeadFormSettings() {
             <button className="mt-2 text-xs text-primary underline" onClick={() => copy(embed, "Embed code")}>Copy embed code</button>
           </div>
 
+          <LeadFormCustomizer config={cfg.config} />
+
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-lg border bg-card p-4">
               <div className="text-xs uppercase text-muted-foreground">Submissions (all time)</div>
@@ -82,5 +88,109 @@ function LeadFormSettings() {
         </>
       )}
     </div>
+  );
+}
+
+const OPTIONAL_FIELDS = [
+  { key: "phone", label: "Phone" },
+  { key: "location", label: "Service address / ZIP" },
+  { key: "dogCount", label: "Number of dogs" },
+  { key: "message", label: "Message / notes" },
+] as const;
+
+function LeadFormCustomizer({ config }: { config: any }) {
+  const qc = useQueryClient();
+  const saveFn = useServerFn(setLeadFormConfig);
+  const [headline, setHeadline] = useState("");
+  const [intro, setIntro] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [brandColor, setBrandColor] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [fields, setFields] = useState({ phone: true, location: true, dogCount: true, message: true });
+
+  useEffect(() => {
+    if (!config) return;
+    setHeadline(config.headline ?? "");
+    setIntro(config.intro ?? "");
+    setConfirmation(config.confirmation ?? "");
+    setBrandColor(config.brandColor ?? "");
+    setLogoUrl(config.logoUrl ?? "");
+    setFields({
+      phone: config.fields?.phone !== false,
+      location: config.fields?.location !== false,
+      dogCount: config.fields?.dogCount !== false,
+      message: config.fields?.message !== false,
+    });
+  }, [config]);
+
+  const save = useMutation({
+    mutationFn: () =>
+      saveFn({
+        data: {
+          headline: headline.trim() || undefined,
+          intro: intro.trim() || undefined,
+          confirmation: confirmation.trim() || undefined,
+          brandColor: brandColor.trim() || "",
+          logoUrl: logoUrl.trim() || "",
+          fields,
+        },
+      }),
+    onSuccess: () => { toast.success("Lead form updated"); qc.invalidateQueries({ queryKey: ["lead-form-config"] }); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <form
+      className="space-y-4 rounded-lg border bg-card p-4"
+      onSubmit={(e) => { e.preventDefault(); save.mutate(); }}
+    >
+      <h2 className="text-sm font-medium">Customize the form</h2>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <Label className="text-xs">Brand color</Label>
+          <div className="mt-1 flex items-center gap-2">
+            <input type="color" value={brandColor || "#2563eb"} onChange={(e) => setBrandColor(e.target.value)} className="h-9 w-12 rounded border" />
+            <Input value={brandColor} onChange={(e) => setBrandColor(e.target.value)} placeholder="#2563eb" />
+          </div>
+        </div>
+        <div>
+          <Label className="text-xs">Logo URL</Label>
+          <Input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://…/logo.png" />
+        </div>
+      </div>
+
+      <div>
+        <Label className="text-xs">Headline</Label>
+        <Input value={headline} onChange={(e) => setHeadline(e.target.value)} placeholder="Request a quote" />
+      </div>
+      <div>
+        <Label className="text-xs">Intro text</Label>
+        <Input value={intro} onChange={(e) => setIntro(e.target.value)} placeholder="Tell us about your yard and we'll get you a quote." />
+      </div>
+      <div>
+        <Label className="text-xs">Confirmation message</Label>
+        <Input value={confirmation} onChange={(e) => setConfirmation(e.target.value)} placeholder="Thanks — we got your request!" />
+      </div>
+
+      <div>
+        <Label className="text-xs">Fields to collect</Label>
+        <p className="text-xs text-muted-foreground">Name and email are always required.</p>
+        <div className="mt-2 flex flex-wrap gap-4 text-sm">
+          {OPTIONAL_FIELDS.map((f) => (
+            <label key={f.key} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={(fields as any)[f.key]}
+                onChange={(e) => setFields((prev) => ({ ...prev, [f.key]: e.target.checked }))}
+              />
+              {f.label}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <Button type="submit" disabled={save.isPending}>{save.isPending ? "Saving…" : "Save form"}</Button>
+    </form>
   );
 }

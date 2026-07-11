@@ -290,7 +290,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
   const [saving, setSaving] = useState(false);
 
   const routingMut = useMutation({
-    mutationFn: (v: { staffId: string; isFieldTech?: boolean; routingAvailable?: boolean }) =>
+    mutationFn: (v: { staffId: string; isFieldTech?: boolean; routingAvailable?: boolean; dailyCapacityMinutes?: number | null }) =>
       routingFn({ data: v }),
     onSuccess: () => {
       toast.success("Routing updated");
@@ -380,6 +380,22 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
             onChange={(e) => routingMut.mutate({ staffId: staff.id, routingAvailable: e.target.checked })}
           />
           Available for routing today
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          Daily capacity (min)
+          <input
+            type="number"
+            min={0}
+            step={30}
+            defaultValue={staff.daily_capacity_minutes ?? ""}
+            placeholder="workday"
+            disabled={!canEdit}
+            className="w-24 rounded border bg-background px-2 py-1 text-sm"
+            onBlur={(e) => {
+              const v = e.target.value.trim();
+              routingMut.mutate({ staffId: staff.id, dailyCapacityMinutes: v ? Number(v) : null });
+            }}
+          />
         </label>
       </div>
       {canEdit && (

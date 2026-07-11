@@ -13,6 +13,14 @@ export function connectSecret(): string {
   return s;
 }
 
+/** Connect platform publishable key — used to init embedded Connect components
+ *  and the client-side Payment Element scoped to a connected account. */
+export function connectPublishableKey(): string {
+  const k = process.env.STRIPE_CONNECT_PUBLISHABLE_KEY;
+  if (!k) throw new Error("Stripe Connect is not configured (missing publishable key). Contact support.");
+  return k;
+}
+
 /** The Connect platform Stripe client (platform secret key). */
 export async function connectStripe() {
   const Stripe = (await import("stripe")).default;

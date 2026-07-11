@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   listConcerns,
   updateConcernStatus,
+  replyToConcern,
   CONCERN_CATEGORY_LABELS,
   type ConcernStatus,
 } from "@/lib/concerns.functions";
@@ -37,9 +38,20 @@ function fmt(d: string) {
 function ConcernsPage() {
   const [filter, setFilter] = useState<"all" | ConcernStatus>("open");
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [replies, setReplies] = useState<Record<string, string>>({});
   const qc = useQueryClient();
   const listFn = useServerFn(listConcerns);
   const updateFn = useServerFn(updateConcernStatus);
+  const replyFn = useServerFn(replyToConcern);
+  const replyMut = useMutation({
+    mutationFn: (v: { ticketId: string; message: string }) => replyFn({ data: v }),
+    onSuccess: (r: any, v) => {
+      toast.success(`Replied to ${r?.recipient ?? "the client"}`);
+      setReplies((s) => ({ ...s, [v.ticketId]: "" }));
+      qc.invalidateQueries({ queryKey: ["concerns"] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
   const q = useQuery({
     queryKey: ["concerns", filter],
@@ -110,6 +122,31 @@ function ConcernsPage() {
                   </div>
                 </div>
                 {c.message && <p className="mt-2 whitespace-pre-wrap text-sm">{c.message}</p>}
+
+                {c.last_reply_at && (
+                  <p className="mt-2 rounded bg-muted/50 p-2 text-xs text-muted-foreground">
+                    You replied {fmt(c.last_reply_at)}: <span className="italic">{c.last_reply}</span>
+                  </p>
+                )}
+
+                {client?.primary_email && (
+                  <div className="mt-3 space-y-2">
+                    <Textarea
+                      rows={2}
+                      placeholder={`Reply to ${client.display_name ?? "the client"} by email…`}
+                      value={replies[c.id] ?? ""}
+                      onChange={(e) => setReplies((s) => ({ ...s, [c.id]: e.target.value }))}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={replyMut.isPending || !(replies[c.id] ?? "").trim()}
+                      onClick={() => replyMut.mutate({ ticketId: c.id, message: replies[c.id] })}
+                    >
+                      {replyMut.isPending ? "Sending…" : "Send reply"}
+                    </Button>
+                  </div>
+                )}
 
                 {status === "resolved" ? (
                   <div className="mt-3 text-xs text-muted-foreground">

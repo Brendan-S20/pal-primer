@@ -141,6 +141,19 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
         }
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { resolveOrgStripeAccount } = await import("@/lib/stripe-connect.server");
+
+        // Security (C1): a Connect event's metadata is fully controllable by the
+        // account that produced it, but `event.account` is trustworthy. Never
+        // mutate an org/invoice/client referenced by metadata unless it actually
+        // belongs to the connected account that produced the event — otherwise a
+        // tenant could mark another tenant's invoice paid / hijack their card by
+        // putting a victim id in their own event's metadata.
+        async function accountMatches(orgId: string | null | undefined): Promise<boolean> {
+          if (!orgId || !event.account) return false;
+          const a = await resolveOrgStripeAccount(orgId);
+          return !!a && a.accountId === event.account;
+        }
 
         try {
           if (event.type === "checkout.session.completed") {
@@ -152,7 +165,11 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               const setupIntentId = typeof session.setup_intent === "string"
                 ? session.setup_intent
                 : session.setup_intent?.id ?? null;
-              if (clientId && setupIntentId) {
+              // C1: the client must belong to the account that produced the event.
+              const { data: setupClient } = clientId
+                ? await supabaseAdmin.from("clients").select("organization_id").eq("id", clientId).maybeSingle()
+                : { data: null };
+              if (clientId && setupIntentId && await accountMatches((setupClient as any)?.organization_id)) {
                 try {
                   // Connect: these objects live on the connected account.
                   const acctOpts = event.account ? { stripeAccount: event.account } : undefined;
@@ -181,7 +198,13 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
 
             const signupRequestId = session.metadata?.signup_request_id;
             if (signupRequestId) {
-              await provisionSignup(supabaseAdmin, signupRequestId, session);
+              const { data: sr } = await supabaseAdmin
+                .from("signup_requests").select("organization_id").eq("id", signupRequestId).maybeSingle();
+              if (await accountMatches((sr as any)?.organization_id)) {
+                await provisionSignup(supabaseAdmin, signupRequestId, session);
+              } else {
+                console.error("signup webhook account mismatch", { signupRequestId, eventAccount: event.account });
+              }
               return new Response("ok", { status: 200 });
             }
 
@@ -190,10 +213,12 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             if (invoiceId) {
               const { data: inv } = await supabaseAdmin
                 .from("invoices")
-                .select("id, organization_id, total_cents, currency")
+                .select("id, organization_id, total_cents, currency, status")
                 .eq("id", invoiceId)
                 .single();
-              if (inv) {
+              // C1 + M1: the invoice must belong to the event's account, and skip
+              // if already paid (Stripe retries/redelivers).
+              if (inv && inv.status !== "paid" && await accountMatches(inv.organization_id)) {
                 await supabaseAdmin.from("invoices").update({
                   status: "paid",
                   paid_at: new Date().toISOString(),
@@ -249,7 +274,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               const { data: inv } = await supabaseAdmin
                 .from("invoices").select("id, organization_id, total_cents, currency, status, client_id")
                 .eq("id", invoiceId).single();
-              if (inv && inv.status !== "paid") {
+              if (inv && inv.status !== "paid" && await accountMatches(inv.organization_id)) {
                 await supabaseAdmin.from("invoices").update({
                   status: "paid",
                   paid_at: new Date().toISOString(),
@@ -292,8 +317,15 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             const pi = event.data.object as import("stripe").Stripe.PaymentIntent;
             const invoiceId = pi.metadata?.invoice_id;
             if (invoiceId) {
+              // C1: ignore unless the invoice belongs to the event's account.
+              const { data: invOwner } = await supabaseAdmin
+                .from("invoices").select("organization_id").eq("id", invoiceId).maybeSingle();
+              if (!(await accountMatches((invOwner as any)?.organization_id))) {
+                console.error("payment_failed webhook account mismatch", { invoiceId, eventAccount: event.account });
+                return new Response("ok", { status: 200 });
+              }
               await supabaseAdmin.from("payments").insert({
-                organization_id: pi.metadata?.organization_id ?? "00000000-0000-0000-0000-000000000000",
+                organization_id: (invOwner as any).organization_id,
                 invoice_id: invoiceId,
                 amount_cents: pi.amount,
                 currency: pi.currency,
@@ -356,6 +388,18 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                     }
                   }
                 } catch (e) { console.error("payment-failed SMS failed", e); }
+
+                // In-app notification to owners/managers.
+                try {
+                  const { notifyRoles } = await import("@/lib/notify-center.server");
+                  await notifyRoles(["owner", "office_manager"], {
+                    orgId: inv.organization_id,
+                    type: "payment_failed",
+                    title: "A client payment failed",
+                    body: `Invoice ${invoiceId.slice(0, 8)} — card declined.`,
+                    link: "/invoices",
+                  });
+                } catch (e) { console.error("payment-failed in-app notification failed", e); }
               }
             }
 

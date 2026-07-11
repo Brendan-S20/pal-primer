@@ -6,6 +6,7 @@ import { InstallBanner } from "@/components/InstallBanner";
 import { AppSidebar } from "@/components/AppSidebar";
 import { RoleGuard } from "@/components/RoleGuard";
 import { CommandPalette } from "@/components/CommandPalette";
+import { NotificationBell } from "@/components/NotificationBell";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { SuspensionBanner } from "@/components/SuspensionBanner";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -85,6 +86,7 @@ function AppShell() {
                 {isMac ? "⌘K" : "Ctrl K"}
               </kbd>
             </button>
+            <NotificationBell />
             <Button variant="ghost" size="sm" onClick={handleSignOut}>
               Sign out
             </Button>

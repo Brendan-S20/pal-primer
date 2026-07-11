@@ -69,6 +69,31 @@ export const setOrgAiSettings = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+/** Health check: run a tiny structured call against the org's AI key so a
+ *  revoked/invalid key surfaces here instead of failing silently in a tool. */
+export const testOrgAiKey = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { resolveOrgAiConfig } = await import("@/lib/ai-credentials.server");
+    const config = await resolveOrgAiConfig(orgId);
+    if (!config) return { ok: false as const, error: "No AI key configured yet." };
+    const { generateStructured } = await import("@/lib/ai.server");
+    try {
+      await generateStructured({
+        config,
+        label: "Key health check",
+        prompt: "Respond with status set to the string ok.",
+        schema: z.object({ status: z.string() }),
+        jsonSchema: { type: "object", properties: { status: { type: "string" } }, required: ["status"] },
+        maxTokens: 32,
+      });
+      return { ok: true as const, provider: config.provider, model: config.model };
+    } catch (e) {
+      return { ok: false as const, error: (e as Error).message };
+    }
+  });
+
 export const clearOrgAiSettings = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {

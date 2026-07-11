@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
-import { getOrgAiSettings, setOrgAiSettings, clearOrgAiSettings } from "@/lib/ai-settings.functions";
+import { getOrgAiSettings, setOrgAiSettings, clearOrgAiSettings, testOrgAiKey } from "@/lib/ai-settings.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,7 @@ function AiSettings() {
   const getFn = useServerFn(getOrgAiSettings);
   const setFn = useServerFn(setOrgAiSettings);
   const clearFn = useServerFn(clearOrgAiSettings);
+  const testFn = useServerFn(testOrgAiKey);
 
   const q = useQuery({ queryKey: ["org-ai-settings"], queryFn: () => getFn() });
   const cfg = q.data as any;
@@ -33,6 +34,14 @@ function AiSettings() {
   const clearMut = useMutation({
     mutationFn: () => clearFn(),
     onSuccess: () => { toast.success("AI key removed"); qc.invalidateQueries({ queryKey: ["org-ai-settings"] }); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const testMut = useMutation({
+    mutationFn: () => testFn(),
+    onSuccess: (r: any) => {
+      if (r?.ok) toast.success(`Key works — ${r.provider} · ${r.model}`);
+      else toast.error(r?.error ?? "Key check failed");
+    },
     onError: (e) => toast.error((e as Error).message),
   });
 
@@ -61,9 +70,14 @@ function AiSettings() {
                   {cfg.keyLast4 ? <span className="text-muted-foreground"> · ····{cfg.keyLast4}</span> : null}
                   <div className="text-xs text-muted-foreground">Model: {cfg.model}</div>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => clearMut.mutate()} disabled={clearMut.isPending}>
-                  Remove key
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => testMut.mutate()} disabled={testMut.isPending}>
+                    {testMut.isPending ? "Testing…" : "Test key"}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => clearMut.mutate()} disabled={clearMut.isPending}>
+                    Remove key
+                  </Button>
+                </div>
               </div>
             ) : cfg?.usingPlatformFallback ? (
               <p className="text-muted-foreground">

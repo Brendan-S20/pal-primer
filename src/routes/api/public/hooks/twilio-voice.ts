@@ -1,4 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
+import crypto from "node:crypto";
+
+function secretEq(a: string, b: string): boolean {
+  const ba = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+}
 
 // Inbound VOICE webhook.
 // Configure in Twilio Console for each number as the "A CALL COMES IN" URL:
@@ -11,7 +18,7 @@ export const Route = createFileRoute("/api/public/hooks/twilio-voice")({
       POST: async ({ request }) => {
         const shared = process.env.TWILIO_INBOUND_SECRET;
         const url = new URL(request.url);
-        const sharedOk = !!shared && url.searchParams.get("s") === shared;
+        const sharedOk = !!shared && secretEq(url.searchParams.get("s") ?? "", shared);
 
         const form = await request.formData();
         const params: Record<string, string> = {};
@@ -48,8 +55,11 @@ export const Route = createFileRoute("/api/public/hooks/twilio-voice")({
           const { resolveOrgTwilioConfig } = await import("@/lib/twilio-credentials.server");
           const tenant = await resolveOrgTwilioConfig(org.id);
           const { twilioSignatureIsValid } = await import("@/lib/twilio-signature.server");
+          // Validate against both the raw and canonical public URL (proxy-safe, M4).
+          const canonicalUrl = (process.env.PUBLIC_APP_ORIGIN || "https://www.app.houndstack.com") + url.pathname + url.search;
           const ok = tenant?.authToken
-            ? twilioSignatureIsValid(request.url, params, tenant.authToken, signature)
+            ? (twilioSignatureIsValid(request.url, params, tenant.authToken, signature) ||
+               twilioSignatureIsValid(canonicalUrl, params, tenant.authToken, signature))
             : false;
           if (!ok) return new Response("unauthorized", { status: 401 });
         }

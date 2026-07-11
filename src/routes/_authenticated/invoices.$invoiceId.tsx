@@ -67,7 +67,8 @@ function InvoiceDetail() {
           continue;
         }
         if (s.status === "sent") {
-          toast.success(`Emailed to ${s.recipient ?? to}`, { id });
+          const at = new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+          toast.success(`Emailed to ${s.recipient ?? to} · ${at}`, { id });
           return;
         }
         if (s.status === "failed" || s.status === "bounced" || s.status === "dlq") {
