@@ -174,7 +174,9 @@ export const createManifest = createServerFn({ method: "POST" })
     bagCount: z.number().int().min(0).max(100000).optional(),
     ticketNumber: z.string().max(120).optional(),
     notes: z.string().max(500).optional(),
-    photoUrl: z.string().url().optional(),
+    // A waste-receipts storage path ({org}/{ts}.{ext}), not a full URL —
+    // display signs it on demand (punch list #16).
+    photoUrl: z.string().max(500).optional(),
   }).parse(d))
   .handler(async ({ data, context }) => {
     const org = await orgId(context.supabase, context.userId);
