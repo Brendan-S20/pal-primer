@@ -18,7 +18,6 @@ import {
   LineChart,
   CreditCard,
   Upload,
-  Sparkles,
   Settings as SettingsIcon,
   UserPlus,
   Building2,
@@ -91,7 +90,6 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
       { title: "Reports", url: "/reports", icon: BarChart3 },
       { title: "Analytics", url: "/analytics", icon: LineChart },
       { title: "Franchise", url: "/franchise", icon: Building2 },
-      { title: "AI tools", url: "/ai-tools", icon: Sparkles },
     ],
   },
   {

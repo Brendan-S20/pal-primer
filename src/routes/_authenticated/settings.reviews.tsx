@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { AiSection, ReviewPanel } from "@/components/ai/AiPanels";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
@@ -145,6 +146,11 @@ function ReviewsSettings() {
       <Button onClick={() => save.mutate()} disabled={save.isPending}>
         Save changes
       </Button>
+
+      {/* Review-reply drafting lives with review settings (punch list #11). */}
+      <AiSection title="AI: draft a review reply" description="Paste a public review, get a suggested reply.">
+        <ReviewPanel />
+      </AiSection>
 
       {stats && stats.top.length > 0 && (
         <div className="space-y-2 rounded-lg border bg-card p-4">

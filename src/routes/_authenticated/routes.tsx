@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { AiSection, DispatchPanel } from "@/components/ai/AiPanels";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
@@ -427,6 +428,12 @@ function RoutesPage() {
           <p className="text-[11px] text-muted-foreground">
             Distributes unassigned visits round-robin by zone, then optimizes each tech's day.
           </p>
+        </div>
+        <div className="md:col-span-2">
+          {/* Value-aware dispatch belongs with the other planning tools (punch list #11). */}
+          <AiSection title="AI dispatch" description="Suggest value-aware reassignments for a day.">
+            <DispatchPanel />
+          </AiSection>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
