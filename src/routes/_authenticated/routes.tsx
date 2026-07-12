@@ -770,10 +770,6 @@ function WeekOverview({ day, onPickDay, initialSpan = 7, hideWeekends = false }:
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">{title}</h2>
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <input type="checkbox" checked={hideWeekends} onChange={toggleWeekends} />
-            Hide weekends
-          </label>
           <div className="inline-flex rounded-md border p-0.5 text-xs">
             <button onClick={() => setSpan(7)} className={`px-3 py-1 rounded ${span === 7 ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Week</button>
             <button onClick={() => setSpan(28)} className={`px-3 py-1 rounded ${span === 28 ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>4 weeks</button>
