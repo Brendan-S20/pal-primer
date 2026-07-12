@@ -199,7 +199,7 @@ function BillingPage() {
         </div>
       )}
 
-      {data.isPaidTier && <SubscriptionItems />}
+      {data.isPaidTier && <SubscriptionItems onOpenPortal={() => portal.mutate()} portalPending={portal.isPending} />}
 
       <InvoiceHistory />
 
@@ -281,7 +281,7 @@ function InvoiceHistory() {
 // Line-item breakdown of the Stripe subscription: base plan + seat overage +
 // any bolt-on add-ons. Surfaces the full bill inline so owners don't need to
 // open the Stripe customer portal just to see what they're paying for.
-function SubscriptionItems() {
+function SubscriptionItems({ onOpenPortal, portalPending }: { onOpenPortal: () => void; portalPending: boolean }) {
   const listFn = useServerFn(listSubscriptionItems);
   const { data, isLoading } = useQuery({
     queryKey: ["billing-subscription-items"],
@@ -338,7 +338,14 @@ function SubscriptionItems() {
       {items.length > 0 && addons.length === 0 && (
         <p className="mt-3 text-xs text-muted-foreground">
           No add-ons on your plan. Extra add-ons can be attached to your subscription from the{" "}
-          <a href="#" onClick={(e) => e.preventDefault()} className="underline">customer portal</a>.
+          <button
+            type="button"
+            onClick={onOpenPortal}
+            disabled={portalPending}
+            className="underline"
+          >
+            {portalPending ? "Opening…" : "customer portal"}
+          </button>.
         </p>
       )}
     </div>
