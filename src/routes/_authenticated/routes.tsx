@@ -576,19 +576,23 @@ function RoutesPage() {
             completingId={completeMut.isPending ? (completeMut.variables as string) : null}
             onOpen={setDetailVisitId}
           />
-          {staff.map((s: any) => (
-            <Column
-              key={s.id}
-              id={s.id}
-              title={s.display_name}
-              subtitle={s.role}
-              items={columns[s.id] ?? []}
-              layout={boardLayout}
-              onComplete={(id) => completeMut.mutate(id)}
-              completingId={completeMut.isPending ? (completeMut.variables as string) : null}
-              onOpen={setDetailVisitId}
-            />
-          ))}
+          {staff.map((s: any) => {
+            const offRoutes = s.is_field_tech && !s.routing_available;
+            return (
+              <Column
+                key={s.id}
+                id={s.id}
+                title={s.display_name}
+                subtitle={s.role}
+                offRoutes={offRoutes}
+                items={columns[s.id] ?? []}
+                layout={boardLayout}
+                onComplete={(id) => completeMut.mutate(id)}
+                completingId={completeMut.isPending ? (completeMut.variables as string) : null}
+                onOpen={setDetailVisitId}
+              />
+            );
+          })}
         </div>
         <DragOverlay>
           {activeVisit ? <VisitCardView visit={activeVisit} dragging /> : null}
