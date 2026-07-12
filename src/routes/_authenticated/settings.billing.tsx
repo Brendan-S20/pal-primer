@@ -199,7 +199,7 @@ function BillingPage() {
         </div>
       )}
 
-      {data.isPaidTier && <SubscriptionItems />}
+      {data.isPaidTier && <SubscriptionItems onOpenPortal={() => portal.mutate()} portalPending={portal.isPending} />}
 
       <InvoiceHistory />
 
