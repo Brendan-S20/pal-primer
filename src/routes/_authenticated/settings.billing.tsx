@@ -199,6 +199,8 @@ function BillingPage() {
         </div>
       )}
 
+      {data.isPaidTier && <SubscriptionItems />}
+
       <InvoiceHistory />
 
       <div className="rounded-lg border bg-card p-4">
