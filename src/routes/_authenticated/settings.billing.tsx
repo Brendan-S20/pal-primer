@@ -340,11 +340,11 @@ function SubscriptionItems({ onOpenPortal, portalPending }: { onOpenPortal: () =
           No add-ons on your plan. Extra add-ons can be attached to your subscription from the{" "}
           <button
             type="button"
-            onClick={() => portal.mutate()}
-            disabled={portal.isPending}
+            onClick={onOpenPortal}
+            disabled={portalPending}
             className="underline"
           >
-            {portal.isPending ? "Opening…" : "customer portal"}
+            {portalPending ? "Opening…" : "customer portal"}
           </button>.
         </p>
       )}
