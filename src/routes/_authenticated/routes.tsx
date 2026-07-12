@@ -134,13 +134,19 @@ function RoutesPage() {
   const { data: staffData } = useQuery({ queryKey: ["staff"], queryFn: () => listS() });
 
   const allStaff = staffData?.staff ?? [];
-  // Only field techs who are available today are valid route assignees
-  // (finding #26) — but still show a column for anyone who already has visits
-  // assigned, so existing assignments to a now-unavailable tech stay visible.
+  // Show every field tech in the board — available techs get regular columns,
+  // off-duty ones stay visible as muted "Off routes" lanes so a dispatcher
+  // sees at a glance who's not in play today (finding #12). Non-field roles
+  // still only appear if they somehow already own a visit.
   const assignedIds = new Set((visitsData?.visits ?? []).map((v: any) => v.assigned_staff_id).filter(Boolean));
-  const staff = allStaff.filter(
-    (s: any) => (s.is_field_tech && s.routing_available) || assignedIds.has(s.id),
-  );
+  const staff = allStaff
+    .filter((s: any) => s.is_field_tech || assignedIds.has(s.id))
+    .sort((a: any, b: any) => {
+      const av = a.routing_available ? 0 : 1;
+      const bv = b.routing_available ? 0 : 1;
+      if (av !== bv) return av - bv;
+      return (a.display_name ?? "").localeCompare(b.display_name ?? "");
+    });
   const visits: Visit[] = visitsData?.visits ?? [];
 
   const columns = useMemo(() => {
