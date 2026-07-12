@@ -2,7 +2,6 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable/index";
 import { bootstrapOrganization } from "@/lib/org.functions";
 import { checkEmailAccount } from "@/lib/auth-entry.functions";
 import { Button } from "@/components/ui/button";
@@ -111,15 +110,17 @@ function AuthPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // If already signed in, ensure org bootstrap (deferred from signup) then land.
+    // If already signed in (incl. returning from an OAuth redirect), ensure
+    // org bootstrap, then land — brand-new orgs go to the onboarding path.
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) return;
+      let isNewOrg = false;
       try {
-        await ensureBootstrapped(data.user as any);
+        isNewOrg = await ensureBootstrapped(data.user as any);
       } catch (err) {
         console.error("bootstrap on landing failed", err);
       }
-      const to = await landingPathForUser(data.user.id);
+      const to = isNewOrg ? "/onboarding" : await landingPathForUser(data.user.id);
       navigate({ to });
     });
   }, [navigate]);
@@ -153,40 +154,21 @@ function AuthPage() {
     setError(null);
     setLoading(true);
     try {
-      if (provider === "facebook") {
-        // Not in the cloud-auth wrapper — use the Supabase provider directly.
-        // Always a full redirect; errors surface before navigation.
-        const { error: fbErr } = await supabase.auth.signInWithOAuth({
-          provider: "facebook",
-          options: { redirectTo: window.location.origin },
-        });
-        if (fbErr) {
-          setLoading(false);
-          return setError(fbErr.message ?? `${label} sign-in failed`);
-        }
-        return; // browser will redirect
-      }
-      const result = await lovable.auth.signInWithOAuth(provider, {
-        redirect_uri: window.location.origin,
+      // All three providers go through Supabase's native OAuth flow. This
+      // project's auth is an external Supabase project — there is no
+      // Lovable-managed OAuth broker on it, so the old cloud-auth wrapper
+      // clicked into nothing ("Google does nothing"). signInWithOAuth always
+      // navigates or returns a visible error, and the post-redirect landing
+      // (incl. new-org → /onboarding) is handled by the mount effect.
+      const { error: oauthErr } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: window.location.origin },
       });
-      if (result.error) {
+      if (oauthErr) {
         setLoading(false);
-        return setError(result.error.message ?? `${label} sign-in failed`);
+        return setError(oauthErr.message ?? `${label} sign-in failed`);
       }
-      if (result.redirected) return; // browser will redirect
-      // Popup flow completed with session → bootstrap if needed, then role-aware landing.
-      const { data } = await supabase.auth.getUser();
-      let isNewOrg = false;
-      if (data.user) {
-        try {
-          isNewOrg = await ensureBootstrapped(data.user as any);
-        } catch (err) {
-          setLoading(false);
-          return setError(err instanceof Error ? err.message : "Failed to create organization");
-        }
-      }
-      const to = isNewOrg ? "/onboarding" : data.user ? await landingPathForUser(data.user.id) : "/dashboard";
-      navigate({ to });
+      // Browser is redirecting to the provider.
     } catch (err) {
       setLoading(false);
       setError(err instanceof Error ? err.message : `${label} sign-in failed`);
