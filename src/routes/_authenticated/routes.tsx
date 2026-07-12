@@ -134,13 +134,19 @@ function RoutesPage() {
   const { data: staffData } = useQuery({ queryKey: ["staff"], queryFn: () => listS() });
 
   const allStaff = staffData?.staff ?? [];
-  // Only field techs who are available today are valid route assignees
-  // (finding #26) — but still show a column for anyone who already has visits
-  // assigned, so existing assignments to a now-unavailable tech stay visible.
+  // Show every field tech in the board — available techs get regular columns,
+  // off-duty ones stay visible as muted "Off routes" lanes so a dispatcher
+  // sees at a glance who's not in play today (finding #12). Non-field roles
+  // still only appear if they somehow already own a visit.
   const assignedIds = new Set((visitsData?.visits ?? []).map((v: any) => v.assigned_staff_id).filter(Boolean));
-  const staff = allStaff.filter(
-    (s: any) => (s.is_field_tech && s.routing_available) || assignedIds.has(s.id),
-  );
+  const staff = allStaff
+    .filter((s: any) => s.is_field_tech || assignedIds.has(s.id))
+    .sort((a: any, b: any) => {
+      const av = a.routing_available ? 0 : 1;
+      const bv = b.routing_available ? 0 : 1;
+      if (av !== bv) return av - bv;
+      return (a.display_name ?? "").localeCompare(b.display_name ?? "");
+    });
   const visits: Visit[] = visitsData?.visits ?? [];
 
   const columns = useMemo(() => {
@@ -570,19 +576,23 @@ function RoutesPage() {
             completingId={completeMut.isPending ? (completeMut.variables as string) : null}
             onOpen={setDetailVisitId}
           />
-          {staff.map((s: any) => (
-            <Column
-              key={s.id}
-              id={s.id}
-              title={s.display_name}
-              subtitle={s.role}
-              items={columns[s.id] ?? []}
-              layout={boardLayout}
-              onComplete={(id) => completeMut.mutate(id)}
-              completingId={completeMut.isPending ? (completeMut.variables as string) : null}
-              onOpen={setDetailVisitId}
-            />
-          ))}
+          {staff.map((s: any) => {
+            const offRoutes = s.is_field_tech && !s.routing_available;
+            return (
+              <Column
+                key={s.id}
+                id={s.id}
+                title={s.display_name}
+                subtitle={s.role}
+                offRoutes={offRoutes}
+                items={columns[s.id] ?? []}
+                layout={boardLayout}
+                onComplete={(id) => completeMut.mutate(id)}
+                completingId={completeMut.isPending ? (completeMut.variables as string) : null}
+                onOpen={setDetailVisitId}
+              />
+            );
+          })}
         </div>
         <DragOverlay>
           {activeVisit ? <VisitCardView visit={activeVisit} dragging /> : null}
@@ -772,9 +782,10 @@ function WeekOverview({ day, onPickDay, initialSpan = 7 }: { day: string; onPick
 }
 
 function Column({
-  id, title, subtitle, items, tone, onComplete, completingId, onOpen, layout = "columns",
+  id, title, subtitle, items, tone, offRoutes, onComplete, completingId, onOpen, layout = "columns",
 }: {
-  id: string; title: string; subtitle?: string; items: Visit[]; tone?: "muted";
+  id: string; title: string; subtitle?: string; items: any[]; tone?: "muted";
+  offRoutes?: boolean;
   onComplete?: (visitId: string) => void;
   completingId?: string | null;
   onOpen?: (visitId: string) => void;
@@ -785,13 +796,20 @@ function Column({
   return (
     <div
       ref={setNodeRef}
-      className={`rounded-lg border ${tone === "muted" ? "bg-muted/30" : "bg-card"} ${
+      className={`rounded-lg border ${tone === "muted" ? "bg-muted/30" : offRoutes ? "bg-muted/40 opacity-70" : "bg-card"} ${
         isOver ? "ring-2 ring-primary" : ""
       }`}
     >
       <div className="flex items-center justify-between border-b px-3 py-2">
-        <div>
-          <div className="text-sm font-medium">{title}</div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 text-sm font-medium">
+            <span className="truncate">{title}</span>
+            {offRoutes && (
+              <Badge variant="outline" className="border-amber-400 text-amber-700 text-[10px]">
+                Off routes
+              </Badge>
+            )}
+          </div>
           {subtitle && <div className="text-xs text-muted-foreground capitalize">{subtitle}</div>}
         </div>
         <div className="text-right">
