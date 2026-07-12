@@ -23,12 +23,14 @@ import { completeVisit } from "@/lib/my-day.functions";
 import { RouteMap, buildTechGroups } from "@/components/RouteMap";
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
 import { WeatherStrip } from "@/components/WeatherStrip";
-import { Navigation, CheckCircle2, MapPin, CloudRain } from "lucide-react";
+import { Navigation, CheckCircle2, MapPin, CloudRain, Settings2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -78,8 +80,22 @@ function RoutesPage() {
   const [localColumns, setLocalColumns] = useState<Record<string, Visit[]> | null>(null);
 
   const [weekDays, setWeekDays] = useState(7);
-  const [viewMode, setViewMode] = useState<"map" | "board">("map");
-  const [range, setRange] = useState<"today" | "week" | "month">("today");
+  const [viewMode, setViewMode] = useState<"map" | "board">(
+    () => (typeof localStorage !== "undefined" && localStorage.getItem("routes.viewMode") === "board" ? "board" : "map"),
+  );
+  const [range, setRange] = useState<"today" | "week" | "month">(() => {
+    if (typeof localStorage === "undefined") return "today";
+    const v = localStorage.getItem("routes.range");
+    return v === "week" || v === "month" ? v : "today";
+  });
+  const setViewModePersist = (m: "map" | "board") => {
+    setViewMode(m);
+    try { localStorage.setItem("routes.viewMode", m); } catch { /* private mode */ }
+  };
+  const setRangePersist = (r: "today" | "week" | "month") => {
+    setRange(r);
+    try { localStorage.setItem("routes.range", r); } catch { /* private mode */ }
+  };
   // Gear option: tech lanes as vertical columns or full-width horizontal rows.
   const [boardLayout, setBoardLayout] = useState<"columns" | "rows">(
     () => (typeof localStorage !== "undefined" && localStorage.getItem("routes.boardLayout") === "rows" ? "rows" : "columns"),
@@ -87,6 +103,13 @@ function RoutesPage() {
   const setBoardLayoutPersist = (l: "columns" | "rows") => {
     setBoardLayout(l);
     try { localStorage.setItem("routes.boardLayout", l); } catch { /* private mode */ }
+  };
+  const [hideWeekends, setHideWeekends] = useState<boolean>(
+    () => typeof localStorage !== "undefined" && localStorage.getItem("routes.hideWeekends") === "1",
+  );
+  const setHideWeekendsPersist = (v: boolean) => {
+    setHideWeekends(v);
+    try { localStorage.setItem("routes.hideWeekends", v ? "1" : "0"); } catch { /* private mode */ }
   };
   const [toolsOpen, setToolsOpen] = useState(false);
   const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
@@ -350,7 +373,7 @@ function RoutesPage() {
             {(["map", "board"] as const).map((m) => (
               <button
                 key={m}
-                onClick={() => setViewMode(m)}
+                onClick={() => setViewModePersist(m)}
                 className={`px-3 py-1.5 rounded ${viewMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 {m === "map" ? "Map" : "Board"}
@@ -361,16 +384,52 @@ function RoutesPage() {
             {(["today", "week", "month"] as const).map((r) => (
               <button
                 key={r}
-                onClick={() => setRange(r)}
+                onClick={() => setRangePersist(r)}
                 className={`px-3 py-1.5 rounded ${range === r ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 {r === "today" ? "Today" : r === "week" ? "Week" : "Month"}
               </button>
             ))}
           </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" title="Display options">
+                <Settings2 className="h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-72 space-y-4">
+              <div className="text-xs font-semibold uppercase text-muted-foreground">Display</div>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium">Hide weekends</div>
+                  <div className="text-[11px] text-muted-foreground">Skip Sat/Sun in Week and Month views.</div>
+                </div>
+                <Switch checked={hideWeekends} onCheckedChange={setHideWeekendsPersist} />
+              </div>
+              <div className="space-y-1.5">
+                <div className="text-sm font-medium">Board layout</div>
+                <div className="text-[11px] text-muted-foreground">How tech lanes are arranged on the board.</div>
+                <div className="inline-flex rounded-md border p-0.5 text-xs">
+                  <button
+                    className={`px-3 py-1 rounded ${boardLayout === "columns" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                    onClick={() => setBoardLayoutPersist("columns")}
+                  >
+                    Vertical columns
+                  </button>
+                  <button
+                    className={`px-3 py-1 rounded ${boardLayout === "rows" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                    onClick={() => setBoardLayoutPersist("rows")}
+                  >
+                    Horizontal rows
+                  </button>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
           <Button variant="outline" size="sm" onClick={() => setToolsOpen((v) => !v)}>
             {toolsOpen ? "Hide planning tools" : "Planning tools"}
           </Button>
+
         </div>
       </div>
       <WeatherStrip day={day} />
@@ -525,7 +584,8 @@ function RoutesPage() {
         <WeekOverview
           day={day}
           initialSpan={range === "month" ? "month" : 7}
-          onPickDay={(d) => { setLocalColumns(null); setDay(d); setRange("today"); }}
+          hideWeekends={hideWeekends}
+          onPickDay={(d) => { setLocalColumns(null); setDay(d); setRangePersist("today"); }}
         />
       )}
 
@@ -549,23 +609,8 @@ function RoutesPage() {
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
       >
-
-        <div className="flex items-center justify-end gap-1.5 text-xs text-muted-foreground">
-          Board layout:
-          <button
-            className={`rounded px-2 py-0.5 ${boardLayout === "columns" ? "bg-muted font-medium text-foreground" : ""}`}
-            onClick={() => setBoardLayoutPersist("columns")}
-          >
-            Columns
-          </button>
-          <button
-            className={`rounded px-2 py-0.5 ${boardLayout === "rows" ? "bg-muted font-medium text-foreground" : ""}`}
-            onClick={() => setBoardLayoutPersist("rows")}
-          >
-            Rows
-          </button>
-        </div>
         <div className={boardLayout === "rows" ? "grid gap-4 grid-cols-1" : "grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"}>
+
           <Column
             id={UNASSIGNED}
             title="Unassigned"
@@ -663,11 +708,8 @@ function MapPanel({
 // or a true calendar month — with weekends optionally hidden.
 type OverviewSpan = 7 | 28 | "month";
 
-function WeekOverview({ day, onPickDay, initialSpan = 7 }: { day: string; onPickDay: (d: string) => void; initialSpan?: OverviewSpan }) {
+function WeekOverview({ day, onPickDay, initialSpan = 7, hideWeekends = false }: { day: string; onPickDay: (d: string) => void; initialSpan?: OverviewSpan; hideWeekends?: boolean }) {
   const [span, setSpan] = useState<OverviewSpan>(initialSpan);
-  const [hideWeekends, setHideWeekends] = useState<boolean>(
-    () => typeof localStorage !== "undefined" && localStorage.getItem("routes.hideWeekends") === "1",
-  );
   const rangeFn = useServerFn(getVisitRangeSummary);
   useEffect(() => { setSpan(initialSpan); }, [initialSpan]);
 
@@ -713,13 +755,6 @@ function WeekOverview({ day, onPickDay, initialSpan = 7 }: { day: string; onPick
     const dow = new Date(`${d}T00:00:00`).getDay();
     return dow === 0 || dow === 6;
   };
-  const toggleWeekends = () => {
-    setHideWeekends((v) => {
-      const next = !v;
-      try { localStorage.setItem("routes.hideWeekends", next ? "1" : "0"); } catch { /* private mode */ }
-      return next;
-    });
-  };
   const cols = hideWeekends ? 5 : 7;
   // With weekends hidden, Monday-aligned blanks shrink to weekday-only blanks
   // (Sat/Sun leaders disappear entirely).
@@ -735,10 +770,6 @@ function WeekOverview({ day, onPickDay, initialSpan = 7 }: { day: string; onPick
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">{title}</h2>
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <input type="checkbox" checked={hideWeekends} onChange={toggleWeekends} />
-            Hide weekends
-          </label>
           <div className="inline-flex rounded-md border p-0.5 text-xs">
             <button onClick={() => setSpan(7)} className={`px-3 py-1 rounded ${span === 7 ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Week</button>
             <button onClick={() => setSpan(28)} className={`px-3 py-1 rounded ${span === 28 ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>4 weeks</button>
