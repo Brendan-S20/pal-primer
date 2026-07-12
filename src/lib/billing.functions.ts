@@ -299,6 +299,55 @@ export const listPlatformInvoices = createServerFn({ method: "GET" })
     return { invoices: data ?? [] };
   });
 
+// Subscription line items ("what you're paying for") — base plan + seat overage
+// + any extra add-on items an admin attached in Stripe. Rendered inline on the
+// Billing settings page so owners see their full bill without a portal trip.
+export const listSubscriptionItems = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
+    const s = await getOrgBillingState(context.supabase, orgId);
+    if (!s.stripeSubscriptionId) return { items: [], subscriptionId: null };
+    const secret = process.env.STRIPE_SECRET_KEY;
+    if (!secret) throw new Error("Billing is not configured.");
+    const Stripe = (await import("stripe")).default;
+    const stripe = new Stripe(secret);
+    const sub = await stripe.subscriptions.retrieve(s.stripeSubscriptionId, {
+      expand: ["items.data.price.product"],
+    });
+    // Pull the org's platform plan price ids so we can label the "base" vs
+    // "seat overage" rows correctly (anything else is a bolt-on add-on).
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: planRow } = await (supabaseAdmin as any)
+      .from("platform_plans")
+      .select("stripe_price_id, stripe_seat_price_id")
+      .eq("id", (await (supabaseAdmin as any)
+        .from("organizations").select("plan_id").eq("id", orgId).single()).data?.plan_id ?? "00000000-0000-0000-0000-000000000000")
+      .maybeSingle();
+    const basePriceId: string | null = planRow?.stripe_price_id ?? null;
+    const seatPriceId: string | null = planRow?.stripe_seat_price_id ?? null;
+
+    const items = (sub.items?.data ?? []).map((it: any) => {
+      const price = it.price ?? {};
+      const product = typeof price.product === "object" ? price.product : null;
+      let kind: "base" | "seat" | "addon" = "addon";
+      if (basePriceId && price.id === basePriceId) kind = "base";
+      else if (seatPriceId && price.id === seatPriceId) kind = "seat";
+      return {
+        id: it.id as string,
+        kind,
+        name: product?.name ?? price.nickname ?? "Subscription item",
+        description: product?.description ?? null,
+        quantity: it.quantity ?? 1,
+        unitAmountCents: price.unit_amount ?? null,
+        currency: price.currency ?? "usd",
+        interval: price.recurring?.interval ?? null,
+        intervalCount: price.recurring?.interval_count ?? 1,
+      };
+    });
+    return { items, subscriptionId: sub.id };
+  });
+
 export const createBillingPortal = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ returnUrl: z.string().url() }).parse(d))
