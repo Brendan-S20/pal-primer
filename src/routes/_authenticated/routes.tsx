@@ -373,7 +373,7 @@ function RoutesPage() {
             {(["map", "board"] as const).map((m) => (
               <button
                 key={m}
-                onClick={() => setViewMode(m)}
+                onClick={() => setViewModePersist(m)}
                 className={`px-3 py-1.5 rounded ${viewMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 {m === "map" ? "Map" : "Board"}
@@ -384,16 +384,52 @@ function RoutesPage() {
             {(["today", "week", "month"] as const).map((r) => (
               <button
                 key={r}
-                onClick={() => setRange(r)}
+                onClick={() => setRangePersist(r)}
                 className={`px-3 py-1.5 rounded ${range === r ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 {r === "today" ? "Today" : r === "week" ? "Week" : "Month"}
               </button>
             ))}
           </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" title="Display options">
+                <Settings2 className="h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-72 space-y-4">
+              <div className="text-xs font-semibold uppercase text-muted-foreground">Display</div>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium">Hide weekends</div>
+                  <div className="text-[11px] text-muted-foreground">Skip Sat/Sun in Week and Month views.</div>
+                </div>
+                <Switch checked={hideWeekends} onCheckedChange={setHideWeekendsPersist} />
+              </div>
+              <div className="space-y-1.5">
+                <div className="text-sm font-medium">Board layout</div>
+                <div className="text-[11px] text-muted-foreground">How tech lanes are arranged on the board.</div>
+                <div className="inline-flex rounded-md border p-0.5 text-xs">
+                  <button
+                    className={`px-3 py-1 rounded ${boardLayout === "columns" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                    onClick={() => setBoardLayoutPersist("columns")}
+                  >
+                    Vertical columns
+                  </button>
+                  <button
+                    className={`px-3 py-1 rounded ${boardLayout === "rows" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                    onClick={() => setBoardLayoutPersist("rows")}
+                  >
+                    Horizontal rows
+                  </button>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
           <Button variant="outline" size="sm" onClick={() => setToolsOpen((v) => !v)}>
             {toolsOpen ? "Hide planning tools" : "Planning tools"}
           </Button>
+
         </div>
       </div>
       <WeatherStrip day={day} />
