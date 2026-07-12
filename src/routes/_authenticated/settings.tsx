@@ -41,7 +41,7 @@ const TAB_GROUPS: TabGroup[] = [
   {
     title: "Financial",
     tabs: [
-      { label: "Payments", to: "/settings/payments" },
+      { label: "Billing", to: "/settings/billing" },
       { label: "Accounting", to: "/settings/accounting" },
     ],
   },

@@ -27,7 +27,7 @@ const NAV: NavEntry[] = [
   { label: "Inventory", to: "/inventory", group: "Ops" },
   { label: "Invoices", to: "/invoices", group: "Billing" },
   { label: "Payments", to: "/payments", group: "Billing" },
-  { label: "Plan & billing", to: "/settings/billing", group: "Settings" },
+  { label: "Billing", to: "/settings/billing", group: "Settings" },
   { label: "Reports", to: "/reports", group: "Insights" },
   { label: "Analytics", to: "/analytics", group: "Insights" },
   { label: "AI tools", to: "/ai-tools", group: "Insights" },
