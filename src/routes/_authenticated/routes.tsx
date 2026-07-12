@@ -584,7 +584,8 @@ function RoutesPage() {
         <WeekOverview
           day={day}
           initialSpan={range === "month" ? "month" : 7}
-          onPickDay={(d) => { setLocalColumns(null); setDay(d); setRange("today"); }}
+          hideWeekends={hideWeekends}
+          onPickDay={(d) => { setLocalColumns(null); setDay(d); setRangePersist("today"); }}
         />
       )}
 
@@ -608,23 +609,8 @@ function RoutesPage() {
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
       >
-
-        <div className="flex items-center justify-end gap-1.5 text-xs text-muted-foreground">
-          Board layout:
-          <button
-            className={`rounded px-2 py-0.5 ${boardLayout === "columns" ? "bg-muted font-medium text-foreground" : ""}`}
-            onClick={() => setBoardLayoutPersist("columns")}
-          >
-            Columns
-          </button>
-          <button
-            className={`rounded px-2 py-0.5 ${boardLayout === "rows" ? "bg-muted font-medium text-foreground" : ""}`}
-            onClick={() => setBoardLayoutPersist("rows")}
-          >
-            Rows
-          </button>
-        </div>
         <div className={boardLayout === "rows" ? "grid gap-4 grid-cols-1" : "grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"}>
+
           <Column
             id={UNASSIGNED}
             title="Unassigned"
