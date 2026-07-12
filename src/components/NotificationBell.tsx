@@ -122,13 +122,13 @@ export function NotificationBell() {
                 </ul>
               )}
               <div className="flex items-center justify-between border-t px-3 py-1.5">
-                <a
-                  href="/notifications"
+                <Link
+                  to="/notifications"
                   onClick={() => setOpen(false)}
                   className="text-xs font-medium text-primary hover:underline"
                 >
                   View all
-                </a>
+                </Link>
                 <span className="text-[10px] text-muted-foreground">Kept for 30 days</span>
               </div>
             </div>
