@@ -782,9 +782,10 @@ function WeekOverview({ day, onPickDay, initialSpan = 7 }: { day: string; onPick
 }
 
 function Column({
-  id, title, subtitle, items, tone, onComplete, completingId, onOpen, layout = "columns",
+  id, title, subtitle, items, tone, offRoutes, onComplete, completingId, onOpen, layout = "columns",
 }: {
-  id: string; title: string; subtitle?: string; items: Visit[]; tone?: "muted";
+  id: string; title: string; subtitle?: string; items: any[]; tone?: "muted";
+  offRoutes?: boolean;
   onComplete?: (visitId: string) => void;
   completingId?: string | null;
   onOpen?: (visitId: string) => void;
@@ -795,13 +796,20 @@ function Column({
   return (
     <div
       ref={setNodeRef}
-      className={`rounded-lg border ${tone === "muted" ? "bg-muted/30" : "bg-card"} ${
+      className={`rounded-lg border ${tone === "muted" ? "bg-muted/30" : offRoutes ? "bg-muted/40 opacity-70" : "bg-card"} ${
         isOver ? "ring-2 ring-primary" : ""
       }`}
     >
       <div className="flex items-center justify-between border-b px-3 py-2">
-        <div>
-          <div className="text-sm font-medium">{title}</div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 text-sm font-medium">
+            <span className="truncate">{title}</span>
+            {offRoutes && (
+              <Badge variant="outline" className="border-amber-400 text-amber-700 text-[10px]">
+                Off routes
+              </Badge>
+            )}
+          </div>
           {subtitle && <div className="text-xs text-muted-foreground capitalize">{subtitle}</div>}
         </div>
         <div className="text-right">
