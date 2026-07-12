@@ -281,7 +281,7 @@ function InvoiceHistory() {
 // Line-item breakdown of the Stripe subscription: base plan + seat overage +
 // any bolt-on add-ons. Surfaces the full bill inline so owners don't need to
 // open the Stripe customer portal just to see what they're paying for.
-function SubscriptionItems() {
+function SubscriptionItems({ onOpenPortal, portalPending }: { onOpenPortal: () => void; portalPending: boolean }) {
   const listFn = useServerFn(listSubscriptionItems);
   const { data, isLoading } = useQuery({
     queryKey: ["billing-subscription-items"],
