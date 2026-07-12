@@ -80,8 +80,22 @@ function RoutesPage() {
   const [localColumns, setLocalColumns] = useState<Record<string, Visit[]> | null>(null);
 
   const [weekDays, setWeekDays] = useState(7);
-  const [viewMode, setViewMode] = useState<"map" | "board">("map");
-  const [range, setRange] = useState<"today" | "week" | "month">("today");
+  const [viewMode, setViewMode] = useState<"map" | "board">(
+    () => (typeof localStorage !== "undefined" && localStorage.getItem("routes.viewMode") === "board" ? "board" : "map"),
+  );
+  const [range, setRange] = useState<"today" | "week" | "month">(() => {
+    if (typeof localStorage === "undefined") return "today";
+    const v = localStorage.getItem("routes.range");
+    return v === "week" || v === "month" ? v : "today";
+  });
+  const setViewModePersist = (m: "map" | "board") => {
+    setViewMode(m);
+    try { localStorage.setItem("routes.viewMode", m); } catch { /* private mode */ }
+  };
+  const setRangePersist = (r: "today" | "week" | "month") => {
+    setRange(r);
+    try { localStorage.setItem("routes.range", r); } catch { /* private mode */ }
+  };
   // Gear option: tech lanes as vertical columns or full-width horizontal rows.
   const [boardLayout, setBoardLayout] = useState<"columns" | "rows">(
     () => (typeof localStorage !== "undefined" && localStorage.getItem("routes.boardLayout") === "rows" ? "rows" : "columns"),
@@ -89,6 +103,13 @@ function RoutesPage() {
   const setBoardLayoutPersist = (l: "columns" | "rows") => {
     setBoardLayout(l);
     try { localStorage.setItem("routes.boardLayout", l); } catch { /* private mode */ }
+  };
+  const [hideWeekends, setHideWeekends] = useState<boolean>(
+    () => typeof localStorage !== "undefined" && localStorage.getItem("routes.hideWeekends") === "1",
+  );
+  const setHideWeekendsPersist = (v: boolean) => {
+    setHideWeekends(v);
+    try { localStorage.setItem("routes.hideWeekends", v ? "1" : "0"); } catch { /* private mode */ }
   };
   const [toolsOpen, setToolsOpen] = useState(false);
   const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
