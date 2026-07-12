@@ -120,11 +120,16 @@ export function NotificationBell() {
                   })}
                 </ul>
               )}
-              {items.length > 0 && (
-                <p className="border-t px-3 py-1.5 text-center text-[10px] text-muted-foreground">
-                  Notifications are kept for 30 days.
-                </p>
-              )}
+              <div className="flex items-center justify-between border-t px-3 py-1.5">
+                <a
+                  href="/notifications"
+                  onClick={() => setOpen(false)}
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  View all
+                </a>
+                <span className="text-[10px] text-muted-foreground">Kept for 30 days</span>
+              </div>
             </div>
             )}
           </div>
