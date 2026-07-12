@@ -203,9 +203,14 @@ function ClientsList() {
                     </div>
                   </div>
                 </div>
-                <div className="mt-2 flex gap-3 text-xs text-muted-foreground">
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                   <span>{c.dog_count} dogs</span>
                   <span>{c.active_subscription_count} subs</span>
+                  {(c.frequencies ?? []).length > 0 && (
+                    <Badge variant="outline" className="text-[10px]">
+                      {(c.frequencies as string[]).map((f) => f.replace("_", "-")).join(", ")}
+                    </Badge>
+                  )}
                 </div>
               </Link>
             ))}
