@@ -159,7 +159,7 @@ export const voidGiftCard = createServerFn({ method: "POST" })
     const orgId = await resolveOrgId(context.supabase, context.userId);
     const { error } = await context.supabase
       .from("gift_cards")
-      .update({ status: "void" })
+      .update({ status: "void", remaining_balance_cents: 0 })
       .eq("id", data.id)
       .eq("organization_id", orgId);
     if (error) throw new Error(error.message);
