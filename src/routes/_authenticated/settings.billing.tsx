@@ -8,6 +8,7 @@ import {
   listPlatformInvoices,
   cancelBillingSubscription,
   resumeBillingSubscription,
+  listSubscriptionItems,
 } from "@/lib/billing.functions";
 import { PlanPicker, EmbeddedPlanCheckout } from "@/components/billing/PlanPicker";
 import { useState } from "react";
@@ -198,6 +199,8 @@ function BillingPage() {
         </div>
       )}
 
+      {data.isPaidTier && <SubscriptionItems />}
+
       <InvoiceHistory />
 
       <div className="rounded-lg border bg-card p-4">
@@ -270,6 +273,73 @@ function InvoiceHistory() {
             ))}
           </tbody>
         </table>
+      )}
+    </div>
+  );
+}
+
+// Line-item breakdown of the Stripe subscription: base plan + seat overage +
+// any bolt-on add-ons. Surfaces the full bill inline so owners don't need to
+// open the Stripe customer portal just to see what they're paying for.
+function SubscriptionItems() {
+  const listFn = useServerFn(listSubscriptionItems);
+  const { data, isLoading } = useQuery({
+    queryKey: ["billing-subscription-items"],
+    queryFn: () => listFn(),
+  });
+  const items: any[] = (data as any)?.items ?? [];
+  const addons = items.filter((i) => i.kind === "addon");
+  const base = items.filter((i) => i.kind !== "addon");
+
+  const fmtLine = (i: any) => {
+    if (i.unitAmountCents == null) return "—";
+    const per = formatUsd(i.unitAmountCents);
+    const total = formatUsd(i.unitAmountCents * (i.quantity ?? 1));
+    const interval = i.interval ? `/${i.intervalCount > 1 ? `${i.intervalCount} ` : ""}${i.interval}` : "";
+    return i.quantity > 1
+      ? `${i.quantity} × ${per}${interval} · ${total}${interval}`
+      : `${per}${interval}`;
+  };
+
+  return (
+    <div className="rounded-lg border bg-card p-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">What you're paying for</h2>
+        {addons.length > 0 && (
+          <Badge variant="secondary">{addons.length} add-on{addons.length === 1 ? "" : "s"}</Badge>
+        )}
+      </div>
+      {isLoading ? (
+        <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
+      ) : items.length === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">
+          No active subscription line items to show.
+        </p>
+      ) : (
+        <ul className="mt-3 divide-y">
+          {[...base, ...addons].map((i) => (
+            <li key={i.id} className="flex flex-wrap items-start justify-between gap-3 py-2.5">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="font-medium">{i.name}</p>
+                  {i.kind === "base" && <Badge variant="outline">Plan</Badge>}
+                  {i.kind === "seat" && <Badge variant="outline">Seat overage</Badge>}
+                  {i.kind === "addon" && <Badge>Add-on</Badge>}
+                </div>
+                {i.description && (
+                  <p className="text-xs text-muted-foreground">{i.description}</p>
+                )}
+              </div>
+              <p className="text-sm text-right whitespace-nowrap">{fmtLine(i)}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      {items.length > 0 && addons.length === 0 && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          No add-ons on your plan. Extra add-ons can be attached to your subscription from the{" "}
+          <a href="#" onClick={(e) => e.preventDefault()} className="underline">customer portal</a>.
+        </p>
       )}
     </div>
   );
