@@ -755,13 +755,6 @@ function WeekOverview({ day, onPickDay, initialSpan = 7, hideWeekends = false }:
     const dow = new Date(`${d}T00:00:00`).getDay();
     return dow === 0 || dow === 6;
   };
-  const toggleWeekends = () => {
-    setHideWeekends((v) => {
-      const next = !v;
-      try { localStorage.setItem("routes.hideWeekends", next ? "1" : "0"); } catch { /* private mode */ }
-      return next;
-    });
-  };
   const cols = hideWeekends ? 5 : 7;
   // With weekends hidden, Monday-aligned blanks shrink to weekday-only blanks
   // (Sat/Sun leaders disappear entirely).
