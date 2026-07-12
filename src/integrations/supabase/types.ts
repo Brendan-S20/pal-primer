@@ -1011,6 +1011,47 @@ export type Database = {
         }
         Relationships: []
       }
+      email_verifications: {
+        Row: {
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          organization_id: string
+          token: string
+          user_id: string
+          verified_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          organization_id: string
+          token?: string
+          user_id: string
+          verified_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          organization_id?: string
+          token?: string
+          user_id?: string
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_verifications_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       franchise_royalty_invoices: {
         Row: {
           amount_cents: number
@@ -2096,6 +2137,7 @@ export type Database = {
           digest_recipient_email: string | null
           dunning_pause_after_failures: number
           dunning_retry_days: number[]
+          email_verified_at: string | null
           field_addon_cap_cents: number
           franchise_royalty_percent: number
           frequency_multipliers: Json
@@ -2142,13 +2184,12 @@ export type Database = {
           seasonal_deepclean_enabled: boolean
           seasonal_deepclean_months: number[]
           slug: string | null
-          sms_from_number: string | null
-          stripe_connect_account_id: string | null
-          stripe_connect_charges_enabled: boolean
-          email_verified_at: string | null
           sms_consent_at: string | null
           sms_consent_phone: string | null
           sms_consent_text: string | null
+          sms_from_number: string | null
+          stripe_connect_account_id: string | null
+          stripe_connect_charges_enabled: boolean
           stripe_connect_connected_at: string | null
           stripe_connect_status: string | null
           stripe_customer_id: string | null
@@ -2185,6 +2226,7 @@ export type Database = {
           digest_recipient_email?: string | null
           dunning_pause_after_failures?: number
           dunning_retry_days?: number[]
+          email_verified_at?: string | null
           field_addon_cap_cents?: number
           franchise_royalty_percent?: number
           frequency_multipliers?: Json
@@ -2231,13 +2273,12 @@ export type Database = {
           seasonal_deepclean_enabled?: boolean
           seasonal_deepclean_months?: number[]
           slug?: string | null
-          sms_from_number?: string | null
-          stripe_connect_account_id?: string | null
-          stripe_connect_charges_enabled?: boolean
-          email_verified_at?: string | null
           sms_consent_at?: string | null
           sms_consent_phone?: string | null
           sms_consent_text?: string | null
+          sms_from_number?: string | null
+          stripe_connect_account_id?: string | null
+          stripe_connect_charges_enabled?: boolean
           stripe_connect_connected_at?: string | null
           stripe_connect_status?: string | null
           stripe_customer_id?: string | null
@@ -2274,6 +2315,7 @@ export type Database = {
           digest_recipient_email?: string | null
           dunning_pause_after_failures?: number
           dunning_retry_days?: number[]
+          email_verified_at?: string | null
           field_addon_cap_cents?: number
           franchise_royalty_percent?: number
           frequency_multipliers?: Json
@@ -2320,13 +2362,12 @@ export type Database = {
           seasonal_deepclean_enabled?: boolean
           seasonal_deepclean_months?: number[]
           slug?: string | null
-          sms_from_number?: string | null
-          stripe_connect_account_id?: string | null
-          stripe_connect_charges_enabled?: boolean
-          email_verified_at?: string | null
           sms_consent_at?: string | null
           sms_consent_phone?: string | null
           sms_consent_text?: string | null
+          sms_from_number?: string | null
+          stripe_connect_account_id?: string | null
+          stripe_connect_charges_enabled?: boolean
           stripe_connect_connected_at?: string | null
           stripe_connect_status?: string | null
           stripe_customer_id?: string | null
@@ -4435,6 +4476,7 @@ export type Database = {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
       }
+      email_has_account: { Args: { _email: string }; Returns: boolean }
       email_queue_dispatch: { Args: never; Returns: undefined }
       enqueue_email: {
         Args: { payload: Json; queue_name: string }

@@ -8,32 +8,23 @@ export const Route = createFileRoute("/_authenticated/settings")({
 type Tab = { label: string; to: string; techVisible?: boolean };
 type TabGroup = { title: string; tabs: Tab[] };
 
-// Grouped like the main sidebar (punch list #8) — sixteen flat chips made
-// QuickBooks/Xero (and everything else) hard to find.
+// Grouped to match the main app sidebar's high-level buckets.
 const TAB_GROUPS: TabGroup[] = [
   {
-    title: "Business",
+    title: "Business setup",
     tabs: [
       { label: "Preferences", to: "/settings/preferences", techVisible: true },
-      { label: "Users & roles", to: "/settings/users" },
-    ],
-  },
-  {
-    title: "Scheduling",
-    tabs: [
       { label: "Skip rules", to: "/settings/skip-rules" },
       { label: "Blackouts", to: "/settings/blackouts" },
-      { label: "Automation", to: "/settings/automation" },
+      { label: "Add-ons", to: "/settings/addons" },
       { label: "Deep-clean", to: "/settings/deep-clean" },
     ],
   },
   {
-    title: "Sales & marketing",
+    title: "Customer-facing",
     tabs: [
       { label: "Lead form", to: "/settings/lead-form" },
-      { label: "Add-ons", to: "/settings/addons" },
       { label: "Promotions", to: "/settings/promotions" },
-      { label: "Reviews", to: "/settings/reviews" },
     ],
   },
   {
@@ -41,20 +32,23 @@ const TAB_GROUPS: TabGroup[] = [
     tabs: [
       { label: "SMS", to: "/settings/sms" },
       { label: "Emails", to: "/settings/emails" },
-    ],
-  },
-  {
-    title: "AI",
-    tabs: [
       { label: "AI Tools", to: "/settings/ai" },
       { label: "AI receptionist", to: "/settings/ai-receptionist" },
+      { label: "Reviews", to: "/settings/reviews" },
+      { label: "Automation", to: "/settings/automation" },
     ],
   },
   {
-    title: "Billing & accounting",
+    title: "Financial",
     tabs: [
-      { label: "Plan & billing", to: "/settings/billing" },
+      { label: "Payments", to: "/settings/payments" },
       { label: "Accounting", to: "/settings/accounting" },
+    ],
+  },
+  {
+    title: "Team",
+    tabs: [
+      { label: "Users & roles", to: "/settings/users" },
     ],
   },
 ];
