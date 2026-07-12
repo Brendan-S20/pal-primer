@@ -53,7 +53,7 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/reports": ["owner", "office_manager"],
   "/analytics": ["owner", "office_manager"],
   "/franchise": ["owner"],
-  "/ai-tools": ["owner", "office_manager"],
+  // /ai-tools is now a redirect to /dashboard — no ACL entry needed.
   "/imports": ["owner", "office_manager"],
   "/settings": ["owner", "office_manager", "tech"],
   "/neighbors": ["owner", "office_manager", "dispatcher", "tech"],
