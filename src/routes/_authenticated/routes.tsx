@@ -23,12 +23,14 @@ import { completeVisit } from "@/lib/my-day.functions";
 import { RouteMap, buildTechGroups } from "@/components/RouteMap";
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
 import { WeatherStrip } from "@/components/WeatherStrip";
-import { Navigation, CheckCircle2, MapPin, CloudRain } from "lucide-react";
+import { Navigation, CheckCircle2, MapPin, CloudRain, Settings2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import {
   DndContext,
