@@ -708,11 +708,8 @@ function MapPanel({
 // or a true calendar month — with weekends optionally hidden.
 type OverviewSpan = 7 | 28 | "month";
 
-function WeekOverview({ day, onPickDay, initialSpan = 7 }: { day: string; onPickDay: (d: string) => void; initialSpan?: OverviewSpan }) {
+function WeekOverview({ day, onPickDay, initialSpan = 7, hideWeekends = false }: { day: string; onPickDay: (d: string) => void; initialSpan?: OverviewSpan; hideWeekends?: boolean }) {
   const [span, setSpan] = useState<OverviewSpan>(initialSpan);
-  const [hideWeekends, setHideWeekends] = useState<boolean>(
-    () => typeof localStorage !== "undefined" && localStorage.getItem("routes.hideWeekends") === "1",
-  );
   const rangeFn = useServerFn(getVisitRangeSummary);
   useEffect(() => { setSpan(initialSpan); }, [initialSpan]);
 
