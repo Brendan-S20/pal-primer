@@ -338,7 +338,14 @@ function SubscriptionItems() {
       {items.length > 0 && addons.length === 0 && (
         <p className="mt-3 text-xs text-muted-foreground">
           No add-ons on your plan. Extra add-ons can be attached to your subscription from the{" "}
-          <a href="#" onClick={(e) => e.preventDefault()} className="underline">customer portal</a>.
+          <button
+            type="button"
+            onClick={() => portal.mutate()}
+            disabled={portal.isPending}
+            className="underline"
+          >
+            {portal.isPending ? "Opening…" : "customer portal"}
+          </button>.
         </p>
       )}
     </div>
