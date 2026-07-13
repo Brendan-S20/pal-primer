@@ -3276,6 +3276,9 @@ export type Database = {
           sharp_objects: boolean
           slippery_surfaces: boolean
           street: string
+          visit_contact_email: string | null
+          visit_contact_name: string | null
+          visit_contact_phone: string | null
           yard_size: string | null
         }
         Insert: {
@@ -3310,6 +3313,9 @@ export type Database = {
           sharp_objects?: boolean
           slippery_surfaces?: boolean
           street: string
+          visit_contact_email?: string | null
+          visit_contact_name?: string | null
+          visit_contact_phone?: string | null
           yard_size?: string | null
         }
         Update: {
@@ -3344,6 +3350,9 @@ export type Database = {
           sharp_objects?: boolean
           slippery_surfaces?: boolean
           street?: string
+          visit_contact_email?: string | null
+          visit_contact_name?: string | null
+          visit_contact_phone?: string | null
           yard_size?: string | null
         }
         Relationships: [

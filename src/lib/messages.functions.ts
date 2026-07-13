@@ -189,11 +189,19 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { data: v, error } = await supabase
       .from("visits")
-      .select("id, client_id, scheduled_on, organization_id, clients(display_name)")
+      .select("id, client_id, scheduled_on, organization_id, clients(display_name), properties(visit_contact_name, visit_contact_phone)")
       .eq("id", data.visitId)
       .single();
     if (error) throw new Error(error.message);
-    const name = (v as any).clients?.display_name ?? "there";
+    // P3.5: a property can name its own on-site contact (tenant, property
+    // manager) — visit-lifecycle texts go to them when set; billing texts
+    // stay with the client's primary contact.
+    const propContact = (v as any).properties as
+      | { visit_contact_name: string | null; visit_contact_phone: string | null }
+      | null;
+    const name = propContact?.visit_contact_phone
+      ? (propContact.visit_contact_name ?? "there")
+      : ((v as any).clients?.display_name ?? "there");
     const body =
       data.kind === "reminder"
         ? `Hi ${name}, this is a reminder your yard cleanup is scheduled for ${v.scheduled_on}. Reply STOP to opt out.`
@@ -208,7 +216,10 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
       .eq("id", v.client_id!)
       .single();
     if (cErr) throw new Error(cErr.message);
-    if (!client.primary_phone) throw new Error("Client has no phone number on file");
+    const destPhone = propContact?.visit_contact_phone || client.primary_phone;
+    if (!destPhone) throw new Error("No phone number on file for this visit's contact or the client");
+    // Account-level opt-out covers the property contact too — conservative on
+    // consent until per-contact opt-out exists.
     if (client.sms_opt_out) throw new Error("Client has opted out of SMS.");
     const { data: org } = await supabase
       .from("organizations")
@@ -239,7 +250,7 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
     let status = "queued";
     let err: string | null = null;
     try {
-      const r = await sendTwilioSms({ from: notifyFrom, to: client.primary_phone, body });
+      const r = await sendTwilioSms({ from: notifyFrom, to: destPhone, body });
       sid = r.sid;
       status = r.status || "sent";
     } catch (e: any) {
@@ -254,7 +265,7 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
       direction: "outbound",
       body,
       from_number: notifyFrom,
-      to_number: client.primary_phone,
+      to_number: destPhone,
       twilio_sid: sid,
       status: status as any,
       error: err,

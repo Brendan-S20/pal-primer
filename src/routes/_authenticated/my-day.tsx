@@ -6,6 +6,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   getMyDay,
   startVisit,
   completeVisit,
@@ -29,11 +34,13 @@ import { haptic } from "@/lib/haptics";
 import { useMyRole } from "@/hooks/useMyRole";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
-  // Accept ?date=YYYY-MM-DD so bookmarks and notification deep-links can
-  // open the correct day directly (previously ignored, always today).
-  validateSearch: (s: Record<string, unknown>) => {
-    const d = typeof s.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s.date) ? s.date : undefined;
-    return { date: d };
+  // Honor ?date=YYYY-MM-DD deep-links (notifications, bookmarks) instead of
+  // silently showing today (P1.8).
+  validateSearch: (search: Record<string, unknown>): { date?: string } => {
+    const raw = typeof search.date === "string" ? search.date : undefined;
+    return raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) && !Number.isNaN(new Date(raw).getTime())
+      ? { date: raw }
+      : {};
   },
   component: MyDay,
 });
@@ -46,8 +53,13 @@ function todayISO() {
 }
 
 function MyDay() {
-  const search = Route.useSearch();
-  const [day, setDay] = useState(search.date ?? todayISO());
+  const { date: dateParam } = Route.useSearch();
+  const [day, setDay] = useState(dateParam ?? todayISO());
+  // Follow in-app navigations that change the search param (e.g. a
+  // notification link clicked while already on My Day).
+  useEffect(() => {
+    if (dateParam) setDay(dateParam);
+  }, [dateParam]);
   const fn = useServerFn(getMyDay);
   const qc = useQueryClient();
   const online = useOnline();
@@ -311,13 +323,11 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
     return () => clearInterval(id);
   }, []);
   const secs = Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000));
-  // Cap the displayed elapsed time. A runaway start-timestamp (e.g. seeded
-  // data with a start in the distant past) otherwise renders "175h+"
-  // climbing live, which reads as broken. After 12 hours we just show
-  // "12h+" instead of a runaway number.
-  const TWELVE_HOURS = 12 * 60 * 60;
-  if (secs >= TWELVE_HOURS) {
-    return <span className="font-mono tabular-nums">12h+</span>;
+  // Sanity cap: a stale/bad started_at (e.g. a visit left in-progress for
+  // days) would otherwise tick up to absurd values like "10500:12" (P1.9).
+  // Past 8h the elapsed time is no longer useful field info — flag it instead.
+  if (secs > 8 * 3600) {
+    return <span className="font-mono text-xs text-muted-foreground">8h+ — started {new Date(startedAt).toLocaleDateString()}</span>;
   }
   const m = Math.floor(secs / 60);
   const s = secs % 60;
@@ -540,7 +550,9 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
               </span>
             )}
             {inProg && visit.started_at && (
-              <span className="text-blue-600 dark:text-blue-400">
+              // Larger + bolder than the meta row: techs read this outdoors
+              // in sunlight (P2 field-readiness).
+              <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
                 · <ElapsedTimer startedAt={visit.started_at} />
               </span>
             )}
@@ -678,10 +690,13 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
             </Button>
           </div>
 
+          {/* Field buttons: ≥44px tall on touch screens (gloved thumbs,
+              sunlight) — the 32px "sm" height is desktop-only (P2). */}
           <div className="flex flex-wrap gap-2">
             {scheduled && (
               <Button
                 size="sm"
+                className="h-11 px-4 sm:h-8 sm:px-3"
                 onClick={() => canPerformVisit ? start.mutate() : toast.error("You're not authorized to start visits — dispatchers can schedule, but field staff must start the visit.")}
                 disabled={start.isPending || !canPerformVisit}
                 title={canPerformVisit ? "" : "Only field staff (owner, office manager, or tech) can start a visit"}
@@ -692,28 +707,28 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
             <Button
               size="sm"
               variant="default"
+              className="h-11 px-4 sm:h-8 sm:px-3"
               disabled={!canPerformVisit || (!hasCompletionPhoto && !hasQueuedCompletionPhoto) || complete.isPending || (!inProg && !scheduled)}
               onClick={() => canPerformVisit ? complete.mutate() : toast.error("You're not authorized to complete visits — dispatchers can schedule, but field staff must complete the visit.")}
               title={!canPerformVisit ? "Only field staff (owner, office manager, or tech) can complete a visit" : (hasCompletionPhoto || hasQueuedCompletionPhoto ? "" : "Add a completion photo first")}
             >
               Complete
             </Button>
-
-            <Button size="sm" variant="ghost" onClick={() => setShowSkip((s) => !s)}>
+            <Button size="sm" variant="ghost" className="h-11 px-4 sm:h-8 sm:px-3" onClick={() => setShowSkip((s) => !s)}>
               Skip
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setShowAddon((s) => !s)}>
+            <Button size="sm" variant="outline" className="h-11 px-4 sm:h-8 sm:px-3" onClick={() => setShowAddon((s) => !s)}>
               + Add-on
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setShowStations((s) => !s)}>
+            <Button size="sm" variant="outline" className="h-11 px-4 sm:h-8 sm:px-3" onClick={() => setShowStations((s) => !s)}>
               Stations
             </Button>
             {visit.clients?.primary_phone && (
               <>
-                <Button size="sm" variant="outline" disabled={sms.isPending} onClick={() => sms.mutate("reminder")}>
+                <Button size="sm" variant="outline" className="h-11 px-4 sm:h-8 sm:px-3" disabled={sms.isPending} onClick={() => sms.mutate("reminder")}>
                   Text reminder
                 </Button>
-                <Button size="sm" variant="outline" disabled={sms.isPending} onClick={() => sms.mutate("on_my_way")}>
+                <Button size="sm" variant="outline" className="h-11 px-4 sm:h-8 sm:px-3" disabled={sms.isPending} onClick={() => sms.mutate("on_my_way")}>
                   Text "on my way"
                 </Button>
               </>
@@ -785,18 +800,43 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
                     value={addonQty}
                     onChange={(e) => setAddonQty(e.target.value)}
                   />
-                  <Button size="sm" className="col-span-1"
-                    disabled={!addonSvcId || addonMut.isPending}
-                    onClick={() => {
-                      if (!svc) return;
-                      // Real money hits the client's account — always confirm.
-                      const who = visit.clients?.display_name ?? "this client";
-                      if (confirm(`Bill $${(totalCents / 100).toFixed(2)} (${svc.name}${qtyNum > 1 ? ` × ${qtyNum}` : ""}) to ${who}? The office will see this charge for review.`)) {
-                        addonMut.mutate();
-                      }
-                    }}>
-                    Bill
-                  </Button>
+                  {/* Real money hits the client's account — always confirm.
+                      In-app dialog, NOT window.confirm(): browsers suppress
+                      repeated native dialogs, which made this button a silent
+                      no-op in the field (P0.4). */}
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="sm" className="col-span-1"
+                        disabled={!addonSvcId || !svc || addonMut.isPending}>
+                        {addonMut.isPending ? "…" : "Bill"}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>
+                          Bill ${(totalCents / 100).toFixed(2)} to {visit.clients?.display_name ?? "this client"}?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          {svc ? `${svc.name}${qtyNum > 1 ? ` × ${qtyNum}` : ""} at the catalog price. ` : ""}
+                          The office will see this charge for review.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          disabled={addonMut.isPending}
+                          onClick={() => {
+                            if (!svc) {
+                              toast.error("That add-on service is no longer available — pick another from the list.");
+                              return;
+                            }
+                            addonMut.mutate();
+                          }}>
+                          Bill it
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
                 {svc && (
                   <p className="text-[11px] font-medium">

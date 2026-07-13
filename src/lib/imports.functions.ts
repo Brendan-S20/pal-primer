@@ -648,6 +648,23 @@ export const commitImport = createServerFn({ method: "POST" })
     if (rErr) throw new Error(rErr.message);
 
     const entity = (batch.entity ?? "clients") as ImportEntity;
+
+    // Validate the subscription gate ONCE up front instead of letting every
+    // "create" row fail individually with the same trigger error (a 311-row
+    // import used to fail 311 times with no upfront warning).
+    if (entity === "clients") {
+      const createCount = (rows ?? []).filter((r) => r.action === "create").length;
+      if (createCount > 0) {
+        const { data: canAdd, error: gateErr } = await supabase.rpc("org_can_add_client", { _org_id: orgId });
+        if (!gateErr && canAdd === false) {
+          throw new Error(
+            `This import would add ${createCount} new client${createCount === 1 ? "" : "s"}, but your subscription doesn't currently allow adding customers. ` +
+            `Reactivate your plan in Settings → Billing, then commit this import again — nothing has been imported yet.`,
+          );
+        }
+      }
+    }
+
     let created = 0, updated = 0, failed = 0;
 
     for (const row of rows ?? []) {

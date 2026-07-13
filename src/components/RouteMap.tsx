@@ -15,6 +15,7 @@ export type MapVisit = {
   sequence?: number | null;
   status?: string;
   clients?: { display_name?: string | null } | null;
+  zones?: { name?: string | null } | null;
   properties?: {
     street?: string | null;
     city?: string | null;
@@ -230,9 +231,27 @@ export function buildTechGroups(
     });
     ci++;
   }
+  // Unassigned visits used to be one flat slate-gray group — on a day with no
+  // assignments yet every pin looked identical and the map read as broken
+  // (P2). Split them by zone so the geography stays color-scannable.
   const unassigned = byStaff.get(null) ?? [];
   if (unassigned.length) {
-    groups.push({ staffId: null, name: "Unassigned", color: "#64748b", visits: unassigned });
+    const byZone = new Map<string, MapVisit[]>();
+    for (const v of unassigned) {
+      const z = v.zones?.name ?? "No zone";
+      if (!byZone.has(z)) byZone.set(z, []);
+      byZone.get(z)!.push(v);
+    }
+    const zoneNames = Array.from(byZone.keys()).sort();
+    for (const z of zoneNames) {
+      groups.push({
+        staffId: null,
+        name: zoneNames.length > 1 || z !== "No zone" ? `Unassigned · ${z}` : "Unassigned",
+        color: TECH_COLORS[ci % TECH_COLORS.length],
+        visits: byZone.get(z)!,
+      });
+      ci++;
+    }
   }
   return groups;
 }

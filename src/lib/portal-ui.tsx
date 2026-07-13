@@ -685,7 +685,10 @@ export function InvoiceStatusBadge({ status }: { status: string }) {
   if (status === "paid") return <Badge className="bg-emerald-600 hover:bg-emerald-600">Paid</Badge>;
   if (status === "void") return <Badge variant="outline">Void</Badge>;
   if (status === "draft") return <Badge variant="secondary">Draft quote</Badge>;
-  return <Badge variant="secondary">Open</Badge>;
+  // Written-off — don't show it to the client as still "Open" (it isn't
+  // payable), and don't scare them with internal jargon either.
+  if (status === "uncollectible") return <Badge variant="outline">Closed</Badge>;
+  return <Badge className="border-transparent bg-blue-500/15 text-blue-700 hover:bg-blue-500/15 dark:text-blue-400" variant="secondary">Open</Badge>;
 }
 
 export function UpcomingVisitsList({ rows, cutoffHours, allowReschedule, onSkip, onReschedule }: {

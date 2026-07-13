@@ -34,6 +34,7 @@ export type TenantDetail = {
   id: string;
   name: string;
   billing_status: string;
+  plan_status: string;
   plan_id: string | null;
   plan_name: string | null;
   plan_slug: string | null;
@@ -59,7 +60,7 @@ export const getTenantDetail = createServerFn({ method: "GET" })
 
     const { data: org, error } = await supabaseAdmin
       .from("organizations")
-      .select("id, name, billing_status, plan_id, active_client_count, stripe_customer_id, stripe_subscription_id, grace_expires_at, suspended_at, suspended_reason, created_at, deleted_at")
+      .select("id, name, billing_status, plan_status, plan_id, active_client_count, stripe_customer_id, stripe_subscription_id, grace_expires_at, suspended_at, suspended_reason, created_at, deleted_at")
       .eq("id", data.organization_id)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -89,6 +90,7 @@ export const getTenantDetail = createServerFn({ method: "GET" })
       id: org.id,
       name: org.name,
       billing_status: org.billing_status,
+      plan_status: org.plan_status ?? "free",
       plan_id: org.plan_id ?? null,
       plan_name: planRes.data?.name ?? null,
       plan_slug: planRes.data?.slug ?? null,
@@ -350,12 +352,15 @@ export const reactivateTenant = createServerFn({ method: "POST" })
     await assertPlatformAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: before } = await supabaseAdmin.from("organizations")
-      .select("billing_status, suspended_at, suspended_reason, stripe_subscription_id")
+      .select("billing_status, plan_status, suspended_at, suspended_reason, stripe_subscription_id")
       .eq("id", data.organization_id).maybeSingle();
-    // If there's an active subscription, restore to "active"; otherwise "free"
+    // If there's an active subscription, restore to "active"; otherwise "free".
+    // plan_status must be written too — it (not billing_status) is what the
+    // client-creation gate reads, so a canceled tenant stays blocked otherwise.
     const nextStatus = before?.stripe_subscription_id ? "active" : "free";
     const patch = {
       billing_status: nextStatus as any,
+      plan_status: nextStatus as any,
       suspended_at: null,
       suspended_reason: null,
     };
@@ -363,6 +368,34 @@ export const reactivateTenant = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     await audit(supabaseAdmin, context.userId, data.organization_id, "reactivate_tenant", before, patch);
     return { ok: true };
+  });
+
+const graceSchema = z.object({
+  organization_id: z.string().uuid(),
+  days: z.number().int().min(1).max(90),
+});
+
+export const grantGracePeriod = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => graceSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    await assertPlatformAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: before } = await supabaseAdmin.from("organizations")
+      .select("billing_status, plan_status, grace_expires_at")
+      .eq("id", data.organization_id).maybeSingle();
+    if (!before) throw new Error("Tenant not found");
+    const expires = new Date(Date.now() + data.days * 24 * 60 * 60 * 1000).toISOString();
+    // grace_expires_at is what org_can_add_client honors; billing_status is
+    // display-only but set for consistency across admin/tenant surfaces.
+    const patch = {
+      grace_expires_at: expires,
+      billing_status: "grace" as any,
+    };
+    const { error } = await supabaseAdmin.from("organizations").update(patch).eq("id", data.organization_id);
+    if (error) throw new Error(error.message);
+    await audit(supabaseAdmin, context.userId, data.organization_id, "grant_grace_period", before, patch);
+    return { ok: true, grace_expires_at: expires };
   });
 
 const deleteSchema = z.object({

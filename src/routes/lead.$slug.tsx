@@ -74,12 +74,12 @@ function LeadForm() {
     return (
       <div className="mx-auto max-w-md p-4 sm:p-6">
         <div className="overflow-hidden rounded-2xl border bg-card text-center shadow-lg">
-          <div className="h-1.5 w-full" style={{ backgroundColor: accent ?? "hsl(var(--primary))" }} />
+          <div className="h-1.5 w-full" style={{ backgroundColor: accent ?? "var(--primary)" }} />
           <div className="p-8">
             {cfg?.logoUrl ? <img src={cfg.logoUrl} alt={orgName ?? ""} className="mx-auto mb-4 h-12 object-contain" /> : null}
             <div
               className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full text-2xl text-white"
-              style={{ backgroundColor: accent ?? "hsl(var(--primary))" }}
+              style={{ backgroundColor: accent ?? "var(--primary)" }}
             >
               ✓
             </div>
@@ -106,7 +106,7 @@ function LeadForm() {
       <div className="overflow-hidden rounded-2xl border bg-card shadow-lg">
         <div
           className="h-1.5 w-full"
-          style={{ backgroundColor: accent ?? "hsl(var(--primary))" }}
+          style={{ backgroundColor: accent ?? "var(--primary)" }}
         />
         <div className="p-6 sm:p-8">
           <div className="flex items-center gap-3">
@@ -130,7 +130,7 @@ function LeadForm() {
                     className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
                       step > i + 1 ? "text-white" : step === i + 1 ? "text-white" : "bg-muted text-muted-foreground"
                     }`}
-                    style={step >= i + 1 ? { backgroundColor: accent ?? "hsl(var(--primary))" } : undefined}
+                    style={step >= i + 1 ? { backgroundColor: accent ?? "var(--primary)" } : undefined}
                   >
                     {i + 1}
                   </div>

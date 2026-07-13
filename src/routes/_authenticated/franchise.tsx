@@ -95,11 +95,17 @@ function FranchisePage() {
       <div className="p-6">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" /> Franchise rollup</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" /> Royalties &amp; multi-org rollup</CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground space-y-3">
-            <p>This organization is not configured as a franchise parent yet.</p>
-            <p>Once you enable it, any organization whose <code>parent_organization_id</code> points at this one will roll up its clients, revenue, and open AR here.</p>
+            <p>This organization is not configured as a royalty parent yet.</p>
+            <p>
+              This page rolls up clients, revenue, and open AR from other HoundStack
+              organizations that bill you royalties — each location runs as its own separate
+              organization with its own users and data. Full multi-location management
+              (shared branches, per-location user scoping) is on the roadmap.
+            </p>
+            <p>Once you enable it, any organization whose <code>parent_organization_id</code> points at this one will roll up here.</p>
             <Button onClick={() => mark.mutate()} disabled={mark.isPending}>
               {mark.isPending ? "Marking…" : "Mark this org as a franchise parent"}
             </Button>
@@ -121,7 +127,7 @@ function FranchisePage() {
       <div className="flex items-center gap-3">
         <Building2 className="h-6 w-6" />
         <div>
-          <h1 className="text-2xl font-semibold">Franchise rollup</h1>
+          <h1 className="text-2xl font-semibold">Royalties &amp; rollup</h1>
           <p className="text-sm text-muted-foreground">
             {ctx.data.org?.name} — {rows.length} location{rows.length === 1 ? "" : "s"}
           </p>

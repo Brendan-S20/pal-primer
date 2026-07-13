@@ -86,6 +86,75 @@ export const generateInvoiceForClient = createServerFn({ method: "POST" })
     return { invoiceId: id as string };
   });
 
+// P3.1 "quick charge": the only invoice path used to be schedule route →
+// complete visit → generate — a solo operator who just did the job had no way
+// to say "bill this now." Creates an ordinary open invoice payable through
+// every existing path (portal, checkout, saved card).
+const manualInvoiceSchema = z.object({
+  clientId: z.string().uuid(),
+  items: z
+    .array(
+      z.object({
+        description: z.string().min(1).max(300),
+        amountCents: z.number().int().min(1).max(10_000_000),
+      }),
+    )
+    .min(1)
+    .max(25),
+  notes: z.string().max(500).optional(),
+});
+
+export const createManualInvoice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => manualInvoiceSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { orgId } = await requirePermission(supabase, context.userId, "manage_client_billing");
+
+    const { data: client, error: cErr } = await supabase
+      .from("clients")
+      .select("id, organization_id")
+      .eq("id", data.clientId)
+      .single();
+    if (cErr) throw new Error(cErr.message);
+    if (client.organization_id !== orgId) throw new Error("Client not found");
+
+    const total = data.items.reduce((s, i) => s + i.amountCents, 0);
+    const nowIso = new Date().toISOString();
+    const today = nowIso.slice(0, 10);
+    const { data: inv, error: iErr } = await supabase
+      .from("invoices")
+      .insert({
+        organization_id: orgId,
+        client_id: data.clientId,
+        kind: "postpaid",
+        status: "open",
+        subtotal_cents: total,
+        total_cents: total,
+        period_start: today,
+        period_end: today,
+        issued_at: nowIso,
+        notes: data.notes ?? "Manual invoice",
+      })
+      .select("id")
+      .single();
+    if (iErr) throw new Error(iErr.message);
+
+    const { error: lErr } = await supabase.from("invoice_line_items").insert(
+      data.items.map((i) => ({
+        invoice_id: inv.id,
+        description: i.description,
+        amount_cents: i.amountCents,
+      })),
+    );
+    if (lErr) {
+      // Don't leave a headless invoice behind if the lines failed.
+      await supabase.from("invoices").delete().eq("id", inv.id);
+      throw new Error(lErr.message);
+    }
+    return { invoiceId: inv.id as string, totalCents: total };
+  });
+
 export const voidInvoice = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))

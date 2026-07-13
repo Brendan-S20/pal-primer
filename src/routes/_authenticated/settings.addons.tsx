@@ -39,13 +39,9 @@ function AddonsCatalog() {
   const [draft, setDraft] = useState({
     code: "",
     name: "",
-    // Keep the price as raw string state while the user is typing —
-    // the previous version rebuilt the input's value from
-    // `(unit_price_cents / 100).toFixed(2)` on every keystroke, which
-    // clobbered mid-entry input ("10.00" landed as "1.00" because the
-    // controlled value was re-forced to a formatted 2-decimal string
-    // before the user finished typing).
-    unit_price: "0.00",
+    // Kept as the raw string while typing — reformatting to cents on every
+    // keystroke silently turned "10.00" into $1.00 (P1.1).
+    price: "",
     kind: "one_time" as "one_time" | "recurring",
     default_frequency: "" as string,
     description: "",
@@ -67,16 +63,14 @@ function AddonsCatalog() {
           onSubmit={(e) => {
             e.preventDefault();
             if (!draft.code || !draft.name) return;
-            const cents = Math.round(parseFloat(draft.unit_price || "0") * 100);
+            const { price, ...rest } = draft;
             upsertMut.mutate({
-              code: draft.code,
-              name: draft.name,
-              unit_price_cents: Number.isFinite(cents) ? cents : 0,
-              kind: draft.kind,
+              ...rest,
+              unit_price_cents: Math.max(0, Math.round(parseFloat(price || "0") * 100) || 0),
               default_frequency: draft.default_frequency || null,
               description: draft.description || null,
             });
-            setDraft({ code: "", name: "", unit_price: "0.00", kind: "one_time", default_frequency: "", description: "" });
+            setDraft({ code: "", name: "", price: "", kind: "one_time", default_frequency: "", description: "" });
           }}
         >
           <div className="sm:col-span-2">
@@ -89,9 +83,9 @@ function AddonsCatalog() {
           </div>
           <div className="sm:col-span-1">
             <Label>Price ($)</Label>
-            <Input type="number" step="0.01" min="0"
-              value={draft.unit_price}
-              onChange={(e) => setDraft({ ...draft, unit_price: e.target.value })} />
+            <Input type="number" step="0.01" min="0" placeholder="0.00"
+              value={draft.price}
+              onChange={(e) => setDraft({ ...draft, price: e.target.value })} />
           </div>
           <div className="sm:col-span-2">
             <Label>Type</Label>

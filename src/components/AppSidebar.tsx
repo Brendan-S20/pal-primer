@@ -89,7 +89,7 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { title: "Reports", url: "/reports", icon: BarChart3 },
       { title: "Analytics", url: "/analytics", icon: LineChart },
-      { title: "Franchise", url: "/franchise", icon: Building2 },
+      { title: "Royalties", url: "/franchise", icon: Building2 },
     ],
   },
   {

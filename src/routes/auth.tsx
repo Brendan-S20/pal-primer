@@ -157,13 +157,15 @@ function AuthPage() {
       // All three providers go through Supabase's native OAuth flow. This
       // project's auth is an external Supabase project — there is no
       // Lovable-managed OAuth broker on it, so the old cloud-auth wrapper
-      // clicked into nothing ("Google does nothing"). We use
-      // skipBrowserRedirect so that if the provider isn't enabled in
-      // Supabase Auth, the "Unsupported provider" error surfaces as a
-      // toast inside the app instead of navigating the user to the bare
-      // Supabase API response.
-      const { data, error: oauthErr } = await supabase.auth.signInWithOAuth({
+      // clicked into nothing ("Google does nothing"). signInWithOAuth always
+      // navigates or returns a visible error, and the post-redirect landing
+      // (incl. new-org → /onboarding) is handled by the mount effect.
+      const { data: oauthData, error: oauthErr } = await supabase.auth.signInWithOAuth({
         provider,
+        // Don't navigate yet — a provider that isn't enabled in Supabase
+        // (e.g. Apple/Facebook pre-configuration) makes the authorize URL
+        // render a raw "Unsupported provider" API error page. Probe first so
+        // the user gets an in-app message instead of a dead end (P1.10).
         options: { redirectTo: window.location.origin, skipBrowserRedirect: true },
       });
       if (oauthErr) {
@@ -173,11 +175,23 @@ function AuthPage() {
           : (oauthErr.message ?? `${label} sign-in failed`);
         return setError(msg);
       }
-      if (!data?.url) {
+      if (!oauthData?.url) {
         setLoading(false);
-        return setError(`${label} sign-in isn't available yet — try email or Google.`);
+        return setError(`${label} sign-in failed — try again.`);
       }
-      window.location.assign(data.url);
+      try {
+        const probe = await fetch(oauthData.url, { redirect: "manual" });
+        // A healthy authorize URL 302-redirects to the provider (opaque to
+        // fetch); a disabled provider answers 4xx with an error body.
+        if (probe.status >= 400) {
+          setLoading(false);
+          return setError(`${label} sign-in isn't available yet — use email or Google instead.`);
+        }
+      } catch {
+        // Probe blocked (CORS/network) — fall through and navigate normally.
+      }
+      window.location.assign(oauthData.url);
+      // Browser is redirecting to the provider.
     } catch (err) {
       setLoading(false);
       setError(err instanceof Error ? err.message : `${label} sign-in failed`);
@@ -304,12 +318,16 @@ function AuthPage() {
             <Button type="button" variant="outline" className="w-full justify-center gap-2" disabled={loading} onClick={() => oauthSignIn("google")}>
               <GoogleIcon /> Google
             </Button>
+            {/* Apple/Facebook aren't configured yet — shown disabled as a
+                teaser rather than wired to a broken flow (Brendan's call). */}
             <div className="grid grid-cols-2 gap-2">
-              <Button type="button" variant="outline" className="justify-center gap-2" disabled={loading} onClick={() => oauthSignIn("apple")}>
+              <Button type="button" variant="outline" className="justify-center gap-2" disabled title="Coming soon">
                 <AppleIcon /> Apple
+                <span className="text-[10px] font-normal text-muted-foreground">soon</span>
               </Button>
-              <Button type="button" variant="outline" className="justify-center gap-2" disabled={loading} onClick={() => oauthSignIn("facebook")}>
+              <Button type="button" variant="outline" className="justify-center gap-2" disabled title="Coming soon">
                 <FacebookIcon /> Facebook
+                <span className="text-[10px] font-normal text-muted-foreground">soon</span>
               </Button>
             </div>
           </div>

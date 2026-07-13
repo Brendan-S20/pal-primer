@@ -49,7 +49,7 @@ export const completeVisit = createServerFn({ method: "POST" })
     try {
       const { data: v } = await context.supabase
         .from("visits")
-        .select("organization_id, client_id, scheduled_on, properties(street, city)")
+        .select("organization_id, client_id, scheduled_on, properties(street, city, visit_contact_email)")
         .eq("id", data.visitId)
         .single();
       if (v) {
@@ -62,6 +62,9 @@ export const completeVisit = createServerFn({ method: "POST" })
           templateName: "visit-completed",
           notifyKey: "notify_email_visit_completed",
           idempotencyKey: `visit-done-${data.visitId}`,
+          // P3.5: visit emails go to the property's own contact when one is
+          // set (tenant/manager); billing emails stay with the client.
+          toOverride: prop?.visit_contact_email || undefined,
           templateData: {
             visitDate: v.scheduled_on,
             address,

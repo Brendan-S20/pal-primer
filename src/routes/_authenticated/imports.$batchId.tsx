@@ -71,9 +71,7 @@ function BatchDetail() {
             Created {new Date(batch.created_at).toLocaleString()}
           </p>
         </div>
-        <Badge variant={batch.status === "committed" ? "default" : "secondary"}>
-          {batch.status}
-        </Badge>
+        <ImportStatusBadge status={batch.status} />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-5">
@@ -96,7 +94,7 @@ function BatchDetail() {
       )}
 
       {batch.status === "committed" && stats.created !== undefined && (
-        <div className="rounded border bg-emerald-50 p-4 text-sm text-emerald-900">
+        <div className="rounded border bg-emerald-50 p-4 text-sm text-emerald-900 dark:bg-emerald-500/10 dark:text-emerald-300">
           Import committed: {stats.created} created, {stats.updated} updated, {stats.failed} failed.
         </div>
       )}
@@ -165,11 +163,24 @@ function BatchDetail() {
   );
 }
 
+function ImportStatusBadge({ status }: { status: string }) {
+  const cls: Record<string, string> = {
+    committed: "border-transparent bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-400",
+    failed: "border-transparent bg-destructive/15 text-destructive hover:bg-destructive/15",
+    cancelled: "text-muted-foreground",
+  };
+  return (
+    <Badge variant={status === "cancelled" ? "outline" : "secondary"} className={cls[status] ?? ""}>
+      {status}
+    </Badge>
+  );
+}
+
 function StatCard({ label, value, tone }: { label: string; value: number; tone?: string }) {
   const toneClass =
-    tone === "emerald" ? "text-emerald-600"
-    : tone === "blue" ? "text-blue-600"
-    : tone === "red" ? "text-red-600"
+    tone === "emerald" ? "text-emerald-600 dark:text-emerald-400"
+    : tone === "blue" ? "text-blue-600 dark:text-blue-400"
+    : tone === "red" ? "text-red-600 dark:text-red-400"
     : "text-foreground";
   return (
     <div className="rounded-lg border bg-card p-4">
@@ -181,10 +192,10 @@ function StatCard({ label, value, tone }: { label: string; value: number; tone?:
 
 function ActionBadge({ action }: { action: string }) {
   const map: Record<string, string> = {
-    create: "bg-emerald-100 text-emerald-800",
-    update: "bg-blue-100 text-blue-800",
+    create: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300",
+    update: "bg-blue-100 text-blue-800 dark:bg-blue-500/15 dark:text-blue-300",
     skip: "bg-muted text-muted-foreground",
-    error: "bg-red-100 text-red-800",
+    error: "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300",
   };
   return (
     <span className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${map[action] ?? ""}`}>

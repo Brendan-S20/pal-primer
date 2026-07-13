@@ -48,7 +48,7 @@ function RevenuePage() {
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                 {/* Auto-scale the revenue axis. The old formatter forced
                     "$Nk" ticks, which collapsed every value under $1,000
@@ -72,8 +72,8 @@ function RevenuePage() {
                       : [value, "New orgs"]
                   }
                 />
-                <Bar yAxisId="l" dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                <Line yAxisId="r" type="monotone" dataKey="newOrgs" stroke="hsl(var(--muted-foreground))" strokeWidth={2} dot />
+                <Bar yAxisId="l" dataKey="revenue" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+                <Line yAxisId="r" type="monotone" dataKey="newOrgs" stroke="var(--muted-foreground)" strokeWidth={2} dot />
               </ComposedChart>
             </ResponsiveContainer>
           </div>

@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Inbox } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -95,9 +96,25 @@ function ConcernsPage() {
       {q.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : concerns.length === 0 ? (
-        <p className="rounded-lg border bg-card p-6 text-center text-sm text-muted-foreground">
-          No concerns {filter === "all" ? "yet" : `in "${filter === "open" ? "Received" : STATUS_LABEL[filter as ConcernStatus]}"`}.
-        </p>
+        <div className="flex flex-col items-center gap-3 rounded-lg border bg-card p-10 text-center">
+          <div className="rounded-full bg-emerald-500/10 p-3">
+            <Inbox className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <div>
+            <p className="font-medium">
+              {filter === "all"
+                ? "No concerns — happy yards all around"
+                : `Nothing in "${filter === "open" ? "Received" : STATUS_LABEL[filter as ConcernStatus]}"`}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              When a client flags an issue from their portal or a visit review, it lands here so
+              you can respond before it becomes a churn risk.
+            </p>
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/messages">Open client messages</Link>
+          </Button>
+        </div>
       ) : (
         <ul className="space-y-3">
           {concerns.map((c) => {

@@ -485,7 +485,8 @@ export const portalStartCardSetup = createServerFn({ method: "POST" })
     if (!cRow) throw new Error("Client not found");
 
     const { stripe, stripeAccount } = await loadStripe(session.organizationId);
-    let customerId = cRow.stripe_customer_id;
+    const { verifyClientStripeCustomer } = await import("@/lib/stripe-connect.server");
+    let customerId = await verifyClientStripeCustomer(stripe, stripeAccount, cRow);
     if (!customerId) {
       const cust = await stripe.customers.create({
         email: cRow.primary_email ?? undefined,
@@ -526,12 +527,12 @@ export const portalCreateSetupIntent = createServerFn({ method: "POST" })
       .single();
     if (!cRow) throw new Error("Client not found");
 
-    const { requireOrgStripeAccount, connectStripe, connectPublishableKey } = await import("@/lib/stripe-connect.server");
+    const { requireOrgStripeAccount, connectStripe, connectPublishableKey, verifyClientStripeCustomer } = await import("@/lib/stripe-connect.server");
     const acct = await requireOrgStripeAccount(session.organizationId);
     const stripe = await connectStripe();
     const opts = { stripeAccount: acct.accountId };
 
-    let customerId = cRow.stripe_customer_id;
+    let customerId = await verifyClientStripeCustomer(stripe, acct.accountId, cRow);
     if (!customerId) {
       const cust = await stripe.customers.create({
         email: cRow.primary_email ?? undefined,
@@ -651,6 +652,14 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
     }
 
     const { stripe, stripeAccount } = await loadStripe(invoice.organization_id);
+    // Saved-card refs can be orphaned by a connected-account cutover; verify
+    // before charging so the client gets "re-add your card" instead of a raw
+    // "No such customer: 'cus_…'".
+    const { verifyClientStripeCustomer } = await import("@/lib/stripe-connect.server");
+    const liveCustomerId = await verifyClientStripeCustomer(stripe, stripeAccount, c);
+    if (!liveCustomerId) {
+      throw new Error("Your saved card is no longer on file — please add a payment method again.");
+    }
     try {
       const pi = await stripe.paymentIntents.create({
         amount: invoice.total_cents,
@@ -977,12 +986,12 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
       .single();
     if (!cRow) throw new Error("Client not found");
 
-    const { requireOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
+    const { requireOrgStripeAccount, connectStripe, verifyClientStripeCustomer } = await import("@/lib/stripe-connect.server");
     const acct = await requireOrgStripeAccount(invoice.organization_id);
     const stripe = await connectStripe();
     const opts = { stripeAccount: acct.accountId };
 
-    let customerId = cRow.stripe_customer_id;
+    let customerId = await verifyClientStripeCustomer(stripe, acct.accountId, cRow);
     if (!customerId) {
       const cust = await stripe.customers.create({
         email: cRow.primary_email ?? undefined,

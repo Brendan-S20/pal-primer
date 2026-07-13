@@ -203,10 +203,17 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
     // Snapshot pre-move dates + client refs for email
     const { data: preRows } = await supabase
       .from("visits")
-      .select("id, scheduled_on, client_id")
+      .select("id, scheduled_on, client_id, properties(visit_contact_email)")
       .in("id", data.visitIds);
-    const preMap = new Map<string, { scheduled_on: string; client_id: string }>();
-    (preRows ?? []).forEach((r: any) => preMap.set(r.id, { scheduled_on: r.scheduled_on, client_id: r.client_id }));
+    const preMap = new Map<string, { scheduled_on: string; client_id: string; contact_email: string | null }>();
+    (preRows ?? []).forEach((r: any) => {
+      const prop = Array.isArray(r.properties) ? r.properties[0] : r.properties;
+      preMap.set(r.id, {
+        scheduled_on: r.scheduled_on,
+        client_id: r.client_id,
+        contact_email: prop?.visit_contact_email ?? null,
+      });
+    });
 
     for (const id of data.visitIds) {
       const { error } = await supabase.rpc("reschedule_visit", {
@@ -229,8 +236,9 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
       for (const id of data.visitIds) {
         const pre = preMap.get(id);
         if (!pre) continue;
-        // Dedupe per client+newDate
-        const key = `${pre.client_id}|${data.newDate}`;
+        // Dedupe per destination+newDate — a property contact (P3.5) and the
+        // account contact are distinct recipients.
+        const key = `${pre.contact_email ?? pre.client_id}|${data.newDate}`;
         if (seen.has(key)) continue;
         seen.add(key);
         await enqueueAppEmail({
@@ -239,6 +247,7 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
           templateName: "weather-reschedule",
           notifyKey: "notify_email_weather_reschedule",
           idempotencyKey: `weather-${id}-${data.newDate}`,
+          toOverride: pre.contact_email || undefined,
           templateData: {
             originalDate: pre.scheduled_on,
             newDate: data.newDate,
@@ -374,12 +383,22 @@ export const autoRebalanceForecast = createServerFn({ method: "POST" })
       details: Array<{ visit_id: string; from: string; to: string }>;
     }> = [];
 
+    // Failures used to vanish into an empty summary, which the UI reads as
+    // "nothing risky" — count them so the caller can tell "all clear" apart
+    // from "couldn't check" / "not allowed" (P1.6).
+    let forecastFailures = 0;
+    let zonesChecked = 0;
+    let rescheduleErrors = 0;
+    let firstRescheduleError: string | null = null;
+
     for (const z of zones ?? []) {
       if (z.latitude == null || z.longitude == null) continue;
+      zonesChecked++;
       let forecast: DayForecast[] = [];
       try {
         forecast = await fetchForecast(z.latitude, z.longitude, data.fromDate, searchTo);
       } catch {
+        forecastFailures++;
         continue;
       }
       const riskyByDate = new Map(forecast.map((f) => [f.date, f.risky] as const));
@@ -418,6 +437,8 @@ export const autoRebalanceForecast = createServerFn({ method: "POST" })
             _note: "Auto-rebalanced (weather)",
           });
           if (error) {
+            rescheduleErrors++;
+            if (!firstRescheduleError) firstRescheduleError = error.message;
             skipped++;
             continue;
           }
@@ -443,7 +464,14 @@ export const autoRebalanceForecast = createServerFn({ method: "POST" })
       }
     }
 
-    return { summary, dryRun: data.dryRun };
+    return {
+      summary,
+      dryRun: data.dryRun,
+      zonesChecked,
+      forecastFailures,
+      rescheduleErrors,
+      firstRescheduleError,
+    };
   });
 
 /**

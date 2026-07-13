@@ -125,6 +125,10 @@ function TenantsPage() {
                   <span>
                     {r.stripe_subscription_id ? (
                       <span className="text-emerald-600">Active subscription</span>
+                    ) : r.stripe_customer_id ? (
+                      // A Stripe customer exists — "No Stripe" was misleading
+                      // for canceled tenants (P1.13).
+                      <span>No active subscription</span>
                     ) : (
                       <span>No active subscription</span>
                     )}
@@ -182,7 +186,9 @@ function TenantsPage() {
                     </TableCell>
                     <TableCell>
                       {r.stripe_subscription_id ? (
-                        <span className="text-xs text-emerald-600">Active</span>
+                        <span className="text-xs text-emerald-600">Active subscription</span>
+                      ) : r.stripe_customer_id ? (
+                        <span className="text-xs text-muted-foreground">No active subscription</span>
                       ) : (
                         <span className="text-xs text-muted-foreground">None</span>
                       )}

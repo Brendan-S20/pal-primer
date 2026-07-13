@@ -71,8 +71,16 @@ function ReportsPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Metric label="Revenue (paid)" value={fmtMoney(data.revenuePaidCents)} />
-        <Metric label="Outstanding" value={fmtMoney(data.outstandingCents)} />
+        <Metric
+          label="Revenue (paid)"
+          value={fmtMoney(data.revenuePaidCents)}
+          valueClass={data.revenuePaidCents > 0 ? "text-emerald-700 dark:text-emerald-400" : undefined}
+        />
+        <Metric
+          label="Outstanding"
+          value={fmtMoney(data.outstandingCents)}
+          valueClass={data.outstandingCents > 0 ? "text-amber-600 dark:text-amber-400" : undefined}
+        />
         <Metric label="Completed visits" value={String(data.visitCounts.completed ?? 0)} />
         <Metric
           label="Completion rate"
@@ -90,10 +98,25 @@ function ReportsPage() {
           <CardContent>
             <table className="w-full text-sm">
               <tbody>
+                {/* Older buckets get progressively hotter so a problem book
+                    can be color-scanned, matching the cohort heatmap's
+                    value→color idea (P2). */}
                 <Row label="Current" value={fmtMoney(data.aging.current)} />
-                <Row label="1–30 days" value={fmtMoney(data.aging.d30)} />
-                <Row label="31–60 days" value={fmtMoney(data.aging.d60)} />
-                <Row label="60+ days" value={fmtMoney(data.aging.d90)} />
+                <Row
+                  label="1–30 days"
+                  value={fmtMoney(data.aging.d30)}
+                  valueClass={data.aging.d30 > 0 ? "text-amber-600 dark:text-amber-400" : undefined}
+                />
+                <Row
+                  label="31–60 days"
+                  value={fmtMoney(data.aging.d60)}
+                  valueClass={data.aging.d60 > 0 ? "text-orange-600 dark:text-orange-400" : undefined}
+                />
+                <Row
+                  label="60+ days"
+                  value={fmtMoney(data.aging.d90)}
+                  valueClass={data.aging.d90 > 0 ? "text-destructive" : undefined}
+                />
               </tbody>
             </table>
           </CardContent>
@@ -189,22 +212,22 @@ function ReportsPage() {
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
   return (
     <Card>
       <CardContent className="pt-6">
         <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
-        <div className="mt-1 text-2xl font-semibold">{value}</div>
+        <div className={`mt-1 text-2xl font-semibold ${valueClass ?? ""}`}>{value}</div>
       </CardContent>
     </Card>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
   return (
     <tr className="border-t">
       <td className="py-1 capitalize">{label}</td>
-      <td className="py-1 text-right font-medium">{value}</td>
+      <td className={`py-1 text-right font-medium ${valueClass ?? ""}`}>{value}</td>
     </tr>
   );
 }

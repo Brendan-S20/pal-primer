@@ -326,6 +326,9 @@ const onboardSchema = z.object({
   gateCode: z.string().max(60).optional(),
   yardSize: z.enum(["small", "medium", "large", "xlarge"]).optional(),
   hazardNotes: z.string().max(1000).optional(),
+  visitContactName: z.string().max(120).optional(),
+  visitContactPhone: z.string().max(30).optional(),
+  visitContactEmail: z.string().email().max(200).optional().or(z.literal("")),
   hazards: z
     .object({
       doNotEnterIfDogOut: z.boolean().optional(),
@@ -421,6 +424,9 @@ export const onboardClient = createServerFn({ method: "POST" })
         postal_code: data.postalCode,
         gate_code: data.gateCode || null,
         yard_size: data.yardSize ?? null,
+        visit_contact_name: data.visitContactName || null,
+        visit_contact_phone: data.visitContactPhone || null,
+        visit_contact_email: data.visitContactEmail || null,
         do_not_enter_if_dog_out: !!hz.doNotEnterIfDogOut,
         aggressive_dog: !!hz.aggressiveDog,
         escape_risk: !!hz.escapeRisk,

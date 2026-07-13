@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { canAccess, useMyRole } from "@/hooks/useMyRole";
+import { useMyRole, canAccess } from "@/hooks/useMyRole";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsLayout,
@@ -59,8 +59,11 @@ function SettingsLayout() {
   const groups = TAB_GROUPS
     .map((g) => ({
       ...g,
-      tabs: (role === "tech" ? g.tabs.filter((t) => t.techVisible) : g.tabs)
-        .filter((t) => canAccess(role, t.to)),
+      // Hide tabs the role can't open — showing a link that bounces to the
+      // dashboard with "You don't have access" reads as broken (P1.4).
+      tabs: g.tabs.filter(
+        (t) => (role !== "tech" || t.techVisible) && canAccess(role, t.to),
+      ),
     }))
     .filter((g) => g.tabs.length > 0);
   return (
