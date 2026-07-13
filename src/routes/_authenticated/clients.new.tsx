@@ -85,6 +85,10 @@ function NewClientWizard() {
   const [gateCode, setGateCode] = useState("");
   const [yardSize, setYardSize] = useState<"" | "small" | "medium" | "large" | "xlarge">("");
   const [hazardNotes, setHazardNotes] = useState("");
+  // P3.5 optional on-site visit contact (tenant/property manager)
+  const [vcName, setVcName] = useState("");
+  const [vcPhone, setVcPhone] = useState("");
+  const [vcEmail, setVcEmail] = useState("");
   const [hz, setHz] = useState({
     doNotEnterIfDogOut: false,
     aggressiveDog: false,
@@ -200,6 +204,9 @@ function NewClientWizard() {
           gateCode: gateCode || undefined,
           yardSize: yardSize || undefined,
           hazardNotes: hazardNotes || undefined,
+          visitContactName: vcName || undefined,
+          visitContactPhone: vcPhone || undefined,
+          visitContactEmail: vcEmail || undefined,
           hazards: hz,
           boundary: boundary ?? undefined,
           boundaryAreaSqm: boundaryAreaSqm ?? undefined,
@@ -387,6 +394,30 @@ function NewClientWizard() {
                   <option value="large">Large (1/4 – 1/2 acre)</option>
                   <option value="xlarge">Extra large (1/2+ acre)</option>
                 </select>
+              </div>
+            </div>
+
+            <div className="rounded-md border bg-muted/20 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                On-site visit contact <span className="normal-case font-normal">(optional)</span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                For rentals/managed properties: this person gets visit texts and emails —
+                invoices still go to the account contact from the previous step.
+              </p>
+              <div className="mt-2 grid gap-3 sm:grid-cols-3">
+                <div>
+                  <Label htmlFor="vc-name" className="text-xs">Name</Label>
+                  <Input id="vc-name" value={vcName} onChange={(e) => setVcName(e.target.value)} placeholder="Tenant / manager" />
+                </div>
+                <div>
+                  <Label htmlFor="vc-phone" className="text-xs">Phone</Label>
+                  <Input id="vc-phone" type="tel" value={vcPhone} onChange={(e) => setVcPhone(e.target.value)} />
+                </div>
+                <div>
+                  <Label htmlFor="vc-email" className="text-xs">Email</Label>
+                  <Input id="vc-email" type="email" value={vcEmail} onChange={(e) => setVcEmail(e.target.value)} />
+                </div>
               </div>
             </div>
 

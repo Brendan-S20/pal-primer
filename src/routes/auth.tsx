@@ -314,12 +314,16 @@ function AuthPage() {
             <Button type="button" variant="outline" className="w-full justify-center gap-2" disabled={loading} onClick={() => oauthSignIn("google")}>
               <GoogleIcon /> Google
             </Button>
+            {/* Apple/Facebook aren't configured yet — shown disabled as a
+                teaser rather than wired to a broken flow (Brendan's call). */}
             <div className="grid grid-cols-2 gap-2">
-              <Button type="button" variant="outline" className="justify-center gap-2" disabled={loading} onClick={() => oauthSignIn("apple")}>
+              <Button type="button" variant="outline" className="justify-center gap-2" disabled title="Coming soon">
                 <AppleIcon /> Apple
+                <span className="text-[10px] font-normal text-muted-foreground">soon</span>
               </Button>
-              <Button type="button" variant="outline" className="justify-center gap-2" disabled={loading} onClick={() => oauthSignIn("facebook")}>
+              <Button type="button" variant="outline" className="justify-center gap-2" disabled title="Coming soon">
                 <FacebookIcon /> Facebook
+                <span className="text-[10px] font-normal text-muted-foreground">soon</span>
               </Button>
             </div>
           </div>

@@ -1,18 +1,25 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import {
   listInvoices,
   generateInvoicesForOrg,
+  createManualInvoice,
   bulkVoidInvoices,
   bulkMarkInvoicesPaid,
 } from "@/lib/invoices.functions";
+import { listClients } from "@/lib/clients.functions";
 import { getMyOrg } from "@/lib/org.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader,
+  DialogTitle, DialogTrigger,
+} from "@/components/ui/dialog";
+import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/invoices/")({
@@ -25,6 +32,131 @@ function fmtCents(c: number, currency = "usd") {
 
 const STATUSES = ["draft", "open", "paid", "void", "uncollectible"] as const;
 type StatusKey = (typeof STATUSES)[number] | "all";
+
+/** P3.1 quick charge — bill a client right now, no visit required. */
+function NewInvoiceDialog() {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const clientsFn = useServerFn(listClients);
+  const createFn = useServerFn(createManualInvoice);
+  const [open, setOpen] = useState(false);
+  const [clientId, setClientId] = useState("");
+  const [items, setItems] = useState<Array<{ description: string; amount: string }>>([
+    { description: "", amount: "" },
+  ]);
+
+  const clientsQ = useQuery({
+    queryKey: ["clients", "picker"],
+    queryFn: () => clientsFn(),
+    enabled: open,
+    staleTime: 60_000,
+  });
+  const clients: Array<{ id: string; display_name: string; active: boolean }> =
+    (clientsQ.data as any)?.clients ?? (clientsQ.data as any) ?? [];
+
+  const parsedItems = items
+    .map((i) => ({
+      description: i.description.trim(),
+      amountCents: Math.round((parseFloat(i.amount) || 0) * 100),
+    }))
+    .filter((i) => i.description && i.amountCents > 0);
+  const totalCents = parsedItems.reduce((s, i) => s + i.amountCents, 0);
+
+  const createM = useMutation({
+    mutationFn: () => createFn({ data: { clientId, items: parsedItems } }),
+    onSuccess: (r) => {
+      toast.success(`Invoice created — ${fmtCents(r.totalCents)}`);
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      setOpen(false);
+      setClientId("");
+      setItems([{ description: "", amount: "" }]);
+      navigate({ to: "/invoices/$invoiceId", params: { invoiceId: r.invoiceId } });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button>
+          <Plus className="mr-1 h-4 w-4" /> New invoice
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>New invoice</DialogTitle>
+          <DialogDescription>
+            Bill a client directly — no visit needed. The invoice opens immediately and is payable
+            from their portal or a checkout link.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Client</label>
+            <select
+              className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+            >
+              <option value="">Select a client…</option>
+              {clients
+                .filter((c) => c.active !== false)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>{c.display_name}</option>
+                ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground">Line items</label>
+            {items.map((item, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input
+                  placeholder="Description (e.g. One-time cleanup)"
+                  value={item.description}
+                  onChange={(e) =>
+                    setItems(items.map((it, j) => (j === i ? { ...it, description: e.target.value } : it)))
+                  }
+                />
+                <Input
+                  type="number" step="0.01" min="0" placeholder="0.00" className="w-28"
+                  value={item.amount}
+                  onChange={(e) =>
+                    setItems(items.map((it, j) => (j === i ? { ...it, amount: e.target.value } : it)))
+                  }
+                />
+                {items.length > 1 && (
+                  <Button
+                    type="button" variant="ghost" size="sm" className="shrink-0 px-2"
+                    onClick={() => setItems(items.filter((_, j) => j !== i))}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+            <Button
+              type="button" variant="outline" size="sm"
+              onClick={() => setItems([...items, { description: "", amount: "" }])}
+            >
+              <Plus className="mr-1 h-3.5 w-3.5" /> Add line
+            </Button>
+          </div>
+          {totalCents > 0 && (
+            <p className="text-sm font-medium">Total: {fmtCents(totalCents)}</p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button
+            disabled={!clientId || parsedItems.length === 0 || createM.isPending}
+            onClick={() => createM.mutate()}
+          >
+            {createM.isPending ? "Creating…" : `Create invoice${totalCents > 0 ? ` · ${fmtCents(totalCents)}` : ""}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function InvoicesPage() {
   const list = useServerFn(listInvoices);
@@ -51,7 +183,16 @@ function InvoicesPage() {
       return gen({ data: { orgId: org.id, through } });
     },
     onSuccess: (r) => {
-      toast.success(`Generated ${r.generated} invoice(s)`);
+      // "Generated 0 invoice(s)" with success styling read as "nothing is
+      // owed" to a first-time operator (P3.1) — say what it actually means.
+      if (r.generated === 0) {
+        toast.info(
+          "No invoices to generate — this bills completed, unbilled visits. To charge a client directly, use New invoice.",
+          { duration: 8000 },
+        );
+      } else {
+        toast.success(`Generated ${r.generated} invoice(s)`);
+      }
       qc.invalidateQueries({ queryKey: ["invoices"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -119,12 +260,13 @@ function InvoicesPage() {
           <p className="text-sm text-muted-foreground">Bill clients for completed visits.</p>
         </div>
         <div className="flex items-end gap-2">
+          <NewInvoiceDialog />
           <div>
             <label className="text-xs text-muted-foreground">Through date</label>
             <Input type="date" value={through} onChange={(e) => setThrough(e.target.value)} />
           </div>
-          <Button onClick={() => genM.mutate()} disabled={genM.isPending}>
-            {genM.isPending ? "Generating…" : "Generate invoices"}
+          <Button variant="outline" onClick={() => genM.mutate()} disabled={genM.isPending}>
+            {genM.isPending ? "Generating…" : "Generate from visits"}
           </Button>
         </div>
       </div>

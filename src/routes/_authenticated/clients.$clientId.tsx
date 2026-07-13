@@ -94,6 +94,11 @@ function ClientDetail() {
   const [gateCode, setGateCode] = useState("");
   const [yardSize, setYardSize] = useState<"" | "small" | "medium" | "large" | "xlarge">("");
   const [hazardNotes, setHazardNotes] = useState("");
+  // P3.5 on-site visit contact (tenant/property manager) — visit
+  // notifications route here when set; billing stays with the client.
+  const [vcName, setVcName] = useState("");
+  const [vcPhone, setVcPhone] = useState("");
+  const [vcEmail, setVcEmail] = useState("");
   const [hz, setHz] = useState({
     do_not_enter_if_dog_out: false,
     aggressive_dog: false,
@@ -113,6 +118,7 @@ function ClientDetail() {
     setEditingPropId(null);
     setStreet(""); setCity(""); setPostalCode(""); setGateCode("");
     setYardSize(""); setHazardNotes("");
+    setVcName(""); setVcPhone(""); setVcEmail("");
     setHz({
       do_not_enter_if_dog_out: false, aggressive_dog: false, escape_risk: false,
       invisible_fence: false, dog_in_yard_during_service: false,
@@ -130,6 +136,9 @@ function ClientDetail() {
     setGateCode(p.gate_code ?? "");
     setYardSize((p.yard_size ?? "") as typeof yardSize);
     setHazardNotes(p.hazard_notes ?? "");
+    setVcName(p.visit_contact_name ?? "");
+    setVcPhone(p.visit_contact_phone ?? "");
+    setVcEmail(p.visit_contact_email ?? "");
     setHz({
       do_not_enter_if_dog_out: !!p.do_not_enter_if_dog_out,
       aggressive_dog: !!p.aggressive_dog,
@@ -151,6 +160,9 @@ function ClientDetail() {
         gateCode: gateCode || undefined,
         yardSize: yardSize || undefined,
         hazardNotes: hazardNotes || undefined,
+        visitContactName: vcName || undefined,
+        visitContactPhone: vcPhone || undefined,
+        visitContactEmail: vcEmail || undefined,
         doNotEnterIfDogOut: hz.do_not_enter_if_dog_out,
         aggressiveDog: hz.aggressive_dog,
         escapeRisk: hz.escape_risk,
@@ -392,6 +404,11 @@ function ClientDetail() {
                 <span className="font-medium">{p.street}</span>, {p.city} {p.postal_code}
                 {p.gate_code && <span className="ml-2 text-muted-foreground">gate {p.gate_code}</span>}
                 {p.yard_size && <span className="ml-2 text-muted-foreground">· {p.yard_size} yard</span>}
+                {(p.visit_contact_phone || p.visit_contact_email) && (
+                  <span className="ml-2 rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:text-blue-400">
+                    visit contact: {p.visit_contact_name || p.visit_contact_phone || p.visit_contact_email}
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => editProperty(p)}
@@ -477,6 +494,30 @@ function ClientDetail() {
                 <option value="large">Large</option>
                 <option value="xlarge">Extra large</option>
               </select>
+            </div>
+          </div>
+
+          <div className="rounded-md border bg-muted/20 p-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              On-site visit contact <span className="normal-case font-normal">(optional)</span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              For rentals/managed properties: this person gets visit texts and emails
+              (reminders, on-my-way, completed) — invoices still go to the account contact above.
+            </p>
+            <div className="mt-2 grid gap-3 sm:grid-cols-3">
+              <div>
+                <Label htmlFor="vc-name" className="text-xs">Name</Label>
+                <Input id="vc-name" value={vcName} onChange={(e) => setVcName(e.target.value)} placeholder="Tenant / manager" />
+              </div>
+              <div>
+                <Label htmlFor="vc-phone" className="text-xs">Phone</Label>
+                <Input id="vc-phone" type="tel" value={vcPhone} onChange={(e) => setVcPhone(e.target.value)} />
+              </div>
+              <div>
+                <Label htmlFor="vc-email" className="text-xs">Email</Label>
+                <Input id="vc-email" type="email" value={vcEmail} onChange={(e) => setVcEmail(e.target.value)} />
+              </div>
             </div>
           </div>
 

@@ -22,6 +22,12 @@ const createPropSchema = z.object({
   slipperySurfaces: z.boolean().optional(),
   doNotEnterIfDogOut: z.boolean().optional(),
   hazardNotes: z.string().max(1000).optional(),
+  // P3.5 billing-vs-property contact split: an optional on-site contact who
+  // gets visit notifications while the client's primary contact keeps
+  // receiving bills (landlord/tenant, property manager, HOA).
+  visitContactName: z.string().max(120).optional(),
+  visitContactPhone: z.string().max(30).optional(),
+  visitContactEmail: z.string().email().max(200).optional().or(z.literal("")),
 });
 
 export const createProperty = createServerFn({ method: "POST" })
@@ -65,6 +71,9 @@ export const createProperty = createServerFn({ method: "POST" })
         slippery_surfaces: !!data.slipperySurfaces,
         do_not_enter_if_dog_out: !!data.doNotEnterIfDogOut,
         hazard_notes: data.hazardNotes || null,
+        visit_contact_name: data.visitContactName || null,
+        visit_contact_phone: data.visitContactPhone || null,
+        visit_contact_email: data.visitContactEmail || null,
         latitude: geo?.latitude ?? null,
         longitude: geo?.longitude ?? null,
       })
@@ -118,6 +127,9 @@ export const updateProperty = createServerFn({ method: "POST" })
         slippery_surfaces: !!data.slipperySurfaces,
         do_not_enter_if_dog_out: !!data.doNotEnterIfDogOut,
         hazard_notes: data.hazardNotes || null,
+        visit_contact_name: data.visitContactName || null,
+        visit_contact_phone: data.visitContactPhone || null,
+        visit_contact_email: data.visitContactEmail || null,
         ...geoPatch,
       })
       .eq("id", data.propertyId);
@@ -171,7 +183,7 @@ export const listPropertiesForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("properties")
       .select(
-        "id, label, street, city, region, postal_code, gate_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min",
+        "id, label, street, city, region, postal_code, gate_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email",
       )
       .eq("client_id", data.clientId)
       .order("created_at");
