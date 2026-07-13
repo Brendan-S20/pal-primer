@@ -59,7 +59,8 @@ function SettingsLayout() {
   const groups = TAB_GROUPS
     .map((g) => ({
       ...g,
-      tabs: role === "tech" ? g.tabs.filter((t) => t.techVisible) : g.tabs,
+      tabs: (role === "tech" ? g.tabs.filter((t) => t.techVisible) : g.tabs)
+        .filter((t) => canAccess(role, t.to)),
     }))
     .filter((g) => g.tabs.length > 0);
   return (
