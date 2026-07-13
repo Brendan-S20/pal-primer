@@ -11,7 +11,7 @@ import {
 import { getMyOrg } from "@/lib/org.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 
@@ -22,14 +22,6 @@ export const Route = createFileRoute("/_authenticated/invoices/")({
 function fmtCents(c: number, currency = "usd") {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format((c ?? 0) / 100);
 }
-
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  draft: "secondary",
-  open: "default",
-  paid: "outline",
-  void: "destructive",
-  uncollectible: "destructive",
-};
 
 const STATUSES = ["draft", "open", "paid", "void", "uncollectible"] as const;
 type StatusKey = (typeof STATUSES)[number] | "all";
@@ -242,7 +234,7 @@ function InvoicesPage() {
                     </td>
                     <td className="px-4 py-2">{fmtCents(inv.total_cents, inv.currency)}</td>
                     <td className="px-4 py-2">
-                      <Badge variant={STATUS_VARIANT[inv.status] ?? "secondary"}>{inv.status}</Badge>
+                      <InvoiceStatusBadge status={inv.status} />
                     </td>
                     <td className="px-4 py-2 text-right">
                       <Link to="/invoices/$invoiceId" params={{ invoiceId: inv.id }} className="text-primary hover:underline">

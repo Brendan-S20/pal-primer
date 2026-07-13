@@ -14,6 +14,7 @@ import { X, Plus, Trash2, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { usePermissions } from "@/hooks/useMyRole";
 import { ZoneCoverageMap, type CoverageValue } from "@/components/ZoneCoverageMap";
+import { ZonesOverviewMap, ZONE_COLORS, zoneHasGeo, type OverviewZone } from "@/components/ZonesOverviewMap";
 
 export const Route = createFileRoute("/_authenticated/zones")({
   component: ZonesPage,
@@ -241,6 +242,33 @@ function ZonesPage() {
             </div>
           </form>
         </Card>
+      )}
+
+      {/* All-zones overview: the page used to be plain text cards for a
+          geography product (P2). Zones without map coverage yet are listed
+          under the map with a nudge. */}
+      {(data?.zones ?? []).some((z: any) => zoneHasGeo(z as OverviewZone)) && (
+        <div className="space-y-2">
+          <ZonesOverviewMap zones={(data?.zones ?? []) as OverviewZone[]} />
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            {(data?.zones ?? [])
+              .filter((z: any) => zoneHasGeo(z as OverviewZone))
+              .map((z: any, i: number) => (
+                <span key={z.id} className="inline-flex items-center gap-1.5">
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ background: ZONE_COLORS[i % ZONE_COLORS.length] }}
+                  />
+                  {z.name}
+                </span>
+              ))}
+            {(data?.zones ?? []).some((z: any) => !zoneHasGeo(z as OverviewZone)) && (
+              <span className="italic">
+                Zones without a map location: {(data?.zones ?? []).filter((z: any) => !zoneHasGeo(z as OverviewZone)).map((z: any) => z.name).join(", ")} — set one in "Coverage" below.
+              </span>
+            )}
+          </div>
+        </div>
       )}
 
       <div className="grid gap-3">

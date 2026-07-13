@@ -543,7 +543,9 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
               </span>
             )}
             {inProg && visit.started_at && (
-              <span className="text-blue-600 dark:text-blue-400">
+              // Larger + bolder than the meta row: techs read this outdoors
+              // in sunlight (P2 field-readiness).
+              <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
                 · <ElapsedTimer startedAt={visit.started_at} />
               </span>
             )}
@@ -681,36 +683,39 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
             </Button>
           </div>
 
+          {/* Field buttons: ≥44px tall on touch screens (gloved thumbs,
+              sunlight) — the 32px "sm" height is desktop-only (P2). */}
           <div className="flex flex-wrap gap-2">
             {scheduled && (
-              <Button size="sm" onClick={() => start.mutate()} disabled={start.isPending}>
+              <Button size="sm" className="h-11 px-4 sm:h-8 sm:px-3" onClick={() => start.mutate()} disabled={start.isPending}>
                 Start
               </Button>
             )}
             <Button
               size="sm"
               variant="default"
+              className="h-11 px-4 sm:h-8 sm:px-3"
               disabled={(!hasCompletionPhoto && !hasQueuedCompletionPhoto) || complete.isPending || (!inProg && !scheduled)}
               onClick={() => complete.mutate()}
               title={hasCompletionPhoto || hasQueuedCompletionPhoto ? "" : "Add a completion photo first"}
             >
               Complete
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setShowSkip((s) => !s)}>
+            <Button size="sm" variant="ghost" className="h-11 px-4 sm:h-8 sm:px-3" onClick={() => setShowSkip((s) => !s)}>
               Skip
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setShowAddon((s) => !s)}>
+            <Button size="sm" variant="outline" className="h-11 px-4 sm:h-8 sm:px-3" onClick={() => setShowAddon((s) => !s)}>
               + Add-on
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setShowStations((s) => !s)}>
+            <Button size="sm" variant="outline" className="h-11 px-4 sm:h-8 sm:px-3" onClick={() => setShowStations((s) => !s)}>
               Stations
             </Button>
             {visit.clients?.primary_phone && (
               <>
-                <Button size="sm" variant="outline" disabled={sms.isPending} onClick={() => sms.mutate("reminder")}>
+                <Button size="sm" variant="outline" className="h-11 px-4 sm:h-8 sm:px-3" disabled={sms.isPending} onClick={() => sms.mutate("reminder")}>
                   Text reminder
                 </Button>
-                <Button size="sm" variant="outline" disabled={sms.isPending} onClick={() => sms.mutate("on_my_way")}>
+                <Button size="sm" variant="outline" className="h-11 px-4 sm:h-8 sm:px-3" disabled={sms.isPending} onClick={() => sms.mutate("on_my_way")}>
                   Text "on my way"
                 </Button>
               </>

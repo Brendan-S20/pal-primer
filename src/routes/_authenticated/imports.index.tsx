@@ -109,6 +109,19 @@ function downloadTemplate(source: string, entity: ImportEntity) {
   URL.revokeObjectURL(url);
 }
 
+function ImportStatusBadge({ status }: { status: string }) {
+  const cls: Record<string, string> = {
+    committed: "border-transparent bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-400",
+    failed: "border-transparent bg-destructive/15 text-destructive hover:bg-destructive/15",
+    cancelled: "text-muted-foreground",
+  };
+  return (
+    <Badge variant={status === "cancelled" ? "outline" : "secondary"} className={cls[status] ?? ""}>
+      {status}
+    </Badge>
+  );
+}
+
 function ImportsPage() {
   const listFn = useServerFn(listImportBatches);
   const { data, isLoading, refetch } = useQuery({
@@ -156,9 +169,7 @@ function ImportsPage() {
                     <td className="px-4 py-3">{SOURCE_LABELS[b.source] ?? b.source}</td>
                     <td className="px-4 py-3 text-muted-foreground">{b.filename ?? "—"}</td>
                     <td className="px-4 py-3">
-                      <Badge variant={b.status === "committed" ? "default" : "secondary"}>
-                        {b.status}
-                      </Badge>
+                      <ImportStatusBadge status={b.status} />
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
                       {b.stats ? humanizeStats(b.stats) : "—"}

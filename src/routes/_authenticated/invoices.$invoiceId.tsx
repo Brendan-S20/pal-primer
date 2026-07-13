@@ -8,7 +8,7 @@ import { getInvoice, createCheckoutForInvoice, createEmbeddedCheckoutForInvoice,
 import { syncInvoice } from "@/lib/accounting.functions";
 import { sendInvoiceEmail, getEmailSendStatus } from "@/lib/notifications.functions";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { toast } from "sonner";
 
@@ -128,7 +128,7 @@ function InvoiceDetail() {
         <Link to="/invoices" className="text-sm text-muted-foreground hover:underline">← Invoices</Link>
         <div className="mt-2 flex items-center gap-3">
           <h1 className="text-2xl font-semibold">Invoice {invoice.id.slice(0, 8)}</h1>
-          <Badge>{invoice.status}</Badge>
+          <InvoiceStatusBadge status={invoice.status} />
         </div>
         <p className="text-sm text-muted-foreground">{client?.display_name} · {client?.primary_email ?? "no email"}</p>
       </div>

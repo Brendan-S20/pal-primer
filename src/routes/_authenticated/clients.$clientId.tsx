@@ -23,6 +23,7 @@ import {
 import { listStations, upsertStation, deleteStation } from "@/lib/stations.functions";
 import { updatePropertyWindow } from "@/lib/visits.functions";
 import { Badge } from "@/components/ui/badge";
+import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1599,9 +1600,7 @@ function BillingPanel({ clientId }: { clientId: string }) {
                     >
                       #{inv.id.slice(0, 8)}
                     </Link>
-                    <Badge variant={inv.status === "paid" ? "default" : inv.status === "void" ? "outline" : "secondary"}>
-                      {inv.status}
-                    </Badge>
+                    <InvoiceStatusBadge status={inv.status} />
                     <span className="text-xs text-muted-foreground">{inv.kind}</span>
                   </div>
                   <div className="text-xs text-muted-foreground">
