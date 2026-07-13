@@ -675,7 +675,17 @@ function NewClientWizard() {
             {step === 0 ? "Cancel" : "Back"}
           </Button>
           {step < STEPS.length - 1 ? (
-            <Button type="button" disabled={!canNext} onClick={() => setStep(step + 1)}>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!canNext) {
+                  setAttempted(true);
+                  return;
+                }
+                setAttempted(false);
+                setStep(step + 1);
+              }}
+            >
               Continue
             </Button>
           ) : (
