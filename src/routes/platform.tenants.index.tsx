@@ -13,28 +13,14 @@ import {
 } from "@/components/ui/table";
 import { Search } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  TenantStatusBadge,
+  TENANT_STATUS_LABEL as STATUS_LABEL,
+} from "@/components/TenantStatusBadge";
 
 export const Route = createFileRoute("/platform/tenants/")({
   component: TenantsPage,
 });
-
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  free: "outline",
-  active: "default",
-  past_due: "destructive",
-  grace: "secondary",
-  suspended: "destructive",
-  canceled: "outline",
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  free: "Free",
-  active: "Active",
-  past_due: "Past due",
-  grace: "Grace",
-  suspended: "Suspended",
-  canceled: "Canceled",
-};
 
 function formatWhen(iso: string | null): string {
   if (!iso) return "—";
@@ -117,9 +103,7 @@ function TenantsPage() {
                       {r.plan_name ?? "No plan"} · {r.active_client_count.toLocaleString()} clients · {r.users_count.toLocaleString()} users
                     </div>
                   </div>
-                  <Badge variant={STATUS_VARIANT[r.billing_status] ?? "outline"} className="shrink-0">
-                    {STATUS_LABEL[r.billing_status] ?? r.billing_status}
-                  </Badge>
+                  <TenantStatusBadge status={r.billing_status} className="shrink-0" />
                 </div>
                 <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                   <span>
@@ -174,9 +158,7 @@ function TenantsPage() {
                       {r.plan_name ?? <span className="text-muted-foreground">—</span>}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={STATUS_VARIANT[r.billing_status] ?? "outline"}>
-                        {STATUS_LABEL[r.billing_status] ?? r.billing_status}
-                      </Badge>
+                      <TenantStatusBadge status={r.billing_status} />
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {r.active_client_count.toLocaleString()}
