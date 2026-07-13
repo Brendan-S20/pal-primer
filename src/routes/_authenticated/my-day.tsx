@@ -210,28 +210,75 @@ function MyDay() {
               </div>
             </div>
           )}
+
+          {isOfficeRole && fieldStaff.length > 0 && (
+            <div className="flex items-center gap-2 text-xs">
+              <label htmlFor="my-day-staff" className="text-muted-foreground">
+                Viewing:
+              </label>
+              <select
+                id="my-day-staff"
+                value={staffParam ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  navigate({
+                    search: (prev) => ({ ...prev, staff: v || undefined }),
+                    replace: true,
+                  } as any);
+                }}
+                className="h-9 rounded-md border bg-background px-2 text-sm"
+              >
+                <option value="">
+                  {data?.staff && !previewing ? "My day" : "— Select technician —"}
+                </option>
+                {fieldStaff.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.display_name}
+                    {s.role ? ` · ${s.role}` : ""}
+                  </option>
+                ))}
+              </select>
+              {previewing && (
+                <span className="rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Preview · read-only
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
       <div className="space-y-3 px-4 pt-4">
-        {!staff && (
+        {!staff && !isOfficeRole && (
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
             {t("myDay.unlinkedStaff")}
           </div>
         )}
 
+        {!staff && isOfficeRole && (
+          <div className="rounded-lg border bg-card p-6 text-center text-sm text-muted-foreground">
+            {fieldStaff.length === 0
+              ? "No active technicians in your organization yet."
+              : "Pick a technician above to preview their day."}
+          </div>
+        )}
+
         {staff && visits.length === 0 && (
           <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
-            {t("myDay.nothingScheduled")}
+            {previewing
+              ? `${staff.display_name} has nothing scheduled on ${day}.`
+              : t("myDay.nothingScheduled")}
           </div>
         )}
 
         <ol className="space-y-3">
           {visits.map((v: any, idx: number) => (
-            <VisitCard key={v.id} visit={v} index={idx + 1} day={day} />
+            <VisitCard key={v.id} visit={v} index={idx + 1} day={day} preview={previewing} />
           ))}
         </ol>
       </div>
+
+
 
       {/* Sticky bottom "Next up" action bar */}
       {nextUp && (
