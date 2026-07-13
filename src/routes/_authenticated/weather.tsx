@@ -361,7 +361,12 @@ function AutoRebalance({ fromDate, toDate }: { fromDate: string; toDate: string 
 
   return (
     <div className="ml-auto flex items-center gap-2">
-      <Button variant="outline" onClick={() => dry.mutate()} disabled={dry.isPending}>
+      <Button
+        variant="outline"
+        onClick={() => canRebalance ? dry.mutate() : toast.error("You're not authorized to auto-rebalance — ask an owner or office manager.")}
+        disabled={dry.isPending || !canRebalance}
+        title={canRebalance ? "" : "Only owners and office managers can auto-rebalance the weather forecast"}
+      >
         {dry.isPending ? "Previewing…" : "Preview auto-rebalance"}
       </Button>
       {preview && preview.summary.length > 0 && (
