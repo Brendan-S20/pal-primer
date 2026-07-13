@@ -16,6 +16,7 @@ import {
   completeVisit,
   skipVisit,
   recordVisitPhoto,
+  listMyDayFieldStaff,
 } from "@/lib/my-day.functions";
 import { listAddonServices, createAddonCharge } from "@/lib/addons.functions";
 import { getVisitStations, logStationService } from "@/lib/stations.functions";
@@ -35,12 +36,17 @@ import { useMyRole } from "@/hooks/useMyRole";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   // Honor ?date=YYYY-MM-DD deep-links (notifications, bookmarks) instead of
-  // silently showing today (P1.8).
-  validateSearch: (search: Record<string, unknown>): { date?: string } => {
+  // silently showing today (P1.8). ?staff=<uuid> lets office roles preview a
+  // technician's day read-only.
+  validateSearch: (search: Record<string, unknown>): { date?: string; staff?: string } => {
+    const out: { date?: string; staff?: string } = {};
     const raw = typeof search.date === "string" ? search.date : undefined;
-    return raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) && !Number.isNaN(new Date(raw).getTime())
-      ? { date: raw }
-      : {};
+    if (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) && !Number.isNaN(new Date(raw).getTime())) {
+      out.date = raw;
+    }
+    const s = typeof search.staff === "string" ? search.staff : undefined;
+    if (s && /^[0-9a-f-]{36}$/i.test(s)) out.staff = s;
+    return out;
   },
   component: MyDay,
 });
@@ -53,7 +59,8 @@ function todayISO() {
 }
 
 function MyDay() {
-  const { date: dateParam } = Route.useSearch();
+  const { date: dateParam, staff: staffParam } = Route.useSearch();
+  const navigate = Route.useNavigate();
   const [day, setDay] = useState(dateParam ?? todayISO());
   // Follow in-app navigations that change the search param (e.g. a
   // notification link clicked while already on My Day).
@@ -65,11 +72,25 @@ function MyDay() {
   const online = useOnline();
   const pending = usePendingCount();
   const { t } = useTranslation();
+  const { role } = useMyRole();
+  const isOfficeRole = role === "owner" || role === "office_manager" || role === "dispatcher";
 
   const { data, isLoading } = useQuery({
-    queryKey: ["my-day", day],
-    queryFn: () => fn({ data: { day } }),
+    queryKey: ["my-day", day, staffParam ?? ""],
+    queryFn: () => fn({ data: staffParam ? { day, staffId: staffParam } : { day } }),
   });
+  const previewing = !!data?.previewing;
+
+  // Office/dispatch users: fetch the field-staff list so we can show a picker.
+  const staffListFn = useServerFn(listMyDayFieldStaff);
+  const staffList = useQuery({
+    queryKey: ["my-day", "field-staff"],
+    queryFn: () => staffListFn(),
+    enabled: isOfficeRole,
+    staleTime: 60_000,
+  });
+  const fieldStaff = staffList.data?.staff ?? [];
+
 
   // Bind server-fn callers once for the sync driver.
   const startFn = useServerFn(startVisit);
@@ -189,28 +210,75 @@ function MyDay() {
               </div>
             </div>
           )}
+
+          {isOfficeRole && fieldStaff.length > 0 && (
+            <div className="flex items-center gap-2 text-xs">
+              <label htmlFor="my-day-staff" className="text-muted-foreground">
+                Viewing:
+              </label>
+              <select
+                id="my-day-staff"
+                value={staffParam ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  navigate({
+                    search: (prev: Record<string, unknown>) => ({ ...prev, staff: v || undefined }),
+                    replace: true,
+                  } as any);
+                }}
+                className="h-9 rounded-md border bg-background px-2 text-sm"
+              >
+                <option value="">
+                  {data?.staff && !previewing ? "My day" : "— Select technician —"}
+                </option>
+                {fieldStaff.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.display_name}
+                    {s.role ? ` · ${s.role}` : ""}
+                  </option>
+                ))}
+              </select>
+              {previewing && (
+                <span className="rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Preview · read-only
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
       <div className="space-y-3 px-4 pt-4">
-        {!staff && (
+        {!staff && !isOfficeRole && (
           <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
             {t("myDay.unlinkedStaff")}
           </div>
         )}
 
+        {!staff && isOfficeRole && (
+          <div className="rounded-lg border bg-card p-6 text-center text-sm text-muted-foreground">
+            {fieldStaff.length === 0
+              ? "No active technicians in your organization yet."
+              : "Pick a technician above to preview their day."}
+          </div>
+        )}
+
         {staff && visits.length === 0 && (
           <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
-            {t("myDay.nothingScheduled")}
+            {previewing
+              ? `${staff.display_name} has nothing scheduled on ${day}.`
+              : t("myDay.nothingScheduled")}
           </div>
         )}
 
         <ol className="space-y-3">
           {visits.map((v: any, idx: number) => (
-            <VisitCard key={v.id} visit={v} index={idx + 1} day={day} />
+            <VisitCard key={v.id} visit={v} index={idx + 1} day={day} preview={previewing} />
           ))}
         </ol>
       </div>
+
+
 
       {/* Sticky bottom "Next up" action bar */}
       {nextUp && (
@@ -397,13 +465,14 @@ function mapsUrl(p: any): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
 }
 
-function VisitCard({ visit, index, day }: { visit: any; index: number; day: string }) {
+function VisitCard({ visit, index, day, preview = false }: { visit: any; index: number; day: string; preview?: boolean }) {
   const qc = useQueryClient();
   const smsFn = useServerFn(sendVisitStatusSms);
   const { role } = useMyRole();
   // Dispatcher schedules/routes but never performs field work — start/complete
   // is silently rejected server-side, which made those buttons look broken.
-  const canPerformVisit = role !== "dispatcher";
+  // Preview mode (office role viewing another tech's day) also disables actions.
+  const canPerformVisit = !preview && role !== "dispatcher";
 
   const actions = useOfflineVisitActions(visit.id, visit.organization_id as string | undefined);
 
@@ -639,7 +708,7 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
         </div>
       )}
 
-      {!finalStatus && (
+      {!preview && !finalStatus && (
         <div className="mt-4 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <input

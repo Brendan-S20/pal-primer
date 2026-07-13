@@ -4,30 +4,95 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 export const getMyDay = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ day: z.string() }).parse(d))
+  .inputValidator((d) =>
+    z
+      .object({
+        day: z.string(),
+        // Optional: office roles (owner/office_manager/dispatcher) can preview
+        // another tech's day. Ignored for techs — they always see their own.
+        staffId: z.string().uuid().optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
-    const { data: staffRow, error: staffErr } = await supabase
+    // Caller's own staff record (may be null for pure office/dispatch users).
+    const { data: myStaffRow, error: myStaffErr } = await supabase
       .from("staff")
       .select("id, organization_id, display_name, role")
       .eq("user_id", userId)
       .maybeSingle();
-    if (staffErr) throw new Error(staffErr.message);
-    if (!staffRow) return { staff: null, visits: [] as any[] };
+    if (myStaffErr) throw new Error(myStaffErr.message);
+
+    // Determine which staff row to load visits for. If a staffId is supplied,
+    // verify the caller has an office role in that staff's org before honoring
+    // it. Otherwise fall back to the caller's own staff row.
+    let targetStaff = myStaffRow;
+    let previewing = false;
+    if (data.staffId && data.staffId !== myStaffRow?.id) {
+      const { data: roleRow } = await supabase
+        .from("user_roles")
+        .select("role, organization_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+      const officeRole =
+        roleRow?.role === "owner" ||
+        roleRow?.role === "office_manager" ||
+        roleRow?.role === "dispatcher";
+      if (!officeRole) throw new Error("Not authorized to preview another tech's day");
+      const { data: targetRow, error: targetErr } = await supabase
+        .from("staff")
+        .select("id, organization_id, display_name, role")
+        .eq("id", data.staffId)
+        .eq("organization_id", roleRow!.organization_id!)
+        .maybeSingle();
+      if (targetErr) throw new Error(targetErr.message);
+      if (!targetRow) throw new Error("Staff member not found in your organization");
+      targetStaff = targetRow;
+      previewing = true;
+    }
+
+    if (!targetStaff) return { staff: null, visits: [] as any[], previewing: false };
 
     const { data: visits, error } = await supabase
       .from("visits")
       .select(
         "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone), properties(street, city, postal_code, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes), zones(name), visit_photos(id, storage_path, kind)",
       )
-      .eq("assigned_staff_id", staffRow.id)
+      .eq("assigned_staff_id", targetStaff.id)
       .eq("scheduled_on", data.day)
       .order("sequence", { ascending: true, nullsFirst: false });
     if (error) throw new Error(error.message);
 
-    return { staff: staffRow, visits: visits ?? [] };
+    return { staff: targetStaff, visits: visits ?? [], previewing };
   });
+
+export const listMyDayFieldStaff = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data: roleRow } = await supabase
+      .from("user_roles")
+      .select("role, organization_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const officeRole =
+      roleRow?.role === "owner" ||
+      roleRow?.role === "office_manager" ||
+      roleRow?.role === "dispatcher";
+    if (!officeRole || !roleRow?.organization_id) return { staff: [] as { id: string; display_name: string; role: string }[] };
+    const { data, error } = await supabase
+      .from("staff")
+      .select("id, display_name, role, active, is_field_tech")
+      .eq("organization_id", roleRow.organization_id)
+      .eq("active", true)
+      .order("display_name", { ascending: true });
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []).filter((s: any) => s.is_field_tech !== false);
+    return { staff: rows.map((s: any) => ({ id: s.id, display_name: s.display_name, role: s.role })) };
+  });
+
 
 export const startVisit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
