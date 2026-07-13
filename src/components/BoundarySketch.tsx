@@ -3,6 +3,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Button } from "@/components/ui/button";
 import { Undo2, Trash2, Save, MousePointer2, Pencil } from "lucide-react";
+import { addBaseTiles } from "@/lib/map-tiles";
 
 export type PolygonGeoJSON = {
   type: "Polygon";
