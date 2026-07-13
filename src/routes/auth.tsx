@@ -7,6 +7,7 @@ import { checkEmailAccount } from "@/lib/auth-entry.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { CheckCircle2 } from "lucide-react";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/scoop";
 import { Logo } from "@/components/Logo";
 
@@ -107,7 +108,9 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [stage, setStage] = useState<"email" | "password">("email");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [alert, setAlert] = useState<{ kind: "error" | "info"; text: string } | null>(null);
+  const setError = (text: string | null) => setAlert(text ? { kind: "error", text } : null);
+  const setInfo = (text: string) => setAlert({ kind: "info", text });
 
   useEffect(() => {
     // If already signed in (incl. returning from an OAuth redirect), ensure
@@ -225,14 +228,14 @@ function AuthPage() {
   };
 
   const forgotPassword = async () => {
-    setError(null);
+    setAlert(null);
     setLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
     });
     setLoading(false);
     if (error) setError(error.message);
-    else setError("Check your email for a reset link.");
+    else setInfo("Check your email for a reset link.");
   };
 
   return (
@@ -299,7 +302,7 @@ function AuthPage() {
               </Button>
               <button
                 type="button"
-                onClick={() => { setStage("email"); setPassword(""); setError(null); }}
+                onClick={() => { setStage("email"); setPassword(""); setAlert(null); }}
                 className="w-full text-center text-xs text-muted-foreground underline underline-offset-2 hover:text-primary"
               >
                 Use a different email
@@ -333,9 +336,17 @@ function AuthPage() {
           </div>
         </div>
 
-        {error && (
-          <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-            {error}
+        {alert && (
+          <div
+            role={alert.kind === "error" ? "alert" : "status"}
+            className={
+              alert.kind === "error"
+                ? "flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
+                : "flex items-start gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-400"
+            }
+          >
+            {alert.kind === "info" && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />}
+            <span>{alert.text}</span>
           </div>
         )}
 
