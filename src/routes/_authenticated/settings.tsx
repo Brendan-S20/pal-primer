@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { useMyRole } from "@/hooks/useMyRole";
+import { canAccess, useMyRole } from "@/hooks/useMyRole";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsLayout,
