@@ -2,19 +2,20 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Link, useLocation } from "@tanstack/react-router";
 import { AlertTriangle, XCircle } from "lucide-react";
-import { getBillingStatus } from "@/lib/billing.functions";
-import { useMyRole, canAccess } from "@/hooks/useMyRole";
+import { getBillingBannerStatus } from "@/lib/billing.functions";
 
 /**
  * Sitewide banner shown to tenant users when their subscription is in a
- * non-healthy state. Hidden on /billing itself to avoid double-messaging.
+ * non-healthy state. Visible to every org member (owner, office_manager,
+ * dispatcher, tech) so nobody is blindsided when actions start failing;
+ * the "Reactivate" / "Update payment" CTA is only rendered for owners,
+ * who are the only role allowed to actually manage billing.
  */
 export function SuspensionBanner() {
   const location = useLocation();
-  const statusFn = useServerFn(getBillingStatus);
-  const { role } = useMyRole();
+  const statusFn = useServerFn(getBillingBannerStatus);
   const { data } = useQuery({
-    queryKey: ["billing-status"],
+    queryKey: ["billing-banner-status"],
     queryFn: () => statusFn(),
     staleTime: 60_000,
     retry: false,
@@ -23,9 +24,7 @@ export function SuspensionBanner() {
   if (!data) return null;
   if (location.pathname.startsWith("/billing") || location.pathname.startsWith("/settings/billing")) return null;
 
-  // Non-owners can't open Billing settings — tell them who can instead of
-  // linking them to a page that bounces (P1.5).
-  const canFix = canAccess(role, "/settings/billing");
+  const isOwner = data.role === "owner";
 
   if (data.planStatus === "past_due") {
     return (
@@ -33,11 +32,11 @@ export function SuspensionBanner() {
         <AlertTriangle className="h-4 w-4 shrink-0 text-yellow-600" />
         <span className="flex-1">
           <strong>Payment failed.</strong>{" "}
-          {canFix
+          {isOwner
             ? "Update your card to keep your subscription active."
-            : "The account owner needs to update the card to keep the subscription active."}
+            : "Ask an owner to update the card on file — some actions may be blocked until it's resolved."}
         </span>
-        {canFix && (
+        {isOwner && (
           <Link to="/settings/billing" className="shrink-0 rounded-md bg-yellow-600 px-3 py-1 text-xs font-medium text-white hover:bg-yellow-700">
             Update payment
           </Link>
@@ -52,11 +51,11 @@ export function SuspensionBanner() {
         <XCircle className="h-4 w-4 shrink-0 text-destructive" />
         <span className="flex-1">
           <strong>Subscription canceled.</strong>{" "}
-          {canFix
+          {isOwner
             ? "Reactivate to keep adding clients past the free tier."
-            : "New clients can't be added until the account owner reactivates the plan."}
+            : "Ask an owner to reactivate the subscription — some actions may be blocked until it's resolved."}
         </span>
-        {canFix && (
+        {isOwner && (
           <Link to="/settings/billing" className="shrink-0 rounded-md bg-destructive px-3 py-1 text-xs font-medium text-destructive-foreground hover:opacity-90">
             Reactivate
           </Link>

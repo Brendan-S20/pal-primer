@@ -31,6 +31,7 @@ import { PushToggle } from "@/components/PushToggle";
 // LanguageToggle moved to Settings → Preferences
 import { useTranslation } from "react-i18next";
 import { haptic } from "@/lib/haptics";
+import { useMyRole } from "@/hooks/useMyRole";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   // Honor ?date=YYYY-MM-DD deep-links (notifications, bookmarks) instead of
@@ -337,6 +338,7 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
   );
 }
 
+
 function PhotoThumb({ path }: { path: string }) {
   const [url, setUrl] = useState<string | null>(null);
   // Distinguish "still loading" from "can't be shown" so a broken photo shows a
@@ -398,8 +400,13 @@ function mapsUrl(p: any): string {
 function VisitCard({ visit, index, day }: { visit: any; index: number; day: string }) {
   const qc = useQueryClient();
   const smsFn = useServerFn(sendVisitStatusSms);
+  const { role } = useMyRole();
+  // Dispatcher schedules/routes but never performs field work — start/complete
+  // is silently rejected server-side, which made those buttons look broken.
+  const canPerformVisit = role !== "dispatcher";
 
   const actions = useOfflineVisitActions(visit.id, visit.organization_id as string | undefined);
+
 
   const [showSkip, setShowSkip] = useState(false);
   const [showAddon, setShowAddon] = useState(false);
@@ -687,7 +694,13 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
               sunlight) — the 32px "sm" height is desktop-only (P2). */}
           <div className="flex flex-wrap gap-2">
             {scheduled && (
-              <Button size="sm" className="h-11 px-4 sm:h-8 sm:px-3" onClick={() => start.mutate()} disabled={start.isPending}>
+              <Button
+                size="sm"
+                className="h-11 px-4 sm:h-8 sm:px-3"
+                onClick={() => canPerformVisit ? start.mutate() : toast.error("You're not authorized to start visits — dispatchers can schedule, but field staff must start the visit.")}
+                disabled={start.isPending || !canPerformVisit}
+                title={canPerformVisit ? "" : "Only field staff (owner, office manager, or tech) can start a visit"}
+              >
                 Start
               </Button>
             )}
@@ -695,9 +708,9 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
               size="sm"
               variant="default"
               className="h-11 px-4 sm:h-8 sm:px-3"
-              disabled={(!hasCompletionPhoto && !hasQueuedCompletionPhoto) || complete.isPending || (!inProg && !scheduled)}
-              onClick={() => complete.mutate()}
-              title={hasCompletionPhoto || hasQueuedCompletionPhoto ? "" : "Add a completion photo first"}
+              disabled={!canPerformVisit || (!hasCompletionPhoto && !hasQueuedCompletionPhoto) || complete.isPending || (!inProg && !scheduled)}
+              onClick={() => canPerformVisit ? complete.mutate() : toast.error("You're not authorized to complete visits — dispatchers can schedule, but field staff must complete the visit.")}
+              title={!canPerformVisit ? "Only field staff (owner, office manager, or tech) can complete a visit" : (hasCompletionPhoto || hasQueuedCompletionPhoto ? "" : "Add a completion photo first")}
             >
               Complete
             </Button>

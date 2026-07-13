@@ -170,7 +170,10 @@ function AuthPage() {
       });
       if (oauthErr) {
         setLoading(false);
-        return setError(oauthErr.message ?? `${label} sign-in failed`);
+        const msg = /unsupported|not enabled|provider is not/i.test(oauthErr.message ?? "")
+          ? `${label} sign-in isn't available yet — try email or Google.`
+          : (oauthErr.message ?? `${label} sign-in failed`);
+        return setError(msg);
       }
       if (!oauthData?.url) {
         setLoading(false);
@@ -194,6 +197,7 @@ function AuthPage() {
       setError(err instanceof Error ? err.message : `${label} sign-in failed`);
     }
   };
+
 
   // Identifier-first (ERP-style rework): email first; if the account exists
   // we reveal the password step, otherwise we hand off to the Get-started

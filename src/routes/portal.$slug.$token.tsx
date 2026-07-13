@@ -110,14 +110,15 @@ function PortalShell() {
                     {planChip}
                   </Link>
                 )}
-                {/* credit_balance_cents is prepaid CREDIT, not net owed —
-                    labeling it "Balance" next to an open invoice read as
-                    "you owe $0.00" (P1.12). Hide the chip at zero credit;
-                    open invoices are shown on the Home/Billing pages. */}
+                {/* Only show this chip when there's something to show — a
+                    zero "Balance" beside an "Open invoice" reads as a
+                    contradiction (do I owe money or not?). Relabel the
+                    positive side to "Account credit" so it can't be
+                    misread as "you owe $0". */}
                 {c.credit_balance_cents !== 0 && (
                   <Link to="/portal/$slug/$token/billing" params={{ slug, token }}
                     className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur hover:bg-white/25">
-                    <span className="opacity-80">{c.credit_balance_cents >= 0 ? "Account credit" : "Amount due"}</span>
+                    <span className="opacity-80">{c.credit_balance_cents > 0 ? "Account credit" : "Amount due"}</span>
                     <span className="font-semibold">{money(Math.abs(c.credit_balance_cents))}</span>
                   </Link>
                 )}

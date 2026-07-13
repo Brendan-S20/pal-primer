@@ -46,11 +46,24 @@ function RevenuePage() {
         </CardHeader>
         <CardContent>
           <div className="h-64 w-full">
-            <ResponsiveContainer>
+            <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="l" tick={{ fontSize: 11 }} tickFormatter={(v) => (v >= 1000 ? `$${Math.round(v / 1000)}k` : `$${v}`)} />
+                {/* Auto-scale the revenue axis. The old formatter forced
+                    "$Nk" ticks, which collapsed every value under $1,000
+                    to "$0k" and made the chart look empty even though the
+                    summary cards clearly had non-zero data. Fall back to
+                    thousands only when the top value warrants it. */}
+                <YAxis
+                  yAxisId="l"
+                  tick={{ fontSize: 11 }}
+                  tickFormatter={(v) =>
+                    v >= 1000
+                      ? `$${(v / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}k`
+                      : `$${Math.round(v).toLocaleString()}`
+                  }
+                />
                 <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 11 }} allowDecimals={false} />
                 <Tooltip
                   formatter={(value: number, name: string) =>

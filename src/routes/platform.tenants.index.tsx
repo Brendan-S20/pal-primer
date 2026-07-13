@@ -130,7 +130,7 @@ function TenantsPage() {
                       // for canceled tenants (P1.13).
                       <span>No active subscription</span>
                     ) : (
-                      <span>No Stripe</span>
+                      <span>No active subscription</span>
                     )}
                   </span>
                   <span>Last: {formatWhen(r.last_activity_at)}</span>
@@ -154,7 +154,7 @@ function TenantsPage() {
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Clients</TableHead>
                   <TableHead className="text-right">Users</TableHead>
-                  <TableHead>Stripe</TableHead>
+                  <TableHead>Subscription</TableHead>
                   <TableHead>Last payment</TableHead>
                 </TableRow>
               </TableHeader>
@@ -190,7 +190,7 @@ function TenantsPage() {
                       ) : r.stripe_customer_id ? (
                         <span className="text-xs text-muted-foreground">No active subscription</span>
                       ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-xs text-muted-foreground">None</span>
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
