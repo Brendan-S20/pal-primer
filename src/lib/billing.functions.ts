@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { getOrgBillingState } from "./billing-state.server";
-import { requirePermission } from "@/lib/authz.server";
+import { requirePermission, resolveCaller } from "@/lib/authz.server";
 
 // Kept for back-compat with anything still importing this.
 export const PRO_PRICE_CENTS = 5900;
@@ -13,6 +13,19 @@ export const PRO_PRICE_CENTS = 5900;
 async function resolveOrgIdForCaller(supabase: any, userId: string): Promise<string> {
   return (await requirePermission(supabase, userId, "manage_org_billing")).orgId;
 }
+
+// Lightweight read of billing health for the sitewide banner. Any org member
+// (owner, office_manager, dispatcher, tech) can see whether the org's plan is
+// past_due / canceled — they just can't act on it. The CTA in the UI is
+// role-gated separately.
+export const getBillingBannerStatus = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const caller = await resolveCaller(context.supabase, context.userId);
+    const s = await getOrgBillingState(context.supabase, caller.orgId);
+    return { planStatus: s.billingStatus, role: caller.role };
+  });
+
 
 export const getBillingStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
