@@ -138,10 +138,11 @@ export function AppSidebar() {
           className="flex items-center gap-2 px-2 py-1.5 text-sidebar-foreground"
           aria-label={APP_NAME}
         >
-          {collapsed ? (
-            <Logo variant="mark" className="h-7 w-7 shrink-0" />
-          ) : (
-            <Logo variant="logo" className="h-8 w-auto" />
+          <Logo variant="mark" className="h-7 w-7 shrink-0" />
+          {!collapsed && (
+            <span className="truncate text-base font-semibold tracking-tight">
+              {APP_NAME}
+            </span>
           )}
         </Link>
       </SidebarHeader>
