@@ -29,16 +29,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { ArrowLeft, ExternalLink, Trash2, UserCog } from "lucide-react";
+import { TenantStatusBadge } from "@/components/TenantStatusBadge";
 
 export const Route = createFileRoute("/platform/tenants/$id")({
   head: () => ({ meta: [{ title: "Tenant · Platform admin" }, { name: "robots", content: "noindex" }] }),
   component: TenantDetailPage,
 });
-
-const STATUS_TONE: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  free: "outline", active: "default", past_due: "destructive",
-  grace: "secondary", suspended: "destructive", canceled: "outline",
-};
 
 function fmtCents(cents: number, ccy = "USD") {
   return new Intl.NumberFormat(undefined, { style: "currency", currency: ccy.toUpperCase() }).format(cents / 100);
@@ -157,7 +153,7 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-semibold">{t.name}</h1>
-            <Badge variant={STATUS_TONE[t.billing_status] ?? "outline"}>{t.billing_status}</Badge>
+            <TenantStatusBadge status={t.billing_status} />
             {t.deleted_at && <Badge variant="destructive">Deleted</Badge>}
           </div>
           <div className="mt-1 text-sm text-muted-foreground">
@@ -376,7 +372,7 @@ function BillingTab({ t }: { t: TenantDetail }) {
         </div>
         <div className="flex justify-between border-b py-2">
           <span className="text-muted-foreground">Billing status</span>
-          <Badge variant={STATUS_TONE[t.billing_status] ?? "outline"}>{t.billing_status}</Badge>
+          <TenantStatusBadge status={t.billing_status} />
         </div>
         <div className="flex justify-between border-b py-2">
           <span className="text-muted-foreground">Stripe customer</span>
