@@ -222,7 +222,7 @@ function MyDay() {
                 onChange={(e) => {
                   const v = e.target.value;
                   navigate({
-                    search: (prev) => ({ ...prev, staff: v || undefined }),
+                    search: (prev: Record<string, unknown>) => ({ ...prev, staff: v || undefined }),
                     replace: true,
                   } as any);
                 }}
@@ -465,13 +465,14 @@ function mapsUrl(p: any): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
 }
 
-function VisitCard({ visit, index, day }: { visit: any; index: number; day: string }) {
+function VisitCard({ visit, index, day, preview = false }: { visit: any; index: number; day: string; preview?: boolean }) {
   const qc = useQueryClient();
   const smsFn = useServerFn(sendVisitStatusSms);
   const { role } = useMyRole();
   // Dispatcher schedules/routes but never performs field work — start/complete
   // is silently rejected server-side, which made those buttons look broken.
-  const canPerformVisit = role !== "dispatcher";
+  // Preview mode (office role viewing another tech's day) also disables actions.
+  const canPerformVisit = !preview && role !== "dispatcher";
 
   const actions = useOfflineVisitActions(visit.id, visit.organization_id as string | undefined);
 
@@ -707,7 +708,7 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
         </div>
       )}
 
-      {!finalStatus && (
+      {!preview && !finalStatus && (
         <div className="mt-4 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <input
