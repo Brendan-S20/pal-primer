@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { useMyRole } from "@/hooks/useMyRole";
+import { canAccess, useMyRole } from "@/hooks/useMyRole";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsLayout,
@@ -59,7 +59,8 @@ function SettingsLayout() {
   const groups = TAB_GROUPS
     .map((g) => ({
       ...g,
-      tabs: role === "tech" ? g.tabs.filter((t) => t.techVisible) : g.tabs,
+      tabs: (role === "tech" ? g.tabs.filter((t) => t.techVisible) : g.tabs)
+        .filter((t) => canAccess(role, t.to)),
     }))
     .filter((g) => g.tabs.length > 0);
   return (
