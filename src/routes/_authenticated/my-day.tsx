@@ -29,6 +29,12 @@ import { haptic } from "@/lib/haptics";
 import { useMyRole } from "@/hooks/useMyRole";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
+  // Accept ?date=YYYY-MM-DD so bookmarks and notification deep-links can
+  // open the correct day directly (previously ignored, always today).
+  validateSearch: (s: Record<string, unknown>) => {
+    const d = typeof s.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s.date) ? s.date : undefined;
+    return { date: d };
+  },
   component: MyDay,
 });
 
@@ -40,7 +46,8 @@ function todayISO() {
 }
 
 function MyDay() {
-  const [day, setDay] = useState(todayISO());
+  const search = Route.useSearch();
+  const [day, setDay] = useState(search.date ?? todayISO());
   const fn = useServerFn(getMyDay);
   const qc = useQueryClient();
   const online = useOnline();
