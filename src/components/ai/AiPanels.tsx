@@ -9,6 +9,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ChevronRight, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { MarkdownLite } from "@/components/MarkdownLite";
 import {
   generateMarketingContent,
   draftReviewReply,
