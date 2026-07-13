@@ -664,19 +664,25 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
 
           <div className="flex flex-wrap gap-2">
             {scheduled && (
-              <Button size="sm" onClick={() => start.mutate()} disabled={start.isPending}>
+              <Button
+                size="sm"
+                onClick={() => canPerformVisit ? start.mutate() : toast.error("You're not authorized to start visits — dispatchers can schedule, but field staff must start the visit.")}
+                disabled={start.isPending || !canPerformVisit}
+                title={canPerformVisit ? "" : "Only field staff (owner, office manager, or tech) can start a visit"}
+              >
                 Start
               </Button>
             )}
             <Button
               size="sm"
               variant="default"
-              disabled={(!hasCompletionPhoto && !hasQueuedCompletionPhoto) || complete.isPending || (!inProg && !scheduled)}
-              onClick={() => complete.mutate()}
-              title={hasCompletionPhoto || hasQueuedCompletionPhoto ? "" : "Add a completion photo first"}
+              disabled={!canPerformVisit || (!hasCompletionPhoto && !hasQueuedCompletionPhoto) || complete.isPending || (!inProg && !scheduled)}
+              onClick={() => canPerformVisit ? complete.mutate() : toast.error("You're not authorized to complete visits — dispatchers can schedule, but field staff must complete the visit.")}
+              title={!canPerformVisit ? "Only field staff (owner, office manager, or tech) can complete a visit" : (hasCompletionPhoto || hasQueuedCompletionPhoto ? "" : "Add a completion photo first")}
             >
               Complete
             </Button>
+
             <Button size="sm" variant="ghost" onClick={() => setShowSkip((s) => !s)}>
               Skip
             </Button>
