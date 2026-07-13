@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Line, ComposedChart,
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Line, ComposedChart, Legend, Label as AxisLabel,
 } from "recharts";
 import { DollarSign, TrendingUp, Building2, AlertCircle } from "lucide-react";
 import { getPlatformRevenueTrend } from "@/lib/platform.functions";
@@ -64,7 +64,9 @@ function RevenuePage() {
                       : `$${Math.round(v).toLocaleString()}`
                   }
                 />
-                <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 11 }} allowDecimals={false} />
+                <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 11 }} allowDecimals={false}>
+                  <AxisLabel value="New orgs" angle={-90} position="insideRight" style={{ fontSize: 11, fill: "var(--muted-foreground)" }} />
+                </YAxis>
                 <Tooltip
                   formatter={(value: number, name: string) =>
                     name === "revenue"
@@ -72,8 +74,9 @@ function RevenuePage() {
                       : [value, "New orgs"]
                   }
                 />
-                <Bar yAxisId="l" dataKey="revenue" fill="var(--primary)" radius={[4, 4, 0, 0]} />
-                <Line yAxisId="r" type="monotone" dataKey="newOrgs" stroke="var(--muted-foreground)" strokeWidth={2} dot />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar yAxisId="l" dataKey="revenue" name="Revenue" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+                <Line yAxisId="r" type="monotone" dataKey="newOrgs" name="New orgs" stroke="var(--muted-foreground)" strokeWidth={2} dot />
               </ComposedChart>
             </ResponsiveContainer>
           </div>

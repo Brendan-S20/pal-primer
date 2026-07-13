@@ -128,7 +128,7 @@ function CohortTab() {
                     const bg = p > 0 ? `rgba(34,197,94,${Math.min(0.85, 0.15 + p * 0.7).toFixed(2)})` : "transparent";
                     return (
                       <td key={i} className="p-2 text-center" style={{ background: bg }}>
-                        {r > 0 ? pct(r, entry.size) : "·"}
+                        {r > 0 ? pct(r, entry.size) : "—"}
                       </td>
                     );
                   })}
@@ -176,7 +176,7 @@ function LtvTab() {
           <Stat label="Avg monthly / client" value={fmt(avgMonthly)} />
         </div>
         {q.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm [&_th]:px-3 [&_td]:px-3 [&_th:first-child]:pl-0 [&_td:first-child]:pl-0 [&_th:last-child]:pr-0 [&_td:last-child]:pr-0">
             <thead className="text-left text-xs text-muted-foreground">
               <tr>
                 <th className="py-2">Client</th>

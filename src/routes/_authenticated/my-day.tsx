@@ -734,6 +734,13 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
               </>
             )}
           </div>
+          {canPerformVisit && !hasCompletionPhoto && !hasQueuedCompletionPhoto && (inProg || scheduled) && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Take a completion photo to finish this visit.
+            </p>
+          )}
+
+
 
           {showSkip && (
             <div className="space-y-2 rounded-md border bg-muted/30 p-3">
@@ -769,7 +776,7 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
                 </Button>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Billing rules for each reason are set in Settings → Skip rules.
+                The office sets the billing rules for each skip reason.
               </p>
             </div>
           )}
@@ -883,7 +890,7 @@ function StationsSubpanel({ visitId }: { visitId: string }) {
   if (stations.length === 0) {
     return (
       <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-        No waste stations configured for this property. Add them from the client page.
+        No waste stations configured for this property — ask the office to add them.
       </div>
     );
   }
