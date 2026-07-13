@@ -247,6 +247,21 @@ function NewClientWizard() {
     return true;
   })();
 
+  // A disabled Continue with no explanation reads as a dead button (P1.2) —
+  // say exactly which fields are still needed.
+  const missingFields = (() => {
+    if (step === 0 && !displayName.trim()) return ["Name"];
+    if (step === 1) {
+      return [
+        !street && "Street",
+        !city && "City",
+        !region && "State",
+        !postalCode && "ZIP",
+      ].filter(Boolean) as string[];
+    }
+    return [];
+  })();
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
@@ -672,9 +687,16 @@ function NewClientWizard() {
             {step === 0 ? "Cancel" : "Back"}
           </Button>
           {step < STEPS.length - 1 ? (
-            <Button type="button" disabled={!canNext} onClick={() => setStep(step + 1)}>
-              Continue
-            </Button>
+            <div className="flex items-center gap-3">
+              {!canNext && missingFields.length > 0 && (
+                <span className="text-xs text-destructive">
+                  Still needed: {missingFields.join(", ")}
+                </span>
+              )}
+              <Button type="button" disabled={!canNext} onClick={() => setStep(step + 1)}>
+                Continue
+              </Button>
+            </div>
           ) : (
             <Button
               type="button"

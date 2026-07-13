@@ -17,7 +17,11 @@ async function resolveOrgIdForCaller(supabase: any, userId: string): Promise<str
 export const getBillingStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
+    // Read-only status: any org member may see it. The sitewide banner needs
+    // this so an office manager learns the subscription lapsed BEFORE hitting
+    // the client-creation block (P1.5) — mutations below stay owner-gated.
+    const { resolveCaller } = await import("@/lib/authz.server");
+    const { orgId } = await resolveCaller(context.supabase, context.userId);
     const s = await getOrgBillingState(context.supabase, orgId);
     return {
       orgId: s.orgId,

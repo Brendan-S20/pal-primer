@@ -160,14 +160,34 @@ function AuthPage() {
       // clicked into nothing ("Google does nothing"). signInWithOAuth always
       // navigates or returns a visible error, and the post-redirect landing
       // (incl. new-org → /onboarding) is handled by the mount effect.
-      const { error: oauthErr } = await supabase.auth.signInWithOAuth({
+      const { data: oauthData, error: oauthErr } = await supabase.auth.signInWithOAuth({
         provider,
-        options: { redirectTo: window.location.origin },
+        // Don't navigate yet — a provider that isn't enabled in Supabase
+        // (e.g. Apple/Facebook pre-configuration) makes the authorize URL
+        // render a raw "Unsupported provider" API error page. Probe first so
+        // the user gets an in-app message instead of a dead end (P1.10).
+        options: { redirectTo: window.location.origin, skipBrowserRedirect: true },
       });
       if (oauthErr) {
         setLoading(false);
         return setError(oauthErr.message ?? `${label} sign-in failed`);
       }
+      if (!oauthData?.url) {
+        setLoading(false);
+        return setError(`${label} sign-in failed — try again.`);
+      }
+      try {
+        const probe = await fetch(oauthData.url, { redirect: "manual" });
+        // A healthy authorize URL 302-redirects to the provider (opaque to
+        // fetch); a disabled provider answers 4xx with an error body.
+        if (probe.status >= 400) {
+          setLoading(false);
+          return setError(`${label} sign-in isn't available yet — use email or Google instead.`);
+        }
+      } catch {
+        // Probe blocked (CORS/network) — fall through and navigate normally.
+      }
+      window.location.assign(oauthData.url);
       // Browser is redirecting to the provider.
     } catch (err) {
       setLoading(false);

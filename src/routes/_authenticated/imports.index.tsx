@@ -82,6 +82,21 @@ const TEMPLATE_HEADERS: Record<ImportEntity, Record<string, string[]>> = {
   },
 };
 
+/** "{"failed":2,"created":0}" is developer output — spell it out (P2). */
+function humanizeStats(stats: Record<string, unknown>): string {
+  const n = (k: string) => (typeof stats[k] === "number" ? (stats[k] as number) : 0);
+  const parts = [
+    n("created") > 0 && `${n("created")} created`,
+    n("updated") > 0 && `${n("updated")} updated`,
+    n("skip") + n("skipped") > 0 && `${n("skip") + n("skipped")} skipped`,
+    n("failed") + n("errors") > 0 && `${n("failed") + n("errors")} failed`,
+  ].filter(Boolean);
+  if (!parts.length) {
+    return typeof stats.total === "number" ? `${stats.total} rows` : "No rows processed";
+  }
+  return parts.join(" · ");
+}
+
 function downloadTemplate(source: string, entity: ImportEntity) {
   const headers = TEMPLATE_HEADERS[entity][source] ?? TEMPLATE_HEADERS[entity].generic_csv;
   const csv = headers.join(",") + "\n";
@@ -146,7 +161,7 @@ function ImportsPage() {
                       </Badge>
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {b.stats ? JSON.stringify(b.stats) : "—"}
+                      {b.stats ? humanizeStats(b.stats) : "—"}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link to="/imports/$batchId" params={{ batchId: b.id }}>

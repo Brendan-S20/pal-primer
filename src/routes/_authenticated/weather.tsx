@@ -313,7 +313,17 @@ function AutoRebalance({ fromDate, toDate }: { fromDate: string; toDate: string 
     onSuccess: (r) => {
       setPreview(r);
       const total = r.summary.reduce((n, s) => n + s.moved, 0);
-      if (!total) toast.info("No risky visits to rebalance.");
+      if (!total) {
+        // "All clear" and "couldn't check" are different answers — don't
+        // report a forecast outage as no-risk (P1.6).
+        if (r.forecastFailures > 0 && r.forecastFailures >= r.zonesChecked) {
+          toast.error("Couldn't fetch the weather forecast (the weather service may be rate-limited) — try again in a few minutes.");
+        } else if (r.zonesChecked === 0) {
+          toast.info("No zones have map coordinates yet — add zone locations to use auto-rebalance.");
+        } else {
+          toast.info("No risky visits to rebalance.");
+        }
+      }
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -341,6 +351,11 @@ function AutoRebalance({ fromDate, toDate }: { fromDate: string; toDate: string 
             },
           },
         });
+      } else if (r.rescheduleErrors > 0) {
+        toast.error(
+          `Couldn't move ${r.rescheduleErrors} visit(s)` +
+          (r.firstRescheduleError ? `: ${r.firstRescheduleError}` : "."),
+        );
       } else {
         toast.success(`Rebalanced ${total} visit(s).`);
       }

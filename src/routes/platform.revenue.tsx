@@ -48,9 +48,9 @@ function RevenuePage() {
           <div className="h-64 w-full">
             <ResponsiveContainer>
               <ComposedChart data={chartData} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="l" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${Math.round(v / 1000)}k`} />
+                <YAxis yAxisId="l" tick={{ fontSize: 11 }} tickFormatter={(v) => (v >= 1000 ? `$${Math.round(v / 1000)}k` : `$${v}`)} />
                 <YAxis yAxisId="r" orientation="right" tick={{ fontSize: 11 }} allowDecimals={false} />
                 <Tooltip
                   formatter={(value: number, name: string) =>
@@ -59,8 +59,8 @@ function RevenuePage() {
                       : [value, "New orgs"]
                   }
                 />
-                <Bar yAxisId="l" dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                <Line yAxisId="r" type="monotone" dataKey="newOrgs" stroke="hsl(var(--muted-foreground))" strokeWidth={2} dot />
+                <Bar yAxisId="l" dataKey="revenue" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+                <Line yAxisId="r" type="monotone" dataKey="newOrgs" stroke="var(--muted-foreground)" strokeWidth={2} dot />
               </ComposedChart>
             </ResponsiveContainer>
           </div>

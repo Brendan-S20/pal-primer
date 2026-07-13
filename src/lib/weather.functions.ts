@@ -374,12 +374,22 @@ export const autoRebalanceForecast = createServerFn({ method: "POST" })
       details: Array<{ visit_id: string; from: string; to: string }>;
     }> = [];
 
+    // Failures used to vanish into an empty summary, which the UI reads as
+    // "nothing risky" — count them so the caller can tell "all clear" apart
+    // from "couldn't check" / "not allowed" (P1.6).
+    let forecastFailures = 0;
+    let zonesChecked = 0;
+    let rescheduleErrors = 0;
+    let firstRescheduleError: string | null = null;
+
     for (const z of zones ?? []) {
       if (z.latitude == null || z.longitude == null) continue;
+      zonesChecked++;
       let forecast: DayForecast[] = [];
       try {
         forecast = await fetchForecast(z.latitude, z.longitude, data.fromDate, searchTo);
       } catch {
+        forecastFailures++;
         continue;
       }
       const riskyByDate = new Map(forecast.map((f) => [f.date, f.risky] as const));
@@ -418,6 +428,8 @@ export const autoRebalanceForecast = createServerFn({ method: "POST" })
             _note: "Auto-rebalanced (weather)",
           });
           if (error) {
+            rescheduleErrors++;
+            if (!firstRescheduleError) firstRescheduleError = error.message;
             skipped++;
             continue;
           }
@@ -443,7 +455,14 @@ export const autoRebalanceForecast = createServerFn({ method: "POST" })
       }
     }
 
-    return { summary, dryRun: data.dryRun };
+    return {
+      summary,
+      dryRun: data.dryRun,
+      zonesChecked,
+      forecastFailures,
+      rescheduleErrors,
+      firstRescheduleError,
+    };
   });
 
 /**

@@ -29,6 +29,18 @@ function isNavigatorOnline() {
 }
 
 /**
+ * Only TRANSPORT failures should fall through to the offline queue. A server
+ * rejection ("Not authorized for this visit", validation, RLS) must surface —
+ * queueing it silently reports success for an action that will never apply,
+ * e.g. a dispatcher clicking Start on someone else's visit (P1.6).
+ */
+function isNetworkError(e: unknown): boolean {
+  if (e instanceof TypeError) return true; // fetch() transport failure
+  const msg = e instanceof Error ? e.message : String(e);
+  return /failed to fetch|networkerror|load failed|network request failed|timeout/i.test(msg);
+}
+
+/**
  * Photo upload requires knowing which org bucket folder to use. When online
  * we still fetch it just-in-time to keep behavior identical to the previous
  * page; when offline, we fall back to the caller-provided cached value that
@@ -48,7 +60,9 @@ export function useOfflineVisitActions(
       try {
         await startFn({ data: { visitId } });
         return { queued: false };
-      } catch (_) { /* fall through to queue */ }
+      } catch (e) {
+        if (!isNetworkError(e)) throw e;
+      }
     }
     await enqueueAction({ kind: "start", visitId });
     return { queued: true };
@@ -59,7 +73,9 @@ export function useOfflineVisitActions(
       try {
         await completeFn({ data: { visitId } });
         return { queued: false };
-      } catch (_) { /* fall through */ }
+      } catch (e) {
+        if (!isNetworkError(e)) throw e;
+      }
     }
     await enqueueAction({ kind: "complete", visitId });
     return { queued: true };
@@ -71,7 +87,9 @@ export function useOfflineVisitActions(
         try {
           await skipFn({ data: { visitId, reason, code: code as any } });
           return { queued: false };
-        } catch (_) { /* fall through */ }
+        } catch (e) {
+          if (!isNetworkError(e)) throw e;
+        }
       }
       await enqueueAction({ kind: "skip", visitId, reason, code });
       return { queued: true };
@@ -99,7 +117,9 @@ export function useOfflineVisitActions(
           if (upErr) throw upErr;
           await photoFn({ data: { visitId, storagePath: path, kind } });
           return { queued: false };
-        } catch (_) { /* fall through */ }
+        } catch (e) {
+          if (!isNetworkError(e)) throw e;
+        }
       }
 
       if (!cachedOrgId) {
