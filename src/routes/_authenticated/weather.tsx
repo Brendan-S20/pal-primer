@@ -308,6 +308,13 @@ function AutoRebalance({ fromDate, toDate }: { fromDate: string; toDate: string 
   const undoFn = useServerFn(undoReschedule);
   const qc = useQueryClient();
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof fn>> | null>(null);
+  const { role } = useMyRole();
+  // Rescheduling visits changes schedules across an org — dispatcher can
+  // reschedule individual visits but the bulk weather rebalance is an
+  // owner/office-manager operation. Server-side authorization silently
+  // rejected the click for other roles, which read as a broken button.
+  const canRebalance = role === "owner" || role === "office_manager";
+
 
   const dry = useMutation({
     mutationFn: () => fn({ data: { fromDate, toDate, dryRun: true, dailyCap: 60 } }),
