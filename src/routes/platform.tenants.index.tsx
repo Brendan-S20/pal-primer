@@ -124,9 +124,9 @@ function TenantsPage() {
                 <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                   <span>
                     {r.stripe_subscription_id ? (
-                      <span className="text-emerald-600">Stripe connected</span>
+                      <span className="text-emerald-600">Active subscription</span>
                     ) : (
-                      <span>No Stripe</span>
+                      <span>No active subscription</span>
                     )}
                   </span>
                   <span>Last: {formatWhen(r.last_activity_at)}</span>
