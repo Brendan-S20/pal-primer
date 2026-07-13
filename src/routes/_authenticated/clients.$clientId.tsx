@@ -1047,7 +1047,15 @@ function PortalLinkPanel({ clientId, portalToken }: { clientId: string; portalTo
         The link opens the portal but the client must verify with a one-time code sent to their
         phone or email before seeing any account details.
       </p>
-      {code && (
+      {codeMut.isPending && (
+        <p className="rounded bg-background p-2 text-sm text-muted-foreground">Generating a code…</p>
+      )}
+      {codeMut.isError && !codeMut.isPending && (
+        <p className="rounded bg-destructive/10 p-2 text-sm text-destructive">
+          Couldn't generate a code: {(codeMut.error as Error).message} — try again.
+        </p>
+      )}
+      {code && !codeMut.isPending && (
         <p className="rounded bg-background p-2 font-mono text-sm">
           Read this code to the client (valid 10 min): <strong className="tracking-widest">{code}</strong>
         </p>

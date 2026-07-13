@@ -112,6 +112,58 @@ export async function clearOrgClientStripeRefs(orgId: string): Promise<void> {
     .eq("organization_id", orgId);
 }
 
+/** Clear ONE client's saved Stripe refs (stale/orphaned customer detected). */
+export async function clearClientStripeRefs(clientId: string): Promise<void> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  await (supabaseAdmin as any)
+    .from("clients")
+    .update({
+      stripe_customer_id: null,
+      default_payment_method_id: null,
+      default_card_brand: null,
+      default_card_last4: null,
+      autopay_enabled: false,
+    })
+    .eq("id", clientId);
+}
+
+/** True when a Stripe error means "this object doesn't exist on this account". */
+export function isStripeMissingResource(e: unknown): boolean {
+  const err = e as { code?: string; message?: string } | null;
+  return err?.code === "resource_missing" || /no such customer/i.test(err?.message ?? "");
+}
+
+/**
+ * A stored client customer id can point at a PREVIOUS connected account (the
+ * Standard→Express cutover orphaned every customer stored before it), which
+ * surfaces as a raw "No such customer: 'cus_…'" at the exact moment a client
+ * tries to pay. Verify the id against the CURRENT account; if it's gone,
+ * clear the stale refs and return null so the caller mints a fresh customer
+ * (or asks for the card again) instead of erroring.
+ */
+export async function verifyClientStripeCustomer(
+  stripe: { customers: { retrieve: (id: string, params: object, opts: object) => Promise<unknown> } },
+  stripeAccount: string,
+  client: { id: string; stripe_customer_id: string | null },
+): Promise<string | null> {
+  const id = client.stripe_customer_id;
+  if (!id) return null;
+  try {
+    const cust = (await stripe.customers.retrieve(id, {}, { stripeAccount })) as { deleted?: boolean } | null;
+    if (cust?.deleted) {
+      await clearClientStripeRefs(client.id);
+      return null;
+    }
+    return id;
+  } catch (e) {
+    if (isStripeMissingResource(e)) {
+      await clearClientStripeRefs(client.id);
+      return null;
+    }
+    throw e;
+  }
+}
+
 /** Retrieve the connected account and return its charge-readiness + status. */
 export async function fetchConnectAccountState(
   accountId: string,

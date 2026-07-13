@@ -131,12 +131,27 @@ function brandingOf(c: OrgBranding): PortalBranding {
   return { orgName: c.org_name, orgSlug: c.org_slug, logoUrl: c.logo_url, brandColor: c.brand_color };
 }
 
+/** True when the platform can actually deliver an SMS OTP. Offering "Text me
+ *  a code" (and pre-selecting it) while Twilio is unconfigured shows the
+ *  customer a raw config error on the default login path (P0.5). */
+async function smsOtpDeliverable(orgId: string): Promise<boolean> {
+  if (!process.env.TWILIO_API_KEY) return false;
+  const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
+  if (platformTwilioFrom()) return true;
+  const supabaseAdmin = await sbAdmin();
+  const { data } = await supabaseAdmin
+    .from("organizations").select("sms_from_number").eq("id", orgId).maybeSingle();
+  return !!data?.sms_from_number;
+}
+
 /** Channels we can send an OTP to, with masked hints + org branding for the UI. */
 export async function portalContactChannels(token: string): Promise<PortalContact | null> {
   const c = await resolveContact(token);
   if (!c) return null;
   const channels: PortalContact["channels"] = [];
-  if (c.primary_phone) channels.push({ channel: "sms", hint: maskPhone(c.primary_phone) });
+  if (c.primary_phone && (await smsOtpDeliverable(c.organization_id))) {
+    channels.push({ channel: "sms", hint: maskPhone(c.primary_phone) });
+  }
   if (c.primary_email) channels.push({ channel: "email", hint: maskEmail(c.primary_email) });
   return {
     clientId: c.client_id,
@@ -374,9 +389,14 @@ export async function issuePortalOtp(
     // the client's hourly rate limit and lock them out of retrying.
     await rollbackOtp();
     console.error("portal OTP delivery failed", (e as Error).message);
-    throw new Error(
-      (e as Error).message || "Could not send the code. Ask us to read it to you instead.",
-    );
+    const raw = (e as Error).message ?? "";
+    // Never surface provider/config internals (e.g. "TWILIO_API_KEY is not
+    // configured") to a customer on the login page.
+    const friendly =
+      channel === "sms" && /twilio|api.?key|not configured/i.test(raw)
+        ? "Texting isn't available right now — choose “Email me a code” instead, or ask us to read you the code."
+        : raw || "Could not send the code. Ask us to read it to you instead.";
+    throw new Error(friendly);
   }
 
   return { sent: true, hint, channel };

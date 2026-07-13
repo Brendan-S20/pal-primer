@@ -6,6 +6,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   getMyDay,
   startVisit,
   completeVisit,
@@ -28,6 +33,14 @@ import { useTranslation } from "react-i18next";
 import { haptic } from "@/lib/haptics";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
+  // Honor ?date=YYYY-MM-DD deep-links (notifications, bookmarks) instead of
+  // silently showing today (P1.8).
+  validateSearch: (search: Record<string, unknown>): { date?: string } => {
+    const raw = typeof search.date === "string" ? search.date : undefined;
+    return raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) && !Number.isNaN(new Date(raw).getTime())
+      ? { date: raw }
+      : {};
+  },
   component: MyDay,
 });
 
@@ -39,7 +52,13 @@ function todayISO() {
 }
 
 function MyDay() {
-  const [day, setDay] = useState(todayISO());
+  const { date: dateParam } = Route.useSearch();
+  const [day, setDay] = useState(dateParam ?? todayISO());
+  // Follow in-app navigations that change the search param (e.g. a
+  // notification link clicked while already on My Day).
+  useEffect(() => {
+    if (dateParam) setDay(dateParam);
+  }, [dateParam]);
   const fn = useServerFn(getMyDay);
   const qc = useQueryClient();
   const online = useOnline();
@@ -303,6 +322,12 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
     return () => clearInterval(id);
   }, []);
   const secs = Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000));
+  // Sanity cap: a stale/bad started_at (e.g. a visit left in-progress for
+  // days) would otherwise tick up to absurd values like "10500:12" (P1.9).
+  // Past 8h the elapsed time is no longer useful field info — flag it instead.
+  if (secs > 8 * 3600) {
+    return <span className="font-mono text-xs text-muted-foreground">8h+ — started {new Date(startedAt).toLocaleDateString()}</span>;
+  }
   const m = Math.floor(secs / 60);
   const s = secs % 60;
   return (
@@ -757,18 +782,43 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
                     value={addonQty}
                     onChange={(e) => setAddonQty(e.target.value)}
                   />
-                  <Button size="sm" className="col-span-1"
-                    disabled={!addonSvcId || addonMut.isPending}
-                    onClick={() => {
-                      if (!svc) return;
-                      // Real money hits the client's account — always confirm.
-                      const who = visit.clients?.display_name ?? "this client";
-                      if (confirm(`Bill $${(totalCents / 100).toFixed(2)} (${svc.name}${qtyNum > 1 ? ` × ${qtyNum}` : ""}) to ${who}? The office will see this charge for review.`)) {
-                        addonMut.mutate();
-                      }
-                    }}>
-                    Bill
-                  </Button>
+                  {/* Real money hits the client's account — always confirm.
+                      In-app dialog, NOT window.confirm(): browsers suppress
+                      repeated native dialogs, which made this button a silent
+                      no-op in the field (P0.4). */}
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="sm" className="col-span-1"
+                        disabled={!addonSvcId || !svc || addonMut.isPending}>
+                        {addonMut.isPending ? "…" : "Bill"}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>
+                          Bill ${(totalCents / 100).toFixed(2)} to {visit.clients?.display_name ?? "this client"}?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          {svc ? `${svc.name}${qtyNum > 1 ? ` × ${qtyNum}` : ""} at the catalog price. ` : ""}
+                          The office will see this charge for review.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          disabled={addonMut.isPending}
+                          onClick={() => {
+                            if (!svc) {
+                              toast.error("That add-on service is no longer available — pick another from the list.");
+                              return;
+                            }
+                            addonMut.mutate();
+                          }}>
+                          Bill it
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
                 {svc && (
                   <p className="text-[11px] font-medium">

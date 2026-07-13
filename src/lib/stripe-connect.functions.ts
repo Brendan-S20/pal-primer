@@ -128,6 +128,38 @@ export const refreshStripeConnect = createServerFn({ method: "POST" })
     return { connected: true, chargesEnabled: state.chargesEnabled, status: state.status };
   });
 
+/**
+ * Remediation pass for orphaned saved cards: a connected-account cutover (e.g.
+ * Standard→Express) leaves clients pointing at customer ids that don't exist
+ * on the current account, and every payment attempt throws "No such customer".
+ * Verify every stored id against the live account and clear the stale ones so
+ * staff/portal prompt for a fresh card instead of erroring mid-payment.
+ */
+export const auditClientCardRefs = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { requireOrgStripeAccount, connectStripe, verifyClientStripeCustomer } = await import("@/lib/stripe-connect.server");
+    const acct = await requireOrgStripeAccount(orgId);
+    const stripe = await connectStripe();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: rows, error } = await supabaseAdmin
+      .from("clients")
+      .select("id, display_name, stripe_customer_id")
+      .eq("organization_id", orgId)
+      .not("stripe_customer_id", "is", null);
+    if (error) throw new Error(error.message);
+
+    const cleared: string[] = [];
+    let checked = 0;
+    for (const c of rows ?? []) {
+      checked++;
+      const live = await verifyClientStripeCustomer(stripe, acct.accountId, c);
+      if (!live) cleared.push(c.display_name ?? c.id);
+    }
+    return { checked, cleared };
+  });
+
 /** Delete the Express account (platform-owned) and clear the org's fields. */
 export const disconnectStripeConnect = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

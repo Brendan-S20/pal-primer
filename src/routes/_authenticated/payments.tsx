@@ -18,6 +18,7 @@ import {
   startStripeConnect,
   refreshStripeConnect,
   disconnectStripeConnect,
+  auditClientCardRefs,
 } from "@/lib/stripe-connect.functions";
 import { sendEmailVerification } from "@/lib/auth-entry.functions";
 import { Button } from "@/components/ui/button";
@@ -73,6 +74,22 @@ function PaymentsSettings() {
   const hostedFallback = useMutation({
     mutationFn: () => startFn({ data: { origin: window.location.origin } }),
     onSuccess: (r: any) => { if (r?.url) window.location.href = r.url; },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const auditFn = useServerFn(auditClientCardRefs);
+  const auditCards = useMutation({
+    mutationFn: () => auditFn(),
+    onSuccess: (r: any) => {
+      if (!r.cleared.length) {
+        toast.success(`Checked ${r.checked} saved card${r.checked === 1 ? "" : "s"} — all valid on this Stripe account.`);
+      } else {
+        toast.warning(
+          `Checked ${r.checked}: cleared ${r.cleared.length} stale saved card${r.cleared.length === 1 ? "" : "s"} ` +
+          `(${r.cleared.slice(0, 5).join(", ")}${r.cleared.length > 5 ? "…" : ""}). Those clients will be asked to re-add a card.`,
+          { duration: 12000 },
+        );
+      }
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -140,11 +157,23 @@ function PaymentsSettings() {
         </>
       )}
 
-      <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
-        <strong>Switching accounts?</strong> Saved client cards and autopay are tied to the Stripe
-        account that stored them. If you connect a different Stripe account, clients will need to
-        re-enter their card the next time they pay.
-      </p>
+      <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+        <p>
+          <strong>Switching accounts?</strong> Saved client cards and autopay are tied to the Stripe
+          account that stored them. If you connect a different Stripe account, clients will need to
+          re-enter their card the next time they pay.
+        </p>
+        {cfg?.connected && cfg?.chargesEnabled && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => auditCards.mutate()}
+            disabled={auditCards.isPending}
+          >
+            {auditCards.isPending ? "Checking saved cards…" : "Check saved client cards"}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

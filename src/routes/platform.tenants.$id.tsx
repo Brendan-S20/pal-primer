@@ -7,7 +7,7 @@ import {
   listTenantNotes, addTenantNote, deleteTenantNote,
   listTenantFeatureFlags, setTenantFeatureFlag,
   listTenantInvoices, listTenantAudit,
-  suspendTenant, reactivateTenant, softDeleteTenant,
+  suspendTenant, reactivateTenant, grantGracePeriod, softDeleteTenant,
   type TenantDetail, type TenantNote, type TenantFlagRow, type TenantInvoiceRow, type TenantAuditRow,
 } from "@/lib/platform-tenant.functions";
 import { startImpersonation } from "@/lib/platform.functions";
@@ -93,10 +93,12 @@ function TenantDetailPage() {
 function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }) {
   const suspendFn = useServerFn(suspendTenant);
   const reactivateFn = useServerFn(reactivateTenant);
+  const graceFn = useServerFn(grantGracePeriod);
   const deleteFn = useServerFn(softDeleteTenant);
   const impersonateFn = useServerFn(startImpersonation);
   const [reason, setReason] = useState("");
   const [confirmName, setConfirmName] = useState("");
+  const [graceDays, setGraceDays] = useState("14");
 
   const suspendM = useMutation({
     mutationFn: () => suspendFn({ data: { organization_id: t.id, reason } }),
@@ -106,6 +108,11 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
   const reactivateM = useMutation({
     mutationFn: () => reactivateFn({ data: { organization_id: t.id } }),
     onSuccess: () => { toast.success("Tenant reactivated"); onChange(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const graceM = useMutation({
+    mutationFn: () => graceFn({ data: { organization_id: t.id, days: parseInt(graceDays, 10) } }),
+    onSuccess: () => { toast.success(`Grace period granted (${graceDays} days)`); onChange(); },
     onError: (e) => toast.error((e as Error).message),
   });
   const deleteM = useMutation({
@@ -210,11 +217,49 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-          {t.billing_status === "suspended" ? (
+          {(t.billing_status === "suspended" || t.billing_status === "canceled" || t.plan_status === "canceled") && (
             <Button size="sm" onClick={() => reactivateM.mutate()} disabled={reactivateM.isPending || !!t.deleted_at}>
               Reactivate
             </Button>
-          ) : (
+          )}
+          {t.billing_status !== "active" && t.billing_status !== "free" && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="sm" disabled={graceM.isPending || !!t.deleted_at}>
+                  Grant grace period
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Grant {t.name} a grace period?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    The tenant can keep adding clients until the grace period expires, giving
+                    them time to reactivate their plan from their own Billing settings.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="space-y-1">
+                  <Label htmlFor="grace-days">Duration</Label>
+                  <select
+                    id="grace-days"
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    value={graceDays}
+                    onChange={(e) => setGraceDays(e.target.value)}
+                  >
+                    <option value="7">7 days</option>
+                    <option value="14">14 days</option>
+                    <option value="30">30 days</option>
+                  </select>
+                </div>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction disabled={graceM.isPending} onClick={() => graceM.mutate()}>
+                    Grant grace
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+          {t.billing_status !== "suspended" && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive" size="sm" disabled={!!t.deleted_at}>Suspend</Button>

@@ -405,6 +405,18 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
       charged++;
     } catch (e) {
       const msg = (e as Error).message || "autopay failed";
+      const { isStripeMissingResource, clearClientStripeRefs } = await import("@/lib/stripe-connect.server");
+      if (isStripeMissingResource(e)) {
+        // Customer/payment method no longer exists on the connected account
+        // (e.g. account cutover) — clear the stale refs so autopay stops
+        // retrying a dead card and staff/portal prompt for a fresh one.
+        await clearClientStripeRefs(c.id);
+        await supabaseAdmin.from("clients").update({
+          autopay_last_attempt_at: new Date().toISOString(),
+          autopay_last_error: "Saved card is no longer on file — client needs to re-add a payment method.",
+        }).eq("id", c.id);
+        continue;
+      }
       const nextCount = failures + 1;
       await supabaseAdmin.from("clients").update({
         autopay_last_attempt_at: new Date().toISOString(),
