@@ -262,7 +262,7 @@ export function DigestPanel() {
       {m.data && (
         <div className="rounded-lg border bg-card p-4 text-sm">
           <div className="mb-2 font-medium">{m.data.stats.org} — this week</div>
-          <p className="whitespace-pre-wrap">{m.data.summary}</p>
+          <MarkdownLite text={m.data.summary} className="space-y-2" />
         </div>
       )}
       {m.data?.stats.at_risk?.length ? (

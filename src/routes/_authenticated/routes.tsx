@@ -954,11 +954,13 @@ function VisitCardView({
               {visit.travel_min != null && <span>· {Math.round(Number(visit.travel_min))} min drive</span>}
             </div>
           )}
-          {(p?.earliest_service_time || p?.latest_service_time) && (
-            <div className="mt-0.5 text-[10px] text-muted-foreground">
-              Window {p.earliest_service_time?.slice(0, 5) ?? "—"}–{p.latest_service_time?.slice(0, 5) ?? "—"}
-            </div>
-          )}
+          {(() => {
+            const s = p?.earliest_service_time?.slice(0, 5);
+            const e = p?.latest_service_time?.slice(0, 5);
+            if (!s && !e) return null;
+            const label = s && e ? `${s}–${e}` : s ? `${s} onward` : `until ${e}`;
+            return <div className="mt-0.5 text-[10px] text-muted-foreground">Window {label}</div>;
+          })()}
           <div className="mt-1 flex flex-wrap items-center gap-1">
             {visit.zones?.name && <Badge variant="outline" className="h-4 px-1 text-[10px]">{visit.zones.name}</Badge>}
             <Badge variant="secondary" className="h-4 px-1 text-[10px]">{visit.status}</Badge>
