@@ -70,6 +70,9 @@ function NewClientWizard() {
   const quoteFn = useServerFn(getInternalQuote);
 
   const [step, setStep] = useState(0);
+  // Turn on inline "required" messages after the user tries to advance —
+  // showing red text on first render would be too noisy.
+  const [attempted, setAttempted] = useState(false);
 
   // contact
   const [displayName, setDisplayName] = useState("");
