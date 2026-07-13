@@ -176,7 +176,7 @@ function LtvTab() {
           <Stat label="Avg monthly / client" value={fmt(avgMonthly)} />
         </div>
         {q.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm [&_th]:px-3 [&_td]:px-3 [&_th:first-child]:pl-0 [&_td:first-child]:pl-0 [&_th:last-child]:pr-0 [&_td:last-child]:pr-0">
             <thead className="text-left text-xs text-muted-foreground">
               <tr>
                 <th className="py-2">Client</th>
