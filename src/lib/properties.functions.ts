@@ -226,7 +226,7 @@ export const getPropertyBoundary = createServerFn({ method: "GET" })
   .handler(async ({ data, context }) => {
     const { data: row, error } = await context.supabase
       .from("properties")
-      .select("id, street, city, postal_code, latitude, longitude, boundary, boundary_area_sqm, yard_size")
+      .select("id, client_id, street, city, postal_code, latitude, longitude, boundary, boundary_area_sqm, yard_size, clients(id, display_name)")
       .eq("id", data.propertyId)
       .single();
     if (error) throw new Error(error.message);
