@@ -16,6 +16,7 @@ import {
   completeVisit,
   skipVisit,
   recordVisitPhoto,
+  listMyDayFieldStaff,
 } from "@/lib/my-day.functions";
 import { listAddonServices, createAddonCharge } from "@/lib/addons.functions";
 import { getVisitStations, logStationService } from "@/lib/stations.functions";
@@ -35,12 +36,17 @@ import { useMyRole } from "@/hooks/useMyRole";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   // Honor ?date=YYYY-MM-DD deep-links (notifications, bookmarks) instead of
-  // silently showing today (P1.8).
-  validateSearch: (search: Record<string, unknown>): { date?: string } => {
+  // silently showing today (P1.8). ?staff=<uuid> lets office roles preview a
+  // technician's day read-only.
+  validateSearch: (search: Record<string, unknown>): { date?: string; staff?: string } => {
+    const out: { date?: string; staff?: string } = {};
     const raw = typeof search.date === "string" ? search.date : undefined;
-    return raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) && !Number.isNaN(new Date(raw).getTime())
-      ? { date: raw }
-      : {};
+    if (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) && !Number.isNaN(new Date(raw).getTime())) {
+      out.date = raw;
+    }
+    const s = typeof search.staff === "string" ? search.staff : undefined;
+    if (s && /^[0-9a-f-]{36}$/i.test(s)) out.staff = s;
+    return out;
   },
   component: MyDay,
 });
@@ -53,7 +59,8 @@ function todayISO() {
 }
 
 function MyDay() {
-  const { date: dateParam } = Route.useSearch();
+  const { date: dateParam, staff: staffParam } = Route.useSearch();
+  const navigate = Route.useNavigate();
   const [day, setDay] = useState(dateParam ?? todayISO());
   // Follow in-app navigations that change the search param (e.g. a
   // notification link clicked while already on My Day).
@@ -65,11 +72,25 @@ function MyDay() {
   const online = useOnline();
   const pending = usePendingCount();
   const { t } = useTranslation();
+  const { role } = useMyRole();
+  const isOfficeRole = role === "owner" || role === "office_manager" || role === "dispatcher";
 
   const { data, isLoading } = useQuery({
-    queryKey: ["my-day", day],
-    queryFn: () => fn({ data: { day } }),
+    queryKey: ["my-day", day, staffParam ?? ""],
+    queryFn: () => fn({ data: staffParam ? { day, staffId: staffParam } : { day } }),
   });
+  const previewing = !!data?.previewing;
+
+  // Office/dispatch users: fetch the field-staff list so we can show a picker.
+  const staffListFn = useServerFn(listMyDayFieldStaff);
+  const staffList = useQuery({
+    queryKey: ["my-day", "field-staff"],
+    queryFn: () => staffListFn(),
+    enabled: isOfficeRole,
+    staleTime: 60_000,
+  });
+  const fieldStaff = staffList.data?.staff ?? [];
+
 
   // Bind server-fn callers once for the sync driver.
   const startFn = useServerFn(startVisit);
