@@ -182,9 +182,9 @@ function TenantsPage() {
                     </TableCell>
                     <TableCell>
                       {r.stripe_subscription_id ? (
-                        <span className="text-xs text-emerald-600">Connected</span>
+                        <span className="text-xs text-emerald-600">Active</span>
                       ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-xs text-muted-foreground">None</span>
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
