@@ -157,23 +157,33 @@ function AuthPage() {
       // All three providers go through Supabase's native OAuth flow. This
       // project's auth is an external Supabase project — there is no
       // Lovable-managed OAuth broker on it, so the old cloud-auth wrapper
-      // clicked into nothing ("Google does nothing"). signInWithOAuth always
-      // navigates or returns a visible error, and the post-redirect landing
-      // (incl. new-org → /onboarding) is handled by the mount effect.
-      const { error: oauthErr } = await supabase.auth.signInWithOAuth({
+      // clicked into nothing ("Google does nothing"). We use
+      // skipBrowserRedirect so that if the provider isn't enabled in
+      // Supabase Auth, the "Unsupported provider" error surfaces as a
+      // toast inside the app instead of navigating the user to the bare
+      // Supabase API response.
+      const { data, error: oauthErr } = await supabase.auth.signInWithOAuth({
         provider,
-        options: { redirectTo: window.location.origin },
+        options: { redirectTo: window.location.origin, skipBrowserRedirect: true },
       });
       if (oauthErr) {
         setLoading(false);
-        return setError(oauthErr.message ?? `${label} sign-in failed`);
+        const msg = /unsupported|not enabled|provider is not/i.test(oauthErr.message ?? "")
+          ? `${label} sign-in isn't available yet — try email or Google.`
+          : (oauthErr.message ?? `${label} sign-in failed`);
+        return setError(msg);
       }
-      // Browser is redirecting to the provider.
+      if (!data?.url) {
+        setLoading(false);
+        return setError(`${label} sign-in isn't available yet — try email or Google.`);
+      }
+      window.location.assign(data.url);
     } catch (err) {
       setLoading(false);
       setError(err instanceof Error ? err.message : `${label} sign-in failed`);
     }
   };
+
 
   // Identifier-first (ERP-style rework): email first; if the account exists
   // we reveal the password step, otherwise we hand off to the Get-started
