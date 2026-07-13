@@ -39,7 +39,13 @@ function AddonsCatalog() {
   const [draft, setDraft] = useState({
     code: "",
     name: "",
-    unit_price_cents: 0,
+    // Keep the price as raw string state while the user is typing —
+    // the previous version rebuilt the input's value from
+    // `(unit_price_cents / 100).toFixed(2)` on every keystroke, which
+    // clobbered mid-entry input ("10.00" landed as "1.00" because the
+    // controlled value was re-forced to a formatted 2-decimal string
+    // before the user finished typing).
+    unit_price: "0.00",
     kind: "one_time" as "one_time" | "recurring",
     default_frequency: "" as string,
     description: "",
@@ -61,12 +67,16 @@ function AddonsCatalog() {
           onSubmit={(e) => {
             e.preventDefault();
             if (!draft.code || !draft.name) return;
+            const cents = Math.round(parseFloat(draft.unit_price || "0") * 100);
             upsertMut.mutate({
-              ...draft,
+              code: draft.code,
+              name: draft.name,
+              unit_price_cents: Number.isFinite(cents) ? cents : 0,
+              kind: draft.kind,
               default_frequency: draft.default_frequency || null,
               description: draft.description || null,
             });
-            setDraft({ code: "", name: "", unit_price_cents: 0, kind: "one_time", default_frequency: "", description: "" });
+            setDraft({ code: "", name: "", unit_price: "0.00", kind: "one_time", default_frequency: "", description: "" });
           }}
         >
           <div className="sm:col-span-2">
@@ -80,8 +90,8 @@ function AddonsCatalog() {
           <div className="sm:col-span-1">
             <Label>Price ($)</Label>
             <Input type="number" step="0.01" min="0"
-              value={(draft.unit_price_cents / 100).toFixed(2)}
-              onChange={(e) => setDraft({ ...draft, unit_price_cents: Math.round(parseFloat(e.target.value || "0") * 100) })} />
+              value={draft.unit_price}
+              onChange={(e) => setDraft({ ...draft, unit_price: e.target.value })} />
           </div>
           <div className="sm:col-span-2">
             <Label>Type</Label>

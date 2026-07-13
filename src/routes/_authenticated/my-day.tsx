@@ -26,8 +26,15 @@ import { PushToggle } from "@/components/PushToggle";
 // LanguageToggle moved to Settings → Preferences
 import { useTranslation } from "react-i18next";
 import { haptic } from "@/lib/haptics";
+import { useMyRole } from "@/hooks/useMyRole";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
+  // Accept ?date=YYYY-MM-DD so bookmarks and notification deep-links can
+  // open the correct day directly (previously ignored, always today).
+  validateSearch: (s: Record<string, unknown>) => {
+    const d = typeof s.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s.date) ? s.date : undefined;
+    return { date: d };
+  },
   component: MyDay,
 });
 
@@ -39,7 +46,8 @@ function todayISO() {
 }
 
 function MyDay() {
-  const [day, setDay] = useState(todayISO());
+  const search = Route.useSearch();
+  const [day, setDay] = useState(search.date ?? todayISO());
   const fn = useServerFn(getMyDay);
   const qc = useQueryClient();
   const online = useOnline();
@@ -303,6 +311,14 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
     return () => clearInterval(id);
   }, []);
   const secs = Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000));
+  // Cap the displayed elapsed time. A runaway start-timestamp (e.g. seeded
+  // data with a start in the distant past) otherwise renders "175h+"
+  // climbing live, which reads as broken. After 12 hours we just show
+  // "12h+" instead of a runaway number.
+  const TWELVE_HOURS = 12 * 60 * 60;
+  if (secs >= TWELVE_HOURS) {
+    return <span className="font-mono tabular-nums">12h+</span>;
+  }
   const m = Math.floor(secs / 60);
   const s = secs % 60;
   return (
@@ -311,6 +327,7 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
     </span>
   );
 }
+
 
 function PhotoThumb({ path }: { path: string }) {
   const [url, setUrl] = useState<string | null>(null);
@@ -373,8 +390,13 @@ function mapsUrl(p: any): string {
 function VisitCard({ visit, index, day }: { visit: any; index: number; day: string }) {
   const qc = useQueryClient();
   const smsFn = useServerFn(sendVisitStatusSms);
+  const { role } = useMyRole();
+  // Dispatcher schedules/routes but never performs field work — start/complete
+  // is silently rejected server-side, which made those buttons look broken.
+  const canPerformVisit = role !== "dispatcher";
 
   const actions = useOfflineVisitActions(visit.id, visit.organization_id as string | undefined);
+
 
   const [showSkip, setShowSkip] = useState(false);
   const [showAddon, setShowAddon] = useState(false);
@@ -658,19 +680,25 @@ function VisitCard({ visit, index, day }: { visit: any; index: number; day: stri
 
           <div className="flex flex-wrap gap-2">
             {scheduled && (
-              <Button size="sm" onClick={() => start.mutate()} disabled={start.isPending}>
+              <Button
+                size="sm"
+                onClick={() => canPerformVisit ? start.mutate() : toast.error("You're not authorized to start visits — dispatchers can schedule, but field staff must start the visit.")}
+                disabled={start.isPending || !canPerformVisit}
+                title={canPerformVisit ? "" : "Only field staff (owner, office manager, or tech) can start a visit"}
+              >
                 Start
               </Button>
             )}
             <Button
               size="sm"
               variant="default"
-              disabled={(!hasCompletionPhoto && !hasQueuedCompletionPhoto) || complete.isPending || (!inProg && !scheduled)}
-              onClick={() => complete.mutate()}
-              title={hasCompletionPhoto || hasQueuedCompletionPhoto ? "" : "Add a completion photo first"}
+              disabled={!canPerformVisit || (!hasCompletionPhoto && !hasQueuedCompletionPhoto) || complete.isPending || (!inProg && !scheduled)}
+              onClick={() => canPerformVisit ? complete.mutate() : toast.error("You're not authorized to complete visits — dispatchers can schedule, but field staff must complete the visit.")}
+              title={!canPerformVisit ? "Only field staff (owner, office manager, or tech) can complete a visit" : (hasCompletionPhoto || hasQueuedCompletionPhoto ? "" : "Add a completion photo first")}
             >
               Complete
             </Button>
+
             <Button size="sm" variant="ghost" onClick={() => setShowSkip((s) => !s)}>
               Skip
             </Button>

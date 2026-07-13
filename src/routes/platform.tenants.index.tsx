@@ -124,9 +124,9 @@ function TenantsPage() {
                 <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                   <span>
                     {r.stripe_subscription_id ? (
-                      <span className="text-emerald-600">Stripe connected</span>
+                      <span className="text-emerald-600">Active subscription</span>
                     ) : (
-                      <span>No Stripe</span>
+                      <span>No active subscription</span>
                     )}
                   </span>
                   <span>Last: {formatWhen(r.last_activity_at)}</span>
@@ -150,7 +150,7 @@ function TenantsPage() {
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Clients</TableHead>
                   <TableHead className="text-right">Users</TableHead>
-                  <TableHead>Stripe</TableHead>
+                  <TableHead>Subscription</TableHead>
                   <TableHead>Last payment</TableHead>
                 </TableRow>
               </TableHeader>
@@ -182,9 +182,9 @@ function TenantsPage() {
                     </TableCell>
                     <TableCell>
                       {r.stripe_subscription_id ? (
-                        <span className="text-xs text-emerald-600">Connected</span>
+                        <span className="text-xs text-emerald-600">Active</span>
                       ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-xs text-muted-foreground">None</span>
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">

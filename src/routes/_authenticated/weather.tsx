@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { useMyRole } from "@/hooks/useMyRole";
 
 export const Route = createFileRoute("/_authenticated/weather")({
   component: WeatherPage,
@@ -307,6 +308,13 @@ function AutoRebalance({ fromDate, toDate }: { fromDate: string; toDate: string 
   const undoFn = useServerFn(undoReschedule);
   const qc = useQueryClient();
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof fn>> | null>(null);
+  const { role } = useMyRole();
+  // Rescheduling visits changes schedules across an org — dispatcher can
+  // reschedule individual visits but the bulk weather rebalance is an
+  // owner/office-manager operation. Server-side authorization silently
+  // rejected the click for other roles, which read as a broken button.
+  const canRebalance = role === "owner" || role === "office_manager";
+
 
   const dry = useMutation({
     mutationFn: () => fn({ data: { fromDate, toDate, dryRun: true, dailyCap: 60 } }),
@@ -353,7 +361,12 @@ function AutoRebalance({ fromDate, toDate }: { fromDate: string; toDate: string 
 
   return (
     <div className="ml-auto flex items-center gap-2">
-      <Button variant="outline" onClick={() => dry.mutate()} disabled={dry.isPending}>
+      <Button
+        variant="outline"
+        onClick={() => canRebalance ? dry.mutate() : toast.error("You're not authorized to auto-rebalance — ask an owner or office manager.")}
+        disabled={dry.isPending || !canRebalance}
+        title={canRebalance ? "" : "Only owners and office managers can auto-rebalance the weather forecast"}
+      >
         {dry.isPending ? "Previewing…" : "Preview auto-rebalance"}
       </Button>
       {preview && preview.summary.length > 0 && (

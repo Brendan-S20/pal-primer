@@ -70,6 +70,9 @@ function NewClientWizard() {
   const quoteFn = useServerFn(getInternalQuote);
 
   const [step, setStep] = useState(0);
+  // Turn on inline "required" messages after the user tries to advance —
+  // showing red text on first render would be too noisy.
+  const [attempted, setAttempted] = useState(false);
 
   // contact
   const [displayName, setDisplayName] = useState("");
@@ -335,23 +338,60 @@ function NewClientWizard() {
         {/* STEP 1 — Property */}
         {step === 1 && (
           <div className="space-y-5">
+            {attempted && !(street && city && region && postalCode) && (
+              <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                Please fill in Street, City, State, and ZIP to continue.
+              </div>
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="sm:col-span-2 space-y-2">
                 <Label htmlFor="st">Street address</Label>
-                <Input id="st" required value={street} onChange={(e) => setStreet(e.target.value)} />
+                <Input
+                  id="st"
+                  required
+                  value={street}
+                  onChange={(e) => setStreet(e.target.value)}
+                  aria-invalid={attempted && !street ? true : undefined}
+                  className={attempted && !street ? "border-destructive focus-visible:ring-destructive" : undefined}
+                />
+                {attempted && !street && <p className="text-xs text-destructive">Street address is required.</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ci">City</Label>
-                <Input id="ci" required value={city} onChange={(e) => setCity(e.target.value)} />
+                <Input
+                  id="ci"
+                  required
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  aria-invalid={attempted && !city ? true : undefined}
+                  className={attempted && !city ? "border-destructive focus-visible:ring-destructive" : undefined}
+                />
+                {attempted && !city && <p className="text-xs text-destructive">City is required.</p>}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="rg">State/Region</Label>
-                  <Input id="rg" required value={region} onChange={(e) => setRegion(e.target.value)} />
+                  <Input
+                    id="rg"
+                    required
+                    value={region}
+                    onChange={(e) => setRegion(e.target.value)}
+                    aria-invalid={attempted && !region ? true : undefined}
+                    className={attempted && !region ? "border-destructive focus-visible:ring-destructive" : undefined}
+                  />
+                  {attempted && !region && <p className="text-xs text-destructive">Required.</p>}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="pc">ZIP / Postal</Label>
-                  <Input id="pc" required value={postalCode} onChange={(e) => setPostalCode(e.target.value)} />
+                  <Input
+                    id="pc"
+                    required
+                    value={postalCode}
+                    onChange={(e) => setPostalCode(e.target.value)}
+                    aria-invalid={attempted && !postalCode ? true : undefined}
+                    className={attempted && !postalCode ? "border-destructive focus-visible:ring-destructive" : undefined}
+                  />
+                  {attempted && !postalCode && <p className="text-xs text-destructive">Required.</p>}
                 </div>
               </div>
               <div className="space-y-2">
@@ -672,7 +712,17 @@ function NewClientWizard() {
             {step === 0 ? "Cancel" : "Back"}
           </Button>
           {step < STEPS.length - 1 ? (
-            <Button type="button" disabled={!canNext} onClick={() => setStep(step + 1)}>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!canNext) {
+                  setAttempted(true);
+                  return;
+                }
+                setAttempted(false);
+                setStep(step + 1);
+              }}
+            >
               Continue
             </Button>
           ) : (
