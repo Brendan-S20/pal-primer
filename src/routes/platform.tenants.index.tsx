@@ -150,7 +150,7 @@ function TenantsPage() {
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Clients</TableHead>
                   <TableHead className="text-right">Users</TableHead>
-                  <TableHead>Stripe</TableHead>
+                  <TableHead>Subscription</TableHead>
                   <TableHead>Last payment</TableHead>
                 </TableRow>
               </TableHeader>
