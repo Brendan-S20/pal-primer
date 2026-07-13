@@ -26,6 +26,7 @@ import { PushToggle } from "@/components/PushToggle";
 // LanguageToggle moved to Settings → Preferences
 import { useTranslation } from "react-i18next";
 import { haptic } from "@/lib/haptics";
+import { useMyRole } from "@/hooks/useMyRole";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   component: MyDay,
