@@ -82,10 +82,7 @@ export function RouteMap({
       zoom: 4,
       scrollWheelZoom: true,
     });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenStreetMap",
-      maxZoom: 19,
-    }).addTo(map);
+    addBaseTiles(map);
     mapRef.current = map;
     layerRef.current = L.layerGroup().addTo(map);
   }, []);

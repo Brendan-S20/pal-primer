@@ -3,6 +3,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { DRIVE_M_PER_MIN } from "@/components/ZoneCoverageMap";
 import type { PolygonGeoJSON } from "@/components/BoundarySketch";
+import { addBaseTiles } from "@/lib/map-tiles";
 
 // For a geography-based product, the Zones page was plain text cards (P2).
 // This draws every zone's coverage on one map — polygon if sketched, radius
@@ -48,10 +49,7 @@ export function ZonesOverviewMap({ zones, height = 340 }: { zones: OverviewZone[
       zoom: 4,
       scrollWheelZoom: false,
     });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenStreetMap",
-      maxZoom: 19,
-    }).addTo(map);
+    addBaseTiles(map);
     mapRef.current = map;
     layerRef.current = L.layerGroup().addTo(map);
   }, []);
