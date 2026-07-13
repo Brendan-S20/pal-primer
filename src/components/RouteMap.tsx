@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { addBaseTiles } from "@/lib/map-tiles";
 
 // Fix Leaflet default icon paths (they break under bundlers).
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -82,10 +83,7 @@ export function RouteMap({
       zoom: 4,
       scrollWheelZoom: true,
     });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenStreetMap",
-      maxZoom: 19,
-    }).addTo(map);
+    addBaseTiles(map);
     mapRef.current = map;
     layerRef.current = L.layerGroup().addTo(map);
   }, []);

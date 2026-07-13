@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { addBaseTiles } from "@/lib/map-tiles";
 
 export type NeighborPin = {
   id: string;
@@ -56,10 +57,7 @@ export function NeighborMap({
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = L.map(containerRef.current, { zoomControl: true }).setView([39.5, -98.35], 4);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenStreetMap contributors",
-      maxZoom: 19,
-    }).addTo(map);
+    addBaseTiles(map);
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
     return () => {

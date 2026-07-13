@@ -12,6 +12,7 @@ import { SuspensionBanner } from "@/components/SuspensionBanner";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Search } from "lucide-react";
+import { useBrandAccent } from "@/hooks/useBrandAccent";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -68,9 +69,26 @@ function AppShell() {
   const isMac =
     typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
+  const brand = useBrandAccent();
+  // Scope the tenant brand color to the internal staff app only. Platform-admin
+  // routes and the sign-in page live outside this shell and stay HoundStack-branded.
+  const brandStyle = brand
+    ? ({
+        // Primary buttons pick up the tenant brand.
+        "--primary": brand.hex,
+        "--primary-foreground": brand.fg,
+        // Sidebar active-nav highlight — soft brand tint with brand-colored text.
+        "--sidebar-accent": brand.soft,
+        "--sidebar-accent-foreground": brand.hex,
+        // Available for the sidebar logo mark and any future accent spot.
+        "--brand-accent": brand.hex,
+        "--brand-accent-foreground": brand.fg,
+      } as React.CSSProperties)
+    : undefined;
+
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-background">
+      <div className="flex min-h-screen w-full bg-background" style={brandStyle}>
         <AppSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-card/80 px-4 backdrop-blur">

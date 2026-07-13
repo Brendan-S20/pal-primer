@@ -4,6 +4,7 @@ import "leaflet/dist/leaflet.css";
 import { Button } from "@/components/ui/button";
 import { Undo2, Trash2, Save, MousePointer2, Pencil, Circle as CircleIcon, Clock } from "lucide-react";
 import type { PolygonGeoJSON } from "@/components/BoundarySketch";
+import { addBaseTiles } from "@/lib/map-tiles";
 
 export type CoverageMode = "polygon" | "radius" | "drive_time";
 
@@ -72,7 +73,7 @@ export function ZoneCoverageMap({
           ? [pointsRef.current[0].lat, pointsRef.current[0].lng]
           : [39.5, -98.35];
     const map = L.map(containerRef.current, { center: start, zoom: centerRef.current || pointsRef.current[0] ? 12 : 4, maxZoom: 19, scrollWheelZoom: true });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap", maxZoom: 19 }).addTo(map);
+    addBaseTiles(map);
     mapRef.current = map;
     drawLayer.current = L.layerGroup().addTo(map);
 

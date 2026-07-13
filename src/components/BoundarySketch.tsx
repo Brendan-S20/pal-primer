@@ -3,6 +3,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Button } from "@/components/ui/button";
 import { Undo2, Trash2, Save, MousePointer2, Pencil } from "lucide-react";
+import { addBaseTiles } from "@/lib/map-tiles";
 
 export type PolygonGeoJSON = {
   type: "Polygon";
@@ -65,16 +66,9 @@ export function BoundarySketch({
       maxZoom: 22,
       scrollWheelZoom: true,
     });
-    // Esri World Imagery (satellite) — no key required
-    L.tileLayer(
-      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-      { attribution: "Imagery © Esri", maxZoom: 22, maxNativeZoom: 19 },
-    ).addTo(map);
-    // Roads overlay (labels)
-    L.tileLayer(
-      "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-      { maxZoom: 22, maxNativeZoom: 19, opacity: 0.85 },
-    ).addTo(map);
+    // Yard sketching genuinely benefits from photographic imagery — use the
+    // satellite variant of the shared tile helper (labels overlay included).
+    addBaseTiles(map, "satellite");
     mapRef.current = map;
     layerRef.current = L.layerGroup().addTo(map);
 
