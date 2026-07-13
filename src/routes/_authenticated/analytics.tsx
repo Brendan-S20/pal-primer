@@ -128,7 +128,7 @@ function CohortTab() {
                     const bg = p > 0 ? `rgba(34,197,94,${Math.min(0.85, 0.15 + p * 0.7).toFixed(2)})` : "transparent";
                     return (
                       <td key={i} className="p-2 text-center" style={{ background: bg }}>
-                        {r > 0 ? pct(r, entry.size) : "·"}
+                        {r > 0 ? pct(r, entry.size) : "—"}
                       </td>
                     );
                   })}
