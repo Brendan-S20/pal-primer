@@ -304,6 +304,14 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
     return () => clearInterval(id);
   }, []);
   const secs = Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000));
+  // Cap the displayed elapsed time. A runaway start-timestamp (e.g. seeded
+  // data with a start in the distant past) otherwise renders "175h+"
+  // climbing live, which reads as broken. After 12 hours we just show
+  // "12h+" instead of a runaway number.
+  const TWELVE_HOURS = 12 * 60 * 60;
+  if (secs >= TWELVE_HOURS) {
+    return <span className="font-mono tabular-nums">12h+</span>;
+  }
   const m = Math.floor(secs / 60);
   const s = secs % 60;
   return (
@@ -312,6 +320,7 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
     </span>
   );
 }
+
 
 function PhotoThumb({ path }: { path: string }) {
   const [url, setUrl] = useState<string | null>(null);
