@@ -373,8 +373,13 @@ function mapsUrl(p: any): string {
 function VisitCard({ visit, index, day }: { visit: any; index: number; day: string }) {
   const qc = useQueryClient();
   const smsFn = useServerFn(sendVisitStatusSms);
+  const { role } = useMyRole();
+  // Dispatcher schedules/routes but never performs field work — start/complete
+  // is silently rejected server-side, which made those buttons look broken.
+  const canPerformVisit = role !== "dispatcher";
 
   const actions = useOfflineVisitActions(visit.id, visit.organization_id as string | undefined);
+
 
   const [showSkip, setShowSkip] = useState(false);
   const [showAddon, setShowAddon] = useState(false);
