@@ -4,7 +4,13 @@
 
 function csvEscape(v: unknown): string {
   if (v == null) return "";
-  const s = String(v);
+  let s = String(v);
+  // Formula-injection guard: a client name like `=HYPERLINK(...)` (which can
+  // arrive via the public lead form) must not execute when the export opens
+  // in Excel/Sheets. Prefixing ' makes spreadsheet apps treat it as text.
+  if (/^[=+@\t\r]/.test(s) || (s.startsWith("-") && s.length > 1)) {
+    s = `'${s}`;
+  }
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

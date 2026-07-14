@@ -318,7 +318,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
     body: [
       "Add-ons are optional extras for your HoundStack plan, billed on the same subscription invoice. They live at the bottom of [Billing](/settings/billing).",
       "The **AI Receptionist** answers client texts for you day and night: FAQs, scheduling questions, and escalations to your team when a human is needed. Add it from Billing, then configure its persona and knowledge in [AI receptionist settings](/settings/ai-receptionist).",
-      "Adding or removing an add-on adjusts your next invoice automatically (prorated). Note: these are different from your own [client-facing add-on services](article:add-ons).",
+      "Also available: **Managed texting** (skip the Twilio setup), **white-label portal link** and **white-label emails** (your own domain on the client-facing surfaces), **priority support**, and a one-time **done-for-you setup** where we configure the whole platform with you.",
+      "Adding or removing a monthly add-on adjusts your next invoice automatically (prorated); one-time services land on your next invoice once. Note: these are different from your own [client-facing add-on services](article:add-ons).",
     ],
     appLink: { to: "/settings/billing", label: "Open Billing" },
     related: ["payments-vs-billing", "ai-tools", "add-ons"],

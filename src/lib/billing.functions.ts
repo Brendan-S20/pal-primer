@@ -427,5 +427,12 @@ export const refreshBillingStatus = createServerFn({ method: "POST" })
       plan_status: "canceled",
       stripe_subscription_id: null,
     }).eq("id", orgId);
+    // Bolt-on add-ons die with the subscription (see platform-addons.server).
+    try {
+      const { deactivateOrgPlatformAddons } = await import("@/lib/platform-addons.server");
+      await deactivateOrgPlatformAddons(orgId);
+    } catch (e) {
+      console.error("addon deactivation during refreshBillingStatus failed", (e as Error).message);
+    }
     return { billingStatus: "canceled" as const };
   });

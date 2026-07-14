@@ -170,6 +170,12 @@ export const actOnReferral = createServerFn({ method: "POST" })
     if (data.action === "mark_paid") {
       if (before.status !== "converted")
         throw new Error("Only converted referrals can be marked paid");
+      // Enforce payout gates server-side, not just via the disabled button:
+      // flags must be cleared and the holding window elapsed first.
+      if (before.flagged) throw new Error("This referral is flagged for review. Clear the flag first.");
+      if (!before.eligible_at || new Date(before.eligible_at) > new Date()) {
+        throw new Error("The holding period hasn't elapsed yet.");
+      }
       patch = { status: "paid", paid_at: nowIso, paid_note: data.note ?? null, updated_at: nowIso };
     } else if (data.action === "reject") {
       if (before.status === "paid") throw new Error("Already paid; can't reject");
@@ -182,11 +188,18 @@ export const actOnReferral = createServerFn({ method: "POST" })
       patch = { flagged: false, flag_reason: null, updated_at: nowIso };
     }
 
-    const { error } = await supabaseAdmin
+    // Optimistic concurrency: only apply if the row is still in the state we
+    // decided on, so two admins acting at once can't pay-then-reject.
+    const { data: updated, error } = await supabaseAdmin
       .from("tenant_referrals")
       .update(patch)
-      .eq("id", data.referralId);
+      .eq("id", data.referralId)
+      .eq("status", before.status)
+      .select("id");
     if (error) throw new Error(error.message);
+    if (!updated?.length) {
+      throw new Error("This referral changed while you were looking at it. Refresh and retry.");
+    }
     await audit(
       supabaseAdmin,
       context.userId,

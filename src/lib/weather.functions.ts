@@ -96,6 +96,15 @@ function humanizeWeatherError(e: unknown): string {
   return "Couldn't load the forecast (weather service error). Try again shortly.";
 }
 
+// The payload column is jsonb; never trust its shape blindly (a malformed row
+// would crash .map() for every org sharing the coordinates).
+function validForecast(payload: unknown): DayForecast[] | null {
+  if (!Array.isArray(payload)) return null;
+  return payload.every((d) => d && typeof d === "object" && typeof (d as any).date === "string")
+    ? (payload as DayForecast[])
+    : null;
+}
+
 async function cachedForecast(
   supabase: any,
   lat: number,
@@ -114,13 +123,17 @@ async function cachedForecast(
     .eq("to_date", to)
     .maybeSingle();
 
-  if (row && Date.now() - new Date(row.fetched_at).getTime() < CACHE_FRESH_MS) {
-    return { forecast: row.payload as DayForecast[], stale: false };
+  const cached = row ? validForecast(row.payload) : null;
+  if (cached && Date.now() - new Date(row.fetched_at).getTime() < CACHE_FRESH_MS) {
+    return { forecast: cached, stale: false };
   }
 
   try {
     const forecast = await fetchForecast(lat, lon, from, to);
-    await supabase.from("weather_forecast_cache").upsert(
+    // Cache writes are service-role only (browser-facing roles can read the
+    // shared cache but never write it — QA: cross-tenant poisoning vector).
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error: writeErr } = await (supabaseAdmin as any).from("weather_forecast_cache").upsert(
       {
         lat_key: latKey,
         lon_key: lonKey,
@@ -131,11 +144,22 @@ async function cachedForecast(
       },
       { onConflict: "lat_key,lon_key,from_date,to_date" },
     );
+    if (writeErr) {
+      // A silently dead cache would quietly reintroduce the 429s.
+      console.error("weather cache write failed", writeErr.message);
+    } else {
+      // Opportunistic eviction: date-ranged keys accrete forever otherwise.
+      void (supabaseAdmin as any)
+        .from("weather_forecast_cache")
+        .delete()
+        .lt("fetched_at", new Date(Date.now() - 14 * 86400_000).toISOString())
+        .then(() => {});
+    }
     return { forecast, stale: false };
   } catch (e) {
-    if (row) {
+    if (cached) {
       // Serve yesterday's forecast over no forecast at all.
-      return { forecast: row.payload as DayForecast[], stale: true };
+      return { forecast: cached, stale: true };
     }
     throw new Error(humanizeWeatherError(e));
   }
