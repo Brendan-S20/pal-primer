@@ -45,7 +45,7 @@ function LeadFormSettings() {
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : !slug ? (
         <div className="rounded-lg border bg-card p-4 text-sm">
-          Set your portal address first (Settings → Client portal branding) — the lead form uses the
+          Set your portal address first (Settings → Client portal branding). The lead form uses the
           same short web address.
         </div>
       ) : (
@@ -170,7 +170,7 @@ function LeadFormCustomizer({ config }: { config: any }) {
       </div>
       <div>
         <Label className="text-xs">Confirmation message</Label>
-        <Input value={confirmation} onChange={(e) => setConfirmation(e.target.value)} placeholder="Thanks — we got your request!" />
+        <Input value={confirmation} onChange={(e) => setConfirmation(e.target.value)} placeholder="Thanks, we got your request!" />
       </div>
 
       <div>

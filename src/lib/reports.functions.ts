@@ -141,14 +141,14 @@ export const getReports = createServerFn({ method: "POST" })
       perTech: Object.entries(perTech)
         .map(([id, s]) => ({
           id,
-          name: id === "unassigned" ? "Unassigned" : (staffName.get(id) ?? "—"),
+          name: id === "unassigned" ? "Unassigned" : (staffName.get(id) ?? "-"),
           ...s,
         }))
         .sort((a, b) => b.completed - a.completed),
       perZone: Object.entries(perZone)
         .map(([id, s]) => ({
           id,
-          name: id === "no_zone" ? "No zone" : (zoneName.get(id) ?? "—"),
+          name: id === "no_zone" ? "No zone" : (zoneName.get(id) ?? "-"),
           ...s,
         }))
         .sort((a, b) => b.total - a.total),
@@ -157,7 +157,7 @@ export const getReports = createServerFn({ method: "POST" })
         .sort((a, b) => b.count - a.count),
       topClients: topClientIds.map((id) => ({
         id,
-        name: clientName.get(id) ?? "—",
+        name: clientName.get(id) ?? "-",
         revenueCents: perClient[id],
       })),
       newClients: newClients ?? 0,

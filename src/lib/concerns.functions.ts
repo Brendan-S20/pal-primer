@@ -81,8 +81,8 @@ export const replyToConcern = createServerFn({ method: "POST" })
         from: `${orgName} <noreply@notify.houndstack.com>`,
         to: [email],
         subject: `Re: your message to ${orgName}`,
-        html: `<p>Hi ${client?.display_name ?? "there"},</p><p>${data.message.replace(/\n/g, "<br>")}</p><p>— ${orgName}</p>`,
-        text: `Hi ${client?.display_name ?? "there"},\n\n${data.message}\n\n— ${orgName}`,
+        html: `<p>Hi ${client?.display_name ?? "there"},</p><p>${data.message.replace(/\n/g, "<br>")}</p><p>- ${orgName}</p>`,
+        text: `Hi ${client?.display_name ?? "there"},\n\n${data.message}\n\n- ${orgName}`,
       }),
     });
     if (!res.ok) {

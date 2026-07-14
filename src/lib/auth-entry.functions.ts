@@ -18,7 +18,7 @@ export const checkEmailAccount = createServerFn({ method: "POST" })
     const { data: exists, error } = await (supabaseAdmin as any).rpc("email_has_account", {
       _email: data.email,
     });
-    if (error) throw new Error("Couldn't check that email — try again.");
+    if (error) throw new Error("Couldn't check that email. Try again.");
     return { exists: !!exists };
   });
 
@@ -51,7 +51,7 @@ export const registerAccount = createServerFn({ method: "POST" })
     });
     if (error) {
       if (/already/i.test(error.message)) {
-        throw new Error("That email already has an account — sign in instead.");
+        throw new Error("That email already has an account. Sign in instead.");
       }
       throw new Error(error.message);
     }
@@ -112,7 +112,7 @@ export const sendEmailVerification = createServerFn({ method: "POST" })
         queued_at: new Date().toISOString(),
       },
     });
-    if (qErr) throw new Error("Couldn't queue the verification email — try again.");
+    if (qErr) throw new Error("Couldn't queue the verification email. Try again.");
     return { ok: true };
   });
 

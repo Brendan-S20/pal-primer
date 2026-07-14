@@ -49,7 +49,7 @@ export async function requireOrgStripeAccount(orgId: string): Promise<OrgStripeA
     throw new Error("This business hasn't connected a Stripe account yet. Connect one in Settings → Payments.");
   }
   if (!acct.chargesEnabled) {
-    throw new Error("The connected Stripe account can't accept charges yet — finish Stripe onboarding in Settings → Payments.");
+    throw new Error("The connected Stripe account can't accept charges yet. Finish Stripe onboarding in Settings → Payments.");
   }
   return acct;
 }

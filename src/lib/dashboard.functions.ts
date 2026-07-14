@@ -100,7 +100,7 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
       .slice(0, 5)
       .map((r: any) => ({
         id: r.id,
-        clientName: r.clients?.display_name ?? "—",
+        clientName: r.clients?.display_name ?? "-",
         totalCents: r.total_cents ?? 0,
         issuedAt: r.issued_at,
       }));
@@ -128,7 +128,7 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
         category: r.category,
         message: r.message,
         createdAt: r.created_at,
-        clientName: r.clients?.display_name ?? "—",
+        clientName: r.clients?.display_name ?? "-",
         visitId: r.visit_id,
       })),
     };

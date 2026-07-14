@@ -39,7 +39,7 @@ export function ImpersonationBanner() {
     >
       <ShieldAlert className="h-4 w-4 shrink-0" />
       <span>
-        Viewing as <strong>{info.email}</strong> ({info.orgName}) — platform-admin impersonation
+        Viewing as <strong>{info.email}</strong> ({info.orgName}), platform-admin impersonation
       </span>
       <button
         onClick={exit}

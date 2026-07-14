@@ -167,7 +167,7 @@ function CouponsPage() {
                       {c.times_redeemed}{c.max_redemptions ? ` / ${c.max_redemptions}` : ""}
                     </TableCell>
                     <TableCell className="text-sm">
-                      {c.expires_at ? new Date(c.expires_at).toLocaleDateString() : "—"}
+                      {c.expires_at ? new Date(c.expires_at).toLocaleDateString() : "-"}
                     </TableCell>
                     <TableCell>
                       {c.stripe_coupon_id ? <Badge variant="outline">Mirrored</Badge> : <Badge variant="secondary">Local</Badge>}

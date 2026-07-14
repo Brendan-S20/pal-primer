@@ -299,7 +299,7 @@ export function usePortal(token: string, slug?: string) {
     mutationFn: (v: { visitId: string | null; category: any; message: string }) =>
       concernFn({ data: { token, ...v } }),
     onSuccess: () => {
-      toast.success("Thanks — we'll follow up shortly.");
+      toast.success("Thanks, we'll follow up shortly.");
       invalidatePortal();
     },
     onError: (e) => toast.error((e as Error).message),
@@ -1028,7 +1028,7 @@ function VisitRow({
             size="sm"
             variant="outline"
             disabled={pastCutoff}
-            title={pastCutoff ? "Past the change cutoff — text the office" : undefined}
+            title={pastCutoff ? "Past the change cutoff. Text the office" : undefined}
             onClick={() => {
               setSkipOpen((o) => !o);
               setReschedOpen(false);
@@ -1276,7 +1276,7 @@ export function StationsPanel({ rows }: { rows: Array<any> }) {
             </div>
             <div className="text-xs text-muted-foreground text-right">
               {s.capacity_liners && <div>Capacity: {s.capacity_liners} liners</div>}
-              <div>Last serviced: {s.last_serviced_on ? fmtDayShort(s.last_serviced_on) : "—"}</div>
+              <div>Last serviced: {s.last_serviced_on ? fmtDayShort(s.last_serviced_on) : "-"}</div>
             </div>
           </div>
         </li>
@@ -1529,7 +1529,7 @@ export function ServiceHistorySection({
                     ) : (
                       <span className="inline-flex items-center gap-1 text-amber-700">
                         <X className="h-3 w-3" /> Skipped
-                        {r.skip_reason && <> — {r.skip_reason}</>}
+                        {r.skip_reason && <>: {r.skip_reason}</>}
                       </span>
                     )}
                   </div>
@@ -1790,8 +1790,8 @@ export function ReferralCard({
   isCommercial: boolean;
 }) {
   const shareText = isCommercial
-    ? `We use ${orgName} at our property for pet waste service — use code ${code} and we both get credit.`
-    : `I use ${orgName} for pet waste removal — use code ${code} and we both save on your first month.`;
+    ? `We use ${orgName} at our property for pet waste service. Use code ${code} and we both get credit.`
+    : `I use ${orgName} for pet waste removal. Use code ${code} and we both save on your first month.`;
   const [copied, setCopied] = useState(false);
   const share = async () => {
     if (typeof navigator !== "undefined" && (navigator as any).share) {

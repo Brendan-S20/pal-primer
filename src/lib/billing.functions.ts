@@ -374,7 +374,7 @@ export const createBillingPortal = createServerFn({ method: "POST" })
     const customerId = s.stripeCustomerId;
     const looksReal = customerId && /^cus_[A-Za-z0-9]{6,}$/.test(customerId) && !customerId.includes("demo");
     if (!looksReal) {
-      throw new Error("No active subscription yet — start a subscription first.");
+      throw new Error("No active subscription yet. Start a subscription first.");
     }
     const secret = process.env.STRIPE_SECRET_KEY;
     if (!secret) throw new Error("Billing is not configured.");

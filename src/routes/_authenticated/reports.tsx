@@ -84,7 +84,7 @@ function ReportsPage() {
         <Metric label="Completed visits" value={String(data.visitCounts.completed ?? 0)} />
         <Metric
           label="Completion rate"
-          value={data.completionRate == null ? "—" : `${Math.round(data.completionRate * 100)}%`}
+          value={data.completionRate == null ? "-" : `${Math.round(data.completionRate * 100)}%`}
         />
         <Metric label="Skipped visits" value={String(data.visitCounts.skipped ?? 0)} />
         <Metric label="Scheduled ahead" value={String(data.visitCounts.scheduled ?? 0)} />
@@ -103,12 +103,12 @@ function ReportsPage() {
                     value→color idea (P2). */}
                 <Row label="Current" value={fmtMoney(data.aging.current)} />
                 <Row
-                  label="1–30 days"
+                  label="1-30 days"
                   value={fmtMoney(data.aging.d30)}
                   valueClass={data.aging.d30 > 0 ? "text-amber-600 dark:text-amber-400" : undefined}
                 />
                 <Row
-                  label="31–60 days"
+                  label="31-60 days"
                   value={fmtMoney(data.aging.d60)}
                   valueClass={data.aging.d60 > 0 ? "text-orange-600 dark:text-orange-400" : undefined}
                 />

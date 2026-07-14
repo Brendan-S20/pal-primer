@@ -87,13 +87,13 @@ function InvoicesPage() {
               <TableBody>
                 {(q.data?.rows ?? []).map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="font-mono text-xs">{r.number ?? r.stripe_invoice_id?.slice(0, 12) ?? "—"}</TableCell>
+                    <TableCell className="font-mono text-xs">{r.number ?? r.stripe_invoice_id?.slice(0, 12) ?? "-"}</TableCell>
                     <TableCell>
                       {r.organization_id ? (
                         <Link to="/platform/tenants/$id" params={{ id: r.organization_id }} className="text-primary hover:underline">
                           {r.organization_name ?? r.organization_id.slice(0, 8)}
                         </Link>
-                      ) : "—"}
+                      ) : "-"}
                     </TableCell>
                     <TableCell>
                       <div>{fmt(r.amount_due_cents, r.currency)}</div>
@@ -102,8 +102,8 @@ function InvoicesPage() {
                       ) : null}
                     </TableCell>
                     <TableCell>{statusBadge(r.status)}</TableCell>
-                    <TableCell className="text-sm">{r.issued_at ? new Date(r.issued_at).toLocaleDateString() : "—"}</TableCell>
-                    <TableCell className="text-sm">{r.paid_at ? new Date(r.paid_at).toLocaleDateString() : "—"}</TableCell>
+                    <TableCell className="text-sm">{r.issued_at ? new Date(r.issued_at).toLocaleDateString() : "-"}</TableCell>
+                    <TableCell className="text-sm">{r.paid_at ? new Date(r.paid_at).toLocaleDateString() : "-"}</TableCell>
                     <TableCell className="text-right">
                       {r.hosted_invoice_url ? (
                         <Button variant="outline" size="sm" asChild><a href={r.hosted_invoice_url} target="_blank" rel="noreferrer">View</a></Button>

@@ -23,7 +23,7 @@ export const Route = createFileRoute("/platform/tenants/")({
 });
 
 function formatWhen(iso: string | null): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 3600 * 1000));
   if (days === 0) return "today";
   if (days === 1) return "1d ago";
@@ -155,7 +155,7 @@ function TenantsPage() {
                       </Link>
                     </TableCell>
                     <TableCell>
-                      {r.plan_name ?? <span className="text-muted-foreground">—</span>}
+                      {r.plan_name ?? <span className="text-muted-foreground">-</span>}
                     </TableCell>
                     <TableCell>
                       <TenantStatusBadge status={r.billing_status} />

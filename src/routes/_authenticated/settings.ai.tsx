@@ -39,7 +39,7 @@ function AiSettings() {
   const testMut = useMutation({
     mutationFn: () => testFn(),
     onSuccess: (r: any) => {
-      if (r?.ok) toast.success(`Key works — ${r.provider} · ${r.model}`);
+      if (r?.ok) toast.success(`Key works: ${r.provider} · ${r.model}`);
       else toast.error(r?.error ?? "Key check failed");
     },
     onError: (e) => toast.error((e as Error).message),
@@ -54,7 +54,7 @@ function AiSettings() {
         <p className="text-sm text-muted-foreground">
           The AI features (marketing content, review replies, churn scoring, AI dispatch, and zone
           pricing) run on your own provider key. Bring an <strong>Anthropic</strong> or
-          <strong> OpenAI</strong> API key — you're billed by them directly.
+          <strong> OpenAI</strong> API key. You're billed by them directly.
         </p>
       </div>
 
@@ -84,7 +84,7 @@ function AiSettings() {
                 Using the platform's default AI key. Add your own below to use your provider and billing.
               </p>
             ) : (
-              <p className="text-amber-700">No AI key configured yet — the AI Tools won't run until you add one.</p>
+              <p className="text-amber-700">No AI key configured yet. The AI Tools won't run until you add one.</p>
             )}
           </div>
 
@@ -116,7 +116,7 @@ function AiSettings() {
                 placeholder={provider === "anthropic" ? "sk-ant-…" : "sk-…"}
               />
               <p className="mt-1 text-xs text-muted-foreground">
-                Stored encrypted server-side and never shown again — only the last 4 digits are displayed.
+                Stored encrypted server-side and never shown again. Only the last 4 digits are displayed.
               </p>
             </div>
             <div>

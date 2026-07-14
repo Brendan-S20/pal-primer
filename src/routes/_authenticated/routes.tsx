@@ -249,9 +249,9 @@ function RoutesPage() {
       if (r.applied > 0) {
         toast.success(`Rebalanced ${r.applied} overflow stop(s) off overloaded routes. Re-optimize to tidy sequences.`);
       } else if (over === 0) {
-        toast.success("No overloaded routes — everyone's within capacity.");
+        toast.success("No overloaded routes. Everyone's within capacity.");
       } else {
-        toast.warning("Some routes are overloaded but no tech has spare capacity — add a tech or move visits to another day.");
+        toast.warning("Some routes are overloaded but no tech has spare capacity. Add a tech or move visits to another day.");
       }
       setLocalColumns(null);
       qc.invalidateQueries({ queryKey: ["visits", day] });
@@ -361,7 +361,7 @@ function RoutesPage() {
         <div>
           <h1 className="text-2xl font-semibold">Today</h1>
           <p className="text-sm text-muted-foreground">
-            Dispatch, route, map, and mark visits complete — all in one view.
+            Dispatch, route, map, and mark visits complete, all in one view.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -689,7 +689,7 @@ function MapPanel({
         <RouteMap groups={groups} height={420} onVisitClick={onOpenVisit} />
         {mappable === 0 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-md bg-background/70 text-xs text-muted-foreground">
-            <span>No coordinates yet — geocode your properties to plot them.</span>
+            <span>No coordinates yet. Geocode your properties to plot them.</span>
             {onGeocode && (
               <Button size="sm" variant="outline" onClick={onGeocode} disabled={geocoding}>
                 <MapPin className="mr-1 h-3.5 w-3.5" />
@@ -938,7 +938,7 @@ function VisitCardView({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             {seq != null && <span className="text-muted-foreground">#{seq}</span>}
-            <span className="truncate font-medium">{visit.clients?.display_name ?? "—"}</span>
+            <span className="truncate font-medium">{visit.clients?.display_name ?? "-"}</span>
           </div>
           {p && (
             <div className="truncate text-muted-foreground">
@@ -958,7 +958,7 @@ function VisitCardView({
             const s = p?.earliest_service_time?.slice(0, 5);
             const e = p?.latest_service_time?.slice(0, 5);
             if (!s && !e) return null;
-            const label = s && e ? `${s}–${e}` : s ? `${s} onward` : `until ${e}`;
+            const label = s && e ? `${s}-${e}` : s ? `${s} onward` : `until ${e}`;
             return <div className="mt-0.5 text-[10px] text-muted-foreground">Window {label}</div>;
           })()}
           <div className="mt-1 flex flex-wrap items-center gap-1">

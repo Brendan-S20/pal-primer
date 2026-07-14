@@ -254,7 +254,7 @@ export const createCheckoutForInvoice = createServerFn({ method: "POST" })
         price_data: {
           currency: invoice.currency ?? "usd",
           unit_amount: invoice.total_cents,
-          product_data: { name: `Invoice ${invoice.id.slice(0, 8)} — ${client?.display_name ?? "Service"}` },
+          product_data: { name: `Invoice ${invoice.id.slice(0, 8)}: ${client?.display_name ?? "Service"}` },
         },
       }],
       metadata: { invoice_id: invoice.id, organization_id: invoice.organization_id },
@@ -314,7 +314,7 @@ export const createEmbeddedCheckoutForInvoice = createServerFn({ method: "POST" 
         price_data: {
           currency: invoice.currency ?? "usd",
           unit_amount: invoice.total_cents,
-          product_data: { name: `Invoice ${invoice.id.slice(0, 8)} — ${client?.display_name ?? "Service"}` },
+          product_data: { name: `Invoice ${invoice.id.slice(0, 8)}: ${client?.display_name ?? "Service"}` },
         },
       }],
       metadata: { invoice_id: invoice.id, organization_id: invoice.organization_id },

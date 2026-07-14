@@ -49,7 +49,7 @@ function ReferBusinessPage() {
       try {
         await navigator.share({
           title: `Try ${APP_NAME}`,
-          text: `We run our pet-waste business on ${APP_NAME} — sign up with my link:`,
+          text: `We run our pet-waste business on ${APP_NAME}. Sign up with my link:`,
           url: link,
         });
       } catch {
@@ -69,7 +69,7 @@ function ReferBusinessPage() {
       return eligible ? (
         <Badge className="bg-blue-600 text-white">Reward on its way</Badge>
       ) : (
-        <Badge className="bg-blue-600/80 text-white">Subscribed — reward pending</Badge>
+        <Badge className="bg-blue-600/80 text-white">Subscribed, reward pending</Badge>
       );
     }
     return <Badge variant="secondary">Signed up</Badge>;
@@ -80,7 +80,7 @@ function ReferBusinessPage() {
       <div>
         <h2 className="text-lg font-semibold">Refer a business</h2>
         <p className="text-sm text-muted-foreground">
-          Know another pet-service business that could use {APP_NAME}? Share your link — when they
+          Know another pet-service business that could use {APP_NAME}? Share your link. When they
           become a paying customer, you earn{" "}
           <strong>{data.rewardPercent}% of their first payment</strong>, paid out to you in cash
           after they've been active {data.holdingDays} days.
@@ -110,7 +110,7 @@ function ReferBusinessPage() {
         <h3 className="mb-2 text-sm font-semibold">Your referrals</h3>
         {!data.referrals.length ? (
           <div className="rounded-lg border border-dashed bg-card p-6 text-center text-sm text-muted-foreground">
-            No referrals yet — share your link to get started.
+            No referrals yet. Share your link to get started.
           </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border">
@@ -134,7 +134,7 @@ function ReferBusinessPage() {
                     <td className="px-4 py-2">
                       {r.status === "converted" || r.status === "paid"
                         ? money(r.reward_cents)
-                        : "—"}
+                        : "-"}
                     </td>
                   </tr>
                 ))}

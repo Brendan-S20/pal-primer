@@ -102,7 +102,7 @@ function InvoiceDetail() {
           return;
         }
       }
-      toast.message(`Invoice queued for ${to} — check back shortly`, { id });
+      toast.message(`Invoice queued for ${to}. Check back shortly`, { id });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -228,7 +228,7 @@ function InvoiceDetail() {
                     <td className="px-4 py-2">{p.paid_at ?? p.created_at}</td>
                     <td className="px-4 py-2">{fmtCents(p.amount_cents, invoice.currency)}</td>
                     <td className="px-4 py-2">{p.status}</td>
-                    <td className="px-4 py-2 font-mono text-xs">{p.stripe_payment_intent_id ?? "—"}</td>
+                    <td className="px-4 py-2 font-mono text-xs">{p.stripe_payment_intent_id ?? "-"}</td>
                   </tr>
                 ))}
               </tbody>

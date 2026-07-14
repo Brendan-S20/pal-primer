@@ -124,7 +124,7 @@ export function useOfflineVisitActions(
 
       if (!cachedOrgId) {
         throw new Error(
-          "Can't queue this photo offline — reload My Day while online first.",
+          "Can't queue this photo offline. Reload My Day while online first.",
         );
       }
       const photoId = await storePhoto(file, contentType, ext);

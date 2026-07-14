@@ -24,7 +24,7 @@ export const Route = createFileRoute("/_authenticated/settings/billing")({
 });
 
 function formatUsd(cents: number | null | undefined) {
-  if (cents == null) return "—";
+  if (cents == null) return "-";
   return `$${(cents / 100).toLocaleString(undefined, {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
@@ -68,7 +68,7 @@ function BillingPage() {
     mutationFn: () => cancelFn(),
     onSuccess: (r: any) => {
       toast.success(r.endsAt
-        ? `Subscription will end ${new Date(r.endsAt).toLocaleDateString()} — access continues until then`
+        ? `Subscription will end ${new Date(r.endsAt).toLocaleDateString()}. Access continues until then`
         : "Subscription set to cancel at period end");
       qc.invalidateQueries({ queryKey: ["billing-status"] });
     },
@@ -127,7 +127,7 @@ function BillingPage() {
             )}
             {data.billingStatus === "past_due" && (
               <p className="mt-2 text-sm text-destructive">
-                Payment past due — update your card in the customer portal.
+                Payment past due. Update your card in the customer portal.
               </p>
             )}
             {data.currentPeriodEnd && data.isPaidTier && (
@@ -157,10 +157,10 @@ function BillingPage() {
         <div className="space-y-3">
           <div>
             <h2 className="text-lg font-semibold">
-              {data.isPaidTier ? "Plans" : data.billingStatus === "trialing" ? "You're on a free trial — pick a plan" : "Choose a plan"}
+              {data.isPaidTier ? "Plans" : data.billingStatus === "trialing" ? "You're on a free trial: pick a plan" : "Choose a plan"}
             </h2>
             <p className="text-sm text-muted-foreground">
-              Unlimited customers, dogs, jobs, routes, and zones on every tier — you're billed per employee.
+              Unlimited customers, dogs, jobs, routes, and zones on every tier. You're billed per employee.
             </p>
           </div>
           <PlanPicker
@@ -234,7 +234,7 @@ function InvoiceHistory() {
         <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
       ) : invoices.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">
-          No invoices yet — your subscription invoices will appear here once you're billed.
+          No invoices yet. Your subscription invoices will appear here once you're billed.
         </p>
       ) : (
         <table className="mt-3 w-full text-sm">
@@ -252,8 +252,8 @@ function InvoiceHistory() {
               <tr key={inv.stripe_invoice_id}>
                 <td className="py-2 font-medium">{inv.number ?? inv.stripe_invoice_id.slice(0, 12)}</td>
                 <td className="py-2 text-muted-foreground">
-                  {inv.period_start ? new Date(inv.period_start).toLocaleDateString() : "—"}
-                  {inv.period_end ? ` – ${new Date(inv.period_end).toLocaleDateString()}` : ""}
+                  {inv.period_start ? new Date(inv.period_start).toLocaleDateString() : "-"}
+                  {inv.period_end ? ` - ${new Date(inv.period_end).toLocaleDateString()}` : ""}
                 </td>
                 <td className="py-2">{formatUsd(inv.amount_due_cents)}</td>
                 <td className="py-2">
@@ -292,7 +292,7 @@ function SubscriptionItems({ onOpenPortal, portalPending }: { onOpenPortal: () =
   const base = items.filter((i) => i.kind !== "addon");
 
   const fmtLine = (i: any) => {
-    if (i.unitAmountCents == null) return "—";
+    if (i.unitAmountCents == null) return "-";
     const per = formatUsd(i.unitAmountCents);
     const total = formatUsd(i.unitAmountCents * (i.quantity ?? 1));
     const interval = i.interval ? `/${i.intervalCount > 1 ? `${i.intervalCount} ` : ""}${i.interval}` : "";

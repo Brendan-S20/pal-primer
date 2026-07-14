@@ -275,7 +275,7 @@ function ZonesPage() {
                   .filter((z: any) => !zoneHasGeo(z as OverviewZone))
                   .map((z: any) => z.name)
                   .join(", ")}{" "}
-                — set one in "Coverage" below.
+                (set one in "Coverage" below).
               </span>
             )}
           </div>
@@ -388,7 +388,7 @@ function ZoneCard({ zone, canEdit }: { zone: any; canEdit: boolean }) {
             )}
             {zipList.length === 0 && !zone.postal_prefix && (
               <p className="mt-2 text-xs text-amber-600">
-                No ZIPs set — this zone won't match new signups.
+                No ZIPs set. This zone won't match new signups.
               </p>
             )}
             {zone.price_note && (

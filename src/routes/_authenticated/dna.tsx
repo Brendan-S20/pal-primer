@@ -131,7 +131,7 @@ function DnaPage() {
   const bill = useMutation({
     mutationFn: (matchId: string) => billFn({ data: { matchId } }),
     onSuccess: (r) => {
-      toast.success(`Invoice created (${r.invoiceId.slice(0, 8)}…) — status set to Billed`);
+      toast.success(`Invoice created (${r.invoiceId.slice(0, 8)}…). Status set to Billed`);
       refetch();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -255,8 +255,8 @@ function DnaPage() {
                               {r.sample_kind === "cheek_swab" ? "Cheek swab" : "Pile"}
                             </Badge>
                           </td>
-                          <td className="px-3 py-2 text-xs">{r.location_note ?? "—"}</td>
-                          <td className="px-3 py-2 text-xs font-mono">{r.lab_reference ?? "—"}</td>
+                          <td className="px-3 py-2 text-xs">{r.location_note ?? "-"}</td>
+                          <td className="px-3 py-2 text-xs font-mono">{r.lab_reference ?? "-"}</td>
                           <td className="px-3 py-2">
                             <select
                               value={r.status}
@@ -296,7 +296,7 @@ function DnaPage() {
                                 <option value="">Unmatched…</option>
                                 {(dogsQ.data ?? []).map((d: any) => (
                                   <option key={d.id} value={d.id}>
-                                    {d.name} — {d.client_name ?? "?"} ({d.registry_id ?? "no ID"})
+                                    {d.name}, {d.client_name ?? "?"} ({d.registry_id ?? "no ID"})
                                   </option>
                                 ))}
                               </select>
@@ -326,7 +326,7 @@ function DnaPage() {
                               />
                             ) : (
                               <span className="text-xs">
-                                {r.fine_cents > 0 ? `$${(r.fine_cents / 100).toFixed(2)}` : "—"}
+                                {r.fine_cents > 0 ? `$${(r.fine_cents / 100).toFixed(2)}` : "-"}
                               </span>
                             )}
                           </td>
@@ -470,8 +470,8 @@ function RegistryRow({
         <div className="font-medium">{dog.name}</div>
         {dog.breed && <div className="text-[11px] text-muted-foreground">{dog.breed}</div>}
       </td>
-      <td className="px-3 py-2 text-xs">{dog.client_name ?? "—"}</td>
-      <td className="px-3 py-2 text-xs">{dog.street ?? "—"}</td>
+      <td className="px-3 py-2 text-xs">{dog.client_name ?? "-"}</td>
+      <td className="px-3 py-2 text-xs">{dog.street ?? "-"}</td>
       <td className="px-3 py-2">
         <label className="inline-flex items-center gap-2 text-xs">
           <input
@@ -582,7 +582,7 @@ function renderNoticeText(n: {
 }) {
   const today = new Date().toLocaleDateString();
   const collected = new Date(n.collectedAt).toLocaleDateString();
-  const matched = n.matchedAt ? new Date(n.matchedAt).toLocaleDateString() : "—";
+  const matched = n.matchedAt ? new Date(n.matchedAt).toLocaleDateString() : "-";
   const fine = `$${(n.fineCents / 100).toFixed(2)}`;
   return `${today}
 

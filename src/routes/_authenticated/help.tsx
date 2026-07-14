@@ -117,7 +117,7 @@ function HelpPage() {
             </article>
           ) : (
             <div className="rounded-lg border border-dashed bg-card p-10 text-center text-sm text-muted-foreground">
-              Pick an article on the left — or look for the{" "}
+              Pick an article on the left, or look for the{" "}
               <span className="inline-flex translate-y-0.5 items-center">
                 <BookOpen className="h-4 w-4" />
               </span>{" "}

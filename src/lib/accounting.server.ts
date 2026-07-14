@@ -27,7 +27,7 @@ type Conn = {
 export async function ensureFreshToken(conn: Conn): Promise<Conn> {
   const exp = conn.token_expires_at ? new Date(conn.token_expires_at).getTime() : 0;
   if (exp - Date.now() > 60_000) return conn;
-  if (!conn.refresh_token) throw new Error("Access token expired and no refresh token stored — reconnect the integration.");
+  if (!conn.refresh_token) throw new Error("Access token expired and no refresh token stored. Reconnect the integration.");
 
   const clientId = conn.provider === "quickbooks" ? process.env.QBO_CLIENT_ID : process.env.XERO_CLIENT_ID;
   const clientSecret = conn.provider === "quickbooks" ? process.env.QBO_CLIENT_SECRET : process.env.XERO_CLIENT_SECRET;

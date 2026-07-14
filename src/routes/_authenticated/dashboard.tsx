@@ -158,7 +158,7 @@ function Dashboard() {
         <KpiCard
           icon={Users}
           label="Active clients"
-          value={sum ? String(sum.activeClients) : "—"}
+          value={sum ? String(sum.activeClients) : "-"}
           hint={billing?.planName ? `On the ${billing.planName} plan` : undefined}
         />
         {/* Financial KPIs are null for roles without view_financials — the
@@ -167,14 +167,14 @@ function Dashboard() {
           <KpiCard
             icon={DollarSign}
             label="MTD revenue"
-            value={sum ? fmtMoney(sum.mtdRevenueCents ?? 0) : "—"}
+            value={sum ? fmtMoney(sum.mtdRevenueCents ?? 0) : "-"}
           />
         )}
         {(!sum || sum.arOpenCents !== null) && (
           <KpiCard
             icon={Receipt}
             label="AR open"
-            value={sum ? fmtMoney(sum.arOpenCents ?? 0) : "—"}
+            value={sum ? fmtMoney(sum.arOpenCents ?? 0) : "-"}
             hint={sum && (sum.overdueCount ?? 0) > 0 ? `${sum.overdueCount} overdue` : undefined}
             tone={sum && (sum.overdueCount ?? 0) > 0 ? "danger" : undefined}
           />
@@ -182,7 +182,7 @@ function Dashboard() {
         <KpiCard
           icon={CalendarCheck}
           label="Visits today"
-          value={sum ? `${completed} / ${total}` : "—"}
+          value={sum ? `${completed} / ${total}` : "-"}
           hint={total > 0 ? `${pct}% done` : "None scheduled"}
         />
         {sum && sum.mtdRevenueCents === null && (

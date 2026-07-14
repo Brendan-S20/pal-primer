@@ -63,7 +63,7 @@ function PayInvoice() {
         <h1 className="text-lg font-semibold">Pay your invoice</h1>
         {intentQ.data && (
           <p className="mt-1 text-sm text-muted-foreground">
-            {intentQ.data.businessName} — total{" "}
+            {intentQ.data.businessName}: total{" "}
             <span className="font-medium text-foreground">
               {money(intentQ.data.amountCents)}
             </span>

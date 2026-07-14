@@ -91,7 +91,7 @@ const CACHE_FRESH_MS = 3 * 60 * 60 * 1000;
 function humanizeWeatherError(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
   if (/429|rate|limit/i.test(msg)) {
-    return "The weather service is temporarily rate-limited. The forecast will refresh automatically — try again in a little while.";
+    return "The weather service is temporarily rate-limited. The forecast will refresh automatically. Try again in a little while.";
   }
   return "Couldn't load the forecast (weather service error). Try again shortly.";
 }
@@ -257,7 +257,7 @@ export const getZoneVisitsOnDay = createServerFn({ method: "GET" })
         id: v.id,
         scheduled_on: v.scheduled_on,
         status: v.status,
-        client_name: v.subscriptions?.clients?.display_name ?? "—",
+        client_name: v.subscriptions?.clients?.display_name ?? "-",
       })),
     };
   });

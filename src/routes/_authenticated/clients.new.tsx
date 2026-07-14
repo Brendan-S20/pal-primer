@@ -413,10 +413,10 @@ function NewClientWizard() {
                   onChange={(e) => setYardSize(e.target.value as any)}
                   className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                 >
-                  <option value="">— choose —</option>
+                  <option value="">(choose)</option>
                   <option value="small">Small (under 1/8 acre)</option>
-                  <option value="medium">Medium (1/8 – 1/4 acre)</option>
-                  <option value="large">Large (1/4 – 1/2 acre)</option>
+                  <option value="medium">Medium (1/8-1/4 acre)</option>
+                  <option value="large">Large (1/4-1/2 acre)</option>
                   <option value="xlarge">Extra large (1/2+ acre)</option>
                 </select>
               </div>
@@ -427,8 +427,8 @@ function NewClientWizard() {
                 On-site visit contact <span className="normal-case font-normal">(optional)</span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                For rentals/managed properties: this person gets visit texts and emails —
-                invoices still go to the account contact from the previous step.
+                For rentals/managed properties: this person gets visit texts and emails.
+                Invoices still go to the account contact from the previous step.
               </p>
               <div className="mt-2 grid gap-3 sm:grid-cols-3">
                 <div>
@@ -499,7 +499,7 @@ function NewClientWizard() {
               <div className="rounded-md border border-amber-400/50 bg-amber-50 p-3 text-sm text-amber-900">
                 {geoStatus === "error"
                   ? "We couldn't reach the map service to locate this address. Check your connection, or draw the service area manually on the map below."
-                  : "We couldn't find this address on the map — double-check the address on the previous step, or draw the service area manually on the map below."}
+                  : "We couldn't find this address on the map. Double-check the address on the previous step, or draw the service area manually on the map below."}
               </div>
             )}
             <BoundarySketch
@@ -565,10 +565,10 @@ function NewClientWizard() {
                       }}
                       className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                     >
-                      <option value="">—</option>
+                      <option value="">-</option>
                       <option value="small">Small (&lt; 25 lb)</option>
-                      <option value="medium">Medium (25–60 lb)</option>
-                      <option value="large">Large (60–100 lb)</option>
+                      <option value="medium">Medium (25-60 lb)</option>
+                      <option value="large">Large (60-100 lb)</option>
                       <option value="xlarge">XL (100+ lb)</option>
                     </select>
                   </div>
@@ -629,7 +629,7 @@ function NewClientWizard() {
                 checked={skipPlan}
                 onChange={(e) => setSkipPlan(e.target.checked)}
               />
-              <span>Skip subscription for now — I'll set it up later</span>
+              <span>Skip subscription for now (I'll set it up later)</span>
             </label>
 
             {!skipPlan && (
@@ -692,7 +692,7 @@ function NewClientWizard() {
                           quoteQ.data &&
                           !("quote" in (quoteQ.data as any)) && (
                             <div className="text-sm text-amber-600">
-                              No zone matches ZIP {postalCode} — set price manually below.
+                              No zone matches ZIP {postalCode}. Set price manually below.
                             </div>
                           )}
                       </div>

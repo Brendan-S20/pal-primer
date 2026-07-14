@@ -135,7 +135,7 @@ function UsersPage() {
                               </button>
                             ) : null}
                           </td>
-                          <td className="py-3 font-medium">{u.display_name ?? "—"}</td>
+                          <td className="py-3 font-medium">{u.display_name ?? "-"}</td>
                           <td className="py-3 text-muted-foreground">{u.email}</td>
                           <td className="py-3">
                             {canEdit ? (

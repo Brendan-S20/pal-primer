@@ -58,7 +58,7 @@ function requireConfig(label: string, config: AiConfig | null): AiConfig {
   if (!config || !config.apiKey) {
     throw new AiGenerationError(
       label,
-      "AI isn't configured yet — add your Anthropic or OpenAI API key in Settings → AI.",
+      "AI isn't configured yet. Add your Anthropic or OpenAI API key in Settings → AI.",
     );
   }
   return config;
@@ -94,7 +94,7 @@ async function callProvider(label: string, config: AiConfig, body: Record<string
     return await res.json();
   }
   console.error(`[ai] ${label} unavailable after retries`, config.provider, lastErr);
-  throw new AiGenerationError(label, "The AI service is unavailable right now — try again in a minute.", lastErr);
+  throw new AiGenerationError(label, "The AI service is unavailable right now. Try again in a minute.", lastErr);
 }
 
 /**
@@ -130,7 +130,7 @@ export async function generateStructured<T>(opts: {
     });
     if (data?.stop_reason === "max_tokens") {
       console.error(`[ai] ${opts.label} hit max_tokens — output truncated`);
-      throw new AiGenerationError(opts.label, "The AI response was cut off before completing — try a smaller batch.");
+      throw new AiGenerationError(opts.label, "The AI response was cut off before completing. Try a smaller batch.");
     }
     const toolUse = (data?.content ?? []).find((b: any) => b?.type === "tool_use");
     if (!toolUse) {
@@ -157,7 +157,7 @@ export async function generateStructured<T>(opts: {
     const choice = data?.choices?.[0];
     if (choice?.finish_reason === "length") {
       console.error(`[ai] ${opts.label} hit token limit — output truncated`);
-      throw new AiGenerationError(opts.label, "The AI response was cut off before completing — try a smaller batch.");
+      throw new AiGenerationError(opts.label, "The AI response was cut off before completing. Try a smaller batch.");
     }
     const call = choice?.message?.tool_calls?.[0]?.function?.arguments;
     if (!call) {

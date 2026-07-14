@@ -53,7 +53,7 @@ const Digest = ({
 }: Props) => (
   <Html lang="en">
     <Head />
-    <Preview>{`${orgName} — weekly business digest for ${weekLabel}`}</Preview>
+    <Preview>{`${orgName}: weekly business digest for ${weekLabel}`}</Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
         <Heading style={styles.h1}>Weekly digest</Heading>
@@ -139,11 +139,11 @@ const Digest = ({
 export const template = {
   component: Digest,
   subject: (d: Record<string, any>) =>
-    `${d.orgName ?? "Your business"} — weekly digest (${d.weekLabel ?? "this week"})`,
+    `${d.orgName ?? "Your business"}: weekly digest (${d.weekLabel ?? "this week"})`,
   displayName: "Weekly digest",
   previewData: {
     orgName: "Acme Scoop Co.",
-    weekLabel: "Jun 27 – Jul 3",
+    weekLabel: "Jun 27 - Jul 3",
     headline: "Revenue up 12% and you added 4 new clients.",
     stats: [
       { label: "Revenue", value: "$4,820", delta: "+12% WoW" },

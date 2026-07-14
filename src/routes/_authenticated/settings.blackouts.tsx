@@ -97,7 +97,7 @@ function BlackoutsPage() {
             {(data?.blackouts ?? []).map((b: any) => (
               <tr key={b.id} className="border-b last:border-0">
                 <td className="px-4 py-2 font-medium">{b.blackout_on}</td>
-                <td className="px-4 py-2 text-muted-foreground">{b.reason ?? "—"}</td>
+                <td className="px-4 py-2 text-muted-foreground">{b.reason ?? "-"}</td>
                 <td className="px-4 py-2 text-right">
                   <Button size="sm" variant="ghost" onClick={() => delMut.mutate(b.id)}>
                     Remove

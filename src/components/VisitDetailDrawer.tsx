@@ -402,7 +402,7 @@ function PhotosSection({ visitId, photos }: { visitId: string; photos: any[] }) 
     setUploading(true);
     try {
       const r = await actions.uploadPhoto(file, kind);
-      toast.success(r.queued ? "Queued — uploads when online" : "Photo uploaded");
+      toast.success(r.queued ? "Queued: uploads when online" : "Photo uploaded");
       qc.invalidateQueries({ queryKey: ["visit-detail", visitId] });
     } catch (e: any) {
       toast.error(e?.message ?? "Upload failed");

@@ -22,12 +22,12 @@ const WinBack = ({
 }: Props) => (
   <Html lang="en">
     <Head />
-    <Preview>{`We miss you at ${orgName} — ${discountPercent}% off to come back`}</Preview>
+    <Preview>{`We miss you at ${orgName}: ${discountPercent}% off to come back`}</Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
         <Heading style={styles.h1}>We miss you, {clientName}</Heading>
         <Text style={styles.text}>
-          It's been a while since we've seen you at {orgName}. We'd love to have you back — here's
+          It's been a while since we've seen you at {orgName}. We'd love to have you back. Here's
           {" "}{discountPercent}% off your next month of service.
         </Text>
         <Text style={{ ...styles.amount, fontSize: 22 }}>Code: <strong>{promoCode}</strong></Text>
@@ -38,7 +38,7 @@ const WinBack = ({
           <Button style={styles.button} href={portalUrl}>Reactivate service</Button>
         )}
         <Text style={styles.small}>
-          If you had an issue with your service, just reply to this email — we'd like to make it right.
+          If you had an issue with your service, just reply to this email. We'd like to make it right.
         </Text>
       </Container>
     </Body>
@@ -47,7 +47,7 @@ const WinBack = ({
 
 export const template = {
   component: WinBack,
-  subject: (d: Record<string, any>) => `We miss you — ${d.discountPercent ?? 20}% off from ${d.orgName ?? "us"}`,
+  subject: (d: Record<string, any>) => `We miss you: ${d.discountPercent ?? 20}% off from ${d.orgName ?? "us"}`,
   displayName: "Win-back",
   previewData: {
     orgName: "Acme Scoop Co.",

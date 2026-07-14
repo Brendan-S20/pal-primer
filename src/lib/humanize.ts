@@ -14,13 +14,13 @@ const ROLE_LABELS: Record<string, string> = {
 
 /** Human-readable label for a role enum value. */
 export function humanizeRole(role: string | null | undefined): string {
-  if (!role) return "—";
+  if (!role) return "-";
   return ROLE_LABELS[role] ?? humanizeEnum(role);
 }
 
 /** Generic snake_case → "Sentence case" for any unmapped enum value. */
 export function humanizeEnum(value: string | null | undefined): string {
-  if (!value) return "—";
+  if (!value) return "-";
   const spaced = value.replace(/_/g, " ").trim();
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }

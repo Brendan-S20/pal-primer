@@ -103,7 +103,7 @@ function ConcernsPage() {
           <div>
             <p className="font-medium">
               {filter === "all"
-                ? "No concerns — happy yards all around"
+                ? "No concerns, happy yards all around"
                 : `Nothing in "${filter === "open" ? "Received" : STATUS_LABEL[filter as ConcernStatus]}"`}
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -168,7 +168,7 @@ function ConcernsPage() {
                 {status === "resolved" ? (
                   <div className="mt-3 text-xs text-muted-foreground">
                     Resolved {c.resolved_at ? fmt(c.resolved_at) : ""}
-                    {c.resolution_note ? ` — ${c.resolution_note}` : ""}
+                    {c.resolution_note ? `: ${c.resolution_note}` : ""}
                     <button
                       className="ml-2 text-primary underline underline-offset-2"
                       onClick={() => mut.mutate({ ticketId: c.id, status: "in_progress" })}
@@ -180,7 +180,7 @@ function ConcernsPage() {
                   <div className="mt-3 space-y-2">
                     <Textarea
                       rows={2}
-                      placeholder="Resolution note (optional) — what was done"
+                      placeholder="Resolution note (optional): what was done"
                       value={notes[c.id] ?? ""}
                       onChange={(e) => setNotes((n) => ({ ...n, [c.id]: e.target.value }))}
                     />

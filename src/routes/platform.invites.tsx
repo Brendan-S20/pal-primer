@@ -93,7 +93,7 @@ function InvitesPage() {
                       <TableCell><Badge variant="outline">{r.role}</Badge></TableCell>
                       <TableCell><Badge variant={STATUS_TONE[r.status]}>{r.status}</Badge></TableCell>
                       <TableCell className="text-sm text-muted-foreground">{new Date(r.expires_at).toLocaleDateString()}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{r.invited_by_email ?? "—"}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{r.invited_by_email ?? "-"}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           {r.status === "pending" && (
@@ -156,7 +156,7 @@ function NewInviteDialog() {
       const link = inviteUrl(r.token);
       setCreatedLink(link);
       navigator.clipboard.writeText(link).catch(() => {});
-      toast.success("Invite created — link copied to clipboard");
+      toast.success("Invite created. Link copied to clipboard");
       qc.invalidateQueries({ queryKey: ["platform", "invites"] });
     },
     onError: (e) => toast.error((e as Error).message),

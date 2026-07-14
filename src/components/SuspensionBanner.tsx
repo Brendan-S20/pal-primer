@@ -34,7 +34,7 @@ export function SuspensionBanner() {
           <strong>Payment failed.</strong>{" "}
           {isOwner
             ? "Update your card to keep your subscription active."
-            : "Ask an owner to update the card on file — some actions may be blocked until it's resolved."}
+            : "Ask an owner to update the card on file. Some actions may be blocked until it's resolved."}
         </span>
         {isOwner && (
           <Link to="/settings/billing" className="shrink-0 rounded-md bg-yellow-600 px-3 py-1 text-xs font-medium text-white hover:bg-yellow-700">
@@ -53,7 +53,7 @@ export function SuspensionBanner() {
           <strong>Subscription canceled.</strong>{" "}
           {isOwner
             ? "Reactivate to keep adding clients past the free tier."
-            : "Ask an owner to reactivate the subscription — some actions may be blocked until it's resolved."}
+            : "Ask an owner to reactivate the subscription. Some actions may be blocked until it's resolved."}
         </span>
         {isOwner && (
           <Link to="/settings/billing" className="shrink-0 rounded-md bg-destructive px-3 py-1 text-xs font-medium text-destructive-foreground hover:opacity-90">

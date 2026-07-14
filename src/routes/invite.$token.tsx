@@ -112,7 +112,7 @@ function InvitePage() {
                 <div className="space-y-2">
                   <div className="flex items-start gap-2 text-sm text-emerald-700">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                    <div>Signed in as <strong>{session.email}</strong> — ready to accept.</div>
+                    <div>Signed in as <strong>{session.email}</strong>, ready to accept.</div>
                   </div>
                   <Button className="w-full" disabled={acceptM.isPending} onClick={() => acceptM.mutate()}>
                     {acceptM.isPending ? "Accepting…" : "Accept invite"}

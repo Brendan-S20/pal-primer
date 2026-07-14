@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { listPlatformPlans, createEmbeddedBillingCheckout } from "@/lib/billing.functions";
 
 function money(cents: number | null | undefined) {
-  if (cents == null) return "—";
+  if (cents == null) return "-";
   return `$${(cents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 

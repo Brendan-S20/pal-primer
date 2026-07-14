@@ -246,7 +246,7 @@ export const billDnaViolation = createServerFn({ method: "POST" })
         period_start: today,
         period_end: today,
         issued_at: nowIso,
-        notes: `DNA violation fine — sample ${m.lab_reference ?? m.id.slice(0, 8)}${m.location_note ? ` (${m.location_note})` : ""}`,
+        notes: `DNA violation fine: sample ${m.lab_reference ?? m.id.slice(0, 8)}${m.location_note ? ` (${m.location_note})` : ""}`,
       })
       .select("id")
       .single();

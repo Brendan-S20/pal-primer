@@ -53,7 +53,7 @@ function WasteLogPage() {
     mutationFn: async (v: any) => {
       let photoUrl: string | undefined;
       if (receipt) {
-        if (!orgId) throw new Error("Still loading your organization — try again in a second.");
+        if (!orgId) throw new Error("Still loading your organization. Try again in a second.");
         const { compressImage } = await import("@/lib/offline/compressImage");
         const { file, contentType, ext } = await compressImage(receipt);
         const path = `${orgId}/${Date.now()}.${ext}`;
@@ -138,7 +138,7 @@ function WasteLogPage() {
               value={draft.facilityId}
               onChange={(e) => setDraft({ ...draft, facilityId: e.target.value })}
             >
-              <option value="">— none —</option>
+              <option value="">(none)</option>
               {facilities
                 .filter((f) => f.active)
                 .map((f) => (
@@ -280,7 +280,7 @@ function WasteLogPage() {
               <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <div>
                   <div className="font-medium">
-                    {m.disposed_on} · {m.waste_disposal_facilities?.name ?? "—"}
+                    {m.disposed_on} · {m.waste_disposal_facilities?.name ?? "-"}
                     {m.ticket_number && (
                       <span className="ml-2 text-xs text-muted-foreground">#{m.ticket_number}</span>
                     )}

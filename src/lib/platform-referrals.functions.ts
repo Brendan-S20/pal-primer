@@ -172,7 +172,7 @@ export const actOnReferral = createServerFn({ method: "POST" })
         throw new Error("Only converted referrals can be marked paid");
       patch = { status: "paid", paid_at: nowIso, paid_note: data.note ?? null, updated_at: nowIso };
     } else if (data.action === "reject") {
-      if (before.status === "paid") throw new Error("Already paid — can't reject");
+      if (before.status === "paid") throw new Error("Already paid; can't reject");
       patch = {
         status: "rejected",
         flag_reason: data.note ?? before.flag_reason,

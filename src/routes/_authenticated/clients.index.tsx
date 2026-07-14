@@ -219,7 +219,7 @@ function ClientsList() {
                       )}
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground truncate">
-                      {c.primary_email ?? "—"}
+                      {c.primary_email ?? "-"}
                     </div>
                     <div className="text-xs text-muted-foreground">{c.primary_phone ?? ""}</div>
                   </div>
@@ -245,7 +245,7 @@ function ClientsList() {
                         </div>
                       )}
                       {!(c.outstanding_cents > 0) && !(c.credit_balance_cents > 0) && (
-                        <span className="text-muted-foreground">—</span>
+                        <span className="text-muted-foreground">-</span>
                       )}
                     </div>
                   </div>
@@ -307,7 +307,7 @@ function ClientsList() {
                     <td className="px-4 py-3 text-muted-foreground">
                       {(c.frequencies ?? []).length
                         ? (c.frequencies as string[]).map((f) => f.replace("_", "-")).join(", ")
-                        : "—"}
+                        : "-"}
                     </td>
                     <td className="px-4 py-3">
                       {c.outstanding_cents > 0 ? (
@@ -317,11 +317,11 @@ function ClientsList() {
                       ) : c.credit_balance_cents > 0 ? (
                         <span className="text-emerald-600">+{money(c.credit_balance_cents)}</span>
                       ) : (
-                        <span className="text-muted-foreground">—</span>
+                        <span className="text-muted-foreground">-</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      <div className="truncate max-w-[220px]">{c.primary_email ?? "—"}</div>
+                      <div className="truncate max-w-[220px]">{c.primary_email ?? "-"}</div>
                       <div className="text-xs">{c.primary_phone ?? ""}</div>
                     </td>
                     <td className="px-4 py-3">

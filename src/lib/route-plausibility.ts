@@ -58,7 +58,7 @@ export function findRouteWarnings(
         message:
           `${name}: ${fmtHours(driveMin)} drive` +
           (driveKm != null ? ` (${driveKm.toFixed(0)} km)` : "") +
-          ` exceeds the ${fmtHours(limit)} limit — check the technician's depot address.`,
+          ` exceeds the ${fmtHours(limit)} limit. Check the technician's depot address.`,
       });
       continue; // one warning per stop is enough
     }
@@ -80,7 +80,7 @@ export function findRouteWarnings(
           reason: "eta_inconsistent",
           travelKm: driveKm,
           travelMin: driveMin,
-          message: `${name}: arrival time is earlier than its ${fmtHours(driveMin)} drive allows — re-optimize this route.`,
+          message: `${name}: arrival time is earlier than its ${fmtHours(driveMin)} drive allows. Re-optimize this route.`,
         });
       }
     }

@@ -91,7 +91,7 @@ function SelfServeSection({ token }: { token: string }) {
   const holdMut = useMutation({
     mutationFn: () => holdFn({ data: { token, startDate: start, endDate: end } }),
     onSuccess: (r: any) => {
-      toast.success(`Vacation hold set — ${r.skippedCount ?? 0} visit(s) skipped.`);
+      toast.success(`Vacation hold set. ${r.skippedCount ?? 0} visit(s) skipped.`);
       setStart(""); setEnd("");
     },
     onError: (e) => toast.error((e as Error).message),

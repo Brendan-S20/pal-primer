@@ -324,7 +324,7 @@ export const getPlatformRevenueTrend = createServerFn({ method: "GET" })
     }
     const orgNames = new Map((topRes.data ?? []).map((o) => [o.id, o.name] as const));
     const topOrgs = Array.from(byOrg.entries())
-      .map(([id, cents]) => ({ id, name: orgNames.get(id) ?? "—", revenue_cents: cents }))
+      .map(([id, cents]) => ({ id, name: orgNames.get(id) ?? "-", revenue_cents: cents }))
       .sort((a, b) => b.revenue_cents - a.revenue_cents)
       .slice(0, 5);
 

@@ -40,7 +40,7 @@ function fmtCents(cents: number, ccy = "USD") {
   return new Intl.NumberFormat(undefined, { style: "currency", currency: ccy.toUpperCase() }).format(cents / 100);
 }
 function fmtDate(iso: string | null) {
-  if (!iso) return "—";
+  if (!iso) return "-";
   return new Date(iso).toLocaleString(undefined, {
     year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
   });
@@ -127,7 +127,7 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
       return impersonateFn({ data: { organization_id: t.id, target_user_id: targetUserId } })
         .then((res) => {
           if (!win) {
-            throw new Error("Pop-up blocked — allow pop-ups for this site and try again.");
+            throw new Error("Pop-up blocked. Allow pop-ups for this site and try again.");
           }
           win.location.href = `/impersonate#t=${encodeURIComponent(res.token)}`;
           return res;
@@ -191,7 +191,7 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
                   <option value="">Select a user…</option>
                   {t.users.map((u) => (
                     <option key={u.user_id} value={u.user_id}>
-                      {(u.email ?? u.user_id)} — {u.role.replace(/_/g, " ")}
+                      {(u.email ?? u.user_id)} ({u.role.replace(/_/g, " ")})
                     </option>
                   ))}
                 </select>
@@ -313,11 +313,11 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
 function OverviewTab({ t }: { t: TenantDetail }) {
   const rows: Array<[string, React.ReactNode]> = [
     ["Organization ID", <code className="text-xs">{t.id}</code>],
-    ["Plan", t.plan_name ?? "—"],
+    ["Plan", t.plan_name ?? "-"],
     ["Active clients", t.active_client_count.toLocaleString()],
     ["Users", t.users.length.toLocaleString()],
-    ["Stripe customer", t.stripe_customer_id ?? "—"],
-    ["Stripe subscription", t.stripe_subscription_id ?? "—"],
+    ["Stripe customer", t.stripe_customer_id ?? "-"],
+    ["Stripe subscription", t.stripe_subscription_id ?? "-"],
     ["Grace expires", fmtDate(t.grace_expires_at)],
     ["Suspended at", fmtDate(t.suspended_at)],
     ["Created", fmtDate(t.created_at)],
@@ -368,7 +368,7 @@ function BillingTab({ t }: { t: TenantDetail }) {
       <CardContent className="space-y-3 text-sm">
         <div className="flex justify-between border-b py-2">
           <span className="text-muted-foreground">Current plan</span>
-          <span className="font-medium">{t.plan_name ?? "—"}</span>
+          <span className="font-medium">{t.plan_name ?? "-"}</span>
         </div>
         <div className="flex justify-between border-b py-2">
           <span className="text-muted-foreground">Billing status</span>
@@ -376,11 +376,11 @@ function BillingTab({ t }: { t: TenantDetail }) {
         </div>
         <div className="flex justify-between border-b py-2">
           <span className="text-muted-foreground">Stripe customer</span>
-          <span className="font-mono text-xs">{t.stripe_customer_id ?? "—"}</span>
+          <span className="font-mono text-xs">{t.stripe_customer_id ?? "-"}</span>
         </div>
         <div className="flex justify-between border-b py-2">
           <span className="text-muted-foreground">Stripe subscription</span>
-          <span className="font-mono text-xs">{t.stripe_subscription_id ?? "—"}</span>
+          <span className="font-mono text-xs">{t.stripe_subscription_id ?? "-"}</span>
         </div>
         <div className="pt-2 text-xs text-muted-foreground">
           Plan changes, coupons, and the Stripe portal are managed from the tenant's own Billing settings.

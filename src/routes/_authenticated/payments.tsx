@@ -28,7 +28,7 @@ function ResendVerification() {
   const sendFn = useServerFn(sendEmailVerification);
   const m = useMutation({
     mutationFn: () => sendFn(),
-    onSuccess: () => toast.success("Verification email sent — check your inbox"),
+    onSuccess: () => toast.success("Verification email sent. Check your inbox"),
     onError: (e: Error) => toast.error(e.message),
   });
   return (
@@ -81,7 +81,7 @@ function PaymentsSettings() {
     mutationFn: () => auditFn(),
     onSuccess: (r: any) => {
       if (!r.cleared.length) {
-        toast.success(`Checked ${r.checked} saved card${r.checked === 1 ? "" : "s"} — all valid on this Stripe account.`);
+        toast.success(`Checked ${r.checked} saved card${r.checked === 1 ? "" : "s"}: all valid on this Stripe account.`);
       } else {
         toast.warning(
           `Checked ${r.checked}: cleared ${r.cleared.length} stale saved card${r.cleared.length === 1 ? "" : "s"} ` +
@@ -98,7 +98,7 @@ function PaymentsSettings() {
       <div>
         <h1 className="text-2xl font-semibold">Payments</h1>
         <p className="text-sm text-muted-foreground">
-          Connect your own Stripe account to charge your clients — invoice payments, saved cards,
+          Connect your own Stripe account to charge your clients. Invoice payments, saved cards,
           autopay, and the client portal all run on your account, and funds settle directly to you.
           Your payments, payouts, and account settings appear right here.
         </p>
@@ -111,7 +111,7 @@ function PaymentsSettings() {
         <div className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-5">
           <h2 className="font-semibold text-amber-900">Verify your email to unlock payments</h2>
           <p className="text-sm text-amber-800">
-            You can use everything else right away — but before connecting Stripe and moving money,
+            You can use everything else right away, but before connecting Stripe and moving money,
             we need to confirm your email address. Check your inbox for the verification link.
           </p>
           <ResendVerification />
@@ -119,7 +119,7 @@ function PaymentsSettings() {
       ) : !cfg?.connected ? (
         <div className="space-y-4 rounded-lg border bg-card p-4">
           <p className="text-sm text-muted-foreground">
-            No Stripe account connected yet. Set one up to start collecting payments — you'll finish
+            No Stripe account connected yet. Set one up to start collecting payments. You'll finish
             a short Stripe verification right here in the app.
           </p>
           <Button onClick={() => ensure.mutate()} disabled={ensure.isPending}>

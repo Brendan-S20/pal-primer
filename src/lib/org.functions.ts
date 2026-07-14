@@ -114,7 +114,7 @@ export const setPortalSlug = createServerFn({ method: "POST" })
       .eq("portal_slug", clean)
       .neq("id", orgId)
       .maybeSingle();
-    if (taken) throw new Error("That address is already taken — try another.");
+    if (taken) throw new Error("That address is already taken. Try another.");
     const { error } = await admin
       .from("organizations")
       .update({ portal_slug: clean })

@@ -33,10 +33,10 @@ const SOURCE_LABELS: Record<string, string> = {
 const SOURCE_HINTS: Record<string, string> = {
   sweepgo: "Export from Sweep&Go → Settings → Data Export. Use the Customers, Locations, and Pets CSVs (one at a time).",
   jobber: "Export from Jobber → Gear icon → Imports & Exports → Export Data. Clients export includes company name and mobile phone.",
-  housecall_pro: "Housecall Pro Customers CSV uses separate First Name / Last Name columns — we'll combine them automatically.",
+  housecall_pro: "Housecall Pro Customers CSV uses separate First Name / Last Name columns. We'll combine them automatically.",
   time_to_pet: "Time To Pet → Admin → Data → Export Clients / Pets. Pets link back to a Client ID.",
   gorilla_desk: "GorillaDesk → Reports → Customers → Export CSV. Import Customers first, then Locations, then Pets.",
-  quoteiq_family: "QuoteIQ, Flowcarve, and DoTimely share a similar shape — the generic mapping usually works.",
+  quoteiq_family: "QuoteIQ, Flowcarve, and DoTimely share a similar shape, so the generic mapping usually works.",
   generic_csv: "",
 };
 
@@ -167,12 +167,12 @@ function ImportsPage() {
                       {new Date(b.created_at).toLocaleString()}
                     </td>
                     <td className="px-4 py-3">{SOURCE_LABELS[b.source] ?? b.source}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{b.filename ?? "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{b.filename ?? "-"}</td>
                     <td className="px-4 py-3">
                       <ImportStatusBadge status={b.status} />
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {b.stats ? humanizeStats(b.stats) : "—"}
+                      {b.stats ? humanizeStats(b.stats) : "-"}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link to="/imports/$batchId" params={{ batchId: b.id }}>
@@ -331,7 +331,7 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
                   }
                   className="block w-full rounded border bg-background px-3 py-2 text-sm"
                 >
-                  <option value="">— skip —</option>
+                  <option value="">(skip)</option>
                   {headers.map((h) => (
                     <option key={h} value={h}>{h}</option>
                   ))}

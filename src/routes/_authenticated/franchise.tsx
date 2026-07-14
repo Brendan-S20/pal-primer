@@ -127,7 +127,7 @@ function FranchisePage() {
             <p>This organization is not configured as a royalty parent yet.</p>
             <p>
               This page rolls up clients, revenue, and open AR from other HoundStack organizations
-              that bill you royalties — each location runs as its own separate organization with its
+              that bill you royalties. Each location runs as its own separate organization with its
               own users and data. Full multi-location management (shared branches, per-location user
               scoping) is on the roadmap.
             </p>
@@ -163,7 +163,7 @@ function FranchisePage() {
             Royalties &amp; rollup <HelpTip article="royalties" />
           </h1>
           <p className="text-sm text-muted-foreground">
-            {ctx.data.org?.name} — {rows.length} location{rows.length === 1 ? "" : "s"}
+            {ctx.data.org?.name}: {rows.length} location{rows.length === 1 ? "" : "s"}
           </p>
         </div>
       </div>
@@ -177,7 +177,7 @@ function FranchisePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Revenue trend — last 8 weeks</CardTitle>
+          <CardTitle>Revenue trend: last 8 weeks</CardTitle>
         </CardHeader>
         <CardContent>
           {trend.isLoading ? (
@@ -482,7 +482,7 @@ function RoyaltyBilling() {
                 {rows.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center text-sm text-muted-foreground">
-                      No royalty invoices yet — set rates and click Generate.
+                      No royalty invoices yet. Set rates and click Generate.
                     </TableCell>
                   </TableRow>
                 )}

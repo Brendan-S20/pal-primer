@@ -169,7 +169,7 @@ export const listPlatformUsers = createServerFn({ method: "GET" })
           .filter((r) => r.user_id === uid && r.organization_id)
           .map((r) => ({
             id: r.organization_id as string,
-            name: orgName.get(r.organization_id as string) ?? "—",
+            name: orgName.get(r.organization_id as string) ?? "-",
             role: r.role,
           })),
       };

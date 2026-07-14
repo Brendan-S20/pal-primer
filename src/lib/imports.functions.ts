@@ -659,7 +659,7 @@ export const commitImport = createServerFn({ method: "POST" })
         if (!gateErr && canAdd === false) {
           throw new Error(
             `This import would add ${createCount} new client${createCount === 1 ? "" : "s"}, but your subscription doesn't currently allow adding customers. ` +
-            `Reactivate your plan in Settings → Billing, then commit this import again — nothing has been imported yet.`,
+            `Reactivate your plan in Settings → Billing, then commit this import again. Nothing has been imported yet.`,
           );
         }
       }

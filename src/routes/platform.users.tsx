@@ -107,8 +107,8 @@ function UsersPage() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm">{u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleString() : "—"}</TableCell>
-                    <TableCell className="text-sm">{u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}</TableCell>
+                    <TableCell className="text-sm">{u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleString() : "-"}</TableCell>
+                    <TableCell className="text-sm">{u.created_at ? new Date(u.created_at).toLocaleDateString() : "-"}</TableCell>
                   </TableRow>
                 ))}
                 {q.isLoading ? (

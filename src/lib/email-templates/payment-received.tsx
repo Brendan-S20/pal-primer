@@ -18,11 +18,11 @@ const PaymentReceived = ({
 }: Props) => (
   <Html lang="en">
     <Head />
-    <Preview>Payment received — {fmtMoney(amountCents)}</Preview>
+    <Preview>Payment received: {fmtMoney(amountCents)}</Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
         <Heading style={styles.h1}>Payment received</Heading>
-        <Text style={styles.text}>Thanks {clientName} — {orgName} received your payment.</Text>
+        <Text style={styles.text}>Thanks {clientName}. {orgName} received your payment.</Text>
         <Text style={styles.amount}>{fmtMoney(amountCents)}</Text>
         {paidAt ? <Text style={styles.text}>Paid on {paidAt}.</Text> : null}
         <Text style={styles.small}>This email serves as your receipt.</Text>

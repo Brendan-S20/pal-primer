@@ -73,7 +73,7 @@ function InventoryPage() {
           </div>
           <ul className="mt-2 text-xs text-muted-foreground">
             {lowStock.slice(0, 5).map((i) => (
-              <li key={i.id}>• {i.name} — {i.on_hand} {i.unit} on hand (threshold {i.reorder_threshold})</li>
+              <li key={i.id}>• {i.name}: {i.on_hand} {i.unit} on hand (threshold {i.reorder_threshold})</li>
             ))}
           </ul>
         </div>
@@ -114,7 +114,7 @@ function InventoryPage() {
                           {!i.active && <Badge variant="secondary" className="ml-2">inactive</Badge>}
                           {i.category && <span className="ml-2 text-xs text-muted-foreground">{i.category}</span>}
                         </td>
-                        <td className="px-4 py-2 text-muted-foreground">{i.sku ?? "—"}</td>
+                        <td className="px-4 py-2 text-muted-foreground">{i.sku ?? "-"}</td>
                         <td className={`px-4 py-2 ${low ? "text-amber-600 font-medium" : ""}`}>
                           {Number(i.on_hand).toFixed(2)} {i.unit}
                         </td>
@@ -154,8 +154,8 @@ function InventoryPage() {
                     const st = Array.isArray(a.staff) ? a.staff[0] : a.staff;
                     return (
                       <tr key={a.id} className="border-b last:border-0">
-                        <td className="px-4 py-2">{st?.display_name ?? "—"}</td>
-                        <td className="px-4 py-2">{item?.name ?? "—"}</td>
+                        <td className="px-4 py-2">{st?.display_name ?? "-"}</td>
+                        <td className="px-4 py-2">{item?.name ?? "-"}</td>
                         <td className="px-4 py-2">{Number(a.quantity).toFixed(2)} {item?.unit ?? ""}</td>
                       </tr>
                     );
@@ -190,9 +190,9 @@ function InventoryPage() {
                       <tr key={m.id} className="border-b last:border-0">
                         <td className="px-4 py-2 text-muted-foreground">{new Date(m.created_at).toLocaleString()}</td>
                         <td className="px-4 py-2"><Badge variant="outline">{m.kind}</Badge></td>
-                        <td className="px-4 py-2">{item?.name ?? "—"}</td>
+                        <td className="px-4 py-2">{item?.name ?? "-"}</td>
                         <td className="px-4 py-2">{Number(m.quantity).toFixed(2)} {item?.unit ?? ""}</td>
-                        <td className="px-4 py-2">{st?.display_name ?? "—"}</td>
+                        <td className="px-4 py-2">{st?.display_name ?? "-"}</td>
                         <td className="px-4 py-2 text-muted-foreground">{m.note ?? ""}</td>
                       </tr>
                     );
@@ -305,7 +305,7 @@ function MovementDialog({ item, staffList }: { item: Item; staffList: Array<{ id
         <Button size="sm" variant="outline">Log</Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader><DialogTitle>{item.name} — record activity</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{item.name}: record activity</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div>
             <label className="text-xs text-muted-foreground">Kind</label>
@@ -321,7 +321,7 @@ function MovementDialog({ item, staffList }: { item: Item; staffList: Array<{ id
             </Select>
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">Quantity ({item.unit}){kind === "adjust" ? " — use negative to decrement" : ""}</label>
+            <label className="text-xs text-muted-foreground">Quantity ({item.unit}){kind === "adjust" ? ": use negative to decrement" : ""}</label>
             <Input type="number" value={qty} onChange={(e) => setQty(Number(e.target.value))} />
           </div>
           {(needsStaff || kind === "consume") && (

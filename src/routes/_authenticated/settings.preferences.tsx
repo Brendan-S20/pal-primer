@@ -167,7 +167,7 @@ function PortalAddressCard() {
         <CardTitle>Portal sign-in address</CardTitle>
         <CardDescription>
           Your company's permanent portal link. Put it on your website so clients can sign in
-          anytime — they'll enter their phone or email and get a one-time code.
+          anytime. They'll enter their phone or email and get a one-time code.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -250,7 +250,7 @@ function BrandingCard() {
       <CardHeader>
         <CardTitle>Client portal branding & policy</CardTitle>
         <CardDescription>
-          What your clients see on their portal — colors, logo, contact info, and what they can change themselves.
+          What your clients see on their portal: colors, logo, contact info, and what they can change themselves.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -328,7 +328,7 @@ function DemoDataCard() {
   const mut = useMutation({
     mutationFn: () => reseedFn({ data: {} }),
     onSuccess: (r) => {
-      toast.success(`Demo reset — ${r.clients} clients, ${r.visits_created} visits, ${r.invoices_created} invoices`);
+      toast.success(`Demo reset: ${r.clients} clients, ${r.visits_created} visits, ${r.invoices_created} invoices`);
       setTimeout(() => window.location.reload(), 1500);
     },
     onError: (e: Error) => toast.error(e.message),

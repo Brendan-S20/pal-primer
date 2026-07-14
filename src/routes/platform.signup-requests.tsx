@@ -94,7 +94,7 @@ function RequestCard({ r }: { r: PlatformSignupRequestRow }) {
     onSuccess: (res) => {
       const link = inviteUrl(res.invite_token);
       navigator.clipboard.writeText(link).catch(() => {});
-      toast.success("Approved — invite link copied");
+      toast.success("Approved. Invite link copied");
       qc.invalidateQueries({ queryKey: ["platform", "signup-requests"] });
       qc.invalidateQueries({ queryKey: ["platform", "invites"] });
     },
