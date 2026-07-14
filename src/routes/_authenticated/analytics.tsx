@@ -29,7 +29,7 @@ function fmt(cents: number) {
 }
 
 function pct(n: number, d: number) {
-  if (!d) return "—";
+  if (!d) return "-";
   return `${Math.round((n / d) * 100)}%`;
 }
 
@@ -128,7 +128,7 @@ function CohortTab() {
                     const bg = p > 0 ? `rgba(34,197,94,${Math.min(0.85, 0.15 + p * 0.7).toFixed(2)})` : "transparent";
                     return (
                       <td key={i} className="p-2 text-center" style={{ background: bg }}>
-                        {r > 0 ? pct(r, entry.size) : "—"}
+                        {r > 0 ? pct(r, entry.size) : "-"}
                       </td>
                     );
                   })}
@@ -411,14 +411,14 @@ function WinBackTab() {
                       <td className="px-3 py-2">
                         <Badge variant={tone as any}>{r.churn_score}</Badge>
                       </td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{r.churn_reason ?? "—"}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">{r.churn_reason ?? "-"}</td>
                       <td className="px-3 py-2 text-xs text-muted-foreground">
-                        {r.last_visit_date ? new Date(r.last_visit_date).toLocaleDateString() : "—"}
+                        {r.last_visit_date ? new Date(r.last_visit_date).toLocaleDateString() : "-"}
                       </td>
                       <td className="px-3 py-2 text-xs text-muted-foreground">
                         {r.last_winback_sent_at
                           ? `sent ${new Date(r.last_winback_sent_at).toLocaleDateString()}`
-                          : "—"}
+                          : "-"}
                       </td>
                       <td className="px-3 py-2 text-right">
                         <Button

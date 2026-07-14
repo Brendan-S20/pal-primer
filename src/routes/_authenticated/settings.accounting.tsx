@@ -103,7 +103,7 @@ function AccountingSettings() {
       <div>
         <h1 className="text-2xl font-semibold">Accounting sync</h1>
         <p className="text-sm text-muted-foreground">
-          Push paid invoices to QuickBooks Online or Xero. Use the Connect buttons below to authorize your accounting provider — tokens are refreshed automatically.
+          Push paid invoices to QuickBooks Online or Xero. Use the Connect buttons below to authorize your accounting provider. Tokens are refreshed automatically.
         </p>
       </div>
 
@@ -131,8 +131,8 @@ function AccountingSettings() {
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
           {ACCOUNTING_CONNECT_ENABLED
-            ? "You'll be redirected to QuickBooks or Xero to authorize the connection securely — no credentials are entered here."
-            : "QuickBooks and Xero connections are coming soon — they'll light up here once the integrations are activated."}
+            ? "You'll be redirected to QuickBooks or Xero to authorize the connection securely. No credentials are entered here."
+            : "QuickBooks and Xero connections are coming soon. They'll light up here once the integrations are activated."}
         </p>
       </div>
 
@@ -147,7 +147,7 @@ function AccountingSettings() {
                 <div>
                   <div className="font-medium capitalize">{c.provider}</div>
                   <div className="text-xs text-muted-foreground">
-                    {c.provider === "quickbooks" ? `Realm ${c.realm_id ?? "—"}` : `Tenant ${c.tenant_id ?? "—"}`}
+                    {c.provider === "quickbooks" ? `Realm ${c.realm_id ?? "-"}` : `Tenant ${c.tenant_id ?? "-"}`}
                     {" · "}Auto-sync {c.auto_sync ? "on" : "off"}
                     {c.last_sync_at && ` · Last sync ${new Date(c.last_sync_at).toLocaleString()}`}
                   </div>
@@ -187,7 +187,7 @@ function AccountingSettings() {
           Advanced: enter connection details manually
         </summary>
         <p className="mt-1 mb-3 text-xs text-muted-foreground">
-          For support use only. Prefer the "Connect" buttons above — OAuth tokens should not need to
+          For support use only. Prefer the "Connect" buttons above. OAuth tokens should not need to
           be pasted by hand.
         </p>
       <form onSubmit={save} className="space-y-3">

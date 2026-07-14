@@ -13,7 +13,7 @@ import { APP_NAME } from "@/lib/scoop";
 // welcome them, pitch the plans, and take payment in-app (embedded checkout).
 // Everything chosen here stays manageable later in Settings → Plan & billing.
 export const Route = createFileRoute("/_authenticated/onboarding")({
-  head: () => ({ meta: [{ title: `Welcome — ${APP_NAME}` }] }),
+  head: () => ({ meta: [{ title: `Welcome - ${APP_NAME}` }] }),
   component: OnboardingPage,
 });
 
@@ -63,14 +63,14 @@ function OnboardingPage() {
           </h1>
           <p className="mt-2 max-w-xl text-sm text-muted-foreground">
             Your workspace is ready. Two minutes of setup gets you running: pick the plan that fits
-            your crew (every tier has unlimited customers, jobs, routes, and zones — you're billed
+            your crew (every tier has unlimited customers, jobs, routes, and zones; you're billed
             per employee), then explore your dashboard. You can change or cancel the plan anytime in
             Settings → Plan &amp; billing.
           </p>
           <div className="mt-6 flex flex-wrap gap-2">
             <Button onClick={() => setStep("plan")}>Pick a plan</Button>
             <Button variant="ghost" onClick={() => navigate({ to: "/dashboard" })}>
-              Skip for now — start on the free trial
+              Skip for now, start on the free trial
             </Button>
           </div>
         </div>
@@ -81,7 +81,7 @@ function OnboardingPage() {
           <div>
             <h1 className="text-xl font-semibold">Pick the plan that fits your crew</h1>
             <p className="text-sm text-muted-foreground">
-              Payment happens right here — you won't leave the app. Change or cancel anytime.
+              Payment happens right here. You won't leave the app. Change or cancel anytime.
             </p>
           </div>
           <PlanPicker

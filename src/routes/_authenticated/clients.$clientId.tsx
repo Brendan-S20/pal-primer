@@ -345,7 +345,7 @@ function ClientDetail() {
             )}
             <div>
               <div className="text-xs uppercase tracking-wide text-muted-foreground">Churn score</div>
-              <div className="text-lg font-semibold">{(client as any).churn_score ?? "—"}</div>
+              <div className="text-lg font-semibold">{(client as any).churn_score ?? "-"}</div>
             </div>
           </div>
           {(client as any).portal_token && canBill && (
@@ -488,7 +488,7 @@ function ClientDetail() {
                 onChange={(e) => setYardSize(e.target.value as any)}
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               >
-                <option value="">—</option>
+                <option value="">-</option>
                 <option value="small">Small</option>
                 <option value="medium">Medium</option>
                 <option value="large">Large</option>
@@ -682,7 +682,7 @@ function ClientDetail() {
                 onChange={(e) => setZoneId(e.target.value)}
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               >
-                <option value="">—</option>
+                <option value="">-</option>
                 {zones.map((z: any) => (
                   <option key={z.id} value={z.id}>{z.name}</option>
                 ))}
@@ -942,7 +942,7 @@ function ReviewsReferralPanel({ client }: { client: any }) {
           <div className="text-xs font-medium text-muted-foreground">Referral code</div>
           <div className="flex items-center gap-2">
             <code className="rounded bg-muted px-2 py-1 font-mono text-sm">
-              {client.referral_code ?? "—"}
+              {client.referral_code ?? "-"}
             </code>
             {client.referral_code && (
               <Button size="sm" variant="outline" onClick={() => copy(client.referral_code, "Code")}>
@@ -955,7 +955,7 @@ function ReviewsReferralPanel({ client }: { client: any }) {
               Referred by another client on{" "}
               {client.referral_applied_at
                 ? new Date(client.referral_applied_at).toLocaleDateString()
-                : "—"}
+                : "-"}
             </p>
           )}
           {!client.referred_by_client_id && (

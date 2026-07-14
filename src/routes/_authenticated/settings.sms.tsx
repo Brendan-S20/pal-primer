@@ -56,7 +56,7 @@ function SmsSettings() {
           placeholder="+15558675310"
         />
         <p className="text-xs text-muted-foreground">
-          Your conversational number — inbound replies arrive here and are matched to your org.
+          Your conversational number. Inbound replies arrive here and are matched to your org.
           When you connect your own Twilio above, this is kept in sync automatically.
         </p>
         <Button onClick={() => save.mutate()} disabled={save.isPending}>
@@ -123,8 +123,8 @@ function TwilioByok() {
       <div>
         <h2 className="text-sm font-semibold">Bring your own Twilio (conversations)</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          Your Twilio account powers <strong>two-way conversations</strong> with your clients —
-          manual messages, replies, and the AI receptionist — sent from your own number.
+          Your Twilio account powers <strong>two-way conversations</strong> with your clients
+          (manual messages, replies, and the AI receptionist), sent from your own number.
           Automated notifications (reminders, on-my-way, review asks) and portal login codes are
           sent by HoundStack's platform sender, not your number.
         </p>
@@ -147,7 +147,7 @@ function TwilioByok() {
               </div>
             ) : (
               <p className="text-muted-foreground">
-                Not connected — conversational SMS falls back to the platform sender until you connect your own Twilio.
+                Not connected. Conversational SMS falls back to the platform sender until you connect your own Twilio.
               </p>
             )}
           </div>
@@ -165,7 +165,7 @@ function TwilioByok() {
             </div>
             <div>
               <Label htmlFor="tw-token" className="text-xs">Auth Token</Label>
-              <Input id="tw-token" type="password" value={authToken} onChange={(e) => setAuthToken(e.target.value)} placeholder={cfg?.configured ? "•••• (unchanged — re-enter to update)" : "your Twilio auth token"} autoComplete="off" />
+              <Input id="tw-token" type="password" value={authToken} onChange={(e) => setAuthToken(e.target.value)} placeholder={cfg?.configured ? "•••• (unchanged, re-enter to update)" : "your Twilio auth token"} autoComplete="off" />
               <p className="mt-1 text-xs text-muted-foreground">Stored server-side; only the last 4 are shown after saving.</p>
             </div>
             <div>
@@ -175,7 +175,7 @@ function TwilioByok() {
             <div>
               <Label htmlFor="tw-mg" className="text-xs">Messaging Service SID (optional)</Label>
               <Input id="tw-mg" value={messagingServiceSid} onChange={(e) => setMessagingServiceSid(e.target.value)} placeholder="MG…" autoComplete="off" />
-              <p className="mt-1 text-xs text-muted-foreground">Recommended for US A2P 10DLC — attach your registered campaign here.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Recommended for US A2P 10DLC. Attach your registered campaign here.</p>
             </div>
             <Button type="submit" disabled={saveMut.isPending || !accountSid.trim() || !authToken.trim()}>
               {saveMut.isPending ? "Saving…" : cfg?.configured ? "Update Twilio" : "Connect Twilio"}
@@ -189,7 +189,7 @@ function TwilioByok() {
             </p>
             <code className="block break-all rounded bg-background px-2 py-1 text-xs">{inboundUrl}</code>
             <p className="text-xs text-muted-foreground">
-              No secret in the URL — inbound requests are verified against your Twilio Auth Token's signature.
+              No secret in the URL. Inbound requests are verified against your Twilio Auth Token's signature.
             </p>
           </div>
 

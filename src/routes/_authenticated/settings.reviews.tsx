@@ -19,7 +19,7 @@ export const Route = createFileRoute("/_authenticated/settings/reviews")({
 });
 
 const DEFAULT_TEMPLATE =
-  "Hi {name}, thanks for choosing us! If we did a great job, a quick review would mean the world: {link} — Reply STOP to opt out.";
+  "Hi {name}, thanks for choosing us! If we did a great job, a quick review would mean the world: {link} Reply STOP to opt out.";
 
 function ReviewsSettings() {
   const qc = useQueryClient();

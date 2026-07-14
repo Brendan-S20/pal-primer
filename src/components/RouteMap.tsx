@@ -156,7 +156,7 @@ export function RouteMap({
         const m = L.marker(latlngs[idx], { icon }).addTo(layer);
         const addr = [v.properties?.street, v.properties?.city].filter(Boolean).join(", ");
         m.bindPopup(
-          `<div style="min-width:160px"><div style="font-weight:600">#${label} · ${escapeHtml(v.clients?.display_name ?? "—")}</div><div style="font-size:11px;color:#555">${escapeHtml(addr)}</div><div style="font-size:11px;color:#888;margin-top:2px">${escapeHtml(g.name)}</div></div>`,
+          `<div style="min-width:160px"><div style="font-weight:600">#${label} · ${escapeHtml(v.clients?.display_name ?? "-")}</div><div style="font-size:11px;color:#555">${escapeHtml(addr)}</div><div style="font-size:11px;color:#888;margin-top:2px">${escapeHtml(g.name)}</div></div>`,
         );
         if (onVisitClick) m.on("click", () => onVisitClick(v.id));
       });

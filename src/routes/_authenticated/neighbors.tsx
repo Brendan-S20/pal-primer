@@ -185,7 +185,7 @@ function NeighborsPage() {
           <MapPin className="h-6 w-6" /> Neighbor canvassing
         </h1>
         <p className="text-sm text-muted-foreground">
-          Every new client is a beachhead. Seed 5–10 doors on their street, canvass them, and turn one house into a whole route.
+          Every new client is a beachhead. Seed 5-10 doors on their street, canvass them, and turn one house into a whole route.
         </p>
         </div>
         <Button variant="outline" onClick={() => { setWalkIdx(0); setWalkMode(true); }} disabled={walkQueue.length === 0}>
@@ -304,7 +304,7 @@ function NeighborsPage() {
                 ) : rows.map((r) => (
                   <tr key={r.id} className="border-t align-top">
                     <td className="px-3 py-2 font-medium">{r.address_line}</td>
-                    <td className="px-3 py-2 text-muted-foreground text-xs">{r.seed_client_name ?? "—"}</td>
+                    <td className="px-3 py-2 text-muted-foreground text-xs">{r.seed_client_name ?? "-"}</td>
                     <td className="px-3 py-2">
                       <select
                         value={r.status}
@@ -317,7 +317,7 @@ function NeighborsPage() {
                       </select>
                       <Badge variant={STATUS_TONE[r.status]} className="ml-2">{STATUS_LABEL[r.status]}</Badge>
                     </td>
-                    <td className="px-3 py-2 max-w-[300px] text-xs text-muted-foreground">{r.notes ?? "—"}</td>
+                    <td className="px-3 py-2 max-w-[300px] text-xs text-muted-foreground">{r.notes ?? "-"}</td>
                     <td className="px-3 py-2 text-right">
                       <ConfirmButton
                         trigger={

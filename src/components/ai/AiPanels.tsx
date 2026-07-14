@@ -373,7 +373,7 @@ export function DispatchPanel() {
                   <input type="checkbox" checked={!!selected[s.visit_id]} onChange={(e) => setSelected((p) => ({ ...p, [s.visit_id]: e.target.checked }))} />
                 </td>
                 <td className="px-3 py-2 font-medium">{s.client}</td>
-                <td className="px-3 py-2 text-muted-foreground">{s.zone ?? "—"}</td>
+                <td className="px-3 py-2 text-muted-foreground">{s.zone ?? "-"}</td>
                 <td className="px-3 py-2">{fmt(s.price_cents)}</td>
                 <td className="px-3 py-2 text-xs">
                   <span className="text-muted-foreground">{s.current_staff ?? "Unassigned"}</span>

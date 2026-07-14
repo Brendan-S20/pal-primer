@@ -1276,7 +1276,7 @@ export function StationsPanel({ rows }: { rows: Array<any> }) {
             </div>
             <div className="text-xs text-muted-foreground text-right">
               {s.capacity_liners && <div>Capacity: {s.capacity_liners} liners</div>}
-              <div>Last serviced: {s.last_serviced_on ? fmtDayShort(s.last_serviced_on) : "—"}</div>
+              <div>Last serviced: {s.last_serviced_on ? fmtDayShort(s.last_serviced_on) : "-"}</div>
             </div>
           </div>
         </li>

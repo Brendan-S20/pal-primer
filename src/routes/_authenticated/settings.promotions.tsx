@@ -40,7 +40,7 @@ function fmtMoney(cents: number) {
 function printGiftCard(card: any, orgName: string) {
   const w = window.open("", "_blank", "width=700,height=500");
   if (!w) {
-    toast.error("Pop-up blocked — allow pop-ups for this site to print");
+    toast.error("Pop-up blocked. Allow pop-ups for this site to print");
     return;
   }
   const esc = (s: string) =>
@@ -520,7 +520,7 @@ function GiftSection() {
                   </div>
                   <div className="mt-0.5 text-xs text-muted-foreground">
                     {c.status === "void" ? (
-                      <>Voided — no longer redeemable ({fmtMoney(c.initial_balance_cents)} card)</>
+                      <>Voided, no longer redeemable ({fmtMoney(c.initial_balance_cents)} card)</>
                     ) : (
                       <>
                         {fmtMoney(c.remaining_balance_cents)} of{" "}

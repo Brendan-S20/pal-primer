@@ -28,7 +28,7 @@ export function TenantStatusBadge({
   const key = status ?? "";
   return (
     <Badge variant={STATUS_VARIANT[key] ?? "outline"} className={className}>
-      {STATUS_LABEL[key] ?? (status ?? "—")}
+      {STATUS_LABEL[key] ?? (status ?? "-")}
     </Badge>
   );
 }

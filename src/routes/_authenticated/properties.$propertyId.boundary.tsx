@@ -71,7 +71,7 @@ function BoundaryPage() {
             </Button>
           )}
           <h1 className="mt-1 truncate text-2xl font-semibold">
-            {clientName ? `${clientName} — property boundary` : "Property boundary"}
+            {clientName ? `${clientName}: property boundary` : "Property boundary"}
           </h1>
           {p && (
             <p className="text-sm text-muted-foreground">
@@ -85,7 +85,7 @@ function BoundaryPage() {
           <Button asChild>
             <Link to="/clients/$clientId" params={{ clientId }}>
               <CheckCircle2 className="mr-1.5 h-4 w-4" />
-              Done — back to {clientName ?? "client"}
+              Done, back to {clientName ?? "client"}
             </Link>
           </Button>
         )}

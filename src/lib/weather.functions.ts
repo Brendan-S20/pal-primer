@@ -257,7 +257,7 @@ export const getZoneVisitsOnDay = createServerFn({ method: "GET" })
         id: v.id,
         scheduled_on: v.scheduled_on,
         status: v.status,
-        client_name: v.subscriptions?.clients?.display_name ?? "—",
+        client_name: v.subscriptions?.clients?.display_name ?? "-",
       })),
     };
   });

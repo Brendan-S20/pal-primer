@@ -65,7 +65,7 @@ function OverviewPage() {
         <h1 className="text-2xl font-semibold">Overview</h1>
         <p className="text-sm text-muted-foreground">
           Health of the SaaS at a glance. Free-to-paid conversion is the business event on
-          this model — it lives right up top.
+          this model. It lives right up top.
         </p>
       </div>
 

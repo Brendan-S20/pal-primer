@@ -105,7 +105,7 @@ function AddonsCatalog() {
               value={draft.default_frequency}
               onChange={(e) => setDraft({ ...draft, default_frequency: e.target.value })}
             >
-              {FREQS.map((f) => <option key={f} value={f}>{f || "—"}</option>)}
+              {FREQS.map((f) => <option key={f} value={f}>{f || "-"}</option>)}
             </select>
           </div>
           <div className="sm:col-span-2 flex items-end">

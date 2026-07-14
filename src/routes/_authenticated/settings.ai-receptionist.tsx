@@ -15,7 +15,7 @@ export const Route = createFileRoute("/_authenticated/settings/ai-receptionist")
 });
 
 const DEFAULT_PERSONA =
-  "You are a friendly, concise SMS receptionist for a pet-waste cleanup company. Answer in 1-2 short sentences. Never invent prices — use the get_pricing_quote tool. Offer to have a human follow up when unsure.";
+  "You are a friendly, concise SMS receptionist for a pet-waste cleanup company. Answer in 1-2 short sentences. Never invent prices. Use the get_pricing_quote tool. Offer to have a human follow up when unsure.";
 
 function Page() {
   const qc = useQueryClient();
