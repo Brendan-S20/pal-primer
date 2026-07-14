@@ -25,7 +25,11 @@ export function HelpTip({ article, label }: { article: string; label?: string })
         </Link>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="max-w-72">
-        <p className="text-xs">{a.body[0]}</p>
+        {/* Article text carries inline [label](target) links + **bold**;
+            flatten to plain text for the tooltip. */}
+        <p className="text-xs">
+          {a.body[0].replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\*\*/g, "")}
+        </p>
         <p className="mt-1 text-xs font-medium">Click to read more</p>
       </TooltipContent>
     </Tooltip>

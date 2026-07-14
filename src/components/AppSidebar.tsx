@@ -87,7 +87,9 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { title: "Reports", url: "/reports", icon: BarChart3 },
       { title: "Analytics", url: "/analytics", icon: LineChart },
-      { title: "Royalties", url: "/franchise", icon: Building2 },
+      // Royalties (/franchise) is hidden until multi-location is a real,
+      // supported offering (per Brendan, 2026-07-14). The route still works
+      // by URL for the rare royalty-parent org.
     ],
   },
   {
@@ -133,14 +135,21 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
+        {/* When collapsed, the menu icons sit centered in a 2rem button within
+            the icon rail; match that geometry exactly (same width, centered,
+            no horizontal padding) so the mark lines up with the icon column. */}
         <Link
           to="/dashboard"
-          className="flex items-center gap-2 px-2 py-1.5 text-sidebar-foreground"
+          className={
+            collapsed
+              ? "flex h-8 w-8 items-center justify-center text-sidebar-foreground"
+              : "flex items-center gap-2 px-2 py-1.5 text-sidebar-foreground"
+          }
           aria-label={APP_NAME}
         >
           <Logo
             variant="mark"
-            className="h-7 w-7 shrink-0"
+            className={collapsed ? "h-5 w-5 shrink-0" : "h-7 w-7 shrink-0"}
             style={{ color: "var(--brand-accent, currentColor)" }}
           />
           {!collapsed && (

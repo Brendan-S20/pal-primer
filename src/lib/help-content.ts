@@ -1,8 +1,11 @@
-// Feature 3: Knowledge Center content. Articles are deliberately short and
-// plain-language, written from the exact confusion points persona QA hit:
-// nav jargon (zones, skip rules, blackouts, DNA, royalties, churn score), the
-// "Generate invoices → 0 generated" dead end, and add-on setup. Sections
-// mirror the Settings groupings so the taxonomy is one users already know.
+// Knowledge Center content. Articles are short and plain-language, written
+// from the confusion points persona QA hit. Sections mirror the Settings
+// groupings so the taxonomy is one users already know.
+//
+// Body/step text supports two inline link forms rendered by /help:
+//   [label](article:slug)  -> internal link to another article
+//   [label](/app/path)     -> link to a page in the app
+// plus **bold**. Keep paragraphs short.
 
 export type HelpArticle = {
   slug: string;
@@ -10,8 +13,14 @@ export type HelpArticle = {
   section: string;
   /** Which roles this is most relevant to (shown as a chip, never hides content). */
   audience?: string;
-  /** Plain paragraphs. Keep each one short. */
+  /** Plain paragraphs (inline links + bold supported). */
   body: string[];
+  /** Optional numbered walkthrough rendered as "Step-by-step". */
+  steps?: string[];
+  /** Optional deep link into the app ("Open Zones"). */
+  appLink?: { to: string; label: string };
+  /** Slugs of related articles, rendered as chips at the bottom. */
+  related?: string[];
 };
 
 export const HELP_SECTIONS = [
@@ -27,6 +36,24 @@ export const HELP_SECTIONS = [
 export const HELP_ARTICLES: HelpArticle[] = [
   // ── Getting started ────────────────────────────────────────────────────────
   {
+    slug: "first-30-minutes",
+    title: "Your first 30 minutes: from empty account to first route",
+    section: "Getting started",
+    body: [
+      "This is the fastest path from a fresh account to a schedulable day. Each step links to the page where it happens, and the [Get started checklist](article:checklist) on your dashboard tracks the same list.",
+    ],
+    steps: [
+      "Create your service areas in [Zones](/zones). One zone per area a tech covers in a day, with coordinates or a ZIP prefix so maps and [weather](article:weather) work. More in [Zones: what they are](article:zones).",
+      "Invite your team in [Users & roles](/settings/users) and give each person the right role. See [What each role can see and do](article:roles).",
+      "Add clients: one at a time from [Clients](/clients), or bring everything over at once with [Import](article:import-clients).",
+      "Define your [add-on services](article:add-ons) in [Settings -> Add-ons](/settings/addons) so techs can bill extras from the field.",
+      "Plan a day on [Routes](/routes): assign visits to techs by zone and drag to reorder. See [Plan your first routes](article:routes-planning).",
+      "Connect payments in [Payments](/payments) so invoices are payable online. See [Getting paid](article:getting-paid).",
+    ],
+    appLink: { to: "/dashboard", label: "Open the dashboard" },
+    related: ["checklist", "tour", "import-clients", "routes-planning", "getting-paid"],
+  },
+  {
     slug: "tour",
     title: "Take the guided tour",
     section: "Getting started",
@@ -34,24 +61,46 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "The first time you sign in, HoundStack walks you through the main areas of the app with a short guided tour. You can skip it at any step.",
       "Want to see it again? Use the button below the article list on this page. The tour restarts from the beginning.",
     ],
+    related: ["first-30-minutes", "checklist"],
   },
   {
     slug: "checklist",
     title: 'The "Get started" checklist',
     section: "Getting started",
     body: [
-      "The dashboard checklist tracks what's left to configure: verifying your email, creating zones, adding staff and clients, planning a first route, and setting up billing.",
-      "It's different from the guided tour: the tour explains what things are, the checklist tracks what's left to set up. Dismiss it once you're rolling; it won't nag you again.",
+      "The [dashboard](/dashboard) checklist tracks what's left to configure: verifying your email, creating zones, adding staff and clients, planning a first route, and setting up billing.",
+      "It's different from the [guided tour](article:tour): the tour explains what things are, the checklist tracks what's left to set up. Dismiss it once you're rolling; it won't nag you again.",
     ],
+    related: ["first-30-minutes", "tour"],
   },
   {
     slug: "roles",
     title: "What each role can see and do",
     section: "Getting started",
     body: [
-      "Owner: everything, including billing and payouts. Office manager: day-to-day operations (clients, invoices, routes, settings) but not the business's own subscription billing. Dispatcher: scheduling, routes, weather, and the client directory. Technician: My Day, the waste log, and field tools.",
-      "If someone can't see a page you expect them to, their role is usually why. Roles are set in Settings → Users & roles.",
+      "**Owner:** everything, including billing and payouts. **Office manager:** day-to-day operations (clients, invoices, routes, settings) but not the business's own subscription billing. **Dispatcher:** scheduling, routes, weather, and the client directory. **Technician:** [My Day](article:my-day), the [waste log](article:waste-log), and field tools.",
+      "If someone can't see a page you expect them to, their role is usually why. Roles are set in [Users & roles](/settings/users).",
     ],
+    appLink: { to: "/settings/users", label: "Open Users & roles" },
+    related: ["users-roles", "my-day"],
+  },
+  {
+    slug: "import-clients",
+    title: "Import your clients from another system",
+    section: "Getting started",
+    body: [
+      "Moving from Jobber, a spreadsheet, or another tool? The importer takes a CSV and creates clients, properties, and dogs in one pass.",
+      "Import **clients first**. Properties and dogs link back to a client by its external id from the original system.",
+    ],
+    steps: [
+      "Export a CSV from your old system (the [Import](/imports) page has per-source instructions and a template you can download).",
+      "On [Import](/imports), pick the source and entity, then choose your CSV file.",
+      "Review the preview: every row shows whether it will be created, updated, or skipped, with the reason.",
+      "Commit the import. If your subscription doesn't allow new clients, you'll be told once up front, before anything is written.",
+      "Spot-check a few clients in [Clients](/clients), then repeat for properties and dogs if you have them.",
+    ],
+    appLink: { to: "/imports", label: "Open Import" },
+    related: ["first-30-minutes", "zones"],
   },
   // ── Business setup ─────────────────────────────────────────────────────────
   {
@@ -60,9 +109,40 @@ export const HELP_ARTICLES: HelpArticle[] = [
     section: "Business setup",
     body: [
       "A zone is a service area: a neighborhood, a ZIP-code prefix, a side of town. Every client property belongs to a zone.",
-      "Zones drive almost everything geographic: routes are planned per zone, the weather page forecasts per zone, and reports can break revenue down by zone. Give each zone coordinates (or a postal prefix) so maps and forecasts work.",
+      "Zones drive almost everything geographic: [routes](article:routes-planning) are planned per zone, the [weather](article:weather) page forecasts per zone, and reports can break revenue down by zone. Give each zone coordinates (or a postal prefix) so maps and forecasts work.",
       "Rule of thumb: one zone per area a tech can comfortably cover in a day.",
     ],
+    appLink: { to: "/zones", label: "Open Zones" },
+    related: ["routes-planning", "weather", "first-30-minutes"],
+  },
+  {
+    slug: "routes-planning",
+    title: "Plan your first routes",
+    section: "Business setup",
+    body: [
+      "Routes turn scheduled visits into an ordered day for each tech. The map view shows visits color-grouped by [zone](article:zones); the board view shows each tech's column.",
+    ],
+    steps: [
+      "Open [Routes](/routes) and pick the day (Today, Week, or Month view).",
+      "Unassigned visits appear grouped by zone. Drag them onto a tech, or use auto-assign to balance by capacity.",
+      "Drag within a tech's column to set the drive order. Directions links use the property's address or coordinates.",
+      "Check [Weather](/weather) for risky days; auto-rebalance can move visits off a storm day in one click.",
+      "Techs see the final order on [My Day](article:my-day) the moment you're done.",
+    ],
+    appLink: { to: "/routes", label: "Open Routes" },
+    related: ["zones", "weather", "my-day"],
+  },
+  {
+    slug: "weather",
+    title: "Weather and rescheduling",
+    section: "Business setup",
+    body: [
+      "The [Weather](/weather) page forecasts each [zone](article:zones) for the days ahead and flags risky days (heavy rain, high wind, storms, hard freezes) along with how many visits are scheduled on them.",
+      "**Preview auto-rebalance** proposes moving at-risk visits to the nearest safe day with capacity; nothing moves until you apply it. Clients can get an automatic weather-reschedule email when their visit moves.",
+      "Forecasts are cached, so if the weather service is briefly unavailable you'll see the last saved forecast instead of an error.",
+    ],
+    appLink: { to: "/weather", label: "Open Weather" },
+    related: ["zones", "routes-planning", "blackouts"],
   },
   {
     slug: "skip-rules",
@@ -71,8 +151,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
     body: [
       "A skip is a scheduled visit that doesn't happen: a locked gate, an aggressive dog loose in the yard, a client on vacation.",
       "Skip rules decide what happens to billing when a visit is skipped: some reasons still charge the client (you showed up, the gate was locked), others don't (you cancelled for weather).",
-      "Set the defaults in Settings → Skip rules; techs pick a reason when they skip, and billing follows your rule automatically.",
+      "Set the defaults in [Skip rules](/settings/skip-rules); techs pick a reason when they skip on [My Day](article:my-day), and billing follows your rule automatically.",
     ],
+    appLink: { to: "/settings/skip-rules", label: "Open Skip rules" },
+    related: ["my-day", "generate-invoices"],
   },
   {
     slug: "blackouts",
@@ -80,26 +162,38 @@ export const HELP_ARTICLES: HelpArticle[] = [
     section: "Business setup",
     body: [
       "Blackout dates are days your business doesn't operate: holidays, company events. No visits get auto-scheduled on a blackout date, and anything that would have landed there shifts.",
-      "Set them in Settings → Blackouts before the holiday sneaks up on the schedule.",
+      "Set them in [Blackouts](/settings/blackouts) before the holiday sneaks up on the schedule.",
     ],
+    appLink: { to: "/settings/blackouts", label: "Open Blackouts" },
+    related: ["weather", "routes-planning"],
   },
   {
     slug: "add-ons",
     title: "Add-on services (and billing them from the field)",
     section: "Business setup",
     body: [
-      "Add-ons are extra billable services on top of the regular cleanup: haul-away, deodorizer, deck scrub. Define them with a price in Settings → Add-ons.",
-      "Techs can bill an add-on mid-visit from My Day: the charge is capped per-visit (Settings → Preferences), the office sees every field charge for review, and prepaid clients are debited from credit while postpaid clients see it on the next invoice.",
+      "Add-ons are extra billable services on top of the regular cleanup: haul-away, deodorizer, deck scrub. Define them with a price in [Add-ons](/settings/addons).",
+      "Techs can bill an add-on mid-visit from [My Day](article:my-day): the charge is capped per-visit (Settings -> Preferences), the office sees every field charge for review, and prepaid clients are debited from credit while postpaid clients see it on the next invoice.",
       "If the Bill button in the field says there's nothing to bill, the add-on catalog is empty. Add services first.",
     ],
+    steps: [
+      "Open [Settings -> Add-ons](/settings/addons) and create each service with a name and price.",
+      "Set the per-visit field-charge cap in Settings -> Preferences if the default doesn't fit.",
+      "On a visit in [My Day](/my-day), a tech taps the add-on panel, picks the service and quantity, and confirms the charge.",
+      "Review field charges from the office; they land on the client's next invoice (or debit prepaid credit immediately).",
+    ],
+    appLink: { to: "/settings/addons", label: "Open Add-ons" },
+    related: ["my-day", "generate-invoices", "platform-addons"],
   },
   {
     slug: "deep-clean",
     title: "Seasonal deep cleans",
     section: "Business setup",
     body: [
-      "A deep clean is a bigger, seasonal cleanup (typically spring) billed at a premium over the regular visit. Turn on seasonal deep cleans in Settings → Deep-clean, pick the months and the extra charge, and qualifying visits get flagged and billed automatically.",
+      "A deep clean is a bigger, seasonal cleanup (typically spring) billed at a premium over the regular visit. Turn on seasonal deep cleans in [Deep-clean](/settings/deep-clean), pick the months and the extra charge, and qualifying visits get flagged and billed automatically.",
     ],
+    appLink: { to: "/settings/deep-clean", label: "Open Deep-clean" },
+    related: ["add-ons", "generate-invoices"],
   },
   // ── Customer-facing ────────────────────────────────────────────────────────
   {
@@ -107,9 +201,17 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: "The lead form: your embeddable quote page",
     section: "Customer-facing",
     body: [
-      "The lead form is a public page (and embeddable widget) where prospects request service. It collects their address, dog count, and frequency, and drops them into your Leads list.",
-      "Customize the fields and branding in Settings → Lead form, then link it from your website or ads.",
+      "The lead form is a public page (and embeddable widget) where prospects request service. It collects their address, dog count, and frequency, and drops them into your [Leads](/leads) list.",
+      "Customize the fields and branding in [Lead form](/settings/lead-form), then link it from your website or ads. You can preview the live form from the Leads page at any time.",
     ],
+    steps: [
+      "Open [Settings -> Lead form](/settings/lead-form) and toggle the fields you want to collect.",
+      "Copy the hosted link or the embed snippet onto your website.",
+      "New submissions appear in [Leads](/leads); use Preview form there to see exactly what prospects see.",
+      "Convert a qualified lead to a client in one click; it lands in [Clients](/clients) ready to schedule.",
+    ],
+    appLink: { to: "/settings/lead-form", label: "Open Lead form settings" },
+    related: ["client-portal", "first-30-minutes"],
   },
   {
     slug: "client-portal",
@@ -117,65 +219,119 @@ export const HELP_ARTICLES: HelpArticle[] = [
     section: "Customer-facing",
     body: [
       "Every client gets a private portal link where they can see upcoming visits, pay invoices, save a card, put service on hold, and refer neighbors.",
-      "Clients sign in with a one-time code sent by email (or text, when texting is configured). If a client can't get their code, staff can read one to them over the phone from the client's detail page.",
+      "Clients sign in with a one-time code sent by email (or text, when texting is configured). If a client can't get their code, staff can read one to them over the phone from the client's detail page in [Clients](/clients).",
+      "The portal carries your branding: set your logo and brand color in [Preferences](/settings/preferences).",
     ],
+    related: ["lead-form", "getting-paid", "credit-balance"],
   },
   {
     slug: "refer-a-business",
     title: "Refer a business: earn cash for referrals",
     section: "Customer-facing",
     body: [
-      "Know another pet-service business that could use HoundStack? Share your referral link from Settings → Refer a business.",
+      "Know another pet-service business that could use HoundStack? Share your referral link from [Refer a business](/settings/referrals).",
       "When a business signs up through your link and becomes a paying customer, you earn a percentage of their first payment, paid out in cash after they've stayed active through a short holding period. Progress shows on the same page.",
     ],
+    appLink: { to: "/settings/referrals", label: "Open Refer a business" },
+    related: ["client-portal"],
   },
   // ── Communications ─────────────────────────────────────────────────────────
+  {
+    slug: "texting-setup",
+    title: "Texting: setup, consent, and STOP",
+    section: "Communications",
+    body: [
+      "HoundStack texts fall into two buckets. **Automated notifications** (visit reminders, on-my-way, completed, review asks) and portal login codes go out through the platform sender. **Two-way conversations** with clients use your own Twilio account, connected in [SMS settings](/settings/sms).",
+      "Every text includes opt-out instructions, and a client who replies STOP is blocked from further texts automatically. Consent details live in the public [SMS policy](/legal/sms).",
+      "Pick which automated texts go out in [SMS settings](/settings/sms); per-client opt-outs show on the client's page.",
+    ],
+    appLink: { to: "/settings/sms", label: "Open SMS settings" },
+    related: ["client-portal", "ai-tools"],
+  },
   {
     slug: "churn-score",
     title: "Churn score: who's at risk of leaving",
     section: "Communications",
     body: [
-      "The churn score (0–100) estimates how likely a client is to cancel, based on signals like skipped visits, unpaid invoices, complaints, and how long since they signed up. Higher = more at risk.",
-      'Clients at 60+ show an "at risk" badge. The AI churn panel on the Clients page suggests who to check in with. A quick call or a small credit often saves the account.',
+      "The churn score (0-100) estimates how likely a client is to cancel, based on signals like skipped visits, unpaid invoices, complaints, and how long since they signed up. Higher = more at risk.",
+      'Clients at 60+ show an "at risk" badge in [Clients](/clients). The AI churn panel on the same page suggests who to check in with. A quick call or a small credit often saves the account.',
     ],
+    appLink: { to: "/clients", label: "Open Clients" },
+    related: ["ai-tools", "credit-balance"],
   },
   {
     slug: "ai-tools",
     title: "Where the AI tools live",
     section: "Communications",
     body: [
-      "AI tools are embedded where they're useful, not on a separate page: review-reply suggestions on Settings → Reviews, churn risk on Clients, dispatch suggestions on Routes, zone pricing on Zones, and the weekly digest + marketing content on the Dashboard.",
-      "They're bring-your-own-key: add your Anthropic or OpenAI API key once in Settings → AI Tools and every panel uses it.",
+      "AI tools are embedded where they're useful, not on a separate page: review-reply suggestions on [Reviews](/settings/reviews), [churn risk](article:churn-score) on Clients, dispatch suggestions on [Routes](/routes), zone pricing on [Zones](/zones), and the weekly digest + marketing content on the [Dashboard](/dashboard).",
+      "They're bring-your-own-key: add your Anthropic or OpenAI API key once in [AI Tools settings](/settings/ai) and every panel uses it.",
+      "The [AI Receptionist](article:platform-addons) is separate: a paid add-on that answers client texts for you around the clock.",
     ],
+    appLink: { to: "/settings/ai", label: "Open AI Tools settings" },
+    related: ["churn-score", "platform-addons", "texting-setup"],
   },
   // ── Financial ──────────────────────────────────────────────────────────────
+  {
+    slug: "getting-paid",
+    title: "Getting paid: from completed visit to money in the bank",
+    section: "Financial",
+    body: [
+      "The billing pipeline is: complete visits -> generate invoices -> clients pay (online, autopay, or saved card) -> Stripe pays out to your bank.",
+    ],
+    steps: [
+      "Connect your Stripe account in [Payments](/payments). This is where client money flows; payouts land in your bank on Stripe's schedule.",
+      "Techs complete visits on [My Day](/my-day) as they finish. Completed visits are what invoicing runs on.",
+      'On [Invoices](/invoices), "Generate from visits" bills everything completed and unbilled. Use "New invoice" for one-off work. See [Generate vs New invoice](article:generate-invoices).',
+      "Clients pay from their [portal](article:client-portal) (card on file, autopay, or a payment link). Overdue reminders can go out automatically.",
+      "Watch it all on [Reports](/reports): revenue, accounts receivable aging, and payouts.",
+    ],
+    appLink: { to: "/payments", label: "Open Payments" },
+    related: ["generate-invoices", "payments-vs-billing", "client-portal"],
+  },
   {
     slug: "generate-invoices",
     title: '"Generate from visits" vs. "New invoice"',
     section: "Financial",
     body: [
-      "Generate from visits bills completed, not-yet-billed visits. It's the batch button for your regular cadence. If it says it generated 0 invoices, that means there were no completed unbilled visits in the window, not that something failed.",
-      'New invoice is the direct route: pick a client, add line items, bill immediately. Use it for one-off jobs that never went through the schedule: "I did the work, now I bill."',
+      "**Generate from visits** bills completed, not-yet-billed visits. It's the batch button for your regular cadence. If it says it generated 0 invoices, that means there were no completed unbilled visits in the window, not that something failed.",
+      '**New invoice** is the direct route: pick a client, add line items, bill immediately. Use it for one-off jobs that never went through the schedule: "I did the work, now I bill."',
     ],
+    appLink: { to: "/invoices", label: "Open Invoices" },
+    related: ["getting-paid", "skip-rules", "add-ons"],
   },
   {
     slug: "payments-vs-billing",
     title: "Payments vs. Billing: two different money pages",
     section: "Financial",
     body: [
-      "Payments (in the sidebar) is money coming in from your clients: your Stripe account, balances, payouts to your bank, and saved client cards.",
-      "Billing (in Settings) is money going out to HoundStack: your own subscription plan for using the software.",
+      "[Payments](/payments) (in the sidebar) is money coming **in** from your clients: your Stripe account, balances, payouts to your bank, and saved client cards.",
+      "[Billing](/settings/billing) (in Settings) is money going **out** to HoundStack: your own subscription plan for using the software, plus any [platform add-ons](article:platform-addons).",
       'If clients say their saved card stopped working after you reconnected a different Stripe account, use "Check saved client cards" on the Payments page. It finds affected clients and prompts them to re-add a card.',
     ],
+    related: ["getting-paid", "platform-addons"],
+  },
+  {
+    slug: "platform-addons",
+    title: "Plan add-ons (like the AI Receptionist)",
+    section: "Financial",
+    body: [
+      "Add-ons are optional extras for your HoundStack plan, billed on the same subscription invoice. They live at the bottom of [Billing](/settings/billing).",
+      "The **AI Receptionist** answers client texts for you day and night: FAQs, scheduling questions, and escalations to your team when a human is needed. Add it from Billing, then configure its persona and knowledge in [AI receptionist settings](/settings/ai-receptionist).",
+      "Adding or removing an add-on adjusts your next invoice automatically (prorated). Note: these are different from your own [client-facing add-on services](article:add-ons).",
+    ],
+    appLink: { to: "/settings/billing", label: "Open Billing" },
+    related: ["payments-vs-billing", "ai-tools", "add-ons"],
   },
   {
     slug: "credit-balance",
     title: "Account credit vs. amount owed",
     section: "Financial",
     body: [
-      "A client's credit is money on their account (referral rewards, prepayments, goodwill credits) that automatically offsets future charges.",
-      "An open invoice is what they currently owe. A client can have $0 credit and a $125 open invoice at the same time. The two numbers answer different questions.",
+      "A client's **credit** is money on their account (referral rewards, prepayments, goodwill credits) that automatically offsets future charges.",
+      "An **open invoice** is what they currently owe. A client can have $0 credit and a $125 open invoice at the same time; the two numbers answer different questions.",
     ],
+    related: ["getting-paid", "client-portal"],
   },
   {
     slug: "royalties",
@@ -183,8 +339,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
     section: "Financial",
     body: [
       "The Royalties page applies if separate businesses pay you a percentage of their revenue (a franchise-style arrangement). It calculates and invoices those royalty fees across linked organizations.",
-      "Running a single location? You can ignore this page entirely. Full multi-location management (shared staff, cross-location reporting) is on the roadmap.",
+      "Running a single location? You can ignore it entirely; it's intentionally not in the sidebar. Full multi-location management (shared staff, cross-location reporting) is on the roadmap.",
     ],
+    related: ["payments-vs-billing"],
   },
   // ── Team ───────────────────────────────────────────────────────────────────
   {
@@ -192,9 +349,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: "Inviting your team and setting roles",
     section: "Team",
     body: [
-      'Invite teammates from Settings → Users & roles. Each person gets a role (see "What each role can see and do") that controls their access.',
+      "Invite teammates from [Users & roles](/settings/users). Each person gets a role (see [What each role can see and do](article:roles)) that controls their access.",
       'Per-technician routing controls live in each user\'s "Routing & addresses" panel: availability for routes, daily capacity, and route start/end addresses. Plans are priced per active seat, so deactivating someone frees their seat.',
     ],
+    appLink: { to: "/settings/users", label: "Open Users & roles" },
+    related: ["roles", "routes-planning"],
   },
   // ── In the field ───────────────────────────────────────────────────────────
   {
@@ -203,9 +362,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
     section: "In the field",
     audience: "Technicians",
     body: [
-      "My Day lists the visits assigned to you for the day, in route order, with one-tap directions, start/complete buttons, photo capture, skip (with a reason), and add-on billing.",
-      'Complete visits as you finish them. Completed visits are what invoicing runs on. A visit left "in progress" overnight shows up in the office\'s stuck-visit count.',
+      "[My Day](/my-day) lists the visits assigned to you for the day, in route order, with one-tap directions, start/complete buttons, photo capture, skip (with a [reason](article:skip-rules)), and [add-on billing](article:add-ons).",
+      "Complete visits as you finish them; completed visits are what [invoicing](article:getting-paid) runs on. A visit left in progress overnight shows up in the office's stuck-visit count.",
+      "Works offline: actions queue when you lose signal and sync when you're back.",
     ],
+    appLink: { to: "/my-day", label: "Open My Day" },
+    related: ["waste-log", "skip-rules", "add-ons"],
   },
   {
     slug: "waste-log",
@@ -213,18 +375,22 @@ export const HELP_ARTICLES: HelpArticle[] = [
     section: "In the field",
     audience: "Technicians",
     body: [
-      'Many jurisdictions require records of commercial pet-waste disposal. The waste log is that record: each "dump" entry (a disposal manifest) captures the facility, date, weight, bags, ticket number, and an optional receipt photo.',
+      "Many jurisdictions require records of commercial pet-waste disposal. The [waste log](/waste-log) is that record: each dump entry (a disposal manifest) captures the facility, date, weight, bags, ticket number, and an optional receipt photo.",
       "Log a dump every time you unload at a disposal facility. Facilities are saved with a one-tap Directions link.",
     ],
+    appLink: { to: "/waste-log", label: "Open Waste log" },
+    related: ["my-day", "dna"],
   },
   {
     slug: "dna",
     title: "DNA compliance",
     section: "In the field",
     body: [
-      "Some HOAs and municipalities run dog-DNA programs: unscooped waste is tested and matched to a registered dog. The DNA page tracks samples and matches for properties enrolled in such a program.",
+      "Some HOAs and municipalities run dog-DNA programs: unscooped waste is tested and matched to a registered dog. The [DNA page](/dna) tracks samples, lab results, matches, and violation notices for properties enrolled in such a program.",
       "Not in a DNA program? You can ignore this page.",
     ],
+    appLink: { to: "/dna", label: "Open DNA compliance" },
+    related: ["waste-log"],
   },
 ];
 
