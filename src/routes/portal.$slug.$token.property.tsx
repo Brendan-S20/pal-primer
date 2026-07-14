@@ -47,7 +47,7 @@ function PortalProperty() {
           </ul>
           <p className="mt-2 text-xs text-muted-foreground">
             When you add a service below, pick the property it's for. Dogs on file cover your whole
-            account — mention the address if you need a change specific to one property.
+            account. Mention the address if you need a change specific to one property.
           </p>
         </section>
       )}

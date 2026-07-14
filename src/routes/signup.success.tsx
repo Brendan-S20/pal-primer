@@ -9,7 +9,7 @@ const searchSchema = z.object({ sr: z.string().uuid().optional() });
 
 export const Route = createFileRoute("/signup/success")({
   validateSearch: (s) => searchSchema.parse(s),
-  head: () => ({ meta: [{ title: "You're in — welcome" }] }),
+  head: () => ({ meta: [{ title: "You're in, welcome" }] }),
   component: SuccessPage,
 });
 
@@ -43,7 +43,7 @@ function SuccessPage() {
             ? "Your account is set up. We just emailed you a private portal link."
             : status === "failed"
               ? "We got your payment, but hit a snag creating your account. We'll follow up by email shortly."
-              : "Setting up your account — this takes just a few seconds…"}
+              : "Setting up your account. This takes just a few seconds…"}
         </p>
         <p className="mt-8 text-xs text-muted-foreground">
           You can close this tab. Check your inbox for next steps.

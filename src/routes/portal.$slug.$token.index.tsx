@@ -115,7 +115,7 @@ function PortalHome() {
 
       {c && (
         <p className="text-center text-xs text-muted-foreground">
-          Bookmark this page — it's your private portal. Don't share the link.
+          Bookmark this page. It's your private portal. Don't share the link.
         </p>
       )}
     </div>

@@ -217,7 +217,7 @@ function SignupPage() {
               </div>
               {quoteMut.data && !quoteMut.data.available ? (
                 <p className="mt-3 text-sm text-destructive">
-                  We don't serve that ZIP yet — check back soon.
+                  We don't serve that ZIP yet. Check back soon.
                 </p>
               ) : null}
             </div>
@@ -307,7 +307,7 @@ function SignupPage() {
                 <div className="border-t pt-3 text-xs text-muted-foreground">
                   Charged today: <strong className="text-foreground">
                     {money(quote.initial_cleanup_cents + quote.recurring_price_cents, quote.currency)}
-                  </strong> — covers your first cleanup plus a prepaid first month. Cancel anytime.
+                  </strong>, which covers your first cleanup plus a prepaid first month. Cancel anytime.
                 </div>
                 <Button
                   className="w-full"

@@ -50,7 +50,7 @@ function PortalBilling() {
                   {c.card_brand ?? "Card"} ending in {c.card_last4 ?? "····"}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  Autopay {c.autopay_enabled ? "on — open invoices are charged automatically." : "off."}
+                  Autopay {c.autopay_enabled ? "on. Open invoices are charged automatically." : "off."}
                 </div>
               </div>
               <div className="flex gap-2">
@@ -73,7 +73,7 @@ function PortalBilling() {
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-muted-foreground">
-              Save a card for one-tap payments — or enable autopay.
+              Save a card for one-tap payments, or enable autopay.
             </div>
             <Button size="sm" onClick={() => setShowCard((v) => !v)}>
               {showCard ? "Cancel" : "Add payment method"}
@@ -102,14 +102,14 @@ function PortalBilling() {
             {invoicesQ.data!.map((i, idx) => {
               const invNo = `#${String((invoicesQ.data ?? []).length - idx).padStart(4, "0")}`;
               const label = i.kind === "prepaid_topup" ? "Prepaid top-up"
-                : i.period_start ? `Service ${fmtDayShort(i.period_start)} – ${fmtDayShort(i.period_end)}`
+                : i.period_start ? `Service ${fmtDayShort(i.period_start)} - ${fmtDayShort(i.period_end)}`
                 : "Service";
               return (
                 <li key={i.invoice_id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
                   <div>
                     <div className="font-medium">
                       Invoice {invNo}
-                      <span className="text-muted-foreground"> — {label}</span>
+                      <span className="text-muted-foreground"> ({label})</span>
                     </div>
                     <div className="mt-0.5 flex items-center gap-2">
                       <span className="font-semibold">{money(i.total_cents)}</span>
@@ -199,7 +199,7 @@ function CardSetupInner({ token, onDone }: { token: string; onDone: () => void }
     try {
       const { error, setupIntent } = await stripe.confirmSetup({ elements, redirect: "if_required" });
       if (error) { toast.error(error.message ?? "Couldn't save the card"); return; }
-      if (!setupIntent?.id) { toast.error("Card wasn't saved — please try again."); return; }
+      if (!setupIntent?.id) { toast.error("Card wasn't saved. Please try again."); return; }
       await finalizeFn({ data: { token, setupIntentId: setupIntent.id } });
       toast.success("Card saved");
       onDone();

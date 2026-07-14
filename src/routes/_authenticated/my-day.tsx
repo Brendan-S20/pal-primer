@@ -127,7 +127,7 @@ function MyDay() {
       qc.invalidateQueries({ queryKey: ["my-day"] });
     }
     if (res.failed > 0) {
-      toast.error(`Sync stalled on 1 action — will retry`);
+      toast.error(`Sync stalled on 1 action, will retry`);
     }
   }, [callers, qc]);
 
@@ -250,7 +250,7 @@ function MyDay() {
                 className="h-9 rounded-md border bg-background px-2 text-sm"
               >
                 <option value="">
-                  {data?.staff && !previewing ? "My day" : "— Select technician —"}
+                  {data?.staff && !previewing ? "My day" : "(Select technician)"}
                 </option>
                 {fieldStaff.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -354,7 +354,7 @@ type HazardKey =
 const HAZARD_LABELS: Record<HazardKey, { label: string; severity: "critical" | "warn" }> = {
   do_not_enter_if_dog_out: { label: "DO NOT ENTER if dog is outside", severity: "critical" },
   aggressive_dog: { label: "Aggressive dog", severity: "critical" },
-  escape_risk: { label: "Escape risk — close gate immediately", severity: "critical" },
+  escape_risk: { label: "Escape risk: close gate immediately", severity: "critical" },
   invisible_fence: { label: "Invisible fence", severity: "warn" },
   dog_in_yard_during_service: { label: "Dog in yard during service", severity: "warn" },
   bees_wasps: { label: "Bees / wasps", severity: "warn" },
@@ -374,7 +374,7 @@ function HazardBanner({ property }: { property: any }) {
       {critical.length > 0 && (
         <div className="rounded-md border-2 border-destructive bg-destructive/10 p-3">
           <div className="text-xs font-bold uppercase tracking-wide text-destructive">
-            ⚠ Safety warnings — read before entering
+            ⚠ Safety warnings: read before entering
           </div>
           <ul className="mt-1 space-y-0.5 text-sm font-semibold text-destructive">
             {critical.map((k) => (
@@ -417,7 +417,7 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
   if (secs > 8 * 3600) {
     return (
       <span className="font-mono text-xs text-muted-foreground">
-        8h+ — started {new Date(startedAt).toLocaleDateString()}
+        8h+, started {new Date(startedAt).toLocaleDateString()}
       </span>
     );
   }
@@ -461,7 +461,7 @@ function PhotoThumb({ path }: { path: string }) {
     return (
       <div
         className="flex h-14 w-14 flex-col items-center justify-center rounded border bg-muted/50 text-center text-[9px] leading-tight text-muted-foreground"
-        title="This photo couldn't be loaded — it may not have finished uploading."
+        title="This photo couldn't be loaded. It may not have finished uploading."
       >
         <span>Photo</span>
         <span>unavailable</span>
@@ -567,7 +567,7 @@ function VisitCard({
     mutationFn: () => actions.start(),
     onSuccess: (r) => {
       haptic("select");
-      toast.success(r.queued ? "Queued — starts when back online" : "Started");
+      toast.success(r.queued ? "Queued. Starts when back online" : "Started");
       if (!r.queued) invalidate();
     },
     onError: (e: Error) => {
@@ -579,7 +579,7 @@ function VisitCard({
     mutationFn: () => actions.complete(),
     onSuccess: (r) => {
       haptic("success");
-      toast.success(r.queued ? "Queued — completes when back online" : "Completed");
+      toast.success(r.queued ? "Queued. Completes when back online" : "Completed");
       if (!r.queued) invalidate();
     },
     onError: (e: Error) => {
@@ -591,7 +591,7 @@ function VisitCard({
     mutationFn: () => actions.skip(reason, reasonCode),
     onSuccess: (r) => {
       haptic("warning");
-      toast.success(r.queued ? "Queued — will skip when back online" : "Marked skipped");
+      toast.success(r.queued ? "Queued. Will skip when back online" : "Marked skipped");
       setShowSkip(false);
       if (!r.queued) invalidate();
     },
@@ -620,7 +620,7 @@ function VisitCard({
       haptic("tap");
       toast.success(
         r.queued
-          ? `${photoKind[0].toUpperCase() + photoKind.slice(1)} photo queued — uploads when online`
+          ? `${photoKind[0].toUpperCase() + photoKind.slice(1)} photo queued. Uploads when online`
           : `${photoKind[0].toUpperCase() + photoKind.slice(1)} photo uploaded`,
       );
       if (!r.queued) invalidate();
@@ -839,7 +839,7 @@ function VisitCard({
                   canPerformVisit
                     ? start.mutate()
                     : toast.error(
-                        "You're not authorized to start visits — dispatchers can schedule, but field staff must start the visit.",
+                        "You're not authorized to start visits. Dispatchers can schedule, but field staff must start the visit.",
                       )
                 }
                 disabled={start.isPending || !canPerformVisit}
@@ -866,7 +866,7 @@ function VisitCard({
                 canPerformVisit
                   ? complete.mutate()
                   : toast.error(
-                      "You're not authorized to complete visits — dispatchers can schedule, but field staff must complete the visit.",
+                      "You're not authorized to complete visits. Dispatchers can schedule, but field staff must complete the visit.",
                     )
               }
               title={
@@ -1005,7 +1005,7 @@ function VisitCard({
                       <option value="">Select service…</option>
                       {addonServices.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.name} — ${(s.unit_price_cents / 100).toFixed(2)}
+                          {s.name}: ${(s.unit_price_cents / 100).toFixed(2)}
                         </option>
                       ))}
                     </select>
@@ -1050,7 +1050,7 @@ function VisitCard({
                             onClick={() => {
                               if (!svc) {
                                 toast.error(
-                                  "That add-on service is no longer available — pick another from the list.",
+                                  "That add-on service is no longer available. Pick another from the list.",
                                 );
                                 return;
                               }
@@ -1070,7 +1070,7 @@ function VisitCard({
                   )}
                   <p className="text-[11px] text-muted-foreground">
                     Prepaid clients are debited immediately; postpaid clients see it on the next
-                    invoice. Field charges are capped per charge and reviewed by the office —
+                    invoice. Field charges are capped per charge and reviewed by the office;
                     anything larger needs the office to bill it.
                   </p>
                 </div>
@@ -1108,7 +1108,7 @@ function StationsSubpanel({ visitId }: { visitId: string }) {
   if (stations.length === 0) {
     return (
       <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-        No waste stations configured for this property — ask the office to add them.
+        No waste stations configured for this property. Ask the office to add them.
       </div>
     );
   }
