@@ -49,7 +49,7 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
     if (tenant && client.primary_phone && !client.sms_opt_out) {
       const template =
         org.review_ask_template?.trim() ||
-        `Hi {name}, thanks for choosing ${org.name ?? "us"}! If we did a great job, a quick review would mean the world: {link} — Reply STOP to opt out.`;
+        `Hi {name}, thanks for choosing ${org.name ?? "us"}! If we did a great job, a quick review would mean the world: {link} Reply STOP to opt out.`;
       const body = template.replace(/\{name\}/g, firstName).replace(/\{link\}/g, org.google_review_url);
       const fromNumber = tenant.from ?? null;
 
@@ -105,7 +105,7 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
     if (!res.ok) {
       const msg =
         res.reason === "no_recipient"
-          ? "This client has no email on file and your Twilio isn't connected — add an email, or connect your Twilio in Settings → SMS."
+          ? "This client has no email on file and your Twilio isn't connected. Add an email, or connect your Twilio in Settings → SMS."
           : res.reason === "client_opted_out"
             ? "This client has opted out of email."
             : res.reason === "org_toggle_off"

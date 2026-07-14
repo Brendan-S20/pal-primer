@@ -18,7 +18,7 @@ async function requireVerifiedEmail(orgId: string): Promise<void> {
     .eq("id", orgId)
     .maybeSingle();
   if (!data?.email_verified_at) {
-    throw new Error("Verify your email address to unlock payments — check your inbox or resend the link from the Payments page.");
+    throw new Error("Verify your email address to unlock payments. Check your inbox or resend the link from the Payments page.");
   }
 }
 

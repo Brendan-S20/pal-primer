@@ -11,7 +11,7 @@ import { registerAccount, sendEmailVerification } from "@/lib/auth-entry.functio
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Logo } from "@/components/Logo";
+import { PublicShell } from "@/components/PublicShell";
 import { APP_NAME } from "@/lib/scoop";
 
 // The Get-started walkthrough (Brendan's re-review): account creation is a
@@ -32,7 +32,7 @@ export const Route = createFileRoute("/get-started")({
   }),
   head: () => ({
     meta: [
-      { title: `Get started — ${APP_NAME}` },
+      { title: `Get started - ${APP_NAME}` },
       { name: "description", content: `Create your ${APP_NAME} workspace.` },
     ],
   }),
@@ -118,20 +118,12 @@ function GetStartedPage() {
       navigate({ to: "/onboarding" });
     } catch (err) {
       setBusy(false);
-      setError(err instanceof Error ? err.message : "Something went wrong — try again.");
+      setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
     }
   };
 
   return (
-    <div className="flex min-h-screen items-start justify-center bg-background px-4 py-10 sm:items-center">
-      <div className="w-full max-w-lg space-y-6">
-        <div className="flex flex-col items-center text-center">
-          <Logo variant="logo" className="h-12 w-auto text-primary" />
-          <p className="mt-2 text-sm text-muted-foreground">
-            Let's set up your workspace — about two minutes.
-          </p>
-        </div>
-
+    <PublicShell tagline="Set up your workspace in about two minutes." className="max-w-lg">
         <div className="flex items-center gap-2">
           {STEPS.map((label, i) => (
             <div key={label} className="flex flex-1 items-center gap-2">
@@ -213,7 +205,7 @@ function GetStartedPage() {
               <div>
                 <h1 className="text-lg font-semibold">About your business</h1>
                 <p className="text-sm text-muted-foreground">
-                  This names your workspace — you can change it later.
+                  This names your workspace. You can change it later.
                 </p>
               </div>
               <div className="space-y-2">
@@ -258,7 +250,7 @@ function GetStartedPage() {
               <div>
                 <h1 className="text-lg font-semibold">Stay in the loop by text</h1>
                 <p className="text-sm text-muted-foreground">
-                  Optional — used for login codes and important account notifications.
+                  Optional: used for login codes and important account notifications.
                 </p>
               </div>
               <div className="space-y-2">
@@ -303,7 +295,6 @@ function GetStartedPage() {
             </form>
           )}
         </div>
-      </div>
-    </div>
+    </PublicShell>
   );
 }

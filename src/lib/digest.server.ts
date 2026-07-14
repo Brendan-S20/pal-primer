@@ -59,7 +59,7 @@ function fmtRange(startMs: number, endMs: number) {
   const s = new Date(startMs);
   const e = new Date(endMs - DAY);
   const m = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  return `${m(s)} – ${m(e)}`;
+  return `${m(s)} - ${m(e)}`;
 }
 
 export async function computeDigestMetrics(orgId: string): Promise<DigestMetrics | null> {
@@ -170,7 +170,7 @@ export async function computeDigestMetrics(orgId: string): Promise<DigestMetrics
   }
   if (visitsSkipped > 0 && visitsCompleted > 0 && visitsSkipped / (visitsSkipped + visitsCompleted) > 0.1) {
     const rate = Math.round((visitsSkipped / (visitsSkipped + visitsCompleted)) * 100);
-    alerts.push(`Skip rate is ${rate}% — above the 10% threshold.`);
+    alerts.push(`Skip rate is ${rate}%, above the 10% threshold.`);
   }
 
   const stats: DigestStat[] = [

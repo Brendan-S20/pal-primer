@@ -39,7 +39,7 @@ const OverdueReminder = ({
 
 export const template = {
   component: OverdueReminder,
-  subject: (d: Record<string, any>) => `Past due: ${fmtMoney(d.amountCents ?? 0)} — ${d.orgName ?? "your service"}`,
+  subject: (d: Record<string, any>) => `Past due: ${fmtMoney(d.amountCents ?? 0)} - ${d.orgName ?? "your service"}`,
   displayName: "Overdue reminder",
   previewData: {
     orgName: "Acme Scoop Co.",

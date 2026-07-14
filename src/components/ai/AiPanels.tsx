@@ -87,7 +87,7 @@ export function MarketingPanel() {
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             rows={4}
-            placeholder="Spring cleanup promo — 20% off first month for new sign-ups this week"
+            placeholder="Spring cleanup promo: 20% off first month for new sign-ups this week"
             className="mt-1 block w-full rounded border bg-background px-3 py-2 text-sm"
           />
         </label>
@@ -161,7 +161,7 @@ export function ReviewPanel() {
       </div>
       <div className="space-y-2 rounded-lg border bg-card p-4 text-sm">
         {!m.data ? (
-          <p className="text-muted-foreground">Draft appears here — review before posting publicly.</p>
+          <p className="text-muted-foreground">Draft appears here. Review before posting publicly.</p>
         ) : (
           <>
             <div className="font-medium">Suggested public reply</div>
@@ -262,7 +262,7 @@ export function DigestPanel() {
       )}
       {m.data && (
         <div className="rounded-lg border bg-card p-4 text-sm">
-          <div className="mb-2 font-medium">{m.data.stats.org} — this week</div>
+          <div className="mb-2 font-medium">{m.data.stats.org}: this week</div>
           <MarkdownLite text={m.data.summary} className="space-y-2" />
         </div>
       )}
@@ -271,7 +271,7 @@ export function DigestPanel() {
           <div className="mb-2 font-medium">Watch list</div>
           <ul className="space-y-1">
             {m.data.stats.at_risk.map((c: any) => (
-              <li key={c.id}><strong>{c.display_name}</strong> — score {c.churn_score}: <span className="text-muted-foreground">{c.churn_reason}</span></li>
+              <li key={c.id}><strong>{c.display_name}</strong>, score {c.churn_score}: <span className="text-muted-foreground">{c.churn_reason}</span></li>
             ))}
           </ul>
         </div>
@@ -418,7 +418,7 @@ export function PricingPanel() {
         .filter((s: any) => selected[s.zone_id])
         .map((s: any) => ({
           zone_id: s.zone_id,
-          price_note: `AI: $${(s.suggested_price_cents / 100).toFixed(2)}/visit (${s.delta_pct >= 0 ? "+" : ""}${s.delta_pct}%) — ${s.reason}`,
+          price_note: `AI: $${(s.suggested_price_cents / 100).toFixed(2)}/visit (${s.delta_pct >= 0 ? "+" : ""}${s.delta_pct}%), ${s.reason}`,
         }));
       return applyFn({ data: { changes } });
     },

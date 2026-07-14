@@ -77,24 +77,24 @@ function OverviewPage() {
           <Kpi
             icon={DollarSign}
             label="MRR"
-            value={k ? money(k.mrr_cents) : "—"}
+            value={k ? money(k.mrr_cents) : "-"}
             hint="Wires up once Stripe is connected"
           />
           <Kpi
             icon={Building2}
             label="Paying tenants"
-            value={k ? String(k.active_tenants) : "—"}
+            value={k ? String(k.active_tenants) : "-"}
             hint="active + grace + past due"
           />
           <Kpi
             icon={Sparkles}
             label="Free tenants"
-            value={k ? String(k.free_tenants) : "—"}
+            value={k ? String(k.free_tenants) : "-"}
           />
           <Kpi
             icon={CalendarPlus}
             label="New signups (7d)"
-            value={k ? String(k.new_signups_week) : "—"}
+            value={k ? String(k.new_signups_week) : "-"}
           />
         </div>
       </section>
@@ -113,7 +113,7 @@ function OverviewPage() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-semibold tabular-nums text-emerald-600">
-                {k?.at_threshold ?? "—"}
+                {k?.at_threshold ?? "-"}
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
                 Free orgs with exactly 3 active clients. One more client and they cross into paid.
@@ -135,7 +135,7 @@ function OverviewPage() {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-semibold tabular-nums">
-                {k?.converted_this_month ?? "—"}
+                {k?.converted_this_month ?? "-"}
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
                 Orgs that moved from free to paid since the 1st of this month.
@@ -153,26 +153,26 @@ function OverviewPage() {
           <Kpi
             icon={AlertTriangle}
             label="At risk"
-            value={k ? String(k.at_risk) : "—"}
+            value={k ? String(k.at_risk) : "-"}
             tone={k && k.at_risk > 0 ? "warn" : "default"}
             hint="past due + grace"
           />
           <Kpi
             icon={AlertTriangle}
             label="Past due"
-            value={k ? String(k.past_due_tenants) : "—"}
+            value={k ? String(k.past_due_tenants) : "-"}
             tone={k && k.past_due_tenants > 0 ? "danger" : "default"}
           />
           <Kpi
             icon={AlertTriangle}
             label="In grace"
-            value={k ? String(k.grace_tenants) : "—"}
+            value={k ? String(k.grace_tenants) : "-"}
             tone={k && k.grace_tenants > 0 ? "warn" : "default"}
           />
           <Kpi
             icon={PauseCircle}
             label="Suspended"
-            value={k ? String(k.suspended_tenants) : "—"}
+            value={k ? String(k.suspended_tenants) : "-"}
           />
         </div>
       </section>

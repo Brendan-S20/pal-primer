@@ -323,7 +323,7 @@ export async function issuePortalOtp(
       // sender number; fall back to the org's legacy number only if unset.
       const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
       const otpFrom = platformTwilioFrom() ?? org?.sms_from_number ?? null;
-      if (!otpFrom) throw new Error("SMS is not configured — ask us to read you the code.");
+      if (!otpFrom) throw new Error("SMS is not configured. Ask us to read you the code.");
       const { sendTwilioSms } = await import("@/lib/twilio.server");
       await sendTwilioSms({ from: otpFrom, to: dest, body: message });
     } else {
@@ -332,7 +332,7 @@ export async function issuePortalOtp(
       // (cross-reference the provider_message_id in the Resend dashboard). No
       // silent queue fallback — a failure is logged AND surfaced, never masked.
       const resendApiKey = process.env.RESEND_API_KEY;
-      if (!resendApiKey) throw new Error("Email isn't configured for this company — ask us to read you the code.");
+      if (!resendApiKey) throw new Error("Email isn't configured for this company. Ask us to read you the code.");
       const logMessageId = `portal-otp-${randomBytes(8).toString("hex")}`;
       const unsubscribeToken = randomBytes(32).toString("hex");
       await supabaseAdmin
@@ -394,7 +394,7 @@ export async function issuePortalOtp(
     // configured") to a customer on the login page.
     const friendly =
       channel === "sms" && /twilio|api.?key|not configured/i.test(raw)
-        ? "Texting isn't available right now — choose “Email me a code” instead, or ask us to read you the code."
+        ? "Texting isn't available right now. Choose “Email me a code” instead, or ask us to read you the code."
         : raw || "Could not send the code. Ask us to read it to you instead.";
     throw new Error(friendly);
   }
@@ -749,7 +749,7 @@ async function consumeOtpForClient(clientId: string, code: string): Promise<void
 export async function portalChooseClient(chosenClientId: string): Promise<{ slug: string; token: string }> {
   const { getCookie } = await reqres();
   const proof = verifyPick(getCookie(PICK_COOKIE));
-  if (!proof) throw new Error("Your session expired — please verify again.");
+  if (!proof) throw new Error("Your session expired. Please verify again.");
 
   const supabaseAdmin = await sbAdmin();
   const { data: client } = await supabaseAdmin

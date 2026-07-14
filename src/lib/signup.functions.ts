@@ -69,7 +69,7 @@ export const createSignupCheckout = createServerFn({ method: "POST" })
     });
     if (qErr) throw new Error(qErr.message);
     const q = qRows?.[0];
-    if (!q) throw new Error("No service in that ZIP code yet — try another.");
+    if (!q) throw new Error("No service in that ZIP code yet. Try another.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 

@@ -28,7 +28,7 @@ const WeatherReschedule = ({
           Hi {clientName}, due to weather{reason ? ` (${reason})` : ""} we're moving your visit
           from <strong>{originalDate}</strong> to <strong>{newDate}</strong>.
         </Text>
-        <Text style={styles.text}>No action needed on your end — {orgName} will be there.</Text>
+        <Text style={styles.text}>No action needed on your end. {orgName} will be there.</Text>
       </Container>
     </Body>
   </Html>
@@ -36,7 +36,7 @@ const WeatherReschedule = ({
 
 export const template = {
   component: WeatherReschedule,
-  subject: (d: Record<string, any>) => `Visit moved to ${d.newDate ?? "a new date"} — weather`,
+  subject: (d: Record<string, any>) => `Visit moved to ${d.newDate ?? "a new date"} (weather)`,
   displayName: "Weather reschedule",
   previewData: {
     orgName: "Acme Scoop Co.",

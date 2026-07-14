@@ -348,7 +348,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                     orgId: inv.organization_id,
                     type: "payment_failed",
                     title: "A client payment failed",
-                    body: `Invoice ${invoiceId.slice(0, 8)} — card declined.`,
+                    body: `Invoice ${invoiceId.slice(0, 8)}: card declined.`,
                     link: "/invoices",
                   });
                 } catch (e) { console.error("payment-failed in-app notification failed", e); }

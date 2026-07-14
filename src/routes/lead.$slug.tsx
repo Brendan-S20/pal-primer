@@ -50,7 +50,7 @@ function LeadForm() {
       });
       if (!res.ok) {
         const b = await res.json().catch(() => ({}));
-        throw new Error((b as any).error || "Something went wrong — please try again.");
+        throw new Error((b as any).error || "Something went wrong. Please try again.");
       }
       setSent(true);
     } catch (err) {
@@ -83,7 +83,7 @@ function LeadForm() {
             >
               ✓
             </div>
-            <h1 className="text-xl font-semibold" style={accent ? { color: accent } : undefined}>Thanks — we got your request!</h1>
+            <h1 className="text-xl font-semibold" style={accent ? { color: accent } : undefined}>Thanks, we got your request!</h1>
             <p className="mt-2 text-sm text-muted-foreground">{cfg?.confirmation}</p>
           </div>
         </div>

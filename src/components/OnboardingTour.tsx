@@ -30,7 +30,7 @@ type Step = {
 const ALL_STEPS: Array<Step & { requiresAccess?: string }> = [
   {
     title: `Welcome to ${APP_NAME}!`,
-    body: "A quick 60-second orientation of the main areas — you can skip at any point, and re-run it later from the Knowledge Center.",
+    body: "A quick 60-second orientation of the main areas. You can skip at any point, and re-run it later from the Knowledge Center.",
   },
   {
     anchor: "/dashboard",
@@ -42,13 +42,13 @@ const ALL_STEPS: Array<Step & { requiresAccess?: string }> = [
     anchor: "/clients",
     requiresAccess: "/clients",
     title: "Clients",
-    body: "Every customer lives here — their properties, dogs, subscriptions, invoices, and portal link.",
+    body: "Every customer lives here: their properties, dogs, subscriptions, invoices, and portal link.",
   },
   {
     anchor: "/zones",
     requiresAccess: "/zones",
     title: "Zones",
-    body: "A zone is a service area (a neighborhood or ZIP prefix). Routes, weather, and reports are all organized around zones — set these up early.",
+    body: "A zone is a service area (a neighborhood or ZIP prefix). Routes, weather, and reports are all organized around zones, so set these up early.",
   },
   {
     anchor: "/routes",
@@ -60,19 +60,19 @@ const ALL_STEPS: Array<Step & { requiresAccess?: string }> = [
     anchor: "/my-day",
     requiresAccess: "/my-day",
     title: "My Day",
-    body: "The field view — techs see their route in order, start and complete visits, snap photos, log skips, and bill add-ons.",
+    body: "The field view: techs see their route in order, start and complete visits, snap photos, log skips, and bill add-ons.",
   },
   {
     anchor: "/invoices",
     requiresAccess: "/invoices",
     title: "Invoices",
-    body: 'Billing runs on completed visits — generate them in a batch, or use "New invoice" to bill a client directly for one-off work.',
+    body: 'Billing runs on completed visits. Generate them in a batch, or use "New invoice" to bill a client directly for one-off work.',
   },
   {
     anchor: "/settings",
     requiresAccess: "/settings",
     title: "Settings",
-    body: "Skip rules, blackout dates, add-on services, texting, payments — when something needs configuring, it's in here. That's the tour!",
+    body: "Skip rules, blackout dates, add-on services, texting, payments. When something needs configuring, it's in here. That's the tour!",
   },
 ];
 

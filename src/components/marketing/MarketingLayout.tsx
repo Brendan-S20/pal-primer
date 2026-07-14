@@ -16,7 +16,7 @@ export function MarketingLayout({ children }: { children: ReactNode }) {
             aria-label={APP_NAME}
             className="text-primary"
           >
-            <Logo variant="logo" className="h-8 w-auto" />
+            <Logo variant="landscape" className="h-7" />
           </a>
           <Link
             to="/auth"

@@ -165,7 +165,7 @@ export const createAddonCharge = createServerFn({ method: "POST" })
       const totalCents = svc.unit_price_cents * Math.max(1, data.quantity);
       if (totalCents > capCents) {
         throw new Error(
-          `Field add-ons are capped at $${(capCents / 100).toFixed(2)} per charge — ask the office to bill this one`,
+          `Field add-ons are capped at $${(capCents / 100).toFixed(2)} per charge. Ask the office to bill this one`,
         );
       }
     } else {

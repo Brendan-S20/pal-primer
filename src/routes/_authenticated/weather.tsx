@@ -102,14 +102,14 @@ function WeatherPage() {
                   {z.postal_prefix ? `Prefix ${z.postal_prefix} · ` : ""}
                   {z.latitude != null
                     ? `${z.latitude.toFixed(3)}, ${z.longitude?.toFixed(3)}`
-                    : "no coordinates — add lat/lon on Zones page"}
+                    : "no coordinates (add lat/lon on Zones page)"}
                 </div>
               </div>
             </div>
 
             {(z as any).status === "no_coords" ? (
               <div className="text-xs text-amber-700">
-                No coordinates on this zone yet — set them below to load its forecast.
+                No coordinates on this zone yet. Set them below to load its forecast.
               </div>
             ) : (z as any).status === "error" ? (
               <div className="text-xs text-destructive">
@@ -124,7 +124,7 @@ function WeatherPage() {
               <>
                 {(z as any).stale && (
                   <div className="mb-2 text-xs text-amber-700">
-                    The weather service is temporarily unavailable — showing the last saved
+                    The weather service is temporarily unavailable. Showing the last saved
                     forecast.
                   </div>
                 )}
@@ -251,7 +251,7 @@ function RescheduleDialog({
         className="w-full max-w-lg rounded-lg border bg-card p-5 shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold">Reschedule — {zoneName}</h2>
+        <h2 className="text-lg font-semibold">Reschedule: {zoneName}</h2>
         <p className="text-sm text-muted-foreground">Visits on {fromDay}</p>
 
         <div className="mt-4 max-h-64 overflow-auto rounded border">
@@ -358,11 +358,11 @@ function AutoRebalance({ fromDate, toDate }: { fromDate: string; toDate: string 
         // report a forecast outage as no-risk (P1.6).
         if (r.forecastFailures > 0 && r.forecastFailures >= r.zonesChecked) {
           toast.error(
-            "Couldn't fetch the weather forecast (the weather service may be rate-limited) — try again in a few minutes.",
+            "Couldn't fetch the weather forecast (the weather service may be rate-limited). Try again in a few minutes.",
           );
         } else if (r.zonesChecked === 0) {
           toast.info(
-            "No zones have map coordinates yet — add zone locations to use auto-rebalance.",
+            "No zones have map coordinates yet. Add zone locations to use auto-rebalance.",
           );
         } else {
           toast.info("No risky visits to rebalance.");
@@ -417,7 +417,7 @@ function AutoRebalance({ fromDate, toDate }: { fromDate: string; toDate: string 
           canRebalance
             ? dry.mutate()
             : toast.error(
-                "You're not authorized to auto-rebalance — ask an owner or office manager.",
+                "You're not authorized to auto-rebalance. Ask an owner or office manager.",
               )
         }
         disabled={dry.isPending || !canRebalance}

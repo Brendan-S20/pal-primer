@@ -285,7 +285,7 @@ export const portalCreateCheckout = createServerFn({ method: "POST" })
         price_data: {
           currency: invoice.currency ?? "usd",
           unit_amount: invoice.total_cents,
-          product_data: { name: `Invoice ${invoice.id.slice(0, 8)} — ${client?.display_name ?? "Service"}` },
+          product_data: { name: `Invoice ${invoice.id.slice(0, 8)}: ${client?.display_name ?? "Service"}` },
         },
       }],
       metadata: { invoice_id: invoice.id, organization_id: invoice.organization_id, source: "portal" },
@@ -568,7 +568,7 @@ export const portalFinalizeCardSetup = createServerFn({ method: "POST" })
     const si = await stripe.setupIntents.retrieve(data.setupIntentId, {}, opts);
     const pmId = typeof si.payment_method === "string" ? si.payment_method : si.payment_method?.id;
     const customerId = typeof si.customer === "string" ? si.customer : si.customer?.id;
-    if (!pmId || !customerId) throw new Error("Card wasn't saved — please try again.");
+    if (!pmId || !customerId) throw new Error("Card wasn't saved. Please try again.");
     // Security (M2): the SetupIntent must be the one we minted for THIS client,
     // so a leaked/guessed seti_… id from another client can't bind their card here.
     if (si.metadata?.client_id !== session.clientId) throw new Error("Card setup could not be verified.");
@@ -658,7 +658,7 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
     const { verifyClientStripeCustomer } = await import("@/lib/stripe-connect.server");
     const liveCustomerId = await verifyClientStripeCustomer(stripe, stripeAccount, c);
     if (!liveCustomerId) {
-      throw new Error("Your saved card is no longer on file — please add a payment method again.");
+      throw new Error("Your saved card is no longer on file. Please add a payment method again.");
     }
     try {
       const pi = await stripe.paymentIntents.create({
@@ -764,7 +764,7 @@ export const portalReportConcern = createServerFn({ method: "POST" })
           orgId: cl.organization_id,
           type: "concern",
           title: `New concern: ${CONCERN_LABELS[data.category] ?? "Concern"}`,
-          body: `${cl.display_name ?? "A client"}${data.message ? ` — ${data.message.slice(0, 120)}` : ""}`,
+          body: `${cl.display_name ?? "A client"}${data.message ? `: ${data.message.slice(0, 120)}` : ""}`,
           link: "/concerns",
         });
       }

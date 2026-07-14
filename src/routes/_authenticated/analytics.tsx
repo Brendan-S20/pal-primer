@@ -345,7 +345,7 @@ function WinBackTab() {
     mutationFn: (clientId: string) =>
       sendFn({ data: { clientId, discountPercent: discount, expiresDays: 30 } }),
     onSuccess: (r) => {
-      toast.success(`Win-back sent — code ${r.promoCode}`);
+      toast.success(`Win-back sent (code ${r.promoCode})`);
       qc.invalidateQueries({ queryKey: ["churn", "at-risk"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -493,8 +493,8 @@ function DigestTab() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Every Monday morning, we email a plain-language summary of the past week — revenue,
-            visits, new clients, at-risk accounts, and 2–3 AI-generated recommendations.
+            Every Monday morning, we email a plain-language summary of the past week: revenue,
+            visits, new clients, at-risk accounts, and 2-3 AI-generated recommendations.
           </p>
 
           <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
@@ -550,7 +550,7 @@ function DigestTab() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
-              Preview — {p.metrics.orgName} · {p.metrics.weekLabel}
+              Preview: {p.metrics.orgName} · {p.metrics.weekLabel}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">

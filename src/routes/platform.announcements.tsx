@@ -87,7 +87,7 @@ function AnnouncementsPage() {
             <DialogHeader><DialogTitle>Publish announcement</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <div><Label>Title</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></div>
-              <div><Label>Body</Label><Textarea value={form.body} rows={5} onChange={(e) => setForm({ ...form, body: e.target.value })} placeholder="Markdown-lite. Keep it short — banners get truncated." /></div>
+              <div><Label>Body</Label><Textarea value={form.body} rows={5} onChange={(e) => setForm({ ...form, body: e.target.value })} placeholder="Markdown-lite. Keep it short. Banners get truncated." /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Severity</Label>

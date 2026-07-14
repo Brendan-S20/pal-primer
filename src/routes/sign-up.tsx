@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { stashSignupAttribution } from "@/lib/signup-attribution";
+import { PublicShell } from "@/components/PublicShell";
 import { APP_NAME } from "@/lib/scoop";
 
 // Feature 1: the stable, linkable signup URL for marketing links, ads, and
@@ -49,8 +50,8 @@ function SignUpRedirect() {
   }, []);
 
   return (
-    <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
-      Setting up your signup…
-    </div>
+    <PublicShell>
+      <p className="text-center text-sm text-muted-foreground">Setting up your signup…</p>
+    </PublicShell>
   );
 }

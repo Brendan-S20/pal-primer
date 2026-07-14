@@ -131,7 +131,7 @@ export const syncInvoice = createServerFn({ method: "POST" })
       .eq("org_id", orgId)
       .maybeSingle();
     if (!conn) throw new Error("No accounting connection configured");
-    if (!conn.access_token) throw new Error("Missing access token — reconnect the integration");
+    if (!conn.access_token) throw new Error("Missing access token. Reconnect the integration");
 
     const { data: invoice, error: invErr } = await supabase
       .from("invoices")

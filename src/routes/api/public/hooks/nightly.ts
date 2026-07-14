@@ -413,7 +413,7 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
         await clearClientStripeRefs(c.id);
         await supabaseAdmin.from("clients").update({
           autopay_last_attempt_at: new Date().toISOString(),
-          autopay_last_error: "Saved card is no longer on file — client needs to re-add a payment method.",
+          autopay_last_error: "Saved card is no longer on file. Client needs to re-add a payment method.",
         }).eq("id", c.id);
         continue;
       }

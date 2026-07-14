@@ -52,7 +52,7 @@ function displayStatus(r: PlatformReferralRow): { label: string; tone: string } 
     const eligible = r.eligible_at && new Date(r.eligible_at) <= new Date() && !r.flagged;
     return eligible
       ? { label: "Eligible for payout", tone: "bg-blue-600 text-white" }
-      : { label: "Converted — holding", tone: "bg-blue-600/70 text-white" };
+      : { label: "Converted (holding)", tone: "bg-blue-600/70 text-white" };
   }
   return { label: "Pending (not paying yet)", tone: "" };
 }
@@ -268,7 +268,7 @@ function ReferralsPage() {
                               </div>
                             </div>
                           ) : (
-                            "—"
+                            "-"
                           )}
                         </TableCell>
                         <TableCell className="text-right">

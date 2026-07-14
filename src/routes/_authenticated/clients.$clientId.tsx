@@ -503,7 +503,7 @@ function ClientDetail() {
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
               For rentals/managed properties: this person gets visit texts and emails
-              (reminders, on-my-way, completed) — invoices still go to the account contact above.
+              (reminders, on-my-way, completed). Invoices still go to the account contact above.
             </p>
             <div className="mt-2 grid gap-3 sm:grid-cols-3">
               <div>
@@ -914,7 +914,7 @@ function ReviewsReferralPanel({ client }: { client: any }) {
   const applyMut = useMutation({
     mutationFn: () => applyRef({ data: { clientId: client.id, code: code.trim() } }),
     onSuccess: (r) => {
-      toast.success(`Referral applied — $${(r.reward_cents / 100).toFixed(2)} credited to both accounts`);
+      toast.success(`Referral applied: $${(r.reward_cents / 100).toFixed(2)} credited to both accounts`);
       setCode("");
       qc.invalidateQueries({ queryKey: ["client", client.id] });
       qc.invalidateQueries({ queryKey: ["credit", client.id] });
@@ -1038,7 +1038,7 @@ function PortalLinkPanel({ clientId, portalToken }: { clientId: string; portalTo
       setToken(r.portalToken);
       setCode(null);
       qc.invalidateQueries({ queryKey: ["client", clientId] });
-      toast.success("Portal link regenerated — the old link and any signed-in devices are now locked out.");
+      toast.success("Portal link regenerated. The old link and any signed-in devices are now locked out.");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -1094,7 +1094,7 @@ function PortalLinkPanel({ clientId, portalToken }: { clientId: string; portalTo
       )}
       {codeMut.isError && !codeMut.isPending && (
         <p className="rounded bg-destructive/10 p-2 text-sm text-destructive">
-          Couldn't generate a code: {(codeMut.error as Error).message} — try again.
+          Couldn't generate a code: {(codeMut.error as Error).message} Try again.
         </p>
       )}
       {code && !codeMut.isPending && (
@@ -1222,7 +1222,7 @@ function AddonsPanel({ clientId }: { clientId: string }) {
             >
               <option value="">Select service…</option>
               {services.map((s) => (
-                <option key={s.id} value={s.id}>{s.name} — {money(s.unit_price_cents)}</option>
+                <option key={s.id} value={s.id}>{s.name}: {money(s.unit_price_cents)}</option>
               ))}
             </select>
             <Input className="col-span-1 h-9" type="number" min="1" value={qty}
@@ -1282,7 +1282,7 @@ function AddonsPanel({ clientId }: { clientId: string }) {
             {subs.map((s) => (
               <li key={s.id} className="flex items-center justify-between py-2">
                 <span>
-                  {s.addon_services?.name} — {money(s.price_cents)} · {s.frequency}
+                  {s.addon_services?.name}: {money(s.price_cents)} · {s.frequency}
                   <span className="ml-2 text-xs text-muted-foreground">next {s.next_charge_on}</span>
                   {s.status !== "active" && (
                     <Badge variant="outline" className="ml-2">{s.status}</Badge>
@@ -1461,7 +1461,7 @@ function StationsPanel({ clientId, properties }: { clientId: string; properties:
         </div>
         <div className="sm:col-span-2">
           <Label>Label</Label>
-          <Input value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} placeholder="Building A — north lot" />
+          <Input value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} placeholder="Building A, north lot" />
         </div>
         <div>
           <Label>Liner size</Label>
@@ -1564,7 +1564,7 @@ function BillingPanel({ clientId }: { clientId: string }) {
     onSuccess: (r: { url: string }) => {
       navigator.clipboard.writeText(r.url).then(
         () => toast.success("Pay link copied to clipboard"),
-        () => toast.error("Copy failed — opening in new tab"),
+        () => toast.error("Copy failed, opening in new tab"),
       );
       invalidate();
     },
@@ -1702,7 +1702,7 @@ function AutopayResume({ clientId, lastError, onDone }: { clientId: string; last
   const resumeFn = useServerFn(resumeAutopay);
   const mut = useMutation({
     mutationFn: () => resumeFn({ data: { clientId } }),
-    onSuccess: () => { toast.success("Autopay resumed — next nightly run will retry"); onDone(); },
+    onSuccess: () => { toast.success("Autopay resumed. Next nightly run will retry"); onDone(); },
     onError: (e: Error) => toast.error(e.message),
   });
   return (

@@ -131,7 +131,7 @@ export function RouteMap({
         });
         L.marker([g.startLat!, g.startLng!], { icon: startIcon })
           .addTo(layer)
-          .bindPopup(`<div style="min-width:140px"><div style="font-weight:600">${escapeHtml(g.name)} — start</div><div style="font-size:11px;color:#555">${escapeHtml(g.startAddress ?? "Home base")}</div></div>`);
+          .bindPopup(`<div style="min-width:140px"><div style="font-weight:600">${escapeHtml(g.name)}: start</div><div style="font-size:11px;color:#555">${escapeHtml(g.startAddress ?? "Home base")}</div></div>`);
       }
       if (hasEnd) {
         const endIcon = L.divIcon({
@@ -141,7 +141,7 @@ export function RouteMap({
         });
         L.marker([g.endLat!, g.endLng!], { icon: endIcon })
           .addTo(layer)
-          .bindPopup(`<div style="min-width:140px"><div style="font-weight:600">${escapeHtml(g.name)} — end</div><div style="font-size:11px;color:#555">${escapeHtml(g.endAddress ?? "End of day")}</div></div>`);
+          .bindPopup(`<div style="min-width:140px"><div style="font-weight:600">${escapeHtml(g.name)}: end</div><div style="font-size:11px;color:#555">${escapeHtml(g.endAddress ?? "End of day")}</div></div>`);
       }
 
       pts.forEach((v, idx) => {

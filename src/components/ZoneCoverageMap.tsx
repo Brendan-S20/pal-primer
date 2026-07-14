@@ -224,7 +224,7 @@ export function ZoneCoverageMap({
       <p className="text-xs text-muted-foreground">
         {mode === "polygon" && "Click to add vertices around the coverage area. Drag or click a point to adjust."}
         {mode === "radius" && "New addresses within this radius from the center are considered in-zone."}
-        {mode === "drive_time" && "Approximate — visualized at ~30 mph (800 m/min) from the center. New addresses inside this circle match."}
+        {mode === "drive_time" && "Approximate: visualized at ~30 mph (800 m/min) from the center. New addresses inside this circle match."}
       </p>
     </div>
   );

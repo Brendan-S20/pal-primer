@@ -9,12 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CheckCircle2 } from "lucide-react";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/scoop";
-import { Logo } from "@/components/Logo";
+import { PublicShell } from "@/components/PublicShell";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: `Sign in — ${APP_NAME}` },
+      { title: `Sign in - ${APP_NAME}` },
       { name: "description", content: `Sign in to ${APP_NAME}.` },
     ],
   }),
@@ -188,13 +188,13 @@ function AuthPage() {
       if (oauthErr) {
         setLoading(false);
         const msg = /unsupported|not enabled|provider is not/i.test(oauthErr.message ?? "")
-          ? `${label} sign-in isn't available yet — try email or Google.`
+          ? `${label} sign-in isn't available yet. Try email or Google.`
           : (oauthErr.message ?? `${label} sign-in failed`);
         return setError(msg);
       }
       if (!oauthData?.url) {
         setLoading(false);
-        return setError(`${label} sign-in failed — try again.`);
+        return setError(`${label} sign-in failed. Try again.`);
       }
       try {
         const probe = await fetch(oauthData.url, { redirect: "manual" });
@@ -202,7 +202,7 @@ function AuthPage() {
         // fetch); a disabled provider answers 4xx with an error body.
         if (probe.status >= 400) {
           setLoading(false);
-          return setError(`${label} sign-in isn't available yet — use email or Google instead.`);
+          return setError(`${label} sign-in isn't available yet. Use email or Google instead.`);
         }
       } catch {
         // Probe blocked (CORS/network) — fall through and navigate normally.
@@ -236,7 +236,7 @@ function AuthPage() {
       }
     } catch (err) {
       setLoading(false);
-      setError(err instanceof Error ? err.message : "Couldn't check that email — try again.");
+      setError(err instanceof Error ? err.message : "Couldn't check that email. Try again.");
     }
   };
 
@@ -252,13 +252,7 @@ function AuthPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="w-full max-w-md space-y-6">
-        <div className="flex flex-col items-center text-center">
-          <Logo variant="logo" className="h-14 w-auto text-primary" />
-          <p className="mt-3 text-sm text-muted-foreground">{APP_DESCRIPTION}</p>
-        </div>
-
+    <PublicShell tagline={APP_DESCRIPTION}>
         <div className="rounded-xl border bg-card p-6 shadow-sm">
           <h1 className="text-lg font-semibold">
             {stage === "email" ? "Sign in or create your account" : "Welcome back"}
@@ -393,8 +387,7 @@ function AuthPage() {
         <p className="text-center text-xs text-muted-foreground">
           New here? Entering your email above walks you straight into account setup.
         </p>
-      </div>
-    </div>
+    </PublicShell>
   );
 }
 

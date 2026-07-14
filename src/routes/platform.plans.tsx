@@ -32,18 +32,18 @@ type Plan = {
 function formatBase(p: Plan): string {
   if (p.is_enterprise) return "Custom";
   if (p.price_cents !== null) return `$${(p.price_cents / 100).toFixed(0)}/${p.interval}`;
-  return "—";
+  return "-";
 }
 
 function formatSeats(p: Plan): string {
   if (p.is_enterprise) return "Custom";
-  if (p.included_seats === null) return "—";
+  if (p.included_seats === null) return "-";
   return `${p.included_seats} employee${p.included_seats === 1 ? "" : "s"} included`;
 }
 
 function formatOverage(p: Plan): string {
   if (p.is_enterprise) return "By contract";
-  if (!p.price_per_seat_cents) return "—";
+  if (!p.price_per_seat_cents) return "-";
   return `$${(p.price_per_seat_cents / 100).toFixed(0)}/employee/${p.interval}`;
 }
 
@@ -112,7 +112,7 @@ function PlansPage() {
                     <TableCell className="text-sm">{formatOverage(p)}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">Unlimited</TableCell>
                     <TableCell className="font-mono text-xs">
-                      {p.stripe_price_id ?? <span className="text-muted-foreground">—</span>}
+                      {p.stripe_price_id ?? <span className="text-muted-foreground">-</span>}
                     </TableCell>
                   </TableRow>
                 ))}

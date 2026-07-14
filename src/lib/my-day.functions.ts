@@ -178,7 +178,7 @@ export const completeVisit = createServerFn({ method: "POST" })
           const firstName = (c.display_name ?? "").split(/\s+/)[0] || "there";
           const template =
             (o.review_ask_template && String(o.review_ask_template).trim()) ||
-            `Hi {name}, thanks for choosing ${o.name ?? "us"}! If we did a great job, a quick review would mean the world: {link} — Reply STOP to opt out.`;
+            `Hi {name}, thanks for choosing ${o.name ?? "us"}! If we did a great job, a quick review would mean the world: {link} Reply STOP to opt out.`;
           const body = template.replace(/\{name\}/g, firstName).replace(/\{link\}/g, o.google_review_url);
           const { sendTwilioSms } = await import("@/lib/twilio.server");
           try {

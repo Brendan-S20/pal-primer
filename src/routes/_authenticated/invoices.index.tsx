@@ -75,7 +75,7 @@ function NewInvoiceDialog() {
   const createM = useMutation({
     mutationFn: () => createFn({ data: { clientId, items: parsedItems } }),
     onSuccess: (r) => {
-      toast.success(`Invoice created — ${fmtCents(r.totalCents)}`);
+      toast.success(`Invoice created: ${fmtCents(r.totalCents)}`);
       qc.invalidateQueries({ queryKey: ["invoices"] });
       setOpen(false);
       setClientId("");
@@ -96,7 +96,7 @@ function NewInvoiceDialog() {
         <DialogHeader>
           <DialogTitle>New invoice</DialogTitle>
           <DialogDescription>
-            Bill a client directly — no visit needed. The invoice opens immediately and is payable
+            Bill a client directly, no visit needed. The invoice opens immediately and is payable
             from their portal or a checkout link.
           </DialogDescription>
         </DialogHeader>
@@ -212,7 +212,7 @@ function InvoicesPage() {
       // owed" to a first-time operator (P3.1) — say what it actually means.
       if (r.generated === 0) {
         toast.info(
-          "No invoices to generate — this bills completed, unbilled visits. To charge a client directly, use New invoice.",
+          "No invoices to generate. This bills completed, unbilled visits. To charge a client directly, use New invoice.",
           { duration: 8000 },
         );
       } else {
@@ -460,7 +460,7 @@ function InvoicesPage() {
                         onCheckedChange={(v) => setSelected((prev) => ({ ...prev, [inv.id]: !!v }))}
                       />
                     </td>
-                    <td className="px-4 py-2">{client?.display_name ?? "—"}</td>
+                    <td className="px-4 py-2">{client?.display_name ?? "-"}</td>
                     <td className="px-4 py-2 text-muted-foreground">
                       {inv.period_start ? `${inv.period_start} → ` : ""}
                       {inv.period_end}
