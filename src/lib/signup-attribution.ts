@@ -10,9 +10,16 @@ const KEY = "hs_signup_attribution";
 export type SignupAttribution = {
   ref?: string;
   utm?: Record<string, string>;
+  /** Epoch ms when the attribution was captured. */
+  at?: number;
 };
 
 const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"];
+
+// A stash that never expired could attribute a stranger's signup months later
+// on a shared computer (QA finding). 30 days matches typical referral-cookie
+// windows.
+const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function stashSignupAttribution(search: Record<string, unknown>) {
   if (typeof window === "undefined") return;
@@ -27,6 +34,7 @@ export function stashSignupAttribution(search: Record<string, unknown>) {
   const next: SignupAttribution = {
     ref: ref ?? existing.ref,
     utm: { ...existing.utm, ...utm },
+    at: Date.now(),
   };
   try {
     window.localStorage.setItem(KEY, JSON.stringify(next));
@@ -40,8 +48,13 @@ export function readSignupAttribution(): SignupAttribution {
   try {
     const raw = window.localStorage.getItem(KEY);
     if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return typeof parsed === "object" && parsed ? parsed : {};
+    const parsed = JSON.parse(raw) as SignupAttribution;
+    if (typeof parsed !== "object" || !parsed) return {};
+    if (typeof parsed.at === "number" && Date.now() - parsed.at > MAX_AGE_MS) {
+      clearSignupAttribution();
+      return {};
+    }
+    return parsed;
   } catch {
     return {};
   }

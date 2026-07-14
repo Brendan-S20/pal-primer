@@ -121,16 +121,28 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
                   incomplete_expired: "canceled",
                 };
                 const currentPeriodEnd = (sub as any).current_period_end as number | undefined;
+                const mapped = statusMap[sub.status] ?? "active";
                 await supabaseAdmin
                   .from("organizations")
                   .update({
                     stripe_subscription_id: sub.id,
-                    plan_status: statusMap[sub.status] ?? "active",
+                    plan_status: mapped,
                     current_period_end: currentPeriodEnd
                       ? new Date(currentPeriodEnd * 1000).toISOString()
                       : null,
                   })
                   .eq("id", orgId);
+                // A dead subscription takes its bolt-on add-ons with it: mark
+                // them canceled and switch their feature flags off, so the org
+                // doesn't keep paid features free (and can re-buy cleanly).
+                if (event.type === "customer.subscription.deleted" || mapped === "canceled") {
+                  try {
+                    const { deactivateOrgPlatformAddons } = await import("@/lib/platform-addons.server");
+                    await deactivateOrgPlatformAddons(orgId);
+                  } catch (e) {
+                    console.error("addon deactivation on subscription end failed", (e as Error).message);
+                  }
+                }
               }
               break;
             }

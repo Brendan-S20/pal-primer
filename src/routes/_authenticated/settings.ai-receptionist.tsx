@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
@@ -81,6 +81,13 @@ function Page() {
           />
           Enable AI receptionist on this org's SMS number
         </label>
+        <p className="text-xs text-muted-foreground">
+          The AI Receptionist is a plan add-on. If it isn't on your plan yet, add it in{" "}
+          <Link to="/settings/billing" className="underline">
+            Settings → Billing
+          </Link>{" "}
+          first; you can draft the persona and FAQ below either way.
+        </p>
 
         <label className="block space-y-1 text-sm">
           <span className="font-medium">Persona / system instructions</span>

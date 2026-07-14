@@ -277,14 +277,18 @@ function PlatformAddonsSection() {
                 <p className="font-medium">{a.name}</p>
                 <p className="whitespace-nowrap text-sm font-semibold">
                   {formatUsd(a.price_cents)}
-                  <span className="font-normal text-muted-foreground">/{a.billing_interval}</span>
+                  <span className="font-normal text-muted-foreground">
+                    {a.billing_interval === "one_time" ? " one time" : `/${a.billing_interval}`}
+                  </span>
                 </p>
               </div>
               {a.description && (
                 <p className="mt-1 flex-1 text-sm text-muted-foreground">{a.description}</p>
               )}
               <div className="mt-3">
-                {a.subscribed ? (
+                {a.subscribed && a.billing_interval === "one_time" ? (
+                  <Badge className="bg-emerald-600 text-white">Purchased</Badge>
+                ) : a.subscribed ? (
                   <Button
                     variant="outline"
                     size="sm"
@@ -296,8 +300,25 @@ function PlatformAddonsSection() {
                     {cancel.isPending ? "Removing…" : "Remove add-on"}
                   </Button>
                 ) : data?.canSubscribe ? (
-                  <Button size="sm" disabled={subscribe.isPending} onClick={() => subscribe.mutate(a.id)}>
-                    {subscribe.isPending ? "Adding…" : "Add to my plan"}
+                  <Button
+                    size="sm"
+                    disabled={subscribe.isPending}
+                    onClick={() => {
+                      if (
+                        a.billing_interval !== "one_time" ||
+                        confirm(
+                          `${a.name} is a one-time ${formatUsd(a.price_cents)} charge on your next invoice. Purchase?`,
+                        )
+                      ) {
+                        subscribe.mutate(a.id);
+                      }
+                    }}
+                  >
+                    {subscribe.isPending
+                      ? "Adding…"
+                      : a.billing_interval === "one_time"
+                        ? "Purchase"
+                        : "Add to my plan"}
                   </Button>
                 ) : (
                   <Button size="sm" disabled title="Add-ons attach to an active paid subscription">

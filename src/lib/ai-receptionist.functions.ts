@@ -42,6 +42,27 @@ export const updateAiReceptionistSettings = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const orgId = await orgIdFor(context.supabase, context.userId);
+
+    // The AI Receptionist is a paid plan add-on: enabling it here requires an
+    // active add-on subscription (QA finding: the old free toggle let any
+    // owner switch on the $49/mo feature). Turning it OFF, and editing the
+    // FAQ/persona, stay unrestricted.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    if (data.enabled) {
+      const { data: sub } = await (supabaseAdmin as any)
+        .from("org_platform_addons")
+        .select("status, platform_addons!inner(slug)")
+        .eq("organization_id", orgId)
+        .eq("status", "active")
+        .eq("platform_addons.slug", "ai-receptionist")
+        .maybeSingle();
+      if (!sub) {
+        throw new Error(
+          "The AI Receptionist is a plan add-on. Add it in Settings -> Billing first, then enable it here.",
+        );
+      }
+    }
+
     const patch: {
       ai_receptionist_enabled: boolean;
       ai_receptionist_faq: string | null;
@@ -55,7 +76,9 @@ export const updateAiReceptionistSettings = createServerFn({ method: "POST" })
     };
     if (data.voice_enabled !== undefined) patch.ai_voice_enabled = data.voice_enabled;
     if (data.voice_greeting !== undefined) patch.ai_voice_greeting = data.voice_greeting;
-    const { error } = await context.supabase
+    // ai_receptionist_enabled is a platform-protected column now; the write
+    // must come from the service role (we've done the authz above).
+    const { error } = await (supabaseAdmin as any)
       .from("organizations")
       .update(patch)
       .eq("id", orgId);

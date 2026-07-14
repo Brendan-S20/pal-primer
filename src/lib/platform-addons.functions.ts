@@ -112,48 +112,90 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
     if (existing?.status === "active") return { ok: true, already: true };
 
     const stripe = await getStripe();
+    const oneTime = addon.billing_interval === "one_time";
 
     // Mint the Stripe product/price on first ever subscribe of this add-on.
+    // Idempotency keys make a two-tab race resolve to the SAME product/price
+    // instead of two parallel ones (QA finding: double-billing risk).
     let priceId: string | null = addon.stripe_price_id;
+    let productId: string | null = addon.stripe_product_id;
     if (!priceId) {
-      const product = addon.stripe_product_id
-        ? { id: addon.stripe_product_id }
-        : await stripe.products.create({
-            name: `${addon.name} (add-on)`,
-            description: addon.description ?? undefined,
-          });
-      const price = await stripe.prices.create({
-        product: product.id,
-        unit_amount: addon.price_cents,
-        currency: "usd",
-        recurring: { interval: addon.billing_interval === "year" ? "year" : "month" },
-      });
+      if (!productId) {
+        const product = await stripe.products.create(
+          { name: `${addon.name} (add-on)`, description: addon.description ?? undefined },
+          { idempotencyKey: `addon-product-${addon.id}` },
+        );
+        productId = product.id;
+      }
+      const price = await stripe.prices.create(
+        {
+          product: productId,
+          unit_amount: addon.price_cents,
+          currency: "usd",
+          ...(oneTime
+            ? {}
+            : { recurring: { interval: addon.billing_interval === "year" ? "year" : "month" } as const }),
+        },
+        { idempotencyKey: `addon-price-${addon.id}` },
+      );
       priceId = price.id;
       await (supabaseAdmin as any)
         .from("platform_addons")
-        .update({ stripe_product_id: product.id, stripe_price_id: priceId, updated_at: new Date().toISOString() })
+        .update({ stripe_product_id: productId, stripe_price_id: priceId, updated_at: new Date().toISOString() })
         .eq("id", addon.id);
     }
 
-    const item = await stripe.subscriptionItems.create({
-      subscription: org.stripe_subscription_id,
-      price: priceId!,
-      quantity: 1,
-      // Charge the prorated amount on the next invoice rather than issuing a
-      // standalone invoice the moment they click.
-      proration_behavior: "create_prorations",
-    });
+    // One-time services (e.g. done-for-you setup) go on the next invoice as
+    // an invoice item; recurring ones become a subscription item. Both use an
+    // idempotency key so a double-click can't double-charge.
+    let itemId: string | null = null;
+    if (oneTime) {
+      const { data: orgRow } = await (supabaseAdmin as any)
+        .from("organizations").select("stripe_customer_id").eq("id", orgId).single();
+      if (!orgRow?.stripe_customer_id) throw new Error("No billing customer on file yet.");
+      await stripe.invoiceItems.create(
+        {
+          customer: orgRow.stripe_customer_id,
+          pricing: { price: priceId! },
+          subscription: org.stripe_subscription_id,
+        },
+        { idempotencyKey: `addon-buy-${orgId}-${addon.id}` },
+      );
+    } else {
+      const item = await stripe.subscriptionItems.create(
+        {
+          subscription: org.stripe_subscription_id,
+          price: priceId!,
+          quantity: 1,
+          // Prorated onto the next invoice rather than a standalone charge.
+          proration_behavior: "create_prorations",
+        },
+        { idempotencyKey: `addon-item-${orgId}-${addon.id}` },
+      );
+      itemId = item.id;
+    }
 
-    await (supabaseAdmin as any).from("org_platform_addons").upsert(
+    const { error: recordErr } = await (supabaseAdmin as any).from("org_platform_addons").upsert(
       {
         organization_id: orgId,
         addon_id: addon.id,
-        stripe_subscription_item_id: item.id,
+        stripe_subscription_item_id: itemId,
         status: "active",
         canceled_at: null,
       },
       { onConflict: "organization_id,addon_id" },
     );
+    if (recordErr) {
+      // Never bill without a record: undo the Stripe side, then surface it.
+      if (itemId) {
+        try {
+          await stripe.subscriptionItems.del(itemId, { proration_behavior: "create_prorations" });
+        } catch (e) {
+          console.error("addon record failed AND stripe rollback failed", recordErr.message, e);
+        }
+      }
+      throw new Error("Couldn't record the add-on. You have not been charged; try again.");
+    }
     await setFeatureFlag(orgId, addon.feature_flag, true);
     return { ok: true };
   });
@@ -166,7 +208,7 @@ export const cancelPlatformAddon = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const [{ data: addon }, { data: row }] = await Promise.all([
-      (supabaseAdmin as any).from("platform_addons").select("id, feature_flag").eq("id", data.addonId).maybeSingle(),
+      (supabaseAdmin as any).from("platform_addons").select("id, feature_flag, billing_interval").eq("id", data.addonId).maybeSingle(),
       (supabaseAdmin as any)
         .from("org_platform_addons")
         .select("stripe_subscription_item_id, status")
@@ -175,6 +217,9 @@ export const cancelPlatformAddon = createServerFn({ method: "POST" })
         .maybeSingle(),
     ]);
     if (!addon || !row || row.status !== "active") throw new Error("Add-on is not active.");
+    if (addon.billing_interval === "one_time") {
+      throw new Error("One-time services can't be removed once purchased.");
+    }
 
     if (row.stripe_subscription_item_id) {
       const stripe = await getStripe();
