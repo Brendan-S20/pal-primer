@@ -18,6 +18,11 @@ export const Route = createFileRoute("/_authenticated/settings/accounting")({
 
 type Provider = "quickbooks" | "xero";
 
+// Kill switch for the QBO/Xero Connect buttons (per Brendan, 2026-07-14):
+// disabled until the provider OAuth apps are approved and the QBO_*/XERO_*
+// secrets are set. Everything downstream stays built and ready.
+const ACCOUNTING_CONNECT_ENABLED = false;
+
 function AccountingSettings() {
   const router = useRouter();
   const conns = useQuery({
@@ -104,25 +109,30 @@ function AccountingSettings() {
 
       <div className="rounded border bg-card p-4">
         <h2 className="mb-3 font-medium">Connect a provider</h2>
+        {/* Per Brendan (2026-07-14): QBO/Xero connect disabled until the OAuth
+            apps are approved and QBO_/XERO_ secrets are configured. The full
+            flow (authorize → callback → refresh) is built — flip
+            ACCOUNTING_CONNECT_ENABLED to re-enable. */}
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => connect("quickbooks")}
-            disabled={busy}
+            disabled={busy || !ACCOUNTING_CONNECT_ENABLED}
             className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-60"
           >
             Connect QuickBooks Online
           </button>
           <button
             onClick={() => connect("xero")}
-            disabled={busy}
+            disabled={busy || !ACCOUNTING_CONNECT_ENABLED}
             className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-60"
           >
             Connect Xero
           </button>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          You'll be redirected to QuickBooks or Xero to authorize the connection securely — no
-          credentials are entered here.
+          {ACCOUNTING_CONNECT_ENABLED
+            ? "You'll be redirected to QuickBooks or Xero to authorize the connection securely — no credentials are entered here."
+            : "QuickBooks and Xero connections are coming soon — they'll light up here once the integrations are activated."}
         </p>
       </div>
 
