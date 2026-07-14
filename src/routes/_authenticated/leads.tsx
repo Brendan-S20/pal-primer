@@ -1,7 +1,13 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { listLeads, updateLeadStatus, convertLeadToClient } from "@/lib/leads.functions";
+import {
+  listLeads,
+  updateLeadStatus,
+  convertLeadToClient,
+  getLeadFormConfig,
+} from "@/lib/leads.functions";
+import { Eye, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -29,6 +35,9 @@ function LeadsPage() {
   const [filter, setFilter] = useState<string>("all");
 
   const { data, isLoading } = useQuery({ queryKey: ["leads"], queryFn: () => list() });
+  const cfgFn = useServerFn(getLeadFormConfig);
+  const cfgQ = useQuery({ queryKey: ["lead-form-config"], queryFn: () => cfgFn() });
+  const formSlug = (cfgQ.data as any)?.slug as string | undefined;
 
   const mut = useMutation({
     mutationFn: (v: { id: string; status: (typeof STATUSES)[number] }) => upd({ data: v }),
@@ -54,27 +63,43 @@ function LeadsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Leads</h1>
           <p className="text-sm text-muted-foreground">
             Prospects submitted through the public contact form.
           </p>
         </div>
-        <div className="w-48">
-          <Select value={filter} onValueChange={setFilter}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              {STATUSES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex items-end gap-2">
+          {/* The form these leads come from: see it as a prospect would, or
+              jump straight into editing it (Brendan, 2026-07-14). */}
+          {formSlug && (
+            <a href={`/lead/${formSlug}`} target="_blank" rel="noreferrer">
+              <Button variant="outline">
+                <Eye className="mr-1 h-4 w-4" /> Preview form
+              </Button>
+            </a>
+          )}
+          <Link to="/settings/lead-form">
+            <Button variant="outline">
+              <Pencil className="mr-1 h-4 w-4" /> Edit form
+            </Button>
+          </Link>
+          <div className="w-48">
+            <Select value={filter} onValueChange={setFilter}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                {STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 

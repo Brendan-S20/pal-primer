@@ -11,6 +11,11 @@ import {
   listSubscriptionItems,
 } from "@/lib/billing.functions";
 import { PlanPicker, EmbeddedPlanCheckout } from "@/components/billing/PlanPicker";
+import {
+  listPlatformAddons,
+  subscribePlatformAddon,
+  cancelPlatformAddon,
+} from "@/lib/platform-addons.functions";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -199,6 +204,8 @@ function BillingPage() {
         </div>
       )}
 
+      <PlatformAddonsSection />
+
       {data.isPaidTier && <SubscriptionItems onOpenPortal={() => portal.mutate()} portalPending={portal.isPending} />}
 
       <InvoiceHistory />
@@ -213,6 +220,95 @@ function BillingPage() {
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Platform -> tenant software add-ons (the upsell shelf): bolt-ons like the
+// AI Receptionist that attach to the org's existing plan subscription as a
+// Stripe subscription item and flip the matching feature on.
+function PlatformAddonsSection() {
+  const qc = useQueryClient();
+  const listFn = useServerFn(listPlatformAddons);
+  const subFn = useServerFn(subscribePlatformAddon);
+  const cancelFn = useServerFn(cancelPlatformAddon);
+  const { data, isLoading } = useQuery({
+    queryKey: ["platform-addons"],
+    queryFn: () => listFn(),
+  });
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["platform-addons"] });
+    qc.invalidateQueries({ queryKey: ["billing-subscription-items"] });
+  };
+  const subscribe = useMutation({
+    mutationFn: (addonId: string) => subFn({ data: { addonId } }),
+    onSuccess: () => {
+      toast.success("Add-on added to your subscription");
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const cancel = useMutation({
+    mutationFn: (addonId: string) => cancelFn({ data: { addonId } }),
+    onSuccess: () => {
+      toast.success("Add-on removed");
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const addons = data?.addons ?? [];
+  if (!isLoading && !addons.length) return null;
+
+  return (
+    <div className="rounded-lg border bg-card p-6">
+      <h2 className="text-lg font-semibold">Add-ons</h2>
+      <p className="text-sm text-muted-foreground">
+        Optional extras that bolt onto your plan and show up on the same invoice.
+      </p>
+      {isLoading ? (
+        <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {addons.map((a) => (
+            <div key={a.id} className="flex flex-col rounded-lg border p-4">
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-medium">{a.name}</p>
+                <p className="whitespace-nowrap text-sm font-semibold">
+                  {formatUsd(a.price_cents)}
+                  <span className="font-normal text-muted-foreground">/{a.billing_interval}</span>
+                </p>
+              </div>
+              {a.description && (
+                <p className="mt-1 flex-1 text-sm text-muted-foreground">{a.description}</p>
+              )}
+              <div className="mt-3">
+                {a.subscribed ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={cancel.isPending}
+                    onClick={() => {
+                      if (confirm(`Remove ${a.name} from your subscription?`)) cancel.mutate(a.id);
+                    }}
+                  >
+                    {cancel.isPending ? "Removing…" : "Remove add-on"}
+                  </Button>
+                ) : data?.canSubscribe ? (
+                  <Button size="sm" disabled={subscribe.isPending} onClick={() => subscribe.mutate(a.id)}>
+                    {subscribe.isPending ? "Adding…" : "Add to my plan"}
+                  </Button>
+                ) : (
+                  <Button size="sm" disabled title="Add-ons attach to an active paid subscription">
+                    Requires an active plan
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

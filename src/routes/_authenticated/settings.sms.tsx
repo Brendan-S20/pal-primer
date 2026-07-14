@@ -152,6 +152,22 @@ function TwilioByok() {
             )}
           </div>
 
+          {/* One-click Twilio Connect (OAuth-style authorize flow) is parked
+              until the Twilio Connect App is registered, same pattern as the
+              QBO/Xero buttons. Manual credentials below keep working. */}
+          {!cfg?.configured && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" disabled title="Coming soon">
+                Connect with Twilio
+                <span className="ml-1 text-[10px] font-normal opacity-80">soon</span>
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                One-click authorization is coming soon. Until then, paste your Account SID and Auth
+                Token below.
+              </span>
+            </div>
+          )}
+
           <form
             className="space-y-3"
             onSubmit={(e) => {

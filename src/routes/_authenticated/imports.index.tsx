@@ -285,11 +285,14 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
         </label>
         <label className="space-y-1 text-sm">
           <span className="font-medium">CSV file</span>
+          {/* The native file control rendered as barely-visible plain text;
+              style the button half like a real primary button so it reads as
+              clickable (Brendan, 2026-07-14). */}
           <input
             type="file"
             accept=".csv,text/csv"
             onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
-            className="block w-full text-sm"
+            className="block w-full cursor-pointer text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
           />
         </label>
       </div>

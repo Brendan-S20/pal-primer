@@ -2074,6 +2074,48 @@ export type Database = {
           },
         ]
       }
+      org_platform_addons: {
+        Row: {
+          addon_id: string
+          canceled_at: string | null
+          created_at: string
+          organization_id: string
+          status: string
+          stripe_subscription_item_id: string | null
+        }
+        Insert: {
+          addon_id: string
+          canceled_at?: string | null
+          created_at?: string
+          organization_id: string
+          status?: string
+          stripe_subscription_item_id?: string | null
+        }
+        Update: {
+          addon_id?: string
+          canceled_at?: string | null
+          created_at?: string
+          organization_id?: string
+          status?: string
+          stripe_subscription_item_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_platform_addons_addon_id_fkey"
+            columns: ["addon_id"]
+            isOneToOne: false
+            referencedRelation: "platform_addons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "org_platform_addons_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       org_twilio_credentials: {
         Row: {
           account_sid: string
@@ -2478,6 +2520,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      platform_addons: {
+        Row: {
+          billing_interval: string
+          created_at: string
+          description: string | null
+          feature_flag: string | null
+          id: string
+          is_active: boolean
+          name: string
+          price_cents: number
+          slug: string
+          sort_order: number
+          stripe_price_id: string | null
+          stripe_product_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          billing_interval?: string
+          created_at?: string
+          description?: string | null
+          feature_flag?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          price_cents: number
+          slug: string
+          sort_order?: number
+          stripe_price_id?: string | null
+          stripe_product_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          billing_interval?: string
+          created_at?: string
+          description?: string | null
+          feature_flag?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          price_cents?: number
+          slug?: string
+          sort_order?: number
+          stripe_price_id?: string | null
+          stripe_product_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       platform_admin_audit: {
         Row: {
