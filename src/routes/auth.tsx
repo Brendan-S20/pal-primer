@@ -335,14 +335,19 @@ function AuthPage() {
             </div>
           </div>
           <div className="space-y-2">
+            {/* Google disabled too for now (Brendan, 2026-07-14) — same teaser
+                treatment as Apple/Facebook until the provider config is
+                settled. Re-wire onClick={() => oauthSignIn("google")} to
+                re-enable; the whole flow underneath stays built. */}
             <Button
               type="button"
               variant="outline"
               className="w-full justify-center gap-2"
-              disabled={loading}
-              onClick={() => oauthSignIn("google")}
+              disabled
+              title="Coming soon"
             >
               <GoogleIcon /> Google
+              <span className="text-[10px] font-normal text-muted-foreground">soon</span>
             </Button>
             {/* Apple/Facebook aren't configured yet — shown disabled as a
                 teaser rather than wired to a broken flow (Brendan's call). */}
