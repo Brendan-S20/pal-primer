@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Logo } from "@/components/Logo";
+import { PublicFooter } from "@/components/PublicFooter";
 import { cn } from "@/lib/utils";
 
 /**
@@ -34,6 +35,10 @@ export function PublicShell({
           {tagline && <p className="mt-3 text-sm text-muted-foreground">{tagline}</p>}
         </div>
         {children}
+        {/* Legal/compliance links: Twilio verification expects the privacy
+            policy and SMS consent disclosures reachable from the pages that
+            collect phone numbers. */}
+        <PublicFooter />
       </div>
     </div>
   );
