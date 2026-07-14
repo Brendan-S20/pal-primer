@@ -1,5 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import {
+  clearSignupAttribution,
+  readSignupAttribution,
+  stashSignupAttribution,
+} from "@/lib/signup-attribution";
 import { supabase } from "@/integrations/supabase/client";
 import { bootstrapOrganization, recordSmsConsent } from "@/lib/org.functions";
 import { registerAccount, sendEmailVerification } from "@/lib/auth-entry.functions";
@@ -15,8 +20,15 @@ import { APP_NAME } from "@/lib/scoop";
 // for the plan picker + embedded payment, one continuous flow.
 export const Route = createFileRoute("/get-started")({
   // The identifier-first /auth screen hands new emails over via ?email=…
+  // ref/utm_* also land here directly when a marketing link skips /sign-up.
   validateSearch: (s: Record<string, unknown>) => ({
     email: typeof s.email === "string" ? s.email : undefined,
+    ref: typeof s.ref === "string" ? s.ref : undefined,
+    utm_source: typeof s.utm_source === "string" ? s.utm_source : undefined,
+    utm_medium: typeof s.utm_medium === "string" ? s.utm_medium : undefined,
+    utm_campaign: typeof s.utm_campaign === "string" ? s.utm_campaign : undefined,
+    utm_term: typeof s.utm_term === "string" ? s.utm_term : undefined,
+    utm_content: typeof s.utm_content === "string" ? s.utm_content : undefined,
   }),
   head: () => ({
     meta: [
@@ -40,7 +52,14 @@ const STEPS = ["Your account", "Your business", "Texting"] as const;
 
 function GetStartedPage() {
   const navigate = useNavigate();
-  const { email: emailFromAuth } = Route.useSearch();
+  const search = Route.useSearch();
+  const { email: emailFromAuth } = search;
+  // Persist any ref/utm params so they survive the multi-step flow (and the
+  // OAuth round-trip) until org creation.
+  useEffect(() => {
+    stashSignupAttribution(search as Record<string, unknown>);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,10 +91,17 @@ function GetStartedPage() {
           smsConsent: smsConsent && !!phone.trim(),
         },
       });
-      const { error: signInErr } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
       if (signInErr) throw signInErr;
 
-      await bootstrapOrganization({ data: { orgName, displayName } });
+      const attribution = readSignupAttribution();
+      await bootstrapOrganization({
+        data: { orgName, displayName, refCode: attribution.ref, utm: attribution.utm },
+      });
+      clearSignupAttribution();
       if (smsConsent && phone.trim()) {
         try {
           await recordSmsConsent({ data: { phone: phone.trim(), consentText: SMS_CONSENT_TEXT } });
@@ -111,12 +137,16 @@ function GetStartedPage() {
             <div key={label} className="flex flex-1 items-center gap-2">
               <div
                 className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                  i <= step ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                  i <= step
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground"
                 }`}
               >
                 {i < step ? "✓" : i + 1}
               </div>
-              <span className={`text-xs sm:text-sm ${i === step ? "font-medium" : "text-muted-foreground"}`}>
+              <span
+                className={`text-xs sm:text-sm ${i === step ? "font-medium" : "text-muted-foreground"}`}
+              >
                 {label}
               </span>
               {i < STEPS.length - 1 && <div className="h-px flex-1 bg-border" />}
@@ -128,7 +158,10 @@ function GetStartedPage() {
           {step === 0 && (
             <form
               className="space-y-4"
-              onSubmit={(e) => { e.preventDefault(); if (step0Valid) setStep(1); }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (step0Valid) setStep(1);
+              }}
             >
               <div>
                 <h1 className="text-lg font-semibold">Create your account</h1>
@@ -136,15 +169,35 @@ function GetStartedPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="gs-email">Work email</Label>
-                <Input id="gs-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@yourbusiness.com" />
+                <Input
+                  id="gs-email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@yourbusiness.com"
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="gs-pass">Password</Label>
-                <Input id="gs-pass" type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" />
+                <Input
+                  id="gs-pass"
+                  type="password"
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="At least 8 characters"
+                />
               </div>
-              <Button type="submit" className="w-full" disabled={!step0Valid}>Continue</Button>
+              <Button type="submit" className="w-full" disabled={!step0Valid}>
+                Continue
+              </Button>
               <p className="text-center text-xs text-muted-foreground">
-                Already have an account? <Link to="/auth" className="underline">Sign in</Link>
+                Already have an account?{" "}
+                <Link to="/auth" className="underline">
+                  Sign in
+                </Link>
               </p>
             </form>
           )}
@@ -152,23 +205,44 @@ function GetStartedPage() {
           {step === 1 && (
             <form
               className="space-y-4"
-              onSubmit={(e) => { e.preventDefault(); if (step1Valid) setStep(2); }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (step1Valid) setStep(2);
+              }}
             >
               <div>
                 <h1 className="text-lg font-semibold">About your business</h1>
-                <p className="text-sm text-muted-foreground">This names your workspace — you can change it later.</p>
+                <p className="text-sm text-muted-foreground">
+                  This names your workspace — you can change it later.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="gs-org">Business name</Label>
-                <Input id="gs-org" required value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="Acme Pet Waste Removal" />
+                <Input
+                  id="gs-org"
+                  required
+                  value={orgName}
+                  onChange={(e) => setOrgName(e.target.value)}
+                  placeholder="Acme Pet Waste Removal"
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="gs-name">Your name</Label>
-                <Input id="gs-name" required value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Jane Doe" />
+                <Input
+                  id="gs-name"
+                  required
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="Jane Doe"
+                />
               </div>
               <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => setStep(0)}>Back</Button>
-                <Button type="submit" className="flex-1" disabled={!step1Valid}>Continue</Button>
+                <Button type="button" variant="outline" onClick={() => setStep(0)}>
+                  Back
+                </Button>
+                <Button type="submit" className="flex-1" disabled={!step1Valid}>
+                  Continue
+                </Button>
               </div>
             </form>
           )}
@@ -176,7 +250,10 @@ function GetStartedPage() {
           {step === 2 && (
             <form
               className="space-y-4"
-              onSubmit={(e) => { e.preventDefault(); finish(); }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                finish();
+              }}
             >
               <div>
                 <h1 className="text-lg font-semibold">Stay in the loop by text</h1>
@@ -185,12 +262,23 @@ function GetStartedPage() {
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="gs-phone">Mobile number <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                <Input id="gs-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 123-4567" />
+                <Label htmlFor="gs-phone">
+                  Mobile number{" "}
+                  <span className="font-normal text-muted-foreground">(optional)</span>
+                </Label>
+                <Input
+                  id="gs-phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="(555) 123-4567"
+                />
               </div>
               {/* TCPA/carrier express consent: unticked by default, full
                   disclosure language, and we store exactly what was agreed to. */}
-              <label className={`flex items-start gap-2 rounded-md border p-3 text-xs leading-relaxed ${phone.trim() ? "" : "opacity-50"}`}>
+              <label
+                className={`flex items-start gap-2 rounded-md border p-3 text-xs leading-relaxed ${phone.trim() ? "" : "opacity-50"}`}
+              >
                 <input
                   type="checkbox"
                   className="mt-0.5"
@@ -202,7 +290,9 @@ function GetStartedPage() {
               </label>
               {error && <p className="text-sm text-destructive">{error}</p>}
               <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => setStep(1)} disabled={busy}>Back</Button>
+                <Button type="button" variant="outline" onClick={() => setStep(1)} disabled={busy}>
+                  Back
+                </Button>
                 <Button type="submit" className="flex-1" disabled={busy}>
                   {busy ? "Creating your workspace…" : "Create my workspace"}
                 </Button>

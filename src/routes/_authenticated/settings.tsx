@@ -25,6 +25,7 @@ const TAB_GROUPS: TabGroup[] = [
     tabs: [
       { label: "Lead form", to: "/settings/lead-form" },
       { label: "Promotions", to: "/settings/promotions" },
+      { label: "Refer a business", to: "/settings/referrals" },
     ],
   },
   {
@@ -47,25 +48,19 @@ const TAB_GROUPS: TabGroup[] = [
   },
   {
     title: "Team",
-    tabs: [
-      { label: "Users & roles", to: "/settings/users" },
-    ],
+    tabs: [{ label: "Users & roles", to: "/settings/users" }],
   },
 ];
 
 function SettingsLayout() {
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   const { role } = useMyRole();
-  const groups = TAB_GROUPS
-    .map((g) => ({
-      ...g,
-      // Hide tabs the role can't open — showing a link that bounces to the
-      // dashboard with "You don't have access" reads as broken (P1.4).
-      tabs: g.tabs.filter(
-        (t) => (role !== "tech" || t.techVisible) && canAccess(role, t.to),
-      ),
-    }))
-    .filter((g) => g.tabs.length > 0);
+  const groups = TAB_GROUPS.map((g) => ({
+    ...g,
+    // Hide tabs the role can't open — showing a link that bounces to the
+    // dashboard with "You don't have access" reads as broken (P1.4).
+    tabs: g.tabs.filter((t) => (role !== "tech" || t.techVisible) && canAccess(role, t.to)),
+  })).filter((g) => g.tabs.length > 0);
   return (
     <div className="space-y-6">
       <div>

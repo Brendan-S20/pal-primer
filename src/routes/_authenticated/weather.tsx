@@ -40,7 +40,9 @@ function WeatherPage() {
     queryFn: () => getWeather({ data: { fromDate, toDate } }),
   });
 
-  const [target, setTarget] = useState<{ zoneId: string; zoneName: string; date: string } | null>(null);
+  const [target, setTarget] = useState<{ zoneId: string; zoneName: string; date: string } | null>(
+    null,
+  );
 
   const days = useMemo(() => {
     const out: string[] = [];
@@ -57,14 +59,20 @@ function WeatherPage() {
       <div>
         <h1 className="text-2xl font-semibold">Weather</h1>
         <p className="text-sm text-muted-foreground">
-          Forecast per zone. Risky days are flagged so you can bulk-reschedule visits before they blow up on the field.
+          Forecast per zone. Risky days are flagged so you can bulk-reschedule visits before they
+          blow up on the field.
         </p>
       </div>
 
       <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4">
         <div>
           <Label htmlFor="f">From</Label>
-          <Input id="f" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          <Input
+            id="f"
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+          />
         </div>
         <div>
           <Label htmlFor="t">To</Label>
@@ -105,45 +113,61 @@ function WeatherPage() {
               </div>
             ) : (z as any).status === "error" ? (
               <div className="text-xs text-destructive">
-                Couldn't load the forecast (weather service error). Try Refresh in a moment.
-                {(z as any).error ? <span className="block text-muted-foreground">{(z as any).error}</span> : null}
+                {(z as any).error ??
+                  "Couldn't load the forecast (weather service error). Try Refresh in a moment."}
               </div>
             ) : z.days.length === 0 ? (
-              <div className="text-xs text-muted-foreground">No forecast available for this date range.</div>
-            ) : (
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                {z.days.map((d) => (
-                  <button
-                    key={d.date}
-                    type="button"
-                    onClick={() =>
-                      d.visit_count > 0 && setTarget({ zoneId: z.id, zoneName: z.name, date: d.date })
-                    }
-                    disabled={d.visit_count === 0}
-                    className={`rounded-md border p-3 text-left transition ${
-                      d.risky ? "border-destructive bg-destructive/5" : "bg-background"
-                    } ${d.visit_count === 0 ? "opacity-70" : "hover:border-primary hover:bg-accent"}`}
-                  >
-                    <div className="flex items-baseline justify-between text-xs text-muted-foreground">
-                      <span>{d.date}</span>
-                      <span>
-                        {Math.round(d.temp_min)}° / {Math.round(d.temp_max)}°
-                      </span>
-                    </div>
-                    <div className="mt-1 text-sm">
-                      {d.precip_mm.toFixed(1)}mm · {d.precip_prob}% · wind {Math.round(d.wind_max)}
-                    </div>
-                    <div className="mt-1 flex items-center justify-between text-xs">
-                      <span className={d.risky ? "font-medium text-destructive" : "text-muted-foreground"}>
-                        {d.risky ? d.reasons.join(" · ") : "clear"}
-                      </span>
-                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs">
-                        {d.visit_count} visit{d.visit_count === 1 ? "" : "s"}
-                      </span>
-                    </div>
-                  </button>
-                ))}
+              <div className="text-xs text-muted-foreground">
+                No forecast available for this date range.
               </div>
+            ) : (
+              <>
+                {(z as any).stale && (
+                  <div className="mb-2 text-xs text-amber-700">
+                    The weather service is temporarily unavailable — showing the last saved
+                    forecast.
+                  </div>
+                )}
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {z.days.map((d) => (
+                    <button
+                      key={d.date}
+                      type="button"
+                      onClick={() =>
+                        d.visit_count > 0 &&
+                        setTarget({ zoneId: z.id, zoneName: z.name, date: d.date })
+                      }
+                      disabled={d.visit_count === 0}
+                      className={`rounded-md border p-3 text-left transition ${
+                        d.risky ? "border-destructive bg-destructive/5" : "bg-background"
+                      } ${d.visit_count === 0 ? "opacity-70" : "hover:border-primary hover:bg-accent"}`}
+                    >
+                      <div className="flex items-baseline justify-between text-xs text-muted-foreground">
+                        <span>{d.date}</span>
+                        <span>
+                          {Math.round(d.temp_min)}° / {Math.round(d.temp_max)}°
+                        </span>
+                      </div>
+                      <div className="mt-1 text-sm">
+                        {d.precip_mm.toFixed(1)}mm · {d.precip_prob}% · wind{" "}
+                        {Math.round(d.wind_max)}
+                      </div>
+                      <div className="mt-1 flex items-center justify-between text-xs">
+                        <span
+                          className={
+                            d.risky ? "font-medium text-destructive" : "text-muted-foreground"
+                          }
+                        >
+                          {d.risky ? d.reasons.join(" · ") : "clear"}
+                        </span>
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-xs">
+                          {d.visit_count} visit{d.visit_count === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         ))}
@@ -218,9 +242,11 @@ function RescheduleDialog({
     },
   });
 
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
       <div
         className="w-full max-w-lg rounded-lg border bg-card p-5 shadow-lg"
         onClick={(e) => e.stopPropagation()}
@@ -278,7 +304,12 @@ function RescheduleDialog({
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="nd">New date</Label>
-            <Input id="nd" type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+            <Input
+              id="nd"
+              type="date"
+              value={newDate}
+              onChange={(e) => setNewDate(e.target.value)}
+            />
           </div>
           <div>
             <Label htmlFor="nt">Note</Label>
@@ -297,7 +328,9 @@ function RescheduleDialog({
             {mut.isPending ? "Moving…" : `Reschedule ${selected.size}`}
           </Button>
         </div>
-        {mut.error && <p className="mt-2 text-sm text-destructive">{(mut.error as Error).message}</p>}
+        {mut.error && (
+          <p className="mt-2 text-sm text-destructive">{(mut.error as Error).message}</p>
+        )}
       </div>
     </div>
   );
@@ -315,7 +348,6 @@ function AutoRebalance({ fromDate, toDate }: { fromDate: string; toDate: string 
   // rejected the click for other roles, which read as a broken button.
   const canRebalance = role === "owner" || role === "office_manager";
 
-
   const dry = useMutation({
     mutationFn: () => fn({ data: { fromDate, toDate, dryRun: true, dailyCap: 60 } }),
     onSuccess: (r) => {
@@ -325,9 +357,13 @@ function AutoRebalance({ fromDate, toDate }: { fromDate: string; toDate: string 
         // "All clear" and "couldn't check" are different answers — don't
         // report a forecast outage as no-risk (P1.6).
         if (r.forecastFailures > 0 && r.forecastFailures >= r.zonesChecked) {
-          toast.error("Couldn't fetch the weather forecast (the weather service may be rate-limited) — try again in a few minutes.");
+          toast.error(
+            "Couldn't fetch the weather forecast (the weather service may be rate-limited) — try again in a few minutes.",
+          );
         } else if (r.zonesChecked === 0) {
-          toast.info("No zones have map coordinates yet — add zone locations to use auto-rebalance.");
+          toast.info(
+            "No zones have map coordinates yet — add zone locations to use auto-rebalance.",
+          );
         } else {
           toast.info("No risky visits to rebalance.");
         }
@@ -362,7 +398,7 @@ function AutoRebalance({ fromDate, toDate }: { fromDate: string; toDate: string 
       } else if (r.rescheduleErrors > 0) {
         toast.error(
           `Couldn't move ${r.rescheduleErrors} visit(s)` +
-          (r.firstRescheduleError ? `: ${r.firstRescheduleError}` : "."),
+            (r.firstRescheduleError ? `: ${r.firstRescheduleError}` : "."),
         );
       } else {
         toast.success(`Rebalanced ${total} visit(s).`);
@@ -373,14 +409,23 @@ function AutoRebalance({ fromDate, toDate }: { fromDate: string; toDate: string 
     onError: (e: Error) => toast.error(e.message),
   });
 
-
   return (
     <div className="ml-auto flex items-center gap-2">
       <Button
         variant="outline"
-        onClick={() => canRebalance ? dry.mutate() : toast.error("You're not authorized to auto-rebalance — ask an owner or office manager.")}
+        onClick={() =>
+          canRebalance
+            ? dry.mutate()
+            : toast.error(
+                "You're not authorized to auto-rebalance — ask an owner or office manager.",
+              )
+        }
         disabled={dry.isPending || !canRebalance}
-        title={canRebalance ? "" : "Only owners and office managers can auto-rebalance the weather forecast"}
+        title={
+          canRebalance
+            ? ""
+            : "Only owners and office managers can auto-rebalance the weather forecast"
+        }
       >
         {dry.isPending ? "Previewing…" : "Preview auto-rebalance"}
       </Button>

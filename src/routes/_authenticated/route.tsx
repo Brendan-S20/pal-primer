@@ -1,7 +1,8 @@
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, redirect } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
+import { OnboardingTour } from "@/components/OnboardingTour";
 import { InstallBanner } from "@/components/InstallBanner";
 import { AppSidebar } from "@/components/AppSidebar";
 import { RoleGuard } from "@/components/RoleGuard";
@@ -11,7 +12,7 @@ import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { SuspensionBanner } from "@/components/SuspensionBanner";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Search } from "lucide-react";
+import { HelpCircle, Search } from "lucide-react";
 import { useBrandAccent } from "@/hooks/useBrandAccent";
 
 export const Route = createFileRoute("/_authenticated")({
@@ -25,9 +26,7 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function openPalette() {
-  window.dispatchEvent(
-    new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }),
-  );
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }));
 }
 
 function AppShell() {
@@ -55,19 +54,21 @@ function AppShell() {
             console.warn("native push register failed", e);
           }
         });
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
-
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     window.location.href = "/auth";
   };
 
-  const isMac =
-    typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
   const brand = useBrandAccent();
   // Scope the tenant brand color to the internal staff app only. Platform-admin
@@ -104,6 +105,14 @@ function AppShell() {
                 {isMac ? "⌘K" : "Ctrl K"}
               </kbd>
             </button>
+            <Link
+              to="/help"
+              search={{ article: undefined }}
+              aria-label="Knowledge Center"
+              className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <HelpCircle className="h-4 w-4" />
+            </Link>
             <NotificationBell />
             <Button variant="ghost" size="sm" onClick={handleSignOut}>
               Sign out
@@ -119,9 +128,9 @@ function AppShell() {
         </div>
         <CommandPalette />
         <KeyboardShortcuts />
+        <OnboardingTour />
         <InstallBanner />
         <RoleGuard />
-
       </div>
     </SidebarProvider>
   );

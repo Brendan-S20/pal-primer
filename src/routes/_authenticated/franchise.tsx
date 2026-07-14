@@ -16,14 +16,29 @@ import {
   type FranchiseRow,
 } from "@/lib/franchise.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Building2, ArrowUp, ArrowDown } from "lucide-react";
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+  Legend,
 } from "recharts";
+import { HelpTip } from "@/components/HelpTip";
 
 export const Route = createFileRoute("/_authenticated/franchise")({
   component: FranchisePage,
@@ -33,8 +48,14 @@ const money = (c: number) =>
   `$${(c / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const LINE_COLORS = [
-  "hsl(217 91% 60%)", "hsl(0 84% 60%)", "hsl(142 71% 45%)", "hsl(35 92% 55%)",
-  "hsl(262 83% 62%)", "hsl(190 91% 45%)", "hsl(330 81% 60%)", "hsl(82 76% 45%)",
+  "hsl(217 91% 60%)",
+  "hsl(0 84% 60%)",
+  "hsl(142 71% 45%)",
+  "hsl(35 92% 55%)",
+  "hsl(262 83% 62%)",
+  "hsl(190 91% 45%)",
+  "hsl(330 81% 60%)",
+  "hsl(82 76% 45%)",
 ];
 
 type SortKey = keyof FranchiseRow;
@@ -61,7 +82,10 @@ function FranchisePage() {
   const markFn = useServerFn(markSelfAsFranchiseParent);
   const mark = useMutation({
     mutationFn: () => markFn(),
-    onSuccess: () => { toast.success("Marked as franchise parent"); ctx.refetch(); },
+    onSuccess: () => {
+      toast.success("Marked as franchise parent");
+      ctx.refetch();
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -95,17 +119,22 @@ function FranchisePage() {
       <div className="p-6">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Building2 className="h-5 w-5" /> Royalties &amp; multi-org rollup</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" /> Royalties &amp; multi-org rollup
+            </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground space-y-3">
             <p>This organization is not configured as a royalty parent yet.</p>
             <p>
-              This page rolls up clients, revenue, and open AR from other HoundStack
-              organizations that bill you royalties — each location runs as its own separate
-              organization with its own users and data. Full multi-location management
-              (shared branches, per-location user scoping) is on the roadmap.
+              This page rolls up clients, revenue, and open AR from other HoundStack organizations
+              that bill you royalties — each location runs as its own separate organization with its
+              own users and data. Full multi-location management (shared branches, per-location user
+              scoping) is on the roadmap.
             </p>
-            <p>Once you enable it, any organization whose <code>parent_organization_id</code> points at this one will roll up here.</p>
+            <p>
+              Once you enable it, any organization whose <code>parent_organization_id</code> points
+              at this one will roll up here.
+            </p>
             <Button onClick={() => mark.mutate()} disabled={mark.isPending}>
               {mark.isPending ? "Marking…" : "Mark this org as a franchise parent"}
             </Button>
@@ -117,7 +146,10 @@ function FranchisePage() {
 
   const toggleSort = (key: SortKey) => {
     if (sortBy === key) setSortDir(sortDir === "asc" ? "desc" : "asc");
-    else { setSortBy(key); setSortDir("desc"); }
+    else {
+      setSortBy(key);
+      setSortDir("desc");
+    }
   };
 
   const locations = trend.data?.locations ?? [];
@@ -127,7 +159,9 @@ function FranchisePage() {
       <div className="flex items-center gap-3">
         <Building2 className="h-6 w-6" />
         <div>
-          <h1 className="text-2xl font-semibold">Royalties &amp; rollup</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold">
+            Royalties &amp; rollup <HelpTip article="royalties" />
+          </h1>
           <p className="text-sm text-muted-foreground">
             {ctx.data.org?.name} — {rows.length} location{rows.length === 1 ? "" : "s"}
           </p>
@@ -142,10 +176,14 @@ function FranchisePage() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Revenue trend — last 8 weeks</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>Revenue trend — last 8 weeks</CardTitle>
+        </CardHeader>
         <CardContent>
           {trend.isLoading ? (
-            <div className="h-64 flex items-center justify-center text-muted-foreground">Loading…</div>
+            <div className="h-64 flex items-center justify-center text-muted-foreground">
+              Loading…
+            </div>
           ) : (trend.data?.weeks ?? []).length === 0 ? (
             <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
               No child locations linked yet.
@@ -178,24 +216,82 @@ function FranchisePage() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>By location</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>By location</CardTitle>
+        </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <SortableHead label="Location" col="organization_name" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} />
-                <SortableHead label="Techs" col="tech_count" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} align="right" />
-                <SortableHead label="Active clients" col="active_clients" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} align="right" />
-                <SortableHead label="Today" col="visits_today" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} align="right" />
-                <SortableHead label="Revenue MTD" col="revenue_mtd_cents" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} align="right" />
-                <SortableHead label="AR open" col="ar_open_cents" sortBy={sortBy} sortDir={sortDir} onClick={toggleSort} align="right" />
+                <SortableHead
+                  label="Location"
+                  col="organization_name"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onClick={toggleSort}
+                />
+                <SortableHead
+                  label="Techs"
+                  col="tech_count"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onClick={toggleSort}
+                  align="right"
+                />
+                <SortableHead
+                  label="Active clients"
+                  col="active_clients"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onClick={toggleSort}
+                  align="right"
+                />
+                <SortableHead
+                  label="Today"
+                  col="visits_today"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onClick={toggleSort}
+                  align="right"
+                />
+                <SortableHead
+                  label="Revenue MTD"
+                  col="revenue_mtd_cents"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onClick={toggleSort}
+                  align="right"
+                />
+                <SortableHead
+                  label="AR open"
+                  col="ar_open_cents"
+                  sortBy={sortBy}
+                  sortDir={sortDir}
+                  onClick={toggleSort}
+                  align="right"
+                />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rollup.isLoading && (<TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-6">Loading…</TableCell></TableRow>)}
-              {!rollup.isLoading && rows.length === 0 && (<TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-6">No child organizations linked yet.</TableCell></TableRow>)}
+              {rollup.isLoading && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
+                    Loading…
+                  </TableCell>
+                </TableRow>
+              )}
+              {!rollup.isLoading && rows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
+                    No child organizations linked yet.
+                  </TableCell>
+                </TableRow>
+              )}
               {rows.map((r) => {
-                const pct = r.visits_today > 0 ? Math.round((r.visits_completed_today / r.visits_today) * 100) : 0;
+                const pct =
+                  r.visits_today > 0
+                    ? Math.round((r.visits_completed_today / r.visits_today) * 100)
+                    : 0;
                 return (
                   <TableRow key={r.organization_id}>
                     <TableCell className="font-medium">{r.organization_name}</TableCell>
@@ -203,9 +299,15 @@ function FranchisePage() {
                     <TableCell className="text-right">{r.active_clients}</TableCell>
                     <TableCell className="text-right">
                       {r.visits_completed_today}/{r.visits_today}
-                      {r.visits_today > 0 && <Badge variant="secondary" className="ml-2">{pct}%</Badge>}
+                      {r.visits_today > 0 && (
+                        <Badge variant="secondary" className="ml-2">
+                          {pct}%
+                        </Badge>
+                      )}
                     </TableCell>
-                    <TableCell className="text-right">{money(Number(r.revenue_mtd_cents))}</TableCell>
+                    <TableCell className="text-right">
+                      {money(Number(r.revenue_mtd_cents))}
+                    </TableCell>
                     <TableCell className="text-right">{money(Number(r.ar_open_cents))}</TableCell>
                   </TableRow>
                 );
@@ -229,25 +331,40 @@ function RoyaltyBilling() {
   const listFn = useServerFn(listRoyaltyInvoices);
   const statusFn = useServerFn(setRoyaltyInvoiceStatus);
 
-  const settings = useQuery({ queryKey: ["franchise", "royalty-settings"], queryFn: () => settingsFn() });
-  const invoices = useQuery({ queryKey: ["franchise", "royalty-invoices"], queryFn: () => listFn() });
+  const settings = useQuery({
+    queryKey: ["franchise", "royalty-settings"],
+    queryFn: () => settingsFn(),
+  });
+  const invoices = useQuery({
+    queryKey: ["franchise", "royalty-invoices"],
+    queryFn: () => listFn(),
+  });
 
   const setRate = useMutation({
     mutationFn: (v: { childOrgId: string; percent: number }) => setRateFn({ data: v }),
-    onSuccess: () => { toast.success("Royalty rate saved"); settings.refetch(); },
+    onSuccess: () => {
+      toast.success("Royalty rate saved");
+      settings.refetch();
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const generate = useMutation({
     mutationFn: () => genFn({ data: {} }),
     onSuccess: (r: any) => {
-      toast.success(`Generated ${r.generated} royalty invoice(s) for ${r.periodStart} → ${r.periodEnd}`);
+      toast.success(
+        `Generated ${r.generated} royalty invoice(s) for ${r.periodStart} → ${r.periodEnd}`,
+      );
       invoices.refetch();
     },
     onError: (e: Error) => toast.error(e.message),
   });
   const setStatus = useMutation({
-    mutationFn: (v: { invoiceId: string; status: "draft" | "issued" | "paid" | "void" }) => statusFn({ data: v }),
-    onSuccess: () => { toast.success("Updated"); invoices.refetch(); },
+    mutationFn: (v: { invoiceId: string; status: "draft" | "issued" | "paid" | "void" }) =>
+      statusFn({ data: v }),
+    onSuccess: () => {
+      toast.success("Updated");
+      invoices.refetch();
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -264,7 +381,9 @@ function RoyaltyBilling() {
       </CardHeader>
       <CardContent className="space-y-6">
         <div>
-          <div className="mb-2 text-xs font-medium uppercase text-muted-foreground">Royalty rate per location</div>
+          <div className="mb-2 text-xs font-medium uppercase text-muted-foreground">
+            Royalty rate per location
+          </div>
           <div className="space-y-2">
             {children.map((c) => (
               <div key={c.id} className="flex items-center gap-3 text-sm">
@@ -278,7 +397,10 @@ function RoyaltyBilling() {
                   defaultValue={Number(c.franchise_royalty_percent ?? 0)}
                   onBlur={(e) => {
                     const percent = Number(e.target.value);
-                    if (!Number.isNaN(percent) && percent !== Number(c.franchise_royalty_percent ?? 0)) {
+                    if (
+                      !Number.isNaN(percent) &&
+                      percent !== Number(c.franchise_royalty_percent ?? 0)
+                    ) {
                       setRate.mutate({ childOrgId: c.id, percent });
                     }
                   }}
@@ -293,7 +415,9 @@ function RoyaltyBilling() {
         </div>
 
         <div>
-          <div className="mb-2 text-xs font-medium uppercase text-muted-foreground">Royalty invoices</div>
+          <div className="mb-2 text-xs font-medium uppercase text-muted-foreground">
+            Royalty invoices
+          </div>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -309,21 +433,47 @@ function RoyaltyBilling() {
               </TableHeader>
               <TableBody>
                 {rows.map((r) => {
-                  const child = Array.isArray(r.organizations) ? r.organizations[0] : r.organizations;
+                  const child = Array.isArray(r.organizations)
+                    ? r.organizations[0]
+                    : r.organizations;
                   return (
                     <TableRow key={r.id}>
                       <TableCell>{child?.name ?? "Location"}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{r.period_start} → {r.period_end}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {r.period_start} → {r.period_end}
+                      </TableCell>
                       <TableCell>{money(Number(r.revenue_cents))}</TableCell>
                       <TableCell>{Number(r.royalty_percent)}%</TableCell>
                       <TableCell className="font-medium">{money(Number(r.amount_cents))}</TableCell>
-                      <TableCell><Badge variant={r.status === "paid" ? "secondary" : r.status === "issued" ? "default" : "outline"}>{r.status}</Badge></TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            r.status === "paid"
+                              ? "secondary"
+                              : r.status === "issued"
+                                ? "default"
+                                : "outline"
+                          }
+                        >
+                          {r.status}
+                        </Badge>
+                      </TableCell>
                       <TableCell className="text-right">
                         {r.status === "draft" && (
-                          <button className="text-xs text-primary underline" onClick={() => setStatus.mutate({ invoiceId: r.id, status: "issued" })}>Issue</button>
+                          <button
+                            className="text-xs text-primary underline"
+                            onClick={() => setStatus.mutate({ invoiceId: r.id, status: "issued" })}
+                          >
+                            Issue
+                          </button>
                         )}
                         {r.status === "issued" && (
-                          <button className="text-xs text-primary underline" onClick={() => setStatus.mutate({ invoiceId: r.id, status: "paid" })}>Mark paid</button>
+                          <button
+                            className="text-xs text-primary underline"
+                            onClick={() => setStatus.mutate({ invoiceId: r.id, status: "paid" })}
+                          >
+                            Mark paid
+                          </button>
                         )}
                       </TableCell>
                     </TableRow>
@@ -346,10 +496,19 @@ function RoyaltyBilling() {
 }
 
 function SortableHead({
-  label, col, sortBy, sortDir, onClick, align,
+  label,
+  col,
+  sortBy,
+  sortDir,
+  onClick,
+  align,
 }: {
-  label: string; col: SortKey; sortBy: SortKey; sortDir: "asc" | "desc";
-  onClick: (k: SortKey) => void; align?: "right";
+  label: string;
+  col: SortKey;
+  sortBy: SortKey;
+  sortDir: "asc" | "desc";
+  onClick: (k: SortKey) => void;
+  align?: "right";
 }) {
   const active = sortBy === col;
   return (
@@ -359,7 +518,8 @@ function SortableHead({
         onClick={() => onClick(col)}
       >
         {label}
-        {active && (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+        {active &&
+          (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
       </button>
     </TableHead>
   );

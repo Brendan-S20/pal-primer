@@ -4,13 +4,20 @@ import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useMyRole } from "@/hooks/useMyRole";
-import { listManifests, createManifest, deleteManifest, listFacilities, upsertFacility } from "@/lib/stations.functions";
+import {
+  listManifests,
+  createManifest,
+  deleteManifest,
+  listFacilities,
+  upsertFacility,
+} from "@/lib/stations.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { HelpTip } from "@/components/HelpTip";
 
 export const Route = createFileRoute("/_authenticated/waste-log")({
   head: () => ({ meta: [{ title: "Waste disposal log" }] }),
@@ -61,18 +68,32 @@ function WasteLogPage() {
     onSuccess: () => {
       toast.success("Manifest logged");
       qc.invalidateQueries({ queryKey: ["waste-manifests"] });
-      setDraft({ facilityId: draft.facilityId, disposedOn: draft.disposedOn, weightLbs: "", bagCount: "", ticketNumber: "", notes: "" });
+      setDraft({
+        facilityId: draft.facilityId,
+        disposedOn: draft.disposedOn,
+        weightLbs: "",
+        bagCount: "",
+        ticketNumber: "",
+        notes: "",
+      });
       setReceipt(null);
     },
     onError: (e: Error) => toast.error(e.message),
   });
   const delMut = useMutation({
     mutationFn: (id: string) => delFn({ data: { id } }),
-    onSuccess: () => { toast.success("Deleted"); qc.invalidateQueries({ queryKey: ["waste-manifests"] }); },
+    onSuccess: () => {
+      toast.success("Deleted");
+      qc.invalidateQueries({ queryKey: ["waste-manifests"] });
+    },
   });
   const facMut = useMutation({
     mutationFn: (v: any) => upsertFacFn({ data: v }),
-    onSuccess: () => { toast.success("Facility added"); qc.invalidateQueries({ queryKey: ["waste-facilities"] }); setNewFacility({ name: "", address: "" }); },
+    onSuccess: () => {
+      toast.success("Facility added");
+      qc.invalidateQueries({ queryKey: ["waste-facilities"] });
+      setNewFacility({ name: "", address: "" });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -84,8 +105,12 @@ function WasteLogPage() {
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold">Waste disposal log</h1>
-          <p className="text-sm text-muted-foreground">Track dumps at transfer stations and disposal facilities.</p>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold">
+            Waste disposal log <HelpTip article="waste-log" />
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Track dumps at transfer stations and disposal facilities.
+          </p>
         </div>
         <Badge variant="secondary">Recent total: {totalLbs.toFixed(0)} lbs</Badge>
       </div>
@@ -114,28 +139,56 @@ function WasteLogPage() {
               onChange={(e) => setDraft({ ...draft, facilityId: e.target.value })}
             >
               <option value="">— none —</option>
-              {facilities.filter((f) => f.active).map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+              {facilities
+                .filter((f) => f.active)
+                .map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
             </select>
           </div>
           <div>
             <Label>Date</Label>
-            <Input type="date" value={draft.disposedOn} onChange={(e) => setDraft({ ...draft, disposedOn: e.target.value })} />
+            <Input
+              type="date"
+              value={draft.disposedOn}
+              onChange={(e) => setDraft({ ...draft, disposedOn: e.target.value })}
+            />
           </div>
           <div>
             <Label>Weight (lbs)</Label>
-            <Input type="number" step="0.1" min="0" value={draft.weightLbs} onChange={(e) => setDraft({ ...draft, weightLbs: e.target.value })} />
+            <Input
+              type="number"
+              step="0.1"
+              min="0"
+              value={draft.weightLbs}
+              onChange={(e) => setDraft({ ...draft, weightLbs: e.target.value })}
+            />
           </div>
           <div>
             <Label>Bags</Label>
-            <Input type="number" min="0" value={draft.bagCount} onChange={(e) => setDraft({ ...draft, bagCount: e.target.value })} />
+            <Input
+              type="number"
+              min="0"
+              value={draft.bagCount}
+              onChange={(e) => setDraft({ ...draft, bagCount: e.target.value })}
+            />
           </div>
           <div>
             <Label>Ticket #</Label>
-            <Input value={draft.ticketNumber} onChange={(e) => setDraft({ ...draft, ticketNumber: e.target.value })} />
+            <Input
+              value={draft.ticketNumber}
+              onChange={(e) => setDraft({ ...draft, ticketNumber: e.target.value })}
+            />
           </div>
           <div className="sm:col-span-6">
             <Label>Notes</Label>
-            <Textarea rows={2} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
+            <Textarea
+              rows={2}
+              value={draft.notes}
+              onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+            />
           </div>
           <div className="sm:col-span-6">
             <Label>Receipt photo (optional)</Label>
@@ -161,24 +214,44 @@ function WasteLogPage() {
         </div>
         <form
           className="mt-3 flex flex-wrap items-end gap-2"
-          onSubmit={(e) => { e.preventDefault(); if (!newFacility.name) return; facMut.mutate(newFacility); }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!newFacility.name) return;
+            facMut.mutate(newFacility);
+          }}
         >
           <div className="flex-1 min-w-40">
             <Label>Name</Label>
-            <Input value={newFacility.name} onChange={(e) => setNewFacility({ ...newFacility, name: e.target.value })} placeholder="Transfer Station" />
+            <Input
+              value={newFacility.name}
+              onChange={(e) => setNewFacility({ ...newFacility, name: e.target.value })}
+              placeholder="Transfer Station"
+            />
           </div>
           <div className="flex-1 min-w-40">
             <Label>Address</Label>
-            <Input value={newFacility.address} onChange={(e) => setNewFacility({ ...newFacility, address: e.target.value })} />
+            <Input
+              value={newFacility.address}
+              onChange={(e) => setNewFacility({ ...newFacility, address: e.target.value })}
+            />
           </div>
-          <Button type="submit" disabled={facMut.isPending}>Add</Button>
+          <Button type="submit" disabled={facMut.isPending}>
+            Add
+          </Button>
         </form>
         {facilities.length > 0 && (
           <ul className="mt-3 divide-y text-sm">
             {facilities.map((f) => (
               <li key={f.id} className="flex items-center justify-between py-2">
                 <div>
-                  <div className="font-medium">{f.name}{!f.active && <Badge variant="outline" className="ml-2">inactive</Badge>}</div>
+                  <div className="font-medium">
+                    {f.name}
+                    {!f.active && (
+                      <Badge variant="outline" className="ml-2">
+                        inactive
+                      </Badge>
+                    )}
+                  </div>
                   {f.address && <div className="text-xs text-muted-foreground">{f.address}</div>}
                 </div>
                 {f.address && (
@@ -208,10 +281,13 @@ function WasteLogPage() {
                 <div>
                   <div className="font-medium">
                     {m.disposed_on} · {m.waste_disposal_facilities?.name ?? "—"}
-                    {m.ticket_number && <span className="ml-2 text-xs text-muted-foreground">#{m.ticket_number}</span>}
+                    {m.ticket_number && (
+                      <span className="ml-2 text-xs text-muted-foreground">#{m.ticket_number}</span>
+                    )}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {m.weight_lbs ? `${m.weight_lbs} lbs` : ""}{m.bag_count ? ` · ${m.bag_count} bags` : ""}
+                    {m.weight_lbs ? `${m.weight_lbs} lbs` : ""}
+                    {m.bag_count ? ` · ${m.bag_count} bags` : ""}
                     {m.staff?.display_name ? ` · ${m.staff.display_name}` : ""}
                   </div>
                   {m.notes && <div className="text-xs text-muted-foreground">{m.notes}</div>}
@@ -235,7 +311,9 @@ function WasteLogPage() {
                       Receipt
                     </Button>
                   )}
-                  <Button size="sm" variant="ghost" onClick={() => delMut.mutate(m.id)}>Delete</Button>
+                  <Button size="sm" variant="ghost" onClick={() => delMut.mutate(m.id)}>
+                    Delete
+                  </Button>
                 </div>
               </li>
             ))}
@@ -244,7 +322,9 @@ function WasteLogPage() {
       </section>
 
       <p className="text-xs text-muted-foreground">
-        <Link to="/my-day" className="underline">Back to My Day</Link>
+        <Link to="/my-day" className="underline">
+          Back to My Day
+        </Link>
       </p>
     </div>
   );

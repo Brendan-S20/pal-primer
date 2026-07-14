@@ -7,8 +7,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
-  Camera, CheckCircle2, Clock, CloudRain, MapPin, MessageCircleWarning,
-  PalmtreeIcon, Share2, X, Trash2,
+  Camera,
+  CheckCircle2,
+  Clock,
+  CloudRain,
+  MapPin,
+  MessageCircleWarning,
+  PalmtreeIcon,
+  Share2,
+  X,
+  Trash2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -17,10 +25,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 
 import { useNavigate } from "@tanstack/react-router";
@@ -75,23 +91,28 @@ export function toDate(s: string | null | undefined): Date | null {
 }
 
 export function fmtDay(s: string | null | undefined) {
-  const d = toDate(s); if (!d) return "";
+  const d = toDate(s);
+  if (!d) return "";
   return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 }
 
 export function fmtDayShort(s: string | null | undefined) {
-  const d = toDate(s); if (!d) return "";
+  const d = toDate(s);
+  if (!d) return "";
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
 export function fmtTime(s: string | null | undefined) {
-  const d = toDate(s); if (!d) return "";
+  const d = toDate(s);
+  if (!d) return "";
   return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
 export function relativeFromToday(s: string | null | undefined): string {
-  const d = toDate(s); if (!d) return "";
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const d = toDate(s);
+  if (!d) return "";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
   const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const days = Math.round((target.getTime() - today.getTime()) / 86400000);
   if (days === 0) return "today";
@@ -104,22 +125,35 @@ export function relativeFromToday(s: string | null | undefined): string {
 
 export function friendlyFrequency(f: string | null | undefined) {
   if (!f) return "";
-  return { weekly: "Weekly", biweekly: "Every 2 weeks", twice_weekly: "Twice weekly", monthly: "Monthly" }[f] ?? f;
+  return (
+    {
+      weekly: "Weekly",
+      biweekly: "Every 2 weeks",
+      twice_weekly: "Twice weekly",
+      monthly: "Monthly",
+    }[f] ?? f
+  );
 }
 
 export function friendlyCategory(c: string | null | undefined) {
   const map: Record<string, string> = {
-    missed_spot: "Missed spot", gate_left_open: "Gate left open",
-    damage: "Damage", wrong_yard: "Wrong yard", other: "Other",
+    missed_spot: "Missed spot",
+    gate_left_open: "Gate left open",
+    damage: "Damage",
+    wrong_yard: "Wrong yard",
+    other: "Other",
   };
-  return map[c ?? ""] ?? (c ?? "");
+  return map[c ?? ""] ?? c ?? "";
 }
 
 export function friendlyStatus(s: string) {
   const map: Record<string, string> = {
-    open: "Received", received: "Received",
-    in_review: "In review", pending: "In review",
-    resolved: "Resolved", closed: "Resolved",
+    open: "Received",
+    received: "Received",
+    in_review: "In review",
+    pending: "In review",
+    resolved: "Resolved",
+    closed: "Resolved",
   };
   return map[s] ?? s;
 }
@@ -237,11 +271,16 @@ export function usePortal(token: string, slug?: string) {
 
   const requestOtpMut = useMutation({
     mutationFn: (channel: "sms" | "email") => requestOtpFn({ data: { token, channel } }),
+    // A failed SMS attempt's error toast used to linger through a later
+    // successful email-code request, reading as "still broken" (P0.5) —
+    // clear stale error toasts the moment a code goes out successfully.
+    onSuccess: () => toast.dismiss(),
     onError: (e) => toast.error((e as Error).message),
   });
   const verifyOtpMut = useMutation({
     mutationFn: (code: string) => verifyOtpFn({ data: { token, code } }),
     onSuccess: () => {
+      toast.dismiss();
       // Deterministic transition: a full document load of the canonical portal
       // URL. The in-place refetch (refetch context + invalidate ~14 queries
       // while the layout flips gate→Outlet) had a rare router race on first
@@ -259,94 +298,167 @@ export function usePortal(token: string, slug?: string) {
   const concernMut = useMutation({
     mutationFn: (v: { visitId: string | null; category: any; message: string }) =>
       concernFn({ data: { token, ...v } }),
-    onSuccess: () => { toast.success("Thanks — we'll follow up shortly."); invalidatePortal(); },
+    onSuccess: () => {
+      toast.success("Thanks — we'll follow up shortly.");
+      invalidatePortal();
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const skipMut = useMutation({
     mutationFn: (v: { visitId: string; reason: string }) => skipFn({ data: { token, ...v } }),
-    onSuccess: () => { toast.success("Skip requested"); invalidatePortal(); },
+    onSuccess: () => {
+      toast.success("Skip requested");
+      invalidatePortal();
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const topupMut = useMutation({
-    mutationFn: (v: { subscriptionId: string; visitCount: number }) => topupFn({ data: { token, ...v } }),
+    mutationFn: (v: { subscriptionId: string; visitCount: number }) =>
+      topupFn({ data: { token, ...v } }),
     onSuccess: async (r) => {
-      const { url } = await checkoutFn({ data: { token, invoiceId: r.invoiceId, returnUrl: window.location.href } });
+      const { url } = await checkoutFn({
+        data: { token, invoiceId: r.invoiceId, returnUrl: window.location.href },
+      });
       window.location.href = url;
     },
     onError: (e) => toast.error((e as Error).message),
   });
   const payMut = useMutation({
-    mutationFn: (invoiceId: string) => checkoutFn({ data: { token, invoiceId, returnUrl: window.location.href } }),
-    onSuccess: (r) => { window.location.href = r.url; },
+    mutationFn: (invoiceId: string) =>
+      checkoutFn({ data: { token, invoiceId, returnUrl: window.location.href } }),
+    onSuccess: (r) => {
+      window.location.href = r.url;
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const rescheduleMut = useMutation({
-    mutationFn: (v: { visitId: string; newDate: string }) => rescheduleFn({ data: { token, ...v } }),
-    onSuccess: () => { toast.success("Visit rescheduled"); invalidatePortal(); },
+    mutationFn: (v: { visitId: string; newDate: string }) =>
+      rescheduleFn({ data: { token, ...v } }),
+    onSuccess: () => {
+      toast.success("Visit rescheduled");
+      invalidatePortal();
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const freqMut = useMutation({
-    mutationFn: (v: { subscriptionId: string; frequency: "weekly"|"biweekly"|"twice_weekly"|"monthly" }) =>
-      changeFreqFn({ data: { token, ...v } }),
-    onSuccess: () => { toast.success("Plan change submitted"); invalidatePortal(); },
+    mutationFn: (v: {
+      subscriptionId: string;
+      frequency: "weekly" | "biweekly" | "twice_weekly" | "monthly";
+    }) => changeFreqFn({ data: { token, ...v } }),
+    onSuccess: () => {
+      toast.success("Plan change submitted");
+      invalidatePortal();
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const subscribeAddonMut = useMutation({
-    mutationFn: (v: { addonServiceId: string; frequency: "weekly"|"biweekly"|"monthly"|"quarterly"|"yearly"|null; quantity: number; propertyId?: string | null }) =>
-      subscribeAddonFn({ data: { token, ...v } }),
-    onSuccess: () => { toast.success("Added to your next visit"); invalidatePortal(); },
+    mutationFn: (v: {
+      addonServiceId: string;
+      frequency: "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly" | null;
+      quantity: number;
+      propertyId?: string | null;
+    }) => subscribeAddonFn({ data: { token, ...v } }),
+    onSuccess: () => {
+      toast.success("Added to your next visit");
+      invalidatePortal();
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const cancelAddonMut = useMutation({
-    mutationFn: (addonSubscriptionId: string) => cancelAddonFn({ data: { token, addonSubscriptionId } }),
-    onSuccess: () => { toast.success("Add-on canceled"); invalidatePortal(); },
+    mutationFn: (addonSubscriptionId: string) =>
+      cancelAddonFn({ data: { token, addonSubscriptionId } }),
+    onSuccess: () => {
+      toast.success("Add-on canceled");
+      invalidatePortal();
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const startSetupMut = useMutation({
     mutationFn: () => startSetupFn({ data: { token, returnUrl: window.location.href } }),
-    onSuccess: (r) => { window.location.href = r.url; },
+    onSuccess: (r) => {
+      window.location.href = r.url;
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const setAutopayMut = useMutation({
     mutationFn: (enabled: boolean) => setAutopayFn({ data: { token, enabled } }),
-    onSuccess: (r) => { toast.success(r.enabled ? "Autopay on" : "Autopay off"); invalidatePortal(); },
+    onSuccess: (r) => {
+      toast.success(r.enabled ? "Autopay on" : "Autopay off");
+      invalidatePortal();
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const removeCardMut = useMutation({
     mutationFn: () => removeCardFn({ data: { token } }),
-    onSuccess: () => { toast.success("Card removed"); invalidatePortal(); },
+    onSuccess: () => {
+      toast.success("Card removed");
+      invalidatePortal();
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const paySavedMut = useMutation({
     mutationFn: (invoiceId: string) => payWithSavedFn({ data: { token, invoiceId } }),
-    onSuccess: () => { toast.success("Payment submitted"); invalidatePortal(); },
+    onSuccess: () => {
+      toast.success("Payment submitted");
+      invalidatePortal();
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const vacationMut = useMutation({
     mutationFn: (v: { startDate: string; endDate: string; reason: string }) =>
       vacationFn({ data: { token, ...v } }),
     onSuccess: (r) => {
-      toast.success(r.skippedCount > 0
-        ? `${r.skippedCount} visit${r.skippedCount === 1 ? "" : "s"} skipped for your vacation`
-        : "Vacation hold sent to the office for review");
+      toast.success(
+        r.skippedCount > 0
+          ? `${r.skippedCount} visit${r.skippedCount === 1 ? "" : "s"} skipped for your vacation`
+          : "Vacation hold sent to the office for review",
+      );
       invalidatePortal();
     },
     onError: (e) => toast.error((e as Error).message),
   });
   const promoMut = useMutation({
     mutationFn: (code: string) => promoFn({ data: { token, code } }),
-    onSuccess: (r) => { toast.success(`${money(r.creditCents)} credit added to your account`); invalidatePortal(); },
+    onSuccess: (r) => {
+      toast.success(`${money(r.creditCents)} credit added to your account`);
+      invalidatePortal();
+    },
     onError: (e) => toast.error((e as Error).message),
   });
 
   return {
-    token, slug: slug ?? "", signPhotosFn,
-    contextQ, verified, requestOtpMut, verifyOtpMut,
-    clientQ, visitsQ, invoicesQ, subsQ, catalogQ, clientAddonsQ,
-    historyQ, dogsQ, referralQ, stationsQ, requestsQ,
-    concernMut, skipMut, topupMut, payMut, rescheduleMut, freqMut,
-    subscribeAddonMut, cancelAddonMut, startSetupMut, setAutopayMut,
-    removeCardMut, paySavedMut, vacationMut, promoMut,
+    token,
+    slug: slug ?? "",
+    signPhotosFn,
+    contextQ,
+    verified,
+    requestOtpMut,
+    verifyOtpMut,
+    clientQ,
+    visitsQ,
+    invoicesQ,
+    subsQ,
+    catalogQ,
+    clientAddonsQ,
+    historyQ,
+    dogsQ,
+    referralQ,
+    stationsQ,
+    requestsQ,
+    concernMut,
+    skipMut,
+    topupMut,
+    payMut,
+    rescheduleMut,
+    freqMut,
+    subscribeAddonMut,
+    cancelAddonMut,
+    startSetupMut,
+    setAutopayMut,
+    removeCardMut,
+    paySavedMut,
+    vacationMut,
+    promoMut,
     invalidatePortal,
   };
 }
@@ -362,23 +474,39 @@ type Branding = {
 
 /** Branded wrapper used by BOTH the verify gate and the generic sign-in page,
  *  so no unbranded portal page exists anywhere. */
-function PortalBrandedShell({ branding, children }: { branding: Branding; children: React.ReactNode }) {
-  const brand = branding && isHex(branding.brandColor) ? (branding.brandColor as string) : "#16a34a";
+function PortalBrandedShell({
+  branding,
+  children,
+}: {
+  branding: Branding;
+  children: React.ReactNode;
+}) {
+  const brand =
+    branding && isHex(branding.brandColor) ? (branding.brandColor as string) : "#16a34a";
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-6">
       <div className="mb-5 flex flex-col items-center text-center">
         {branding?.logoUrl ? (
-          <img src={branding.logoUrl} alt={branding.orgName}
-            className="h-14 w-14 rounded-xl object-contain" style={{ background: `${brand}14` }} />
+          <img
+            src={branding.logoUrl}
+            alt={branding.orgName}
+            className="h-14 w-14 rounded-xl object-contain"
+            style={{ background: `${brand}14` }}
+          />
         ) : (
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl text-xl font-bold text-white"
-            style={{ background: brand }}>
+          <div
+            className="flex h-14 w-14 items-center justify-center rounded-xl text-xl font-bold text-white"
+            style={{ background: brand }}
+          >
             {(branding?.orgName ?? "•").slice(0, 1).toUpperCase()}
           </div>
         )}
         <div className="mt-2 text-lg font-semibold">{branding?.orgName ?? "Client portal"}</div>
       </div>
-      <div className="rounded-2xl border bg-card p-6 shadow-sm" style={{ borderTopColor: brand, borderTopWidth: 3 }}>
+      <div
+        className="rounded-2xl border bg-card p-6 shadow-sm"
+        style={{ borderTopColor: brand, borderTopWidth: 3 }}
+      >
         {children}
       </div>
       <p className="mt-4 text-center text-xs text-muted-foreground">
@@ -390,7 +518,12 @@ function PortalBrandedShell({ branding, children }: { branding: Branding; childr
 
 /** The 6-digit code input + verify/resend/back controls, shared by both flows. */
 function CodeEntry({
-  sentHint, pending, onVerify, onResend, onBack, resending,
+  sentHint,
+  pending,
+  onVerify,
+  onResend,
+  onBack,
+  resending,
 }: {
   sentHint?: string | null;
   pending: boolean;
@@ -403,25 +536,45 @@ function CodeEntry({
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
-        {sentHint ? `We sent a 6-digit code to ${sentHint}. Enter it below.` : "Enter the 6-digit code we gave you."}
+        {sentHint
+          ? `We sent a 6-digit code to ${sentHint}. Enter it below.`
+          : "Enter the 6-digit code we gave you."}
       </p>
       <Input
-        inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="123456"
-        value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        maxLength={6}
+        placeholder="123456"
+        value={code}
+        onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
         className="text-center text-lg tracking-[0.3em]"
       />
-      <Button className="w-full" disabled={pending || code.length < 6} onClick={() => onVerify(code)}>
+      <Button
+        className="w-full"
+        disabled={pending || code.length < 6}
+        onClick={() => onVerify(code)}
+      >
         {pending ? "Verifying…" : "Verify"}
       </Button>
       <div className="flex justify-between text-xs text-muted-foreground">
         {onBack ? (
-          <button className="hover:underline" onClick={onBack}>← Back</button>
-        ) : <span />}
+          <button className="hover:underline" onClick={onBack}>
+            ← Back
+          </button>
+        ) : (
+          <span />
+        )}
         {onResend ? (
-          <button className="hover:underline disabled:opacity-50" disabled={resending} onClick={onResend}>
+          <button
+            className="hover:underline disabled:opacity-50"
+            disabled={resending}
+            onClick={onResend}
+          >
             Resend code
           </button>
-        ) : <span />}
+        ) : (
+          <span />
+        )}
       </div>
     </div>
   );
@@ -429,7 +582,12 @@ function CodeEntry({
 
 /** Channel picker ("text me" / "email me") + the "already have a code" path. */
 function ChannelChooser({
-  channels, channel, setChannel, onSend, sending, onHaveCode,
+  channels,
+  channel,
+  setChannel,
+  onSend,
+  sending,
+  onHaveCode,
 }: {
   channels: Array<{ channel: "sms" | "email"; hint: string }>;
   channel: "sms" | "email";
@@ -441,10 +599,13 @@ function ChannelChooser({
   return (
     <div className="space-y-3">
       {channels.map((c) => (
-        <button key={c.channel} onClick={() => setChannel(c.channel)}
+        <button
+          key={c.channel}
+          onClick={() => setChannel(c.channel)}
           className={`flex w-full items-center justify-between rounded-lg border p-3 text-left text-sm ${
             channel === c.channel ? "border-primary ring-1 ring-primary" : ""
-          }`}>
+          }`}
+        >
           <span>{c.channel === "sms" ? "Text me a code" : "Email me a code"}</span>
           <span className="text-muted-foreground">{c.hint}</span>
         </button>
@@ -452,7 +613,10 @@ function ChannelChooser({
       <Button className="w-full" disabled={sending} onClick={onSend}>
         {sending ? "Sending…" : "Send code"}
       </Button>
-      <button className="w-full text-center text-xs text-muted-foreground hover:underline" onClick={onHaveCode}>
+      <button
+        className="w-full text-center text-xs text-muted-foreground hover:underline"
+        onClick={onHaveCode}
+      >
         Already have a code from us? Enter it
       </button>
     </div>
@@ -470,27 +634,31 @@ export function PortalVerifyGate() {
   const channels: Array<{ channel: "sms" | "email"; hint: string }> = ctx?.channels ?? [];
 
   useEffect(() => {
-    if (channels.length && !channels.some((c) => c.channel === channel)) setChannel(channels[0].channel);
+    if (channels.length && !channels.some((c) => c.channel === channel))
+      setChannel(channels[0].channel);
   }, [channels, channel]);
 
   return (
     <PortalBrandedShell branding={branding}>
       <h1 className="text-xl font-semibold">Verify it's you</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        For your security, we'll send a one-time code to the contact on file before showing your account.
+        For your security, we'll send a one-time code to the contact on file before showing your
+        account.
       </p>
       <div className="mt-5">
         {channels.length === 0 ? (
           <div className="space-y-3">
             <p className="rounded-md bg-muted p-3 text-sm">
-              We don't have a phone or email on file to text or email you a code. Call or text us and
-              we can read you a code to enter here.
+              We don't have a phone or email on file to text or email you a code. Call or text us
+              and we can read you a code to enter here.
             </p>
             <CodeEntry pending={verifyOtpMut.isPending} onVerify={(c) => verifyOtpMut.mutate(c)} />
           </div>
         ) : step === "choose" ? (
           <ChannelChooser
-            channels={channels} channel={channel} setChannel={setChannel}
+            channels={channels}
+            channel={channel}
+            setChannel={setChannel}
             sending={requestOtpMut.isPending}
             onSend={() => requestOtpMut.mutate(channel, { onSuccess: () => setStep("code") })}
             onHaveCode={() => setStep("code")}
@@ -536,14 +704,23 @@ export function PortalGenericEntry({ slug }: { slug: string }) {
 
   const identifyMut = useMutation({
     mutationFn: () => identifyFn({ data: { slug, contact } }),
-    onSuccess: () => setStep("code"),
+    // Clear any lingering failed-attempt toast so the path that works isn't
+    // shadowed by the one that didn't (P0.5).
+    onSuccess: () => {
+      toast.dismiss();
+      setStep("code");
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const verifyMut = useMutation({
     mutationFn: (code: string) => verifyFn({ data: { slug, contact, code } }),
     onSuccess: (r: any) => {
+      toast.dismiss();
       if (r.status === "verified") goToPortal(r.slug, r.token);
-      else { setCandidates(r.candidates); setStep("pick"); }
+      else {
+        setCandidates(r.candidates);
+        setStep("pick");
+      }
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -559,7 +736,9 @@ export function PortalGenericEntry({ slug }: { slug: string }) {
   });
 
   if (orgQ.isLoading) {
-    return <div className="mx-auto max-w-md p-8 text-center text-sm text-muted-foreground">Loading…</div>;
+    return (
+      <div className="mx-auto max-w-md p-8 text-center text-sm text-muted-foreground">Loading…</div>
+    );
   }
   if (!org?.found) {
     return (
@@ -581,12 +760,26 @@ export function PortalGenericEntry({ slug }: { slug: string }) {
           <p className="mt-2 text-sm text-muted-foreground">
             Enter the phone number or email on your account and we'll send you a one-time code.
           </p>
-          <form className="mt-5 space-y-3" onSubmit={(e) => { e.preventDefault(); if (contact.trim()) identifyMut.mutate(); }}>
+          <form
+            className="mt-5 space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (contact.trim()) identifyMut.mutate();
+            }}
+          >
             <Input
-              type="text" inputMode="email" autoComplete="email" placeholder="you@example.com or (555) 123-4567"
-              value={contact} onChange={(e) => setContact(e.target.value)}
+              type="text"
+              inputMode="email"
+              autoComplete="email"
+              placeholder="you@example.com or (555) 123-4567"
+              value={contact}
+              onChange={(e) => setContact(e.target.value)}
             />
-            <Button type="submit" className="w-full" disabled={identifyMut.isPending || !contact.trim()}>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={identifyMut.isPending || !contact.trim()}
+            >
               {identifyMut.isPending ? "Sending…" : "Send code"}
             </Button>
           </form>
@@ -639,9 +832,12 @@ export function PortalGenericEntry({ slug }: { slug: string }) {
           </p>
           <div className="mt-5 space-y-2">
             {candidates.map((c) => (
-              <button key={c.id} disabled={chooseMut.isPending}
+              <button
+                key={c.id}
+                disabled={chooseMut.isPending}
                 onClick={() => chooseMut.mutate(c.id)}
-                className="flex w-full items-center justify-between rounded-lg border p-3 text-left text-sm hover:border-primary disabled:opacity-50">
+                className="flex w-full items-center justify-between rounded-lg border p-3 text-left text-sm hover:border-primary disabled:opacity-50"
+              >
                 <span>{c.label}</span>
                 <span className="text-muted-foreground">Open →</span>
               </button>
@@ -658,7 +854,15 @@ export function PortalGenericEntry({ slug }: { slug: string }) {
 type PortalCtx = ReturnType<typeof usePortal>;
 const PortalContext = createContext<PortalCtx | null>(null);
 
-export function PortalProvider({ token, slug, children }: { token: string; slug?: string; children: React.ReactNode }) {
+export function PortalProvider({
+  token,
+  slug,
+  children,
+}: {
+  token: string;
+  slug?: string;
+  children: React.ReactNode;
+}) {
   const portal = usePortal(token, slug);
   return <PortalContext.Provider value={portal}>{children}</PortalContext.Provider>;
 }
@@ -671,7 +875,15 @@ export function usePortalCtx(): PortalCtx {
 
 /* ────────────────────────── reusable UI ───────────────────────── */
 
-export function EmptyBox({ icon, title, body }: { icon?: React.ReactNode; title: string; body?: string }) {
+export function EmptyBox({
+  icon,
+  title,
+  body,
+}: {
+  icon?: React.ReactNode;
+  title: string;
+  body?: string;
+}) {
   return (
     <div className="rounded-md border border-dashed bg-card/50 p-6 text-center">
       {icon && <div className="mx-auto mb-2 text-muted-foreground">{icon}</div>}
@@ -688,10 +900,23 @@ export function InvoiceStatusBadge({ status }: { status: string }) {
   // Written-off — don't show it to the client as still "Open" (it isn't
   // payable), and don't scare them with internal jargon either.
   if (status === "uncollectible") return <Badge variant="outline">Closed</Badge>;
-  return <Badge className="border-transparent bg-blue-500/15 text-blue-700 hover:bg-blue-500/15 dark:text-blue-400" variant="secondary">Open</Badge>;
+  return (
+    <Badge
+      className="border-transparent bg-blue-500/15 text-blue-700 hover:bg-blue-500/15 dark:text-blue-400"
+      variant="secondary"
+    >
+      Open
+    </Badge>
+  );
 }
 
-export function UpcomingVisitsList({ rows, cutoffHours, allowReschedule, onSkip, onReschedule }: {
+export function UpcomingVisitsList({
+  rows,
+  cutoffHours,
+  allowReschedule,
+  onSkip,
+  onReschedule,
+}: {
   rows: Array<any>;
   cutoffHours: number;
   allowReschedule: boolean;
@@ -705,24 +930,36 @@ export function UpcomingVisitsList({ rows, cutoffHours, allowReschedule, onSkip,
       {sharedAddress && (
         <p className="mb-2 text-xs text-muted-foreground inline-flex items-center gap-1">
           <MapPin className="h-3 w-3" />
-          {[sharedAddress.street, sharedAddress.city, sharedAddress.postal_code].filter(Boolean).join(", ")}
+          {[sharedAddress.street, sharedAddress.city, sharedAddress.postal_code]
+            .filter(Boolean)
+            .join(", ")}
         </p>
       )}
       <ul className="divide-y rounded-md border bg-card">
         {rows.map((v) => (
-          <VisitRow key={v.visit_id} v={v}
+          <VisitRow
+            key={v.visit_id}
+            v={v}
             showAddress={!sharedAddress}
             cutoffHours={cutoffHours}
             allowReschedule={allowReschedule}
             onSkip={(reason) => onSkip(v.visit_id, reason)}
-            onReschedule={(d) => onReschedule(v.visit_id, d)} />
+            onReschedule={(d) => onReschedule(v.visit_id, d)}
+          />
         ))}
       </ul>
     </>
   );
 }
 
-function VisitRow({ v, showAddress, cutoffHours, allowReschedule, onSkip, onReschedule }: {
+function VisitRow({
+  v,
+  showAddress,
+  cutoffHours,
+  allowReschedule,
+  onSkip,
+  onReschedule,
+}: {
   v: any;
   showAddress: boolean;
   cutoffHours: number;
@@ -754,8 +991,14 @@ function VisitRow({ v, showAddress, cutoffHours, allowReschedule, onSkip, onResc
                 <Clock className="h-3 w-3" /> arriving {fmtTime(v.eta_start)}–{fmtTime(v.eta_end)}
               </span>
             )}
-            {relativeFromToday(v.scheduled_on) && <span>· {relativeFromToday(v.scheduled_on)}</span>}
-            {v.tech_name && <span>· with <strong>{v.tech_name}</strong></span>}
+            {relativeFromToday(v.scheduled_on) && (
+              <span>· {relativeFromToday(v.scheduled_on)}</span>
+            )}
+            {v.tech_name && (
+              <span>
+                · with <strong>{v.tech_name}</strong>
+              </span>
+            )}
             {showAddress && (v.street || v.city) && (
               <span className="inline-flex items-center gap-1">
                 <MapPin className="h-3 w-3" /> {[v.street, v.city].filter(Boolean).join(", ")}
@@ -770,41 +1013,84 @@ function VisitRow({ v, showAddress, cutoffHours, allowReschedule, onSkip, onResc
         </div>
         <div className="flex gap-2">
           {allowReschedule && !pastCutoff && (
-            <Button size="sm" variant="outline" onClick={() => { setReschedOpen((o) => !o); setSkipOpen(false); }}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setReschedOpen((o) => !o);
+                setSkipOpen(false);
+              }}
+            >
               {reschedOpen ? "Cancel" : "Reschedule"}
             </Button>
           )}
-          <Button size="sm" variant="outline"
+          <Button
+            size="sm"
+            variant="outline"
             disabled={pastCutoff}
             title={pastCutoff ? "Past the change cutoff — text the office" : undefined}
-            onClick={() => { setSkipOpen((o) => !o); setReschedOpen(false); }}>
+            onClick={() => {
+              setSkipOpen((o) => !o);
+              setReschedOpen(false);
+            }}
+          >
             {skipOpen ? "Cancel" : "Skip"}
           </Button>
         </div>
       </div>
 
       {(skipOpen || reschedOpen) && (
-        <p className="mt-2 text-xs text-muted-foreground">{cutoffCopy} A skipped visit may still be billable per your agreement.</p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {cutoffCopy} A skipped visit may still be billable per your agreement.
+        </p>
       )}
 
       {reschedOpen && !pastCutoff && (
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <div>
-            <Label htmlFor={`d-${v.visit_id}`} className="text-xs">New date</Label>
-            <Input id={`d-${v.visit_id}`} type="date" min={minDate} max={maxDate}
-              value={newDate} onChange={(e) => setNewDate(e.target.value)} className="w-40" />
+            <Label htmlFor={`d-${v.visit_id}`} className="text-xs">
+              New date
+            </Label>
+            <Input
+              id={`d-${v.visit_id}`}
+              type="date"
+              min={minDate}
+              max={maxDate}
+              value={newDate}
+              onChange={(e) => setNewDate(e.target.value)}
+              className="w-40"
+            />
           </div>
-          <Button size="sm" onClick={() => { onReschedule(newDate); setReschedOpen(false); }}>
+          <Button
+            size="sm"
+            onClick={() => {
+              onReschedule(newDate);
+              setReschedOpen(false);
+            }}
+          >
             Confirm reschedule to {fmtDayShort(newDate)}
           </Button>
         </div>
       )}
       {skipOpen && !pastCutoff && (
         <div className="mt-3 space-y-2">
-          <Label htmlFor={`r-${v.visit_id}`} className="text-xs">Reason (optional)</Label>
-          <Input id={`r-${v.visit_id}`} value={reason} onChange={(e) => setReason(e.target.value)}
-            placeholder="Out of town, etc." />
-          <Button size="sm" onClick={() => { onSkip(reason); setSkipOpen(false); setReason(""); }}>
+          <Label htmlFor={`r-${v.visit_id}`} className="text-xs">
+            Reason (optional)
+          </Label>
+          <Input
+            id={`r-${v.visit_id}`}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Out of town, etc."
+          />
+          <Button
+            size="sm"
+            onClick={() => {
+              onSkip(reason);
+              setSkipOpen(false);
+              setReason("");
+            }}
+          >
             Confirm skip {fmtDayShort(v.scheduled_on)}
           </Button>
         </div>
@@ -813,12 +1099,24 @@ function VisitRow({ v, showAddress, cutoffHours, allowReschedule, onSkip, onResc
   );
 }
 
-export function PlanRow({ s, isCommercial, allowChange, autoApply, onChange, pending }: {
-  s: { subscription_id: string; frequency: string; property_label: string | null; price_cents: number };
+export function PlanRow({
+  s,
+  isCommercial,
+  allowChange,
+  autoApply,
+  onChange,
+  pending,
+}: {
+  s: {
+    subscription_id: string;
+    frequency: string;
+    property_label: string | null;
+    price_cents: number;
+  };
   isCommercial: boolean;
   allowChange: boolean;
   autoApply: boolean;
-  onChange: (f: "weekly"|"biweekly"|"twice_weekly"|"monthly") => void;
+  onChange: (f: "weekly" | "biweekly" | "twice_weekly" | "monthly") => void;
   pending: boolean;
 }) {
   const [freq, setFreq] = useState<string>(s.frequency);
@@ -826,7 +1124,9 @@ export function PlanRow({ s, isCommercial, allowChange, autoApply, onChange, pen
     <li className="rounded-md border bg-card p-3 text-sm">
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex-1">
-          <div className="font-medium">{s.property_label ?? (isCommercial ? "Service contract" : "Weekly service")}</div>
+          <div className="font-medium">
+            {s.property_label ?? (isCommercial ? "Service contract" : "Weekly service")}
+          </div>
           <div className="text-xs text-muted-foreground">
             Currently {friendlyFrequency(s.frequency)} · {money(s.price_cents)}/visit
           </div>
@@ -836,7 +1136,9 @@ export function PlanRow({ s, isCommercial, allowChange, autoApply, onChange, pen
             <div>
               <Label className="text-xs">Change frequency</Label>
               <Select value={freq} onValueChange={setFreq}>
-                <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-44">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="weekly">Weekly</SelectItem>
                   <SelectItem value="biweekly">Every 2 weeks</SelectItem>
@@ -845,8 +1147,11 @@ export function PlanRow({ s, isCommercial, allowChange, autoApply, onChange, pen
                 </SelectContent>
               </Select>
             </div>
-            <Button size="sm" disabled={pending || freq === s.frequency}
-              onClick={() => onChange(freq as any)}>
+            <Button
+              size="sm"
+              disabled={pending || freq === s.frequency}
+              onClick={() => onChange(freq as any)}
+            >
               {autoApply ? "Update plan" : "Request change"}
             </Button>
           </>
@@ -854,14 +1159,19 @@ export function PlanRow({ s, isCommercial, allowChange, autoApply, onChange, pen
       </div>
       {allowChange && !autoApply && (
         <p className="mt-2 text-xs text-muted-foreground">
-          Frequency changes are reviewed by the office before they take effect. We'll confirm within one business day.
+          Frequency changes are reviewed by the office before they take effect. We'll confirm within
+          one business day.
         </p>
       )}
     </li>
   );
 }
 
-export function VacationHoldCard({ autoApply, onSubmit, pending }: {
+export function VacationHoldCard({
+  autoApply,
+  onSubmit,
+  pending,
+}: {
   autoApply: boolean;
   onSubmit: (v: { startDate: string; endDate: string; reason: string }) => void;
   pending: boolean;
@@ -897,7 +1207,11 @@ export function VacationHoldCard({ autoApply, onSubmit, pending }: {
           </div>
           <div className="sm:col-span-3">
             <Label className="text-xs">Note for the office (optional)</Label>
-            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Beach week" />
+            <Input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Beach week"
+            />
           </div>
           <div className="sm:col-span-3 flex items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">
@@ -905,8 +1219,11 @@ export function VacationHoldCard({ autoApply, onSubmit, pending }: {
                 ? "Visits in this range will be skipped immediately."
                 : "The office will confirm and skip the affected visits within one business day."}
             </p>
-            <Button size="sm" disabled={pending}
-              onClick={() => onSubmit({ startDate: start, endDate: end, reason })}>
+            <Button
+              size="sm"
+              disabled={pending}
+              onClick={() => onSubmit({ startDate: start, endDate: end, reason })}
+            >
               {pending ? "Submitting…" : autoApply ? "Skip these visits" : "Request hold"}
             </Button>
           </div>
@@ -926,7 +1243,9 @@ export function DogsGrid({ rows }: { rows: any[] }) {
             {[d.breed, d.weight_class].filter(Boolean).join(" · ") || "No breed on file"}
           </div>
           {d.temperament && (
-            <Badge variant="outline" className="mt-2 text-[10px] capitalize">{d.temperament}</Badge>
+            <Badge variant="outline" className="mt-2 text-[10px] capitalize">
+              {d.temperament}
+            </Badge>
           )}
           {d.notes && <p className="mt-2 text-xs text-muted-foreground">{d.notes}</p>}
         </li>
@@ -937,8 +1256,13 @@ export function DogsGrid({ rows }: { rows: any[] }) {
 
 export function StationsPanel({ rows }: { rows: Array<any> }) {
   if (rows.length === 0)
-    return <EmptyBox icon={<Trash2 className="h-6 w-6" />} title="No stations set up yet"
-      body="Once we install stations at your property they'll be listed here." />;
+    return (
+      <EmptyBox
+        icon={<Trash2 className="h-6 w-6" />}
+        title="No stations set up yet"
+        body="Once we install stations at your property they'll be listed here."
+      />
+    );
   return (
     <ul className="divide-y rounded-md border bg-card">
       {rows.map((s) => (
@@ -961,9 +1285,18 @@ export function StationsPanel({ rows }: { rows: Array<any> }) {
   );
 }
 
-export function AddonCard({ a, onSubscribe, pending, properties = [] }: {
+export function AddonCard({
+  a,
+  onSubscribe,
+  pending,
+  properties = [],
+}: {
   a: any;
-  onSubscribe: (freq: "weekly"|"biweekly"|"monthly"|"quarterly"|"yearly"|null, qty: number, propertyId: string | null) => void;
+  onSubscribe: (
+    freq: "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly" | null,
+    qty: number,
+    propertyId: string | null,
+  ) => void;
   pending: boolean;
   properties?: Array<{ id: string; label?: string | null; street?: string | null }>;
 }) {
@@ -989,10 +1322,14 @@ export function AddonCard({ a, onSubscribe, pending, properties = [] }: {
             <div>
               <Label className="text-xs">Property</Label>
               <Select value={propertyId} onValueChange={setPropertyId}>
-                <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-44">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   {properties.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.label || p.street || "Property"}</SelectItem>
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.label || p.street || "Property"}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1000,14 +1337,22 @@ export function AddonCard({ a, onSubscribe, pending, properties = [] }: {
           )}
           <div>
             <Label className="text-xs">Qty</Label>
-            <Input type="number" min={1} max={50} value={qty}
-              onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))} className="w-20" />
+            <Input
+              type="number"
+              min={1}
+              max={50}
+              value={qty}
+              onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
+              className="w-20"
+            />
           </div>
           {isRecurring && (
             <div>
               <Label className="text-xs">Frequency</Label>
               <Select value={freq} onValueChange={setFreq}>
-                <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="weekly">Weekly</SelectItem>
                   <SelectItem value="biweekly">Every 2 weeks</SelectItem>
@@ -1018,8 +1363,17 @@ export function AddonCard({ a, onSubscribe, pending, properties = [] }: {
               </Select>
             </div>
           )}
-          <Button size="sm" disabled={pending}
-            onClick={() => onSubscribe(isRecurring ? (freq as any) : null, qty, multiProp ? (propertyId || null) : null)}>
+          <Button
+            size="sm"
+            disabled={pending}
+            onClick={() =>
+              onSubscribe(
+                isRecurring ? (freq as any) : null,
+                qty,
+                multiProp ? propertyId || null : null,
+              )
+            }
+          >
             {isRecurring ? "Subscribe" : "Add"}
           </Button>
         </div>
@@ -1028,8 +1382,17 @@ export function AddonCard({ a, onSubscribe, pending, properties = [] }: {
   );
 }
 
-export function TopupRow({ s, onSubmit, pending }: {
-  s: { subscription_id: string; price_cents: number; frequency: string; property_label: string | null };
+export function TopupRow({
+  s,
+  onSubmit,
+  pending,
+}: {
+  s: {
+    subscription_id: string;
+    price_cents: number;
+    frequency: string;
+    property_label: string | null;
+  };
   onSubmit: (count: number) => void;
   pending: boolean;
 }) {
@@ -1037,30 +1400,59 @@ export function TopupRow({ s, onSubmit, pending }: {
   return (
     <li className="flex flex-wrap items-end gap-3 rounded-md border bg-card p-3 text-sm">
       <div className="flex-1">
-        <div className="font-medium">{s.property_label ?? "Service"} · {friendlyFrequency(s.frequency)}</div>
+        <div className="font-medium">
+          {s.property_label ?? "Service"} · {friendlyFrequency(s.frequency)}
+        </div>
         <div className="text-xs text-muted-foreground">{money(s.price_cents)} per visit</div>
       </div>
       <div>
-        <Label htmlFor={`n-${s.subscription_id}`} className="text-xs">Visits</Label>
-        <Input id={`n-${s.subscription_id}`} type="number" min={1} max={52} value={count}
-          onChange={(e) => setCount(Math.max(1, Number(e.target.value) || 1))} className="w-24" />
+        <Label htmlFor={`n-${s.subscription_id}`} className="text-xs">
+          Visits
+        </Label>
+        <Input
+          id={`n-${s.subscription_id}`}
+          type="number"
+          min={1}
+          max={52}
+          value={count}
+          onChange={(e) => setCount(Math.max(1, Number(e.target.value) || 1))}
+          className="w-24"
+        />
       </div>
       <div className="text-sm font-medium">= {money(count * s.price_cents)}</div>
-      <Button size="sm" disabled={pending} onClick={() => onSubmit(count)}>Pay & top up</Button>
+      <Button size="sm" disabled={pending} onClick={() => onSubmit(count)}>
+        Pay & top up
+      </Button>
     </li>
   );
 }
 
-export function PromoRedeemCard({ onSubmit, pending }: { onSubmit: (code: string) => void; pending: boolean }) {
+export function PromoRedeemCard({
+  onSubmit,
+  pending,
+}: {
+  onSubmit: (code: string) => void;
+  pending: boolean;
+}) {
   const [code, setCode] = useState("");
   return (
     <div className="rounded-md border bg-card p-3 text-sm">
       <p className="text-xs uppercase tracking-wider text-muted-foreground">Promo or gift code</p>
       <div className="mt-2 flex gap-2">
-        <Input value={code} onChange={(e) => setCode(e.target.value)}
-          placeholder="Enter code" className="uppercase" />
-        <Button size="sm" disabled={pending || !code.trim()}
-          onClick={() => { onSubmit(code.trim()); setCode(""); }}>
+        <Input
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="Enter code"
+          className="uppercase"
+        />
+        <Button
+          size="sm"
+          disabled={pending || !code.trim()}
+          onClick={() => {
+            onSubmit(code.trim());
+            setCode("");
+          }}
+        >
           {pending ? "Applying…" : "Apply"}
         </Button>
       </div>
@@ -1072,10 +1464,16 @@ export function PromoRedeemCard({ onSubmit, pending }: { onSubmit: (code: string
 }
 
 export function ServiceHistorySection({
-  rows, signPhotos, token, onReport, reporting,
+  rows,
+  signPhotos,
+  token,
+  onReport,
+  reporting,
 }: {
   rows: Array<any>;
-  signPhotos: (args: { data: { token: string; paths: string[] } }) => Promise<{ urls: Record<string, string> }>;
+  signPhotos: (args: {
+    data: { token: string; paths: string[] };
+  }) => Promise<{ urls: Record<string, string> }>;
   token: string;
   onReport: (visitId: string, category: string, message: string) => void;
   reporting: boolean;
@@ -1087,10 +1485,14 @@ export function ServiceHistorySection({
     const paths = rows.flatMap((r) => r.photo_paths ?? []);
     if (paths.length === 0) return;
     let cancelled = false;
-    signPhotos({ data: { token, paths } }).then((r) => {
-      if (!cancelled) setUrls(r.urls);
-    }).catch(() => {});
-    return () => { cancelled = true; };
+    signPhotos({ data: { token, paths } })
+      .then((r) => {
+        if (!cancelled) setUrls(r.urls);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [rows, signPhotos, token]);
 
   return (
@@ -1099,9 +1501,11 @@ export function ServiceHistorySection({
         <Camera className="h-4 w-4" /> Service history
       </h2>
       {rows.length === 0 ? (
-        <EmptyBox icon={<Camera className="h-6 w-6" />}
+        <EmptyBox
+          icon={<Camera className="h-6 w-6" />}
           title="No completed visits yet"
-          body="After your first visit, we'll post before/after photos here." />
+          body="After your first visit, we'll post before/after photos here."
+        />
       ) : (
         <ul className="space-y-3">
           {rows.map((r) => (
@@ -1116,7 +1520,11 @@ export function ServiceHistorySection({
                           <CheckCircle2 className="h-3 w-3" /> Completed
                           {r.completed_at && <> at {fmtTime(r.completed_at)}</>}
                         </span>
-                        {r.tech_name && <span>· by <strong>{r.tech_name}</strong></span>}
+                        {r.tech_name && (
+                          <span>
+                            · by <strong>{r.tech_name}</strong>
+                          </span>
+                        )}
                       </>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-amber-700">
@@ -1127,7 +1535,10 @@ export function ServiceHistorySection({
                   </div>
                 </div>
                 {r.status === "completed" && (
-                  <ConcernButton onSubmit={(cat, msg) => onReport(r.visit_id, cat, msg)} pending={reporting} />
+                  <ConcernButton
+                    onSubmit={(cat, msg) => onReport(r.visit_id, cat, msg)}
+                    pending={reporting}
+                  />
                 )}
               </div>
 
@@ -1140,12 +1551,19 @@ export function ServiceHistorySection({
               {(r.photo_paths?.length ?? 0) > 0 && (
                 <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {r.photo_paths.map((p: string, i: number) => (
-                    <button key={p} onClick={() => urls[p] && setLightbox(urls[p])}
-                      className="group relative aspect-square overflow-hidden rounded border bg-muted">
+                    <button
+                      key={p}
+                      onClick={() => urls[p] && setLightbox(urls[p])}
+                      className="group relative aspect-square overflow-hidden rounded border bg-muted"
+                    >
                       {urls[p] ? (
                         <>
-                          <img src={urls[p]} alt="Visit photo" loading="lazy"
-                            className="h-full w-full object-cover transition group-hover:scale-105" />
+                          <img
+                            src={urls[p]}
+                            alt="Visit photo"
+                            loading="lazy"
+                            className="h-full w-full object-cover transition group-hover:scale-105"
+                          />
                           <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium uppercase text-white">
                             {i % 2 === 0 ? "Before" : "After"}
                           </span>
@@ -1163,8 +1581,10 @@ export function ServiceHistorySection({
       )}
 
       {lightbox && (
-        <div onClick={() => setLightbox(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+        <div
+          onClick={() => setLightbox(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+        >
           <img src={lightbox} alt="Visit photo" className="max-h-full max-w-full rounded" />
         </div>
       )}
@@ -1180,36 +1600,67 @@ const CONCERN_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "other", label: "Other" },
 ];
 
-function ConcernButton({ onSubmit, pending }: { onSubmit: (cat: string, msg: string) => void; pending: boolean }) {
+function ConcernButton({
+  onSubmit,
+  pending,
+}: {
+  onSubmit: (cat: string, msg: string) => void;
+  pending: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [cat, setCat] = useState("missed_spot");
   const [msg, setMsg] = useState("");
   return (
     <>
-      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>Report</Button>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+        Report
+      </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Report a concern</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Report a concern</DialogTitle>
+          </DialogHeader>
           <div className="space-y-3">
             <div>
               <Label className="text-xs">What happened?</Label>
               <Select value={cat} onValueChange={setCat}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
-                  {CONCERN_OPTIONS.map((o) => (<SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>))}
+                  {CONCERN_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
             <div>
               <Label className="text-xs">Details (optional)</Label>
-              <Textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={3}
-                placeholder="Tell us what to look for or fix" />
+              <Textarea
+                value={msg}
+                onChange={(e) => setMsg(e.target.value)}
+                rows={3}
+                placeholder="Tell us what to look for or fix"
+              />
             </div>
-            <p className="text-xs text-muted-foreground">We usually respond within one business day.</p>
+            <p className="text-xs text-muted-foreground">
+              We usually respond within one business day.
+            </p>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button disabled={pending} onClick={() => { onSubmit(cat, msg); setOpen(false); setMsg(""); }}>
+            <Button variant="ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={pending}
+              onClick={() => {
+                onSubmit(cat, msg);
+                setOpen(false);
+                setMsg("");
+              }}
+            >
               {pending ? "Sending…" : "Send to the office"}
             </Button>
           </DialogFooter>
@@ -1219,7 +1670,13 @@ function ConcernButton({ onSubmit, pending }: { onSubmit: (cat: string, msg: str
   );
 }
 
-export function ReportGeneralConcern({ onSubmit, pending }: { onSubmit: (cat: string, msg: string) => void; pending: boolean }) {
+export function ReportGeneralConcern({
+  onSubmit,
+  pending,
+}: {
+  onSubmit: (cat: string, msg: string) => void;
+  pending: boolean;
+}) {
   const [cat, setCat] = useState("other");
   const [msg, setMsg] = useState("");
   return (
@@ -1228,21 +1685,40 @@ export function ReportGeneralConcern({ onSubmit, pending }: { onSubmit: (cat: st
         <div>
           <Label className="text-xs">Category</Label>
           <Select value={cat} onValueChange={setCat}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
-              {CONCERN_OPTIONS.map((o) => (<SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>))}
+              {CONCERN_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
         <div>
           <Label className="text-xs">What's going on?</Label>
-          <Textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={2}
-            placeholder="Missing spot, billing question, anything at all" />
+          <Textarea
+            value={msg}
+            onChange={(e) => setMsg(e.target.value)}
+            rows={2}
+            placeholder="Missing spot, billing question, anything at all"
+          />
         </div>
       </div>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">We typically respond within one business day.</p>
-        <Button size="sm" disabled={pending || !msg.trim()} onClick={() => { onSubmit(cat, msg); setMsg(""); }}>
+        <p className="text-xs text-muted-foreground">
+          We typically respond within one business day.
+        </p>
+        <Button
+          size="sm"
+          disabled={pending || !msg.trim()}
+          onClick={() => {
+            onSubmit(cat, msg);
+            setMsg("");
+          }}
+        >
           {pending ? "Sending…" : "Send to the office"}
         </Button>
       </div>
@@ -1252,27 +1728,42 @@ export function ReportGeneralConcern({ onSubmit, pending }: { onSubmit: (cat: st
 
 export function RequestsList({ rows }: { rows: Array<any> }) {
   if (rows.length === 0) {
-    return <EmptyBox icon={<MessageCircleWarning className="h-6 w-6" />} title="Nothing here yet"
-      body="Concerns and requests you send will show up here with their status." />;
+    return (
+      <EmptyBox
+        icon={<MessageCircleWarning className="h-6 w-6" />}
+        title="Nothing here yet"
+        body="Concerns and requests you send will show up here with their status."
+      />
+    );
   }
   return (
     <ul className="space-y-2">
       {rows.map((r) => {
         const s = friendlyStatus(r.status);
-        const badge = s === "Resolved"
-          ? <Badge className="bg-emerald-600 hover:bg-emerald-600">Resolved</Badge>
-          : s === "In review"
-            ? <Badge className="bg-amber-500 hover:bg-amber-500">In review</Badge>
-            : <Badge variant="secondary">Received</Badge>;
+        const badge =
+          s === "Resolved" ? (
+            <Badge className="bg-emerald-600 hover:bg-emerald-600">Resolved</Badge>
+          ) : s === "In review" ? (
+            <Badge className="bg-amber-500 hover:bg-amber-500">In review</Badge>
+          ) : (
+            <Badge variant="secondary">Received</Badge>
+          );
         return (
           <li key={r.ticket_id} className="rounded-md border bg-card p-3 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="font-medium">
                   {friendlyCategory(r.category)}
-                  {r.visit_date && <span className="text-muted-foreground"> · visit {fmtDayShort(r.visit_date)}</span>}
+                  {r.visit_date && (
+                    <span className="text-muted-foreground">
+                      {" "}
+                      · visit {fmtDayShort(r.visit_date)}
+                    </span>
+                  )}
                 </div>
-                <div className="text-xs text-muted-foreground">Sent {fmtDayShort(r.created_at)}</div>
+                <div className="text-xs text-muted-foreground">
+                  Sent {fmtDayShort(r.created_at)}
+                </div>
               </div>
               {badge}
             </div>
@@ -1289,20 +1780,35 @@ export function RequestsList({ rows }: { rows: Array<any> }) {
   );
 }
 
-export function ReferralCard({ code, orgName, isCommercial }: { code: string; orgName: string; isCommercial: boolean }) {
+export function ReferralCard({
+  code,
+  orgName,
+  isCommercial,
+}: {
+  code: string;
+  orgName: string;
+  isCommercial: boolean;
+}) {
   const shareText = isCommercial
     ? `We use ${orgName} at our property for pet waste service — use code ${code} and we both get credit.`
     : `I use ${orgName} for pet waste removal — use code ${code} and we both save on your first month.`;
   const [copied, setCopied] = useState(false);
   const share = async () => {
     if (typeof navigator !== "undefined" && (navigator as any).share) {
-      try { await (navigator as any).share({ title: orgName, text: shareText }); return; } catch { /* fall through */ }
+      try {
+        await (navigator as any).share({ title: orgName, text: shareText });
+        return;
+      } catch {
+        /* fall through */
+      }
     }
     try {
       await navigator.clipboard.writeText(shareText);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
   return (
     <div className="rounded-lg border bg-gradient-to-br from-primary/10 to-primary/5 p-4 text-sm">
@@ -1319,8 +1825,14 @@ export function ReferralCard({ code, orgName, isCommercial }: { code: string; or
         <Button size="sm" onClick={share} className="gap-1.5">
           <Share2 className="h-4 w-4" /> {copied ? "Copied!" : "Share"}
         </Button>
-        <Button size="sm" variant="outline"
-          onClick={() => { navigator.clipboard?.writeText(code); toast.success("Code copied"); }}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            navigator.clipboard?.writeText(code);
+            toast.success("Code copied");
+          }}
+        >
           Copy code
         </Button>
       </div>

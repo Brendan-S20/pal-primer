@@ -25,7 +25,10 @@ type DayForecast = {
   reasons: string[];
 };
 
-function assessRisk(day: Omit<DayForecast, "risky" | "reasons">): { risky: boolean; reasons: string[] } {
+function assessRisk(day: Omit<DayForecast, "risky" | "reasons">): {
+  risky: boolean;
+  reasons: string[];
+} {
   const reasons: string[] = [];
   if (day.precip_mm >= 5) reasons.push(`${day.precip_mm.toFixed(1)}mm rain`);
   if (day.precip_prob >= 70) reasons.push(`${day.precip_prob}% chance`);
@@ -35,7 +38,12 @@ function assessRisk(day: Omit<DayForecast, "risky" | "reasons">): { risky: boole
   return { risky: reasons.length > 0, reasons };
 }
 
-async function fetchForecast(lat: number, lon: number, from: string, to: string): Promise<DayForecast[]> {
+async function fetchForecast(
+  lat: number,
+  lon: number,
+  from: string,
+  to: string,
+): Promise<DayForecast[]> {
   const url = new URL("https://api.open-meteo.com/v1/forecast");
   url.searchParams.set("latitude", String(lat));
   url.searchParams.set("longitude", String(lon));
@@ -71,6 +79,66 @@ async function fetchForecast(lat: number, lon: number, from: string, to: string)
     out.push({ ...base, ...assessRisk(base) });
   }
   return out;
+}
+
+// Open-Meteo's free tier rate-limits daily; in production every zone card
+// surfaced a raw "Weather API 429: {...}" and auto-rebalance silently no-oped
+// (P1.14). Forecasts change slowly, so cache per rounded coordinate + range:
+// fresh rows (<3h) skip the API; on an API failure a stale row of any age is
+// served instead of an error; only a cold cache surfaces a (humanized) error.
+const CACHE_FRESH_MS = 3 * 60 * 60 * 1000;
+
+function humanizeWeatherError(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (/429|rate|limit/i.test(msg)) {
+    return "The weather service is temporarily rate-limited. The forecast will refresh automatically — try again in a little while.";
+  }
+  return "Couldn't load the forecast (weather service error). Try again shortly.";
+}
+
+async function cachedForecast(
+  supabase: any,
+  lat: number,
+  lon: number,
+  from: string,
+  to: string,
+): Promise<{ forecast: DayForecast[]; stale: boolean }> {
+  const latKey = lat.toFixed(2);
+  const lonKey = lon.toFixed(2);
+  const { data: row } = await supabase
+    .from("weather_forecast_cache")
+    .select("payload, fetched_at")
+    .eq("lat_key", latKey)
+    .eq("lon_key", lonKey)
+    .eq("from_date", from)
+    .eq("to_date", to)
+    .maybeSingle();
+
+  if (row && Date.now() - new Date(row.fetched_at).getTime() < CACHE_FRESH_MS) {
+    return { forecast: row.payload as DayForecast[], stale: false };
+  }
+
+  try {
+    const forecast = await fetchForecast(lat, lon, from, to);
+    await supabase.from("weather_forecast_cache").upsert(
+      {
+        lat_key: latKey,
+        lon_key: lonKey,
+        from_date: from,
+        to_date: to,
+        payload: forecast,
+        fetched_at: new Date().toISOString(),
+      },
+      { onConflict: "lat_key,lon_key,from_date,to_date" },
+    );
+    return { forecast, stale: false };
+  } catch (e) {
+    if (row) {
+      // Serve yesterday's forecast over no forecast at all.
+      return { forecast: row.payload as DayForecast[], stale: true };
+    }
+    throw new Error(humanizeWeatherError(e));
+  }
 }
 
 const rangeSchema = z.object({
@@ -121,11 +189,20 @@ export const getWeatherForZones = createServerFn({ method: "GET" })
         // a real fetch error, and a genuinely empty/clear forecast.
         let status: "ok" | "no_coords" | "error" = "ok";
         let error: string | null = null;
+        let stale = false;
         if (z.latitude == null || z.longitude == null) {
           status = "no_coords";
         } else {
           try {
-            forecast = await fetchForecast(z.latitude, z.longitude, data.fromDate, data.toDate);
+            const cached = await cachedForecast(
+              supabase,
+              z.latitude,
+              z.longitude,
+              data.fromDate,
+              data.toDate,
+            );
+            forecast = cached.forecast;
+            stale = cached.stale;
           } catch (e) {
             status = "error";
             error = e instanceof Error ? e.message : "Weather service unavailable";
@@ -144,6 +221,7 @@ export const getWeatherForZones = createServerFn({ method: "GET" })
           longitude: z.longitude,
           status,
           error,
+          stale,
           days: withCounts,
         };
       }),
@@ -166,7 +244,9 @@ export const getZoneVisitsOnDay = createServerFn({ method: "GET" })
     if (subIds.length === 0) return { visits: [] };
     const { data: visits, error } = await supabase
       .from("visits")
-      .select("id, scheduled_on, status, subscription_id, subscriptions(client_id, clients(display_name))")
+      .select(
+        "id, scheduled_on, status, subscription_id, subscriptions(client_id, clients(display_name))",
+      )
       .in("subscription_id", subIds)
       .eq("scheduled_on", data.date)
       .in("status", ["scheduled", "in_progress"])
@@ -205,7 +285,10 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
       .from("visits")
       .select("id, scheduled_on, client_id, properties(visit_contact_email)")
       .in("id", data.visitIds);
-    const preMap = new Map<string, { scheduled_on: string; client_id: string; contact_email: string | null }>();
+    const preMap = new Map<
+      string,
+      { scheduled_on: string; client_id: string; contact_email: string | null }
+    >();
     (preRows ?? []).forEach((r: any) => {
       const prop = Array.isArray(r.properties) ? r.properties[0] : r.properties;
       preMap.set(r.id, {
@@ -288,7 +371,6 @@ export const undoReschedule = createServerFn({ method: "POST" })
     }
     return { restored, errors };
   });
-
 
 export const updateZoneCoords = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -396,7 +478,9 @@ export const autoRebalanceForecast = createServerFn({ method: "POST" })
       zonesChecked++;
       let forecast: DayForecast[] = [];
       try {
-        forecast = await fetchForecast(z.latitude, z.longitude, data.fromDate, searchTo);
+        forecast = (
+          await cachedForecast(supabase, z.latitude, z.longitude, data.fromDate, searchTo)
+        ).forecast;
       } catch {
         forecastFailures++;
         continue;

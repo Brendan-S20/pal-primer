@@ -6,6 +6,7 @@ import { listBlackouts, addBlackout, deleteBlackout } from "@/lib/blackouts.func
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { HelpTip } from "@/components/HelpTip";
 
 export const Route = createFileRoute("/_authenticated/settings/blackouts")({
   component: BlackoutsPage,
@@ -36,9 +37,12 @@ function BlackoutsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Blackout dates</h1>
+        <h1 className="flex items-center gap-2 text-2xl font-semibold">
+          Blackout dates <HelpTip article="blackouts" />
+        </h1>
         <p className="text-sm text-muted-foreground">
-          Holidays and office closures. Visits scheduled on these days will be bumped to the next available day (up to 2 weeks).
+          Holidays and office closures. Visits scheduled on these days will be bumped to the next
+          available day (up to 2 weeks).
         </p>
       </div>
 
@@ -51,18 +55,33 @@ function BlackoutsPage() {
       >
         <div>
           <Label htmlFor="d">Date</Label>
-          <Input id="d" type="date" value={blackoutOn} onChange={(e) => setBlackoutOn(e.target.value)} required />
+          <Input
+            id="d"
+            type="date"
+            value={blackoutOn}
+            onChange={(e) => setBlackoutOn(e.target.value)}
+            required
+          />
         </div>
         <div className="sm:col-span-2">
           <Label htmlFor="r">Reason</Label>
-          <Input id="r" placeholder="Thanksgiving" value={reason} onChange={(e) => setReason(e.target.value)} />
+          <Input
+            id="r"
+            placeholder="Thanksgiving"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
         </div>
         <div className="flex items-end">
           <Button type="submit" disabled={addMut.isPending || !blackoutOn}>
             {addMut.isPending ? "Adding…" : "Add blackout"}
           </Button>
         </div>
-        {addMut.error && <p className="col-span-full text-sm text-destructive">{(addMut.error as Error).message}</p>}
+        {addMut.error && (
+          <p className="col-span-full text-sm text-destructive">
+            {(addMut.error as Error).message}
+          </p>
+        )}
       </form>
 
       <div className="rounded-lg border bg-card">

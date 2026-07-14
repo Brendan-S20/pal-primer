@@ -15,7 +15,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
-import { AlertTriangle, Search, Users } from "lucide-react";
+import { AlertTriangle, Download, Search, Users } from "lucide-react";
+import { downloadCsv } from "@/lib/csv";
+import { HelpTip } from "@/components/HelpTip";
 
 export const Route = createFileRoute("/_authenticated/clients/")({
   component: ClientsList,
@@ -47,10 +49,7 @@ function ClientsList() {
   const stats = useMemo(() => {
     const active = clients.filter((c: any) => c.active).length;
     const outstanding = clients.filter((c: any) => c.outstanding_cents > 0).length;
-    const owedTotal = clients.reduce(
-      (sum: number, c: any) => sum + (c.outstanding_cents ?? 0),
-      0,
-    );
+    const owedTotal = clients.reduce((sum: number, c: any) => sum + (c.outstanding_cents ?? 0), 0);
     const atRisk = clients.filter((c: any) => (c.churn_score ?? 0) >= 60).length;
     return { total: clients.length, active, outstanding, owedTotal, atRisk };
   }, [clients]);
@@ -81,9 +80,44 @@ function ClientsList() {
             {stats.total} total · {stats.active} active
           </p>
         </div>
-        <Link to="/clients/new">
-          <Button>New client</Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            disabled={!filtered.length}
+            onClick={() =>
+              downloadCsv(
+                `clients-${new Date().toISOString().slice(0, 10)}.csv`,
+                [
+                  "Name",
+                  "Type",
+                  "Status",
+                  "Email",
+                  "Phone",
+                  "Frequency",
+                  "Outstanding",
+                  "Credit",
+                  "Churn score",
+                ],
+                filtered.map((c: any) => [
+                  c.display_name,
+                  c.account_type,
+                  c.active ? "active" : "inactive",
+                  c.primary_email,
+                  c.primary_phone,
+                  (c.frequencies ?? []).map((f: string) => f.replace("_", "-")).join("; "),
+                  ((c.outstanding_cents ?? 0) / 100).toFixed(2),
+                  ((c.credit_balance_cents ?? 0) / 100).toFixed(2),
+                  c.churn_score ?? "",
+                ]),
+              )
+            }
+          >
+            <Download className="mr-1 h-4 w-4" /> Export CSV
+          </Button>
+          <Link to="/clients/new">
+            <Button>New client</Button>
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -121,7 +155,9 @@ function ClientsList() {
           />
         </div>
         <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectTrigger className="w-44">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="active">Active</SelectItem>
@@ -131,7 +167,9 @@ function ClientsList() {
           </SelectContent>
         </Select>
         <Select value={type} onValueChange={(v) => setType(v as TypeFilter)}>
-          <SelectTrigger className="w-40"><SelectValue placeholder="Type" /></SelectTrigger>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="Type" />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All types</SelectItem>
             <SelectItem value="residential">Residential</SelectItem>
@@ -168,14 +206,21 @@ function ClientsList() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{c.display_name}</span>
-                      <Badge variant={c.account_type === "commercial" ? "default" : "secondary"} className="text-[10px]">
+                      <Badge
+                        variant={c.account_type === "commercial" ? "default" : "secondary"}
+                        className="text-[10px]"
+                      >
                         {c.account_type}
                       </Badge>
                       {(c.churn_score ?? 0) >= 60 && (
-                        <Badge variant="destructive" className="text-[10px]">At risk</Badge>
+                        <Badge variant="destructive" className="text-[10px]">
+                          At risk
+                        </Badge>
                       )}
                     </div>
-                    <div className="mt-1 text-xs text-muted-foreground truncate">{c.primary_email ?? "—"}</div>
+                    <div className="mt-1 text-xs text-muted-foreground truncate">
+                      {c.primary_email ?? "—"}
+                    </div>
                     <div className="text-xs text-muted-foreground">{c.primary_phone ?? ""}</div>
                   </div>
                   <div className="text-right">
@@ -189,12 +234,14 @@ function ClientsList() {
                     <div className="mt-1 space-y-0.5 text-sm">
                       {c.outstanding_cents > 0 && (
                         <div className="font-medium text-amber-600">
-                          {money(c.outstanding_cents)} <span className="text-[11px] font-normal">owed</span>
+                          {money(c.outstanding_cents)}{" "}
+                          <span className="text-[11px] font-normal">owed</span>
                         </div>
                       )}
                       {c.credit_balance_cents > 0 && (
                         <div className="text-emerald-600">
-                          +{money(c.credit_balance_cents)} <span className="text-[11px] text-emerald-700/70">credit</span>
+                          +{money(c.credit_balance_cents)}{" "}
+                          <span className="text-[11px] text-emerald-700/70">credit</span>
                         </div>
                       )}
                       {!(c.outstanding_cents > 0) && !(c.credit_balance_cents > 0) && (
@@ -268,9 +315,7 @@ function ClientsList() {
                           {money(c.outstanding_cents)}
                         </span>
                       ) : c.credit_balance_cents > 0 ? (
-                        <span className="text-emerald-600">
-                          +{money(c.credit_balance_cents)}
-                        </span>
+                        <span className="text-emerald-600">+{money(c.credit_balance_cents)}</span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
@@ -295,9 +340,17 @@ function ClientsList() {
       )}
 
       {/* Churn scoring lives with the client roster it scores (punch list #11). */}
-      <AiSection title="AI: churn risk" description="Score active clients on skip rate, unpaid invoices, and recency.">
-        <ChurnPanel />
-      </AiSection>
+      <div className="relative">
+        <AiSection
+          title="AI: churn risk"
+          description="Score active clients on skip rate, unpaid invoices, and recency."
+        >
+          <div className="mb-1 text-right">
+            <HelpTip article="churn-score" />
+          </div>
+          <ChurnPanel />
+        </AiSection>
+      </div>
     </div>
   );
 }
