@@ -35,6 +35,9 @@ import { Route as PlatformHealthRouteImport } from './routes/platform.health'
 import { Route as PlatformCouponsRouteImport } from './routes/platform.coupons'
 import { Route as PlatformAuditRouteImport } from './routes/platform.audit'
 import { Route as PlatformAnnouncementsRouteImport } from './routes/platform.announcements'
+import { Route as LegalTermsRouteImport } from './routes/legal.terms'
+import { Route as LegalSmsRouteImport } from './routes/legal.sms'
+import { Route as LegalPrivacyRouteImport } from './routes/legal.privacy'
 import { Route as LeadSlugRouteImport } from './routes/lead.$slug'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
@@ -249,6 +252,21 @@ const PlatformAnnouncementsRoute = PlatformAnnouncementsRouteImport.update({
   id: '/announcements',
   path: '/announcements',
   getParentRoute: () => PlatformRoute,
+} as any)
+const LegalTermsRoute = LegalTermsRouteImport.update({
+  id: '/legal/terms',
+  path: '/legal/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LegalSmsRoute = LegalSmsRouteImport.update({
+  id: '/legal/sms',
+  path: '/legal/sms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LegalPrivacyRoute = LegalPrivacyRouteImport.update({
+  id: '/legal/privacy',
+  path: '/legal/privacy',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const LeadSlugRoute = LeadSlugRouteImport.update({
   id: '/lead/$slug',
@@ -750,6 +768,9 @@ export interface FileRoutesByFullPath {
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
   '/lead/$slug': typeof LeadSlugRoute
+  '/legal/privacy': typeof LegalPrivacyRoute
+  '/legal/sms': typeof LegalSmsRoute
+  '/legal/terms': typeof LegalTermsRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
@@ -857,6 +878,9 @@ export interface FileRoutesByTo {
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
   '/lead/$slug': typeof LeadSlugRoute
+  '/legal/privacy': typeof LegalPrivacyRoute
+  '/legal/sms': typeof LegalSmsRoute
+  '/legal/terms': typeof LegalTermsRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
@@ -969,6 +993,9 @@ export interface FileRoutesById {
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/invite/$token': typeof InviteTokenRoute
   '/lead/$slug': typeof LeadSlugRoute
+  '/legal/privacy': typeof LegalPrivacyRoute
+  '/legal/sms': typeof LegalSmsRoute
+  '/legal/terms': typeof LegalTermsRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
@@ -1083,6 +1110,9 @@ export interface FileRouteTypes {
     | '/email/unsubscribe'
     | '/invite/$token'
     | '/lead/$slug'
+    | '/legal/privacy'
+    | '/legal/sms'
+    | '/legal/terms'
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
@@ -1190,6 +1220,9 @@ export interface FileRouteTypes {
     | '/email/unsubscribe'
     | '/invite/$token'
     | '/lead/$slug'
+    | '/legal/privacy'
+    | '/legal/sms'
+    | '/legal/terms'
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
@@ -1301,6 +1334,9 @@ export interface FileRouteTypes {
     | '/email/unsubscribe'
     | '/invite/$token'
     | '/lead/$slug'
+    | '/legal/privacy'
+    | '/legal/sms'
+    | '/legal/terms'
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
@@ -1391,6 +1427,9 @@ export interface RootRouteChildren {
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   InviteTokenRoute: typeof InviteTokenRoute
   LeadSlugRoute: typeof LeadSlugRoute
+  LegalPrivacyRoute: typeof LegalPrivacyRoute
+  LegalSmsRoute: typeof LegalSmsRoute
+  LegalTermsRoute: typeof LegalTermsRoute
   PortalSlugRoute: typeof PortalSlugRouteWithChildren
   SignupSlugRoute: typeof SignupSlugRoute
   SignupSuccessRoute: typeof SignupSuccessRoute
@@ -1596,6 +1635,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/platform/announcements'
       preLoaderRoute: typeof PlatformAnnouncementsRouteImport
       parentRoute: typeof PlatformRoute
+    }
+    '/legal/terms': {
+      id: '/legal/terms'
+      path: '/legal/terms'
+      fullPath: '/legal/terms'
+      preLoaderRoute: typeof LegalTermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/legal/sms': {
+      id: '/legal/sms'
+      path: '/legal/sms'
+      fullPath: '/legal/sms'
+      preLoaderRoute: typeof LegalSmsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/legal/privacy': {
+      id: '/legal/privacy'
+      path: '/legal/privacy'
+      fullPath: '/legal/privacy'
+      preLoaderRoute: typeof LegalPrivacyRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/lead/$slug': {
       id: '/lead/$slug'
@@ -2447,6 +2507,9 @@ const rootRouteChildren: RootRouteChildren = {
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   InviteTokenRoute: InviteTokenRoute,
   LeadSlugRoute: LeadSlugRoute,
+  LegalPrivacyRoute: LegalPrivacyRoute,
+  LegalSmsRoute: LegalSmsRoute,
+  LegalTermsRoute: LegalTermsRoute,
   PortalSlugRoute: PortalSlugRouteWithChildren,
   SignupSlugRoute: SignupSlugRoute,
   SignupSuccessRoute: SignupSuccessRoute,

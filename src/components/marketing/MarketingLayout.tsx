@@ -28,13 +28,24 @@ export function MarketingLayout({ children }: { children: ReactNode }) {
       </header>
       <main>{children}</main>
       <footer className="mt-24 border-t bg-muted/30">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 text-xs text-muted-foreground">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-6 text-xs text-muted-foreground">
           <div>
             © {new Date().getFullYear()} {APP_NAME}
           </div>
-          <a href="https://houndstack.com" className="hover:text-foreground">
-            houndstack.com
-          </a>
+          <nav className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <Link to="/legal/privacy" className="hover:text-foreground">
+              Privacy Policy
+            </Link>
+            <Link to="/legal/terms" className="hover:text-foreground">
+              Terms of Service
+            </Link>
+            <Link to="/legal/sms" className="hover:text-foreground">
+              SMS Consent
+            </Link>
+            <a href="https://houndstack.com" className="hover:text-foreground">
+              houndstack.com
+            </a>
+          </nav>
         </div>
       </footer>
     </div>
