@@ -6,8 +6,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
@@ -27,7 +33,15 @@ import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { syncQueue } from "@/lib/offline/sync";
 import { countPendingForVisit } from "@/lib/offline/queue";
 import { toast } from "sonner";
-import { Navigation, Camera, ChevronDown, ChevronUp, WifiOff, RefreshCw, ArrowDown } from "lucide-react";
+import {
+  Navigation,
+  Camera,
+  ChevronDown,
+  ChevronUp,
+  WifiOff,
+  RefreshCw,
+  ArrowDown,
+} from "lucide-react";
 import { PushToggle } from "@/components/PushToggle";
 // LanguageToggle moved to Settings → Preferences
 import { useTranslation } from "react-i18next";
@@ -91,7 +105,6 @@ function MyDay() {
   });
   const fieldStaff = staffList.data?.staff ?? [];
 
-
   // Bind server-fn callers once for the sync driver.
   const startFn = useServerFn(startVisit);
   const completeFn = useServerFn(completeVisit);
@@ -137,7 +150,10 @@ function MyDay() {
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
 
   return (
-    <div className="-mx-4 -my-6 pb-28" style={{ paddingBottom: "calc(7rem + env(safe-area-inset-bottom))" }}>
+    <div
+      className="-mx-4 -my-6 pb-28"
+      style={{ paddingBottom: "calc(7rem + env(safe-area-inset-bottom))" }}
+    >
       {/* Sticky, blurred top bar — feels like a native nav */}
       <div
         className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60"
@@ -161,7 +177,10 @@ function MyDay() {
               </div>
               {online && pending > 0 && (
                 <button
-                  onClick={() => { haptic("tap"); runSync(); }}
+                  onClick={() => {
+                    haptic("tap");
+                    runSync();
+                  }}
                   className="inline-flex min-h-9 items-center gap-1 rounded-md border border-current px-3 py-1 text-xs font-medium active:scale-95 transition-transform"
                 >
                   <RefreshCw className="h-3 w-3" /> {t("common.sync")}
@@ -199,7 +218,9 @@ function MyDay() {
           {total > 0 && (
             <div>
               <div className="flex items-center justify-between text-xs">
-                <div className="font-medium">{done} {t("common.of")} {total} {t("common.done")}</div>
+                <div className="font-medium">
+                  {done} {t("common.of")} {total} {t("common.done")}
+                </div>
                 <div className="text-muted-foreground">{pct}%</div>
               </div>
               <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
@@ -278,8 +299,6 @@ function MyDay() {
         </ol>
       </div>
 
-
-
       {/* Sticky bottom "Next up" action bar */}
       {nextUp && (
         <div
@@ -295,9 +314,7 @@ function MyDay() {
               <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                 {t("myDay.nextUp")} · #{nextUp.sequence ?? ""}
               </div>
-              <div className="truncate text-sm font-semibold">
-                {nextUp.clients?.display_name}
-              </div>
+              <div className="truncate text-sm font-semibold">{nextUp.clients?.display_name}</div>
             </div>
             <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-md">
               {t("myDay.jump")} <ArrowDown className="h-4 w-4" />
@@ -390,12 +407,19 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
-  const secs = Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000));
+  const startedMs = new Date(startedAt).getTime();
+  // An unparseable started_at would render "NaN:NaN" — show nothing instead.
+  if (!Number.isFinite(startedMs)) return null;
+  const secs = Math.max(0, Math.floor((now - startedMs) / 1000));
   // Sanity cap: a stale/bad started_at (e.g. a visit left in-progress for
   // days) would otherwise tick up to absurd values like "10500:12" (P1.9).
   // Past 8h the elapsed time is no longer useful field info — flag it instead.
   if (secs > 8 * 3600) {
-    return <span className="font-mono text-xs text-muted-foreground">8h+ — started {new Date(startedAt).toLocaleDateString()}</span>;
+    return (
+      <span className="font-mono text-xs text-muted-foreground">
+        8h+ — started {new Date(startedAt).toLocaleDateString()}
+      </span>
+    );
   }
   const m = Math.floor(secs / 60);
   const s = secs % 60;
@@ -405,7 +429,6 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
     </span>
   );
 }
-
 
 function PhotoThumb({ path }: { path: string }) {
   const [url, setUrl] = useState<string | null>(null);
@@ -445,7 +468,8 @@ function PhotoThumb({ path }: { path: string }) {
       </div>
     );
   }
-  if (state === "loading" || !url) return <div className="h-14 w-14 animate-pulse rounded bg-muted" />;
+  if (state === "loading" || !url)
+    return <div className="h-14 w-14 animate-pulse rounded bg-muted" />;
   return (
     <a href={url} target="_blank" rel="noreferrer">
       <img
@@ -459,13 +483,21 @@ function PhotoThumb({ path }: { path: string }) {
 }
 
 function mapsUrl(p: any): string {
-  const q = encodeURIComponent(
-    [p?.street, p?.city, p?.postal_code].filter(Boolean).join(", "),
-  );
+  const q = encodeURIComponent([p?.street, p?.city, p?.postal_code].filter(Boolean).join(", "));
   return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
 }
 
-function VisitCard({ visit, index, day, preview = false }: { visit: any; index: number; day: string; preview?: boolean }) {
+function VisitCard({
+  visit,
+  index,
+  day,
+  preview = false,
+}: {
+  visit: any;
+  index: number;
+  day: string;
+  preview?: boolean;
+}) {
   const qc = useQueryClient();
   const smsFn = useServerFn(sendVisitStatusSms);
   const { role } = useMyRole();
@@ -475,7 +507,6 @@ function VisitCard({ visit, index, day, preview = false }: { visit: any; index: 
   const canPerformVisit = !preview && role !== "dispatcher";
 
   const actions = useOfflineVisitActions(visit.id, visit.organization_id as string | undefined);
-
 
   const [showSkip, setShowSkip] = useState(false);
   const [showAddon, setShowAddon] = useState(false);
@@ -539,7 +570,10 @@ function VisitCard({ visit, index, day, preview = false }: { visit: any; index: 
       toast.success(r.queued ? "Queued — starts when back online" : "Started");
       if (!r.queued) invalidate();
     },
-    onError: (e: Error) => { haptic("error"); toast.error(e.message); },
+    onError: (e: Error) => {
+      haptic("error");
+      toast.error(e.message);
+    },
   });
   const complete = useMutation({
     mutationFn: () => actions.complete(),
@@ -548,7 +582,10 @@ function VisitCard({ visit, index, day, preview = false }: { visit: any; index: 
       toast.success(r.queued ? "Queued — completes when back online" : "Completed");
       if (!r.queued) invalidate();
     },
-    onError: (e: Error) => { haptic("error"); toast.error(e.message); },
+    onError: (e: Error) => {
+      haptic("error");
+      toast.error(e.message);
+    },
   });
   const skip = useMutation({
     mutationFn: () => actions.skip(reason, reasonCode),
@@ -558,13 +595,22 @@ function VisitCard({ visit, index, day, preview = false }: { visit: any; index: 
       setShowSkip(false);
       if (!r.queued) invalidate();
     },
-    onError: (e: Error) => { haptic("error"); toast.error(e.message); },
+    onError: (e: Error) => {
+      haptic("error");
+      toast.error(e.message);
+    },
   });
   const sms = useMutation({
     mutationFn: (kind: "reminder" | "on_my_way" | "completed") =>
       smsFn({ data: { visitId: visit.id, kind } }),
-    onSuccess: () => { haptic("select"); toast.success("SMS sent"); },
-    onError: (e: Error) => { haptic("error"); toast.error(e.message); },
+    onSuccess: () => {
+      haptic("select");
+      toast.success("SMS sent");
+    },
+    onError: (e: Error) => {
+      haptic("error");
+      toast.error(e.message);
+    },
   });
 
   const uploadPhoto = async (file: File) => {
@@ -599,12 +645,15 @@ function VisitCard({ visit, index, day, preview = false }: { visit: any; index: 
   const finalStatus = done || skipped;
   const p = visit.properties;
   const [collapsed, setCollapsed] = useState(finalStatus);
-  useEffect(() => { setCollapsed(finalStatus); }, [finalStatus]);
+  useEffect(() => {
+    setCollapsed(finalStatus);
+  }, [finalStatus]);
 
   return (
-    <li id={`visit-${visit.id}`} className={`animate-fade-in scroll-mt-40 rounded-xl border bg-card p-4 shadow-sm transition-shadow ${inProg ? "ring-2 ring-blue-500/40 shadow-md" : ""}`}>
-
-
+    <li
+      id={`visit-${visit.id}`}
+      className={`animate-fade-in scroll-mt-40 rounded-xl border bg-card p-4 shadow-sm transition-shadow ${inProg ? "ring-2 ring-blue-500/40 shadow-md" : ""}`}
+    >
       {!collapsed && <HazardBanner property={p} />}
 
       <div className="flex items-start justify-between gap-3">
@@ -630,27 +679,43 @@ function VisitCard({ visit, index, day, preview = false }: { visit: any; index: 
             {visit.clients?.display_name ?? "Client"}
           </div>
           <div className="text-sm text-muted-foreground">
-            {p?.street}{p?.city ? `, ${p.city}` : ""}{p?.postal_code ? ` ${p.postal_code}` : ""}
+            {p?.street}
+            {p?.city ? `, ${p.city}` : ""}
+            {p?.postal_code ? ` ${p.postal_code}` : ""}
           </div>
 
           {!collapsed && (
             <>
               <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                 {p?.gate_code && (
-                  <div><span className="text-muted-foreground">Gate:</span> <span className="font-mono">{p.gate_code}</span></div>
+                  <div>
+                    <span className="text-muted-foreground">Gate:</span>{" "}
+                    <span className="font-mono">{p.gate_code}</span>
+                  </div>
                 )}
                 {p?.lock_box_code && (
-                  <div><span className="text-muted-foreground">Lock box:</span> <span className="font-mono">{p.lock_box_code}</span></div>
+                  <div>
+                    <span className="text-muted-foreground">Lock box:</span>{" "}
+                    <span className="font-mono">{p.lock_box_code}</span>
+                  </div>
                 )}
                 {p?.key_location && (
-                  <div className="col-span-2"><span className="text-muted-foreground">Key:</span> {p.key_location}</div>
+                  <div className="col-span-2">
+                    <span className="text-muted-foreground">Key:</span> {p.key_location}
+                  </div>
                 )}
                 {p?.yard_size && (
-                  <div><span className="text-muted-foreground">Yard:</span> {p.yard_size}</div>
+                  <div>
+                    <span className="text-muted-foreground">Yard:</span> {p.yard_size}
+                  </div>
                 )}
               </div>
-              {p?.parking_notes && (<div className="mt-1 text-xs text-muted-foreground">🅿 {p.parking_notes}</div>)}
-              {p?.access_notes && (<div className="mt-1 text-xs text-muted-foreground">{p.access_notes}</div>)}
+              {p?.parking_notes && (
+                <div className="mt-1 text-xs text-muted-foreground">🅿 {p.parking_notes}</div>
+              )}
+              {p?.access_notes && (
+                <div className="mt-1 text-xs text-muted-foreground">{p.access_notes}</div>
+              )}
               {skipped && (
                 <div className="mt-2 text-xs text-amber-700 dark:text-amber-400">
                   Skipped
@@ -745,12 +810,16 @@ function VisitCard({ visit, index, day, preview = false }: { visit: any; index: 
                   if (isNative()) {
                     const blob = await takePhotoNative();
                     if (blob) {
-                      const file = new File([blob], `photo-${Date.now()}.jpg`, { type: blob.type || "image/jpeg" });
+                      const file = new File([blob], `photo-${Date.now()}.jpg`, {
+                        type: blob.type || "image/jpeg",
+                      });
                       await uploadPhoto(file);
                       return;
                     }
                   }
-                } catch { /* fall through to web input */ }
+                } catch {
+                  /* fall through to web input */
+                }
                 fileInput.current?.click();
               }}
             >
@@ -766,9 +835,19 @@ function VisitCard({ visit, index, day, preview = false }: { visit: any; index: 
               <Button
                 size="sm"
                 className="h-11 px-4 sm:h-8 sm:px-3"
-                onClick={() => canPerformVisit ? start.mutate() : toast.error("You're not authorized to start visits — dispatchers can schedule, but field staff must start the visit.")}
+                onClick={() =>
+                  canPerformVisit
+                    ? start.mutate()
+                    : toast.error(
+                        "You're not authorized to start visits — dispatchers can schedule, but field staff must start the visit.",
+                      )
+                }
                 disabled={start.isPending || !canPerformVisit}
-                title={canPerformVisit ? "" : "Only field staff (owner, office manager, or tech) can start a visit"}
+                title={
+                  canPerformVisit
+                    ? ""
+                    : "Only field staff (owner, office manager, or tech) can start a visit"
+                }
               >
                 Start
               </Button>
@@ -777,39 +856,84 @@ function VisitCard({ visit, index, day, preview = false }: { visit: any; index: 
               size="sm"
               variant="default"
               className="h-11 px-4 sm:h-8 sm:px-3"
-              disabled={!canPerformVisit || (!hasCompletionPhoto && !hasQueuedCompletionPhoto) || complete.isPending || (!inProg && !scheduled)}
-              onClick={() => canPerformVisit ? complete.mutate() : toast.error("You're not authorized to complete visits — dispatchers can schedule, but field staff must complete the visit.")}
-              title={!canPerformVisit ? "Only field staff (owner, office manager, or tech) can complete a visit" : (hasCompletionPhoto || hasQueuedCompletionPhoto ? "" : "Add a completion photo first")}
+              disabled={
+                !canPerformVisit ||
+                (!hasCompletionPhoto && !hasQueuedCompletionPhoto) ||
+                complete.isPending ||
+                (!inProg && !scheduled)
+              }
+              onClick={() =>
+                canPerformVisit
+                  ? complete.mutate()
+                  : toast.error(
+                      "You're not authorized to complete visits — dispatchers can schedule, but field staff must complete the visit.",
+                    )
+              }
+              title={
+                !canPerformVisit
+                  ? "Only field staff (owner, office manager, or tech) can complete a visit"
+                  : hasCompletionPhoto || hasQueuedCompletionPhoto
+                    ? ""
+                    : "Add a completion photo first"
+              }
             >
               Complete
             </Button>
-            <Button size="sm" variant="ghost" className="h-11 px-4 sm:h-8 sm:px-3" onClick={() => setShowSkip((s) => !s)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-11 px-4 sm:h-8 sm:px-3"
+              onClick={() => setShowSkip((s) => !s)}
+            >
               Skip
             </Button>
-            <Button size="sm" variant="outline" className="h-11 px-4 sm:h-8 sm:px-3" onClick={() => setShowAddon((s) => !s)}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-11 px-4 sm:h-8 sm:px-3"
+              onClick={() => setShowAddon((s) => !s)}
+            >
               + Add-on
             </Button>
-            <Button size="sm" variant="outline" className="h-11 px-4 sm:h-8 sm:px-3" onClick={() => setShowStations((s) => !s)}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-11 px-4 sm:h-8 sm:px-3"
+              onClick={() => setShowStations((s) => !s)}
+            >
               Stations
             </Button>
             {visit.clients?.primary_phone && (
               <>
-                <Button size="sm" variant="outline" className="h-11 px-4 sm:h-8 sm:px-3" disabled={sms.isPending} onClick={() => sms.mutate("reminder")}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-11 px-4 sm:h-8 sm:px-3"
+                  disabled={sms.isPending}
+                  onClick={() => sms.mutate("reminder")}
+                >
                   Text reminder
                 </Button>
-                <Button size="sm" variant="outline" className="h-11 px-4 sm:h-8 sm:px-3" disabled={sms.isPending} onClick={() => sms.mutate("on_my_way")}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-11 px-4 sm:h-8 sm:px-3"
+                  disabled={sms.isPending}
+                  onClick={() => sms.mutate("on_my_way")}
+                >
                   Text "on my way"
                 </Button>
               </>
             )}
           </div>
-          {canPerformVisit && !hasCompletionPhoto && !hasQueuedCompletionPhoto && (inProg || scheduled) && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Take a completion photo to finish this visit.
-            </p>
-          )}
-
-
+          {canPerformVisit &&
+            !hasCompletionPhoto &&
+            !hasQueuedCompletionPhoto &&
+            (inProg || scheduled) && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Take a completion photo to finish this visit.
+              </p>
+            )}
 
           {showSkip && (
             <div className="space-y-2 rounded-md border bg-muted/30 p-3">
@@ -821,7 +945,9 @@ function VisitCard({ visit, index, day, preview = false }: { visit: any; index: 
                   className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
                 >
                   {SKIP_REASON_CODES.map((c) => (
-                    <option key={c} value={c}>{SKIP_REASON_LABELS[c]}</option>
+                    <option key={c} value={c}>
+                      {SKIP_REASON_LABELS[c]}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -850,83 +976,106 @@ function VisitCard({ visit, index, day, preview = false }: { visit: any; index: 
             </div>
           )}
 
-          {showAddon && (() => {
-            const svc = addonServices.find((s) => s.id === addonSvcId);
-            const qtyNum = Math.max(1, parseInt(addonQty, 10) || 1);
-            const totalCents = svc ? svc.unit_price_cents * qtyNum : 0;
-            return (
-              <div className="space-y-2 rounded-md border bg-muted/30 p-3">
-                <div className="text-xs font-medium text-muted-foreground">Bill an add-on to this client</div>
-                <div className="grid grid-cols-6 gap-2">
-                  <select
-                    className="col-span-4 h-9 rounded-md border bg-background px-2 text-sm"
-                    value={addonSvcId}
-                    onChange={(e) => setAddonSvcId(e.target.value)}
-                  >
-                    <option value="">Select service…</option>
-                    {addonServices.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} — ${(s.unit_price_cents / 100).toFixed(2)}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="number" min="1"
-                    className="col-span-1 h-9 rounded-md border bg-background px-2 text-sm"
-                    value={addonQty}
-                    onChange={(e) => setAddonQty(e.target.value)}
-                  />
-                  {/* Real money hits the client's account — always confirm.
+          {showAddon &&
+            (() => {
+              const svc = addonServices.find((s) => s.id === addonSvcId);
+              const qtyNum = Math.max(1, parseInt(addonQty, 10) || 1);
+              const totalCents = svc ? svc.unit_price_cents * qtyNum : 0;
+              if (!addonServices.length) {
+                // An empty catalog used to leave a permanently-disabled Bill
+                // button with no explanation — say why instead.
+                return (
+                  <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+                    No add-on services are set up yet, so there's nothing to bill. Ask the office to
+                    add them under Settings → Add-ons.
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    Bill an add-on to this client
+                  </div>
+                  <div className="grid grid-cols-6 gap-2">
+                    <select
+                      className="col-span-4 h-9 rounded-md border bg-background px-2 text-sm"
+                      value={addonSvcId}
+                      onChange={(e) => setAddonSvcId(e.target.value)}
+                    >
+                      <option value="">Select service…</option>
+                      {addonServices.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} — ${(s.unit_price_cents / 100).toFixed(2)}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min="1"
+                      className="col-span-1 h-9 rounded-md border bg-background px-2 text-sm"
+                      value={addonQty}
+                      onChange={(e) => setAddonQty(e.target.value)}
+                    />
+                    {/* Real money hits the client's account — always confirm.
                       In-app dialog, NOT window.confirm(): browsers suppress
                       repeated native dialogs, which made this button a silent
                       no-op in the field (P0.4). */}
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button size="sm" className="col-span-1"
-                        disabled={!addonSvcId || !svc || addonMut.isPending}>
-                        {addonMut.isPending ? "…" : "Bill"}
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>
-                          Bill ${(totalCents / 100).toFixed(2)} to {visit.clients?.display_name ?? "this client"}?
-                        </AlertDialogTitle>
-                        <AlertDialogDescription>
-                          {svc ? `${svc.name}${qtyNum > 1 ? ` × ${qtyNum}` : ""} at the catalog price. ` : ""}
-                          The office will see this charge for review.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          disabled={addonMut.isPending}
-                          onClick={() => {
-                            if (!svc) {
-                              toast.error("That add-on service is no longer available — pick another from the list.");
-                              return;
-                            }
-                            addonMut.mutate();
-                          }}>
-                          Bill it
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-                {svc && (
-                  <p className="text-[11px] font-medium">
-                    Total: ${(totalCents / 100).toFixed(2)} at the catalog price
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          size="sm"
+                          className="col-span-1"
+                          disabled={!addonSvcId || !svc || addonMut.isPending}
+                        >
+                          {addonMut.isPending ? "…" : "Bill"}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>
+                            Bill ${(totalCents / 100).toFixed(2)} to{" "}
+                            {visit.clients?.display_name ?? "this client"}?
+                          </AlertDialogTitle>
+                          <AlertDialogDescription>
+                            {svc
+                              ? `${svc.name}${qtyNum > 1 ? ` × ${qtyNum}` : ""} at the catalog price. `
+                              : ""}
+                            The office will see this charge for review.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            disabled={addonMut.isPending}
+                            onClick={() => {
+                              if (!svc) {
+                                toast.error(
+                                  "That add-on service is no longer available — pick another from the list.",
+                                );
+                                return;
+                              }
+                              addonMut.mutate();
+                            }}
+                          >
+                            Bill it
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                  {svc && (
+                    <p className="text-[11px] font-medium">
+                      Total: ${(totalCents / 100).toFixed(2)} at the catalog price
+                    </p>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    Prepaid clients are debited immediately; postpaid clients see it on the next
+                    invoice. Field charges are capped per charge and reviewed by the office —
+                    anything larger needs the office to bill it.
                   </p>
-                )}
-                <p className="text-[11px] text-muted-foreground">
-                  Prepaid clients are debited immediately; postpaid clients see it on the next
-                  invoice. Field charges are capped per charge and reviewed by the office —
-                  anything larger needs the office to bill it.
-                </p>
-              </div>
-            );
-          })()}
+                </div>
+              );
+            })()}
           {showStations && <StationsSubpanel visitId={visit.id} />}
         </div>
       )}
@@ -991,7 +1140,12 @@ function StationRow({
 }: {
   station: any;
   existing?: any;
-  onSave: (v: { bagsCollected: number; linerReplaced: boolean; refillBagsAdded: number; notes?: string }) => void;
+  onSave: (v: {
+    bagsCollected: number;
+    linerReplaced: boolean;
+    refillBagsAdded: number;
+    notes?: string;
+  }) => void;
   disabled: boolean;
 }) {
   const [bags, setBags] = useState<string>(String(existing?.bags_collected ?? "0"));
@@ -1010,14 +1164,31 @@ function StationRow({
       <div className="mt-2 grid grid-cols-6 gap-2 text-xs">
         <label className="col-span-2">
           <span className="block text-[11px] text-muted-foreground">Bags collected</span>
-          <input type="number" min="0" value={bags} onChange={(e) => setBags(e.target.value)} className="h-9 w-full rounded-md border bg-background px-2" />
+          <input
+            type="number"
+            min="0"
+            value={bags}
+            onChange={(e) => setBags(e.target.value)}
+            className="h-9 w-full rounded-md border bg-background px-2"
+          />
         </label>
         <label className="col-span-2">
           <span className="block text-[11px] text-muted-foreground">Refill bags added</span>
-          <input type="number" min="0" value={refill} onChange={(e) => setRefill(e.target.value)} className="h-9 w-full rounded-md border bg-background px-2" />
+          <input
+            type="number"
+            min="0"
+            value={refill}
+            onChange={(e) => setRefill(e.target.value)}
+            className="h-9 w-full rounded-md border bg-background px-2"
+          />
         </label>
         <label className="col-span-2 flex items-center gap-2 pt-4">
-          <input type="checkbox" checked={liner} onChange={(e) => setLiner(e.target.checked)} className="h-4 w-4" />
+          <input
+            type="checkbox"
+            checked={liner}
+            onChange={(e) => setLiner(e.target.checked)}
+            className="h-4 w-4"
+          />
           <span>Liner replaced</span>
         </label>
         <input
@@ -1045,4 +1216,3 @@ function StationRow({
     </div>
   );
 }
-

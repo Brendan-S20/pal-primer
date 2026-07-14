@@ -73,9 +73,7 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
   },
   {
     label: "Ops",
-    items: [
-      { title: "Inventory", url: "/inventory", icon: Package },
-    ],
+    items: [{ title: "Inventory", url: "/inventory", icon: Package }],
   },
   {
     label: "Billing",
@@ -108,7 +106,9 @@ export function AppSidebar() {
   const { role } = useMyRole();
 
   const isActive = (url: string) =>
-    url === "/dashboard" ? pathname === "/dashboard" : pathname === url || pathname.startsWith(url + "/");
+    url === "/dashboard"
+      ? pathname === "/dashboard"
+      : pathname === url || pathname.startsWith(url + "/");
 
   const platformFn = useServerFn(getPlatformContext);
   const platform = useQuery({
@@ -144,9 +144,7 @@ export function AppSidebar() {
             style={{ color: "var(--brand-accent, currentColor)" }}
           />
           {!collapsed && (
-            <span className="truncate text-base font-semibold tracking-tight">
-              {APP_NAME}
-            </span>
+            <span className="truncate text-base font-semibold tracking-tight">{APP_NAME}</span>
           )}
         </Link>
       </SidebarHeader>
@@ -159,7 +157,7 @@ export function AppSidebar() {
                 {group.items.map((item) => (
                   <SidebarMenuItem key={item.url}>
                     <SidebarMenuButton asChild isActive={isActive(item.url)} tooltip={item.title}>
-                      <Link to={item.url} className="flex items-center gap-2">
+                      <Link to={item.url} className="flex items-center gap-2" data-tour={item.url}>
                         <item.icon className="h-4 w-4 shrink-0" />
                         {!collapsed && <span className="truncate">{item.title}</span>}
                       </Link>
@@ -174,4 +172,3 @@ export function AppSidebar() {
     </Sidebar>
   );
 }
-

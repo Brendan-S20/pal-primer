@@ -26,7 +26,11 @@ export const Route = createFileRoute("/auth")({
 // captured at signup. Idempotent server-side via bootstrap_organization().
 /** Returns true when a brand-new org was just bootstrapped — that caller
  *  should route to /onboarding instead of the usual landing page. */
-async function ensureBootstrapped(user: { id: string; email?: string | null; user_metadata?: Record<string, any> | null }): Promise<boolean> {
+async function ensureBootstrapped(user: {
+  id: string;
+  email?: string | null;
+  user_metadata?: Record<string, any> | null;
+}): Promise<boolean> {
   const { data: existing } = await supabase
     .from("user_roles")
     .select("role")
@@ -64,10 +68,17 @@ async function ensureBootstrapped(user: { id: string; email?: string | null; use
     (typeof md.name === "string" && md.name.trim()) ||
     emailLocal;
   const orgName: string =
-    (typeof md.org_name === "string" && md.org_name.trim()) ||
-    `${displayName}'s Organization`;
+    (typeof md.org_name === "string" && md.org_name.trim()) || `${displayName}'s Organization`;
 
-  await bootstrapOrganization({ data: { orgName, displayName } });
+  // OAuth signups round-trip through the provider, so referral/UTM attribution
+  // from /sign-up rides localStorage (see signup-attribution.ts).
+  const { readSignupAttribution, clearSignupAttribution } =
+    await import("@/lib/signup-attribution");
+  const attribution = readSignupAttribution();
+  await bootstrapOrganization({
+    data: { orgName, displayName, refCode: attribution.ref, utm: attribution.utm },
+  });
+  clearSignupAttribution();
   // Get-started walkthrough stashes texting consent in user metadata when the
   // email-confirmation flow defers bootstrap — apply it now (best-effort).
   if (md.sms_consent === true && typeof md.phone === "string" && md.phone.trim()) {
@@ -147,10 +158,13 @@ function AuthPage() {
       }
     }
     setLoading(false);
-    const to = isNewOrg ? "/onboarding" : data.user ? await landingPathForUser(data.user.id) : "/dashboard";
+    const to = isNewOrg
+      ? "/onboarding"
+      : data.user
+        ? await landingPathForUser(data.user.id)
+        : "/dashboard";
     navigate({ to });
   };
-
 
   const oauthSignIn = async (provider: "google" | "apple" | "facebook") => {
     const label = provider.charAt(0).toUpperCase() + provider.slice(1);
@@ -201,7 +215,6 @@ function AuthPage() {
     }
   };
 
-
   // Identifier-first (ERP-style rework): email first; if the account exists
   // we reveal the password step, otherwise we hand off to the Get-started
   // walkthrough with the email carried over.
@@ -251,9 +264,7 @@ function AuthPage() {
             {stage === "email" ? "Sign in or create your account" : "Welcome back"}
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {stage === "email"
-              ? "Enter your work email to continue."
-              : email}
+            {stage === "email" ? "Enter your work email to continue." : email}
           </p>
 
           {stage === "email" ? (
@@ -302,7 +313,11 @@ function AuthPage() {
               </Button>
               <button
                 type="button"
-                onClick={() => { setStage("email"); setPassword(""); setAlert(null); }}
+                onClick={() => {
+                  setStage("email");
+                  setPassword("");
+                  setAlert(null);
+                }}
                 className="w-full text-center text-xs text-muted-foreground underline underline-offset-2 hover:text-primary"
               >
                 Use a different email
@@ -312,23 +327,43 @@ function AuthPage() {
 
           {/* OAuth lives under the email sign-in (re-review), with brand marks. */}
           <div className="relative my-5">
-            <div className="absolute inset-0 flex items-center"><div className="w-full border-t" /></div>
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t" />
+            </div>
             <div className="relative flex justify-center">
               <span className="bg-card px-2 text-xs text-muted-foreground">or continue with</span>
             </div>
           </div>
           <div className="space-y-2">
-            <Button type="button" variant="outline" className="w-full justify-center gap-2" disabled={loading} onClick={() => oauthSignIn("google")}>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full justify-center gap-2"
+              disabled={loading}
+              onClick={() => oauthSignIn("google")}
+            >
               <GoogleIcon /> Google
             </Button>
             {/* Apple/Facebook aren't configured yet — shown disabled as a
                 teaser rather than wired to a broken flow (Brendan's call). */}
             <div className="grid grid-cols-2 gap-2">
-              <Button type="button" variant="outline" className="justify-center gap-2" disabled title="Coming soon">
+              <Button
+                type="button"
+                variant="outline"
+                className="justify-center gap-2"
+                disabled
+                title="Coming soon"
+              >
                 <AppleIcon /> Apple
                 <span className="text-[10px] font-normal text-muted-foreground">soon</span>
               </Button>
-              <Button type="button" variant="outline" className="justify-center gap-2" disabled title="Coming soon">
+              <Button
+                type="button"
+                variant="outline"
+                className="justify-center gap-2"
+                disabled
+                title="Coming soon"
+              >
                 <FacebookIcon /> Facebook
                 <span className="text-[10px] font-normal text-muted-foreground">soon</span>
               </Button>
@@ -362,10 +397,22 @@ function AuthPage() {
 function GoogleIcon() {
   return (
     <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
-      <path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.2H12v4.1h6.5c-.1 1.1-.8 2.7-2.4 3.8l-.02.15 3.5 2.7.24.02c2.2-2 3.5-5 3.5-8.6z" />
-      <path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.8-2.9c-1 .7-2.4 1.2-4.1 1.2-3.2 0-5.8-2.1-6.8-4.9l-.14.01-3.6 2.8-.05.13C3.4 21.3 7.4 24 12 24z" />
-      <path fill="#FBBC05" d="M5.2 14.5c-.25-.7-.4-1.5-.4-2.3s.14-1.6.38-2.3l-.01-.16-3.65-2.8-.12.06C.5 8.6 0 10.2 0 12.2s.5 3.6 1.4 5.2l3.8-2.9z" />
-      <path fill="#EA4335" d="M12 4.7c2.3 0 3.8 1 4.7 1.8l3.4-3.3C18 1.2 15.2 0 12 0 7.4 0 3.4 2.7 1.4 6.9l3.8 2.9C6.2 6.9 8.8 4.7 12 4.7z" />
+      <path
+        fill="#4285F4"
+        d="M23.5 12.3c0-.9-.1-1.5-.3-2.2H12v4.1h6.5c-.1 1.1-.8 2.7-2.4 3.8l-.02.15 3.5 2.7.24.02c2.2-2 3.5-5 3.5-8.6z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.8-2.9c-1 .7-2.4 1.2-4.1 1.2-3.2 0-5.8-2.1-6.8-4.9l-.14.01-3.6 2.8-.05.13C3.4 21.3 7.4 24 12 24z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.2 14.5c-.25-.7-.4-1.5-.4-2.3s.14-1.6.38-2.3l-.01-.16-3.65-2.8-.12.06C.5 8.6 0 10.2 0 12.2s.5 3.6 1.4 5.2l3.8-2.9z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 4.7c2.3 0 3.8 1 4.7 1.8l3.4-3.3C18 1.2 15.2 0 12 0 7.4 0 3.4 2.7 1.4 6.9l3.8 2.9C6.2 6.9 8.8 4.7 12 4.7z"
+      />
     </svg>
   );
 }
@@ -379,8 +426,14 @@ function AppleIcon() {
 function FacebookIcon() {
   return (
     <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
-      <path fill="#1877F2" d="M24 12a12 12 0 1 0-13.9 11.9v-8.4H7.1V12h3.1V9.4c0-3 1.8-4.7 4.6-4.7 1.3 0 2.7.24 2.7.24v3h-1.5c-1.5 0-2 .93-2 1.9V12h3.4l-.54 3.5h-2.8v8.4A12 12 0 0 0 24 12z" />
-      <path fill="#fff" d="M16.7 15.5 17.2 12h-3.4V9.7c0-1 .47-1.9 2-1.9h1.5v-3s-1.4-.24-2.7-.24c-2.8 0-4.6 1.7-4.6 4.7V12H7.1v3.5h3.1v8.4a12 12 0 0 0 3.9 0v-8.4h2.8z" />
+      <path
+        fill="#1877F2"
+        d="M24 12a12 12 0 1 0-13.9 11.9v-8.4H7.1V12h3.1V9.4c0-3 1.8-4.7 4.6-4.7 1.3 0 2.7.24 2.7.24v3h-1.5c-1.5 0-2 .93-2 1.9V12h3.4l-.54 3.5h-2.8v8.4A12 12 0 0 0 24 12z"
+      />
+      <path
+        fill="#fff"
+        d="M16.7 15.5 17.2 12h-3.4V9.7c0-1 .47-1.9 2-1.9h1.5v-3s-1.4-.24-2.7-.24c-2.8 0-4.6 1.7-4.6 4.7V12H7.1v3.5h3.1v8.4a12 12 0 0 0 3.9 0v-8.4h2.8z"
+      />
     </svg>
   );
 }

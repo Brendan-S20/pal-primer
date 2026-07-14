@@ -51,6 +51,8 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/onboarding": ["owner"],
   // Must precede the "/settings" prefix entry — canAccess takes the first match.
   "/settings/billing": ["owner"],
+  // Referral rewards are real money to the business — keep it office-level.
+  "/settings/referrals": ["owner", "office_manager"],
   "/reports": ["owner", "office_manager"],
   "/analytics": ["owner", "office_manager"],
   "/franchise": ["owner"],
@@ -59,13 +61,12 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/settings": ["owner", "office_manager", "tech"],
   "/neighbors": ["owner", "office_manager", "dispatcher", "tech"],
   "/dna": ["owner", "office_manager", "dispatcher", "tech"],
+  "/help": ["owner", "office_manager", "dispatcher", "tech"],
 };
 
 export function canAccess(role: AppRole | null, path: string): boolean {
   if (!role) return false;
-  const key = Object.keys(ROUTE_ROLES).find(
-    (k) => path === k || path.startsWith(k + "/"),
-  );
+  const key = Object.keys(ROUTE_ROLES).find((k) => path === k || path.startsWith(k + "/"));
   if (!key) return true;
   return ROUTE_ROLES[key].includes(role);
 }

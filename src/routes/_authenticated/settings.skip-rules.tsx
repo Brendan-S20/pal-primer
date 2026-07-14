@@ -6,6 +6,7 @@ import { listSkipRules, upsertSkipRule, SKIP_REASON_CODES } from "@/lib/skip-rul
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { HelpTip } from "@/components/HelpTip";
 
 export const Route = createFileRoute("/_authenticated/settings/skip-rules")({
   component: SkipRulesPage,
@@ -35,7 +36,9 @@ function SkipRulesPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold">Skip billing rules</h1>
+        <h1 className="flex items-center gap-2 text-2xl font-semibold">
+          Skip billing rules <HelpTip article="skip-rules" />
+        </h1>
         <p className="text-sm text-muted-foreground">
           When a tech skips a visit with a given reason, this percent of the subscription price is
           billed on the next invoice. Defaults follow industry practice; override any you like.
@@ -54,7 +57,11 @@ function SkipRulesPage() {
           </thead>
           <tbody>
             {(data?.rules ?? []).map((r) => (
-              <RuleRow key={r.code} rule={r} onSave={(pct) => upsert.mutate({ code: r.code, billablePct: pct })} />
+              <RuleRow
+                key={r.code}
+                rule={r}
+                onSave={(pct) => upsert.mutate({ code: r.code, billablePct: pct })}
+              />
             ))}
           </tbody>
         </table>
@@ -67,7 +74,12 @@ function RuleRow({
   rule,
   onSave,
 }: {
-  rule: { code: (typeof SKIP_REASON_CODES)[number]; label: string; billable_pct: number; is_override: boolean };
+  rule: {
+    code: (typeof SKIP_REASON_CODES)[number];
+    label: string;
+    billable_pct: number;
+    is_override: boolean;
+  };
   onSave: (pct: number) => void;
 }) {
   const [val, setVal] = useState(String(rule.billable_pct));

@@ -4,16 +4,40 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  Shield, AlertCircle, LayoutDashboard, Building2, UserPlus, Mailbox, Package,
-  Ticket, FileText, Users, Megaphone, TrendingUp, Activity, ScrollText,
-  ArrowLeft, LogOut, Loader2,
+  Shield,
+  AlertCircle,
+  LayoutDashboard,
+  Building2,
+  UserPlus,
+  Mailbox,
+  Package,
+  Ticket,
+  FileText,
+  Users,
+  Megaphone,
+  TrendingUp,
+  Activity,
+  ScrollText,
+  ArrowLeft,
+  LogOut,
+  Loader2,
+  Gift,
 } from "lucide-react";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
-  SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
-  SidebarProvider, SidebarTrigger, SidebarFooter,
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+  SidebarFooter,
 } from "@/components/ui/sidebar";
 
 export const Route = createFileRoute("/platform")({
@@ -39,6 +63,7 @@ const NAV = [
       { to: "/platform/coupons" as const, label: "Coupons", icon: Ticket },
       { to: "/platform/invoices" as const, label: "Invoices", icon: FileText },
       { to: "/platform/revenue" as const, label: "Revenue", icon: TrendingUp },
+      { to: "/platform/referrals" as const, label: "Referrals", icon: Gift },
     ],
   },
   {
@@ -76,8 +101,8 @@ function PlatformLayout() {
             <div className="flex items-start gap-2">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
               <div>
-                You don't have platform admin access. This console is reserved for
-                superadmins who manage all tenants across the platform.
+                You don't have platform admin access. This console is reserved for superadmins who
+                manage all tenants across the platform.
               </div>
             </div>
             <Button asChild variant="outline" size="sm">
@@ -166,8 +191,9 @@ function PlatformHeader() {
   const all: Array<{ to: string; label: string }> = NAV.flatMap((g) =>
     g.items.map((i) => ({ to: i.to as string, label: i.label })),
   );
-  const label = all.find((i) => currentPath === i.to || currentPath.startsWith(i.to + "/"))?.label
-    ?? "Platform";
+  const label =
+    all.find((i) => currentPath === i.to || currentPath.startsWith(i.to + "/"))?.label ??
+    "Platform";
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -198,4 +224,3 @@ function PlatformHeader() {
     </header>
   );
 }
-

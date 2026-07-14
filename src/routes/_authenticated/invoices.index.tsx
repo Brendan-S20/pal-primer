@@ -16,18 +16,28 @@ import { Input } from "@/components/ui/input";
 import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader,
-  DialogTitle, DialogTrigger,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Trash2 } from "lucide-react";
+import { Download, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { downloadCsv } from "@/lib/csv";
+import { HelpTip } from "@/components/HelpTip";
 
 export const Route = createFileRoute("/_authenticated/invoices/")({
   component: InvoicesPage,
 });
 
 function fmtCents(c: number, currency = "usd") {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format((c ?? 0) / 100);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: currency.toUpperCase(),
+  }).format((c ?? 0) / 100);
 }
 
 const STATUSES = ["draft", "open", "paid", "void", "uncollectible"] as const;
@@ -102,7 +112,9 @@ function NewInvoiceDialog() {
               {clients
                 .filter((c) => c.active !== false)
                 .map((c) => (
-                  <option key={c.id} value={c.id}>{c.display_name}</option>
+                  <option key={c.id} value={c.id}>
+                    {c.display_name}
+                  </option>
                 ))}
             </select>
           </div>
@@ -114,19 +126,30 @@ function NewInvoiceDialog() {
                   placeholder="Description (e.g. One-time cleanup)"
                   value={item.description}
                   onChange={(e) =>
-                    setItems(items.map((it, j) => (j === i ? { ...it, description: e.target.value } : it)))
+                    setItems(
+                      items.map((it, j) => (j === i ? { ...it, description: e.target.value } : it)),
+                    )
                   }
                 />
                 <Input
-                  type="number" step="0.01" min="0" placeholder="0.00" className="w-28"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  className="w-28"
                   value={item.amount}
                   onChange={(e) =>
-                    setItems(items.map((it, j) => (j === i ? { ...it, amount: e.target.value } : it)))
+                    setItems(
+                      items.map((it, j) => (j === i ? { ...it, amount: e.target.value } : it)),
+                    )
                   }
                 />
                 {items.length > 1 && (
                   <Button
-                    type="button" variant="ghost" size="sm" className="shrink-0 px-2"
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0 px-2"
                     onClick={() => setItems(items.filter((_, j) => j !== i))}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -135,22 +158,24 @@ function NewInvoiceDialog() {
               </div>
             ))}
             <Button
-              type="button" variant="outline" size="sm"
+              type="button"
+              variant="outline"
+              size="sm"
               onClick={() => setItems([...items, { description: "", amount: "" }])}
             >
               <Plus className="mr-1 h-3.5 w-3.5" /> Add line
             </Button>
           </div>
-          {totalCents > 0 && (
-            <p className="text-sm font-medium">Total: {fmtCents(totalCents)}</p>
-          )}
+          {totalCents > 0 && <p className="text-sm font-medium">Total: {fmtCents(totalCents)}</p>}
         </div>
         <DialogFooter>
           <Button
             disabled={!clientId || parsedItems.length === 0 || createM.isPending}
             onClick={() => createM.mutate()}
           >
-            {createM.isPending ? "Creating…" : `Create invoice${totalCents > 0 ? ` · ${fmtCents(totalCents)}` : ""}`}
+            {createM.isPending
+              ? "Creating…"
+              : `Create invoice${totalCents > 0 ? ` · ${fmtCents(totalCents)}` : ""}`}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -214,7 +239,10 @@ function InvoicesPage() {
   }, [invQ.data, status, search, from, to]);
 
   const selectedIds = useMemo(
-    () => Object.entries(selected).filter(([, v]) => v).map(([k]) => k),
+    () =>
+      Object.entries(selected)
+        .filter(([, v]) => v)
+        .map(([k]) => k),
     [selected],
   );
   const allVisibleSelected = filtered.length > 0 && filtered.every((i) => selected[i.id]);
@@ -227,7 +255,9 @@ function InvoicesPage() {
       setSelected({});
     } else {
       const next: Record<string, boolean> = {};
-      filtered.forEach((i) => { next[i.id] = true; });
+      filtered.forEach((i) => {
+        next[i.id] = true;
+      });
       setSelected(next);
     }
   };
@@ -260,6 +290,40 @@ function InvoicesPage() {
           <p className="text-sm text-muted-foreground">Bill clients for completed visits.</p>
         </div>
         <div className="flex items-end gap-2">
+          <Button
+            variant="outline"
+            disabled={!filtered.length}
+            onClick={() =>
+              downloadCsv(
+                `invoices-${new Date().toISOString().slice(0, 10)}.csv`,
+                [
+                  "Invoice ID",
+                  "Client",
+                  "Status",
+                  "Period start",
+                  "Period end",
+                  "Total",
+                  "Issued",
+                  "Paid",
+                ],
+                filtered.map((inv) => {
+                  const client = Array.isArray(inv.clients) ? inv.clients[0] : inv.clients;
+                  return [
+                    inv.id,
+                    client?.display_name ?? "",
+                    inv.status,
+                    inv.period_start ?? "",
+                    inv.period_end ?? "",
+                    ((inv.total_cents ?? 0) / 100).toFixed(2),
+                    (inv.issued_at ?? "").slice(0, 10),
+                    (inv.paid_at ?? "").slice(0, 10),
+                  ];
+                }),
+              )
+            }
+          >
+            <Download className="mr-1 h-4 w-4" /> Export CSV
+          </Button>
           <NewInvoiceDialog />
           <div>
             <label className="text-xs text-muted-foreground">Through date</label>
@@ -268,6 +332,9 @@ function InvoicesPage() {
           <Button variant="outline" onClick={() => genM.mutate()} disabled={genM.isPending}>
             {genM.isPending ? "Generating…" : "Generate from visits"}
           </Button>
+          <span className="pb-2">
+            <HelpTip article="generate-invoices" />
+          </span>
         </div>
       </div>
 
@@ -275,7 +342,11 @@ function InvoicesPage() {
       <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-3">
         <div className="min-w-[200px] flex-1">
           <label className="text-xs text-muted-foreground">Search client</label>
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Client name…" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Client name…"
+          />
         </div>
         <div>
           <label className="text-xs text-muted-foreground">Status</label>
@@ -302,7 +373,16 @@ function InvoicesPage() {
           <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
         {(search || from || to || status !== "all") && (
-          <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setFrom(""); setTo(""); setStatus("all"); }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSearch("");
+              setFrom("");
+              setTo("");
+              setStatus("all");
+            }}
+          >
             Reset
           </Button>
         )}
@@ -334,7 +414,9 @@ function InvoicesPage() {
             >
               Void
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setSelected({})}>Clear</Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelected({})}>
+              Clear
+            </Button>
           </div>
         </div>
       )}
@@ -355,9 +437,17 @@ function InvoicesPage() {
           </thead>
           <tbody>
             {invQ.isLoading ? (
-              <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">Loading…</td></tr>
+              <tr>
+                <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
+                  Loading…
+                </td>
+              </tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">No invoices match.</td></tr>
+              <tr>
+                <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
+                  No invoices match.
+                </td>
+              </tr>
             ) : (
               filtered.map((inv) => {
                 const client = Array.isArray(inv.clients) ? inv.clients[0] : inv.clients;
@@ -372,14 +462,19 @@ function InvoicesPage() {
                     </td>
                     <td className="px-4 py-2">{client?.display_name ?? "—"}</td>
                     <td className="px-4 py-2 text-muted-foreground">
-                      {inv.period_start ? `${inv.period_start} → ` : ""}{inv.period_end}
+                      {inv.period_start ? `${inv.period_start} → ` : ""}
+                      {inv.period_end}
                     </td>
                     <td className="px-4 py-2">{fmtCents(inv.total_cents, inv.currency)}</td>
                     <td className="px-4 py-2">
                       <InvoiceStatusBadge status={inv.status} />
                     </td>
                     <td className="px-4 py-2 text-right">
-                      <Link to="/invoices/$invoiceId" params={{ invoiceId: inv.id }} className="text-primary hover:underline">
+                      <Link
+                        to="/invoices/$invoiceId"
+                        params={{ invoiceId: inv.id }}
+                        className="text-primary hover:underline"
+                      >
                         Open →
                       </Link>
                     </td>

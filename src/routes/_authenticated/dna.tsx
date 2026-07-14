@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { FlaskConical, Trash2, Dna, Receipt, FileText, Printer } from "lucide-react";
 import { usePermissions } from "@/hooks/useMyRole";
+import { HelpTip } from "@/components/HelpTip";
 
 export const Route = createFileRoute("/_authenticated/dna")({
   head: () => ({
@@ -38,7 +39,8 @@ export const Route = createFileRoute("/_authenticated/dna")({
       { title: "DNA compliance · HoundStack" },
       {
         name: "description",
-        content: "Register dogs, log DNA samples, match pile evidence, and issue violation notices with fines.",
+        content:
+          "Register dogs, log DNA samples, match pile evidence, and issue violation notices with fines.",
       },
     ],
   }),
@@ -53,14 +55,15 @@ const STATUS_LABEL: Record<DnaMatch["status"], string> = {
   billed: "Billed",
   closed: "Closed",
 };
-const STATUS_TONE: Record<DnaMatch["status"], "default" | "secondary" | "outline" | "destructive"> = {
-  new: "secondary",
-  sent_to_lab: "outline",
-  matched: "default",
-  unmatched: "destructive",
-  billed: "default",
-  closed: "outline",
-};
+const STATUS_TONE: Record<DnaMatch["status"], "default" | "secondary" | "outline" | "destructive"> =
+  {
+    new: "secondary",
+    sent_to_lab: "outline",
+    matched: "default",
+    unmatched: "destructive",
+    billed: "default",
+    closed: "outline",
+  };
 
 function DnaPage() {
   const { can } = usePermissions();
@@ -141,7 +144,7 @@ function DnaPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <Dna className="h-6 w-6" /> DNA compliance
+          <Dna className="h-6 w-6" /> DNA compliance <HelpTip article="dna" />
         </h1>
         <p className="text-sm text-muted-foreground">
           Register dogs, log evidence, match pile samples, and issue violation notices.
@@ -164,7 +167,11 @@ function DnaPage() {
 
         <TabsContent value="samples" className="space-y-4">
           <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><FlaskConical className="h-4 w-4" /> Log a new sample</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <FlaskConical className="h-4 w-4" /> Log a new sample
+              </CardTitle>
+            </CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-4">
               <div>
                 <Label>Sample kind</Label>
@@ -179,11 +186,19 @@ function DnaPage() {
               </div>
               <div>
                 <Label>Location note</Label>
-                <Input value={locationNote} onChange={(e) => setLocationNote(e.target.value)} placeholder="Bldg C, grass strip near unit 214" />
+                <Input
+                  value={locationNote}
+                  onChange={(e) => setLocationNote(e.target.value)}
+                  placeholder="Bldg C, grass strip near unit 214"
+                />
               </div>
               <div>
                 <Label>Lab reference</Label>
-                <Input value={labReference} onChange={(e) => setLabReference(e.target.value)} placeholder="PW-2026-0001" />
+                <Input
+                  value={labReference}
+                  onChange={(e) => setLabReference(e.target.value)}
+                  placeholder="PW-2026-0001"
+                />
               </div>
               <div className="md:col-span-4">
                 <Label>Notes</Label>
@@ -198,7 +213,9 @@ function DnaPage() {
           </Card>
 
           <Card>
-            <CardHeader><CardTitle className="text-base">Chain of custody</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="text-base">Chain of custody</CardTitle>
+            </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -216,81 +233,126 @@ function DnaPage() {
                   </thead>
                   <tbody>
                     {isLoading ? (
-                      <tr><td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">Loading…</td></tr>
+                      <tr>
+                        <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">
+                          Loading…
+                        </td>
+                      </tr>
                     ) : rows.length === 0 ? (
-                      <tr><td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">
-                        No samples logged. Add your first pile sample above.
-                      </td></tr>
-                    ) : rows.map((r) => (
-                      <tr key={r.id} className="border-t align-top">
-                        <td className="px-3 py-2 text-xs text-muted-foreground">
-                          {new Date(r.collected_at).toLocaleString()}
+                      <tr>
+                        <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">
+                          No samples logged. Add your first pile sample above.
                         </td>
-                        <td className="px-3 py-2">
-                          <Badge variant="outline">{r.sample_kind === "cheek_swab" ? "Cheek swab" : "Pile"}</Badge>
-                        </td>
-                        <td className="px-3 py-2 text-xs">{r.location_note ?? "—"}</td>
-                        <td className="px-3 py-2 text-xs font-mono">{r.lab_reference ?? "—"}</td>
-                        <td className="px-3 py-2">
-                          <select
-                            value={r.status}
-                            onChange={(e) => update.mutate({ id: r.id, status: e.target.value as any })}
-                            className="rounded border bg-background px-2 py-1 text-xs"
-                          >
-                            {Object.entries(STATUS_LABEL)
-                              // Marking a sample billed is a billing action — office only.
-                              .filter(([k]) => canBillDna || k !== "billed" || r.status === "billed")
-                              .map(([k, v]) => (
-                                <option key={k} value={k}>{v}</option>
-                              ))}
-                          </select>
-                          <Badge variant={STATUS_TONE[r.status]} className="ml-2">{STATUS_LABEL[r.status]}</Badge>
-                        </td>
-                        <td className="px-3 py-2 text-xs">
-                          {r.sample_kind === "pile_sample" ? (
+                      </tr>
+                    ) : (
+                      rows.map((r) => (
+                        <tr key={r.id} className="border-t align-top">
+                          <td className="px-3 py-2 text-xs text-muted-foreground">
+                            {new Date(r.collected_at).toLocaleString()}
+                          </td>
+                          <td className="px-3 py-2">
+                            <Badge variant="outline">
+                              {r.sample_kind === "cheek_swab" ? "Cheek swab" : "Pile"}
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-2 text-xs">{r.location_note ?? "—"}</td>
+                          <td className="px-3 py-2 text-xs font-mono">{r.lab_reference ?? "—"}</td>
+                          <td className="px-3 py-2">
                             <select
-                              value={r.matched_dog_id ?? ""}
+                              value={r.status}
                               onChange={(e) =>
-                                update.mutate({ id: r.id, matchedDogId: e.target.value || null, status: e.target.value ? "matched" : r.status })
+                                update.mutate({ id: r.id, status: e.target.value as any })
                               }
                               className="rounded border bg-background px-2 py-1 text-xs"
                             >
-                              <option value="">Unmatched…</option>
-                              {(dogsQ.data ?? []).map((d: any) => (
-                                <option key={d.id} value={d.id}>
-                                  {d.name} — {d.client_name ?? "?"} ({d.registry_id ?? "no ID"})
-                                </option>
-                              ))}
+                              {Object.entries(STATUS_LABEL)
+                                // Marking a sample billed is a billing action — office only.
+                                .filter(
+                                  ([k]) => canBillDna || k !== "billed" || r.status === "billed",
+                                )
+                                .map(([k, v]) => (
+                                  <option key={k} value={k}>
+                                    {v}
+                                  </option>
+                                ))}
                             </select>
-                          ) : (
-                            <span className="text-muted-foreground">n/a</span>
-                          )}
-                          {r.matched_dog_name && (
-                            <div className="mt-1 text-[11px] text-muted-foreground">
-                              Owner: {r.matched_client_name ?? "?"}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          {canBillDna ? (
-                            <Input
-                              type="number"
-                              min={0}
-                              step={5}
-                              value={r.fine_cents / 100}
-                              onChange={(e) => update.mutate({ id: r.id, fineCents: Math.round(Number(e.target.value) * 100) })}
-                              className="h-8 w-20 text-xs"
-                            />
-                          ) : (
-                            <span className="text-xs">
-                              {r.fine_cents > 0 ? `$${(r.fine_cents / 100).toFixed(2)}` : "—"}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center gap-1">
-                            {canBillDna && r.status === "matched" && (
-                              <>
+                            <Badge variant={STATUS_TONE[r.status]} className="ml-2">
+                              {STATUS_LABEL[r.status]}
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-2 text-xs">
+                            {r.sample_kind === "pile_sample" ? (
+                              <select
+                                value={r.matched_dog_id ?? ""}
+                                onChange={(e) =>
+                                  update.mutate({
+                                    id: r.id,
+                                    matchedDogId: e.target.value || null,
+                                    status: e.target.value ? "matched" : r.status,
+                                  })
+                                }
+                                className="rounded border bg-background px-2 py-1 text-xs"
+                              >
+                                <option value="">Unmatched…</option>
+                                {(dogsQ.data ?? []).map((d: any) => (
+                                  <option key={d.id} value={d.id}>
+                                    {d.name} — {d.client_name ?? "?"} ({d.registry_id ?? "no ID"})
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="text-muted-foreground">n/a</span>
+                            )}
+                            {r.matched_dog_name && (
+                              <div className="mt-1 text-[11px] text-muted-foreground">
+                                Owner: {r.matched_client_name ?? "?"}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {canBillDna ? (
+                              <Input
+                                type="number"
+                                min={0}
+                                step={5}
+                                value={r.fine_cents / 100}
+                                onChange={(e) =>
+                                  update.mutate({
+                                    id: r.id,
+                                    fineCents: Math.round(Number(e.target.value) * 100),
+                                  })
+                                }
+                                className="h-8 w-20 text-xs"
+                              />
+                            ) : (
+                              <span className="text-xs">
+                                {r.fine_cents > 0 ? `$${(r.fine_cents / 100).toFixed(2)}` : "—"}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-1">
+                              {canBillDna && r.status === "matched" && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs"
+                                    onClick={() => setNoticeMatchId(r.id)}
+                                  >
+                                    <FileText className="h-3.5 w-3.5 mr-1" /> Notice
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    className="h-7 text-xs"
+                                    disabled={bill.isPending || !r.fine_cents}
+                                    onClick={() => bill.mutate(r.id)}
+                                  >
+                                    <Receipt className="h-3.5 w-3.5 mr-1" /> Bill fine
+                                  </Button>
+                                </>
+                              )}
+                              {canBillDna && r.status === "billed" && (
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -299,33 +361,15 @@ function DnaPage() {
                                 >
                                   <FileText className="h-3.5 w-3.5 mr-1" /> Notice
                                 </Button>
-                                <Button
-                                  size="sm"
-                                  className="h-7 text-xs"
-                                  disabled={bill.isPending || !r.fine_cents}
-                                  onClick={() => bill.mutate(r.id)}
-                                >
-                                  <Receipt className="h-3.5 w-3.5 mr-1" /> Bill fine
-                                </Button>
-                              </>
-                            )}
-                            {canBillDna && r.status === "billed" && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs"
-                                onClick={() => setNoticeMatchId(r.id)}
-                              >
-                                <FileText className="h-3.5 w-3.5 mr-1" /> Notice
+                              )}
+                              <Button size="sm" variant="ghost" onClick={() => del.mutate(r.id)}>
+                                <Trash2 className="h-4 w-4" />
                               </Button>
-                            )}
-                            <Button size="sm" variant="ghost" onClick={() => del.mutate(r.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -338,7 +382,8 @@ function DnaPage() {
             <CardHeader>
               <CardTitle className="text-base">Registered dogs</CardTitle>
               <p className="text-xs text-muted-foreground">
-                Toggle DNA registration and record the lab's registry ID. Only registered dogs can be matched to pile samples.
+                Toggle DNA registration and record the lab's registry ID. Only registered dogs can
+                be matched to pile samples.
               </p>
             </CardHeader>
             <CardContent className="p-0">
@@ -355,25 +400,35 @@ function DnaPage() {
                   </thead>
                   <tbody>
                     {allDogsQ.isLoading ? (
-                      <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">Loading…</td></tr>
+                      <tr>
+                        <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                          Loading…
+                        </td>
+                      </tr>
                     ) : (allDogsQ.data ?? []).length === 0 ? (
-                      <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">No dogs on file yet.</td></tr>
-                    ) : (allDogsQ.data ?? []).map((d: any) => (
-                      <RegistryRow
-                        key={d.id}
-                        dog={d}
-                        onSave={async (registered, registryId) => {
-                          try {
-                            await dnaFn({ data: { id: d.id, registered, registryId } });
-                            toast.success(registered ? "Registered" : "Registration removed");
-                            allDogsQ.refetch();
-                            dogsQ.refetch();
-                          } catch (e: any) {
-                            toast.error(e.message);
-                          }
-                        }}
-                      />
-                    ))}
+                      <tr>
+                        <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                          No dogs on file yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      (allDogsQ.data ?? []).map((d: any) => (
+                        <RegistryRow
+                          key={d.id}
+                          dog={d}
+                          onSave={async (registered, registryId) => {
+                            try {
+                              await dnaFn({ data: { id: d.id, registered, registryId } });
+                              toast.success(registered ? "Registered" : "Registration removed");
+                              allDogsQ.refetch();
+                              dogsQ.refetch();
+                            } catch (e: any) {
+                              toast.error(e.message);
+                            }
+                          }}
+                        />
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -395,7 +450,15 @@ function RegistryRow({
   dog,
   onSave,
 }: {
-  dog: { id: string; name: string; breed: string | null; dna_registered: boolean; registry_id: string | null; client_name: string | null; street: string | null };
+  dog: {
+    id: string;
+    name: string;
+    breed: string | null;
+    dna_registered: boolean;
+    registry_id: string | null;
+    client_name: string | null;
+    street: string | null;
+  };
   onSave: (registered: boolean, registryId: string | null) => void | Promise<void>;
 }) {
   const [registered, setRegistered] = useState(dog.dna_registered);
@@ -411,7 +474,11 @@ function RegistryRow({
       <td className="px-3 py-2 text-xs">{dog.street ?? "—"}</td>
       <td className="px-3 py-2">
         <label className="inline-flex items-center gap-2 text-xs">
-          <input type="checkbox" checked={registered} onChange={(e) => setRegistered(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={registered}
+            onChange={(e) => setRegistered(e.target.checked)}
+          />
           {registered ? "Yes" : "No"}
         </label>
       </td>
@@ -467,7 +534,10 @@ function NoticeDialog({
           <div className="py-6 text-sm text-muted-foreground">Loading…</div>
         ) : (
           <div className="space-y-3">
-            <div id="dna-notice-print" className="rounded border bg-card p-4 text-sm leading-relaxed whitespace-pre-wrap font-serif">
+            <div
+              id="dna-notice-print"
+              className="rounded border bg-card p-4 text-sm leading-relaxed whitespace-pre-wrap font-serif"
+            >
               {bodyText}
             </div>
             <div className="text-xs text-muted-foreground">
@@ -486,11 +556,7 @@ function NoticeDialog({
           >
             Copy text
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => window.print()}
-            disabled={!notice}
-          >
+          <Button variant="outline" onClick={() => window.print()} disabled={!notice}>
             <Printer className="h-4 w-4 mr-1" /> Print
           </Button>
           <Button onClick={onClose}>Close</Button>
@@ -539,7 +605,9 @@ function Stat({ label, value, tone }: { label: string; value: number | string; t
     <Card>
       <CardContent className="p-3">
         <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
-        <div className={`text-2xl font-semibold ${tone === "good" ? "text-emerald-600" : ""}`}>{value}</div>
+        <div className={`text-2xl font-semibold ${tone === "good" ? "text-emerald-600" : ""}`}>
+          {value}
+        </div>
       </CardContent>
     </Card>
   );

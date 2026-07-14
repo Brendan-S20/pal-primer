@@ -2177,12 +2177,16 @@ export type Database = {
           portal_reschedule_cutoff_hours: number
           portal_slug: string | null
           public_signup_enabled: boolean
+          referral_code: string | null
           referral_reward_cents: number
+          referred_by_org_id: string | null
           review_ask_enabled: boolean
           review_ask_template: string | null
           seasonal_deepclean_charge_cents: number
           seasonal_deepclean_enabled: boolean
           seasonal_deepclean_months: number[]
+          signup_ref_code: string | null
+          signup_utm: Json | null
           slug: string | null
           sms_consent_at: string | null
           sms_consent_phone: string | null
@@ -2266,12 +2270,16 @@ export type Database = {
           portal_reschedule_cutoff_hours?: number
           portal_slug?: string | null
           public_signup_enabled?: boolean
+          referral_code?: string | null
           referral_reward_cents?: number
+          referred_by_org_id?: string | null
           review_ask_enabled?: boolean
           review_ask_template?: string | null
           seasonal_deepclean_charge_cents?: number
           seasonal_deepclean_enabled?: boolean
           seasonal_deepclean_months?: number[]
+          signup_ref_code?: string | null
+          signup_utm?: Json | null
           slug?: string | null
           sms_consent_at?: string | null
           sms_consent_phone?: string | null
@@ -2355,12 +2363,16 @@ export type Database = {
           portal_reschedule_cutoff_hours?: number
           portal_slug?: string | null
           public_signup_enabled?: boolean
+          referral_code?: string | null
           referral_reward_cents?: number
+          referred_by_org_id?: string | null
           review_ask_enabled?: boolean
           review_ask_template?: string | null
           seasonal_deepclean_charge_cents?: number
           seasonal_deepclean_enabled?: boolean
           seasonal_deepclean_months?: number[]
+          signup_ref_code?: string | null
+          signup_utm?: Json | null
           slug?: string | null
           sms_consent_at?: string | null
           sms_consent_phone?: string | null
@@ -2393,6 +2405,13 @@ export type Database = {
             columns: ["plan_id"]
             isOneToOne: false
             referencedRelation: "platform_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organizations_referred_by_org_id_fkey"
+            columns: ["referred_by_org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -2912,6 +2931,30 @@ export type Database = {
           stripe_product_id?: string | null
           stripe_seat_price_id?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_referral_settings: {
+        Row: {
+          holding_days: number
+          id: boolean
+          reward_percent: number
+          updated_at: string
+          volume_flag_threshold: number
+        }
+        Insert: {
+          holding_days?: number
+          id?: boolean
+          reward_percent?: number
+          updated_at?: string
+          volume_flag_threshold?: number
+        }
+        Update: {
+          holding_days?: number
+          id?: boolean
+          reward_percent?: number
+          updated_at?: string
+          volume_flag_threshold?: number
         }
         Relationships: []
       }
@@ -3889,6 +3932,78 @@ export type Database = {
         }
         Relationships: []
       }
+      tenant_referrals: {
+        Row: {
+          code_used: string
+          converted_at: string | null
+          created_at: string
+          eligible_at: string | null
+          first_payment_cents: number | null
+          flag_reason: string | null
+          flagged: boolean
+          id: string
+          paid_at: string | null
+          paid_note: string | null
+          referred_org_id: string
+          referrer_org_id: string
+          reward_cents: number | null
+          reward_percent: number | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          code_used: string
+          converted_at?: string | null
+          created_at?: string
+          eligible_at?: string | null
+          first_payment_cents?: number | null
+          flag_reason?: string | null
+          flagged?: boolean
+          id?: string
+          paid_at?: string | null
+          paid_note?: string | null
+          referred_org_id: string
+          referrer_org_id: string
+          reward_cents?: number | null
+          reward_percent?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          code_used?: string
+          converted_at?: string | null
+          created_at?: string
+          eligible_at?: string | null
+          first_payment_cents?: number | null
+          flag_reason?: string | null
+          flagged?: boolean
+          id?: string
+          paid_at?: string | null
+          paid_note?: string | null
+          referred_org_id?: string
+          referrer_org_id?: string
+          reward_cents?: number | null
+          reward_percent?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_referrals_referred_org_id_fkey"
+            columns: ["referred_org_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_referrals_referrer_org_id_fkey"
+            columns: ["referrer_org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -4289,6 +4404,36 @@ export type Database = {
           },
         ]
       }
+      weather_forecast_cache: {
+        Row: {
+          fetched_at: string
+          from_date: string
+          id: string
+          lat_key: number
+          lon_key: number
+          payload: Json
+          to_date: string
+        }
+        Insert: {
+          fetched_at?: string
+          from_date: string
+          id?: string
+          lat_key: number
+          lon_key: number
+          payload: Json
+          to_date: string
+        }
+        Update: {
+          fetched_at?: string
+          from_date?: string
+          id?: string
+          lat_key?: number
+          lon_key?: number
+          payload?: Json
+          to_date?: string
+        }
+        Relationships: []
+      }
       zones: {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"] | null
@@ -4415,7 +4560,12 @@ export type Database = {
         Returns: number
       }
       bootstrap_organization: {
-        Args: { _display_name: string; _org_name: string }
+        Args: {
+          _display_name: string
+          _org_name: string
+          _ref_code?: string
+          _utm?: Json
+        }
         Returns: string
       }
       can_write_org: {
@@ -4523,6 +4673,23 @@ export type Database = {
       generate_visits_through: {
         Args: { _org_id: string; _through: string }
         Returns: number
+      }
+      get_my_tenant_referrals: {
+        Args: never
+        Returns: {
+          created_at: string
+          eligible_at: string
+          flagged: boolean
+          id: string
+          paid_at: string
+          referred_org_name: string
+          reward_cents: number
+          status: string
+        }[]
+      }
+      get_or_create_org_referral_code: {
+        Args: { _org_id: string }
+        Returns: string
       }
       has_permission: {
         Args: { _org_id: string; _permission: string; _user_id: string }

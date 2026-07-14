@@ -14,16 +14,20 @@ import { X, Plus, Trash2, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { usePermissions } from "@/hooks/useMyRole";
 import { ZoneCoverageMap, type CoverageValue } from "@/components/ZoneCoverageMap";
-import { ZonesOverviewMap, ZONE_COLORS, zoneHasGeo, type OverviewZone } from "@/components/ZonesOverviewMap";
+import {
+  ZonesOverviewMap,
+  ZONE_COLORS,
+  zoneHasGeo,
+  type OverviewZone,
+} from "@/components/ZonesOverviewMap";
+import { HelpTip } from "@/components/HelpTip";
 
 export const Route = createFileRoute("/_authenticated/zones")({
   component: ZonesPage,
 });
 
 const money = (cents: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
-    (cents ?? 0) / 100,
-  );
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format((cents ?? 0) / 100);
 
 function ZipChips({
   value,
@@ -140,7 +144,9 @@ function ZonesPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Zones</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold">
+            Zones <HelpTip article="zones" />
+          </h1>
           <p className="text-sm text-muted-foreground">
             {canEdit
               ? "Group service areas by ZIP code. Pricing here powers the instant quote for new clients."
@@ -264,7 +270,12 @@ function ZonesPage() {
               ))}
             {(data?.zones ?? []).some((z: any) => !zoneHasGeo(z as OverviewZone)) && (
               <span className="italic">
-                Zones without a map location: {(data?.zones ?? []).filter((z: any) => !zoneHasGeo(z as OverviewZone)).map((z: any) => z.name).join(", ")} — set one in "Coverage" below.
+                Zones without a map location:{" "}
+                {(data?.zones ?? [])
+                  .filter((z: any) => !zoneHasGeo(z as OverviewZone))
+                  .map((z: any) => z.name)
+                  .join(", ")}{" "}
+                — set one in "Coverage" below.
               </span>
             )}
           </div>
@@ -303,9 +314,15 @@ function ZoneCard({ zone, canEdit }: { zone: any; canEdit: boolean }) {
   const [pricingMode, setPricingMode] = useState<"flat" | "per_sqft" | "per_acre">(
     (zone.pricing_mode as any) ?? "flat",
   );
-  const [perSqft, setPerSqft] = useState<string>(String(Number(zone.price_per_sqft_cents ?? 0) / 100));
-  const [perAcre, setPerAcre] = useState<string>(((zone.price_per_acre_cents ?? 0) / 100).toFixed(2));
-  const [areaMin, setAreaMin] = useState<string>(((zone.area_min_charge_cents ?? 0) / 100).toFixed(2));
+  const [perSqft, setPerSqft] = useState<string>(
+    String(Number(zone.price_per_sqft_cents ?? 0) / 100),
+  );
+  const [perAcre, setPerAcre] = useState<string>(
+    ((zone.price_per_acre_cents ?? 0) / 100).toFixed(2),
+  );
+  const [areaMin, setAreaMin] = useState<string>(
+    ((zone.area_min_charge_cents ?? 0) / 100).toFixed(2),
+  );
 
   const saveMut = useMutation({
     mutationFn: () =>
@@ -494,23 +511,40 @@ function ZoneCard({ zone, canEdit }: { zone: any; canEdit: boolean }) {
           {pricingMode !== "flat" && (
             <>
               <p className="text-xs text-muted-foreground">
-                When the property has a sketched boundary, per-visit price = area × rate + per-dog add-ons, then applies frequency multiplier. Falls back to base price when no boundary is set.
+                When the property has a sketched boundary, per-visit price = area × rate + per-dog
+                add-ons, then applies frequency multiplier. Falls back to base price when no
+                boundary is set.
               </p>
               <div className="grid gap-3 sm:grid-cols-2">
                 {pricingMode === "per_sqft" ? (
                   <div className="space-y-1">
                     <Label className="text-xs">Rate per sq ft (¢)</Label>
-                    <Input inputMode="decimal" value={perSqft} onChange={(e) => setPerSqft(e.target.value)} placeholder="0.75" />
+                    <Input
+                      inputMode="decimal"
+                      value={perSqft}
+                      onChange={(e) => setPerSqft(e.target.value)}
+                      placeholder="0.75"
+                    />
                   </div>
                 ) : (
                   <div className="space-y-1">
                     <Label className="text-xs">Rate per acre ($)</Label>
-                    <Input inputMode="decimal" value={perAcre} onChange={(e) => setPerAcre(e.target.value)} placeholder="300.00" />
+                    <Input
+                      inputMode="decimal"
+                      value={perAcre}
+                      onChange={(e) => setPerAcre(e.target.value)}
+                      placeholder="300.00"
+                    />
                   </div>
                 )}
                 <div className="space-y-1">
                   <Label className="text-xs">Minimum charge / visit ($)</Label>
-                  <Input inputMode="decimal" value={areaMin} onChange={(e) => setAreaMin(e.target.value)} placeholder="25.00" />
+                  <Input
+                    inputMode="decimal"
+                    value={areaMin}
+                    onChange={(e) => setAreaMin(e.target.value)}
+                    placeholder="25.00"
+                  />
                 </div>
               </div>
             </>
@@ -598,7 +632,12 @@ function ZoneCoverageSection({ zone, canEdit }: { zone: any; canEdit: boolean })
         {canEdit && (
           <div className="flex gap-2">
             {mode !== "zip" && (
-              <Button size="sm" variant="ghost" onClick={() => clearMut.mutate()} disabled={clearMut.isPending}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => clearMut.mutate()}
+                disabled={clearMut.isPending}
+              >
                 Clear
               </Button>
             )}
@@ -614,8 +653,18 @@ function ZoneCoverageSection({ zone, canEdit }: { zone: any; canEdit: boolean })
             initial={{
               mode: mode === "zip" ? "radius" : mode,
               polygon: zone.boundary ?? null,
-              centerLat: zone.center_latitude != null ? Number(zone.center_latitude) : (zone.latitude != null ? Number(zone.latitude) : null),
-              centerLng: zone.center_longitude != null ? Number(zone.center_longitude) : (zone.longitude != null ? Number(zone.longitude) : null),
+              centerLat:
+                zone.center_latitude != null
+                  ? Number(zone.center_latitude)
+                  : zone.latitude != null
+                    ? Number(zone.latitude)
+                    : null,
+              centerLng:
+                zone.center_longitude != null
+                  ? Number(zone.center_longitude)
+                  : zone.longitude != null
+                    ? Number(zone.longitude)
+                    : null,
               radiusMeters: zone.radius_meters ?? 5000,
               driveTimeMinutes: zone.drive_time_minutes ?? 15,
             }}
@@ -626,7 +675,10 @@ function ZoneCoverageSection({ zone, canEdit }: { zone: any; canEdit: boolean })
       )}
 
       {/* Zone pricing suggestions live with the zones they price (punch list #11). */}
-      <AiSection title="AI: zone pricing" description="Suggest per-zone price adjustments from the last 90 days.">
+      <AiSection
+        title="AI: zone pricing"
+        description="Suggest per-zone price adjustments from the last 90 days."
+      >
         <PricingPanel />
       </AiSection>
     </div>
