@@ -261,6 +261,30 @@ export const updateClientNotes = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+/** Full visit history for the Visits tab: scheduled window vs actual
+ * start/completion so "estimated" and "actually happened" never blur. */
+export const listClientVisitHistory = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({ clientId: z.string().uuid(), limit: z.number().int().min(1).max(200).optional() })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    await requirePermission(supabase, context.userId, "view_client_directory");
+    const { data: rows, error } = await supabase
+      .from("visits")
+      .select(
+        "id, subscription_id, scheduled_on, status, started_at, completed_at, eta_start, eta_end, skip_reason_code, skip_reason, rescheduled_from, is_deepclean, properties(street, earliest_service_time, latest_service_time), staff:assigned_staff_id(display_name)",
+      )
+      .eq("client_id", data.clientId)
+      .order("scheduled_on", { ascending: false })
+      .limit(data.limit ?? 60);
+    if (error) throw new Error(error.message);
+    return { visits: rows ?? [] };
+  });
+
 /** Recent visit history for the client detail page (newest first). */
 export const listRecentClientVisits = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -296,7 +320,7 @@ export const listDogsForClient = createServerFn({ method: "GET" })
     if (!ids.length) return { dogs: [] };
     const { data: dogs, error } = await supabase
       .from("dogs")
-      .select("id, property_id, name, breed, weight_class, temperament, notes")
+      .select("id, property_id, name, breed, weight_class, temperament, notes, active")
       .in("property_id", ids)
       .order("name");
     if (error) throw new Error(error.message);

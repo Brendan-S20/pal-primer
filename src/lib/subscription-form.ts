@@ -39,6 +39,78 @@ export type SubscriptionFormValues = {
   intervalDays: string;
 };
 
+// The five scheduling choices the UI offers (spec): calendar-monthly and
+// every-4-weeks are different things, so both exist side by side.
+export type ScheduleChoice =
+  | "weekly"
+  | "every_n_weeks"
+  | "twice_weekly"
+  | "monthly"
+  | "every_x_days"
+  | "one_time";
+
+/** Map a stored record to the UI scheduling choice. */
+export function scheduleChoiceFromRecord(s: {
+  frequency: string;
+  interval_weeks?: number | null;
+}): ScheduleChoice {
+  if (s.frequency === "biweekly") return "every_n_weeks";
+  if (s.frequency === "weekly" && (s.interval_weeks ?? 1) > 1) return "every_n_weeks";
+  if (s.frequency === "every_n_days") return "every_x_days";
+  if (s.frequency === "weekly") return "weekly";
+  if (s.frequency === "twice_weekly") return "twice_weekly";
+  if (s.frequency === "monthly") return "monthly";
+  return "one_time";
+}
+
+/** Map a UI choice (+ intervals) back to frequency + interval columns. */
+export function scheduleChoiceToFields(
+  choice: ScheduleChoice,
+  opts: { intervalWeeks?: number; intervalDays?: number },
+): { frequency: string; intervalWeeks?: number; intervalDays?: number } {
+  switch (choice) {
+    case "weekly":
+      return { frequency: "weekly" };
+    case "every_n_weeks": {
+      const n = Math.max(2, opts.intervalWeeks ?? 2);
+      // N=2 keeps the legacy biweekly value so existing reporting stays put.
+      return n === 2 ? { frequency: "biweekly" } : { frequency: "weekly", intervalWeeks: n };
+    }
+    case "twice_weekly":
+      return { frequency: "twice_weekly" };
+    case "monthly":
+      return { frequency: "monthly" };
+    case "every_x_days":
+      return { frequency: "every_n_days", intervalDays: Math.max(1, opts.intervalDays ?? 7) };
+    case "one_time":
+      return { frequency: "one_time" };
+  }
+}
+
+/** Human label for a stored subscription's cadence. */
+export function formatFrequency(s: {
+  frequency: string;
+  interval_weeks?: number | null;
+  interval_days?: number | null;
+}): string {
+  switch (s.frequency) {
+    case "weekly":
+      return (s.interval_weeks ?? 1) > 1 ? `Every ${s.interval_weeks} weeks` : "Weekly";
+    case "biweekly":
+      return "Every 2 weeks";
+    case "twice_weekly":
+      return "Twice weekly";
+    case "monthly":
+      return "Monthly (calendar)";
+    case "every_n_days":
+      return `Every ${s.interval_days ?? "?"} days`;
+    case "one_time":
+      return "One time";
+    default:
+      return s.frequency;
+  }
+}
+
 function localTodayISO(): string {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
