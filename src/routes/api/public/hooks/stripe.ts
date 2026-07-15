@@ -159,8 +159,13 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
           if (event.type === "checkout.session.completed") {
             const session = event.data.object as import("stripe").Stripe.Checkout.Session;
 
-            // Portal saved-card setup flow
-            if (session.mode === "setup" && session.metadata?.source === "portal_setup") {
+            // Saved-card setup flows: portal_setup (client, enrolls autopay)
+            // and staff_setup (office-added card, autopay preference untouched)
+            if (
+              session.mode === "setup" &&
+              (session.metadata?.source === "portal_setup" ||
+                session.metadata?.source === "staff_setup")
+            ) {
               const clientId = session.metadata.client_id;
               const setupIntentId = typeof session.setup_intent === "string"
                 ? session.setup_intent
@@ -186,7 +191,11 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                       default_payment_method_id: pmId,
                       default_card_brand: pm.card?.brand ?? null,
                       default_card_last4: pm.card?.last4 ?? null,
-                      autopay_enabled: true,
+                      // Only the client's own portal flow opts them into
+                      // autopay; a staff-added card must not.
+                      ...(session.metadata?.source === "portal_setup"
+                        ? { autopay_enabled: true }
+                        : {}),
                     }).eq("id", clientId);
                   }
                 } catch (e) {

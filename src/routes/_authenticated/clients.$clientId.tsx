@@ -9,7 +9,7 @@ import { getClient, listClientVisitHistory } from "@/lib/clients.functions";
 import { listPropertiesForClient } from "@/lib/properties.functions";
 import { listSubscriptionsForClient } from "@/lib/subscriptions.functions";
 import { listZones } from "@/lib/zones.functions";
-import { getClientCredit, getClientBillingSummary } from "@/lib/invoices.functions";
+import { getClientBillingSummary } from "@/lib/invoices.functions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/useMyRole";
 import { ClientHeader } from "@/components/client-detail/ClientHeader";
@@ -19,7 +19,8 @@ import { PropertiesTab } from "@/components/client-detail/PropertiesTab";
 import { ServicesTab } from "@/components/client-detail/ServicesTab";
 import { VisitsTab } from "@/components/client-detail/VisitsTab";
 import { ActivityTab } from "@/components/client-detail/ActivityTab";
-import { BillingPanel, AddonsPanel } from "@/components/client-detail/billing-panels";
+import { AddonsPanel } from "@/components/client-detail/billing-panels";
+import { BillingTab } from "@/components/client-detail/BillingTab";
 import { StationsPanel } from "@/components/client-detail/stations-panel";
 
 export const Route = createFileRoute("/_authenticated/clients/$clientId")({
@@ -37,7 +38,6 @@ function ClientDetail() {
   const listSubsFn = useServerFn(listSubscriptionsForClient);
   const listZonesFn = useServerFn(listZones);
   const listVisitsFn = useServerFn(listClientVisitHistory);
-  const getCreditFn = useServerFn(getClientCredit);
   const getBillingFn = useServerFn(getClientBillingSummary);
 
   const {
@@ -60,11 +60,6 @@ function ClientDetail() {
   const { data: visitsData, isLoading: visitsLoading } = useQuery({
     queryKey: ["client-visit-history", clientId],
     queryFn: () => listVisitsFn({ data: { clientId } }),
-  });
-  const { data: credit } = useQuery({
-    queryKey: ["credit", clientId],
-    queryFn: () => getCreditFn({ data: { clientId } }),
-    enabled: canBill,
   });
   const { data: billing } = useQuery({
     queryKey: ["billing-summary", clientId],
@@ -151,6 +146,7 @@ function ClientDetail() {
             canBill={canBill}
             canManagePricing={canManagePricing}
           />
+          {canBill && <AddonsPanel clientId={clientId} />}
           {isCommercial && <StationsPanel clientId={clientId} properties={activeProperties} />}
         </TabsContent>
 
@@ -159,40 +155,8 @@ function ClientDetail() {
         </TabsContent>
 
         {canBill && (
-          <TabsContent value="billing" className="space-y-6">
-            <section className="rounded-lg border bg-card p-5">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-medium">Prepaid credit balance</h2>
-                <span
-                  className={`text-lg font-semibold ${(credit?.balanceCents ?? 0) < 0 ? "text-destructive" : ""}`}
-                >
-                  ${((credit?.balanceCents ?? 0) / 100).toFixed(2)}
-                </span>
-              </div>
-              {credit && credit.ledger.length > 0 ? (
-                <ul className="mt-3 divide-y text-sm">
-                  {credit.ledger.map((l: any) => (
-                    <li key={l.id} className="flex items-center justify-between py-2">
-                      <span>
-                        <span className="text-muted-foreground">
-                          {new Date(l.created_at).toLocaleDateString()}
-                        </span>
-                        <span className="ml-2">{l.note ?? l.kind}</span>
-                      </span>
-                      <span className={l.delta_cents < 0 ? "text-destructive" : "text-primary"}>
-                        {l.delta_cents < 0 ? "−" : "+"}${Math.abs(l.delta_cents / 100).toFixed(2)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-3 text-sm text-muted-foreground">No credit activity yet.</p>
-              )}
-            </section>
-
-            <BillingPanel clientId={clientId} />
-
-            <AddonsPanel clientId={clientId} />
+          <TabsContent value="billing">
+            <BillingTab clientId={clientId} />
           </TabsContent>
         )}
 

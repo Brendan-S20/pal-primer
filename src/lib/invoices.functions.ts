@@ -83,6 +83,22 @@ export const generateInvoiceForClient = createServerFn({ method: "POST" })
       _through: data.through,
     });
     if (error) throw new Error(error.message);
+    if (id) {
+      const { logActivity } = await import("@/lib/activity.server");
+      const { data: c } = await supabase
+        .from("clients")
+        .select("organization_id")
+        .eq("id", data.clientId)
+        .single();
+      if (c)
+        await logActivity(supabase, {
+          orgId: c.organization_id,
+          clientId: data.clientId,
+          actorUserId: context.userId,
+          kind: "invoice.generated",
+          summary: `Generated invoice #${String(id).slice(0, 8)} through ${data.through}`,
+        });
+    }
     return { invoiceId: id as string };
   });
 
@@ -152,6 +168,14 @@ export const createManualInvoice = createServerFn({ method: "POST" })
       await supabase.from("invoices").delete().eq("id", inv.id);
       throw new Error(lErr.message);
     }
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId,
+      clientId: data.clientId,
+      actorUserId: context.userId,
+      kind: "invoice.created",
+      summary: `Created manual invoice #${String(inv.id).slice(0, 8)} for $${(total / 100).toFixed(2)}`,
+    });
     return { invoiceId: inv.id as string, totalCents: total };
   });
 
@@ -162,6 +186,21 @@ export const voidInvoice = createServerFn({ method: "POST" })
     await requirePermission(context.supabase, context.userId, "manage_client_billing");
     const { error } = await context.supabase.rpc("void_invoice", { _invoice_id: data.id });
     if (error) throw new Error(error.message);
+    const { data: inv } = await context.supabase
+      .from("invoices")
+      .select("organization_id, client_id")
+      .eq("id", data.id)
+      .single();
+    if (inv) {
+      const { logActivity } = await import("@/lib/activity.server");
+      await logActivity(context.supabase, {
+        orgId: inv.organization_id,
+        clientId: inv.client_id,
+        actorUserId: context.userId,
+        kind: "invoice.voided",
+        summary: `Voided invoice #${data.id.slice(0, 8)}`,
+      });
+    }
     return { ok: true };
   });
 

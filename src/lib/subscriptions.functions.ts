@@ -364,6 +364,55 @@ export const deleteDraftSubscription = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// ── Standard pricing (client detail refactor) ─────────────────────────────
+//
+// The org-wide "Standard Price" that zone pricing is compared against in
+// the precedence display (Standard -> Zone -> Custom -> Promotion -> Final).
+// Null means the org hasn't set one and the comparison row is hidden.
+
+export const getStandardPricing = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { resolveCaller } = await import("@/lib/authz.server");
+    const { orgId } = await resolveCaller(supabase, userId);
+    const { data, error } = await supabase
+      .from("organizations")
+      .select("std_base_price_cents, std_per_dog_addl_cents, frequency_multipliers")
+      .eq("id", orgId)
+      .single();
+    if (error) throw new Error(error.message);
+    return {
+      basePriceCents: data.std_base_price_cents ?? null,
+      perDogAddlCents: data.std_per_dog_addl_cents ?? null,
+      frequencyMultipliers: (data.frequency_multipliers ?? {}) as Record<string, number>,
+    };
+  });
+
+export const updateStandardPricing = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        basePriceCents: z.number().int().min(0).max(1_000_000).nullable(),
+        perDogAddlCents: z.number().int().min(0).max(1_000_000).nullable(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const orgId = await loadOrgForCaller(context.supabase, context.userId);
+    // The org UPDATE policy is owner-only, but manage_pricing includes
+    // office managers; this SECURITY DEFINER RPC re-checks the caller's
+    // role in the database and can only touch the two pricing columns.
+    const { error } = await context.supabase.rpc("update_org_standard_pricing", {
+      _org_id: orgId,
+      _std_base_price_cents: data.basePriceCents as never,
+      _std_per_dog_addl_cents: data.perDogAddlCents as never,
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 // ── Seasonal deep-clean settings ─────────────────────────────────────────
 
 async function loadOrgForCaller(supabase: any, userId: string) {
@@ -402,14 +451,14 @@ export const updateDeepCleanSettings = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const orgId = await loadOrgForCaller(context.supabase, context.userId);
-    const { error } = await context.supabase
-      .from("organizations")
-      .update({
-        seasonal_deepclean_enabled: data.enabled,
-        seasonal_deepclean_months: data.months,
-        seasonal_deepclean_charge_cents: data.chargeCents,
-      })
-      .eq("id", orgId);
+    // Same owner-only org UPDATE policy gap: office managers hold
+    // manage_pricing, so route through the role-checked RPC.
+    const { error } = await context.supabase.rpc("update_org_deepclean_settings", {
+      _org_id: orgId,
+      _enabled: data.enabled,
+      _months: data.months,
+      _charge_cents: data.chargeCents,
+    });
     if (error) throw new Error(error.message);
     return { ok: true };
   });

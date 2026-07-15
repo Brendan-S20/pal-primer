@@ -47,6 +47,21 @@ export async function markInvoicePaidFromStripe(
     raw_event: JSON.parse(JSON.stringify(args.raw ?? null)),
   });
 
+  // Activity timeline: payments are meaningful changes (spec). Service-role
+  // write, so the actor is the payment processor, not a user.
+  try {
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabaseAdmin, {
+      orgId: args.organizationId,
+      clientId,
+      actorLabel: "Stripe",
+      kind: "payment.received",
+      summary: `Payment of $${(args.amountCents / 100).toFixed(2)} received for invoice #${args.invoiceId.slice(0, 8)}`,
+    });
+  } catch (e) {
+    console.warn("payment activity log failed", e);
+  }
+
   if (clientId) {
     try {
       const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");

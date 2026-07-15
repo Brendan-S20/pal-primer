@@ -5458,6 +5458,23 @@ export type Database = {
           }
       slugify: { Args: { _txt: string }; Returns: string }
       start_visit: { Args: { _visit_id: string }; Returns: undefined }
+      update_org_deepclean_settings: {
+        Args: {
+          _charge_cents: number
+          _enabled: boolean
+          _months: number[]
+          _org_id: string
+        }
+        Returns: undefined
+      }
+      update_org_standard_pricing: {
+        Args: {
+          _org_id: string
+          _std_base_price_cents: number
+          _std_per_dog_addl_cents: number
+        }
+        Returns: undefined
+      }
       void_addon_charge: { Args: { _charge_id: string }; Returns: undefined }
       void_invoice: { Args: { _invoice_id: string }; Returns: undefined }
       zone_profitability: {

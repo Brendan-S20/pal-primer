@@ -9,7 +9,9 @@ export interface ActivityEntry {
   clientId?: string | null;
   propertyId?: string | null;
   subscriptionId?: string | null;
-  actorUserId: string;
+  /** Omit for system events written via the service-role client (webhooks,
+   * nightly jobs) — pair those with an actorLabel like "Stripe". */
+  actorUserId?: string | null;
   actorLabel?: string | null;
   /** Stable machine kind, e.g. "client.updated", "service.paused". */
   kind: string;
@@ -24,7 +26,7 @@ export async function logActivity(supabase: any, entry: ActivityEntry): Promise<
     client_id: entry.clientId ?? null,
     property_id: entry.propertyId ?? null,
     subscription_id: entry.subscriptionId ?? null,
-    actor_user_id: entry.actorUserId,
+    actor_user_id: entry.actorUserId ?? null,
     actor_label: entry.actorLabel ?? null,
     kind: entry.kind,
     summary: entry.summary.slice(0, 500),
