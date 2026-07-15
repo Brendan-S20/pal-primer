@@ -11,6 +11,7 @@ import { Eye, Pin, PinOff, Trash2, Wrench } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
   listClientNotes,
   createClientNote,
@@ -56,6 +57,7 @@ export function NotesPanel({
   compact?: boolean;
 }) {
   const qc = useQueryClient();
+  const { confirm, dialog } = useConfirmDialog();
   const listFn = useServerFn(listClientNotes);
   const createFn = useServerFn(createClientNote);
   const updateFn = useServerFn(updateClientNote);
@@ -96,6 +98,7 @@ export function NotesPanel({
 
   return (
     <section className={compact ? "" : "rounded-lg border bg-card p-5"}>
+      {dialog}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-medium">Notes</h2>
         <div className="flex gap-1" role="tablist" aria-label="Note visibility">
@@ -149,8 +152,15 @@ export function NotesPanel({
                   <button
                     type="button"
                     aria-label="Delete note"
-                    onClick={() => {
-                      if (window.confirm("Delete this note?")) delMut.mutate(n.id);
+                    onClick={async () => {
+                      if (
+                        await confirm({
+                          title: "Delete this note?",
+                          destructive: true,
+                          confirmLabel: "Delete note",
+                        })
+                      )
+                        delMut.mutate(n.id);
                     }}
                     className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
                   >

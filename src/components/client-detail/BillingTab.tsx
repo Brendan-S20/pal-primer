@@ -15,6 +15,7 @@ import {
   startCardSetupForClient,
 } from "@/lib/payment-methods.functions";
 import { BillingPanel, AutopayResume } from "@/components/client-detail/billing-panels";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 
 export function BillingTab({ clientId }: { clientId: string }) {
   const qc = useQueryClient();
@@ -135,6 +136,7 @@ export function BillingTab({ clientId }: { clientId: string }) {
 
 function PaymentMethodsPanel({ clientId }: { clientId: string }) {
   const qc = useQueryClient();
+  const { confirm, dialog } = useConfirmDialog();
   const listFn = useServerFn(listClientPaymentMethods);
   const setDefaultFn = useServerFn(setDefaultPaymentMethod);
   const removeFn = useServerFn(removePaymentMethod);
@@ -179,6 +181,7 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
 
   return (
     <section className="rounded-lg border bg-card p-5">
+      {dialog}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-medium">Payment methods</h2>
@@ -233,8 +236,15 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
                     size="sm"
                     variant="ghost"
                     className="text-muted-foreground hover:text-destructive"
-                    onClick={() => {
-                      if (window.confirm(`Remove ${m.brand} ····${m.last4}?`)) removeMut.mutate(m.id);
+                    onClick={async () => {
+                      if (
+                        await confirm({
+                          title: `Remove ${m.brand} ····${m.last4}?`,
+                          destructive: true,
+                          confirmLabel: "Remove card",
+                        })
+                      )
+                        removeMut.mutate(m.id);
                     }}
                     disabled={removeMut.isPending}
                   >

@@ -274,7 +274,7 @@ export const listClientVisitHistory = createServerFn({ method: "GET" })
     const { supabase } = context;
     await requirePermission(supabase, context.userId, "view_client_directory");
     const select =
-      "id, subscription_id, scheduled_on, status, started_at, completed_at, eta_start, eta_end, skip_reason_code, skip_reason, rescheduled_from, is_deepclean, properties(street, earliest_service_time, latest_service_time), staff:assigned_staff_id(display_name)";
+      "id, subscription_id, property_id, scheduled_on, status, started_at, completed_at, eta_start, eta_end, skip_reason_code, skip_reason, rescheduled_from, is_deepclean, properties(street, earliest_service_time, latest_service_time), staff:assigned_staff_id(display_name)";
     const limit = data.limit ?? 100;
     const today = new Date().toISOString().slice(0, 10);
     // Two windows so a heavily scheduled client (many future visits) can't
@@ -573,6 +573,15 @@ export const onboardClient = createServerFn({ method: "POST" })
       longitude = geo?.longitude ?? null;
     } catch {}
 
+    // Zone detection must run on EVERY property creation path, not just the
+    // client-detail drawer (QA follow-up 1.1: wizard-created properties had
+    // no zone even when a ZIP-covered zone existed).
+    const { detectZoneId } = await import("@/lib/properties.functions");
+    const autoZoneId = await detectZoneId(supabase, orgId, {
+      postalCode: data.postalCode,
+      point: latitude != null && longitude != null ? { lat: latitude, lng: longitude } : null,
+    });
+
     const hz = data.hazards ?? {};
     const { data: pRow, error: pErr } = await supabase
       .from("properties")
@@ -584,6 +593,9 @@ export const onboardClient = createServerFn({ method: "POST" })
         region: data.region || null,
         postal_code: data.postalCode,
         gate_code: data.gateCode || null,
+        address_source: "manual",
+        auto_zone_id: autoZoneId,
+        zone_id: autoZoneId,
         yard_size: data.yardSize ?? null,
         visit_contact_name: data.visitContactName || null,
         visit_contact_phone: data.visitContactPhone || null,
@@ -640,6 +652,11 @@ export const onboardClient = createServerFn({ method: "POST" })
         preferred_weekdays: s.preferredWeekdays?.length ? s.preferredWeekdays : null,
       });
       if (sErr) throw new Error(sErr.message);
+
+      // An active service must have visits (QA follow-up 1.6): generate the
+      // schedule immediately instead of waiting for the nightly job.
+      const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
+      await generateVisitHorizon(supabase, orgId);
     }
 
     // welcome email (best-effort)

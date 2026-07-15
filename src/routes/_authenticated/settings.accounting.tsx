@@ -10,6 +10,7 @@ import {
   syncAllPaidInvoices,
 } from "@/lib/accounting.functions";
 import { startAccountingOAuth } from "@/lib/accounting-oauth.functions";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 
 export const Route = createFileRoute("/_authenticated/settings/accounting")({
   head: () => ({ meta: [{ title: "Accounting sync · Settings" }] }),
@@ -25,6 +26,7 @@ const ACCOUNTING_CONNECT_ENABLED = false;
 
 function AccountingSettings() {
   const router = useRouter();
+  const { confirm, dialog } = useConfirmDialog();
   const conns = useQuery({
     queryKey: ["accounting-connections"],
     queryFn: () => (listAccountingConnections as any)(),
@@ -100,6 +102,7 @@ function AccountingSettings() {
 
   return (
     <div className="space-y-8">
+      {dialog}
       <div>
         <h1 className="text-2xl font-semibold">Accounting sync</h1>
         <p className="text-sm text-muted-foreground">
@@ -155,7 +158,15 @@ function AccountingSettings() {
                 <button
                   className="text-xs text-red-600 hover:underline"
                   onClick={async () => {
-                    if (!confirm(`Disconnect ${c.provider}?`)) return;
+                    if (
+                      !(await confirm({
+                        title: `Disconnect ${c.provider}?`,
+                        description: "Paid invoices will no longer sync to this provider.",
+                        destructive: true,
+                        confirmLabel: "Disconnect",
+                      }))
+                    )
+                      return;
                     await disconnect({ data: { id: c.id } });
                     conns.refetch();
                   }}

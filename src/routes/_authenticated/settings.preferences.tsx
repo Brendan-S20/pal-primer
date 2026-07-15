@@ -17,6 +17,7 @@ import { reseedDemoData } from "@/lib/demo.functions";
 import { getOrgBranding, updateOrgBranding, getMyOrg, setPortalSlug, suggestPortalSlug } from "@/lib/org.functions";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 
 export const Route = createFileRoute("/_authenticated/settings/preferences")({
   component: PreferencesPage,
@@ -324,6 +325,7 @@ function BrandingCard() {
 
 function DemoDataCard() {
   const { role } = useMyRole();
+  const { confirm, dialog } = useConfirmDialog();
   const reseedFn = useServerFn(reseedDemoData);
   const mut = useMutation({
     mutationFn: () => reseedFn({ data: {} }),
@@ -338,6 +340,7 @@ function DemoDataCard() {
 
   return (
     <Card className="border-destructive/30">
+      {dialog}
       <CardHeader>
         <CardTitle>Demo data</CardTitle>
         <CardDescription>
@@ -352,8 +355,16 @@ function DemoDataCard() {
         <Button
           variant="destructive"
           disabled={mut.isPending}
-          onClick={() => {
-            if (confirm("Wipe and reseed demo data for this organization?")) mut.mutate();
+          onClick={async () => {
+            if (
+              await confirm({
+                title: "Reseed demo data?",
+                description: "This wipes and rebuilds the demo data for this organization.",
+                destructive: true,
+                confirmLabel: "Reseed demo data",
+              })
+            )
+              mut.mutate();
           }}
         >
           {mut.isPending ? "Reseeding…" : "Reseed demo data"}

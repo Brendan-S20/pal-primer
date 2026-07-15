@@ -19,6 +19,7 @@ import {
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 
 // Moved into Settings (punch list #9): this is HoundStack's own subscription
@@ -57,6 +58,7 @@ const STATUS_TONE: Record<string, "default" | "outline" | "destructive" | "secon
 
 function BillingPage() {
   const qc = useQueryClient();
+  const { confirm, dialog } = useConfirmDialog();
   const statusFn = useServerFn(getBillingStatus);
   const portalFn = useServerFn(createBillingPortal);
   const refreshFn = useServerFn(refreshBillingStatus);
@@ -105,6 +107,7 @@ function BillingPage() {
 
   return (
     <div className="space-y-6">
+      {dialog}
       <div>
         <h1 className="text-2xl font-semibold">Billing</h1>
         <p className="text-sm text-muted-foreground">Manage your subscription to the CRM.</p>
@@ -182,8 +185,15 @@ function BillingPage() {
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
-              onClick={() => {
-                if (confirm("Cancel your subscription? You keep access until the end of the paid period.")) {
+              onClick={async () => {
+                if (
+                  await confirm({
+                    title: "Cancel your subscription?",
+                    description: "You keep access until the end of the paid period.",
+                    destructive: true,
+                    confirmLabel: "Cancel subscription",
+                  })
+                ) {
                   cancelSub.mutate();
                 }
               }}
@@ -229,6 +239,7 @@ function BillingPage() {
 // Stripe subscription item and flip the matching feature on.
 function PlatformAddonsSection() {
   const qc = useQueryClient();
+  const { confirm, dialog } = useConfirmDialog();
   const listFn = useServerFn(listPlatformAddons);
   const subFn = useServerFn(subscribePlatformAddon);
   const cancelFn = useServerFn(cancelPlatformAddon);
@@ -263,6 +274,7 @@ function PlatformAddonsSection() {
 
   return (
     <div className="rounded-lg border bg-card p-6">
+      {dialog}
       <h2 className="text-lg font-semibold">Add-ons</h2>
       <p className="text-sm text-muted-foreground">
         Optional extras that bolt onto your plan and show up on the same invoice.
@@ -293,8 +305,15 @@ function PlatformAddonsSection() {
                     variant="outline"
                     size="sm"
                     disabled={cancel.isPending}
-                    onClick={() => {
-                      if (confirm(`Remove ${a.name} from your subscription?`)) cancel.mutate(a.id);
+                    onClick={async () => {
+                      if (
+                        await confirm({
+                          title: `Remove ${a.name} from your subscription?`,
+                          destructive: true,
+                          confirmLabel: "Remove add-on",
+                        })
+                      )
+                        cancel.mutate(a.id);
                     }}
                   >
                     {cancel.isPending ? "Removing…" : "Remove add-on"}
@@ -303,12 +322,14 @@ function PlatformAddonsSection() {
                   <Button
                     size="sm"
                     disabled={subscribe.isPending}
-                    onClick={() => {
+                    onClick={async () => {
                       if (
                         a.billing_interval !== "one_time" ||
-                        confirm(
-                          `${a.name} is a one-time ${formatUsd(a.price_cents)} charge on your next invoice. Purchase?`,
-                        )
+                        (await confirm({
+                          title: `Purchase ${a.name}?`,
+                          description: `${a.name} is a one-time ${formatUsd(a.price_cents)} charge on your next invoice.`,
+                          confirmLabel: "Purchase",
+                        }))
                       ) {
                         subscribe.mutate(a.id);
                       }

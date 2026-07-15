@@ -700,6 +700,14 @@ export const commitImport = createServerFn({ method: "POST" })
                   region: m.region,
                   postal_code: m.postal_code,
                 });
+                const { detectZoneId } = await import("@/lib/properties.functions");
+                const importZoneId = await detectZoneId(supabase, orgId, {
+                  postalCode: m.postal_code,
+                  point:
+                    geo?.latitude != null && geo?.longitude != null
+                      ? { lat: geo.latitude, lng: geo.longitude }
+                      : null,
+                });
                 await supabase.from("properties").insert({
                   organization_id: orgId,
                   client_id: ins.id,
@@ -708,6 +716,9 @@ export const commitImport = createServerFn({ method: "POST" })
                   region: m.region || null,
                   postal_code: m.postal_code || null,
                   gate_code: m.gate_code || null,
+                  address_source: "manual",
+                  auto_zone_id: importZoneId,
+                  zone_id: importZoneId,
                   latitude: geo?.latitude ?? null,
                   longitude: geo?.longitude ?? null,
                 });
@@ -731,6 +742,11 @@ export const commitImport = createServerFn({ method: "POST" })
           }
         } else if (entity === "properties") {
           if (row.action === "create" && row.target_id) {
+            const { detectZoneId } = await import("@/lib/properties.functions");
+            const propZoneId = await detectZoneId(supabase, orgId, {
+              postalCode: m.postal_code,
+              point: null,
+            });
             const { data: ins, error: cErr } = await supabase
               .from("properties")
               .insert({
@@ -743,6 +759,9 @@ export const commitImport = createServerFn({ method: "POST" })
                 postal_code: m.postal_code,
                 gate_code: m.gate_code,
                 access_notes: m.notes,
+                address_source: "manual",
+                auto_zone_id: propZoneId,
+                zone_id: propZoneId,
               })
               .select("id").single();
             if (cErr) throw cErr;

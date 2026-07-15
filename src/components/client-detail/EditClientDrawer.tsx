@@ -49,10 +49,6 @@ export function EditClientDrawer({
   }, [open, initial]);
 
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
-  const cancel = () => {
-    if (dirty && !window.confirm("Discard unsaved changes?")) return;
-    onClose();
-  };
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
@@ -209,7 +205,7 @@ export function EditClientDrawer({
         <p className="text-xs text-muted-foreground">
           Billing addresses are managed by Stripe and don't need to be entered here.
         </p>
-        <DrawerFooter onCancel={cancel}>
+        <DrawerFooter>
           <Button type="submit" disabled={saveMut.isPending || !dirty}>
             {saveMut.isPending ? "Saving…" : "Save changes"}
           </Button>

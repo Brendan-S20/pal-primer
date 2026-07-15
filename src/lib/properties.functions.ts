@@ -117,7 +117,7 @@ export const createProperty = createServerFn({ method: "POST" })
     return { id: row.id as string };
   });
 
-async function detectZoneId(
+export async function detectZoneId(
   supabase: any,
   orgId: string,
   input: { postalCode?: string | null; point?: { lat: number; lng: number } | null },

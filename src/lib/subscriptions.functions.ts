@@ -98,6 +98,11 @@ export const createSubscription = createServerFn({ method: "POST" })
     // Cadence feeds the property's auto-calculated service time.
     const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
     await recomputePropertyEstimate(supabase, data.propertyId);
+
+    // An active service must have visits immediately, not after the nightly
+    // job (QA follow-up 1.6).
+    const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
+    await generateVisitHorizon(supabase, client.organization_id);
     return { id: row.id as string };
   });
 
@@ -156,11 +161,19 @@ export const updateSubscription = createServerFn({ method: "POST" })
         preferred_weekdays:
           data.preferredWeekdays && data.preferredWeekdays.length ? data.preferredWeekdays : null,
       })
-      .eq("id", data.subscriptionId);
+      .eq("id", data.subscriptionId)
+      .select("organization_id");
     if (error) throw new Error(error.message);
 
     const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
     await recomputePropertyEstimate(supabase, data.propertyId);
+
+    // Schedule inputs may have changed; top the horizon back up.
+    const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
+    const orgId = (
+      await supabase.from("subscriptions").select("organization_id").eq("id", data.subscriptionId).single()
+    ).data?.organization_id;
+    if (orgId) await generateVisitHorizon(supabase, orgId);
     return { ok: true };
   });
 
@@ -185,8 +198,6 @@ export const listSubscriptionsForClient = createServerFn({ method: "GET" })
 // Started services end, they are never deleted; deletion is reserved for
 // services with zero history (no started/completed visits, no invoice
 // lines). Pausing removes future scheduled visits; resuming regenerates.
-
-const GENERATION_HORIZON_DAYS = 60;
 
 async function loadSubForLifecycle(supabase: any, userId: string, subscriptionId: string) {
   await requirePermission(supabase, userId, "manage_pricing");
@@ -256,14 +267,8 @@ export const resumeSubscription = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
 
     // Refill the schedule out to the normal horizon.
-    const through = new Date();
-    through.setDate(through.getDate() + GENERATION_HORIZON_DAYS);
-    const throughISO = `${through.getFullYear()}-${String(through.getMonth() + 1).padStart(2, "0")}-${String(through.getDate()).padStart(2, "0")}`;
-    const { error: gErr } = await supabase.rpc("generate_visits_through", {
-      _org_id: sub.organization_id,
-      _through: throughISO,
-    });
-    if (gErr) console.warn("resume regeneration failed:", gErr.message);
+    const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
+    await generateVisitHorizon(supabase, sub.organization_id);
 
     const { logActivity } = await import("@/lib/activity.server");
     await logActivity(supabase, {

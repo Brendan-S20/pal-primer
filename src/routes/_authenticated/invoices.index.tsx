@@ -28,6 +28,7 @@ import { Download, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { downloadCsv } from "@/lib/csv";
 import { HelpTip } from "@/components/HelpTip";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 
 export const Route = createFileRoute("/_authenticated/invoices/")({
   component: InvoicesPage,
@@ -184,6 +185,7 @@ function NewInvoiceDialog() {
 }
 
 function InvoicesPage() {
+  const { confirm, dialog } = useConfirmDialog();
   const list = useServerFn(listInvoices);
   const orgFn = useServerFn(getMyOrg);
   const gen = useServerFn(generateInvoicesForOrg);
@@ -284,6 +286,7 @@ function InvoicesPage() {
 
   return (
     <div className="space-y-6">
+      {dialog}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Invoices</h1>
@@ -407,8 +410,15 @@ function InvoicesPage() {
             <Button
               size="sm"
               variant="destructive"
-              onClick={() => {
-                if (confirm(`Void ${selectedIds.length} invoice(s)?`)) voidM.mutate();
+              onClick={async () => {
+                if (
+                  await confirm({
+                    title: `Void ${selectedIds.length} invoice(s)?`,
+                    destructive: true,
+                    confirmLabel: "Void invoices",
+                  })
+                )
+                  voidM.mutate();
               }}
               disabled={voidM.isPending}
             >

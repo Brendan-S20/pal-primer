@@ -13,6 +13,7 @@ import { getMyOrg } from "@/lib/org.functions";
 import { regeneratePortalLink, readPortalVerificationCode } from "@/lib/clients.functions";
 import { sendReviewRequest, applyReferralCode } from "@/lib/reviews.functions";
 import { sendSmsToClient, listClientMessages } from "@/lib/messages.functions";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 
 export function MessageComposer({ client }: { client: any }) {
   const qc = useQueryClient();
@@ -219,6 +220,7 @@ export function ReviewsReferralPanel({ client }: { client: any }) {
 
 export function PortalLinkPanel({ clientId, portalToken }: { clientId: string; portalToken: string }) {
   const qc = useQueryClient();
+  const { confirm, dialog } = useConfirmDialog();
   const [token, setToken] = useState(portalToken);
   const [code, setCode] = useState<string | null>(null);
   const regenFn = useServerFn(regeneratePortalLink);
@@ -258,6 +260,7 @@ export function PortalLinkPanel({ clientId, portalToken }: { clientId: string; p
 
   return (
     <div className="mt-3 space-y-2 rounded-md border bg-muted/30 p-2 text-xs">
+      {dialog}
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">Client portal link:</span>
         <code className="max-w-full truncate rounded bg-background px-2 py-1">{url}</code>
@@ -280,11 +283,15 @@ export function PortalLinkPanel({ clientId, portalToken }: { clientId: string; p
           size="sm"
           variant="ghost"
           disabled={regenMut.isPending}
-          onClick={() => {
+          onClick={async () => {
             if (
-              confirm(
-                "Regenerate this client's portal link? The current link stops working and any device already signed in is logged out. Use this if the link may have leaked.",
-              )
+              await confirm({
+                title: "Regenerate this client's portal link?",
+                description:
+                  "The current link stops working and any device already signed in is logged out. Use this if the link may have leaked.",
+                destructive: true,
+                confirmLabel: "Regenerate link",
+              })
             ) {
               regenMut.mutate();
             }
