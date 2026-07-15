@@ -79,7 +79,10 @@ export function PropertyDrawer({
   // Reset only on closed -> open; background refetches must not wipe edits.
   const wasOpen = useRef(false);
   useEffect(() => {
-    if (open && !wasOpen.current) setForm(initial);
+    if (open && !wasOpen.current) {
+      setForm(initial);
+      setMatchedZoneName(null);
+    }
     wasOpen.current = open;
   }, [open, initial]);
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
@@ -96,7 +99,9 @@ export function PropertyDrawer({
     setForm((f) => ({
       ...f,
       street: r.address.street,
-      unit: r.address.unit ?? f.unit,
+      // Each match owns the unit: carrying "#4" from a previous selection
+      // onto a different address would save a wrong unit.
+      unit: r.address.unit ?? "",
       city: r.address.city,
       region: r.address.region ?? "",
       postalCode: r.address.postalCode,
@@ -107,15 +112,17 @@ export function PropertyDrawer({
     setMatchedZoneName(r.zoneName);
   }
 
-  // Any hand edit to the address after a match makes it a manual entry
-  // again: the resolved point no longer describes what's typed.
+  // Any hand edit to an address field invalidates whatever point we had:
+  // for matched addresses it demotes them to manual, and for manual ones
+  // the old geocoded pin no longer describes what's typed either — clearing
+  // the coords makes the server re-geocode the new address on save.
   function setAddressField(k: "street" | "city" | "postalCode" | "region", v: string) {
     setForm((f) => ({
       ...f,
       [k]: v,
-      ...(f.addressSource === "matched"
-        ? { addressSource: "manual" as const, latitude: null, longitude: null }
-        : {}),
+      addressSource: "manual" as const,
+      latitude: null,
+      longitude: null,
     }));
     setMatchedZoneName(null);
   }

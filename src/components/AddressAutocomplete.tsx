@@ -89,6 +89,10 @@ export function AddressAutocomplete({
     if (!enabled) return;
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     if (text.trim().length < MIN_CHARS) {
+      // Invalidate any in-flight request so its late response can't reopen
+      // the list with suggestions for the longer, now-deleted query.
+      requestSeq.current++;
+      setSearching(false);
       setSuggestions([]);
       setOpen(false);
       return;
@@ -116,6 +120,12 @@ export function AddressAutocomplete({
   }
 
   async function select(s: { id: string; mainText: string }) {
+    // Kill the pending debounce and any in-flight search: a keystroke less
+    // than 300ms before the click must not reopen the list (or bill a whole
+    // new Google session) after the form is already filled.
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    requestSeq.current++;
+    setSearching(false);
     setOpen(false);
     setResolving(true);
     try {
@@ -159,6 +169,11 @@ export function AddressAutocomplete({
           value={value}
           onChange={(e) => handleInput(e.target.value)}
           onKeyDown={onKeyDown}
+          onBlur={() => {
+            // Abandoned search: end the billing session so the next search
+            // starts a fresh token instead of riding an expired one.
+            if (!resolving) sessionToken.current = "";
+          }}
           placeholder={placeholder ?? (enabled ? "Start typing an address…" : undefined)}
           required={required}
           autoComplete="off"

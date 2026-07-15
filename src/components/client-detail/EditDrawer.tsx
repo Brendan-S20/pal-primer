@@ -51,6 +51,13 @@ export function EditDrawer({
           "flex w-full max-w-full flex-col gap-0 overflow-y-auto p-0",
           SIZE_CLASS[size],
         )}
+        onEscapeKeyDown={(e) => {
+          // Escape while an autocomplete listbox is open should close the
+          // list, not the drawer (Radix's document-level capture listener
+          // would otherwise win and trigger the discard-changes prompt).
+          const target = e.target as HTMLElement | null;
+          if (target?.getAttribute?.("aria-expanded") === "true") e.preventDefault();
+        }}
       >
         <SheetHeader className="border-b px-6 py-4 text-left">
           <SheetTitle>{title}</SheetTitle>
