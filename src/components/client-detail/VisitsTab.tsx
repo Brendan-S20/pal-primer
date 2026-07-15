@@ -7,21 +7,13 @@ import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { correctVisitTimestamps } from "@/lib/visits.functions";
 import { formatDay, formatTime, formatClock } from "@/lib/format";
+import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
-
-const STATUS_TONE: Record<string, string> = {
-  completed: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-  scheduled: "bg-blue-500/10 text-blue-700 dark:text-blue-400",
-  in_progress: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
-  skipped: "bg-muted text-muted-foreground",
-  canceled: "bg-destructive/10 text-destructive",
-};
 
 function fmtWindow(v: any): string {
   if (v.eta_start && v.eta_end) return `${formatTime(v.eta_start)} - ${formatTime(v.eta_end)}`;
@@ -254,21 +246,13 @@ function VisitTable({
                   {dur != null ? `${dur} min` : <span className="text-muted-foreground">Not recorded</span>}
                 </td>
                 <td className="px-4 py-2.5">
-                  <span
-                    className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${STATUS_TONE[v.status] ?? "bg-muted"}`}
-                  >
-                    {String(v.status).replace("_", " ")}
-                  </span>
+                  <StatusChip status={v.status} />
                   {v.status === "skipped" && (v.skip_reason_code || v.skip_reason) && (
                     <span className="ml-1 text-xs text-muted-foreground">
                       {String(v.skip_reason_code ?? v.skip_reason).replace(/_/g, " ")}
                     </span>
                   )}
-                  {v.is_deepclean && (
-                    <Badge variant="outline" className="ml-1 text-[10px]">
-                      Deep clean
-                    </Badge>
-                  )}
+                  {v.is_deepclean && <MetaChip className="ml-1">Deep clean</MetaChip>}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
                   {service ? `${service.frequency === "one_time" ? "One time" : "Recurring"} service` : "-"}
@@ -361,11 +345,7 @@ function VisitDetailDrawer({
           <div className="flex items-center justify-between">
             <dt className="text-muted-foreground">Status</dt>
             <dd>
-              <span
-                className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${STATUS_TONE[v.status] ?? "bg-muted"}`}
-              >
-                {String(v.status).replace("_", " ")}
-              </span>
+              <StatusChip status={v.status} />
             </dd>
           </div>
           <div className="flex items-center justify-between">

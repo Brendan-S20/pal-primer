@@ -13,6 +13,7 @@ import { getMyOrg } from "@/lib/org.functions";
 import { regeneratePortalLink, readPortalVerificationCode } from "@/lib/clients.functions";
 import { sendReviewRequest, applyReferralCode } from "@/lib/reviews.functions";
 import { sendSmsToClient, listClientMessages } from "@/lib/messages.functions";
+import { formatDay } from "@/lib/format";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 
 export function MessageComposer({ client, bare = false }: { client: any; bare?: boolean }) {
@@ -20,6 +21,8 @@ export function MessageComposer({ client, bare = false }: { client: any; bare?: 
   const listFn = useServerFn(listClientMessages);
   const sendFn = useServerFn(sendSmsToClient);
   const [body, setBody] = useState("");
+  // Composer collapses to a single line until focused (spec 3.4).
+  const [composerFocused, setComposerFocused] = useState(false);
 
   const messagesQ = useQuery({
     queryKey: ["client-messages", client.id],
@@ -51,7 +54,7 @@ export function MessageComposer({ client, bare = false }: { client: any; bare?: 
               key={m.id}
               className={`rounded-md px-3 py-2 text-sm ${m.direction === "outbound" ? "bg-primary/10" : "bg-muted"}`}
             >
-              <div className="text-[11px] uppercase text-muted-foreground">
+              <div className="text-xs uppercase text-foreground/70">
                 {m.direction === "outbound" ? "Sent" : "Received"}
                 {m.status ? ` · ${m.status}` : ""}
               </div>
@@ -70,7 +73,9 @@ export function MessageComposer({ client, bare = false }: { client: any; bare?: 
         <Textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          rows={3}
+          onFocus={() => setComposerFocused(true)}
+          onBlur={() => setComposerFocused(false)}
+          rows={composerFocused || body ? 3 : 1}
           maxLength={1500}
           placeholder={
             noPhone
@@ -129,9 +134,7 @@ export function ReviewsReferralPanel({ client }: { client: any }) {
     );
   };
 
-  const alreadyAsked = client.review_asked_at
-    ? new Date(client.review_asked_at).toLocaleDateString()
-    : null;
+  const alreadyAsked = client.review_asked_at ? formatDay(client.review_asked_at) : null;
 
   return (
     <section className="rounded-lg border bg-card p-5">
@@ -157,9 +160,7 @@ export function ReviewsReferralPanel({ client }: { client: any }) {
           {client.referred_by_client_id && (
             <p className="text-xs text-muted-foreground">
               Referred by another client on{" "}
-              {client.referral_applied_at
-                ? new Date(client.referral_applied_at).toLocaleDateString()
-                : "-"}
+              {client.referral_applied_at ? formatDay(client.referral_applied_at) : "-"}
             </p>
           )}
           {!client.referred_by_client_id && (
@@ -172,6 +173,7 @@ export function ReviewsReferralPanel({ client }: { client: any }) {
             >
               <Input
                 placeholder="Redeem referral code"
+                aria-label="Redeem referral code"
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 className="h-8 max-w-[180px]"

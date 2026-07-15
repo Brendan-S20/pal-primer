@@ -4,10 +4,11 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
+import { MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { EmptyState, StatusChip } from "@/components/client-detail/primitives";
 import { listStations, upsertStation, deleteStation } from "@/lib/stations.functions";
 
 export function StationsPanel({ clientId, properties }: { clientId: string; properties: any[] }) {
@@ -69,11 +70,7 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
               <div>
                 <div className="font-medium">
                   {s.label}
-                  {!s.active && (
-                    <Badge variant="outline" className="ml-2">
-                      inactive
-                    </Badge>
-                  )}
+                  {!s.active && <StatusChip status="inactive" className="ml-2" />}
                 </div>
                 <div className="text-xs text-muted-foreground">
                   {s.location_description ?? ""}
@@ -88,7 +85,14 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
           ))}
         </ul>
       ) : (
-        <p className="mt-3 text-sm text-muted-foreground">No stations added yet.</p>
+        <div className="mt-3">
+          <EmptyState
+            compact
+            icon={MapPin}
+            title="No stations added yet"
+            description="Add waste stations so techs know what to service and refill."
+          />
+        </div>
       )}
 
       <form

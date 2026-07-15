@@ -100,6 +100,24 @@ export const startVisit = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { error } = await context.supabase.rpc("start_visit", { _visit_id: data.visitId });
     if (error) throw new Error(error.message);
+    try {
+      const { data: v } = await context.supabase
+        .from("visits")
+        .select("organization_id, client_id, property_id, scheduled_on")
+        .eq("id", data.visitId)
+        .single();
+      if (v) {
+        const { logActivity } = await import("@/lib/activity.server");
+        await logActivity(context.supabase, {
+          orgId: v.organization_id,
+          clientId: v.client_id,
+          propertyId: v.property_id,
+          actorUserId: context.userId,
+          kind: "visit.started",
+          summary: `Started the visit scheduled for ${v.scheduled_on}`,
+        });
+      }
+    } catch {}
     return { ok: true };
   });
 
@@ -109,6 +127,24 @@ export const completeVisit = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { error } = await context.supabase.rpc("complete_visit", { _visit_id: data.visitId });
     if (error) throw new Error(error.message);
+    try {
+      const { data: v } = await context.supabase
+        .from("visits")
+        .select("organization_id, client_id, property_id, scheduled_on")
+        .eq("id", data.visitId)
+        .single();
+      if (v) {
+        const { logActivity } = await import("@/lib/activity.server");
+        await logActivity(context.supabase, {
+          orgId: v.organization_id,
+          clientId: v.client_id,
+          propertyId: v.property_id,
+          actorUserId: context.userId,
+          kind: "visit.completed",
+          summary: `Completed the visit scheduled for ${v.scheduled_on}`,
+        });
+      }
+    } catch {}
 
     // Fire visit-completed email (best-effort)
     try {

@@ -6,10 +6,17 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
+import { FileText, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
+import {
+  EmptyState,
+  MetaChip,
+  SectionLabel,
+  StatusChip,
+} from "@/components/client-detail/primitives";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
   getClientBillingSummary,
@@ -20,7 +27,7 @@ import {
   getInvoiceDetail,
 } from "@/lib/invoices.functions";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatDay } from "@/lib/format";
 import {
   listAddonServices,
   listClientAddons,
@@ -58,6 +65,7 @@ export function PrepayInline({
         value={count}
         onChange={(e) => setCount(e.target.value)}
         className="h-8 w-16"
+        aria-label="Number of visits to bill"
       />
       <Button type="submit" size="sm" variant="outline" disabled={disabled}>
         Bill next
@@ -150,7 +158,14 @@ export function BillingPanel({ clientId }: { clientId: string }) {
         </div>
 
         {invoices.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">No invoices yet.</p>
+          <div className="mt-3">
+            <EmptyState
+              compact
+              icon={FileText}
+              title="No invoices yet"
+              description="Generate one from unbilled visits or prepay a service."
+            />
+          </div>
         ) : (
           <ul className="mt-3 divide-y text-sm">
             {invoices.map((inv: any) => (
@@ -180,8 +195,8 @@ export function BillingPanel({ clientId }: { clientId: string }) {
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {inv.period_start
-                      ? `${inv.period_start} → ${inv.period_end}`
-                      : new Date(inv.created_at).toLocaleDateString()}
+                      ? `${formatDay(inv.period_start)} to ${formatDay(inv.period_end)}`
+                      : formatDay(inv.created_at)}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -225,14 +240,21 @@ export function BillingPanel({ clientId }: { clientId: string }) {
       <section className="rounded-lg border bg-card p-5">
         <h2 className="text-sm font-medium">Payment history</h2>
         {payments.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">No payments recorded.</p>
+          <div className="mt-3">
+            <EmptyState
+              compact
+              icon={FileText}
+              title="No payments recorded"
+              description="Payments appear here once an invoice is paid."
+            />
+          </div>
         ) : (
           <ul className="mt-3 divide-y text-sm">
             {payments.map((p: any) => (
               <li key={p.id} className="flex items-center justify-between py-2">
                 <span>
                   <span className="text-muted-foreground">
-                    {new Date(p.paid_at ?? p.created_at).toLocaleDateString()}
+                    {formatDay(p.paid_at ?? p.created_at)}
                   </span>
                   {p.invoice_id && (
                     <Link
@@ -243,9 +265,7 @@ export function BillingPanel({ clientId }: { clientId: string }) {
                       #{p.invoice_id.slice(0, 8)}
                     </Link>
                   )}
-                  <Badge variant="outline" className="ml-2 text-[10px]">
-                    {p.status}
-                  </Badge>
+                  <StatusChip status={p.status} className="ml-2" />
                 </span>
                 <span className="font-medium">${(p.amount_cents / 100).toFixed(2)}</span>
               </li>
@@ -293,14 +313,14 @@ function InvoiceDetailDrawer({
             <InvoiceStatusBadge status={inv.status} />
             <span className="text-xs text-muted-foreground">{inv.kind}</span>
             <span className="text-xs text-muted-foreground">
-              {inv.period_start ? `${inv.period_start} to ${inv.period_end}` : formatDateTime(inv.created_at)}
+              {inv.period_start
+                ? `${formatDay(inv.period_start)} to ${formatDay(inv.period_end)}`
+                : formatDateTime(inv.created_at)}
             </span>
           </div>
 
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Line items
-            </h3>
+            <SectionLabel>Line items</SectionLabel>
             {lines.length === 0 ? (
               <p className="mt-1.5 text-muted-foreground">No line items recorded.</p>
             ) : (
@@ -320,9 +340,7 @@ function InvoiceDetailDrawer({
           </div>
 
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Payment attempts
-            </h3>
+            <SectionLabel>Payment attempts</SectionLabel>
             {pays.length === 0 ? (
               <p className="mt-1.5 text-muted-foreground">No payment attempts yet.</p>
             ) : (
@@ -333,9 +351,7 @@ function InvoiceDetailDrawer({
                       {formatDateTime(p.paid_at ?? p.created_at)}
                     </span>
                     <span className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-[10px]">
-                        {p.status}
-                      </Badge>
+                      <StatusChip status={p.status} />
                       <span className="font-medium">${(p.amount_cents / 100).toFixed(2)}</span>
                     </span>
                   </li>
@@ -379,11 +395,9 @@ export function AutopayResume({
   });
   return (
     <div className="mt-2 space-y-1 text-right">
-      <Badge variant="destructive" className="text-[10px]">
-        Paused after failed charges
-      </Badge>
+      <StatusChip status="failed" label="Paused after failed charges" />
       {lastError && (
-        <div className="max-w-[220px] truncate text-[10px] text-muted-foreground" title={lastError}>
+        <div className="max-w-[220px] truncate text-xs text-muted-foreground" title={lastError}>
           {lastError}
         </div>
       )}
@@ -414,6 +428,8 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
     queryFn: () => listAddons({ data: { clientId } }),
   });
 
+  // Spec 3.4: the add forms stay collapsed behind "Add add-on".
+  const [showAdd, setShowAdd] = useState(false);
   const [svcId, setSvcId] = useState("");
   const [qty, setQty] = useState("1");
   const [priceOverride, setPriceOverride] = useState("");
@@ -492,121 +508,172 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
 
   return (
     <section className="rounded-lg border bg-card p-5">
-      <h2 className="text-sm font-medium">Add-ons &amp; cross-sells</h2>
-
-      <div className="mt-4 grid gap-6 lg:grid-cols-2">
-        <div>
-          <div className="text-xs font-medium text-muted-foreground">One-time add-on</div>
-          <form
-            className="mt-2 grid grid-cols-6 gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              chargeMut.mutate();
-            }}
-          >
-            <select
-              className="col-span-3 h-9 rounded-md border bg-background px-2 text-sm"
-              value={svcId}
-              onChange={(e) => {
-                setSvcId(e.target.value);
-                const s = services.find((x) => x.id === e.target.value);
-                if (s) setPriceOverride((s.unit_price_cents / 100).toFixed(2));
-              }}
-            >
-              <option value="">Select service…</option>
-              {services.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}: {money(s.unit_price_cents)}
-                </option>
-              ))}
-            </select>
-            <Input
-              className="col-span-1 h-9"
-              type="number"
-              min="1"
-              value={qty}
-              onChange={(e) => setQty(e.target.value)}
-              placeholder="Qty"
-            />
-            <Input
-              className="col-span-1 h-9"
-              type="number"
-              step="0.01"
-              min="0"
-              value={priceOverride}
-              onChange={(e) => setPriceOverride(e.target.value)}
-              placeholder="$"
-            />
-            <Button
-              type="submit"
-              size="sm"
-              className="col-span-1"
-              disabled={chargeMut.isPending || !svcId}
-            >
-              Add
-            </Button>
-          </form>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Prepaid clients: debits credit balance immediately. Postpaid: added to next invoice.
-          </p>
-        </div>
-
-        <div>
-          <div className="text-xs font-medium text-muted-foreground">Recurring add-on</div>
-          <form
-            className="mt-2 grid grid-cols-6 gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              subMut.mutate();
-            }}
-          >
-            <select
-              className="col-span-3 h-9 rounded-md border bg-background px-2 text-sm"
-              value={subSvcId}
-              onChange={(e) => {
-                setSubSvcId(e.target.value);
-                const s = services.find((x) => x.id === e.target.value);
-                if (s) setSubPrice((s.unit_price_cents / 100).toFixed(2));
-              }}
-            >
-              <option value="">Select service…</option>
-              {services.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-            <select
-              className="col-span-1 h-9 rounded-md border bg-background px-2 text-sm"
-              value={subFreq}
-              onChange={(e) => setSubFreq(e.target.value)}
-            >
-              <option value="weekly">Wk</option>
-              <option value="biweekly">Bi-wk</option>
-              <option value="monthly">Mo</option>
-              <option value="quarterly">Qtr</option>
-              <option value="yearly">Yr</option>
-            </select>
-            <Input
-              className="col-span-1 h-9"
-              type="number"
-              step="0.01"
-              min="0"
-              value={subPrice}
-              onChange={(e) => setSubPrice(e.target.value)}
-              placeholder="$"
-            />
-            <Button
-              type="submit"
-              size="sm"
-              className="col-span-1"
-              disabled={subMut.isPending || !subSvcId}
-            >
-              Start
-            </Button>
-          </form>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-medium">Add-ons &amp; cross-sells</h2>
+        {!showAdd && (
+          <Button size="sm" variant="outline" onClick={() => setShowAdd(true)}>
+            <Plus className="mr-1 h-3.5 w-3.5" /> Add add-on
+          </Button>
+        )}
       </div>
+
+      {showAdd && (
+        <div className="mt-4 rounded-md border bg-muted/20 p-3">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div>
+              <SectionLabel>One-time add-on</SectionLabel>
+              <form
+                className="mt-2 grid grid-cols-6 items-end gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  chargeMut.mutate();
+                }}
+              >
+                <div className="col-span-3">
+                  <Label htmlFor="addon-svc" className="text-xs">
+                    Service
+                  </Label>
+                  <select
+                    id="addon-svc"
+                    className="mt-0.5 h-9 w-full rounded-md border bg-background px-2 text-sm"
+                    value={svcId}
+                    onChange={(e) => {
+                      setSvcId(e.target.value);
+                      const s = services.find((x) => x.id === e.target.value);
+                      if (s) setPriceOverride((s.unit_price_cents / 100).toFixed(2));
+                    }}
+                  >
+                    <option value="">Select service…</option>
+                    {services.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}: {money(s.unit_price_cents)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-span-1">
+                  <Label htmlFor="addon-qty" className="text-xs">
+                    Qty
+                  </Label>
+                  <Input
+                    id="addon-qty"
+                    className="mt-0.5 h-9"
+                    type="number"
+                    min="1"
+                    value={qty}
+                    onChange={(e) => setQty(e.target.value)}
+                  />
+                </div>
+                <div className="col-span-1">
+                  <Label htmlFor="addon-price" className="text-xs">
+                    Price ($)
+                  </Label>
+                  <Input
+                    id="addon-price"
+                    className="mt-0.5 h-9"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={priceOverride}
+                    onChange={(e) => setPriceOverride(e.target.value)}
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  size="sm"
+                  className="col-span-1"
+                  disabled={chargeMut.isPending || !svcId}
+                >
+                  Add
+                </Button>
+              </form>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Prepaid clients: debits credit balance immediately. Postpaid: added to next invoice.
+              </p>
+            </div>
+
+            <div>
+              <SectionLabel>Recurring add-on</SectionLabel>
+              <form
+                className="mt-2 grid grid-cols-6 items-end gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  subMut.mutate();
+                }}
+              >
+                <div className="col-span-3">
+                  <Label htmlFor="addon-sub-svc" className="text-xs">
+                    Service
+                  </Label>
+                  <select
+                    id="addon-sub-svc"
+                    className="mt-0.5 h-9 w-full rounded-md border bg-background px-2 text-sm"
+                    value={subSvcId}
+                    onChange={(e) => {
+                      setSubSvcId(e.target.value);
+                      const s = services.find((x) => x.id === e.target.value);
+                      if (s) setSubPrice((s.unit_price_cents / 100).toFixed(2));
+                    }}
+                  >
+                    <option value="">Select service…</option>
+                    {services.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-span-1">
+                  <Label htmlFor="addon-sub-freq" className="text-xs">
+                    Repeats
+                  </Label>
+                  <select
+                    id="addon-sub-freq"
+                    className="mt-0.5 h-9 w-full rounded-md border bg-background px-2 text-sm"
+                    value={subFreq}
+                    onChange={(e) => setSubFreq(e.target.value)}
+                  >
+                    <option value="weekly">Wk</option>
+                    <option value="biweekly">Bi-wk</option>
+                    <option value="monthly">Mo</option>
+                    <option value="quarterly">Qtr</option>
+                    <option value="yearly">Yr</option>
+                  </select>
+                </div>
+                <div className="col-span-1">
+                  <Label htmlFor="addon-sub-price" className="text-xs">
+                    Price ($)
+                  </Label>
+                  <Input
+                    id="addon-sub-price"
+                    className="mt-0.5 h-9"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={subPrice}
+                    onChange={(e) => setSubPrice(e.target.value)}
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  size="sm"
+                  className="col-span-1"
+                  disabled={subMut.isPending || !subSvcId}
+                >
+                  Start
+                </Button>
+              </form>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="mt-3 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            onClick={() => setShowAdd(false)}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {subs.length > 0 && (
         <div className="mt-6">
@@ -617,13 +684,9 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
                 <span>
                   {s.addon_services?.name}: {money(s.price_cents)} · {s.frequency}
                   <span className="ml-2 text-xs text-muted-foreground">
-                    next {s.next_charge_on}
+                    next {formatDay(s.next_charge_on)}
                   </span>
-                  {s.status !== "active" && (
-                    <Badge variant="outline" className="ml-2">
-                      {s.status}
-                    </Badge>
-                  )}
+                  {s.status !== "active" && <StatusChip status={s.status} className="ml-2" />}
                 </span>
                 <div className="flex gap-1">
                   {s.status === "active" ? (
@@ -675,7 +738,7 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
               .map((c) => (
                 <li key={c.id} className="flex items-center justify-between py-1.5">
                   <span>
-                    <span className="text-muted-foreground">{c.occurred_on}</span>
+                    <span className="text-muted-foreground">{formatDay(c.occurred_on)}</span>
                     <span className="ml-2">{c.description}</span>
                     {c.quantity > 1 && (
                       <span className="ml-1 text-xs text-muted-foreground">× {c.quantity}</span>
@@ -707,19 +770,13 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
             {charges.slice(0, 12).map((c) => (
               <li key={c.id} className="flex items-center justify-between py-2">
                 <span>
-                  <span className="text-muted-foreground">{c.occurred_on}</span>
+                  <span className="text-muted-foreground">{formatDay(c.occurred_on)}</span>
                   <span className="ml-2">{c.description}</span>
                   {c.quantity > 1 && (
                     <span className="ml-1 text-xs text-muted-foreground">× {c.quantity}</span>
                   )}
-                  <Badge variant="outline" className="ml-2 text-[10px]">
-                    {c.status}
-                  </Badge>
-                  {c.source === "field" && (
-                    <Badge variant="secondary" className="ml-1 text-[10px]">
-                      field
-                    </Badge>
-                  )}
+                  <StatusChip status={c.status} className="ml-2" />
+                  {c.source === "field" && <MetaChip className="ml-1">Field</MetaChip>}
                 </span>
                 <span className="flex items-center gap-2">
                   <span className="font-medium">{money(c.amount_cents)}</span>

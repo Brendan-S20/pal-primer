@@ -6,8 +6,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { ExternalLink, KeyRound, Link2, RefreshCw } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusChip } from "@/components/client-detail/primitives";
 import { getMyOrg } from "@/lib/org.functions";
 import { regeneratePortalLink, readPortalVerificationCode } from "@/lib/clients.functions";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
@@ -100,7 +100,7 @@ function PortalStatusPanel({ client, clientId }: { client: any; clientId: string
         <div>
           <h2 className="text-sm font-medium">Client portal</h2>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm">
-            <Badge variant="secondary">Enabled</Badge>
+            <StatusChip status="enabled" />
             <span className="text-xs text-muted-foreground">Sign-in verification: {verifyDest}</span>
           </div>
           {code && (

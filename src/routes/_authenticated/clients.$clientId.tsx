@@ -9,7 +9,7 @@ import { getClient, listClientVisitHistory, listDogsForClient } from "@/lib/clie
 import { listPropertiesForClient } from "@/lib/properties.functions";
 import { listSubscriptionsForClient } from "@/lib/subscriptions.functions";
 import { listZones } from "@/lib/zones.functions";
-import { getClientBillingSummary } from "@/lib/invoices.functions";
+import { getClientBillingSummary, getClientCredit } from "@/lib/invoices.functions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/useMyRole";
 import { ClientHeader } from "@/components/client-detail/ClientHeader";
@@ -89,6 +89,12 @@ function ClientDetail() {
     queryFn: () => getBillingFn({ data: { clientId } }),
     enabled: canBill,
   });
+  const getCreditFn = useServerFn(getClientCredit);
+  const { data: credit } = useQuery({
+    queryKey: ["credit", clientId],
+    queryFn: () => getCreditFn({ data: { clientId } }),
+    enabled: canBill,
+  });
 
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
@@ -127,6 +133,7 @@ function ClientDetail() {
       <ClientHeader
         client={client}
         clientId={clientId}
+        subscriptions={subs}
         propertyCount={activeProperties.length}
         activeServiceCount={activeSubs.length}
         outstandingCents={canBill ? (billing?.openTotalCents ?? 0) : null}
@@ -136,13 +143,50 @@ function ClientDetail() {
 
       <Tabs value={tab} onValueChange={setTab} className="space-y-5">
         <TabsList className="flex h-auto w-full flex-wrap justify-start">
-          <TabsTrigger value="summary">Summary</TabsTrigger>
-          <TabsTrigger value="properties">Properties</TabsTrigger>
-          <TabsTrigger value="services">Services</TabsTrigger>
-          <TabsTrigger value="visits">Visits</TabsTrigger>
-          {canBill && <TabsTrigger value="billing">Billing</TabsTrigger>}
-          <TabsTrigger value="communication">Communication</TabsTrigger>
-          <TabsTrigger value="activity">Activity</TabsTrigger>
+          <TabsTrigger
+            value="summary"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md px-3 py-1.5"
+          >
+            Summary
+          </TabsTrigger>
+          <TabsTrigger
+            value="properties"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md px-3 py-1.5"
+          >
+            Properties
+          </TabsTrigger>
+          <TabsTrigger
+            value="services"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md px-3 py-1.5"
+          >
+            Services
+          </TabsTrigger>
+          <TabsTrigger
+            value="visits"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md px-3 py-1.5"
+          >
+            Visits
+          </TabsTrigger>
+          {canBill && (
+            <TabsTrigger
+              value="billing"
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md px-3 py-1.5"
+            >
+              Billing
+            </TabsTrigger>
+          )}
+          <TabsTrigger
+            value="communication"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md px-3 py-1.5"
+          >
+            Communication
+          </TabsTrigger>
+          <TabsTrigger
+            value="activity"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md px-3 py-1.5"
+          >
+            Activity
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="summary">
@@ -152,6 +196,10 @@ function ClientDetail() {
             properties={properties}
             subscriptions={subs}
             visits={visits}
+            dogs={dogs}
+            zones={zones}
+            creditCents={canBill ? (credit?.balanceCents ?? 0) : null}
+            billingClient={billing?.client ?? null}
             canBill={canBill}
             onGoToTab={setTab}
           />

@@ -114,6 +114,16 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
       throw new Error(msg);
     }
     await supabase.rpc("mark_review_asked", { _client_id: data.clientId });
+    try {
+      const { logActivity } = await import("@/lib/activity.server");
+      await logActivity(supabase, {
+        orgId: client.organization_id,
+        clientId: data.clientId,
+        actorUserId: context.userId,
+        kind: "review.requested",
+        summary: "Sent a review request",
+      });
+    } catch {}
     return { ok: true, channel: "email" as const };
   });
 
@@ -129,6 +139,23 @@ export const applyReferralCode = createServerFn({ method: "POST" })
       _code: data.code,
     });
     if (error) throw new Error(error.message);
+    try {
+      const { data: c } = await context.supabase
+        .from("clients")
+        .select("organization_id")
+        .eq("id", data.clientId)
+        .single();
+      if (c) {
+        const { logActivity } = await import("@/lib/activity.server");
+        await logActivity(context.supabase, {
+          orgId: c.organization_id,
+          clientId: data.clientId,
+          actorUserId: context.userId,
+          kind: "referral.applied",
+          summary: `Applied referral code ${data.code}`,
+        });
+      }
+    } catch {}
     return result as { referrer_id: string; reward_cents: number };
   });
 

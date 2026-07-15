@@ -102,9 +102,19 @@ export const updateClientNote = createServerFn({ method: "POST" })
       .from("client_notes")
       .update(patch)
       .eq("id", data.id)
-      .select("id");
+      .select("id, organization_id, client_id, audience");
     if (error) throw new Error(error.message);
-    if (!rows || rows.length === 0) throw new Error("Note not found or you can't edit it");
+    const row = rows?.[0];
+    if (!row) throw new Error("Note not found or you can't edit it");
+    if (data.body !== undefined) {
+      await logActivity(context.supabase, {
+        orgId: (row as any).organization_id,
+        clientId: (row as any).client_id,
+        actorUserId: context.userId,
+        kind: `note.updated.${(row as any).audience}`,
+        summary: "Edited a note",
+      });
+    }
     return { ok: true };
   });
 
@@ -116,8 +126,16 @@ export const deleteClientNote = createServerFn({ method: "POST" })
       .from("client_notes")
       .delete()
       .eq("id", data.id)
-      .select("id");
+      .select("id, organization_id, client_id, audience");
     if (error) throw new Error(error.message);
-    if (!rows || rows.length === 0) throw new Error("Note not found or you can't delete it");
+    const row = rows?.[0];
+    if (!row) throw new Error("Note not found or you can't delete it");
+    await logActivity(context.supabase, {
+      orgId: (row as any).organization_id,
+      clientId: (row as any).client_id,
+      actorUserId: context.userId,
+      kind: `note.deleted.${(row as any).audience}`,
+      summary: "Deleted a note",
+    });
     return { ok: true };
   });

@@ -112,6 +112,17 @@ export const createClient = createServerFn({ method: "POST" })
       .single();
     if (error) throw new Error(error.message);
 
+    {
+      const { logActivity } = await import("@/lib/activity.server");
+      await logActivity(supabase, {
+        orgId,
+        clientId: row.id as string,
+        actorUserId: userId,
+        kind: "client.created",
+        summary: `Created client ${data.displayName}`,
+      });
+    }
+
     // Fire welcome email (best-effort; never block client creation)
     if (data.primaryEmail) {
       try {
@@ -146,7 +157,7 @@ export const getClient = createServerFn({ method: "GET" })
     const { data: client, error } = await supabase
       .from("clients")
       .select(
-        "id, display_name, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused",
+        "id, display_name, first_name, last_name, company, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused",
       )
       .eq("id", data.clientId)
       .single();
@@ -163,6 +174,9 @@ export const updateClient = createServerFn({ method: "POST" })
       .object({
         clientId: z.string().uuid(),
         displayName: z.string().min(1).max(200).optional(),
+        firstName: z.string().max(100).nullable().optional(),
+        lastName: z.string().max(100).nullable().optional(),
+        company: z.string().max(200).nullable().optional(),
         primaryEmail: z.string().email().max(200).or(z.literal("")).optional(),
         primaryPhone: z.string().max(40).optional(),
         accountType: z.enum(["residential", "commercial"]).optional(),
@@ -181,7 +195,17 @@ export const updateClient = createServerFn({ method: "POST" })
 
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     const changed: string[] = [];
-    if (data.displayName !== undefined) {
+    if (data.firstName !== undefined || data.lastName !== undefined || data.company !== undefined) {
+      // Display-name logic (QA follow-up 4.2): person name wins; company
+      // stands in when there is no person name.
+      if (data.firstName !== undefined) patch.first_name = data.firstName || null;
+      if (data.lastName !== undefined) patch.last_name = data.lastName || null;
+      if (data.company !== undefined) patch.company = data.company || null;
+      const person = [data.firstName, data.lastName].filter(Boolean).join(" ").trim();
+      const derived = person || data.company || data.displayName || "";
+      if (derived) patch.display_name = derived;
+      changed.push("name");
+    } else if (data.displayName !== undefined) {
       patch.display_name = data.displayName;
       changed.push("name");
     }
@@ -223,6 +247,15 @@ export const updateClient = createServerFn({ method: "POST" })
     }
     if (changed.length === 0) return { ok: true };
 
+    // Before-image so the timeline can show before -> after (spec Stage 5).
+    const { data: beforeRow } = await supabase
+      .from("clients")
+      .select(
+        "display_name, primary_email, primary_phone, account_type, active, tags, preferred_contact, referral_source, sms_opt_out, email_opt_out",
+      )
+      .eq("id", data.clientId)
+      .single();
+
     const { data: rows, error } = await supabase
       .from("clients")
       .update(patch as never)
@@ -232,6 +265,14 @@ export const updateClient = createServerFn({ method: "POST" })
     const row = rows?.[0];
     if (!row) throw new Error("Client not found");
 
+    const beforeChanged: Record<string, unknown> = {};
+    const afterChanged: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(patch)) {
+      if (k === "updated_at") continue;
+      beforeChanged[k] = (beforeRow as any)?.[k] ?? null;
+      afterChanged[k] = v;
+    }
+
     const { logActivity } = await import("@/lib/activity.server");
     await logActivity(supabase, {
       orgId: row.organization_id,
@@ -239,7 +280,7 @@ export const updateClient = createServerFn({ method: "POST" })
       actorUserId: userId,
       kind: "client.updated",
       summary: `Updated client ${changed.join(", ")}`,
-      meta: { fields: changed },
+      meta: { fields: changed, before: beforeChanged, after: afterChanged },
     });
     return { ok: true };
   });
@@ -367,6 +408,23 @@ export const regeneratePortalLink = createServerFn({ method: "POST" })
       _client_id: data.clientId,
     });
     if (error) throw new Error(error.message);
+    try {
+      const { data: c } = await context.supabase
+        .from("clients")
+        .select("organization_id")
+        .eq("id", data.clientId)
+        .single();
+      if (c) {
+        const { logActivity } = await import("@/lib/activity.server");
+        await logActivity(context.supabase, {
+          orgId: c.organization_id,
+          clientId: data.clientId,
+          actorUserId: context.userId,
+          kind: "portal.link_regenerated",
+          summary: "Regenerated the client portal link (old link invalidated)",
+        });
+      }
+    } catch {}
     return { portalToken: newToken as string };
   });
 
@@ -659,6 +717,18 @@ export const onboardClient = createServerFn({ method: "POST" })
       await generateVisitHorizon(supabase, orgId);
     }
 
+    {
+      const { logActivity } = await import("@/lib/activity.server");
+      await logActivity(supabase, {
+        orgId,
+        clientId,
+        propertyId,
+        actorUserId: userId,
+        kind: "client.created",
+        summary: `Created client ${data.displayName} with property ${data.street}, ${data.city}`,
+      });
+    }
+
     // welcome email (best-effort)
     if (data.primaryEmail) {
       try {
@@ -680,4 +750,59 @@ export const onboardClient = createServerFn({ method: "POST" })
     }
 
     return { id: clientId };
+  });
+
+
+/** Header overflow action (QA follow-up 4.2): delete a client only when
+ * nothing references them; anything else archives instead. */
+export const deleteClientIfNoHistory = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await requirePermission(supabase, userId, "manage_settings");
+    const { data: client, error: cErr } = await supabase
+      .from("clients")
+      .select("id, organization_id, display_name")
+      .eq("id", data.clientId)
+      .single();
+    if (cErr) throw new Error(cErr.message);
+
+    const [{ count: visitCount }, { count: invoiceCount }, { count: subCount }, { count: propCount }] =
+      await Promise.all([
+        supabase.from("visits").select("id", { count: "exact", head: true }).eq("client_id", data.clientId),
+        supabase.from("invoices").select("id", { count: "exact", head: true }).eq("client_id", data.clientId),
+        supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("client_id", data.clientId),
+        supabase.from("properties").select("id", { count: "exact", head: true }).eq("client_id", data.clientId),
+      ]);
+    if ((visitCount ?? 0) > 0 || (invoiceCount ?? 0) > 0 || (subCount ?? 0) > 0)
+      throw new Error("This client has history. Mark them inactive instead of deleting.");
+
+    if ((propCount ?? 0) > 0) {
+      const { data: props } = await supabase
+        .from("properties")
+        .select("id")
+        .eq("client_id", data.clientId);
+      for (const pr of props ?? []) {
+        await supabase.from("dogs").delete().eq("property_id", pr.id);
+        await supabase.from("waste_stations").delete().eq("property_id", pr.id);
+      }
+      const { error: pDelErr } = await supabase
+        .from("properties")
+        .delete()
+        .eq("client_id", data.clientId);
+      if (pDelErr) throw new Error(pDelErr.message);
+    }
+    await supabase.from("client_notes").delete().eq("client_id", data.clientId);
+    const { error } = await supabase.from("clients").delete().eq("id", data.clientId);
+    if (error) throw new Error(error.message);
+
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: client.organization_id,
+      actorUserId: userId,
+      kind: "client.deleted",
+      summary: `Deleted client ${client.display_name} (no history)`,
+    });
+    return { ok: true };
   });

@@ -15,15 +15,24 @@ import {
   Clock,
   DoorClosed,
   Dog as DogIcon,
+  Home,
   MapPin,
+  MoreHorizontal,
   Pencil,
   Plus,
   Trash2,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { EmptyState, MetaChip, SectionLabel } from "@/components/client-detail/primitives";
+import { formatClock, formatDay } from "@/lib/format";
 import { BoundaryPreview } from "@/components/BoundaryPreview";
 import { formatArea } from "@/components/BoundarySketch";
 import {
@@ -35,7 +44,6 @@ import {
 } from "@/lib/properties.functions";
 import { listDogsForClient } from "@/lib/clients.functions";
 import { addDog, updateDog } from "@/lib/dogs.functions";
-import { updatePropertyWindow } from "@/lib/visits.functions";
 import { deriveYardSize, YARD_SIZE_LABELS } from "@/lib/yard-size";
 import { computeEstimatedMinutes, countPropertyHazards } from "@/lib/estimated-time";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
@@ -126,9 +134,13 @@ export function PropertiesTab({
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : activeProps.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          No properties yet. Add the first one to start scheduling service.
-        </div>
+        <EmptyState
+          icon={Home}
+          title="No properties yet"
+          description="Add the first one to start scheduling service."
+          actionLabel="Add property"
+          onAction={() => setDrawerProp("new")}
+        />
       ) : (
         <ul className="space-y-3">
           {activeProps.map((p: any) => (
@@ -190,7 +202,7 @@ function ArchivedPropertyRow({ property, clientId }: { property: any; clientId: 
       <span>
         {property.street}, {property.city}
         <span className="ml-2 text-xs text-muted-foreground">
-          archived {new Date(property.archived_at).toLocaleDateString()}
+          archived {formatDay(property.archived_at)}
         </span>
       </span>
       <Button size="sm" variant="outline" onClick={() => mut.mutate()} disabled={mut.isPending}>
@@ -298,18 +310,12 @@ function PropertyCard({
             {p.street}
             {p.unit ? `, ${p.unit}` : ""}, {p.city} {p.postal_code}
           </span>
-          <Badge variant={isCommercial ? "default" : "secondary"}>
-            {isCommercial ? "Commercial" : "Residential"}
-          </Badge>
+          <MetaChip>{isCommercial ? "Commercial" : "Residential"}</MetaChip>
           {effectiveZone && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <MapPin className="h-3 w-3" />
               {effectiveZone}
-              {overridden && (
-                <Badge variant="outline" className="ml-0.5 text-[10px]">
-                  Override
-                </Badge>
-              )}
+              {overridden && <MetaChip className="ml-0.5">Override</MetaChip>}
             </span>
           )}
           {effectiveMinutes ? (
@@ -353,69 +359,76 @@ function PropertyCard({
                 {p.boundary ? "Edit boundary" : "Draw boundary"}
               </Button>
             </Link>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                if (
-                  await confirm({
-                    title: "Archive this property?",
-                    description:
-                      "It disappears from schedules and operational views. Its history is kept, and you can restore it anytime.",
-                    confirmLabel: "Archive property",
-                  })
-                )
-                  archiveMut.mutate();
-              }}
-              disabled={archiveMut.isPending}
-            >
-              <Archive className="mr-1 h-3.5 w-3.5" /> Archive
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-destructive hover:text-destructive"
-              onClick={async () => {
-                const hasHistory = visitCount > 0 || subscriptions.length > 0;
-                if (hasHistory) {
-                  // PRD rule: history means archive, never delete. The modal
-                  // says which action applies, why, and what depends on it.
-                  const activeCount = subscriptions.filter((x: any) => x.status === "active").length;
-                  if (
-                    await confirm({
-                      title: "This property has history",
-                      description: (
-                        <>
-                          <p>
-                            {p.street} is referenced by {visitCount} visit
-                            {visitCount === 1 ? "" : "s"} and {subscriptions.length} service
-                            {subscriptions.length === 1 ? "" : "s"}
-                            {activeCount > 0 ? ` (${activeCount} active)` : ""}, so it can't be
-                            deleted. Archiving keeps that history and removes the property from
-                            operational views.
-                          </p>
-                        </>
-                      ),
-                      confirmLabel: "Archive instead",
-                    })
-                  )
-                    archiveMut.mutate();
-                  return;
-                }
-                if (
-                  await confirm({
-                    title: "Delete this property?",
-                    description: `${p.street} has no visits, services, or invoices. Deleting removes it and its dog records permanently.`,
-                    confirmLabel: "Delete property",
-                    destructive: true,
-                  })
-                )
-                  deleteMut.mutate();
-              }}
-              disabled={deleteMut.isPending}
-            >
-              <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="h-10 w-10 p-0" aria-label="More actions">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  disabled={archiveMut.isPending}
+                  onSelect={async () => {
+                    if (
+                      await confirm({
+                        title: "Archive this property?",
+                        description:
+                          "It disappears from schedules and operational views. Its history is kept, and you can restore it anytime.",
+                        confirmLabel: "Archive property",
+                      })
+                    )
+                      archiveMut.mutate();
+                  }}
+                >
+                  <Archive className="mr-2 h-3.5 w-3.5" /> Archive property…
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  disabled={deleteMut.isPending}
+                  onSelect={async () => {
+                    const hasHistory = visitCount > 0 || subscriptions.length > 0;
+                    if (hasHistory) {
+                      // PRD rule: history means archive, never delete. The modal
+                      // says which action applies, why, and what depends on it.
+                      const activeCount = subscriptions.filter(
+                        (x: any) => x.status === "active",
+                      ).length;
+                      if (
+                        await confirm({
+                          title: "This property has history",
+                          description: (
+                            <>
+                              <p>
+                                {p.street} is referenced by {visitCount} visit
+                                {visitCount === 1 ? "" : "s"} and {subscriptions.length} service
+                                {subscriptions.length === 1 ? "" : "s"}
+                                {activeCount > 0 ? ` (${activeCount} active)` : ""}, so it can't be
+                                deleted. Archiving keeps that history and removes the property from
+                                operational views.
+                              </p>
+                            </>
+                          ),
+                          confirmLabel: "Archive instead",
+                        })
+                      )
+                        archiveMut.mutate();
+                      return;
+                    }
+                    if (
+                      await confirm({
+                        title: "Delete this property?",
+                        description: `${p.street} has no visits, services, or invoices. Deleting removes it and its dog records permanently.`,
+                        confirmLabel: "Delete property",
+                        destructive: true,
+                      })
+                    )
+                      deleteMut.mutate();
+                  }}
+                >
+                  <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete property…
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
@@ -453,22 +466,18 @@ function PropertyCard({
             <div className="space-y-3 text-sm">
               {/* Zone */}
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Zone
-                </div>
+                <SectionLabel>Zone</SectionLabel>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <span>{effectiveZone ?? "No zone matched"}</span>
                   {overridden ? (
                     <>
-                      <Badge variant="outline">Override</Badge>
+                      <MetaChip>Override</MetaChip>
                       <span className="text-xs text-muted-foreground">
                         detected: {detectedZone ?? "none"} · {p.zone_override_reason}
                       </span>
                     </>
                   ) : (
-                    <Badge variant="secondary" className="text-[10px]">
-                      Detected automatically
-                    </Badge>
+                    <MetaChip>Detected automatically</MetaChip>
                   )}
                   {canManagePricing && (
                     <ZoneOverrideControl property={p} zones={zones} clientId={clientId} />
@@ -478,24 +487,20 @@ function PropertyCard({
 
               {/* Estimated time */}
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Estimated time on site
-                </div>
+                <SectionLabel>Estimated time on site</SectionLabel>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <span className="font-medium">
                     {effectiveMinutes ? `${effectiveMinutes} min` : "Not enough data yet"}
                   </span>
                   {isOverride ? (
                     <>
-                      <Badge variant="outline">Override</Badge>
+                      <MetaChip>Override</MetaChip>
                       <span className="text-xs text-muted-foreground">
                         {p.est_override_reason} · auto estimate: {computed ?? "-"} min
                       </span>
                     </>
                   ) : (
-                    <Badge variant="secondary" className="text-[10px]">
-                      Auto-calculated
-                    </Badge>
+                    <MetaChip>Auto-calculated</MetaChip>
                   )}
                   {canManagePricing && (
                     <EstimateOverrideControl property={p} clientId={clientId} computed={computed} />
@@ -505,19 +510,13 @@ function PropertyCard({
 
               {/* Access */}
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Access
-                </div>
+                <SectionLabel>Access</SectionLabel>
                 <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-muted-foreground">
-                  {p.address_source === "matched" ? (
-                    <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:text-blue-400">
-                      Address Matched, Not USPS Verified
-                    </span>
-                  ) : (
-                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium">
-                      Address entered manually
-                    </span>
-                  )}
+                  <MetaChip>
+                    {p.address_source === "matched"
+                      ? "Address Matched, Not USPS Verified"
+                      : "Address entered manually"}
+                  </MetaChip>
                   {p.gate_code ? (
                     <span className="inline-flex items-center gap-1">
                       <DoorClosed className="h-3.5 w-3.5" />
@@ -540,14 +539,12 @@ function PropertyCard({
               {/* Hazards */}
               {hazards.length > 0 && (
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Hazards
-                  </div>
+                  <SectionLabel>Hazards</SectionLabel>
                   <div className="mt-1 flex flex-wrap gap-1">
                     {hazards.map(([k, label]) => (
                       <span
                         key={k}
-                        className="rounded bg-destructive/10 px-1.5 py-0.5 text-[11px] font-medium text-destructive"
+                        className="rounded bg-destructive/10 px-1.5 py-0.5 text-xs font-medium text-destructive"
                       >
                         {label}
                       </span>
@@ -562,9 +559,7 @@ function PropertyCard({
               {/* Commercial-only fields */}
               {isCommercial && (
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Commercial details
-                  </div>
+                  <SectionLabel>Commercial details</SectionLabel>
                   <div className="mt-1 space-y-0.5 text-muted-foreground">
                     {(p.commercial_sections ?? []).length > 0 && (
                       <div>Sections: {(p.commercial_sections ?? []).join(", ")}</div>
@@ -598,71 +593,28 @@ function PropertyCard({
   );
 }
 
-// ── Service window (redesigned: earliest / latest / anytime) ───────────────
+// ── Service window (read-only per spec 3.4; edited in the property drawer) ──
 
 function ServiceWindowRow({ property }: { property: any }) {
-  const upd = useServerFn(updatePropertyWindow);
-  const qc = useQueryClient();
-  const mut = useMutation({
-    mutationFn: (patch: any) => upd({ data: { propertyId: property.id, ...patch } }),
-    onSuccess: () => {
-      toast.success("Service window saved");
-      qc.invalidateQueries({ queryKey: ["properties"] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const anytime = !property.earliest_service_time && !property.latest_service_time;
+  const early = property.earliest_service_time as string | null;
+  const late = property.latest_service_time as string | null;
+  const display =
+    early && late
+      ? `${formatClock(early)} – ${formatClock(late)}`
+      : early
+        ? `After ${formatClock(early)}`
+        : late
+          ? `Before ${formatClock(late)}`
+          : null;
 
   return (
     <div>
-      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Service window
-      </div>
-      <p className="mt-0.5 text-xs text-muted-foreground">
-        When the team may arrive. This is a window, not the actual arrival time.
-      </p>
-      <div className="mt-2 flex flex-wrap items-end gap-3">
-        <div>
-          <Label htmlFor={`win-early-${property.id}`} className="text-xs text-muted-foreground">
-            Earliest arrival
-          </Label>
-          <Input
-            id={`win-early-${property.id}`}
-            type="time"
-            className="mt-0.5 h-9 w-32"
-            defaultValue={property.earliest_service_time?.slice(0, 5) ?? ""}
-            onBlur={(e) => mut.mutate({ earliest_service_time: e.target.value || null })}
-          />
-        </div>
-        <div>
-          <Label htmlFor={`win-late-${property.id}`} className="text-xs text-muted-foreground">
-            Latest arrival
-          </Label>
-          <Input
-            id={`win-late-${property.id}`}
-            type="time"
-            className="mt-0.5 h-9 w-32"
-            defaultValue={property.latest_service_time?.slice(0, 5) ?? ""}
-            onBlur={(e) => mut.mutate({ latest_service_time: e.target.value || null })}
-          />
-        </div>
-        {anytime ? (
-          <Badge variant="secondary" className="mb-2">
-            Anytime
-          </Badge>
-        ) : (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="mb-1 text-xs text-muted-foreground"
-            onClick={() =>
-              mut.mutate({ earliest_service_time: null, latest_service_time: null })
-            }
-          >
-            Clear (anytime)
-          </Button>
-        )}
+      <SectionLabel>Service window</SectionLabel>
+      <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+        {display ? <span className="font-medium">{display}</span> : <MetaChip>Anytime</MetaChip>}
+        <span className="text-xs text-muted-foreground">
+          When the team may arrive. Edit it from the property drawer.
+        </span>
       </div>
     </div>
   );
@@ -741,9 +693,7 @@ function DogsSection({
         </div>
       )}
       <div className="flex items-center justify-between">
-        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Dogs ({activeDogs.length})
-        </div>
+        <SectionLabel>Dogs ({activeDogs.length})</SectionLabel>
         {!adding && (
           <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setAdding(true)}>
             <Plus className="mr-1 h-3 w-3" /> Add dog
@@ -759,7 +709,7 @@ function DogsSection({
               {d.breed && <span className="text-xs text-muted-foreground">{d.breed}</span>}
               {d.weight_class && <span className="text-xs text-muted-foreground">{d.weight_class}</span>}
               <span
-                className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${TEMPERAMENT_TONE[d.temperament ?? "unknown"]}`}
+                className={`rounded px-1.5 py-0.5 text-xs font-medium ${TEMPERAMENT_TONE[d.temperament ?? "unknown"]}`}
               >
                 {d.temperament ?? "unknown"}
               </span>
@@ -776,8 +726,15 @@ function DogsSection({
           </li>
         ))}
         {activeDogs.length === 0 && !adding && (
-          <li className="rounded-md border border-dashed p-2 text-center text-xs text-muted-foreground">
-            No dogs recorded for this property.
+          <li>
+            <EmptyState
+              compact
+              icon={DogIcon}
+              title="No dogs recorded"
+              description="Dog records here drive service dog counts and safety notes."
+              actionLabel="Add dog"
+              onAction={() => setAdding(true)}
+            />
           </li>
         )}
       </ul>
