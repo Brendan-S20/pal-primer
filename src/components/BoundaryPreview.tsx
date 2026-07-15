@@ -36,6 +36,7 @@ export function BoundaryPreview({
     const poly = L.polygon(pts, { color: "#16a34a", weight: 2, fillOpacity: 0.15 });
     poly.addTo(map);
     map.fitBounds(poly.getBounds(), { padding: [24, 24], maxZoom: 20 });
+    requestAnimationFrame(() => map.invalidateSize());
 
     return () => {
       map.remove();

@@ -110,7 +110,7 @@ export function ZonesOverviewMap({ zones, height = 340 }: { zones: OverviewZone[
     <div
       ref={containerRef}
       style={{ height, width: "100%" }}
-      className="z-0 overflow-hidden rounded-lg border"
+      className="isolate z-0 overflow-hidden rounded-lg border"
     />
   );
 }

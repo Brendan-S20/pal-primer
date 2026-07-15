@@ -100,6 +100,8 @@ export function PropertyDrawer({
     if (open && !wasOpen.current) {
       setForm(initial);
       setMatchedZoneName(null);
+      setBoundaryDirty(false);
+      setOverridesDirty(false);
     }
     wasOpen.current = open;
   }, [open, initial]);
@@ -108,6 +110,10 @@ export function PropertyDrawer({
     setForm((f) => ({ ...f, [k]: v }));
 
   const [matchedZoneName, setMatchedZoneName] = useState<string | null>(null);
+  // The inline boundary sketch and override inputs carry their own unsaved
+  // state; the close guard has to know about them too.
+  const [boundaryDirty, setBoundaryDirty] = useState(false);
+  const [overridesDirty, setOverridesDirty] = useState(false);
 
   function applyResolved(r: ResolvedAddress) {
     setForm((f) => ({
@@ -224,7 +230,7 @@ export function PropertyDrawer({
       title={property ? "Edit property" : "Add property"}
       description="The service zone is detected automatically from the address. Draw the boundary on the map to set yard size and estimated time."
       size="lg"
-      dirty={dirty}
+      dirty={dirty || boundaryDirty || overridesDirty}
     >
       <form
         className="space-y-4"
@@ -442,11 +448,20 @@ export function PropertyDrawer({
         </div>
 
         {property && (
-          <BoundarySection property={property} clientId={clientId} />
+          <BoundarySection
+            property={property}
+            clientId={clientId}
+            onDirtyChange={setBoundaryDirty}
+          />
         )}
 
         {property && canManagePricing && (
-          <OverridesSection property={property} clientId={clientId} zones={zones} />
+          <OverridesSection
+            property={property}
+            clientId={clientId}
+            zones={zones}
+            onDirtyChange={setOverridesDirty}
+          />
         )}
 
         <DrawerFooter>
@@ -464,7 +479,15 @@ export function PropertyDrawer({
 // Its own save button: redrawing a yard shouldn't be coupled to the form's
 // Save, and the DB trigger recalculates yard size + estimate on save.
 
-function BoundarySection({ property, clientId }: { property: any; clientId: string }) {
+function BoundarySection({
+  property,
+  clientId,
+  onDirtyChange,
+}: {
+  property: any;
+  clientId: string;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
   const qc = useQueryClient();
   const saveFn = useServerFn(updatePropertyBoundary);
   const mut = useMutation({
@@ -474,6 +497,7 @@ function BoundarySection({ property, clientId }: { property: any; clientId: stri
       toast.success(
         r?.area_sqm ? "Boundary saved. Yard size and estimated time updated." : "Boundary cleared",
       );
+      onDirtyChange?.(false);
       qc.invalidateQueries({ queryKey: ["properties", clientId] });
       qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
     },
@@ -499,6 +523,7 @@ function BoundarySection({ property, clientId }: { property: any; clientId: stri
           saving={mut.isPending}
           areaSqm={property.boundary_area_sqm ? Number(property.boundary_area_sqm) : null}
           height={340}
+          onDirtyChange={onDirtyChange}
         />
       </div>
     </div>
@@ -511,10 +536,12 @@ function OverridesSection({
   property,
   clientId,
   zones,
+  onDirtyChange,
 }: {
   property: any;
   clientId: string;
   zones: any[];
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const qc = useQueryClient();
   const zoneFn = useServerFn(setPropertyZoneOverride);
@@ -523,6 +550,11 @@ function OverridesSection({
   const [zoneReason, setZoneReason] = useState("");
   const [minutes, setMinutes] = useState<string>(String(property.service_duration_min ?? ""));
   const [estReason, setEstReason] = useState("");
+
+  useEffect(() => {
+    onDirtyChange?.(!!zoneReason.trim() || !!estReason.trim());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoneReason, estReason]);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["properties", clientId] });

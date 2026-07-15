@@ -40,14 +40,11 @@ import {
   listPropertiesForClient,
   setPropertyArchived,
   deletePropertyIfNoHistory,
-  setPropertyZoneOverride,
-  setPropertyEstimateOverride,
 } from "@/lib/properties.functions";
 import { listDogsForClient } from "@/lib/clients.functions";
 import { addDog, updateDog } from "@/lib/dogs.functions";
 import { deriveYardSize, YARD_SIZE_LABELS } from "@/lib/yard-size";
 import { computeEstimatedMinutes, countPropertyHazards } from "@/lib/estimated-time";
-import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { PropertyDrawer } from "@/components/client-detail/PropertyDrawer";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 
@@ -135,7 +132,14 @@ export function PropertiesTab({
   const archivedProps = properties.filter((p: any) => p.archived_at);
   const dogs = dogsData?.dogs ?? [];
 
-  const [drawerProp, setDrawerProp] = useState<any | null | "new">(null);
+  // Keep the ID, derive the object from fresh query data: the editor's
+  // inline sections (boundary, overrides) must not render a stale snapshot
+  // after their own saves invalidate the list.
+  const [drawerProp, setDrawerProp] = useState<string | null | "new">(null);
+  const drawerProperty =
+    drawerProp && drawerProp !== "new"
+      ? (properties.find((x: any) => x.id === drawerProp) ?? null)
+      : null;
   // Small portfolios start fully expanded (boundaries visible immediately);
   // bigger ones start with just the first property open so a 12-property
   // HOA doesn't mount a dozen maps at once.
@@ -190,7 +194,7 @@ export function PropertiesTab({
               zones={zones}
               open={expanded.has(p.id)}
               onToggle={() => toggle(p.id)}
-              onEdit={() => setDrawerProp(p)}
+              onEdit={() => setDrawerProp(p.id)}
               canManagePricing={canManagePricing}
             />
           ))}
@@ -215,7 +219,7 @@ export function PropertiesTab({
         onClose={() => setDrawerProp(null)}
         clientId={clientId}
         client={client}
-        property={drawerProp === "new" ? null : drawerProp}
+        property={drawerProp === "new" ? null : drawerProperty}
         zones={zones}
         canManagePricing={canManagePricing}
       />

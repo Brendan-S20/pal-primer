@@ -72,6 +72,9 @@ export function EditDrawer({
   dirty?: boolean;
   children: ReactNode;
 }) {
+  // Known tradeoff: resizing across the breakpoint remounts the editor body
+  // (Dialog and Sheet are different roots). Parent-held form state survives;
+  // an in-progress boundary sketch does not. Rare enough to accept.
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
 
