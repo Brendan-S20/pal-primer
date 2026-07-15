@@ -34,16 +34,10 @@ export const listClients = createServerFn({ method: "GET" })
     // Fetch aggregate side-data in parallel; ignore individual failures.
     const [propsRes, subsRes, invRes] = await Promise.all([
       ids.length
-        ? supabase
-            .from("properties")
-            .select("id, client_id, dogs(id)")
-            .in("client_id", ids)
+        ? supabase.from("properties").select("id, client_id, dogs(id)").in("client_id", ids)
         : Promise.resolve({ data: [] as any[] }),
       ids.length
-        ? supabase
-            .from("subscriptions")
-            .select("client_id, status, frequency")
-            .in("client_id", ids)
+        ? supabase.from("subscriptions").select("client_id, status, frequency").in("client_id", ids)
         : Promise.resolve({ data: [] as any[] }),
       ids.length
         ? supabase
@@ -68,10 +62,7 @@ export const listClients = createServerFn({ method: "GET" })
     const freqsByClient = new Map<string, string[]>();
     for (const s of subsRes.data ?? []) {
       if (s.status === "active") {
-        activeSubsByClient.set(
-          s.client_id,
-          (activeSubsByClient.get(s.client_id) ?? 0) + 1,
-        );
+        activeSubsByClient.set(s.client_id, (activeSubsByClient.get(s.client_id) ?? 0) + 1);
         const f = (s as any).frequency as string | null;
         if (f) {
           const list = freqsByClient.get(s.client_id) ?? [];
@@ -94,7 +85,6 @@ export const listClients = createServerFn({ method: "GET" })
       })),
     };
   });
-
 
 const createClientSchema = z.object({
   displayName: z.string().min(1).max(200),
@@ -155,11 +145,78 @@ export const getClient = createServerFn({ method: "GET" })
     await requirePermission(supabase, context.userId, "view_client_directory");
     const { data: client, error } = await supabase
       .from("clients")
-      .select("id, display_name, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at")
+      .select(
+        "id, display_name, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at",
+      )
       .eq("id", data.clientId)
       .single();
     if (error) throw new Error(error.message);
     return { client };
+  });
+
+/** Office notes on the client record (gate quirks, preferences, history). */
+export const updateClientNotes = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ clientId: z.string().uuid(), notes: z.string().max(8000) }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    await requirePermission(supabase, context.userId, "view_client_directory");
+    const { error } = await supabase
+      .from("clients")
+      .update({ notes: data.notes || null, updated_at: new Date().toISOString() })
+      .eq("id", data.clientId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+/** Recent visit history for the client detail page (newest first). */
+export const listRecentClientVisits = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    await requirePermission(supabase, context.userId, "view_client_directory");
+    const { data: rows, error } = await supabase
+      .from("visits")
+      .select(
+        "id, scheduled_on, status, completed_at, skip_reason_code, properties(street), staff:assigned_staff_id(display_name)",
+      )
+      .eq("client_id", data.clientId)
+      .order("scheduled_on", { ascending: false })
+      .limit(8);
+    if (error) throw new Error(error.message);
+    return { visits: rows ?? [] };
+  });
+
+/** Every dog across the client's properties, for the detail page. */
+export const listDogsForClient = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    await requirePermission(supabase, context.userId, "view_client_directory");
+    const { data: props, error: pErr } = await supabase
+      .from("properties")
+      .select("id, street")
+      .eq("client_id", data.clientId);
+    if (pErr) throw new Error(pErr.message);
+    const ids = (props ?? []).map((p: any) => p.id);
+    if (!ids.length) return { dogs: [] };
+    const { data: dogs, error } = await supabase
+      .from("dogs")
+      .select("id, property_id, name, breed, weight_class, temperament, notes")
+      .in("property_id", ids)
+      .order("name");
+    if (error) throw new Error(error.message);
+    const streetById = new Map((props ?? []).map((p: any) => [p.id, p.street]));
+    return {
+      dogs: (dogs ?? []).map((d: any) => ({
+        ...d,
+        property_street: streetById.get(d.property_id) ?? "",
+      })),
+    };
   });
 
 /**
@@ -188,10 +245,18 @@ export const readPortalVerificationCode = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) => getClientSchema.parse(data))
   .handler(async ({ data, context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "view_client_directory");
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "view_client_directory",
+    );
     // Confirm the client is in the caller's org before touching it via admin.
     const { data: client } = await context.supabase
-      .from("clients").select("id").eq("id", data.clientId).eq("organization_id", orgId).maybeSingle();
+      .from("clients")
+      .select("id")
+      .eq("id", data.clientId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
     if (!client) throw new Error("Client not found");
     // Stored codes are hashed, so we can't reveal an existing one — mint a
     // fresh single-use code the office reads aloud and the client enters.
@@ -224,7 +289,9 @@ function pointInPolygon(point: { lat: number; lng: number }, ring: number[][]): 
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const [xi, yi] = ring[i];
     const [xj, yj] = ring[j];
-    const intersect = (yi > point.lat) !== (yj > point.lat) && point.lng < ((xj - xi) * (point.lat - yi)) / (yj - yi) + xi;
+    const intersect =
+      yi > point.lat !== yj > point.lat &&
+      point.lng < ((xj - xi) * (point.lat - yi)) / (yj - yi) + xi;
     if (intersect) inside = !inside;
   }
   return inside;
@@ -245,12 +312,17 @@ export const getInternalQuote = createServerFn({ method: "POST" })
 
     const { data: zones, error: zErr } = await supabase
       .from("zones")
-      .select("id, name, postal_prefix, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes")
+      .select(
+        "id, name, postal_prefix, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
+      )
       .eq("organization_id", orgId);
     if (zErr) throw new Error(zErr.message);
 
     const pc = data.postalCode.trim();
-    const pt = data.latitude != null && data.longitude != null ? { lat: data.latitude, lng: data.longitude } : null;
+    const pt =
+      data.latitude != null && data.longitude != null
+        ? { lat: data.latitude, lng: data.longitude }
+        : null;
     const DRIVE_M_PER_MIN = 800;
 
     const match = (zones ?? [])
@@ -262,11 +334,34 @@ export const getInternalQuote = createServerFn({ method: "POST" })
             const ring = z.boundary.coordinates[0] as number[][];
             if (pointInPolygon(pt, ring)) return { z, rank: -2, prefLen: 0 };
           }
-          if (mode === "radius" && z.center_latitude != null && z.center_longitude != null && z.radius_meters) {
-            if (haversineMeters(pt, { lat: Number(z.center_latitude), lng: Number(z.center_longitude) }) <= z.radius_meters) return { z, rank: -1, prefLen: 0 };
+          if (
+            mode === "radius" &&
+            z.center_latitude != null &&
+            z.center_longitude != null &&
+            z.radius_meters
+          ) {
+            if (
+              haversineMeters(pt, {
+                lat: Number(z.center_latitude),
+                lng: Number(z.center_longitude),
+              }) <= z.radius_meters
+            )
+              return { z, rank: -1, prefLen: 0 };
           }
-          if (mode === "drive_time" && z.center_latitude != null && z.center_longitude != null && z.drive_time_minutes) {
-            if (haversineMeters(pt, { lat: Number(z.center_latitude), lng: Number(z.center_longitude) }) <= z.drive_time_minutes * DRIVE_M_PER_MIN) return { z, rank: -1, prefLen: 0 };
+          if (
+            mode === "drive_time" &&
+            z.center_latitude != null &&
+            z.center_longitude != null &&
+            z.drive_time_minutes
+          ) {
+            if (
+              haversineMeters(pt, {
+                lat: Number(z.center_latitude),
+                lng: Number(z.center_longitude),
+              }) <=
+              z.drive_time_minutes * DRIVE_M_PER_MIN
+            )
+              return { z, rank: -1, prefLen: 0 };
           }
         }
         const exact = Array.isArray(z.zip_codes) && z.zip_codes.includes(pc);

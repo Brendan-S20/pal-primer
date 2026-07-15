@@ -183,7 +183,7 @@ export const listPropertiesForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("properties")
       .select(
-        "id, label, street, city, region, postal_code, gate_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email",
+        "id, label, street, city, region, postal_code, gate_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email, boundary, boundary_area_sqm",
       )
       .eq("client_id", data.clientId)
       .order("created_at");
@@ -226,7 +226,9 @@ export const getPropertyBoundary = createServerFn({ method: "GET" })
   .handler(async ({ data, context }) => {
     const { data: row, error } = await context.supabase
       .from("properties")
-      .select("id, client_id, street, city, postal_code, latitude, longitude, boundary, boundary_area_sqm, yard_size, clients(id, display_name)")
+      .select(
+        "id, client_id, street, city, postal_code, latitude, longitude, boundary, boundary_area_sqm, yard_size, clients(id, display_name)",
+      )
       .eq("id", data.propertyId)
       .single();
     if (error) throw new Error(error.message);
