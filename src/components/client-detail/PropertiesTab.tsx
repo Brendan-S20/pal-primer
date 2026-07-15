@@ -287,7 +287,8 @@ function PropertyCard({
       >
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
           <span className="font-medium">
-            {p.street}, {p.city} {p.postal_code}
+            {p.street}
+            {p.unit ? `, ${p.unit}` : ""}, {p.city} {p.postal_code}
           </span>
           <Badge variant={isCommercial ? "default" : "secondary"}>
             {isCommercial ? "Commercial" : "Residential"}
@@ -459,7 +460,16 @@ function PropertyCard({
                 <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Access
                 </div>
-                <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-muted-foreground">
+                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-muted-foreground">
+                  {p.address_source === "matched" ? (
+                    <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:text-blue-400">
+                      Address Matched, Not USPS Verified
+                    </span>
+                  ) : (
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium">
+                      Address entered manually
+                    </span>
+                  )}
                   {p.gate_code ? (
                     <span className="inline-flex items-center gap-1">
                       <DoorClosed className="h-3.5 w-3.5" />
