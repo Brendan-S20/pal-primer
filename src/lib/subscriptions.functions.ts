@@ -103,6 +103,18 @@ export const createSubscription = createServerFn({ method: "POST" })
     // job (QA follow-up 1.6).
     const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
     await generateVisitHorizon(supabase, client.organization_id);
+
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: client.organization_id,
+      clientId: data.clientId,
+      propertyId: data.propertyId,
+      subscriptionId: row.id as string,
+      actorUserId: userId,
+      kind: "service.created",
+      summary: `Created a ${data.frequency.replace(/_/g, " ")} service at $${(data.priceCents / 100).toFixed(2)} per visit`,
+      meta: { frequency: data.frequency, price_cents: data.priceCents },
+    });
     return { id: row.id as string };
   });
 
@@ -143,6 +155,13 @@ export const updateSubscription = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     // Editing pricing/plan details is an office-manage-pricing action.
     await requirePermission(supabase, userId, "manage_pricing");
+    // Before-image for the activity log (spec Stage 5: price changes show
+    // before -> after).
+    const { data: before } = await supabase
+      .from("subscriptions")
+      .select("organization_id, client_id, price_cents, frequency, started_on, ends_on")
+      .eq("id", data.subscriptionId)
+      .single();
     const { error } = await supabase
       .from("subscriptions")
       .update({
@@ -170,10 +189,26 @@ export const updateSubscription = createServerFn({ method: "POST" })
 
     // Schedule inputs may have changed; top the horizon back up.
     const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
-    const orgId = (
-      await supabase.from("subscriptions").select("organization_id").eq("id", data.subscriptionId).single()
-    ).data?.organization_id;
-    if (orgId) await generateVisitHorizon(supabase, orgId);
+    if (before?.organization_id) await generateVisitHorizon(supabase, before.organization_id);
+
+    if (before) {
+      const { logActivity } = await import("@/lib/activity.server");
+      const priceChanged = before.price_cents !== data.priceCents;
+      await logActivity(supabase, {
+        orgId: before.organization_id,
+        clientId: before.client_id,
+        subscriptionId: data.subscriptionId,
+        actorUserId: userId,
+        kind: priceChanged ? "service.price_changed" : "service.updated",
+        summary: priceChanged
+          ? `Changed service price from $${(before.price_cents / 100).toFixed(2)} to $${(data.priceCents / 100).toFixed(2)} per visit`
+          : "Updated service configuration",
+        meta: {
+          before: { price_cents: before.price_cents, frequency: before.frequency, ends_on: before.ends_on },
+          after: { price_cents: data.priceCents, frequency: data.frequency, ends_on: data.endsOn ?? null },
+        },
+      });
+    }
     return { ok: true };
   });
 

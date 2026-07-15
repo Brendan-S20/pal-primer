@@ -114,6 +114,16 @@ export const createProperty = createServerFn({ method: "POST" })
       .select("id")
       .single();
     if (error) throw new Error(error.message);
+
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: client.organization_id,
+      clientId: data.clientId,
+      propertyId: row.id as string,
+      actorUserId: context.userId,
+      kind: "property.created",
+      summary: `Added property ${data.street}, ${data.city} ${data.postalCode}`,
+    });
     return { id: row.id as string };
   });
 
@@ -145,7 +155,7 @@ export const updateProperty = createServerFn({ method: "POST" })
     const { supabase } = context;
     const { data: current, error: curErr } = await supabase
       .from("properties")
-      .select("organization_id, zone_override_reason")
+      .select("organization_id, client_id, zone_override_reason, street, city, postal_code, auto_zone_id")
       .eq("id", data.propertyId)
       .single();
     if (curErr) throw new Error(curErr.message);
@@ -217,6 +227,39 @@ export const updateProperty = createServerFn({ method: "POST" })
       })
       .eq("id", data.propertyId);
     if (error) throw new Error(error.message);
+
+    const { logActivity } = await import("@/lib/activity.server");
+    const addressChanged =
+      current.street !== data.street ||
+      current.city !== data.city ||
+      current.postal_code !== data.postalCode;
+    await logActivity(supabase, {
+      orgId: current.organization_id,
+      clientId: current.client_id,
+      propertyId: data.propertyId,
+      actorUserId: context.userId,
+      kind: "property.updated",
+      summary: addressChanged
+        ? `Changed property address from ${current.street}, ${current.city} to ${data.street}, ${data.city}`
+        : `Updated property ${data.street}, ${data.city}`,
+      meta: addressChanged
+        ? {
+            before: { street: current.street, city: current.city, postal_code: current.postal_code },
+            after: { street: data.street, city: data.city, postal_code: data.postalCode },
+          }
+        : {},
+    });
+    if (autoZoneId !== current.auto_zone_id) {
+      await logActivity(supabase, {
+        orgId: current.organization_id,
+        clientId: current.client_id,
+        propertyId: data.propertyId,
+        actorUserId: context.userId,
+        kind: "zone.detected",
+        summary: `Detected zone changed for ${data.street}`,
+        meta: { before: current.auto_zone_id, after: autoZoneId },
+      });
+    }
     return { ok: true };
   });
 
@@ -352,6 +395,26 @@ export const updatePropertyBoundary = createServerFn({ method: "POST" })
     const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
     await recomputePropertyEstimate(context.supabase, data.propertyId);
 
+    try {
+      const { data: propRow } = await context.supabase
+        .from("properties")
+        .select("client_id, street")
+        .eq("id", data.propertyId)
+        .single();
+      const { logActivity } = await import("@/lib/activity.server");
+      await logActivity(context.supabase, {
+        orgId,
+        clientId: propRow?.client_id ?? null,
+        propertyId: data.propertyId,
+        actorUserId: context.userId,
+        kind: "boundary.updated",
+        summary: data.boundary
+          ? `Updated the service boundary${propRow?.street ? ` at ${propRow.street}` : ""}`
+          : `Removed the service boundary${propRow?.street ? ` at ${propRow.street}` : ""}`,
+        meta: { area_sqm: area },
+      });
+    } catch {}
+
     return { ok: true, area_sqm: area };
   });
 
@@ -396,7 +459,7 @@ export const deletePropertyIfNoHistory = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { data: prop, error: pErr } = await supabase
       .from("properties")
-      .select("id, organization_id, client_id, street")
+      .select("id, organization_id, client_id, street, city")
       .eq("id", data.propertyId)
       .single();
     if (pErr) throw new Error(pErr.message);
@@ -431,7 +494,7 @@ export const deletePropertyIfNoHistory = createServerFn({ method: "POST" })
       clientId: prop.client_id,
       actorUserId: userId,
       kind: "property.deleted",
-      summary: `Deleted property ${prop.street} (no history)`,
+      summary: `Deleted property ${prop.street}, ${prop.city ?? ""} (no history)`,
     });
     return { ok: true };
   });

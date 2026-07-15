@@ -6,12 +6,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { CalendarClock, Pause, Play, Plus, Square, Trash2 } from "lucide-react";
+import { CalendarClock, MoreHorizontal, Pause, Play, Plus, Square, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { DateField } from "@/components/fields";
+import { formatDay } from "@/lib/format";
+import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import {
   createSubscription,
   updateSubscription,
@@ -195,11 +204,13 @@ export function ServicesTab({
                     : "Schedule hasn't been generated yet"
                 : null;
             const canGenerate = noVisitReason != null && !startsLater && s.frequency !== "one_time";
+            const showEnd = !ended && started;
+            const showDelete = !started;
             return (
               <li key={s.id} className="rounded-lg border bg-card p-4 text-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div
-                    className="min-w-0 cursor-pointer"
+                    className="min-w-0 flex-1 cursor-pointer"
                     role="button"
                     tabIndex={0}
                     onClick={() => setDetailSub(s)}
@@ -211,35 +222,35 @@ export function ServicesTab({
                     }}
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">{formatFrequency(s)}</span>
-                      {streetById.get(s.property_id) && (
-                        <span className="text-muted-foreground">
-                          at {streetById.get(s.property_id)}
-                        </span>
-                      )}
-                      <span className="font-medium">${(s.price_cents / 100).toFixed(2)}</span>
-                      <span className="text-muted-foreground">
-                        {s.account_type === "residential"
-                          ? `${s.dog_count} dog${s.dog_count === 1 ? "" : "s"}`
-                          : `${s.unit_count} unit${s.unit_count === 1 ? "" : "s"}`}
+                      <span className="font-semibold">
+                        {s.frequency === "one_time"
+                          ? "One-time pet waste removal"
+                          : "Recurring pet waste removal"}
                       </span>
+                      {ended ? (
+                        <StatusChip status="ended" />
+                      ) : (
+                        <StatusChip status={paused ? "paused" : s.status} />
+                      )}
+                      <MetaChip>
+                        {s.billing_cadence === "prepaid" ? "Prepaid" : "Postpaid"}
+                      </MetaChip>
+                    </div>
+                    <div className="mt-1 text-muted-foreground">
+                      {formatFrequency(s)}
+                      {streetById.get(s.property_id) ? ` · ${streetById.get(s.property_id)}` : ""}
+                      {" · "}
+                      {s.account_type === "residential"
+                        ? `${s.dog_count} dog${s.dog_count === 1 ? "" : "s"}`
+                        : `${s.unit_count} unit${s.unit_count === 1 ? "" : "s"}`}
                     </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      {ended ? (
-                        <Badge variant="outline">Ended {s.ends_on}</Badge>
-                      ) : paused ? (
-                        <Badge variant="outline" className="border-amber-500/50 text-amber-700 dark:text-amber-400">
-                          Paused
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">{s.status}</Badge>
-                      )}
-                      <Badge variant={s.billing_cadence === "prepaid" ? "default" : "secondary"}>
-                        {s.billing_cadence}
-                      </Badge>
                       <span>
-                        {s.frequency === "one_time" ? "Visit on" : "Started"} {s.started_on}
-                        {s.ends_on && !ended ? ` · ends ${s.ends_on}` : ""}
+                        {s.frequency === "one_time" ? "Visit on" : "Started"}{" "}
+                        {formatDay(s.started_on)}
+                        {s.ends_on
+                          ? ` · ${ended ? "ended" : "ends"} ${formatDay(s.ends_on)}`
+                          : ""}
                       </span>
                       {s.preferred_weekdays?.length ? (
                         <span>{s.preferred_weekdays.map((d: number) => WEEKDAYS[d]).join(" ")}</span>
@@ -247,7 +258,7 @@ export function ServicesTab({
                       {!ended && !paused && nextVisit && (
                         <span className="inline-flex items-center gap-1">
                           <CalendarClock className="h-3 w-3" />
-                          Next visit {nextVisit}
+                          Next visit {formatDay(nextVisit)}
                         </span>
                       )}
                       {ended && s.end_reason && <span>Reason: {s.end_reason}</span>}
@@ -275,6 +286,11 @@ export function ServicesTab({
                         the dogs on the Properties tab or the count here.
                       </div>
                     )}
+                  </div>
+
+                  <div className="shrink-0 whitespace-nowrap text-right">
+                    <span className="font-semibold">${(s.price_cents / 100).toFixed(2)}</span>
+                    <span className="text-xs text-muted-foreground"> /visit</span>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -311,32 +327,41 @@ export function ServicesTab({
                         <Play className="mr-1 h-3.5 w-3.5" /> Resume
                       </Button>
                     )}
-                    {canManagePricing && !ended && started && (
-                      <Button size="sm" variant="outline" onClick={() => setEndingSub(s)}>
-                        <Square className="mr-1 h-3.5 w-3.5" /> End
-                      </Button>
-                    )}
-                    {canManagePricing && !started && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive hover:text-destructive"
-                        onClick={async () => {
-                          if (
-                            await confirm({
-                              title: "Delete this service?",
-                              description:
-                                "Deleting is only allowed before the first visit happens and removes its scheduled visits. Started services are ended instead, keeping their history.",
-                              confirmLabel: "Delete service",
-                              destructive: true,
-                            })
-                          )
-                            deleteMut.mutate(s.id);
-                        }}
-                        disabled={deleteMut.isPending}
-                      >
-                        <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
-                      </Button>
+                    {canManagePricing && (showEnd || showDelete) && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-10 w-10 p-0" aria-label="More actions">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {showEnd && (
+                            <DropdownMenuItem onSelect={() => setEndingSub(s)}>
+                              <Square className="mr-2 h-3.5 w-3.5" /> End service…
+                            </DropdownMenuItem>
+                          )}
+                          {showDelete && (
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              disabled={deleteMut.isPending}
+                              onSelect={async () => {
+                                if (
+                                  await confirm({
+                                    title: "Delete this service?",
+                                    description:
+                                      "Deleting is only allowed before the first visit happens and removes its scheduled visits. Started services are ended instead, keeping their history.",
+                                    confirmLabel: "Delete service",
+                                    destructive: true,
+                                  })
+                                )
+                                  deleteMut.mutate(s.id);
+                              }}
+                            >
+                              <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete service…
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
                   </div>
                 </div>
@@ -438,11 +463,11 @@ function ServiceDetailDrawer({
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Started</dt>
-            <dd>{s.started_on ?? "-"}</dd>
+            <dd>{s.started_on ? formatDay(s.started_on) : "-"}</dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Ends</dt>
-            <dd>{s.ends_on ?? "Open-ended"}</dd>
+            <dd>{s.ends_on ? formatDay(s.ends_on) : "Open-ended"}</dd>
           </div>
           {s.end_reason && (
             <div className="col-span-2">
@@ -456,19 +481,17 @@ function ServiceDetailDrawer({
         </dl>
 
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Visit history for this service
-          </h3>
+          <SectionLabel>Visit history for this service</SectionLabel>
           {serviceVisits.length === 0 ? (
             <p className="mt-1.5 text-muted-foreground">No visits yet.</p>
           ) : (
             <ul className="mt-1.5 divide-y">
               {serviceVisits.map((v: any) => (
-                <li key={v.id} className="flex items-center justify-between py-1.5">
-                  <span>{v.scheduled_on}</span>
-                  <span className="text-xs capitalize text-muted-foreground">
-                    {String(v.status).replace("_", " ")}
-                    {v.staff?.display_name ? ` · ${v.staff.display_name}` : ""}
+                <li key={v.id} className="flex items-center justify-between gap-2 py-1.5">
+                  <span>{formatDay(v.scheduled_on)}</span>
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <StatusChip status={v.status} />
+                    {v.staff?.display_name ? ` ${v.staff.display_name}` : ""}
                   </span>
                 </li>
               ))}
@@ -874,6 +897,30 @@ function ServiceDrawer({
           </div>
         </div>
 
+        <div className="grid gap-3 sm:grid-cols-2">
+          <DateField
+            label={form.choice === "one_time" ? "Visit date" : "Start date"}
+            value={form.startedOn}
+            onChange={(v) => set("startedOn", v)}
+            hint={
+              form.choice === "one_time"
+                ? "The day of the single visit."
+                : "The first day service applies."
+            }
+          />
+          {form.choice !== "one_time" && (
+            <DateField
+              label="End date"
+              value={form.endsOn}
+              onChange={(v) => set("endsOn", v)}
+              clearable
+              clearLabel="Open-ended"
+              minISO={form.startedOn || undefined}
+              hint="Leave open-ended unless the service has a known last day."
+            />
+          )}
+        </div>
+
         <div>
           <Label>Zone (pricing)</Label>
           <select
@@ -1107,19 +1154,12 @@ function EndServiceDialog({
           mut.mutate();
         }}
       >
-        <div>
-          <Label htmlFor="end-date">Effective date</Label>
-          <Input
-            id="end-date"
-            type="date"
-            value={effectiveDate}
-            onChange={(e) => setEffectiveDate(e.target.value)}
-            required
-          />
-          <p className="mt-1 text-xs text-muted-foreground">
-            The last day service applies. Future visits past it are removed automatically.
-          </p>
-        </div>
+        <DateField
+          label="Effective date"
+          value={effectiveDate}
+          onChange={setEffectiveDate}
+          hint="The last day service applies. Future visits past it are removed automatically."
+        />
         <div>
           <Label htmlFor="end-reason">Reason</Label>
           <Input

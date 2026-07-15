@@ -708,6 +708,7 @@ export type Database = {
           churn_reason: string | null
           churn_score: number | null
           churn_scored_at: string | null
+          company: string | null
           created_at: string
           credit_balance_cents: number
           default_card_brand: string | null
@@ -715,10 +716,12 @@ export type Database = {
           default_payment_method_id: string | null
           display_name: string
           email_opt_out: boolean
+          first_name: string | null
           id: string
           import_batch_id: string | null
           import_external_id: string | null
           import_source: Database["public"]["Enums"]["import_source"] | null
+          last_name: string | null
           last_winback_sent_at: string | null
           notes: string | null
           organization_id: string
@@ -749,6 +752,7 @@ export type Database = {
           churn_reason?: string | null
           churn_score?: number | null
           churn_scored_at?: string | null
+          company?: string | null
           created_at?: string
           credit_balance_cents?: number
           default_card_brand?: string | null
@@ -756,10 +760,12 @@ export type Database = {
           default_payment_method_id?: string | null
           display_name: string
           email_opt_out?: boolean
+          first_name?: string | null
           id?: string
           import_batch_id?: string | null
           import_external_id?: string | null
           import_source?: Database["public"]["Enums"]["import_source"] | null
+          last_name?: string | null
           last_winback_sent_at?: string | null
           notes?: string | null
           organization_id: string
@@ -790,6 +796,7 @@ export type Database = {
           churn_reason?: string | null
           churn_score?: number | null
           churn_scored_at?: string | null
+          company?: string | null
           created_at?: string
           credit_balance_cents?: number
           default_card_brand?: string | null
@@ -797,10 +804,12 @@ export type Database = {
           default_payment_method_id?: string | null
           display_name?: string
           email_opt_out?: boolean
+          first_name?: string | null
           id?: string
           import_batch_id?: string | null
           import_external_id?: string | null
           import_source?: Database["public"]["Enums"]["import_source"] | null
+          last_name?: string | null
           last_winback_sent_at?: string | null
           notes?: string | null
           organization_id?: string

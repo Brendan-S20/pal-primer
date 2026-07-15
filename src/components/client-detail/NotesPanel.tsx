@@ -7,10 +7,11 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Eye, Pin, PinOff, Trash2, Wrench } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Eye, Pin, PinOff, StickyNote, Trash2, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { EmptyState, MetaChip } from "@/components/client-detail/primitives";
+import { formatDateTime } from "@/lib/format";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
   listClientNotes,
@@ -71,6 +72,8 @@ export function NotesPanel({
 
   const [tab, setTab] = useState<Audience>(defaultAudience);
   const [draft, setDraft] = useState("");
+  // Composer collapses to a single line until focused (spec 3.4).
+  const [composerFocused, setComposerFocused] = useState(false);
   const invalidate = () => qc.invalidateQueries({ queryKey: ["client-notes", clientId] });
 
   const addMut = useMutation({
@@ -136,11 +139,7 @@ export function NotesPanel({
               <div className="flex items-start justify-between gap-2">
                 <p className="whitespace-pre-wrap">{n.body}</p>
                 <div className="flex shrink-0 items-center gap-1">
-                  {n.pinned && (
-                    <Badge variant="outline" className="text-[10px]">
-                      Pinned
-                    </Badge>
-                  )}
+                  {n.pinned && <MetaChip>Pinned</MetaChip>}
                   <button
                     type="button"
                     aria-label={n.pinned ? "Unpin note" : "Pin note"}
@@ -169,13 +168,18 @@ export function NotesPanel({
                 </div>
               </div>
               <div className="mt-1 text-xs text-muted-foreground">
-                {new Date(n.created_at).toLocaleDateString()}
+                {formatDateTime(n.created_at)}
               </div>
             </li>
           ))}
           {visible.length === 0 && (
-            <li className="rounded-md border border-dashed p-3 text-center text-sm text-muted-foreground">
-              No {tab === "office" ? "office notes" : tab === "technician" ? "technician instructions" : "client-visible notes"} yet.
+            <li>
+              <EmptyState
+                compact
+                icon={StickyNote}
+                title={`No ${tab === "office" ? "office notes" : tab === "technician" ? "technician instructions" : "client-visible notes"} yet`}
+                description={active.hint}
+              />
             </li>
           )}
         </ul>
@@ -191,7 +195,9 @@ export function NotesPanel({
         <Textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          rows={2}
+          onFocus={() => setComposerFocused(true)}
+          onBlur={() => setComposerFocused(false)}
+          rows={composerFocused || draft ? 3 : 1}
           maxLength={4000}
           placeholder={
             tab === "office"
@@ -202,7 +208,7 @@ export function NotesPanel({
           }
         />
         <div className="flex items-center justify-between">
-          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${active.tone}`}>
+          <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${active.tone}`}>
             Saving to: {active.label}
           </span>
           <Button type="submit" size="sm" disabled={addMut.isPending || !draft.trim()}>

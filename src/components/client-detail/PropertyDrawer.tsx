@@ -10,9 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createProperty, updateProperty } from "@/lib/properties.functions";
+import { updatePropertyWindow } from "@/lib/visits.functions";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { AddressAutocomplete, type ResolvedAddress } from "@/components/AddressAutocomplete";
-import { Badge } from "@/components/ui/badge";
+// (Badge replaced by MetaChip per Stage 3 taxonomy.)
+import { TimeField } from "@/components/fields";
+import { MetaChip, SectionLabel } from "@/components/client-detail/primitives";
 
 const HAZARD_FIELDS: Array<[string, string]> = [
   ["doNotEnterIfDogOut", "Do NOT enter if dog is outside"],
@@ -42,6 +45,7 @@ export function PropertyDrawer({
   const qc = useQueryClient();
   const createFn = useServerFn(createProperty);
   const updateFn = useServerFn(updateProperty);
+  const windowFn = useServerFn(updatePropertyWindow);
 
   const initial = useMemo(
     () => ({
@@ -58,6 +62,9 @@ export function PropertyDrawer({
         | "residential"
         | "commercial",
       gateCode: property?.gate_code ?? "",
+      // Arrival window ("HH:MM", "" = anytime) — saved via updatePropertyWindow.
+      earliestTime: (property?.earliest_service_time?.slice(0, 5) ?? "") as string,
+      latestTime: (property?.latest_service_time?.slice(0, 5) ?? "") as string,
       hazardNotes: property?.hazard_notes ?? "",
       vcName: property?.visit_contact_name ?? "",
       vcPhone: property?.visit_contact_phone ?? "",
@@ -162,7 +169,33 @@ export function PropertyDrawer({
       const run = property
         ? updateFn({ data: { propertyId: property.id, ...common } })
         : createFn({ data: { clientId, ...common } });
-      return run.then(() => ({ ok: true }));
+      return run.then(async (res: any) => {
+        // Arrival window lives in its own server fn; save it after the main
+        // create/update succeeds. Existing properties: only when changed.
+        // New properties: only when a value was actually set.
+        const windowChanged =
+          form.earliestTime !== initial.earliestTime || form.latestTime !== initial.latestTime;
+        const targetId = property ? property.id : (res?.id as string | undefined);
+        const shouldSave = property ? windowChanged : !!(form.earliestTime || form.latestTime);
+        if (shouldSave && targetId) {
+          try {
+            await windowFn({
+              data: {
+                propertyId: targetId,
+                earliest_service_time: form.earliestTime || null,
+                latest_service_time: form.latestTime || null,
+              },
+            });
+          } catch (e) {
+            // The property itself saved; failing the whole mutation here
+            // would leave the drawer open and invite a duplicate create.
+            toast.error(
+              `Property saved, but the arrival window didn't: ${(e as Error).message}. Edit the property to retry.`,
+            );
+          }
+        }
+        return { ok: true };
+      });
     },
     onSuccess: () => {
       toast.success(property ? "Property saved" : "Property added");
@@ -231,11 +264,11 @@ export function PropertyDrawer({
             />
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:col-span-6">
-            {form.addressSource === "matched" ? (
-              <Badge variant="secondary">Address Matched, Not USPS Verified</Badge>
-            ) : (
-              <Badge variant="outline">Manual entry</Badge>
-            )}
+            <MetaChip>
+              {form.addressSource === "matched"
+                ? "Address Matched, Not USPS Verified"
+                : "Manual entry"}
+            </MetaChip>
             {matchedZoneName && (
               <span className="text-xs text-muted-foreground">
                 Detected zone: <span className="font-medium text-foreground">{matchedZoneName}</span>
@@ -277,11 +310,29 @@ export function PropertyDrawer({
           </div>
         </div>
 
+        <div className="rounded-md border bg-muted/20 p-3">
+          <SectionLabel>Service window</SectionLabel>
+          <p className="mt-1 text-xs text-muted-foreground">
+            When the team may arrive. This is a window, not the actual arrival time. Leave both on
+            Anytime for no window.
+          </p>
+          <div className="mt-2 grid gap-3 sm:grid-cols-2">
+            <TimeField
+              label="Earliest arrival"
+              value={form.earliestTime}
+              onChange={(v) => set("earliestTime", v)}
+            />
+            <TimeField
+              label="Latest arrival"
+              value={form.latestTime}
+              onChange={(v) => set("latestTime", v)}
+            />
+          </div>
+        </div>
+
         {isCommercial && (
           <div className="rounded-md border bg-muted/20 p-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Commercial details
-            </div>
+            <SectionLabel>Commercial details</SectionLabel>
             <div className="mt-2 grid gap-3 sm:grid-cols-2">
               <div>
                 <Label htmlFor="pd-sections" className="text-xs">
@@ -313,9 +364,9 @@ export function PropertyDrawer({
         )}
 
         <div className="rounded-md border bg-muted/20 p-3">
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <SectionLabel>
             On-site visit contact <span className="font-normal normal-case">(optional)</span>
-          </div>
+          </SectionLabel>
           <p className="mt-1 text-xs text-muted-foreground">
             For rentals/managed properties: this person gets visit texts and emails. Invoices still
             go to the account contact.
@@ -353,9 +404,7 @@ export function PropertyDrawer({
         </div>
 
         <div className="rounded-md border bg-muted/20 p-3">
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Safety & access hazards
-          </div>
+          <SectionLabel>Safety &amp; access hazards</SectionLabel>
           <div className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
             {HAZARD_FIELDS.map(([k, label]) => (
               <label key={k} className="flex items-center gap-2">

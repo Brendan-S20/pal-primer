@@ -27,7 +27,9 @@ export function EditClientDrawer({
 
   const initial = useMemo(
     () => ({
-      displayName: client?.display_name ?? "",
+      firstName: client?.first_name ?? "",
+      lastName: client?.last_name ?? "",
+      company: client?.company ?? "",
       primaryPhone: client?.primary_phone ?? "",
       primaryEmail: client?.primary_email ?? "",
       accountType: (client?.account_type ?? "residential") as "residential" | "commercial",
@@ -57,7 +59,9 @@ export function EditClientDrawer({
       updateFn({
         data: {
           clientId,
-          displayName: form.displayName.trim() || undefined,
+          firstName: form.firstName.trim() || null,
+          lastName: form.lastName.trim() || null,
+          company: form.company.trim() || null,
           primaryPhone: form.primaryPhone,
           primaryEmail: form.primaryEmail as string,
           accountType: form.accountType,
@@ -91,14 +95,40 @@ export function EditClientDrawer({
           saveMut.mutate();
         }}
       >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="ec-first">First name</Label>
+            <Input
+              id="ec-first"
+              value={form.firstName}
+              onChange={(e) => set("firstName", e.target.value)}
+            />
+          </div>
+          <div>
+            <Label htmlFor="ec-last">Last name</Label>
+            <Input
+              id="ec-last"
+              value={form.lastName}
+              onChange={(e) => set("lastName", e.target.value)}
+            />
+          </div>
+        </div>
         <div>
-          <Label htmlFor="ec-name">Name</Label>
+          <Label htmlFor="ec-company">Company (optional)</Label>
           <Input
-            id="ec-name"
-            value={form.displayName}
-            onChange={(e) => set("displayName", e.target.value)}
-            required
+            id="ec-company"
+            value={form.company}
+            onChange={(e) => set("company", e.target.value)}
+            placeholder="Shown when there is no person name"
           />
+          <p className="mt-1 text-xs text-foreground/60">
+            Displays as:{" "}
+            <span className="font-medium text-foreground">
+              {[form.firstName.trim(), form.lastName.trim()].filter(Boolean).join(" ") ||
+                form.company.trim() ||
+                client?.display_name}
+            </span>
+          </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
@@ -193,6 +223,11 @@ export function EditClientDrawer({
             />
             <span>Send SMS notifications</span>
           </label>
+          {!form.smsOptOut && !form.primaryPhone.trim() && (
+            <p className="ml-6 text-xs text-amber-700 dark:text-amber-400">
+              SMS is on but there's no phone number on file. Add one above or texts won't send.
+            </p>
+          )}
           <label className="mt-1 flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -201,6 +236,11 @@ export function EditClientDrawer({
             />
             <span>Send email notifications</span>
           </label>
+          {!form.emailOptOut && !form.primaryEmail.trim() && (
+            <p className="ml-6 text-xs text-amber-700 dark:text-amber-400">
+              Email is on but there's no email address on file. Add one above or emails won't send.
+            </p>
+          )}
         </fieldset>
         <p className="text-xs text-muted-foreground">
           Billing addresses are managed by Stripe and don't need to be entered here.

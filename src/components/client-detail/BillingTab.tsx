@@ -5,8 +5,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { CreditCard, Plus } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  EmptyState,
+  MetaChip,
+  SectionLabel,
+  StatusChip,
+} from "@/components/client-detail/primitives";
+import { formatDay } from "@/lib/format";
 import { getClientCredit, getClientBillingSummary } from "@/lib/invoices.functions";
 import {
   listClientPaymentMethods,
@@ -39,7 +45,9 @@ export function BillingTab({ clientId }: { clientId: string }) {
         <h2 className="text-sm font-medium">Billing summary</h2>
         <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <div>
-            <dt className="text-xs uppercase tracking-wide text-muted-foreground">Outstanding</dt>
+            <dt>
+              <SectionLabel>Outstanding</SectionLabel>
+            </dt>
             <dd
               className={`text-lg font-semibold ${(summary?.openTotalCents ?? 0) > 0 ? "text-destructive" : ""}`}
             >
@@ -47,11 +55,15 @@ export function BillingTab({ clientId }: { clientId: string }) {
             </dd>
           </div>
           <div>
-            <dt className="text-xs uppercase tracking-wide text-muted-foreground">Open invoices</dt>
+            <dt>
+              <SectionLabel>Open invoices</SectionLabel>
+            </dt>
             <dd className="text-lg font-semibold">{summary?.openCount ?? 0}</dd>
           </div>
           <div>
-            <dt className="text-xs uppercase tracking-wide text-muted-foreground">Credit</dt>
+            <dt>
+              <SectionLabel>Credit</SectionLabel>
+            </dt>
             <dd
               className={`text-lg font-semibold ${(credit?.balanceCents ?? 0) < 0 ? "text-destructive" : ""}`}
             >
@@ -59,7 +71,9 @@ export function BillingTab({ clientId }: { clientId: string }) {
             </dd>
           </div>
           <div>
-            <dt className="text-xs uppercase tracking-wide text-muted-foreground">Autopay</dt>
+            <dt>
+              <SectionLabel>Autopay</SectionLabel>
+            </dt>
             <dd className="text-lg font-semibold">
               {c?.autopay_paused ? "Paused" : c?.autopay_enabled ? "On" : "Off"}
             </dd>
@@ -87,9 +101,7 @@ export function BillingTab({ clientId }: { clientId: string }) {
             {credit.ledger.map((l: any) => (
               <li key={l.id} className="flex items-center justify-between py-2">
                 <span>
-                  <span className="text-muted-foreground">
-                    {new Date(l.created_at).toLocaleDateString()}
-                  </span>
+                  <span className="text-muted-foreground">{formatDay(l.created_at)}</span>
                   <span className="ml-2">{l.note ?? l.kind}</span>
                 </span>
                 <span className={l.delta_cents < 0 ? "text-destructive" : "text-primary"}>
@@ -99,7 +111,14 @@ export function BillingTab({ clientId }: { clientId: string }) {
             ))}
           </ul>
         ) : (
-          <p className="mt-3 text-sm text-muted-foreground">No credit activity yet.</p>
+          <div className="mt-3">
+            <EmptyState
+              compact
+              icon={CreditCard}
+              title="No credit activity yet"
+              description="Prepaid purchases and referral rewards appear here."
+            />
+          </div>
         )}
       </section>
 
@@ -110,9 +129,10 @@ export function BillingTab({ clientId }: { clientId: string }) {
           <div>
             <div>
               Autopay:{" "}
-              <Badge variant={c?.autopay_enabled ? "default" : "outline"}>
-                {c?.autopay_paused ? "Paused" : c?.autopay_enabled ? "On" : "Off"}
-              </Badge>
+              <StatusChip
+                status={c?.autopay_paused ? "paused" : c?.autopay_enabled ? "enabled" : "inactive"}
+                label={c?.autopay_paused ? "Paused" : c?.autopay_enabled ? "On" : "Off"}
+              />
             </div>
             <p className="mt-2 max-w-md text-xs text-muted-foreground">
               Clients turn autopay on or off from their portal. Billing addresses are managed by
@@ -199,10 +219,16 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
       ) : error ? (
         <p className="mt-3 text-sm text-destructive">{(error as Error).message}</p>
       ) : methods.length === 0 ? (
-        <p className="mt-3 text-sm text-muted-foreground">
-          No cards on file{data?.hasCustomer === false ? " (no Stripe customer yet)" : ""}. Add one
-          here or let the client add it from their portal.
-        </p>
+        <div className="mt-3">
+          <EmptyState
+            compact
+            icon={CreditCard}
+            title={`No cards on file${data?.hasCustomer === false ? " (no Stripe customer yet)" : ""}`}
+            description="Add one here or let the client add it from their portal."
+            actionLabel="Add card"
+            onAction={() => setupMut.mutate()}
+          />
+        </div>
       ) : (
         <ul className="mt-3 divide-y text-sm">
           {methods.map((m: any) => {
@@ -219,7 +245,7 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
                     {String(m.expMonth).padStart(2, "0")}/{String(m.expYear).slice(-2)}
                     {expired ? " expired" : ""}
                   </span>
-                  {m.isDefault && <Badge variant="default">Default</Badge>}
+                  {m.isDefault && <MetaChip>Default</MetaChip>}
                 </span>
                 <span className="flex items-center gap-1.5">
                   {!m.isDefault && (

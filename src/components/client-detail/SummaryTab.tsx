@@ -1,23 +1,16 @@
-// Summary tab (spec): operational information only — upcoming visit, recent
-// visits, active services, property snapshot, alerts, notes (all three
-// systems), and client communication.
+// Summary tab (spec 3.1): a 2-column desktop grid. LEFT (operational):
+// alerts, visits (next + recent), active services, property snapshot.
+// RIGHT (secondary): notes and the compact communication preview.
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { AlertTriangle, CalendarClock, MessageSquare } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatFrequency } from "@/lib/subscription-form";
-import { formatDateTime, formatPhone } from "@/lib/format";
+import { computeZoneVisitPrice } from "@/lib/pricing";
+import { formatDay, formatDateTime, formatPhone } from "@/lib/format";
 import { listClientMessages } from "@/lib/messages.functions";
 import { NotesPanel } from "@/components/client-detail/NotesPanel";
-
-const STATUS_TONE: Record<string, string> = {
-  completed: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-  scheduled: "bg-blue-500/10 text-blue-700 dark:text-blue-400",
-  in_progress: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
-  skipped: "bg-muted text-muted-foreground",
-  canceled: "bg-destructive/10 text-destructive",
-};
+import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 
 function todayISO(): string {
   const d = new Date();
@@ -30,6 +23,12 @@ export function SummaryTab({
   properties,
   subscriptions,
   visits,
+  dogs = [],
+  zones = [],
+  creditCents = null,
+  billingClient = null,
+  visitsLoading = false,
+  creditLoading = false,
   canBill,
   onGoToTab,
 }: {
@@ -38,6 +37,12 @@ export function SummaryTab({
   properties: any[];
   subscriptions: any[];
   visits: any[];
+  dogs?: any[];
+  zones?: any[];
+  creditCents?: number | null;
+  billingClient?: any | null;
+  visitsLoading?: boolean;
+  creditLoading?: boolean;
   canBill: boolean;
   onGoToTab: (tab: string) => void;
 }) {
@@ -53,56 +58,154 @@ export function SummaryTab({
     .filter((v: any) => v.scheduled_on <= today && v.status !== "scheduled")
     .slice(0, 6);
 
-  // Operational alerts, in one place instead of scattered badges.
-  const alerts: string[] = [];
-  if (client.autopay_paused) alerts.push("Autopay is paused after repeated failures.");
-  if ((client.churn_score ?? 0) >= 60) alerts.push("High churn risk score.");
-  if (activeProps.some((p: any) => !p.boundary))
-    alerts.push("A property has no boundary drawn, so yard size and time estimates are incomplete.");
-  const hazardCount = activeProps.reduce(
-    (n: number, p: any) =>
-      n +
-      [
-        p.do_not_enter_if_dog_out,
-        p.aggressive_dog,
-        p.escape_risk,
-        p.invisible_fence,
-        p.dog_in_yard_during_service,
-        p.bees_wasps,
-        p.sharp_objects,
-        p.slippery_surfaces,
-      ].filter(Boolean).length,
-    0,
+  // Severity-tiered attention area (QA follow-up 4.1). Everything actionable
+  // in one place, worst first.
+  type Alert = { severity: "critical" | "warning" | "info"; text: string; tab?: string };
+  const alerts: Alert[] = [];
+
+  const futureScheduled = new Set(
+    visits
+      .filter((v: any) => v.status === "scheduled" && v.scheduled_on >= today)
+      .map((v: any) => v.subscription_id)
+      .filter(Boolean),
   );
-  if (hazardCount > 0) alerts.push(`${hazardCount} safety hazard${hazardCount > 1 ? "s" : ""} flagged across properties.`);
-  if (client.sms_opt_out) alerts.push("Client has opted out of SMS.");
+  const stuckSubs = activeSubs.filter(
+    (s: any) =>
+      !futureScheduled.has(s.id) &&
+      !(s.started_on && s.started_on > today) &&
+      // Completed one-time services legitimately have no future visit.
+      !(s.frequency === "one_time" && s.started_on && s.started_on <= today),
+  );
+  if (!visitsLoading && stuckSubs.length > 0)
+    alerts.push({
+      severity: "critical",
+      text: `${stuckSubs.length} active service${stuckSubs.length === 1 ? " has" : "s have"} no scheduled visits.`,
+      tab: "services",
+    });
+
+  const prepaidActive = activeSubs.some((s: any) => s.billing_cadence === "prepaid");
+  if (canBill && !creditLoading && prepaidActive && (creditCents ?? 0) <= 0)
+    alerts.push({
+      severity: "critical",
+      text: `Prepaid service with a $${(((creditCents ?? 0) as number) / 100).toFixed(2)} credit balance.`,
+      tab: "billing",
+    });
+  if (client.autopay_paused)
+    alerts.push({ severity: "critical", text: "Autopay is paused after repeated failures.", tab: "billing" });
+
+  if (client.email_opt_out === false && !client.primary_email)
+    alerts.push({
+      severity: "warning",
+      text: "Email notifications are enabled but there's no email address on file.",
+    });
+  if (client.sms_opt_out === false && !client.primary_phone)
+    alerts.push({
+      severity: "warning",
+      text: "SMS notifications are enabled but there's no phone number on file.",
+    });
+  if (canBill && billingClient && !billingClient.default_payment_method_id)
+    alerts.push({ severity: "warning", text: "No payment method on file.", tab: "billing" });
+
+  // Price far below the zone's weekly baseline is suspicious even before
+  // frequency multipliers (which only raise the reference).
+  for (const sub of activeSubs) {
+    const zone = zones.find((z: any) => z.id === sub.zone_id);
+    if (!zone || !sub.price_cents) continue;
+    const ref = computeZoneVisitPrice(
+      {
+        base_price_cents: zone.base_price_cents,
+        per_dog_addl_cents: zone.per_dog_addl_cents,
+        pricing_mode: (zone.pricing_mode ?? "flat") as "flat" | "per_sqft" | "per_acre",
+        price_per_sqft_cents: Number(zone.price_per_sqft_cents ?? 0),
+        price_per_acre_cents: zone.price_per_acre_cents,
+        area_min_charge_cents: zone.area_min_charge_cents,
+      },
+      { dogCount: sub.dog_count ?? 1 },
+    ).perVisitCents;
+    if (ref > 0 && sub.price_cents < ref * 0.5) {
+      alerts.push({
+        severity: "warning",
+        text: `A service is priced $${(sub.price_cents / 100).toFixed(2)} per visit, ${Math.round((1 - sub.price_cents / ref) * 100)}% below the ${zone.name} zone baseline.`,
+        tab: "services",
+      });
+      break;
+    }
+  }
+
+  const activeDogTotal = dogs.filter((d: any) => d.active !== false).length;
+  const billedDogs = activeSubs.some(
+    (s: any) => s.account_type === "residential" && (s.dog_count ?? 0) > 0,
+  );
+  if (billedDogs && activeDogTotal === 0)
+    alerts.push({
+      severity: "warning",
+      text: "Services bill for dogs but no dog records exist on the properties.",
+      tab: "properties",
+    });
+
+  if (
+    activeProps.length > 0 &&
+    activeProps.every((p: any) => !p.earliest_service_time && !p.latest_service_time)
+  )
+    alerts.push({ severity: "info", text: "No arrival window configured (visits can happen anytime).", tab: "properties" });
+  if (activeProps.some((p: any) => !p.boundary))
+    alerts.push({
+      severity: "info",
+      text: "A property has no boundary drawn, so yard size and time estimates are incomplete.",
+      tab: "properties",
+    });
+  if (client.sms_opt_out) alerts.push({ severity: "info", text: "Client has opted out of SMS." });
+  if ((client.churn_score ?? 0) >= 60)
+    alerts.push({ severity: "info", text: "High churn risk score." });
+
+  const order = { critical: 0, warning: 1, info: 2 } as const;
+  alerts.sort((a, b) => order[a.severity] - order[b.severity]);
 
   return (
-    <div className="space-y-6">
-      {alerts.length > 0 && (
-        <section className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-4">
-          <h2 className="flex items-center gap-1.5 text-sm font-medium text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="h-4 w-4" /> Alerts
-          </h2>
-          <ul className="mt-2 list-inside list-disc space-y-1 text-sm">
-            {alerts.map((a) => (
-              <li key={a}>{a}</li>
-            ))}
-          </ul>
-        </section>
-      )}
+    <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
+      {/* LEFT: operational */}
+      <div className="space-y-6">
+        {alerts.length > 0 && (
+          <section className="rounded-lg border p-4">
+            <h2 className="flex items-center gap-1.5 text-sm font-medium">
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" /> Needs attention
+            </h2>
+            <ul className="mt-2 space-y-1.5 text-sm">
+              {alerts.map((a) => (
+                <li key={a.text} className="flex items-start gap-2">
+                  <StatusChip
+                    status={a.severity === "critical" ? "overdue" : a.severity === "warning" ? "warning" : "scheduled"}
+                    label={a.severity === "critical" ? "Critical" : a.severity === "warning" ? "Warning" : "Info"}
+                    className="mt-0.5 shrink-0"
+                  />
+                  <span>
+                    {a.text}
+                    {a.tab && (
+                      <button
+                        type="button"
+                        onClick={() => onGoToTab(a.tab!)}
+                        className="ml-1.5 text-primary underline underline-offset-2 hover:no-underline"
+                      >
+                        Review
+                      </button>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
         {/* Visits */}
         <section className="rounded-lg border bg-card p-5">
           <h2 className="text-sm font-medium">Visits</h2>
           <div className="mt-2 rounded-md border bg-muted/20 p-3 text-sm">
-            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <SectionLabel className="flex items-center gap-1.5">
               <CalendarClock className="h-3.5 w-3.5" /> Next visit
-            </div>
+            </SectionLabel>
             {upcoming ? (
               <div className="mt-1">
-                {upcoming.scheduled_on}
+                {formatDay(upcoming.scheduled_on)}
                 {upcoming.properties?.street && (
                   <span className="text-muted-foreground"> at {upcoming.properties.street}</span>
                 )}
@@ -118,14 +221,10 @@ export function SummaryTab({
             {recent.map((v: any) => (
               <li key={v.id} className="flex items-center justify-between gap-2">
                 <span className="text-muted-foreground">
-                  {v.scheduled_on}
+                  {formatDay(v.scheduled_on)}
                   {v.properties?.street ? ` · ${v.properties.street}` : ""}
                 </span>
-                <span
-                  className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${STATUS_TONE[v.status] ?? "bg-muted"}`}
-                >
-                  {String(v.status).replace("_", " ")}
-                </span>
+                <StatusChip status={v.status} />
               </li>
             ))}
             {recent.length === 0 && (
@@ -141,7 +240,7 @@ export function SummaryTab({
           </button>
         </section>
 
-        {/* Services + properties snapshot */}
+        {/* Active services */}
         <section className="rounded-lg border bg-card p-5">
           <h2 className="text-sm font-medium">Active services</h2>
           <ul className="mt-2 space-y-1.5 text-sm">
@@ -168,8 +267,11 @@ export function SummaryTab({
           >
             Manage services
           </button>
+        </section>
 
-          <h2 className="mt-5 text-sm font-medium">Properties</h2>
+        {/* Properties snapshot */}
+        <section className="rounded-lg border bg-card p-5">
+          <h2 className="text-sm font-medium">Properties</h2>
           <ul className="mt-2 space-y-1.5 text-sm">
             {activeProps.map((p: any) => (
               <li key={p.id} className="flex items-center justify-between gap-2">
@@ -177,15 +279,7 @@ export function SummaryTab({
                   {p.street}, {p.city}
                 </span>
                 <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-                  {p.boundary ? (
-                    <Badge variant="secondary" className="text-[10px]">
-                      Boundary
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-[10px]">
-                      No boundary
-                    </Badge>
-                  )}
+                  <MetaChip>{p.boundary ? "Boundary" : "No boundary"}</MetaChip>
                   {p.gate_code && <span>Gate {p.gate_code}</span>}
                 </span>
               </li>
@@ -204,9 +298,11 @@ export function SummaryTab({
         </section>
       </div>
 
-      <NotesPanel clientId={clientId} />
-
-      <CommunicationCard client={client} onGoToTab={onGoToTab} />
+      {/* RIGHT: secondary */}
+      <div className="space-y-6">
+        <NotesPanel clientId={clientId} />
+        <CommunicationCard client={client} onGoToTab={onGoToTab} />
+      </div>
     </div>
   );
 }

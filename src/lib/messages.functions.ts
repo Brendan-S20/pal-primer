@@ -138,6 +138,16 @@ export const sendSmsToClient = createServerFn({ method: "POST" })
       .single();
     if (insErr) throw new Error(insErr.message);
     if (errorText) throw new Error(errorText);
+    try {
+      const { logActivity } = await import("@/lib/activity.server");
+      await logActivity(supabase, {
+        orgId: client.organization_id,
+        clientId: data.clientId,
+        actorUserId: context.userId,
+        kind: "message.sent",
+        summary: `Sent an SMS to the client`,
+      });
+    } catch {}
     return { id: inserted.id, sid, status };
   });
 

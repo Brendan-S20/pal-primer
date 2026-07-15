@@ -42,6 +42,22 @@ export const addDog = createServerFn({ method: "POST" })
     // Dog count feeds the auto-calculated service time.
     const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
     await recomputePropertyEstimate(supabase, data.propertyId);
+    try {
+      const { data: propRow } = await supabase
+        .from("properties")
+        .select("client_id, street")
+        .eq("id", data.propertyId)
+        .single();
+      const { logActivity } = await import("@/lib/activity.server");
+      await logActivity(supabase, {
+        orgId: prop.organization_id,
+        clientId: propRow?.client_id ?? null,
+        propertyId: data.propertyId,
+        actorUserId: context.userId,
+        kind: "dog.added",
+        summary: `Added dog ${data.name}${propRow?.street ? ` at ${propRow.street}` : ""}`,
+      });
+    } catch {}
     return { id: row.id as string };
   });
 
@@ -81,6 +97,34 @@ export const updateDog = createServerFn({ method: "POST" })
       const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
       await recomputePropertyEstimate(context.supabase, row.property_id);
     }
+    try {
+      const { data: propRow } = await context.supabase
+        .from("properties")
+        .select("organization_id, client_id, street")
+        .eq("id", row.property_id)
+        .single();
+      if (propRow) {
+        const { logActivity } = await import("@/lib/activity.server");
+        await logActivity(context.supabase, {
+          orgId: propRow.organization_id,
+          clientId: propRow.client_id,
+          propertyId: row.property_id,
+          actorUserId: context.userId,
+          kind:
+            data.active === false
+              ? "dog.deactivated"
+              : data.active === true
+                ? "dog.reactivated"
+                : "dog.updated",
+          summary:
+            data.active === false
+              ? "Marked a dog inactive"
+              : data.active === true
+                ? "Reactivated a dog"
+                : "Updated a dog's details",
+        });
+      }
+    } catch {}
     return { ok: true };
   });
 

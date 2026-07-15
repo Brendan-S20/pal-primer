@@ -15,6 +15,7 @@ import {
   User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { formatDateTime } from "@/lib/format";
 import { listClientActivity } from "@/lib/activity.functions";
 
 function iconFor(kind: string) {
@@ -59,7 +60,7 @@ export function ActivityTab({ clientId }: { clientId: string }) {
               </span>
               <div className="text-sm">{e.summary}</div>
               <div className="mt-0.5 text-xs text-muted-foreground">
-                {new Date(e.created_at).toLocaleString()}
+                {formatDateTime(e.created_at)}
                 {e.actor_label ? ` · ${e.actor_label}` : ""}
               </div>
             </li>

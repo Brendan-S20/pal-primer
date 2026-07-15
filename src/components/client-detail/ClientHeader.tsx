@@ -1,12 +1,12 @@
 // Persistent client header (spec): identity, status, contact, and the
-// numbers that matter, with Message / Edit Client / More Actions. Everything
-// below it lives in tabs; everything here is read-only.
+// numbers that matter, with Message / Edit Client / More Actions. Status is
+// DERIVED from service states (QA follow-up 4.2) so a manual flag can't
+// contradict reality; missing contact info renders as warning chips.
 import { Link } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { MoreHorizontal, Pencil } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -16,11 +16,37 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { updateClient } from "@/lib/clients.functions";
+import { updateClient, deleteClientIfNoHistory } from "@/lib/clients.functions";
+import { pauseSubscription } from "@/lib/subscriptions.functions";
+import { getMyOrg } from "@/lib/org.functions";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { StatusChip, MetaChip } from "@/components/client-detail/primitives";
+import { formatPhone, formatDay } from "@/lib/format";
+
+/** Active / Partially paused / Paused / Inactive, derived from services. */
+export function deriveClientStatus(client: any, subscriptions: any[]): string {
+  if (client.active === false) return "inactive";
+  const today = new Date().toISOString().slice(0, 10);
+  const live = subscriptions.filter((s) => !s.ends_on || s.ends_on >= today);
+  const active = live.filter((s) => s.status === "active").length;
+  const paused = live.filter((s) => s.status === "paused").length;
+  if (active > 0 && paused > 0) return "partially_paused";
+  if (active > 0) return "active";
+  if (paused > 0) return "paused";
+  return "inactive";
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  active: "Active",
+  partially_paused: "Partially paused",
+  paused: "Paused",
+  inactive: "Inactive",
+};
 
 export function ClientHeader({
   client,
   clientId,
+  subscriptions,
   propertyCount,
   activeServiceCount,
   outstandingCents,
@@ -29,6 +55,7 @@ export function ClientHeader({
 }: {
   client: any;
   clientId: string;
+  subscriptions: any[];
   propertyCount: number;
   activeServiceCount: number;
   /** null = caller can't see billing; hide the stat rather than show 0. */
@@ -37,15 +64,66 @@ export function ClientHeader({
   onEditClient: () => void;
 }) {
   const qc = useQueryClient();
+  const { confirm, dialog } = useConfirmDialog();
   const updateFn = useServerFn(updateClient);
+  const deleteFn = useServerFn(deleteClientIfNoHistory);
+  const pauseFn = useServerFn(pauseSubscription);
+  const orgFn = useServerFn(getMyOrg);
+  const { data: orgData } = useQuery({
+    queryKey: ["my-org"],
+    queryFn: () => orgFn(),
+    staleTime: 60_000,
+  });
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["client", clientId] });
+    qc.invalidateQueries({ queryKey: ["subs", clientId] });
+    qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
+  };
+
   const statusMut = useMutation({
     mutationFn: (active: boolean) => updateFn({ data: { clientId, active } }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["client", clientId] });
+      invalidate();
       toast.success("Client updated");
     },
     onError: (e) => toast.error((e as Error).message),
   });
+  const deleteMut = useMutation({
+    mutationFn: () => deleteFn({ data: { clientId } }),
+    onSuccess: () => {
+      toast.success("Client deleted");
+      window.location.href = "/clients";
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const today = new Date().toISOString().slice(0, 10);
+  const pausableSubs = subscriptions.filter(
+    (s) => s.status === "active" && (!s.ends_on || s.ends_on >= today),
+  );
+  const pauseAllMut = useMutation({
+    mutationFn: async () => {
+      for (const s of pausableSubs) {
+        await pauseFn({ data: { subscriptionId: s.id } });
+      }
+    },
+    onSuccess: () => toast.success("Services paused"),
+    onError: (e) =>
+      toast.error(`Some services may not have paused: ${(e as Error).message}. Check the Services tab.`),
+    onSettled: () => {
+      // Partial failures still changed state; always refresh.
+      invalidate();
+      qc.invalidateQueries({ queryKey: ["client-visit-history", clientId] });
+    },
+  });
+
+  const slug = (orgData?.organization as any)?.portal_slug as string | undefined;
+  const portalUrl =
+    typeof window !== "undefined" && client.portal_token
+      ? `${window.location.origin}${slug ? `/portal/${slug}/${client.portal_token}` : `/portal/${client.portal_token}`}`
+      : null;
+
+  const derivedStatus = deriveClientStatus(client, subscriptions);
 
   const initials = (client.display_name ?? "?")
     .split(/\s+/)
@@ -56,6 +134,7 @@ export function ClientHeader({
 
   return (
     <header className="rounded-xl border bg-card px-5 py-4">
+      {dialog}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-base font-semibold text-primary">
@@ -64,26 +143,20 @@ export function ClientHeader({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="truncate text-xl font-semibold">{client.display_name}</h1>
-              <Badge variant={client.active === false ? "outline" : "secondary"}>
-                {client.active === false ? "Inactive" : "Active"}
-              </Badge>
-              <Badge variant={client.account_type === "commercial" ? "default" : "secondary"}>
-                {client.account_type === "commercial" ? "Commercial" : "Residential"}
-              </Badge>
-              {(client.churn_score ?? 0) >= 60 && <Badge variant="destructive">At risk</Badge>}
+              <StatusChip status={derivedStatus} label={STATUS_LABELS[derivedStatus]} />
+              <MetaChip>{client.account_type === "commercial" ? "Commercial" : "Residential"}</MetaChip>
+              {(client.churn_score ?? 0) >= 60 && <StatusChip status="overdue" label="At risk" />}
               {(client.tags ?? []).map((t: string) => (
-                <Badge key={t} variant="outline">
-                  {t}
-                </Badge>
+                <MetaChip key={t}>{t}</MetaChip>
               ))}
             </div>
-            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-sm text-muted-foreground">
+            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
               {client.primary_phone ? (
                 <a href={`tel:${client.primary_phone}`} className="hover:text-foreground hover:underline">
-                  {client.primary_phone}
+                  {formatPhone(client.primary_phone)}
                 </a>
               ) : (
-                <span>No phone</span>
+                <StatusChip status="warning" label="No phone" />
               )}
               {client.primary_email ? (
                 <a
@@ -93,7 +166,7 @@ export function ClientHeader({
                   {client.primary_email}
                 </a>
               ) : (
-                <span>No email</span>
+                <StatusChip status="warning" label="No email" />
               )}
             </div>
           </div>
@@ -110,22 +183,85 @@ export function ClientHeader({
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" aria-label="More actions">
+              <Button variant="outline" size="sm" className="h-10 w-10 p-0" aria-label="More actions">
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>More actions</DropdownMenuLabel>
               <DropdownMenuSeparator />
+              {pausableSubs.length > 0 && (
+                <DropdownMenuItem
+                  onClick={async () => {
+                    if (
+                      await confirm({
+                        title: "Pause all services?",
+                        description: `${pausableSubs.length} active service${pausableSubs.length === 1 ? "" : "s"} will pause and future scheduled visits will be removed. Resume anytime from the Services tab.`,
+                        confirmLabel: "Pause services",
+                      })
+                    )
+                      pauseAllMut.mutate();
+                  }}
+                >
+                  Pause services ({pausableSubs.length})
+                </DropdownMenuItem>
+              )}
+              {portalUrl && (
+                <>
+                  <DropdownMenuItem onClick={() => window.open(portalUrl, "_blank", "noopener")}>
+                    Open portal
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() =>
+                      navigator.clipboard.writeText(portalUrl).then(
+                        () => toast.success("Portal link copied"),
+                        () => toast.error("Copy failed"),
+                      )
+                    }
+                  >
+                    Copy portal link
+                  </DropdownMenuItem>
+                </>
+              )}
+              <DropdownMenuSeparator />
               {client.active === false ? (
                 <DropdownMenuItem onClick={() => statusMut.mutate(true)}>
                   Reactivate client
                 </DropdownMenuItem>
               ) : (
-                <DropdownMenuItem onClick={() => statusMut.mutate(false)}>
-                  Mark client inactive
+                <DropdownMenuItem
+                  onClick={async () => {
+                    if (
+                      await confirm({
+                        title: "Archive this client?",
+                        description:
+                          "They disappear from active lists but keep all history. Reactivate anytime.",
+                        confirmLabel: "Archive client",
+                      })
+                    )
+                      statusMut.mutate(false);
+                  }}
+                >
+                  Archive client
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={async () => {
+                  if (
+                    await confirm({
+                      title: "Delete this client?",
+                      description:
+                        "Only allowed when they have no visits, services, or invoices. Clients with history are archived instead.",
+                      confirmLabel: "Delete client",
+                      destructive: true,
+                    })
+                  )
+                    deleteMut.mutate();
+                }}
+              >
+                Delete client
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -133,16 +269,16 @@ export function ClientHeader({
 
       <dl className="mt-4 grid grid-cols-2 gap-3 border-t pt-3 text-sm sm:grid-cols-4">
         <div>
-          <dt className="text-xs uppercase tracking-wide text-muted-foreground">Properties</dt>
+          <dt className="text-xs uppercase tracking-wide text-foreground/70">Properties</dt>
           <dd className="text-lg font-semibold">{propertyCount}</dd>
         </div>
         <div>
-          <dt className="text-xs uppercase tracking-wide text-muted-foreground">Active services</dt>
+          <dt className="text-xs uppercase tracking-wide text-foreground/70">Active services</dt>
           <dd className="text-lg font-semibold">{activeServiceCount}</dd>
         </div>
         {canBill && (
           <div>
-            <dt className="text-xs uppercase tracking-wide text-muted-foreground">Outstanding</dt>
+            <dt className="text-xs uppercase tracking-wide text-foreground/70">Outstanding</dt>
             <dd
               className={`text-lg font-semibold ${(outstandingCents ?? 0) > 0 ? "text-destructive" : ""}`}
             >
@@ -151,9 +287,9 @@ export function ClientHeader({
           </div>
         )}
         <div>
-          <dt className="text-xs uppercase tracking-wide text-muted-foreground">Client since</dt>
+          <dt className="text-xs uppercase tracking-wide text-foreground/70">Client since</dt>
           <dd className="text-lg font-semibold">
-            {client.created_at ? new Date(client.created_at).toLocaleDateString() : "-"}
+            {client.created_at ? formatDay(client.created_at) : "-"}
           </dd>
         </div>
       </dl>
