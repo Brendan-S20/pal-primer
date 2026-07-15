@@ -15,7 +15,7 @@ import { sendReviewRequest, applyReferralCode } from "@/lib/reviews.functions";
 import { sendSmsToClient, listClientMessages } from "@/lib/messages.functions";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 
-export function MessageComposer({ client }: { client: any }) {
+export function MessageComposer({ client, bare = false }: { client: any; bare?: boolean }) {
   const qc = useQueryClient();
   const listFn = useServerFn(listClientMessages);
   const sendFn = useServerFn(sendSmsToClient);
@@ -39,12 +39,14 @@ export function MessageComposer({ client }: { client: any }) {
   });
 
   const noPhone = !client.primary_phone;
+  const shown = bare ? messages : messages.slice(-6);
+  const Wrapper = bare ? "div" : "section";
   return (
-    <section className="rounded-lg border bg-card p-5">
-      <h2 className="text-sm font-medium">Messages</h2>
+    <Wrapper className={bare ? "" : "rounded-lg border bg-card p-5"}>
+      {!bare && <h2 className="text-sm font-medium">Messages</h2>}
       {messages.length > 0 && (
-        <ul className="mt-3 max-h-48 space-y-2 overflow-y-auto">
-          {messages.slice(-6).map((m) => (
+        <ul className={`mt-3 space-y-2 overflow-y-auto ${bare ? "max-h-96" : "max-h-48"}`}>
+          {shown.map((m) => (
             <li
               key={m.id}
               className={`rounded-md px-3 py-2 text-sm ${m.direction === "outbound" ? "bg-primary/10" : "bg-muted"}`}
@@ -88,7 +90,7 @@ export function MessageComposer({ client }: { client: any }) {
           </Button>
         </div>
       </form>
-    </section>
+    </Wrapper>
   );
 }
 

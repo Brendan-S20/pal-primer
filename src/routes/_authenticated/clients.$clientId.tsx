@@ -1,7 +1,7 @@
 // Client detail page (docs/client-detail-refactor.md): a persistent header,
 // six tabs, read-only by default, editing in right-side drawers. The heavy
 // lifting lives in src/components/client-detail/*.
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -22,9 +22,27 @@ import { ActivityTab } from "@/components/client-detail/ActivityTab";
 import { AddonsPanel } from "@/components/client-detail/billing-panels";
 import { BillingTab } from "@/components/client-detail/BillingTab";
 import { StationsPanel } from "@/components/client-detail/stations-panel";
+import { CommunicationTab } from "@/components/client-detail/CommunicationTab";
+
+const TABS = [
+  "summary",
+  "properties",
+  "services",
+  "visits",
+  "billing",
+  "communication",
+  "activity",
+] as const;
+type TabValue = (typeof TABS)[number];
 
 export const Route = createFileRoute("/_authenticated/clients/$clientId")({
   component: ClientDetail,
+  // QA follow-up 2.2: tabs are URL-addressable so refresh, back/forward, and
+  // deep links land on the right tab instead of resetting to Summary.
+  validateSearch: (search: Record<string, unknown>): { tab?: TabValue } => {
+    const tab = search.tab as string | undefined;
+    return TABS.includes(tab as TabValue) && tab !== "summary" ? { tab: tab as TabValue } : {};
+  },
 });
 
 function ClientDetail() {
@@ -72,7 +90,14 @@ function ClientDetail() {
     enabled: canBill,
   });
 
-  const [tab, setTab] = useState("summary");
+  const search = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  const tab: TabValue = search.tab ?? "summary";
+  const setTab = (next: string) =>
+    navigate({
+      search: next === "summary" ? {} : { tab: next as TabValue },
+      replace: false,
+    });
   const [editClientOpen, setEditClientOpen] = useState(false);
 
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
@@ -116,6 +141,7 @@ function ClientDetail() {
           <TabsTrigger value="services">Services</TabsTrigger>
           <TabsTrigger value="visits">Visits</TabsTrigger>
           {canBill && <TabsTrigger value="billing">Billing</TabsTrigger>}
+          <TabsTrigger value="communication">Communication</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
 
@@ -159,7 +185,13 @@ function ClientDetail() {
         </TabsContent>
 
         <TabsContent value="visits">
-          <VisitsTab visits={visits} isLoading={visitsLoading} />
+          <VisitsTab
+            visits={visits}
+            isLoading={visitsLoading}
+            clientId={clientId}
+            subscriptions={subs}
+            canCorrect={canBill}
+          />
         </TabsContent>
 
         {canBill && (
@@ -167,6 +199,10 @@ function ClientDetail() {
             <BillingTab clientId={clientId} />
           </TabsContent>
         )}
+
+        <TabsContent value="communication">
+          <CommunicationTab client={client} clientId={clientId} canBill={canBill} />
+        </TabsContent>
 
         <TabsContent value="activity">
           <ActivityTab clientId={clientId} />
