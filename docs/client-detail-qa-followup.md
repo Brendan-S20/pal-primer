@@ -151,3 +151,7 @@ Currently logs exactly one event type. Verified today's session produced client 
 8. Delete property with history → archive path with explanatory modal; without history → delete modal; both logged with actor.
 9. Perform any edit → it appears in Activity with actor and before/after.
 10. Keyboard-only pass through tabs, drawers, and modals; labels ≥12px pass AA contrast; all inputs have accessible names.
+
+## Sync log
+
+- 2026-07-16: PR #30 (UX round 3) merged; this commit re-fires the GitHub push webhook after Lovable missed the original event.
