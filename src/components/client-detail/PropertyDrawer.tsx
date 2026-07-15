@@ -178,13 +178,21 @@ export function PropertyDrawer({
         const targetId = property ? property.id : (res?.id as string | undefined);
         const shouldSave = property ? windowChanged : !!(form.earliestTime || form.latestTime);
         if (shouldSave && targetId) {
-          await windowFn({
-            data: {
-              propertyId: targetId,
-              earliest_service_time: form.earliestTime || null,
-              latest_service_time: form.latestTime || null,
-            },
-          });
+          try {
+            await windowFn({
+              data: {
+                propertyId: targetId,
+                earliest_service_time: form.earliestTime || null,
+                latest_service_time: form.latestTime || null,
+              },
+            });
+          } catch (e) {
+            // The property itself saved; failing the whole mutation here
+            // would leave the drawer open and invite a duplicate create.
+            toast.error(
+              `Property saved, but the arrival window didn't: ${(e as Error).message}. Edit the property to retry.`,
+            );
+          }
         }
         return { ok: true };
       });

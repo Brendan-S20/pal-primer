@@ -27,6 +27,8 @@ export function SummaryTab({
   zones = [],
   creditCents = null,
   billingClient = null,
+  visitsLoading = false,
+  creditLoading = false,
   canBill,
   onGoToTab,
 }: {
@@ -39,6 +41,8 @@ export function SummaryTab({
   zones?: any[];
   creditCents?: number | null;
   billingClient?: any | null;
+  visitsLoading?: boolean;
+  creditLoading?: boolean;
   canBill: boolean;
   onGoToTab: (tab: string) => void;
 }) {
@@ -66,9 +70,13 @@ export function SummaryTab({
       .filter(Boolean),
   );
   const stuckSubs = activeSubs.filter(
-    (s: any) => !futureScheduled.has(s.id) && !(s.started_on && s.started_on > today),
+    (s: any) =>
+      !futureScheduled.has(s.id) &&
+      !(s.started_on && s.started_on > today) &&
+      // Completed one-time services legitimately have no future visit.
+      !(s.frequency === "one_time" && s.started_on && s.started_on <= today),
   );
-  if (stuckSubs.length > 0)
+  if (!visitsLoading && stuckSubs.length > 0)
     alerts.push({
       severity: "critical",
       text: `${stuckSubs.length} active service${stuckSubs.length === 1 ? " has" : "s have"} no scheduled visits.`,
@@ -76,7 +84,7 @@ export function SummaryTab({
     });
 
   const prepaidActive = activeSubs.some((s: any) => s.billing_cadence === "prepaid");
-  if (canBill && prepaidActive && (creditCents ?? 0) <= 0)
+  if (canBill && !creditLoading && prepaidActive && (creditCents ?? 0) <= 0)
     alerts.push({
       severity: "critical",
       text: `Prepaid service with a $${(((creditCents ?? 0) as number) / 100).toFixed(2)} credit balance.`,

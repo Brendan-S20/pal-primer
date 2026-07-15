@@ -251,7 +251,7 @@ export const updateClient = createServerFn({ method: "POST" })
     const { data: beforeRow } = await supabase
       .from("clients")
       .select(
-        "display_name, primary_email, primary_phone, account_type, active, tags, preferred_contact, referral_source, sms_opt_out, email_opt_out",
+        "display_name, first_name, last_name, company, primary_email, primary_phone, account_type, active, tags, preferred_contact, referral_source, sms_opt_out, email_opt_out",
       )
       .eq("id", data.clientId)
       .single();
@@ -768,24 +768,31 @@ export const deleteClientIfNoHistory = createServerFn({ method: "POST" })
       .single();
     if (cErr) throw new Error(cErr.message);
 
-    const [{ count: visitCount }, { count: invoiceCount }, { count: subCount }, { count: propCount }] =
-      await Promise.all([
-        supabase.from("visits").select("id", { count: "exact", head: true }).eq("client_id", data.clientId),
-        supabase.from("invoices").select("id", { count: "exact", head: true }).eq("client_id", data.clientId),
-        supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("client_id", data.clientId),
-        supabase.from("properties").select("id", { count: "exact", head: true }).eq("client_id", data.clientId),
-      ]);
+    // Every guard query MUST surface its error: a failed count reads as 0
+    // and would bypass the history check, cascade-deleting real visit and
+    // service history (QA: visits/subscriptions are ON DELETE CASCADE).
+    const guards = await Promise.all([
+      supabase.from("visits").select("id", { count: "exact", head: true }).eq("client_id", data.clientId),
+      supabase.from("invoices").select("id", { count: "exact", head: true }).eq("client_id", data.clientId),
+      supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("client_id", data.clientId),
+      supabase.from("properties").select("id", { count: "exact", head: true }).eq("client_id", data.clientId),
+    ]);
+    for (const g of guards) if (g.error) throw new Error(g.error.message);
+    const [{ count: visitCount }, { count: invoiceCount }, { count: subCount }, { count: propCount }] = guards;
     if ((visitCount ?? 0) > 0 || (invoiceCount ?? 0) > 0 || (subCount ?? 0) > 0)
       throw new Error("This client has history. Mark them inactive instead of deleting.");
 
     if ((propCount ?? 0) > 0) {
-      const { data: props } = await supabase
+      const { data: props, error: listErr } = await supabase
         .from("properties")
         .select("id")
         .eq("client_id", data.clientId);
+      if (listErr) throw new Error(listErr.message);
       for (const pr of props ?? []) {
-        await supabase.from("dogs").delete().eq("property_id", pr.id);
-        await supabase.from("waste_stations").delete().eq("property_id", pr.id);
+        const dDel = await supabase.from("dogs").delete().eq("property_id", pr.id);
+        if (dDel.error) throw new Error(dDel.error.message);
+        const wDel = await supabase.from("waste_stations").delete().eq("property_id", pr.id);
+        if (wDel.error) throw new Error(wDel.error.message);
       }
       const { error: pDelErr } = await supabase
         .from("properties")
@@ -793,7 +800,8 @@ export const deleteClientIfNoHistory = createServerFn({ method: "POST" })
         .eq("client_id", data.clientId);
       if (pDelErr) throw new Error(pDelErr.message);
     }
-    await supabase.from("client_notes").delete().eq("client_id", data.clientId);
+    const nDel = await supabase.from("client_notes").delete().eq("client_id", data.clientId);
+    if (nDel.error) throw new Error(nDel.error.message);
     const { error } = await supabase.from("clients").delete().eq("id", data.clientId);
     if (error) throw new Error(error.message);
 

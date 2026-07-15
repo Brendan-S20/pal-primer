@@ -107,12 +107,14 @@ export function ClientHeader({
         await pauseFn({ data: { subscriptionId: s.id } });
       }
     },
-    onSuccess: () => {
-      toast.success("Services paused");
+    onSuccess: () => toast.success("Services paused"),
+    onError: (e) =>
+      toast.error(`Some services may not have paused: ${(e as Error).message}. Check the Services tab.`),
+    onSettled: () => {
+      // Partial failures still changed state; always refresh.
       invalidate();
       qc.invalidateQueries({ queryKey: ["client-visit-history", clientId] });
     },
-    onError: (e) => toast.error((e as Error).message),
   });
 
   const slug = (orgData?.organization as any)?.portal_slug as string | undefined;

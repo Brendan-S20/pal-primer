@@ -90,7 +90,7 @@ function ClientDetail() {
     enabled: canBill,
   });
   const getCreditFn = useServerFn(getClientCredit);
-  const { data: credit } = useQuery({
+  const { data: credit, isLoading: creditLoading } = useQuery({
     queryKey: ["credit", clientId],
     queryFn: () => getCreditFn({ data: { clientId } }),
     enabled: canBill,
@@ -200,6 +200,8 @@ function ClientDetail() {
             zones={zones}
             creditCents={canBill ? (credit?.balanceCents ?? 0) : null}
             billingClient={billing?.client ?? null}
+            visitsLoading={visitsLoading}
+            creditLoading={canBill ? creditLoading : false}
             canBill={canBill}
             onGoToTab={setTab}
           />
