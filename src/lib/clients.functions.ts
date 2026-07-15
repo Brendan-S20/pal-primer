@@ -146,7 +146,7 @@ export const getClient = createServerFn({ method: "GET" })
     const { data: client, error } = await supabase
       .from("clients")
       .select(
-        "id, display_name, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source",
+        "id, display_name, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused",
       )
       .eq("id", data.clientId)
       .single();
@@ -261,6 +261,50 @@ export const updateClientNotes = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+/** Full visit history for the Visits tab: scheduled window vs actual
+ * start/completion so "estimated" and "actually happened" never blur. */
+export const listClientVisitHistory = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({ clientId: z.string().uuid(), limit: z.number().int().min(1).max(200).optional() })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    await requirePermission(supabase, context.userId, "view_client_directory");
+    const select =
+      "id, subscription_id, scheduled_on, status, started_at, completed_at, eta_start, eta_end, skip_reason_code, skip_reason, rescheduled_from, is_deepclean, properties(street, earliest_service_time, latest_service_time), staff:assigned_staff_id(display_name)";
+    const limit = data.limit ?? 100;
+    const today = new Date().toISOString().slice(0, 10);
+    // Two windows so a heavily scheduled client (many future visits) can't
+    // push real history out of a single desc-ordered page: the EARLIEST
+    // upcoming visits (next-visit math needs the minimum) plus the LATEST
+    // past ones.
+    const [upcoming, past] = await Promise.all([
+      supabase
+        .from("visits")
+        .select(select)
+        .eq("client_id", data.clientId)
+        .gte("scheduled_on", today)
+        .order("scheduled_on", { ascending: true })
+        .limit(limit),
+      supabase
+        .from("visits")
+        .select(select)
+        .eq("client_id", data.clientId)
+        .lt("scheduled_on", today)
+        .order("scheduled_on", { ascending: false })
+        .limit(limit),
+    ]);
+    if (upcoming.error) throw new Error(upcoming.error.message);
+    if (past.error) throw new Error(past.error.message);
+    const rows = [...(upcoming.data ?? []), ...(past.data ?? [])].sort((a: any, b: any) =>
+      a.scheduled_on < b.scheduled_on ? 1 : a.scheduled_on > b.scheduled_on ? -1 : 0,
+    );
+    return { visits: rows };
+  });
+
 /** Recent visit history for the client detail page (newest first). */
 export const listRecentClientVisits = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -296,7 +340,7 @@ export const listDogsForClient = createServerFn({ method: "GET" })
     if (!ids.length) return { dogs: [] };
     const { data: dogs, error } = await supabase
       .from("dogs")
-      .select("id, property_id, name, breed, weight_class, temperament, notes")
+      .select("id, property_id, name, breed, weight_class, temperament, notes, active")
       .in("property_id", ids)
       .order("name");
     if (error) throw new Error(error.message);
