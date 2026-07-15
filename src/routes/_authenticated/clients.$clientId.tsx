@@ -5,7 +5,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
-import { getClient, listClientVisitHistory } from "@/lib/clients.functions";
+import { getClient, listClientVisitHistory, listDogsForClient } from "@/lib/clients.functions";
 import { listPropertiesForClient } from "@/lib/properties.functions";
 import { listSubscriptionsForClient } from "@/lib/subscriptions.functions";
 import { listZones } from "@/lib/zones.functions";
@@ -61,6 +61,11 @@ function ClientDetail() {
     queryKey: ["client-visit-history", clientId],
     queryFn: () => listVisitsFn({ data: { clientId } }),
   });
+  const listDogsFn = useServerFn(listDogsForClient);
+  const { data: dogsData } = useQuery({
+    queryKey: ["client-dogs", clientId],
+    queryFn: () => listDogsFn({ data: { clientId } }),
+  });
   const { data: billing } = useQuery({
     queryKey: ["billing-summary", clientId],
     queryFn: () => getBillingFn({ data: { clientId } }),
@@ -79,6 +84,7 @@ function ClientDetail() {
   const subs = subsData?.subscriptions ?? [];
   const zones = zonesData?.zones ?? [];
   const visits = visitsData?.visits ?? [];
+  const dogs = dogsData?.dogs ?? [];
 
   const today = new Date();
   const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
@@ -131,6 +137,7 @@ function ClientDetail() {
             client={client}
             subscriptions={subs}
             zones={zones}
+            visits={visits}
             canManagePricing={canManagePricing}
           />
         </TabsContent>
@@ -143,6 +150,7 @@ function ClientDetail() {
             subscriptions={subs}
             zones={zones}
             visits={visits}
+            dogs={dogs}
             canBill={canBill}
             canManagePricing={canManagePricing}
           />

@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Trash2, Ban, Copy, Printer } from "lucide-react";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { getMyOrg } from "@/lib/org.functions";
 
 export const Route = createFileRoute("/_authenticated/settings/promotions")({
@@ -115,6 +116,7 @@ function PromotionsPage() {
 
 function PromoSection() {
   const qc = useQueryClient();
+  const { confirm, dialog } = useConfirmDialog();
   const listFn = useServerFn(listPromoCodes);
   const saveFn = useServerFn(upsertPromoCode);
   const delFn = useServerFn(deletePromoCode);
@@ -169,6 +171,7 @@ function PromoSection() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
+      {dialog}
       <div className="rounded-lg border bg-card p-4">
         <h3 className="mb-3 text-sm font-semibold">New promo code</h3>
         <div className="grid gap-3">
@@ -327,8 +330,15 @@ function PromoSection() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => {
-                    if (confirm(`Delete promo ${p.code}?`)) del.mutate(p.id);
+                  onClick={async () => {
+                    if (
+                      await confirm({
+                        title: `Delete promo ${p.code}?`,
+                        destructive: true,
+                        confirmLabel: "Delete promo",
+                      })
+                    )
+                      del.mutate(p.id);
                   }}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -344,6 +354,7 @@ function PromoSection() {
 
 function GiftSection() {
   const qc = useQueryClient();
+  const { confirm, dialog } = useConfirmDialog();
   const listFn = useServerFn(listGiftCards);
   const createFn = useServerFn(createGiftCard);
   const voidFn = useServerFn(voidGiftCard);
@@ -406,6 +417,7 @@ function GiftSection() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
+      {dialog}
       <div className="space-y-6">
         <div className="rounded-lg border bg-card p-4">
           <h3 className="mb-3 text-sm font-semibold">Issue gift card</h3>
@@ -545,8 +557,16 @@ function GiftSection() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => {
-                        if (confirm(`Void gift card ${c.code}?`)) voidM.mutate(c.id);
+                      onClick={async () => {
+                        if (
+                          await confirm({
+                            title: `Void gift card ${c.code}?`,
+                            description: "A voided card can no longer be redeemed.",
+                            destructive: true,
+                            confirmLabel: "Void gift card",
+                          })
+                        )
+                          voidM.mutate(c.id);
                       }}
                       title="Void"
                     >

@@ -40,6 +40,7 @@ import { deriveYardSize, YARD_SIZE_LABELS } from "@/lib/yard-size";
 import { computeEstimatedMinutes, countPropertyHazards } from "@/lib/estimated-time";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { PropertyDrawer } from "@/components/client-detail/PropertyDrawer";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 
 const HAZARD_LABELS: Array<[string, string]> = [
   ["do_not_enter_if_dog_out", "Do not enter if dog is out"],
@@ -64,12 +65,14 @@ export function PropertiesTab({
   client,
   subscriptions,
   zones,
+  visits,
   canManagePricing,
 }: {
   clientId: string;
   client: any;
   subscriptions: any[];
   zones: any[];
+  visits: any[];
   canManagePricing: boolean;
 }) {
   const qc = useQueryClient();
@@ -136,6 +139,7 @@ export function PropertiesTab({
               clientId={clientId}
               dogs={dogs.filter((d: any) => d.property_id === p.id)}
               subscriptions={subscriptions.filter((s: any) => s.property_id === p.id)}
+              visitCount={visits.filter((v: any) => v.property_id === p.id).length}
               zones={zones}
               open={expanded.has(p.id)}
               onToggle={() => toggle(p.id)}
@@ -202,6 +206,7 @@ function PropertyCard({
   clientId,
   dogs,
   subscriptions,
+  visitCount,
   zones,
   open,
   onToggle,
@@ -213,6 +218,7 @@ function PropertyCard({
   clientId: string;
   dogs: any[];
   subscriptions: any[];
+  visitCount: number;
   zones: any[];
   open: boolean;
   onToggle: () => void;
@@ -220,6 +226,7 @@ function PropertyCard({
   canManagePricing: boolean;
 }) {
   const qc = useQueryClient();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const archiveFn = useServerFn(setPropertyArchived);
   const deleteFn = useServerFn(deletePropertyIfNoHistory);
   const invalidate = () => {
@@ -278,6 +285,7 @@ function PropertyCard({
 
   return (
     <li className="rounded-lg border bg-card">
+      {confirmDialog}
       {/* Collapsed summary row */}
       <button
         type="button"
@@ -348,8 +356,15 @@ function PropertyCard({
             <Button
               size="sm"
               variant="outline"
-              onClick={() => {
-                if (window.confirm("Archive this property? It disappears from operational views."))
+              onClick={async () => {
+                if (
+                  await confirm({
+                    title: "Archive this property?",
+                    description:
+                      "It disappears from schedules and operational views. Its history is kept, and you can restore it anytime.",
+                    confirmLabel: "Archive property",
+                  })
+                )
                   archiveMut.mutate();
               }}
               disabled={archiveMut.isPending}
@@ -360,8 +375,41 @@ function PropertyCard({
               size="sm"
               variant="ghost"
               className="text-destructive hover:text-destructive"
-              onClick={() => {
-                if (window.confirm("Delete this property? Only allowed when it has no history."))
+              onClick={async () => {
+                const hasHistory = visitCount > 0 || subscriptions.length > 0;
+                if (hasHistory) {
+                  // PRD rule: history means archive, never delete. The modal
+                  // says which action applies, why, and what depends on it.
+                  const activeCount = subscriptions.filter((x: any) => x.status === "active").length;
+                  if (
+                    await confirm({
+                      title: "This property has history",
+                      description: (
+                        <>
+                          <p>
+                            {p.street} is referenced by {visitCount} visit
+                            {visitCount === 1 ? "" : "s"} and {subscriptions.length} service
+                            {subscriptions.length === 1 ? "" : "s"}
+                            {activeCount > 0 ? ` (${activeCount} active)` : ""}, so it can't be
+                            deleted. Archiving keeps that history and removes the property from
+                            operational views.
+                          </p>
+                        </>
+                      ),
+                      confirmLabel: "Archive instead",
+                    })
+                  )
+                    archiveMut.mutate();
+                  return;
+                }
+                if (
+                  await confirm({
+                    title: "Delete this property?",
+                    description: `${p.street} has no visits, services, or invoices. Deleting removes it and its dog records permanently.`,
+                    confirmLabel: "Delete property",
+                    destructive: true,
+                  })
+                )
                   deleteMut.mutate();
               }}
               disabled={deleteMut.isPending}
@@ -536,7 +584,14 @@ function PropertyCard({
 
           <ServiceWindowRow property={p} />
 
-          <DogsSection propertyId={p.id} clientId={clientId} dogs={dogs} />
+          <DogsSection
+            propertyId={p.id}
+            clientId={clientId}
+            dogs={dogs}
+            billedDogCounts={activeSubs
+              .filter((x: any) => x.account_type === "residential" && x.dog_count != null)
+              .map((x: any) => x.dog_count as number)}
+          />
         </div>
       )}
     </li>
@@ -619,10 +674,12 @@ function DogsSection({
   propertyId,
   clientId,
   dogs,
+  billedDogCounts = [],
 }: {
   propertyId: string;
   clientId: string;
   dogs: any[];
+  billedDogCounts?: number[];
 }) {
   const qc = useQueryClient();
   const addFn = useServerFn(addDog);
@@ -670,9 +727,19 @@ function DogsSection({
 
   const activeDogs = dogs.filter((d) => d.active !== false);
   const inactiveDogs = dogs.filter((d) => d.active === false);
+  // QA follow-up 1.5: services billing for a different dog count than the
+  // property's records is a data-quality problem worth surfacing.
+  const mismatched = billedDogCounts.filter((n) => n !== activeDogs.length);
 
   return (
     <div>
+      {mismatched.length > 0 && (
+        <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
+          Services bill for {mismatched.join(" and ")} dog{mismatched.some((n) => n !== 1) ? "s" : ""},
+          but this property has {activeDogs.length} active dog record
+          {activeDogs.length === 1 ? "" : "s"}. Add the dogs below or fix the service dog count.
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Dogs ({activeDogs.length})
@@ -873,12 +940,7 @@ function ZoneOverrideControl({
               placeholder="e.g. edge of zone, grandfathered pricing"
             />
           </div>
-          <DrawerFooter
-            onCancel={() => {
-              if (reason && !window.confirm("Discard unsaved changes?")) return;
-              setOpen(false);
-            }}
-          >
+          <DrawerFooter>
             {property.zone_override_reason && (
               <Button
                 type="button"
@@ -975,12 +1037,7 @@ function EstimateOverrideControl({
               placeholder="e.g. steep terrain, double gate walk"
             />
           </div>
-          <DrawerFooter
-            onCancel={() => {
-              if (reason && !window.confirm("Discard unsaved changes?")) return;
-              setOpen(false);
-            }}
-          >
+          <DrawerFooter>
             {property.est_override_at && (
               <Button
                 type="button"

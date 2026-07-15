@@ -34,6 +34,8 @@ import {
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { PrepayInline } from "@/components/client-detail/billing-panels";
 import { generatePrepaidInvoice } from "@/lib/invoices.functions";
+import { generateVisits } from "@/lib/visits.functions";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -49,6 +51,7 @@ export function ServicesTab({
   subscriptions,
   zones,
   visits,
+  dogs,
   canBill,
   canManagePricing,
 }: {
@@ -58,10 +61,12 @@ export function ServicesTab({
   subscriptions: any[];
   zones: any[];
   visits: any[];
+  dogs: any[];
   canBill: boolean;
   canManagePricing: boolean;
 }) {
   const qc = useQueryClient();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [drawerSub, setDrawerSub] = useState<any | null | "new">(null);
   const [endingSub, setEndingSub] = useState<any | null>(null);
 
@@ -100,6 +105,23 @@ export function ServicesTab({
     },
     onError: (e) => toast.error((e as Error).message),
   });
+  const generateFn = useServerFn(generateVisits);
+  const generateMut = useMutation({
+    mutationFn: () => {
+      const d = new Date();
+      d.setDate(d.getDate() + 60);
+      const through = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      return generateFn({ data: { through } });
+    },
+    onSuccess: (r: any) => {
+      toast.success(
+        r?.inserted ? `Scheduled ${r.inserted} visit${r.inserted === 1 ? "" : "s"}` : "Schedule is up to date",
+      );
+      invalidate();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
   const prepayMut = useMutation({
     mutationFn: (v: { subscriptionId: string; visitCount: number }) => prepayFn({ data: v }),
     onSuccess: (r: any) => {
@@ -127,6 +149,7 @@ export function ServicesTab({
 
   return (
     <div className="space-y-4">
+      {confirmDialog}
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-muted-foreground">
           {subscriptions.length} service{subscriptions.length === 1 ? "" : "s"}
@@ -151,6 +174,26 @@ export function ServicesTab({
             const paused = s.status === "paused";
             const started = s.started_on && s.started_on <= today;
             const nextVisit = nextVisitBySub.get(s.id);
+            // QA follow-up 1.5: service dog count vs the property's records.
+            const propertyDogs = dogs.filter(
+              (d: any) => d.property_id === s.property_id && d.active !== false,
+            ).length;
+            const dogMismatch =
+              s.account_type === "residential" &&
+              s.dog_count != null &&
+              s.dog_count !== propertyDogs;
+            // QA follow-up 1.6: an active service with no upcoming visit must
+            // say why and offer a way out.
+            const startsLater = s.started_on && s.started_on > today;
+            const noVisitReason =
+              !ended && !paused && s.status === "active" && !nextVisit
+                ? startsLater
+                  ? `Starts ${s.started_on}; visits appear once it begins`
+                  : s.frequency === "one_time"
+                    ? "Its one-time visit is in the past"
+                    : "Schedule hasn't been generated yet"
+                : null;
+            const canGenerate = noVisitReason != null && !startsLater && s.frequency !== "one_time";
             return (
               <li key={s.id} className="rounded-lg border bg-card p-4 text-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -189,14 +232,37 @@ export function ServicesTab({
                       {s.preferred_weekdays?.length ? (
                         <span>{s.preferred_weekdays.map((d: number) => WEEKDAYS[d]).join(" ")}</span>
                       ) : null}
-                      {!ended && !paused && (
+                      {!ended && !paused && nextVisit && (
                         <span className="inline-flex items-center gap-1">
                           <CalendarClock className="h-3 w-3" />
-                          {nextVisit ? `Next visit ${nextVisit}` : "No upcoming visit scheduled"}
+                          Next visit {nextVisit}
                         </span>
                       )}
                       {ended && s.end_reason && <span>Reason: {s.end_reason}</span>}
                     </div>
+                    {noVisitReason && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
+                        <span>No upcoming visit: {noVisitReason}.</span>
+                        {canGenerate && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => generateMut.mutate()}
+                            disabled={generateMut.isPending}
+                          >
+                            {generateMut.isPending ? "Scheduling…" : "Generate schedule"}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                    {dogMismatch && (
+                      <div className="mt-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
+                        Bills for {s.dog_count} dog{s.dog_count === 1 ? "" : "s"}, but the property
+                        has {propertyDogs} active dog record{propertyDogs === 1 ? "" : "s"}. Update
+                        the dogs on the Properties tab or the count here.
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -243,8 +309,16 @@ export function ServicesTab({
                         size="sm"
                         variant="ghost"
                         className="text-destructive hover:text-destructive"
-                        onClick={() => {
-                          if (window.confirm("Delete this service? Only allowed before it starts."))
+                        onClick={async () => {
+                          if (
+                            await confirm({
+                              title: "Delete this service?",
+                              description:
+                                "Deleting is only allowed before the first visit happens and removes its scheduled visits. Started services are ended instead, keeping their history.",
+                              confirmLabel: "Delete service",
+                              destructive: true,
+                            })
+                          )
                             deleteMut.mutate(s.id);
                         }}
                         disabled={deleteMut.isPending}
@@ -312,6 +386,7 @@ function ServiceDrawer({
 }) {
   const createFn = useServerFn(createSubscription);
   const updateFn = useServerFn(updateSubscription);
+  const { confirm: confirmPrice, dialog: priceDialog } = useConfirmDialog();
 
   const initial: SubscriptionFormValues & { choice: ScheduleChoice } = useMemo(() => {
     if (subscription) {
@@ -333,19 +408,46 @@ function ServiceDrawer({
   // Reset only when the drawer transitions closed -> open; a background
   // refetch changing `initial`'s identity must not wipe in-progress edits.
   const wasOpen = useRef(false);
+  const [showErrors, setShowErrors] = useState(false);
   useEffect(() => {
-    if (open && !wasOpen.current) setForm(initial);
+    if (open && !wasOpen.current) {
+      setForm(initial);
+      setShowErrors(false);
+    }
     wasOpen.current = open;
   }, [open, initial]);
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
-  const cancel = () => {
-    if (dirty && !window.confirm("Discard unsaved changes?")) return;
-    onClose();
-  };
 
   const accountType = (client?.account_type ?? "residential") as "residential" | "commercial";
+
+  // Inline validation (QA follow-up 1.3): a blank price must be an error the
+  // user can see, never a silent no-op or a $0.00 save.
+  const priceValue = form.priceDollars.trim() === "" ? null : Number(form.priceDollars);
+  const errors: Partial<Record<string, string>> = {};
+  if (priceValue == null || !Number.isFinite(priceValue)) errors.price = "Price is required";
+  else if (priceValue < 0) errors.price = "Price can't be negative";
+  if (accountType === "residential") {
+    const n = parseInt(form.dogCount, 10);
+    if (!form.dogCount.trim() || !Number.isFinite(n) || n < 1)
+      errors.dogCount = "At least 1 dog";
+  } else {
+    const n = parseInt(form.unitCount, 10);
+    if (!form.unitCount.trim() || !Number.isFinite(n) || n < 1)
+      errors.unitCount = "At least 1 unit";
+  }
+  if (form.choice === "every_n_weeks") {
+    const n = parseInt(form.intervalWeeks || "2", 10);
+    if (!Number.isFinite(n) || n < 2 || n > 26) errors.intervalWeeks = "Between 2 and 26 weeks";
+  }
+  if (form.choice === "every_x_days") {
+    const n = parseInt(form.intervalDays || "", 10);
+    if (!Number.isFinite(n) || n < 1 || n > 90) errors.intervalDays = "Between 1 and 90 days";
+  }
+  if (!form.propertyId) errors.propertyId = "Choose a property";
+  const hasErrors = Object.keys(errors).length > 0;
+  const fieldError = (k: string) => (showErrors && errors[k] ? errors[k] : null);
 
   // Pricing precedence (spec): Standard -> Zone -> Custom, always displayed,
   // never silently replaced. The buttons copy a computed price into the
@@ -370,14 +472,21 @@ function ServiceDrawer({
     intervalDays: form.intervalDays ? parseInt(form.intervalDays, 10) : undefined,
   });
   const freqMultiplier = Number(std?.frequencyMultipliers?.[schedFields.frequency] ?? 1) || 1;
-  const standardCents =
+  // Breakdown parts (QA follow-up 1.2): the owner must be able to derive the
+  // zone price from the Zones page config, so show every component.
+  const extraDogs = Math.max(0, dogsForPricing - 1);
+  const stdParts =
     std?.basePriceCents != null
-      ? Math.round(
-          (std.basePriceCents + Math.max(0, dogsForPricing - 1) * (std.perDogAddlCents ?? 0)) *
-            freqMultiplier,
-        )
+      ? {
+          base: std.basePriceCents,
+          dogAdj: extraDogs * (std.perDogAddlCents ?? 0),
+          perDog: std.perDogAddlCents ?? 0,
+        }
       : null;
-  const zoneCents = pricingZone
+  const standardCents = stdParts
+    ? Math.round((stdParts.base + stdParts.dogAdj) * freqMultiplier)
+    : null;
+  const zonePrice = pricingZone
     ? computeZoneVisitPrice(
         {
           base_price_cents: pricingZone.base_price_cents,
@@ -394,17 +503,39 @@ function ServiceDrawer({
             : null,
           multiplier: freqMultiplier,
         },
-      ).recurringCents
+      )
     : null;
-  const finalCents = Math.round((parseFloat(form.priceDollars) || 0) * 100);
+  const zoneParts = zonePrice
+    ? {
+        base: pricingZone.base_price_cents ?? 0,
+        perDog: pricingZone.per_dog_addl_cents ?? 0,
+        dogAdj: extraDogs * (pricingZone.per_dog_addl_cents ?? 0),
+        areaCharge:
+          zonePrice.perVisitCents -
+          (pricingZone.base_price_cents ?? 0) -
+          extraDogs * (pricingZone.per_dog_addl_cents ?? 0),
+        perVisit: zonePrice.perVisitCents,
+      }
+    : null;
+  const zoneCents = zonePrice ? zonePrice.recurringCents : null;
+  const finalCents =
+    priceValue != null && Number.isFinite(priceValue) ? Math.round(priceValue * 100) : null;
   const priceSource =
-    finalCents > 0 && zoneCents != null && finalCents === zoneCents
+    finalCents != null && zoneCents != null && finalCents === zoneCents
       ? "zone"
-      : finalCents > 0 && standardCents != null && finalCents === standardCents
+      : finalCents != null && standardCents != null && finalCents === standardCents
         ? "standard"
-        : finalCents > 0
+        : finalCents != null
           ? "custom"
           : null;
+  // QA follow-up 1.7: flag prices wildly off the zone/standard reference.
+  const referenceCents = zoneCents ?? standardCents;
+  const deviationPct =
+    finalCents != null && referenceCents != null && referenceCents > 0
+      ? Math.round(((finalCents - referenceCents) / referenceCents) * 100)
+      : null;
+  const bigDeviation = deviationPct != null && Math.abs(deviationPct) >= 50;
+  const referenceName = zoneCents != null ? `${pricingZone?.name} zone` : "standard";
 
   const saveMut = useMutation({
     mutationFn: () => {
@@ -417,7 +548,7 @@ function ServiceDrawer({
         frequency: sched.frequency as any,
         intervalWeeks: sched.intervalWeeks,
         intervalDays: sched.intervalDays,
-        priceCents: Math.round(parseFloat(form.priceDollars) * 100),
+        priceCents: finalCents ?? 0,
         dogCount:
           accountType === "residential" ? Math.max(1, parseInt(form.dogCount, 10) || 1) : undefined,
         unitCount:
@@ -451,11 +582,27 @@ function ServiceDrawer({
       size="md"
       dirty={dirty}
     >
+      {priceDialog}
       <form
         className="space-y-4"
-        onSubmit={(e) => {
+        noValidate
+        onSubmit={async (e) => {
           e.preventDefault();
-          if (form.propertyId) saveMut.mutate();
+          if (hasErrors) {
+            setShowErrors(true);
+            return;
+          }
+          if (bigDeviation) {
+            // Soft guardrail (QA follow-up 1.7): warn, never block.
+            const keep = await confirmPrice({
+              title: "Keep this price?",
+              description: `$${((finalCents ?? 0) / 100).toFixed(2)} per visit is ${Math.abs(deviationPct!)}% ${deviationPct! < 0 ? "below" : "above"} the ${referenceName} price of $${((referenceCents ?? 0) / 100).toFixed(2)}.`,
+              confirmLabel: "Keep price",
+              cancelLabel: "Go back",
+            });
+            if (!keep) return;
+          }
+          saveMut.mutate();
         }}
       >
         <div className="grid gap-3 sm:grid-cols-2">
@@ -474,6 +621,9 @@ function ServiceDrawer({
                 </option>
               ))}
             </select>
+            {fieldError("propertyId") && (
+              <p className="mt-1 text-xs text-destructive">{fieldError("propertyId")}</p>
+            )}
           </div>
           <div>
             <Label>Schedule</Label>
@@ -503,8 +653,11 @@ function ServiceDrawer({
               className="w-32"
               value={form.intervalWeeks || "2"}
               onChange={(e) => set("intervalWeeks", e.target.value)}
-              required
+              aria-invalid={!!fieldError("intervalWeeks")}
             />
+            {fieldError("intervalWeeks") && (
+              <p className="mt-1 text-xs text-destructive">{fieldError("intervalWeeks")}</p>
+            )}
           </div>
         )}
         {form.choice === "every_x_days" && (
@@ -518,44 +671,60 @@ function ServiceDrawer({
               className="w-32"
               value={form.intervalDays || "7"}
               onChange={(e) => set("intervalDays", e.target.value)}
-              required
+              aria-invalid={!!fieldError("intervalDays")}
             />
+            {fieldError("intervalDays") && (
+              <p className="mt-1 text-xs text-destructive">{fieldError("intervalDays")}</p>
+            )}
           </div>
         )}
 
         <div className="grid gap-3 sm:grid-cols-3">
           <div>
-            <Label>Price ($ per visit)</Label>
+            <Label htmlFor="sd-price">Price ($ per visit)</Label>
             <Input
+              id="sd-price"
               type="number"
               min="0"
               step="0.01"
               value={form.priceDollars}
               onChange={(e) => set("priceDollars", e.target.value)}
-              required
+              aria-invalid={!!fieldError("price")}
+              className={fieldError("price") ? "border-destructive" : undefined}
             />
+            {fieldError("price") && (
+              <p className="mt-1 text-xs text-destructive">{fieldError("price")}</p>
+            )}
           </div>
           {accountType === "residential" ? (
             <div>
-              <Label>Dogs</Label>
+              <Label htmlFor="sd-dogs">Dogs</Label>
               <Input
+                id="sd-dogs"
                 type="number"
                 min="1"
-                required
                 value={form.dogCount}
                 onChange={(e) => set("dogCount", e.target.value)}
+                aria-invalid={!!fieldError("dogCount")}
               />
+              {fieldError("dogCount") && (
+                <p className="mt-1 text-xs text-destructive">{fieldError("dogCount")}</p>
+              )}
             </div>
           ) : (
             <div>
-              <Label>Units</Label>
+              <Label htmlFor="sd-units">Units</Label>
               <Input
+                id="sd-units"
                 type="number"
                 min="1"
-                required
                 value={form.unitCount}
                 onChange={(e) => set("unitCount", e.target.value)}
+                aria-invalid={!!fieldError("unitCount")}
               />
+              {fieldError("unitCount") && (
+                <p className="mt-1 text-xs text-destructive">{fieldError("unitCount")}</p>
+              )}
             </div>
           )}
           <div>
@@ -593,9 +762,64 @@ function ServiceDrawer({
               Price comparison (per visit at this schedule)
             </div>
             <dl className="mt-2 space-y-1">
-              {standardCents != null && (
+              {zoneParts && zoneCents != null && (
+                <>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <dt>{pricingZone?.name} zone base</dt>
+                    <dd>${(zoneParts.base / 100).toFixed(2)}</dd>
+                  </div>
+                  {zoneParts.dogAdj > 0 && (
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <dt>
+                        Extra dogs ({extraDogs} × ${(zoneParts.perDog / 100).toFixed(2)})
+                      </dt>
+                      <dd>+${(zoneParts.dogAdj / 100).toFixed(2)}</dd>
+                    </div>
+                  )}
+                  {zoneParts.areaCharge > 0 && (
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <dt>Yard area charge</dt>
+                      <dd>+${(zoneParts.areaCharge / 100).toFixed(2)}</dd>
+                    </div>
+                  )}
+                  {freqMultiplier !== 1 && (
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <dt>
+                        Schedule adjustment (${(zoneParts.perVisit / 100).toFixed(2)} ×{" "}
+                        {freqMultiplier})
+                      </dt>
+                      <dd>+${((zoneCents - zoneParts.perVisit) / 100).toFixed(2)}</dd>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between border-t pt-1">
+                    <dt className="text-muted-foreground">{pricingZone?.name} zone price</dt>
+                    <dd className="flex items-center gap-2">
+                      ${(zoneCents / 100).toFixed(2)}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => set("priceDollars", (zoneCents / 100).toFixed(2))}
+                      >
+                        Use zone
+                      </Button>
+                    </dd>
+                  </div>
+                </>
+              )}
+              {stdParts && standardCents != null && (
                 <div className="flex items-center justify-between">
-                  <dt className="text-muted-foreground">Standard price</dt>
+                  <dt className="text-muted-foreground">
+                    Standard price
+                    <span className="ml-1 text-xs">
+                      (${(stdParts.base / 100).toFixed(2)}
+                      {stdParts.dogAdj > 0
+                        ? ` + ${extraDogs} × $${(stdParts.perDog / 100).toFixed(2)}`
+                        : ""}
+                      {freqMultiplier !== 1 ? ` × ${freqMultiplier}` : ""})
+                    </span>
+                  </dt>
                   <dd className="flex items-center gap-2">
                     ${(standardCents / 100).toFixed(2)}
                     <Button
@@ -610,26 +834,9 @@ function ServiceDrawer({
                   </dd>
                 </div>
               )}
-              {zoneCents != null && (
-                <div className="flex items-center justify-between">
-                  <dt className="text-muted-foreground">{pricingZone?.name} zone price</dt>
-                  <dd className="flex items-center gap-2">
-                    ${(zoneCents / 100).toFixed(2)}
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="h-6 px-2 text-xs"
-                      onClick={() => set("priceDollars", (zoneCents / 100).toFixed(2))}
-                    >
-                      Use zone
-                    </Button>
-                  </dd>
-                </div>
-              )}
               {standardCents != null && zoneCents != null && (
                 <div className="flex items-center justify-between">
-                  <dt className="text-muted-foreground">Difference</dt>
+                  <dt className="text-muted-foreground">Difference (zone vs standard)</dt>
                   <dd className={zoneCents - standardCents > 0 ? "text-destructive" : "text-primary"}>
                     {zoneCents - standardCents >= 0 ? "+" : "−"}$
                     {(Math.abs(zoneCents - standardCents) / 100).toFixed(2)}
@@ -639,7 +846,7 @@ function ServiceDrawer({
               <div className="flex items-center justify-between border-t pt-1">
                 <dt className="font-medium">Final price</dt>
                 <dd className="flex items-center gap-2 font-medium">
-                  ${(finalCents / 100).toFixed(2)}
+                  {finalCents != null ? `$${(finalCents / 100).toFixed(2)}` : "—"}
                   {priceSource && (
                     <Badge variant={priceSource === "custom" ? "outline" : "secondary"} className="text-[10px]">
                       {priceSource === "zone"
@@ -652,39 +859,17 @@ function ServiceDrawer({
                 </dd>
               </div>
             </dl>
+            {bigDeviation && (
+              <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-800 dark:text-amber-300">
+                This price is {Math.abs(deviationPct!)}% {deviationPct! < 0 ? "below" : "above"} the{" "}
+                {referenceName} price. You'll be asked to confirm on save.
+              </p>
+            )}
             <p className="mt-2 text-xs text-muted-foreground">
               Changing this price never touches invoices that were already issued.
             </p>
           </div>
         )}
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="sd-start">
-              {form.choice === "one_time" ? "Visit date" : "Start date"}
-            </Label>
-            <Input
-              id="sd-start"
-              type="date"
-              value={form.startedOn}
-              onChange={(e) => set("startedOn", e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <Label htmlFor="sd-end">End date (optional)</Label>
-            <Input
-              id="sd-end"
-              type="date"
-              value={form.endsOn}
-              min={form.startedOn || undefined}
-              onChange={(e) => set("endsOn", e.target.value)}
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Visits stop generating after this date. Leave blank for ongoing service.
-            </p>
-          </div>
-        </div>
 
         {form.choice !== "one_time" && form.choice !== "monthly" && (
           <div>
@@ -720,8 +905,8 @@ function ServiceDrawer({
           </div>
         )}
 
-        <DrawerFooter onCancel={cancel}>
-          <Button type="submit" disabled={saveMut.isPending || !form.propertyId}>
+        <DrawerFooter>
+          <Button type="submit" disabled={saveMut.isPending}>
             {saveMut.isPending ? "Saving…" : subscription ? "Save changes" : "Add service"}
           </Button>
         </DrawerFooter>
@@ -753,11 +938,6 @@ function EndServiceDialog({
       setNotes("");
     }
   }, [subscription]);
-
-  const cancel = () => {
-    if ((reason || notes) && !window.confirm("Discard unsaved changes?")) return;
-    onClose();
-  };
 
   const mut = useMutation({
     mutationFn: () =>
@@ -820,7 +1000,7 @@ function EndServiceDialog({
           <Label htmlFor="end-notes">Notes (optional)</Label>
           <Textarea id="end-notes" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
-        <DrawerFooter onCancel={cancel}>
+        <DrawerFooter>
           <Button type="submit" variant="destructive" disabled={mut.isPending || !reason.trim()}>
             {mut.isPending ? "Ending…" : "End service"}
           </Button>

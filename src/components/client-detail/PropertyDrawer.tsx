@@ -86,10 +86,6 @@ export function PropertyDrawer({
     wasOpen.current = open;
   }, [open, initial]);
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
-  const cancel = () => {
-    if (dirty && !window.confirm("Discard unsaved changes?")) return;
-    onClose();
-  };
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
@@ -385,7 +381,7 @@ export function PropertyDrawer({
           </div>
         </div>
 
-        <DrawerFooter onCancel={cancel}>
+        <DrawerFooter>
           <Button type="submit" disabled={saveMut.isPending}>
             {saveMut.isPending ? "Saving…" : property ? "Save changes" : "Add property"}
           </Button>

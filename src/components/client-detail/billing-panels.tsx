@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
   getClientBillingSummary,
   generateInvoiceForClient,
@@ -68,6 +69,7 @@ export function PrepayInline({
 // path replies use, so the conversation appears on both this page and Messages.
 export function BillingPanel({ clientId }: { clientId: string }) {
   const qc = useQueryClient();
+  const { confirm, dialog } = useConfirmDialog();
   const summaryFn = useServerFn(getClientBillingSummary);
   const genFn = useServerFn(generateInvoiceForClient);
   const checkoutFn = useServerFn(createCheckoutForInvoice);
@@ -122,6 +124,7 @@ export function BillingPanel({ clientId }: { clientId: string }) {
 
   return (
     <>
+      {dialog}
       <section className="rounded-lg border bg-card p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -182,8 +185,15 @@ export function BillingPanel({ clientId }: { clientId: string }) {
                         size="sm"
                         variant="ghost"
                         disabled={voidMut.isPending}
-                        onClick={() => {
-                          if (confirm("Void this invoice?")) voidMut.mutate(inv.id);
+                        onClick={async () => {
+                          if (
+                            await confirm({
+                              title: "Void this invoice?",
+                              destructive: true,
+                              confirmLabel: "Void invoice",
+                            })
+                          )
+                            voidMut.mutate(inv.id);
                         }}
                       >
                         Void
