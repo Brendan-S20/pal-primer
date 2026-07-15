@@ -149,6 +149,7 @@ function ClientDetail() {
             zones={zones}
             visits={visits}
             canBill={canBill}
+            canManagePricing={canManagePricing}
           />
           {isCommercial && <StationsPanel clientId={clientId} properties={activeProperties} />}
         </TabsContent>

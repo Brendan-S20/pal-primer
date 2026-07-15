@@ -2,7 +2,7 @@
 // rows with lifecycle actions — edit in a drawer, pause/resume, end with an
 // effective date + reason, delete only when the service never started. The
 // creation form stays hidden until "Add Service".
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -48,6 +48,7 @@ export function ServicesTab({
   zones,
   visits,
   canBill,
+  canManagePricing,
 }: {
   clientId: string;
   client: any;
@@ -56,6 +57,7 @@ export function ServicesTab({
   zones: any[];
   visits: any[];
   canBill: boolean;
+  canManagePricing: boolean;
 }) {
   const qc = useQueryClient();
   const [drawerSub, setDrawerSub] = useState<any | null | "new">(null);
@@ -68,7 +70,6 @@ export function ServicesTab({
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["subs", clientId] });
-    qc.invalidateQueries({ queryKey: ["client-visits", clientId] });
     qc.invalidateQueries({ queryKey: ["client-visit-history", clientId] });
     qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
   };
@@ -128,7 +129,7 @@ export function ServicesTab({
         <h2 className="text-sm font-medium text-muted-foreground">
           {subscriptions.length} service{subscriptions.length === 1 ? "" : "s"}
         </h2>
-        {properties.length > 0 && (
+        {properties.length > 0 && canManagePricing && (
           <Button size="sm" onClick={() => setDrawerSub("new")}>
             <Plus className="mr-1 h-4 w-4" /> Add Service
           </Button>
@@ -205,10 +206,12 @@ export function ServicesTab({
                         }
                       />
                     )}
-                    <Button size="sm" variant="outline" onClick={() => setDrawerSub(s)}>
-                      Edit
-                    </Button>
-                    {!ended && s.status === "active" && (
+                    {canManagePricing && (
+                      <Button size="sm" variant="outline" onClick={() => setDrawerSub(s)}>
+                        Edit
+                      </Button>
+                    )}
+                    {canManagePricing && !ended && s.status === "active" && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -218,7 +221,7 @@ export function ServicesTab({
                         <Pause className="mr-1 h-3.5 w-3.5" /> Pause
                       </Button>
                     )}
-                    {paused && (
+                    {canManagePricing && paused && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -228,12 +231,12 @@ export function ServicesTab({
                         <Play className="mr-1 h-3.5 w-3.5" /> Resume
                       </Button>
                     )}
-                    {!ended && started && (
+                    {canManagePricing && !ended && started && (
                       <Button size="sm" variant="outline" onClick={() => setEndingSub(s)}>
                         <Square className="mr-1 h-3.5 w-3.5" /> End
                       </Button>
                     )}
-                    {!started && (
+                    {canManagePricing && !started && (
                       <Button
                         size="sm"
                         variant="ghost"
@@ -325,12 +328,20 @@ function ServiceDrawer({
   }, [subscription, properties]);
 
   const [form, setForm] = useState(initial);
+  // Reset only when the drawer transitions closed -> open; a background
+  // refetch changing `initial`'s identity must not wipe in-progress edits.
+  const wasOpen = useRef(false);
   useEffect(() => {
-    if (open) setForm(initial);
+    if (open && !wasOpen.current) setForm(initial);
+    wasOpen.current = open;
   }, [open, initial]);
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
+  const cancel = () => {
+    if (dirty && !window.confirm("Discard unsaved changes?")) return;
+    onClose();
+  };
 
   const accountType = (client?.account_type ?? "residential") as "residential" | "commercial";
 
@@ -346,8 +357,10 @@ function ServiceDrawer({
         intervalWeeks: sched.intervalWeeks,
         intervalDays: sched.intervalDays,
         priceCents: Math.round(parseFloat(form.priceDollars) * 100),
-        dogCount: accountType === "residential" ? parseInt(form.dogCount, 10) : undefined,
-        unitCount: accountType === "commercial" ? parseInt(form.unitCount, 10) : undefined,
+        dogCount:
+          accountType === "residential" ? Math.max(1, parseInt(form.dogCount, 10) || 1) : undefined,
+        unitCount:
+          accountType === "commercial" ? Math.max(1, parseInt(form.unitCount, 10) || 1) : undefined,
         zoneId: form.zoneId || undefined,
         billingCadence: form.billingCadence,
         startedOn: form.startedOn || undefined,
@@ -467,6 +480,7 @@ function ServiceDrawer({
               <Input
                 type="number"
                 min="1"
+                required
                 value={form.dogCount}
                 onChange={(e) => set("dogCount", e.target.value)}
               />
@@ -477,6 +491,7 @@ function ServiceDrawer({
               <Input
                 type="number"
                 min="1"
+                required
                 value={form.unitCount}
                 onChange={(e) => set("unitCount", e.target.value)}
               />
@@ -573,7 +588,7 @@ function ServiceDrawer({
           </div>
         )}
 
-        <DrawerFooter onCancel={onClose}>
+        <DrawerFooter onCancel={cancel}>
           <Button type="submit" disabled={saveMut.isPending || !form.propertyId}>
             {saveMut.isPending ? "Saving…" : subscription ? "Save changes" : "Add service"}
           </Button>
@@ -606,6 +621,11 @@ function EndServiceDialog({
       setNotes("");
     }
   }, [subscription]);
+
+  const cancel = () => {
+    if ((reason || notes) && !window.confirm("Discard unsaved changes?")) return;
+    onClose();
+  };
 
   const mut = useMutation({
     mutationFn: () =>
@@ -668,7 +688,7 @@ function EndServiceDialog({
           <Label htmlFor="end-notes">Notes (optional)</Label>
           <Textarea id="end-notes" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
-        <DrawerFooter onCancel={onClose}>
+        <DrawerFooter onCancel={cancel}>
           <Button type="submit" variant="destructive" disabled={mut.isPending || !reason.trim()}>
             {mut.isPending ? "Ending…" : "End service"}
           </Button>

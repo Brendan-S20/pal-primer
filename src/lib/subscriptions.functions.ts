@@ -59,7 +59,11 @@ export const createSubscription = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => createSubSchema.parse(d))
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
+    // Creating a service sets pricing, so it needs the same permission the
+    // edit/pause/end lifecycle actions require (QA: a dispatcher could
+    // create a service they then couldn't touch).
+    await requirePermission(supabase, userId, "manage_pricing");
     const { data: client, error: cErr } = await supabase
       .from("clients")
       .select("organization_id")

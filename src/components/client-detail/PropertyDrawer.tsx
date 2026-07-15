@@ -2,7 +2,7 @@
 // from the drawn boundary. Commercial-only fields (sections, building
 // labels) appear only for commercial properties; residential never sees
 // them (spec: conditional fields).
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -70,10 +70,17 @@ export function PropertyDrawer({
     [property, client],
   );
   const [form, setForm] = useState(initial);
+  // Reset only on closed -> open; background refetches must not wipe edits.
+  const wasOpen = useRef(false);
   useEffect(() => {
-    if (open) setForm(initial);
+    if (open && !wasOpen.current) setForm(initial);
+    wasOpen.current = open;
   }, [open, initial]);
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
+  const cancel = () => {
+    if (dirty && !window.confirm("Discard unsaved changes?")) return;
+    onClose();
+  };
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
@@ -296,7 +303,7 @@ export function PropertyDrawer({
           </div>
         </div>
 
-        <DrawerFooter onCancel={onClose}>
+        <DrawerFooter onCancel={cancel}>
           <Button type="submit" disabled={saveMut.isPending}>
             {saveMut.isPending ? "Saving…" : property ? "Save changes" : "Add property"}
           </Button>

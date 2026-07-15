@@ -1,7 +1,7 @@
 // Edit Client drawer (small): contact, status, type, tags, preferred
 // contact channel, referral source, communication preferences. Billing
 // addresses live in Stripe and are intentionally absent.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -41,11 +41,18 @@ export function EditClientDrawer({
     [client],
   );
   const [form, setForm] = useState(initial);
+  // Reset only on closed -> open; background refetches must not wipe edits.
+  const wasOpen = useRef(false);
   useEffect(() => {
-    if (open) setForm(initial);
+    if (open && !wasOpen.current) setForm(initial);
+    wasOpen.current = open;
   }, [open, initial]);
 
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
+  const cancel = () => {
+    if (dirty && !window.confirm("Discard unsaved changes?")) return;
+    onClose();
+  };
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
@@ -202,7 +209,7 @@ export function EditClientDrawer({
         <p className="text-xs text-muted-foreground">
           Billing addresses are managed by Stripe and don't need to be entered here.
         </p>
-        <DrawerFooter onCancel={onClose}>
+        <DrawerFooter onCancel={cancel}>
           <Button type="submit" disabled={saveMut.isPending || !dirty}>
             {saveMut.isPending ? "Saving…" : "Save changes"}
           </Button>

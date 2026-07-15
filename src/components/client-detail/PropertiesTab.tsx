@@ -90,10 +90,17 @@ export function PropertiesTab({
   const dogs = dogsData?.dogs ?? [];
 
   const [drawerProp, setDrawerProp] = useState<any | null | "new">(null);
-  // Single property: open by default so its boundary is immediately visible.
+  // Small portfolios start fully expanded (boundaries visible immediately);
+  // bigger ones start with just the first property open so a 12-property
+  // HOA doesn't mount a dozen maps at once.
   const [openIds, setOpenIds] = useState<Set<string> | null>(null);
   const expanded: Set<string> =
-    openIds ?? new Set(activeProps.length === 1 ? [activeProps[0].id] : activeProps.map((p: any) => p.id));
+    openIds ??
+    new Set(
+      activeProps.length <= 3
+        ? activeProps.map((p: any) => p.id)
+        : activeProps.slice(0, 1).map((p: any) => p.id),
+    );
 
   function toggle(id: string) {
     const next = new Set(expanded);
@@ -856,7 +863,12 @@ function ZoneOverrideControl({
               placeholder="e.g. edge of zone, grandfathered pricing"
             />
           </div>
-          <DrawerFooter onCancel={() => setOpen(false)}>
+          <DrawerFooter
+            onCancel={() => {
+              if (reason && !window.confirm("Discard unsaved changes?")) return;
+              setOpen(false);
+            }}
+          >
             {property.zone_override_reason && (
               <Button
                 type="button"
@@ -953,7 +965,12 @@ function EstimateOverrideControl({
               placeholder="e.g. steep terrain, double gate walk"
             />
           </div>
-          <DrawerFooter onCancel={() => setOpen(false)}>
+          <DrawerFooter
+            onCancel={() => {
+              if (reason && !window.confirm("Discard unsaved changes?")) return;
+              setOpen(false);
+            }}
+          >
             {property.est_override_at && (
               <Button
                 type="button"
