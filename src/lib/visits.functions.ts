@@ -532,3 +532,58 @@ export const updatePropertyWindow = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+
+/** Permission-gated timestamp correction from the visit detail drawer (QA
+ * follow-up 2.3): requires a reason and lands on the Activity timeline with
+ * before/after values. */
+export const correctVisitTimestamps = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        visitId: z.string().uuid(),
+        startedAt: z.string().datetime({ offset: true }).nullable(),
+        completedAt: z.string().datetime({ offset: true }).nullable(),
+        reason: z.string().min(1).max(300),
+      })
+      .refine(
+        (v) => !v.startedAt || !v.completedAt || v.completedAt >= v.startedAt,
+        { message: "Completion can't be before the start" },
+      )
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { requirePermission } = await import("@/lib/authz.server");
+    await requirePermission(supabase, userId, "manage_client_billing");
+
+    const { data: before, error: bErr } = await supabase
+      .from("visits")
+      .select("id, organization_id, client_id, property_id, scheduled_on, started_at, completed_at")
+      .eq("id", data.visitId)
+      .single();
+    if (bErr) throw new Error(bErr.message);
+
+    const { error } = await supabase
+      .from("visits")
+      .update({ started_at: data.startedAt, completed_at: data.completedAt })
+      .eq("id", data.visitId);
+    if (error) throw new Error(error.message);
+
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: before.organization_id,
+      clientId: before.client_id,
+      propertyId: before.property_id,
+      actorUserId: userId,
+      kind: "visit.corrected",
+      summary: `Corrected visit timestamps for ${before.scheduled_on}: ${data.reason}`,
+      meta: {
+        reason: data.reason,
+        before: { started_at: before.started_at, completed_at: before.completed_at },
+        after: { started_at: data.startedAt, completed_at: data.completedAt },
+      },
+    });
+    return { ok: true };
+  });

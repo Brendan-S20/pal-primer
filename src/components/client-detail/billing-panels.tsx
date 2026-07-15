@@ -17,7 +17,10 @@ import {
   createCheckoutForInvoice,
   voidInvoice,
   resumeAutopay,
+  getInvoiceDetail,
 } from "@/lib/invoices.functions";
+import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
+import { formatDateTime } from "@/lib/format";
 import {
   listAddonServices,
   listClientAddons,
@@ -121,6 +124,7 @@ export function BillingPanel({ clientId }: { clientId: string }) {
 
   const invoices = data?.invoices ?? [];
   const payments = data?.payments ?? [];
+  const [detailInvoiceId, setDetailInvoiceId] = useState<string | null>(null);
 
   return (
     <>
@@ -151,7 +155,18 @@ export function BillingPanel({ clientId }: { clientId: string }) {
           <ul className="mt-3 divide-y text-sm">
             {invoices.map((inv: any) => (
               <li key={inv.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <div>
+                <div
+                  className="cursor-pointer"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setDetailInvoiceId(inv.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setDetailInvoiceId(inv.id);
+                    }
+                  }}
+                >
                   <div className="flex items-center gap-2">
                     <Link
                       to="/invoices/$invoiceId"
@@ -238,7 +253,109 @@ export function BillingPanel({ clientId }: { clientId: string }) {
           </ul>
         )}
       </section>
+
+      <InvoiceDetailDrawer invoiceId={detailInvoiceId} onClose={() => setDetailInvoiceId(null)} />
     </>
+  );
+}
+
+// ── Invoice detail drawer (QA follow-up 2.3) ────────────────────────────────
+
+function InvoiceDetailDrawer({
+  invoiceId,
+  onClose,
+}: {
+  invoiceId: string | null;
+  onClose: () => void;
+}) {
+  const detailFn = useServerFn(getInvoiceDetail);
+  const { data, isLoading } = useQuery({
+    queryKey: ["invoice-detail", invoiceId],
+    queryFn: () => detailFn({ data: { invoiceId: invoiceId! } }),
+    enabled: !!invoiceId,
+  });
+  const inv = data?.invoice as any;
+  const lines = data?.lineItems ?? [];
+  const pays = data?.payments ?? [];
+
+  return (
+    <EditDrawer
+      open={!!invoiceId}
+      onClose={onClose}
+      title={inv ? `Invoice #${String(inv.id).slice(0, 8)}` : "Invoice"}
+      size="md"
+    >
+      {isLoading || !inv ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <div className="space-y-5 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <InvoiceStatusBadge status={inv.status} />
+            <span className="text-xs text-muted-foreground">{inv.kind}</span>
+            <span className="text-xs text-muted-foreground">
+              {inv.period_start ? `${inv.period_start} to ${inv.period_end}` : formatDateTime(inv.created_at)}
+            </span>
+          </div>
+
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Line items
+            </h3>
+            {lines.length === 0 ? (
+              <p className="mt-1.5 text-muted-foreground">No line items recorded.</p>
+            ) : (
+              <ul className="mt-1.5 divide-y">
+                {lines.map((l: any) => (
+                  <li key={l.id} className="flex items-center justify-between gap-2 py-1.5">
+                    <span className="min-w-0 truncate">{l.description}</span>
+                    <span className="shrink-0 font-medium">${(l.amount_cents / 100).toFixed(2)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-2 flex items-center justify-between border-t pt-2 font-medium">
+              <span>Total</span>
+              <span>${(inv.total_cents / 100).toFixed(2)}</span>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Payment attempts
+            </h3>
+            {pays.length === 0 ? (
+              <p className="mt-1.5 text-muted-foreground">No payment attempts yet.</p>
+            ) : (
+              <ul className="mt-1.5 divide-y">
+                {pays.map((p: any) => (
+                  <li key={p.id} className="flex items-center justify-between gap-2 py-1.5">
+                    <span className="text-muted-foreground">
+                      {formatDateTime(p.paid_at ?? p.created_at)}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-[10px]">
+                        {p.status}
+                      </Badge>
+                      <span className="font-medium">${(p.amount_cents / 100).toFixed(2)}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <DrawerFooter>
+            <Link
+              to="/invoices/$invoiceId"
+              params={{ invoiceId: inv.id }}
+              className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
+            >
+              Open full invoice
+            </Link>
+          </DrawerFooter>
+        </div>
+      )}
+    </EditDrawer>
   );
 }
 

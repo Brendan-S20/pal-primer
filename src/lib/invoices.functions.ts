@@ -486,3 +486,38 @@ export const resumeAutopay = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+
+/** Invoice detail drawer (QA follow-up 2.3): line items + payment attempts
+ * without leaving the client page. */
+export const getInvoiceDetail = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ invoiceId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    await requirePermission(supabase, context.userId, "manage_client_billing");
+    const [{ data: invoice, error: iErr }, { data: lines, error: lErr }, { data: pays, error: pErr }] =
+      await Promise.all([
+        supabase
+          .from("invoices")
+          .select(
+            "id, status, kind, currency, subtotal_cents, total_cents, period_start, period_end, issued_at, paid_at, voided_at, notes, checkout_url, created_at",
+          )
+          .eq("id", data.invoiceId)
+          .single(),
+        supabase
+          .from("invoice_line_items")
+          .select("id, description, amount_cents, visit_id, subscription_id, created_at")
+          .eq("invoice_id", data.invoiceId)
+          .order("created_at"),
+        supabase
+          .from("payments")
+          .select("id, amount_cents, status, paid_at, created_at, stripe_payment_intent_id")
+          .eq("invoice_id", data.invoiceId)
+          .order("created_at", { ascending: false }),
+      ]);
+    if (iErr) throw new Error(iErr.message);
+    if (lErr) throw new Error(lErr.message);
+    if (pErr) throw new Error(pErr.message);
+    return { invoice, lineItems: lines ?? [], payments: pays ?? [] };
+  });

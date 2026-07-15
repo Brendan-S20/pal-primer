@@ -69,6 +69,7 @@ export function ServicesTab({
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [drawerSub, setDrawerSub] = useState<any | null | "new">(null);
   const [endingSub, setEndingSub] = useState<any | null>(null);
+  const [detailSub, setDetailSub] = useState<any | null>(null);
 
   const pauseFn = useServerFn(pauseSubscription);
   const resumeFn = useServerFn(resumeSubscription);
@@ -197,7 +198,18 @@ export function ServicesTab({
             return (
               <li key={s.id} className="rounded-lg border bg-card p-4 text-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
+                  <div
+                    className="min-w-0 cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setDetailSub(s)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setDetailSub(s);
+                      }
+                    }}
+                  >
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{formatFrequency(s)}</span>
                       {streetById.get(s.property_id) && (
@@ -350,7 +362,129 @@ export function ServicesTab({
         onClose={() => setEndingSub(null)}
         onEnded={invalidate}
       />
+
+      <ServiceDetailDrawer
+        subscription={detailSub}
+        onClose={() => setDetailSub(null)}
+        properties={properties}
+        zones={zones}
+        visits={visits}
+        canManagePricing={canManagePricing}
+        onEdit={(sub: any) => {
+          setDetailSub(null);
+          setDrawerSub(sub);
+        }}
+      />
     </div>
+  );
+}
+
+// ── Service detail drawer (QA follow-up 2.3): read-only depth on click ─────
+
+function ServiceDetailDrawer({
+  subscription: s,
+  onClose,
+  properties,
+  zones,
+  visits,
+  canManagePricing,
+  onEdit,
+}: {
+  subscription: any | null;
+  onClose: () => void;
+  properties: any[];
+  zones: any[];
+  visits: any[];
+  canManagePricing: boolean;
+  onEdit: (s: any) => void;
+}) {
+  if (!s) return null;
+  const street = properties.find((p: any) => p.id === s.property_id)?.street;
+  const zoneName = zones.find((z: any) => z.id === s.zone_id)?.name;
+  const serviceVisits = visits
+    .filter((v: any) => v.subscription_id === s.id)
+    .sort((a: any, b: any) => (a.scheduled_on < b.scheduled_on ? 1 : -1))
+    .slice(0, 12);
+
+  return (
+    <EditDrawer open={!!s} onClose={onClose} title="Service details" size="md">
+      <div className="space-y-5 text-sm">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+          <div>
+            <dt className="text-xs text-muted-foreground">Schedule</dt>
+            <dd className="font-medium">{formatFrequency(s)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Price</dt>
+            <dd className="font-medium">${(s.price_cents / 100).toFixed(2)} /visit</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Property</dt>
+            <dd>{street ?? "-"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Pricing zone</dt>
+            <dd>{zoneName ?? "None"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">
+              {s.account_type === "residential" ? "Dogs" : "Units"}
+            </dt>
+            <dd>{s.account_type === "residential" ? (s.dog_count ?? "-") : (s.unit_count ?? "-")}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Billing</dt>
+            <dd className="capitalize">{s.billing_cadence}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Started</dt>
+            <dd>{s.started_on ?? "-"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Ends</dt>
+            <dd>{s.ends_on ?? "Open-ended"}</dd>
+          </div>
+          {s.end_reason && (
+            <div className="col-span-2">
+              <dt className="text-xs text-muted-foreground">End reason</dt>
+              <dd>
+                {s.end_reason}
+                {s.end_notes ? ` (${s.end_notes})` : ""}
+              </dd>
+            </div>
+          )}
+        </dl>
+
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Visit history for this service
+          </h3>
+          {serviceVisits.length === 0 ? (
+            <p className="mt-1.5 text-muted-foreground">No visits yet.</p>
+          ) : (
+            <ul className="mt-1.5 divide-y">
+              {serviceVisits.map((v: any) => (
+                <li key={v.id} className="flex items-center justify-between py-1.5">
+                  <span>{v.scheduled_on}</span>
+                  <span className="text-xs capitalize text-muted-foreground">
+                    {String(v.status).replace("_", " ")}
+                    {v.staff?.display_name ? ` · ${v.staff.display_name}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <DrawerFooter>
+          {canManagePricing && (
+            <Button type="button" onClick={() => onEdit(s)}>
+              Edit service
+            </Button>
+          )}
+        </DrawerFooter>
+      </div>
+    </EditDrawer>
   );
 }
 

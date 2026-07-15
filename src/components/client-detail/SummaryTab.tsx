@@ -1,16 +1,15 @@
 // Summary tab (spec): operational information only — upcoming visit, recent
 // visits, active services, property snapshot, alerts, notes (all three
 // systems), and client communication.
-import { Link } from "@tanstack/react-router";
-import { AlertTriangle, CalendarClock } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { AlertTriangle, CalendarClock, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { formatFrequency } from "@/lib/subscription-form";
+import { formatDateTime, formatPhone } from "@/lib/format";
+import { listClientMessages } from "@/lib/messages.functions";
 import { NotesPanel } from "@/components/client-detail/NotesPanel";
-import {
-  MessageComposer,
-  PortalLinkPanel,
-  ReviewsReferralPanel,
-} from "@/components/client-detail/comms-panels";
 
 const STATUS_TONE: Record<string, string> = {
   completed: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
@@ -207,15 +206,49 @@ export function SummaryTab({
 
       <NotesPanel clientId={clientId} />
 
-      <MessageComposer client={client} />
-
-      {canBill && client.portal_token && (
-        <section className="rounded-lg border bg-card p-5">
-          <PortalLinkPanel clientId={clientId} portalToken={client.portal_token} />
-        </section>
-      )}
-
-      <ReviewsReferralPanel client={client} />
+      <CommunicationCard client={client} onGoToTab={onGoToTab} />
     </div>
+  );
+}
+
+// Compact preview only (QA follow-up 2.1): the full thread, portal panel,
+// reviews, and referrals live on the Communication tab.
+function CommunicationCard({ client, onGoToTab }: { client: any; onGoToTab: (t: string) => void }) {
+  const listFn = useServerFn(listClientMessages);
+  const { data } = useQuery({
+    queryKey: ["client-messages", client.id],
+    queryFn: () => listFn({ data: { clientId: client.id } }),
+  });
+  const messages: any[] = (data as any)?.messages ?? [];
+  const last = messages[messages.length - 1];
+
+  return (
+    <section className="rounded-lg border bg-card p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-1.5 text-sm font-medium">
+          <MessageSquare className="h-4 w-4 text-muted-foreground" /> Communication
+        </h2>
+        <Button size="sm" variant="outline" onClick={() => onGoToTab("communication")}>
+          Message
+        </Button>
+      </div>
+      {last ? (
+        <div className="mt-2 text-sm">
+          <p className="truncate text-muted-foreground">
+            {last.direction === "inbound" ? "From client: " : "Sent: "}
+            {last.body}
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Last contact {formatDateTime(last.created_at)}
+            {client.primary_phone ? ` · ${formatPhone(client.primary_phone)}` : ""}
+          </p>
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-muted-foreground">
+          No messages yet.
+          {client.primary_phone ? "" : " Add a phone number to text this client."}
+        </p>
+      )}
+    </section>
   );
 }
