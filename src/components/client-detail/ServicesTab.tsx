@@ -132,6 +132,32 @@ export function ServicesTab({
     onError: (e) => toast.error((e as Error).message),
   });
 
+  const syncDogsFn = useServerFn(updateSubscription);
+  const syncDogsMut = useMutation({
+    mutationFn: (v: { sub: any; count: number }) =>
+      syncDogsFn({
+        data: {
+          subscriptionId: v.sub.id,
+          propertyId: v.sub.property_id,
+          frequency: v.sub.frequency,
+          intervalWeeks: v.sub.interval_weeks ?? undefined,
+          intervalDays: v.sub.interval_days ?? undefined,
+          priceCents: v.sub.price_cents,
+          dogCount: v.count,
+          zoneId: v.sub.zone_id ?? undefined,
+          billingCadence: v.sub.billing_cadence ?? undefined,
+          startedOn: v.sub.started_on ?? undefined,
+          endsOn: v.sub.ends_on ?? null,
+          preferredWeekdays: v.sub.preferred_weekdays ?? undefined,
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Dog count synced from the property's records");
+      invalidate();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
   const prepayMut = useMutation({
     mutationFn: (v: { subscriptionId: string; visitCount: number }) => prepayFn({ data: v }),
     onSuccess: (r: any) => {
@@ -207,7 +233,7 @@ export function ServicesTab({
             const showEnd = !ended && started;
             const showDelete = !started;
             return (
-              <li key={s.id} className="rounded-lg border bg-card p-4 text-sm">
+              <li key={s.id} className="rounded-lg border bg-card shadow-sm p-4 text-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div
                     className="min-w-0 flex-1 cursor-pointer"
@@ -280,10 +306,24 @@ export function ServicesTab({
                       </div>
                     )}
                     {dogMismatch && (
-                      <div className="mt-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
-                        Bills for {s.dog_count} dog{s.dog_count === 1 ? "" : "s"}, but the property
-                        has {propertyDogs} active dog record{propertyDogs === 1 ? "" : "s"}. Update
-                        the dogs on the Properties tab or the count here.
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
+                        <span>
+                          Bills for {s.dog_count} dog{s.dog_count === 1 ? "" : "s"}, but the
+                          property has {propertyDogs} active dog record
+                          {propertyDogs === 1 ? "" : "s"}.
+                        </span>
+                        {canManagePricing && propertyDogs > 0 && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-xs"
+                            disabled={syncDogsMut.isPending}
+                            onClick={() => syncDogsMut.mutate({ sub: s, count: propertyDogs })}
+                          >
+                            Use {propertyDogs} dog{propertyDogs === 1 ? "" : "s"}
+                          </Button>
+                        )}
+                        {propertyDogs === 0 && <span>Add the dogs on the Properties tab.</span>}
                       </div>
                     )}
                   </div>
@@ -378,6 +418,7 @@ export function ServicesTab({
         client={client}
         properties={properties}
         zones={zones}
+        dogs={dogs}
         subscription={drawerSub === "new" ? null : drawerSub}
         onSaved={invalidate}
       />
@@ -529,6 +570,7 @@ function ServiceDrawer({
   client,
   properties,
   zones,
+  dogs = [],
   subscription,
   onSaved,
 }: {
@@ -538,12 +580,19 @@ function ServiceDrawer({
   client: any;
   properties: any[];
   zones: any[];
+  dogs?: any[];
   subscription: any | null;
   onSaved: () => void;
 }) {
   const createFn = useServerFn(createSubscription);
   const updateFn = useServerFn(updateSubscription);
   const { confirm: confirmPrice, dialog: priceDialog } = useConfirmDialog();
+
+  // Property dogs are the source of truth for the billed count (UX round 3):
+  // new services prefill from the property's active dog records, and picking
+  // a different property refills the count.
+  const activeDogsFor = (propertyId: string) =>
+    dogs.filter((d: any) => d.property_id === propertyId && d.active !== false).length;
 
   const initial: SubscriptionFormValues & { choice: ScheduleChoice } = useMemo(() => {
     if (subscription) {
@@ -558,8 +607,14 @@ function ServiceDrawer({
         choice: scheduleChoiceFromRecord(subscription),
       };
     }
-    return { ...blankSubscriptionFormValues({ properties }), choice: "weekly" as ScheduleChoice };
-  }, [subscription, properties]);
+    const blank = { ...blankSubscriptionFormValues({ properties }), choice: "weekly" as ScheduleChoice };
+    if (blank.propertyId) {
+      const n = activeDogsFor(blank.propertyId);
+      if (n > 0) blank.dogCount = String(n);
+    }
+    return blank;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subscription, properties, dogs]);
 
   const [form, setForm] = useState(initial);
   // Reset only when the drawer transitions closed -> open; a background
@@ -767,7 +822,16 @@ function ServiceDrawer({
             <Label>Property</Label>
             <select
               value={form.propertyId}
-              onChange={(e) => set("propertyId", e.target.value)}
+              onChange={(e) => {
+                const pid = e.target.value;
+                const n = pid ? activeDogsFor(pid) : 0;
+                setForm((f) => ({
+                  ...f,
+                  propertyId: pid,
+                  // Refill from the property's dog records on switch.
+                  ...(n > 0 && accountType === "residential" ? { dogCount: String(n) } : {}),
+                }));
+              }}
               className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               required
             >

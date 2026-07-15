@@ -26,7 +26,7 @@ export function CommunicationTab({
   return (
     <div className="space-y-6">
       {/* Message thread + composer */}
-      <section className="rounded-lg border bg-card p-5">
+      <section className="rounded-lg border bg-card shadow-sm p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-medium">Messages</h2>
           {client.primary_phone ? (
@@ -94,7 +94,7 @@ function PortalStatusPanel({ client, clientId }: { client: any; clientId: string
       : "office-read code";
 
   return (
-    <section className="rounded-lg border bg-card p-5">
+    <section className="rounded-lg border bg-card shadow-sm p-5">
       {dialog}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>

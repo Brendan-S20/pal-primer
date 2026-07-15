@@ -32,10 +32,11 @@ export function BoundaryPreview({
       attributionControl: false,
       scrollWheelZoom: false,
     });
-    addBaseTiles(map);
+    addBaseTiles(map, "satellite");
     const poly = L.polygon(pts, { color: "#16a34a", weight: 2, fillOpacity: 0.15 });
     poly.addTo(map);
     map.fitBounds(poly.getBounds(), { padding: [24, 24], maxZoom: 20 });
+    requestAnimationFrame(() => map.invalidateSize());
 
     return () => {
       map.remove();
@@ -47,7 +48,9 @@ export function BoundaryPreview({
       <div
         ref={containerRef}
         style={{ height }}
-        className="w-full overflow-hidden rounded-md border"
+        // isolate: Leaflet panes use z-index 400+; without a contained
+        // stacking context they paint over dropdowns and popovers.
+        className="isolate z-0 w-full overflow-hidden rounded-md border"
       />
       {areaSqm != null && (
         <p className="mt-2 text-xs text-muted-foreground">

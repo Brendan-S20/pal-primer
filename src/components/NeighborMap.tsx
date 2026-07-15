@@ -94,7 +94,7 @@ export function NeighborMap({
   }, [pins, onSelect]);
 
   return (
-    <div className="overflow-hidden rounded-lg border">
+    <div className="isolate z-0 overflow-hidden rounded-lg border">
       <div ref={containerRef} style={{ height, width: "100%" }} />
       <div className="flex flex-wrap items-center gap-3 border-t bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
         <span className="flex items-center gap-1"><Dot color={STATUS_COLOR.new} /> To visit</span>

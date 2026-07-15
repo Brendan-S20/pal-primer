@@ -186,7 +186,7 @@ function VisitTable({
   serviceById: Map<string, any>;
 }) {
   return (
-    <div className="overflow-x-auto rounded-lg border bg-card">
+    <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">

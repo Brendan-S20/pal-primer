@@ -29,6 +29,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Navigation } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EmptyState, MetaChip, SectionLabel } from "@/components/client-detail/primitives";
@@ -39,14 +40,11 @@ import {
   listPropertiesForClient,
   setPropertyArchived,
   deletePropertyIfNoHistory,
-  setPropertyZoneOverride,
-  setPropertyEstimateOverride,
 } from "@/lib/properties.functions";
 import { listDogsForClient } from "@/lib/clients.functions";
 import { addDog, updateDog } from "@/lib/dogs.functions";
 import { deriveYardSize, YARD_SIZE_LABELS } from "@/lib/yard-size";
 import { computeEstimatedMinutes, countPropertyHazards } from "@/lib/estimated-time";
-import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { PropertyDrawer } from "@/components/client-detail/PropertyDrawer";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 
@@ -59,6 +57,40 @@ const HAZARD_LABELS: Array<[string, string]> = [
   ["bees_wasps", "Bees / wasps"],
   ["sharp_objects", "Sharp objects"],
   ["slippery_surfaces", "Slippery surfaces"],
+];
+
+export const COMMON_BREEDS = [
+  "Mixed breed",
+  "Labrador Retriever",
+  "Golden Retriever",
+  "German Shepherd",
+  "French Bulldog",
+  "Bulldog",
+  "Poodle",
+  "Goldendoodle",
+  "Labradoodle",
+  "Beagle",
+  "Rottweiler",
+  "German Shorthaired Pointer",
+  "Dachshund",
+  "Pembroke Welsh Corgi",
+  "Australian Shepherd",
+  "Yorkshire Terrier",
+  "Boxer",
+  "Great Dane",
+  "Siberian Husky",
+  "Cavalier King Charles Spaniel",
+  "Doberman Pinscher",
+  "Miniature Schnauzer",
+  "Shih Tzu",
+  "Boston Terrier",
+  "Bernese Mountain Dog",
+  "Pomeranian",
+  "Havanese",
+  "Chihuahua",
+  "Border Collie",
+  "Pit Bull / Am. Staffordshire",
+  "Cane Corso",
 ];
 
 const TEMPERAMENT_TONE: Record<string, string> = {
@@ -100,7 +132,14 @@ export function PropertiesTab({
   const archivedProps = properties.filter((p: any) => p.archived_at);
   const dogs = dogsData?.dogs ?? [];
 
-  const [drawerProp, setDrawerProp] = useState<any | null | "new">(null);
+  // Keep the ID, derive the object from fresh query data: the editor's
+  // inline sections (boundary, overrides) must not render a stale snapshot
+  // after their own saves invalidate the list.
+  const [drawerProp, setDrawerProp] = useState<string | null | "new">(null);
+  const drawerProperty =
+    drawerProp && drawerProp !== "new"
+      ? (properties.find((x: any) => x.id === drawerProp) ?? null)
+      : null;
   // Small portfolios start fully expanded (boundaries visible immediately);
   // bigger ones start with just the first property open so a 12-property
   // HOA doesn't mount a dozen maps at once.
@@ -155,7 +194,7 @@ export function PropertiesTab({
               zones={zones}
               open={expanded.has(p.id)}
               onToggle={() => toggle(p.id)}
-              onEdit={() => setDrawerProp(p)}
+              onEdit={() => setDrawerProp(p.id)}
               canManagePricing={canManagePricing}
             />
           ))}
@@ -180,7 +219,9 @@ export function PropertiesTab({
         onClose={() => setDrawerProp(null)}
         clientId={clientId}
         client={client}
-        property={drawerProp === "new" ? null : drawerProp}
+        property={drawerProp === "new" ? null : drawerProperty}
+        zones={zones}
+        canManagePricing={canManagePricing}
       />
     </div>
   );
@@ -296,7 +337,7 @@ function PropertyCard({
   const effectiveMinutes = isOverride ? p.service_duration_min : (computed ?? p.service_duration_min);
 
   return (
-    <li className="rounded-lg border bg-card">
+    <li className="rounded-lg border bg-card shadow-sm">
       {confirmDialog}
       {/* Collapsed summary row */}
       <button
@@ -353,12 +394,24 @@ function PropertyCard({
             <Button size="sm" variant="outline" onClick={onEdit}>
               <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
             </Button>
-            <Link to="/properties/$propertyId/boundary" params={{ propertyId: p.id }}>
-              <Button size="sm" variant="outline">
-                <MapPin className="mr-1 h-3.5 w-3.5" />
-                {p.boundary ? "Edit boundary" : "Draw boundary"}
-              </Button>
-            </Link>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                // Directions to the pin when we have one, else the address.
+                const dest =
+                  p.latitude != null && p.longitude != null
+                    ? `${p.latitude},${p.longitude}`
+                    : encodeURIComponent(`${p.street}, ${p.city} ${p.postal_code}`);
+                window.open(
+                  `https://www.google.com/maps/dir/?api=1&destination=${dest}`,
+                  "_blank",
+                  "noopener",
+                );
+              }}
+            >
+              <Navigation className="mr-1 h-3.5 w-3.5" /> Navigate
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="h-10 w-10 p-0" aria-label="More actions">
@@ -366,6 +419,11 @@ function PropertyCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <Link to="/properties/$propertyId/boundary" params={{ propertyId: p.id }}>
+                    <MapPin className="mr-2 h-3.5 w-3.5" /> Full-screen map
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={archiveMut.isPending}
                   onSelect={async () => {
@@ -452,13 +510,13 @@ function PropertyCard({
                   <span className="mt-1 text-xs">
                     Yard size and estimated time come from the boundary.
                   </span>
-                  <Link
-                    to="/properties/$propertyId/boundary"
-                    params={{ propertyId: p.id }}
+                  <button
+                    type="button"
+                    onClick={onEdit}
                     className="mt-2 text-primary hover:underline"
                   >
-                    Draw it on the map
-                  </Link>
+                    Draw it in the editor
+                  </button>
                 </div>
               )}
             </div>
@@ -479,9 +537,7 @@ function PropertyCard({
                   ) : (
                     <MetaChip>Detected automatically</MetaChip>
                   )}
-                  {canManagePricing && (
-                    <ZoneOverrideControl property={p} zones={zones} clientId={clientId} />
-                  )}
+
                 </div>
               </div>
 
@@ -502,9 +558,7 @@ function PropertyCard({
                   ) : (
                     <MetaChip>Auto-calculated</MetaChip>
                   )}
-                  {canManagePricing && (
-                    <EstimateOverrideControl property={p} clientId={clientId} computed={computed} />
-                  )}
+
                 </div>
               </div>
 
@@ -644,6 +698,7 @@ function DogsSection({
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [breed, setBreed] = useState("");
+  const [breedChoice, setBreedChoice] = useState("");
   const [size, setSize] = useState("");
   const [temperament, setTemperament] = useState<"friendly" | "nervous" | "aggressive" | "unknown">("unknown");
   const [notes, setNotes] = useState("");
@@ -664,6 +719,7 @@ function DogsSection({
       setAdding(false);
       setName("");
       setBreed("");
+      setBreedChoice("");
       setSize("");
       setNotes("");
       setTemperament("unknown");
@@ -776,8 +832,35 @@ function DogsSection({
             <Input value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div>
-            <Label className="text-xs">Breed</Label>
-            <Input value={breed} onChange={(e) => setBreed(e.target.value)} />
+            <Label className="text-xs" htmlFor={`dog-breed-${propertyId}`}>
+              Breed
+            </Label>
+            <select
+              id={`dog-breed-${propertyId}`}
+              value={breedChoice}
+              onChange={(e) => {
+                setBreedChoice(e.target.value);
+                setBreed(e.target.value === "__other" ? "" : e.target.value);
+              }}
+              className="h-10 w-full rounded-md border bg-background px-2 text-sm"
+            >
+              <option value="">Not sure / leave blank</option>
+              {COMMON_BREEDS.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+              <option value="__other">Other…</option>
+            </select>
+            {breedChoice === "__other" && (
+              <Input
+                aria-label="Breed (custom)"
+                className="mt-1"
+                value={breed}
+                onChange={(e) => setBreed(e.target.value)}
+                placeholder="Type the breed"
+              />
+            )}
           </div>
           <div>
             <Label className="text-xs">Size</Label>
@@ -821,201 +904,6 @@ function DogsSection({
         </form>
       )}
     </div>
-  );
-}
-
-// ── Zone + estimate override drawers (authorized roles only) ────────────────
-
-function ZoneOverrideControl({
-  property,
-  zones,
-  clientId,
-}: {
-  property: any;
-  zones: any[];
-  clientId: string;
-}) {
-  const qc = useQueryClient();
-  const overrideFn = useServerFn(setPropertyZoneOverride);
-  const [open, setOpen] = useState(false);
-  const [zoneId, setZoneId] = useState(property.zone_id ?? "");
-  const [reason, setReason] = useState("");
-
-  const mut = useMutation({
-    mutationFn: (v: { zoneId: string | null; reason?: string }) =>
-      overrideFn({ data: { propertyId: property.id, ...v } }),
-    onSuccess: () => {
-      toast.success("Zone updated");
-      setOpen(false);
-      setReason("");
-      qc.invalidateQueries({ queryKey: ["properties", clientId] });
-      qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
-    },
-    onError: (e) => toast.error((e as Error).message),
-  });
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => {
-          setZoneId(property.zone_id ?? "");
-          setOpen(true);
-        }}
-        className="text-xs text-primary underline underline-offset-2 hover:no-underline"
-      >
-        Change
-      </button>
-      <EditDrawer open={open} onClose={() => setOpen(false)} title="Zone override" size="sm" dirty={!!reason}>
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Detected zone:{" "}
-            <span className="font-medium text-foreground">
-              {zones.find((z: any) => z.id === property.auto_zone_id)?.name ?? "none"}
-            </span>
-          </p>
-          <div>
-            <Label>Effective zone</Label>
-            <select
-              value={zoneId}
-              onChange={(e) => setZoneId(e.target.value)}
-              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-            >
-              <option value="">Select a zone…</option>
-              {zones.map((z: any) => (
-                <option key={z.id} value={z.id}>
-                  {z.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label>Reason for override</Label>
-            <Input
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="e.g. edge of zone, grandfathered pricing"
-            />
-          </div>
-          <DrawerFooter>
-            {property.zone_override_reason && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => mut.mutate({ zoneId: null })}
-                disabled={mut.isPending}
-              >
-                Back to detected
-              </Button>
-            )}
-            <Button
-              type="button"
-              onClick={() => mut.mutate({ zoneId, reason })}
-              disabled={mut.isPending || !zoneId || !reason.trim()}
-            >
-              Save override
-            </Button>
-          </DrawerFooter>
-        </div>
-      </EditDrawer>
-    </>
-  );
-}
-
-function EstimateOverrideControl({
-  property,
-  clientId,
-  computed,
-}: {
-  property: any;
-  clientId: string;
-  computed: number | null;
-}) {
-  const qc = useQueryClient();
-  const overrideFn = useServerFn(setPropertyEstimateOverride);
-  const [open, setOpen] = useState(false);
-  const [minutes, setMinutes] = useState(String(property.service_duration_min ?? ""));
-  const [reason, setReason] = useState("");
-
-  const mut = useMutation({
-    mutationFn: (v: { minutes: number | null; reason?: string }) =>
-      overrideFn({ data: { propertyId: property.id, ...v } }),
-    onSuccess: () => {
-      toast.success("Estimated time updated");
-      setOpen(false);
-      setReason("");
-      qc.invalidateQueries({ queryKey: ["properties", clientId] });
-      qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
-    },
-    onError: (e) => toast.error((e as Error).message),
-  });
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => {
-          setMinutes(String(property.service_duration_min ?? computed ?? ""));
-          setOpen(true);
-        }}
-        className="text-xs text-primary underline underline-offset-2 hover:no-underline"
-      >
-        Override
-      </button>
-      <EditDrawer
-        open={open}
-        onClose={() => setOpen(false)}
-        title="Estimated time override"
-        size="sm"
-        dirty={!!reason}
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Auto-calculated estimate:{" "}
-            <span className="font-medium text-foreground">
-              {computed ? `${computed} min` : "not enough data"}
-            </span>
-          </p>
-          <div>
-            <Label>Minutes on site</Label>
-            <Input
-              type="number"
-              min="1"
-              max="600"
-              value={minutes}
-              onChange={(e) => setMinutes(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label>Reason for override</Label>
-            <Input
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="e.g. steep terrain, double gate walk"
-            />
-          </div>
-          <DrawerFooter>
-            {property.est_override_at && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => mut.mutate({ minutes: null })}
-                disabled={mut.isPending}
-              >
-                Back to auto
-              </Button>
-            )}
-            <Button
-              type="button"
-              onClick={() => mut.mutate({ minutes: parseInt(minutes, 10), reason })}
-              disabled={mut.isPending || !minutes || !reason.trim()}
-            >
-              Save override
-            </Button>
-          </DrawerFooter>
-        </div>
-      </EditDrawer>
-    </>
   );
 }
 

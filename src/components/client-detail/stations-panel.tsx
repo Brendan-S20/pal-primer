@@ -55,7 +55,7 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
   if (properties.length === 0) return null;
 
   return (
-    <section className="rounded-lg border bg-card p-5">
+    <section className="rounded-lg border bg-card shadow-sm p-5">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium">Waste stations</h2>
         <span className="text-xs text-muted-foreground">

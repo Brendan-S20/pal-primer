@@ -49,7 +49,7 @@ export function ActivityTab({ clientId }: { clientId: string }) {
     );
 
   return (
-    <div className="rounded-lg border bg-card p-5">
+    <div className="rounded-lg border bg-card shadow-sm p-5">
       <ol className="relative space-y-4 border-l pl-5">
         {entries.map((e: any) => {
           const Icon = iconFor(e.kind ?? "");

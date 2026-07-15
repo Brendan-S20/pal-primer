@@ -220,7 +220,7 @@ export function ZoneCoverageMap({
           <span className="w-24 text-right tabular-nums">{minutes} min</span>
         </div>
       )}
-      <div ref={containerRef} style={{ height, width: "100%" }} className="rounded-lg border overflow-hidden z-0" />
+      <div ref={containerRef} style={{ height, width: "100%" }} className="isolate rounded-lg border overflow-hidden z-0" />
       <p className="text-xs text-muted-foreground">
         {mode === "polygon" && "Click to add vertices around the coverage area. Drag or click a point to adjust."}
         {mode === "radius" && "New addresses within this radius from the center are considered in-zone."}

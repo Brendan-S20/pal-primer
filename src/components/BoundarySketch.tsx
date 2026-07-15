@@ -34,6 +34,7 @@ export function BoundarySketch({
   saving,
   areaSqm,
   height = 460,
+  onDirtyChange,
 }: {
   center: { lat: number; lng: number } | null;
   initial: PolygonGeoJSON | null;
@@ -41,6 +42,8 @@ export function BoundarySketch({
   saving?: boolean;
   areaSqm?: number | null;
   height?: number;
+  /** Reports in-progress (unsaved) sketch edits so hosts can guard closes. */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -49,6 +52,12 @@ export function BoundarySketch({
   const [mode, setMode] = useState<"draw" | "view">(initial ? "view" : "draw");
   const [tick, setTick] = useState(0);
   const [liveArea, setLiveArea] = useState<number | null>(areaSqm ?? null);
+
+  // Any point interaction means unsaved sketch work until the next save.
+  useEffect(() => {
+    if (tick > 0) onDirtyChange?.(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick]);
 
   const currentPolygon = useMemo<PolygonGeoJSON | null>(() => {
     const pts = pointsRef.current;
@@ -71,6 +80,9 @@ export function BoundarySketch({
     addBaseTiles(map, "satellite");
     mapRef.current = map;
     layerRef.current = L.layerGroup().addTo(map);
+    // Hosts include animated modals and scroll containers; re-measure once
+    // layout settles so the map never initializes into a stale size.
+    requestAnimationFrame(() => map.invalidateSize());
 
     map.on("click", (e: L.LeafletMouseEvent) => {
       if (mode !== "draw") return;
@@ -157,24 +169,24 @@ export function BoundarySketch({
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1">
-          <Button
+          <Button type="button"
             size="sm"
             variant={mode === "draw" ? "default" : "outline"}
             onClick={() => setMode("draw")}
           >
             <Pencil className="mr-1 h-3.5 w-3.5" /> Draw
           </Button>
-          <Button
+          <Button type="button"
             size="sm"
             variant={mode === "view" ? "default" : "outline"}
             onClick={() => setMode("view")}
           >
             <MousePointer2 className="mr-1 h-3.5 w-3.5" /> View
           </Button>
-          <Button size="sm" variant="ghost" onClick={undo} disabled={pointsRef.current.length === 0}>
+          <Button type="button" size="sm" variant="ghost" onClick={undo} disabled={pointsRef.current.length === 0}>
             <Undo2 className="mr-1 h-3.5 w-3.5" /> Undo
           </Button>
-          <Button size="sm" variant="ghost" onClick={clear} disabled={pointsRef.current.length === 0}>
+          <Button type="button" size="sm" variant="ghost" onClick={clear} disabled={pointsRef.current.length === 0}>
             <Trash2 className="mr-1 h-3.5 w-3.5" /> Clear
           </Button>
         </div>
@@ -184,7 +196,7 @@ export function BoundarySketch({
               ~{formatArea(liveArea)} · {pointsRef.current.length} points
             </span>
           )}
-          <Button size="sm" onClick={() => onSave(currentPolygon)} disabled={!!saving}>
+          <Button type="button" size="sm" onClick={() => onSave(currentPolygon)} disabled={!!saving}>
             <Save className="mr-1 h-3.5 w-3.5" />
             {saving ? "Saving…" : currentPolygon ? "Save boundary" : "Clear saved"}
           </Button>
@@ -193,7 +205,7 @@ export function BoundarySketch({
       <div
         ref={containerRef}
         style={{ height, width: "100%" }}
-        className="rounded-lg border overflow-hidden z-0"
+        className="isolate z-0 rounded-lg border overflow-hidden"
       />
       <p className="text-xs text-muted-foreground">
         In <b>Draw</b> mode: click to add points around the yard. Drag any point to adjust; click a point to remove it. Switch to <b>View</b> to pan without adding.

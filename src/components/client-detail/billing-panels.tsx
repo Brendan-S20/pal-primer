@@ -137,7 +137,7 @@ export function BillingPanel({ clientId }: { clientId: string }) {
   return (
     <>
       {dialog}
-      <section className="rounded-lg border bg-card p-5">
+      <section className="rounded-lg border bg-card shadow-sm p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-sm font-medium">Invoices</h2>
@@ -237,7 +237,7 @@ export function BillingPanel({ clientId }: { clientId: string }) {
         )}
       </section>
 
-      <section className="rounded-lg border bg-card p-5">
+      <section className="rounded-lg border bg-card shadow-sm p-5">
         <h2 className="text-sm font-medium">Payment history</h2>
         {payments.length === 0 ? (
           <div className="mt-3">
@@ -507,7 +507,7 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
   });
 
   return (
-    <section className="rounded-lg border bg-card p-5">
+    <section className="rounded-lg border bg-card shadow-sm p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-medium">Add-ons &amp; cross-sells</h2>
         {!showAdd && (
