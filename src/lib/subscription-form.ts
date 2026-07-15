@@ -14,6 +14,8 @@ export type SubscriptionRecord = {
   property_id: string | null;
   billing_cadence: string | null;
   preferred_weekdays: number[] | null;
+  started_on?: string | null;
+  ends_on?: string | null;
 };
 
 export type SubscriptionFormValues = {
@@ -25,7 +27,16 @@ export type SubscriptionFormValues = {
   zoneId: string;
   billingCadence: "postpaid" | "prepaid";
   preferredWeekdays: number[];
+  /** ISO date (YYYY-MM-DD). For one_time this is the visit date. */
+  startedOn: string;
+  /** ISO date or "" for no end date. Visits stop generating after it. */
+  endsOn: string;
 };
+
+function localTodayISO(): string {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+}
 
 /** Hydrate the form from an existing subscription — every field mirrors the record. */
 export function subscriptionToFormValues(s: SubscriptionRecord): SubscriptionFormValues {
@@ -38,6 +49,8 @@ export function subscriptionToFormValues(s: SubscriptionRecord): SubscriptionFor
     zoneId: s.zone_id ?? "",
     billingCadence: s.billing_cadence === "prepaid" ? "prepaid" : "postpaid",
     preferredWeekdays: s.preferred_weekdays ?? [],
+    startedOn: s.started_on ?? localTodayISO(),
+    endsOn: s.ends_on ?? "",
   };
 }
 
@@ -59,5 +72,7 @@ export function blankSubscriptionFormValues(opts: {
     zoneId: onlyProperty?.zone_id ?? "",
     billingCadence: "postpaid",
     preferredWeekdays: [],
+    startedOn: localTodayISO(),
+    endsOn: "",
   };
 }

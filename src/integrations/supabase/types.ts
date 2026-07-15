@@ -3644,6 +3644,27 @@ export type Database = {
           },
         ]
       }
+      roadmap_votes: {
+        Row: {
+          created_at: string
+          feature: string
+          id: string
+          voter_id: string
+        }
+        Insert: {
+          created_at?: string
+          feature: string
+          id?: string
+          voter_id: string
+        }
+        Update: {
+          created_at?: string
+          feature?: string
+          id?: string
+          voter_id?: string
+        }
+        Relationships: []
+      }
       signup_requests: {
         Row: {
           city: string | null
@@ -3919,6 +3940,7 @@ export type Database = {
           client_id: string
           created_at: string
           dog_count: number | null
+          ends_on: string | null
           frequency: Database["public"]["Enums"]["service_frequency"]
           id: string
           organization_id: string
@@ -3937,6 +3959,7 @@ export type Database = {
           client_id: string
           created_at?: string
           dog_count?: number | null
+          ends_on?: string | null
           frequency: Database["public"]["Enums"]["service_frequency"]
           id?: string
           organization_id: string
@@ -3955,6 +3978,7 @@ export type Database = {
           client_id?: string
           created_at?: string
           dog_count?: number | null
+          ends_on?: string | null
           frequency?: Database["public"]["Enums"]["service_frequency"]
           id?: string
           organization_id?: string
@@ -4662,6 +4686,10 @@ export type Database = {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
       }
+      cast_roadmap_vote: {
+        Args: { p_feature: string; p_voter: string }
+        Returns: undefined
+      }
       change_user_role: {
         Args: {
           _new_role: Database["public"]["Enums"]["app_role"]
@@ -4759,6 +4787,10 @@ export type Database = {
       generate_prepaid_invoice: {
         Args: { _subscription_id: string; _visit_count: number }
         Returns: string
+      }
+      generate_visits_core: {
+        Args: { _org_id: string; _through: string }
+        Returns: number
       }
       generate_visits_through: {
         Args: { _org_id: string; _through: string }
@@ -5198,6 +5230,13 @@ export type Database = {
       reschedule_visit: {
         Args: { _new_date: string; _note?: string; _visit_id: string }
         Returns: undefined
+      }
+      roadmap_vote_counts: {
+        Args: never
+        Returns: {
+          feature: string
+          votes: number
+        }[]
       }
       set_staff_active: {
         Args: { _active: boolean; _staff_id: string }

@@ -13,6 +13,8 @@ const RECORD = {
   property_id: "prop-7",
   billing_cadence: "postpaid",
   preferred_weekdays: [1, 3],
+  started_on: "2026-07-01",
+  ends_on: "2026-09-30",
 };
 
 describe("subscriptionToFormValues (finding #8)", () => {
@@ -26,7 +28,15 @@ describe("subscriptionToFormValues (finding #8)", () => {
       zoneId: "zone-9",
       billingCadence: "postpaid",
       preferredWeekdays: [1, 3],
+      startedOn: "2026-07-01",
+      endsOn: "2026-09-30",
     });
+  });
+
+  it("defaults start date to today and end date to open-ended when the record has none", () => {
+    const v = subscriptionToFormValues({ ...RECORD, started_on: null, ends_on: null });
+    expect(v.startedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(v.endsOn).toBe("");
   });
 
   it("does not invent $25 or 'weekly' from a real record", () => {
@@ -57,5 +67,11 @@ describe("blankSubscriptionFormValues (finding #8)", () => {
   it("uses an empty price rather than a misleading hardcoded default", () => {
     const v = blankSubscriptionFormValues({ properties: [] });
     expect(v.priceDollars).toBe("");
+  });
+
+  it("starts today with no end date", () => {
+    const v = blankSubscriptionFormValues({ properties: [] });
+    expect(v.startedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(v.endsOn).toBe("");
   });
 });

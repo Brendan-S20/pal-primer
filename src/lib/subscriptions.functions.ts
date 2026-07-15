@@ -14,8 +14,19 @@ const createSubSchema = z
     unitCount: z.number().int().min(1).optional(),
     zoneId: z.string().uuid().optional(),
     billingCadence: z.enum(["prepaid", "postpaid"]).optional(),
-    startedOn: z.string().optional(), // YYYY-MM-DD
+    startedOn: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+    endsOn: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable()
+      .optional(),
     preferredWeekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
+  })
+  .refine((v) => !v.endsOn || !v.startedOn || v.endsOn >= v.startedOn, {
+    message: "End date can't be before the start date",
   })
   .refine(
     (v) =>
@@ -50,7 +61,9 @@ export const createSubscription = createServerFn({ method: "POST" })
         zone_id: data.zoneId ?? null,
         billing_cadence: data.billingCadence ?? "postpaid",
         started_on: data.startedOn ?? undefined,
-        preferred_weekdays: data.preferredWeekdays && data.preferredWeekdays.length ? data.preferredWeekdays : null,
+        ends_on: data.endsOn ?? null,
+        preferred_weekdays:
+          data.preferredWeekdays && data.preferredWeekdays.length ? data.preferredWeekdays : null,
       })
       .select("id")
       .single();
@@ -58,17 +71,30 @@ export const createSubscription = createServerFn({ method: "POST" })
     return { id: row.id as string };
   });
 
-const updateSubSchema = z.object({
-  subscriptionId: z.string().uuid(),
-  propertyId: z.string().uuid(),
-  frequency: z.enum(["weekly", "biweekly", "twice_weekly", "monthly", "one_time"]),
-  priceCents: z.number().int().min(0),
-  dogCount: z.number().int().min(1).optional(),
-  unitCount: z.number().int().min(1).optional(),
-  zoneId: z.string().uuid().optional(),
-  billingCadence: z.enum(["prepaid", "postpaid"]).optional(),
-  preferredWeekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
-});
+const updateSubSchema = z
+  .object({
+    subscriptionId: z.string().uuid(),
+    propertyId: z.string().uuid(),
+    frequency: z.enum(["weekly", "biweekly", "twice_weekly", "monthly", "one_time"]),
+    priceCents: z.number().int().min(0),
+    dogCount: z.number().int().min(1).optional(),
+    unitCount: z.number().int().min(1).optional(),
+    zoneId: z.string().uuid().optional(),
+    billingCadence: z.enum(["prepaid", "postpaid"]).optional(),
+    startedOn: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+    endsOn: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable()
+      .optional(),
+    preferredWeekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
+  })
+  .refine((v) => !v.endsOn || !v.startedOn || v.endsOn >= v.startedOn, {
+    message: "End date can't be before the start date",
+  });
 
 export const updateSubscription = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -87,6 +113,9 @@ export const updateSubscription = createServerFn({ method: "POST" })
         unit_count: data.unitCount ?? null,
         zone_id: data.zoneId ?? null,
         billing_cadence: data.billingCadence ?? "postpaid",
+        ...(data.startedOn ? { started_on: data.startedOn } : {}),
+        // null clears the end date; the DB trigger trims trailing visits.
+        ends_on: data.endsOn ?? null,
         preferred_weekdays:
           data.preferredWeekdays && data.preferredWeekdays.length ? data.preferredWeekdays : null,
       })
@@ -102,7 +131,9 @@ export const listSubscriptionsForClient = createServerFn({ method: "GET" })
     const { supabase } = context;
     const { data: rows, error } = await supabase
       .from("subscriptions")
-      .select("id, account_type, frequency, price_cents, dog_count, unit_count, zone_id, status, started_on, property_id, billing_cadence, preferred_weekdays")
+      .select(
+        "id, account_type, frequency, price_cents, dog_count, unit_count, zone_id, status, started_on, ends_on, property_id, billing_cadence, preferred_weekdays",
+      )
       .eq("client_id", data.clientId)
       .order("created_at");
     if (error) throw new Error(error.message);
@@ -121,7 +152,9 @@ export const getDeepCleanSettings = createServerFn({ method: "GET" })
     const orgId = await loadOrgForCaller(context.supabase, context.userId);
     const { data, error } = await context.supabase
       .from("organizations")
-      .select("seasonal_deepclean_enabled, seasonal_deepclean_months, seasonal_deepclean_charge_cents")
+      .select(
+        "seasonal_deepclean_enabled, seasonal_deepclean_months, seasonal_deepclean_charge_cents",
+      )
       .eq("id", orgId)
       .single();
     if (error) throw new Error(error.message);
@@ -135,11 +168,13 @@ export const getDeepCleanSettings = createServerFn({ method: "GET" })
 export const updateDeepCleanSettings = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({
-      enabled: z.boolean(),
-      months: z.array(z.number().int().min(1).max(12)).max(12),
-      chargeCents: z.number().int().min(0).max(1_000_000),
-    }).parse(d),
+    z
+      .object({
+        enabled: z.boolean(),
+        months: z.array(z.number().int().min(1).max(12)).max(12),
+        chargeCents: z.number().int().min(0).max(1_000_000),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     const orgId = await loadOrgForCaller(context.supabase, context.userId);
