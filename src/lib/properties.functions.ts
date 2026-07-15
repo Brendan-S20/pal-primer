@@ -13,10 +13,16 @@ const createPropSchema = z.object({
   commercialSections: z.array(z.string().max(120)).max(100).optional(),
   buildingLabels: z.array(z.string().max(120)).max(200).optional(),
   street: z.string().min(1).max(200),
+  unit: z.string().max(40).optional(),
   city: z.string().min(1).max(120),
   region: z.string().max(120).optional(),
   postalCode: z.string().min(1).max(20),
   gateCode: z.string().max(60).optional(),
+  // Provider-resolved coordinates (skip Nominatim when present) + whether
+  // the address came from the search provider or manual entry.
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+  addressSource: z.enum(["matched", "manual"]).optional(),
   yardSize,
   invisibleFence: z.boolean().optional(),
   escapeRisk: z.boolean().optional(),
@@ -47,13 +53,21 @@ export const createProperty = createServerFn({ method: "POST" })
       .single();
     if (cErr) throw new Error(cErr.message);
 
-    const { geocodeAddress } = await import("./geocode.server");
-    const geo = await geocodeAddress({
-      street: data.street,
-      city: data.city,
-      region: data.region,
-      postal_code: data.postalCode,
-    });
+    // Address-provider coordinates win; only fall back to the free OSM
+    // geocoder for manual entries without a resolved point.
+    let geo: { latitude: number; longitude: number } | null =
+      data.latitude != null && data.longitude != null
+        ? { latitude: data.latitude, longitude: data.longitude }
+        : null;
+    if (!geo) {
+      const { geocodeAddress } = await import("./geocode.server");
+      geo = await geocodeAddress({
+        street: data.street,
+        city: data.city,
+        region: data.region,
+        postal_code: data.postalCode,
+      });
+    }
 
     // Auto-assign a service zone from the address (spec: automatic zone
     // lookup with manual override kept separate).
@@ -74,10 +88,12 @@ export const createProperty = createServerFn({ method: "POST" })
         commercial_sections: data.commercialSections?.length ? data.commercialSections : null,
         building_labels: data.buildingLabels?.length ? data.buildingLabels : null,
         street: data.street,
+        unit: data.unit || null,
         city: data.city,
         region: data.region || null,
         postal_code: data.postalCode,
         gate_code: data.gateCode || null,
+        address_source: data.addressSource ?? "manual",
         auto_zone_id: autoZoneId,
         zone_id: autoZoneId,
         invisible_fence: !!data.invisibleFence,
@@ -134,14 +150,21 @@ export const updateProperty = createServerFn({ method: "POST" })
       .single();
     if (curErr) throw new Error(curErr.message);
 
-    // Re-geocode when the address might have changed (cheap, keeps lat/lng fresh).
-    const { geocodeAddress } = await import("./geocode.server");
-    const geo = await geocodeAddress({
-      street: data.street,
-      city: data.city,
-      region: data.region,
-      postal_code: data.postalCode,
-    });
+    // Provider-resolved coordinates win; otherwise re-geocode via OSM when
+    // the address might have changed (cheap, keeps lat/lng fresh).
+    let geo: { latitude: number; longitude: number } | null =
+      data.latitude != null && data.longitude != null
+        ? { latitude: data.latitude, longitude: data.longitude }
+        : null;
+    if (!geo) {
+      const { geocodeAddress } = await import("./geocode.server");
+      geo = await geocodeAddress({
+        street: data.street,
+        city: data.city,
+        region: data.region,
+        postal_code: data.postalCode,
+      });
+    }
 
     // Only overwrite coordinates when geocoding actually resolved, so a
     // transient geocoder miss doesn't blank out a good pin.
@@ -171,10 +194,12 @@ export const updateProperty = createServerFn({ method: "POST" })
         commercial_sections: data.commercialSections?.length ? data.commercialSections : null,
         building_labels: data.buildingLabels?.length ? data.buildingLabels : null,
         street: data.street,
+        unit: data.unit || null,
         city: data.city,
         region: data.region || null,
         postal_code: data.postalCode,
         gate_code: data.gateCode || null,
+        address_source: data.addressSource ?? "manual",
         ...zonePatch,
         invisible_fence: !!data.invisibleFence,
         escape_risk: !!data.escapeRisk,
@@ -241,7 +266,7 @@ export const listPropertiesForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("properties")
       .select(
-        "id, label, street, city, region, postal_code, gate_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email, boundary, boundary_area_sqm, archived_at, account_type, commercial_sections, building_labels, auto_zone_id, zone_id, zone_override_reason, est_override_reason, est_override_at, parking_notes, access_notes, latitude, longitude",
+        "id, label, street, city, region, postal_code, gate_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email, boundary, boundary_area_sqm, archived_at, account_type, commercial_sections, building_labels, auto_zone_id, zone_id, zone_override_reason, est_override_reason, est_override_at, parking_notes, access_notes, latitude, longitude, unit, address_source",
       )
       .eq("client_id", data.clientId)
       .order("created_at");

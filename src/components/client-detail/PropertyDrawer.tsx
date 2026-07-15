@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createProperty, updateProperty } from "@/lib/properties.functions";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
+import { AddressAutocomplete, type ResolvedAddress } from "@/components/AddressAutocomplete";
+import { Badge } from "@/components/ui/badge";
 
 const HAZARD_FIELDS: Array<[string, string]> = [
   ["doNotEnterIfDogOut", "Do NOT enter if dog is outside"],
@@ -44,9 +46,13 @@ export function PropertyDrawer({
   const initial = useMemo(
     () => ({
       street: property?.street ?? "",
+      unit: property?.unit ?? "",
       city: property?.city ?? "",
       region: property?.region ?? "",
       postalCode: property?.postal_code ?? "",
+      latitude: (property?.latitude ?? null) as number | null,
+      longitude: (property?.longitude ?? null) as number | null,
+      addressSource: (property?.address_source ?? "manual") as "matched" | "manual",
       label: property?.label ?? "",
       accountType: (property?.account_type ?? client?.account_type ?? "residential") as
         | "residential"
@@ -73,7 +79,10 @@ export function PropertyDrawer({
   // Reset only on closed -> open; background refetches must not wipe edits.
   const wasOpen = useRef(false);
   useEffect(() => {
-    if (open && !wasOpen.current) setForm(initial);
+    if (open && !wasOpen.current) {
+      setForm(initial);
+      setMatchedZoneName(null);
+    }
     wasOpen.current = open;
   }, [open, initial]);
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
@@ -83,6 +92,40 @@ export function PropertyDrawer({
   };
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
+
+  const [matchedZoneName, setMatchedZoneName] = useState<string | null>(null);
+
+  function applyResolved(r: ResolvedAddress) {
+    setForm((f) => ({
+      ...f,
+      street: r.address.street,
+      // Each match owns the unit: carrying "#4" from a previous selection
+      // onto a different address would save a wrong unit.
+      unit: r.address.unit ?? "",
+      city: r.address.city,
+      region: r.address.region ?? "",
+      postalCode: r.address.postalCode,
+      latitude: r.address.latitude,
+      longitude: r.address.longitude,
+      addressSource: "matched",
+    }));
+    setMatchedZoneName(r.zoneName);
+  }
+
+  // Any hand edit to an address field invalidates whatever point we had:
+  // for matched addresses it demotes them to manual, and for manual ones
+  // the old geocoded pin no longer describes what's typed either — clearing
+  // the coords makes the server re-geocode the new address on save.
+  function setAddressField(k: "street" | "city" | "postalCode" | "region", v: string) {
+    setForm((f) => ({
+      ...f,
+      [k]: v,
+      addressSource: "manual" as const,
+      latitude: null,
+      longitude: null,
+    }));
+    setMatchedZoneName(null);
+  }
 
   const isCommercial = form.accountType === "commercial";
   const splitList = (s: string) =>
@@ -95,9 +138,13 @@ export function PropertyDrawer({
     mutationFn: () => {
       const common = {
         street: form.street,
+        unit: form.unit || undefined,
         city: form.city,
         region: form.region || undefined,
         postalCode: form.postalCode,
+        latitude: form.latitude ?? undefined,
+        longitude: form.longitude ?? undefined,
+        addressSource: form.addressSource,
         label: form.label || undefined,
         accountType: form.accountType,
         gateCode: form.gateCode || undefined,
@@ -147,27 +194,62 @@ export function PropertyDrawer({
         }}
       >
         <div className="grid gap-3 sm:grid-cols-6">
-          <div className="sm:col-span-3">
+          <div className="sm:col-span-4">
             <Label htmlFor="pd-street">Street</Label>
-            <Input
+            <AddressAutocomplete
               id="pd-street"
               value={form.street}
-              onChange={(e) => set("street", e.target.value)}
+              onChangeText={(t) => setAddressField("street", t)}
+              onResolved={applyResolved}
               required
             />
           </div>
           <div className="sm:col-span-2">
-            <Label htmlFor="pd-city">City</Label>
-            <Input id="pd-city" value={form.city} onChange={(e) => set("city", e.target.value)} required />
+            <Label htmlFor="pd-unit">Apt / unit (optional)</Label>
+            <Input id="pd-unit" value={form.unit} onChange={(e) => set("unit", e.target.value)} />
           </div>
-          <div>
+          <div className="sm:col-span-3">
+            <Label htmlFor="pd-city">City</Label>
+            <Input
+              id="pd-city"
+              value={form.city}
+              onChange={(e) => setAddressField("city", e.target.value)}
+              required
+            />
+          </div>
+          <div className="sm:col-span-1">
+            <Label htmlFor="pd-region">State</Label>
+            <Input
+              id="pd-region"
+              value={form.region}
+              onChange={(e) => setAddressField("region", e.target.value)}
+            />
+          </div>
+          <div className="sm:col-span-2">
             <Label htmlFor="pd-zip">ZIP</Label>
             <Input
               id="pd-zip"
               value={form.postalCode}
-              onChange={(e) => set("postalCode", e.target.value)}
+              onChange={(e) => setAddressField("postalCode", e.target.value)}
               required
             />
+          </div>
+          <div className="flex flex-wrap items-center gap-2 sm:col-span-6">
+            {form.addressSource === "matched" ? (
+              <Badge variant="secondary">Address Matched, Not USPS Verified</Badge>
+            ) : (
+              <Badge variant="outline">Manual entry</Badge>
+            )}
+            {matchedZoneName && (
+              <span className="text-xs text-muted-foreground">
+                Detected zone: <span className="font-medium text-foreground">{matchedZoneName}</span>
+              </span>
+            )}
+            {form.addressSource === "matched" && (
+              <span className="text-xs text-muted-foreground">
+                Map pin placed automatically. Draw the boundary after saving to set yard size.
+              </span>
+            )}
           </div>
         </div>
 

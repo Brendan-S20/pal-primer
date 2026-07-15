@@ -3519,6 +3519,7 @@ export type Database = {
         Row: {
           access_notes: string | null
           account_type: Database["public"]["Enums"]["account_type"] | null
+          address_source: string | null
           aggressive_dog: boolean
           archived_at: string | null
           auto_zone_id: string | null
@@ -3556,6 +3557,7 @@ export type Database = {
           sharp_objects: boolean
           slippery_surfaces: boolean
           street: string
+          unit: string | null
           visit_contact_email: string | null
           visit_contact_name: string | null
           visit_contact_phone: string | null
@@ -3567,6 +3569,7 @@ export type Database = {
         Insert: {
           access_notes?: string | null
           account_type?: Database["public"]["Enums"]["account_type"] | null
+          address_source?: string | null
           aggressive_dog?: boolean
           archived_at?: string | null
           auto_zone_id?: string | null
@@ -3604,6 +3607,7 @@ export type Database = {
           sharp_objects?: boolean
           slippery_surfaces?: boolean
           street: string
+          unit?: string | null
           visit_contact_email?: string | null
           visit_contact_name?: string | null
           visit_contact_phone?: string | null
@@ -3615,6 +3619,7 @@ export type Database = {
         Update: {
           access_notes?: string | null
           account_type?: Database["public"]["Enums"]["account_type"] | null
+          address_source?: string | null
           aggressive_dog?: boolean
           archived_at?: string | null
           auto_zone_id?: string | null
@@ -3652,6 +3657,7 @@ export type Database = {
           sharp_objects?: boolean
           slippery_surfaces?: boolean
           street?: string
+          unit?: string | null
           visit_contact_email?: string | null
           visit_contact_name?: string | null
           visit_contact_phone?: string | null
