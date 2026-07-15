@@ -119,42 +119,9 @@ export function BillingPanel({ clientId }: { clientId: string }) {
 
   const invoices = data?.invoices ?? [];
   const payments = data?.payments ?? [];
-  const c = data?.client;
 
   return (
     <>
-      <section className="rounded-lg border bg-card p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-medium">Payment method</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Managed by the client from their portal.
-            </p>
-          </div>
-          <div className="text-sm">
-            {c?.default_payment_method_id ? (
-              <div className="text-right">
-                <div className="capitalize">
-                  {c.default_card_brand ?? "Card"} ····{c.default_card_last4 ?? "····"}
-                </div>
-                <Badge variant={c.autopay_enabled ? "default" : "outline"} className="mt-1">
-                  Autopay {c.autopay_enabled ? "on" : "off"}
-                </Badge>
-                {(c as any).autopay_paused && (
-                  <AutopayResume
-                    clientId={clientId}
-                    lastError={(c as any).autopay_last_error}
-                    onDone={invalidate}
-                  />
-                )}
-              </div>
-            ) : (
-              <span className="text-muted-foreground">No card on file</span>
-            )}
-          </div>
-        </div>
-      </section>
-
       <section className="rounded-lg border bg-card p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -265,7 +232,7 @@ export function BillingPanel({ clientId }: { clientId: string }) {
   );
 }
 
-function AutopayResume({
+export function AutopayResume({
   clientId,
   lastError,
   onDone,

@@ -3,7 +3,7 @@
 // effective date + reason, delete only when the service never started. The
 // creation form stays hidden until "Add Service".
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { CalendarClock, Pause, Play, Plus, Square, Trash2 } from "lucide-react";
@@ -19,7 +19,9 @@ import {
   resumeSubscription,
   endSubscription,
   deleteDraftSubscription,
+  getStandardPricing,
 } from "@/lib/subscriptions.functions";
+import { computeZoneVisitPrice } from "@/lib/pricing";
 import {
   subscriptionToFormValues,
   blankSubscriptionFormValues,
@@ -345,6 +347,53 @@ function ServiceDrawer({
 
   const accountType = (client?.account_type ?? "residential") as "residential" | "commercial";
 
+  // Pricing precedence (spec): Standard -> Zone -> Custom, always displayed,
+  // never silently replaced. The buttons copy a computed price into the
+  // price field; the user always sees what they're choosing.
+  const stdFn = useServerFn(getStandardPricing);
+  const { data: std } = useQuery({
+    queryKey: ["std-pricing"],
+    queryFn: () => stdFn(),
+    enabled: open,
+  });
+  const dogsForPricing =
+    accountType === "residential" ? Math.max(1, parseInt(form.dogCount, 10) || 1) : 1;
+  const selectedProperty = properties.find((p: any) => p.id === form.propertyId);
+  const pricingZone = zones.find(
+    (z: any) => z.id === (form.zoneId || selectedProperty?.zone_id || ""),
+  );
+  const standardCents =
+    std?.basePriceCents != null
+      ? std.basePriceCents + Math.max(0, dogsForPricing - 1) * (std.perDogAddlCents ?? 0)
+      : null;
+  const zoneCents = pricingZone
+    ? computeZoneVisitPrice(
+        {
+          base_price_cents: pricingZone.base_price_cents,
+          per_dog_addl_cents: pricingZone.per_dog_addl_cents,
+          pricing_mode: (pricingZone.pricing_mode ?? "flat") as "flat" | "per_sqft" | "per_acre",
+          price_per_sqft_cents: Number(pricingZone.price_per_sqft_cents ?? 0),
+          price_per_acre_cents: pricingZone.price_per_acre_cents,
+          area_min_charge_cents: pricingZone.area_min_charge_cents,
+        },
+        {
+          dogCount: dogsForPricing,
+          boundaryAreaSqm: selectedProperty?.boundary_area_sqm
+            ? Number(selectedProperty.boundary_area_sqm)
+            : null,
+        },
+      ).perVisitCents
+    : null;
+  const finalCents = Math.round((parseFloat(form.priceDollars) || 0) * 100);
+  const priceSource =
+    finalCents > 0 && zoneCents != null && finalCents === zoneCents
+      ? "zone"
+      : finalCents > 0 && standardCents != null && finalCents === standardCents
+        ? "standard"
+        : finalCents > 0
+          ? "custom"
+          : null;
+
   const saveMut = useMutation({
     mutationFn: () => {
       const sched = scheduleChoiceToFields(form.choice, {
@@ -525,6 +574,77 @@ function ServiceDrawer({
             ))}
           </select>
         </div>
+
+        {(standardCents != null || zoneCents != null) && (
+          <div className="rounded-md border bg-muted/20 p-3 text-sm">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Price comparison (per visit)
+            </div>
+            <dl className="mt-2 space-y-1">
+              {standardCents != null && (
+                <div className="flex items-center justify-between">
+                  <dt className="text-muted-foreground">Standard price</dt>
+                  <dd className="flex items-center gap-2">
+                    ${(standardCents / 100).toFixed(2)}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => set("priceDollars", (standardCents / 100).toFixed(2))}
+                    >
+                      Use standard
+                    </Button>
+                  </dd>
+                </div>
+              )}
+              {zoneCents != null && (
+                <div className="flex items-center justify-between">
+                  <dt className="text-muted-foreground">{pricingZone?.name} zone price</dt>
+                  <dd className="flex items-center gap-2">
+                    ${(zoneCents / 100).toFixed(2)}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => set("priceDollars", (zoneCents / 100).toFixed(2))}
+                    >
+                      Use zone
+                    </Button>
+                  </dd>
+                </div>
+              )}
+              {standardCents != null && zoneCents != null && (
+                <div className="flex items-center justify-between">
+                  <dt className="text-muted-foreground">Difference</dt>
+                  <dd className={zoneCents - standardCents > 0 ? "text-destructive" : "text-primary"}>
+                    {zoneCents - standardCents >= 0 ? "+" : "−"}$
+                    {(Math.abs(zoneCents - standardCents) / 100).toFixed(2)}
+                  </dd>
+                </div>
+              )}
+              <div className="flex items-center justify-between border-t pt-1">
+                <dt className="font-medium">Final price</dt>
+                <dd className="flex items-center gap-2 font-medium">
+                  ${(finalCents / 100).toFixed(2)}
+                  {priceSource && (
+                    <Badge variant={priceSource === "custom" ? "outline" : "secondary"} className="text-[10px]">
+                      {priceSource === "zone"
+                        ? "Zone"
+                        : priceSource === "standard"
+                          ? "Standard"
+                          : "Custom"}
+                    </Badge>
+                  )}
+                </dd>
+              </div>
+            </dl>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Changing this price never touches invoices that were already issued.
+            </p>
+          </div>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
