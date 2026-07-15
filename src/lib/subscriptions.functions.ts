@@ -378,13 +378,14 @@ export const getStandardPricing = createServerFn({ method: "GET" })
     const { orgId } = await resolveCaller(supabase, userId);
     const { data, error } = await supabase
       .from("organizations")
-      .select("std_base_price_cents, std_per_dog_addl_cents")
+      .select("std_base_price_cents, std_per_dog_addl_cents, frequency_multipliers")
       .eq("id", orgId)
       .single();
     if (error) throw new Error(error.message);
     return {
       basePriceCents: data.std_base_price_cents ?? null,
       perDogAddlCents: data.std_per_dog_addl_cents ?? null,
+      frequencyMultipliers: (data.frequency_multipliers ?? {}) as Record<string, number>,
     };
   });
 
@@ -400,13 +401,14 @@ export const updateStandardPricing = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const orgId = await loadOrgForCaller(context.supabase, context.userId);
-    const { error } = await context.supabase
-      .from("organizations")
-      .update({
-        std_base_price_cents: data.basePriceCents,
-        std_per_dog_addl_cents: data.perDogAddlCents,
-      })
-      .eq("id", orgId);
+    // The org UPDATE policy is owner-only, but manage_pricing includes
+    // office managers; this SECURITY DEFINER RPC re-checks the caller's
+    // role in the database and can only touch the two pricing columns.
+    const { error } = await context.supabase.rpc("update_org_standard_pricing", {
+      _org_id: orgId,
+      _std_base_price_cents: data.basePriceCents as never,
+      _std_per_dog_addl_cents: data.perDogAddlCents as never,
+    });
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -449,14 +451,14 @@ export const updateDeepCleanSettings = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const orgId = await loadOrgForCaller(context.supabase, context.userId);
-    const { error } = await context.supabase
-      .from("organizations")
-      .update({
-        seasonal_deepclean_enabled: data.enabled,
-        seasonal_deepclean_months: data.months,
-        seasonal_deepclean_charge_cents: data.chargeCents,
-      })
-      .eq("id", orgId);
+    // Same owner-only org UPDATE policy gap: office managers hold
+    // manage_pricing, so route through the role-checked RPC.
+    const { error } = await context.supabase.rpc("update_org_deepclean_settings", {
+      _org_id: orgId,
+      _enabled: data.enabled,
+      _months: data.months,
+      _charge_cents: data.chargeCents,
+    });
     if (error) throw new Error(error.message);
     return { ok: true };
   });

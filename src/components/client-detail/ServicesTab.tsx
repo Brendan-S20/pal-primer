@@ -362,9 +362,20 @@ function ServiceDrawer({
   const pricingZone = zones.find(
     (z: any) => z.id === (form.zoneId || selectedProperty?.zone_id || ""),
   );
+  // The wizard stores multiplied prices (org frequency_multipliers keyed by
+  // stored frequency), so the comparison must use the same multiplier for
+  // this schedule or "Use zone" would silently discount non-weekly services.
+  const schedFields = scheduleChoiceToFields(form.choice, {
+    intervalWeeks: form.intervalWeeks ? parseInt(form.intervalWeeks, 10) : undefined,
+    intervalDays: form.intervalDays ? parseInt(form.intervalDays, 10) : undefined,
+  });
+  const freqMultiplier = Number(std?.frequencyMultipliers?.[schedFields.frequency] ?? 1) || 1;
   const standardCents =
     std?.basePriceCents != null
-      ? std.basePriceCents + Math.max(0, dogsForPricing - 1) * (std.perDogAddlCents ?? 0)
+      ? Math.round(
+          (std.basePriceCents + Math.max(0, dogsForPricing - 1) * (std.perDogAddlCents ?? 0)) *
+            freqMultiplier,
+        )
       : null;
   const zoneCents = pricingZone
     ? computeZoneVisitPrice(
@@ -381,8 +392,9 @@ function ServiceDrawer({
           boundaryAreaSqm: selectedProperty?.boundary_area_sqm
             ? Number(selectedProperty.boundary_area_sqm)
             : null,
+          multiplier: freqMultiplier,
         },
-      ).perVisitCents
+      ).recurringCents
     : null;
   const finalCents = Math.round((parseFloat(form.priceDollars) || 0) * 100);
   const priceSource =
@@ -578,7 +590,7 @@ function ServiceDrawer({
         {(standardCents != null || zoneCents != null) && (
           <div className="rounded-md border bg-muted/20 p-3 text-sm">
             <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Price comparison (per visit)
+              Price comparison (per visit at this schedule)
             </div>
             <dl className="mt-2 space-y-1">
               {standardCents != null && (

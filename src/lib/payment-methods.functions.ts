@@ -48,9 +48,12 @@ export const listClientPaymentMethods = createServerFn({ method: "GET" })
     let customer: any;
     try {
       customer = await stripe.customers.retrieve(client.stripe_customer_id, {}, opts);
-    } catch {
-      // Customer deleted in Stripe: treat as no methods rather than erroring.
-      return { methods: [] as PaymentMethodSummary[], hasCustomer: false };
+    } catch (e) {
+      // Deleted/missing customer means "no cards"; anything else (network,
+      // auth, rate limit) must surface as an error, not an empty list.
+      const { isStripeMissingResource } = await import("@/lib/stripe-connect.server");
+      if (isStripeMissingResource(e)) return { methods: [] as PaymentMethodSummary[], hasCustomer: false };
+      throw e;
     }
     if (customer.deleted) return { methods: [] as PaymentMethodSummary[], hasCustomer: false };
 
@@ -226,7 +229,9 @@ export const startCardSetupForClient = createServerFn({ method: "POST" })
         success_url: `${data.returnUrl}${data.returnUrl.includes("?") ? "&" : "?"}card_saved=1`,
         cancel_url: data.returnUrl,
         metadata: {
-          source: "portal_setup",
+          // Distinct from portal_setup: the webhook must NOT flip autopay on
+          // for a staff-added card (the client may have chosen autopay off).
+          source: "staff_setup",
           client_id: client.id,
           organization_id: client.organization_id,
         },

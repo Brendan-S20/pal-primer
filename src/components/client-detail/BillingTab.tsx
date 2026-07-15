@@ -168,8 +168,9 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
   const setupMut = useMutation({
     mutationFn: () => setupFn({ data: { clientId, returnUrl: window.location.href } }),
     onSuccess: (r: any) => {
-      window.open(r.url, "_blank", "noopener");
-      toast.info("Card setup opened in a new tab. This list refreshes after it's saved.");
+      // Same-tab navigation: window.open after an await is popup-blocked in
+      // Safari. Stripe's cancel/success URLs bring staff straight back here.
+      window.location.assign(r.url);
     },
     onError: (e) => toast.error((e as Error).message),
   });
