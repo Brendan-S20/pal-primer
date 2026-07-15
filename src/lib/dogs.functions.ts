@@ -38,15 +38,68 @@ export const addDog = createServerFn({ method: "POST" })
       .select("id")
       .single();
     if (error) throw new Error(error.message);
+
+    // Dog count feeds the auto-calculated service time.
+    const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
+    await recomputePropertyEstimate(supabase, data.propertyId);
     return { id: row.id as string };
   });
 
+const editDogSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(80).optional(),
+  breed: z.string().max(80).optional().nullable(),
+  weightClass: z.string().max(40).optional().nullable(),
+  temperament: temperament.optional(),
+  notes: z.string().max(1000).optional().nullable(),
+  active: z.boolean().optional(),
+});
+
+export const updateDog = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => editDogSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const patch: Record<string, string | boolean | null> = {};
+    if (data.name !== undefined) patch.name = data.name;
+    if (data.breed !== undefined) patch.breed = data.breed || null;
+    if (data.weightClass !== undefined) patch.weight_class = data.weightClass || null;
+    if (data.temperament !== undefined) patch.temperament = data.temperament;
+    if (data.notes !== undefined) patch.notes = data.notes || null;
+    if (data.active !== undefined) patch.active = data.active;
+    if (Object.keys(patch).length === 0) return { ok: true };
+
+    const { data: rows, error } = await context.supabase
+      .from("dogs")
+      .update(patch as never)
+      .eq("id", data.id)
+      .select("property_id");
+    if (error) throw new Error(error.message);
+    const row = rows?.[0];
+    if (!row) throw new Error("Dog not found");
+
+    if (data.active !== undefined && row.property_id) {
+      const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
+      await recomputePropertyEstimate(context.supabase, row.property_id);
+    }
+    return { ok: true };
+  });
+
+// Kept for legacy call sites; the refactored UI deactivates dogs instead.
 export const deleteDog = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase.from("dogs").delete().eq("id", data.id);
+    const { data: rows, error } = await context.supabase
+      .from("dogs")
+      .delete()
+      .eq("id", data.id)
+      .select("property_id");
     if (error) throw new Error(error.message);
+    const propertyId = rows?.[0]?.property_id;
+    if (propertyId) {
+      const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
+      await recomputePropertyEstimate(context.supabase, propertyId);
+    }
     return { ok: true };
   });
 

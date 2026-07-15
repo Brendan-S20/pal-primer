@@ -16,6 +16,8 @@ export type SubscriptionRecord = {
   preferred_weekdays: number[] | null;
   started_on?: string | null;
   ends_on?: string | null;
+  interval_weeks?: number | null;
+  interval_days?: number | null;
 };
 
 export type SubscriptionFormValues = {
@@ -31,6 +33,10 @@ export type SubscriptionFormValues = {
   startedOn: string;
   /** ISO date or "" for no end date. Visits stop generating after it. */
   endsOn: string;
+  /** Every N weeks (weekly frequency only); "" = every week. */
+  intervalWeeks: string;
+  /** Every X days (every_n_days frequency only). */
+  intervalDays: string;
 };
 
 function localTodayISO(): string {
@@ -51,6 +57,8 @@ export function subscriptionToFormValues(s: SubscriptionRecord): SubscriptionFor
     preferredWeekdays: s.preferred_weekdays ?? [],
     startedOn: s.started_on ?? localTodayISO(),
     endsOn: s.ends_on ?? "",
+    intervalWeeks: s.interval_weeks && s.interval_weeks > 1 ? String(s.interval_weeks) : "",
+    intervalDays: s.interval_days ? String(s.interval_days) : "",
   };
 }
 
@@ -74,5 +82,7 @@ export function blankSubscriptionFormValues(opts: {
     preferredWeekdays: [],
     startedOn: localTodayISO(),
     endsOn: "",
+    intervalWeeks: "",
+    intervalDays: "",
   };
 }

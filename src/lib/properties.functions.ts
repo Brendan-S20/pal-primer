@@ -2,11 +2,16 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
+// yard_size is derived from the boundary by a DB trigger now; the field is
+// still accepted (older forms send it) but never written.
 const yardSize = z.enum(["small", "medium", "large", "xlarge"]).optional();
 
 const createPropSchema = z.object({
   clientId: z.string().uuid(),
   label: z.string().max(120).optional(),
+  accountType: z.enum(["residential", "commercial"]).optional(),
+  commercialSections: z.array(z.string().max(120)).max(100).optional(),
+  buildingLabels: z.array(z.string().max(120)).max(200).optional(),
   street: z.string().min(1).max(200),
   city: z.string().min(1).max(120),
   region: z.string().max(120).optional(),
@@ -50,18 +55,31 @@ export const createProperty = createServerFn({ method: "POST" })
       postal_code: data.postalCode,
     });
 
+    // Auto-assign a service zone from the address (spec: automatic zone
+    // lookup with manual override kept separate).
+    const autoZoneId = await detectZoneId(supabase, client.organization_id, {
+      postalCode: data.postalCode,
+      point: geo?.latitude != null && geo?.longitude != null
+        ? { lat: geo.latitude, lng: geo.longitude }
+        : null,
+    });
+
     const { data: row, error } = await supabase
       .from("properties")
       .insert({
         client_id: data.clientId,
         organization_id: client.organization_id,
         label: data.label || null,
+        account_type: data.accountType ?? null,
+        commercial_sections: data.commercialSections?.length ? data.commercialSections : null,
+        building_labels: data.buildingLabels?.length ? data.buildingLabels : null,
         street: data.street,
         city: data.city,
         region: data.region || null,
         postal_code: data.postalCode,
         gate_code: data.gateCode || null,
-        yard_size: data.yardSize ?? null,
+        auto_zone_id: autoZoneId,
+        zone_id: autoZoneId,
         invisible_fence: !!data.invisibleFence,
         escape_risk: !!data.escapeRisk,
         dog_in_yard_during_service: !!data.dogInYardDuringService,
@@ -83,6 +101,23 @@ export const createProperty = createServerFn({ method: "POST" })
     return { id: row.id as string };
   });
 
+async function detectZoneId(
+  supabase: any,
+  orgId: string,
+  input: { postalCode?: string | null; point?: { lat: number; lng: number } | null },
+): Promise<string | null> {
+  const { data: zones, error } = await supabase
+    .from("zones")
+    .select(
+      "id, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
+    )
+    .eq("organization_id", orgId);
+  if (error) return null;
+  const { matchZone } = await import("@/lib/zone-match");
+  const z = matchZone((zones ?? []) as any[], input);
+  return z ? (z.id as string) : null;
+}
+
 const updatePropSchema = createPropSchema.omit({ clientId: true }).extend({
   propertyId: z.string().uuid(),
 });
@@ -92,6 +127,13 @@ export const updateProperty = createServerFn({ method: "POST" })
   .inputValidator((d) => updatePropSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
+    const { data: current, error: curErr } = await supabase
+      .from("properties")
+      .select("organization_id, zone_override_reason")
+      .eq("id", data.propertyId)
+      .single();
+    if (curErr) throw new Error(curErr.message);
+
     // Re-geocode when the address might have changed (cheap, keeps lat/lng fresh).
     const { geocodeAddress } = await import("./geocode.server");
     const geo = await geocodeAddress({
@@ -108,16 +150,32 @@ export const updateProperty = createServerFn({ method: "POST" })
         ? { latitude: geo.latitude, longitude: geo.longitude }
         : {};
 
+    // Refresh the detected zone; the effective zone follows it only while
+    // there is no manual override in place.
+    const autoZoneId = await detectZoneId(supabase, current.organization_id, {
+      postalCode: data.postalCode,
+      point:
+        geo?.latitude != null && geo?.longitude != null
+          ? { lat: geo.latitude, lng: geo.longitude }
+          : null,
+    });
+    const zonePatch = current.zone_override_reason
+      ? { auto_zone_id: autoZoneId }
+      : { auto_zone_id: autoZoneId, zone_id: autoZoneId };
+
     const { error } = await supabase
       .from("properties")
       .update({
         label: data.label || null,
+        account_type: data.accountType ?? null,
+        commercial_sections: data.commercialSections?.length ? data.commercialSections : null,
+        building_labels: data.buildingLabels?.length ? data.buildingLabels : null,
         street: data.street,
         city: data.city,
         region: data.region || null,
         postal_code: data.postalCode,
         gate_code: data.gateCode || null,
-        yard_size: data.yardSize ?? null,
+        ...zonePatch,
         invisible_fence: !!data.invisibleFence,
         escape_risk: !!data.escapeRisk,
         dog_in_yard_during_service: !!data.dogInYardDuringService,
@@ -183,7 +241,7 @@ export const listPropertiesForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("properties")
       .select(
-        "id, label, street, city, region, postal_code, gate_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email, boundary, boundary_area_sqm",
+        "id, label, street, city, region, postal_code, gate_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email, boundary, boundary_area_sqm, archived_at, account_type, commercial_sections, building_labels, auto_zone_id, zone_id, zone_override_reason, est_override_reason, est_override_at, parking_notes, access_notes, latitude, longitude",
       )
       .eq("client_id", data.clientId)
       .order("created_at");
@@ -263,5 +321,223 @@ export const updatePropertyBoundary = createServerFn({ method: "POST" })
       .eq("id", data.propertyId)
       .eq("organization_id", orgId);
     if (error) throw new Error(error.message);
+
+    // Boundary drives the derived yard size (DB trigger) and the estimated
+    // time; keep the estimate in sync unless a manual override is in place.
+    const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
+    await recomputePropertyEstimate(context.supabase, data.propertyId);
+
     return { ok: true, area_sqm: area };
+  });
+
+// ── Archive / delete (client detail refactor) ───────────────────────────────
+//
+// Properties with history are archived, never deleted; deletion is allowed
+// only when nothing references the property (no visits, no services, no
+// invoice lines through those services).
+
+export const setPropertyArchived = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ propertyId: z.string().uuid(), archived: z.boolean() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: rows, error } = await supabase
+      .from("properties")
+      .update({ archived_at: data.archived ? new Date().toISOString() : null })
+      .eq("id", data.propertyId)
+      .select("id, organization_id, client_id, street");
+    if (error) throw new Error(error.message);
+    const row = rows?.[0];
+    if (!row) throw new Error("Property not found");
+
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: row.organization_id,
+      clientId: row.client_id,
+      propertyId: row.id,
+      actorUserId: userId,
+      kind: data.archived ? "property.archived" : "property.unarchived",
+      summary: `${data.archived ? "Archived" : "Restored"} property ${row.street}`,
+    });
+    return { ok: true };
+  });
+
+export const deletePropertyIfNoHistory = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ propertyId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: prop, error: pErr } = await supabase
+      .from("properties")
+      .select("id, organization_id, client_id, street")
+      .eq("id", data.propertyId)
+      .single();
+    if (pErr) throw new Error(pErr.message);
+
+    const { count: visitCount, error: vErr } = await supabase
+      .from("visits")
+      .select("id", { count: "exact", head: true })
+      .eq("property_id", prop.id);
+    if (vErr) throw new Error(vErr.message);
+    const { count: subCount, error: sErr } = await supabase
+      .from("subscriptions")
+      .select("id", { count: "exact", head: true })
+      .eq("property_id", prop.id);
+    if (sErr) throw new Error(sErr.message);
+    if ((visitCount ?? 0) > 0 || (subCount ?? 0) > 0)
+      throw new Error("This property has history. Archive it instead of deleting.");
+
+    // Nothing operational references it: clear dependents, then the row.
+    const { error: dErr } = await supabase.from("dogs").delete().eq("property_id", prop.id);
+    if (dErr) throw new Error(dErr.message);
+    const { error: wErr } = await supabase
+      .from("waste_stations")
+      .delete()
+      .eq("property_id", prop.id);
+    if (wErr) throw new Error(wErr.message);
+    const { error } = await supabase.from("properties").delete().eq("id", prop.id);
+    if (error) throw new Error(error.message);
+
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: prop.organization_id,
+      clientId: prop.client_id,
+      actorUserId: userId,
+      kind: "property.deleted",
+      summary: `Deleted property ${prop.street} (no history)`,
+    });
+    return { ok: true };
+  });
+
+// ── Zone override (client detail refactor) ──────────────────────────────────
+//
+// auto_zone_id is what the matcher detected; zone_id is what actually
+// applies. Overriding requires a reason and records who did it. Clearing
+// the override snaps the effective zone back to the detected one.
+
+export const setPropertyZoneOverride = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        propertyId: z.string().uuid(),
+        zoneId: z.string().uuid().nullable(),
+        reason: z.string().min(1).max(300).optional(),
+      })
+      .refine((v) => v.zoneId === null || !!v.reason, {
+        message: "An override needs a reason",
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { requirePermission } = await import("@/lib/authz.server");
+    await requirePermission(supabase, userId, "manage_pricing");
+
+    const { data: prop, error: pErr } = await supabase
+      .from("properties")
+      .select("id, organization_id, client_id, street, auto_zone_id")
+      .eq("id", data.propertyId)
+      .single();
+    if (pErr) throw new Error(pErr.message);
+
+    const patch =
+      data.zoneId === null
+        ? {
+            zone_id: prop.auto_zone_id,
+            zone_override_reason: null,
+            zone_override_by: null,
+          }
+        : {
+            zone_id: data.zoneId,
+            zone_override_reason: data.reason!,
+            zone_override_by: userId,
+          };
+    const { error } = await supabase.from("properties").update(patch).eq("id", prop.id);
+    if (error) throw new Error(error.message);
+
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: prop.organization_id,
+      clientId: prop.client_id,
+      propertyId: prop.id,
+      actorUserId: userId,
+      kind: data.zoneId === null ? "zone.override_cleared" : "zone.overridden",
+      summary:
+        data.zoneId === null
+          ? `Cleared zone override on ${prop.street}`
+          : `Overrode zone on ${prop.street}: ${data.reason}`,
+      meta: { zone_id: data.zoneId, auto_zone_id: prop.auto_zone_id },
+    });
+    return { ok: true };
+  });
+
+// ── Estimated-time override (client detail refactor) ────────────────────────
+//
+// service_duration_min doubles as the authorized override slot: null means
+// "use the computed estimate", a value means an override and must carry a
+// reason. Clearing it returns the property to auto-calculation.
+
+export const setPropertyEstimateOverride = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        propertyId: z.string().uuid(),
+        minutes: z.number().int().min(1).max(600).nullable(),
+        reason: z.string().min(1).max(300).optional(),
+      })
+      .refine((v) => v.minutes === null || !!v.reason, {
+        message: "An override needs a reason",
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { requirePermission } = await import("@/lib/authz.server");
+    await requirePermission(supabase, userId, "manage_pricing");
+
+    const { data: rows, error } = await supabase
+      .from("properties")
+      .update(
+        data.minutes === null
+          ? // Back to auto: clear the override marker, then recompute below.
+            {
+              est_override_reason: null,
+              est_override_by: null,
+              est_override_at: null,
+            }
+          : {
+              service_duration_min: data.minutes,
+              est_override_reason: data.reason!,
+              est_override_by: userId,
+              est_override_at: new Date().toISOString(),
+            },
+      )
+      .eq("id", data.propertyId)
+      .select("id, organization_id, client_id, street");
+    if (error) throw new Error(error.message);
+    const row = rows?.[0];
+    if (!row) throw new Error("Property not found");
+
+    if (data.minutes === null) {
+      const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
+      await recomputePropertyEstimate(supabase, row.id);
+    }
+
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: row.organization_id,
+      clientId: row.client_id,
+      propertyId: row.id,
+      actorUserId: userId,
+      kind: data.minutes === null ? "estimate.override_cleared" : "estimate.overridden",
+      summary:
+        data.minutes === null
+          ? `Returned ${row.street} to auto-calculated time`
+          : `Set time override on ${row.street} to ${data.minutes} min: ${data.reason}`,
+    });
+    return { ok: true };
   });
