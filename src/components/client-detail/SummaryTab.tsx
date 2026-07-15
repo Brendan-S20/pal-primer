@@ -197,7 +197,7 @@ export function SummaryTab({
         )}
 
         {/* Visits */}
-        <section className="rounded-lg border bg-card p-5">
+        <section className="rounded-lg border bg-card shadow-sm p-5">
           <h2 className="text-sm font-medium">Visits</h2>
           <div className="mt-2 rounded-md border bg-muted/20 p-3 text-sm">
             <SectionLabel className="flex items-center gap-1.5">
@@ -241,7 +241,7 @@ export function SummaryTab({
         </section>
 
         {/* Active services */}
-        <section className="rounded-lg border bg-card p-5">
+        <section className="rounded-lg border bg-card shadow-sm p-5">
           <h2 className="text-sm font-medium">Active services</h2>
           <ul className="mt-2 space-y-1.5 text-sm">
             {activeSubs.map((s: any) => {
@@ -270,7 +270,7 @@ export function SummaryTab({
         </section>
 
         {/* Properties snapshot */}
-        <section className="rounded-lg border bg-card p-5">
+        <section className="rounded-lg border bg-card shadow-sm p-5">
           <h2 className="text-sm font-medium">Properties</h2>
           <ul className="mt-2 space-y-1.5 text-sm">
             {activeProps.map((p: any) => (
@@ -319,7 +319,7 @@ function CommunicationCard({ client, onGoToTab }: { client: any; onGoToTab: (t: 
   const last = messages[messages.length - 1];
 
   return (
-    <section className="rounded-lg border bg-card p-5">
+    <section className="rounded-lg border bg-card shadow-sm p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="flex items-center gap-1.5 text-sm font-medium">
           <MessageSquare className="h-4 w-4 text-muted-foreground" /> Communication

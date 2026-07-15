@@ -133,7 +133,7 @@ export function ClientHeader({
     .toUpperCase();
 
   return (
-    <header className="rounded-xl border bg-card px-5 py-4">
+    <header className="rounded-xl border bg-card px-5 py-4 shadow-sm">
       {dialog}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-4">

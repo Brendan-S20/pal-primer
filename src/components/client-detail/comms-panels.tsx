@@ -45,7 +45,7 @@ export function MessageComposer({ client, bare = false }: { client: any; bare?: 
   const shown = bare ? messages : messages.slice(-6);
   const Wrapper = bare ? "div" : "section";
   return (
-    <Wrapper className={bare ? "" : "rounded-lg border bg-card p-5"}>
+    <Wrapper className={bare ? "" : "rounded-lg border bg-card shadow-sm p-5"}>
       {!bare && <h2 className="text-sm font-medium">Messages</h2>}
       {messages.length > 0 && (
         <ul className={`mt-3 space-y-2 overflow-y-auto ${bare ? "max-h-96" : "max-h-48"}`}>
@@ -137,7 +137,7 @@ export function ReviewsReferralPanel({ client }: { client: any }) {
   const alreadyAsked = client.review_asked_at ? formatDay(client.review_asked_at) : null;
 
   return (
-    <section className="rounded-lg border bg-card p-5">
+    <section className="rounded-lg border bg-card shadow-sm p-5">
       <h2 className="text-sm font-medium">Reviews & referrals</h2>
 
       <div className="mt-3 grid gap-4 md:grid-cols-2">

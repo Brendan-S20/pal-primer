@@ -193,7 +193,7 @@ export function BoundarySketch({
       <div
         ref={containerRef}
         style={{ height, width: "100%" }}
-        className="rounded-lg border overflow-hidden z-0"
+        className="isolate z-0 rounded-lg border overflow-hidden z-0"
       />
       <p className="text-xs text-muted-foreground">
         In <b>Draw</b> mode: click to add points around the yard. Drag any point to adjust; click a point to remove it. Switch to <b>View</b> to pan without adding.

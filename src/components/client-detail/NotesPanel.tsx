@@ -100,7 +100,7 @@ export function NotesPanel({
   const countFor = (k: Audience) => notes.filter((n: any) => n.audience === k).length;
 
   return (
-    <section className={compact ? "" : "rounded-lg border bg-card p-5"}>
+    <section className={compact ? "" : "rounded-lg border bg-card shadow-sm p-5"}>
       {dialog}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-medium">Notes</h2>

@@ -9,7 +9,14 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createProperty, updateProperty } from "@/lib/properties.functions";
+import {
+  createProperty,
+  updateProperty,
+  updatePropertyBoundary,
+  setPropertyZoneOverride,
+  setPropertyEstimateOverride,
+} from "@/lib/properties.functions";
+import { BoundarySketch, type PolygonGeoJSON } from "@/components/BoundarySketch";
 import { updatePropertyWindow } from "@/lib/visits.functions";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { AddressAutocomplete, type ResolvedAddress } from "@/components/AddressAutocomplete";
@@ -34,6 +41,8 @@ export function PropertyDrawer({
   clientId,
   client,
   property,
+  zones = [],
+  canManagePricing = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -41,6 +50,8 @@ export function PropertyDrawer({
   client: any;
   /** null = adding a new property. */
   property: any | null;
+  zones?: any[];
+  canManagePricing?: boolean;
 }) {
   const qc = useQueryClient();
   const createFn = useServerFn(createProperty);
@@ -212,7 +223,7 @@ export function PropertyDrawer({
       onClose={onClose}
       title={property ? "Edit property" : "Add property"}
       description="The service zone is detected automatically from the address. Draw the boundary on the map to set yard size and estimated time."
-      size="md"
+      size="lg"
       dirty={dirty}
     >
       <form
@@ -430,6 +441,14 @@ export function PropertyDrawer({
           </div>
         </div>
 
+        {property && (
+          <BoundarySection property={property} clientId={clientId} />
+        )}
+
+        {property && canManagePricing && (
+          <OverridesSection property={property} clientId={clientId} zones={zones} />
+        )}
+
         <DrawerFooter>
           <Button type="submit" disabled={saveMut.isPending}>
             {saveMut.isPending ? "Saving…" : property ? "Save changes" : "Add property"}
@@ -437,5 +456,202 @@ export function PropertyDrawer({
         </DrawerFooter>
       </form>
     </EditDrawer>
+  );
+}
+
+
+// ── Inline boundary editing (UX round 3: no page hop) ──────────────────────
+// Its own save button: redrawing a yard shouldn't be coupled to the form's
+// Save, and the DB trigger recalculates yard size + estimate on save.
+
+function BoundarySection({ property, clientId }: { property: any; clientId: string }) {
+  const qc = useQueryClient();
+  const saveFn = useServerFn(updatePropertyBoundary);
+  const mut = useMutation({
+    mutationFn: (polygon: PolygonGeoJSON | null) =>
+      saveFn({ data: { propertyId: property.id, boundary: polygon } }),
+    onSuccess: (r: any) => {
+      toast.success(
+        r?.area_sqm ? "Boundary saved. Yard size and estimated time updated." : "Boundary cleared",
+      );
+      qc.invalidateQueries({ queryKey: ["properties", clientId] });
+      qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const center =
+    property.latitude != null && property.longitude != null
+      ? { lat: Number(property.latitude), lng: Number(property.longitude) }
+      : null;
+
+  return (
+    <div className="rounded-md border bg-muted/20 p-3">
+      <SectionLabel>Service boundary</SectionLabel>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Outline the serviced yard. Yard size and estimated time are derived from it automatically.
+      </p>
+      <div className="mt-2">
+        <BoundarySketch
+          center={center}
+          initial={(property.boundary as PolygonGeoJSON) ?? null}
+          onSave={(polygon) => mut.mutate(polygon)}
+          saving={mut.isPending}
+          areaSqm={property.boundary_area_sqm ? Number(property.boundary_area_sqm) : null}
+          height={340}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── Zone + estimated-time overrides (authorized roles) ─────────────────────
+
+function OverridesSection({
+  property,
+  clientId,
+  zones,
+}: {
+  property: any;
+  clientId: string;
+  zones: any[];
+}) {
+  const qc = useQueryClient();
+  const zoneFn = useServerFn(setPropertyZoneOverride);
+  const estFn = useServerFn(setPropertyEstimateOverride);
+  const [zoneId, setZoneId] = useState<string>(property.zone_id ?? "");
+  const [zoneReason, setZoneReason] = useState("");
+  const [minutes, setMinutes] = useState<string>(String(property.service_duration_min ?? ""));
+  const [estReason, setEstReason] = useState("");
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["properties", clientId] });
+    qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
+  };
+  const zoneMut = useMutation({
+    mutationFn: (v: { zoneId: string | null; reason?: string }) =>
+      zoneFn({ data: { propertyId: property.id, ...v } }),
+    onSuccess: () => {
+      toast.success("Zone updated");
+      setZoneReason("");
+      invalidate();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const estMut = useMutation({
+    mutationFn: (v: { minutes: number | null; reason?: string }) =>
+      estFn({ data: { propertyId: property.id, ...v } }),
+    onSuccess: () => {
+      toast.success("Estimated time updated");
+      setEstReason("");
+      invalidate();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const detected = zones.find((z: any) => z.id === property.auto_zone_id)?.name ?? "none";
+
+  return (
+    <div className="rounded-md border bg-muted/20 p-3">
+      <SectionLabel>Zone & time overrides</SectionLabel>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Both are set automatically. Overrides need a reason and show up on the activity timeline.
+      </p>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Zone</span>
+            <MetaChip>Detected: {detected}</MetaChip>
+            {property.zone_override_reason && <MetaChip>Overridden</MetaChip>}
+          </div>
+          <select
+            aria-label="Effective zone"
+            value={zoneId}
+            onChange={(e) => setZoneId(e.target.value)}
+            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+          >
+            <option value="">Select a zone…</option>
+            {zones.map((z: any) => (
+              <option key={z.id} value={z.id}>
+                {z.name}
+              </option>
+            ))}
+          </select>
+          <Input
+            aria-label="Zone override reason"
+            value={zoneReason}
+            onChange={(e) => setZoneReason(e.target.value)}
+            placeholder="Reason (required to override)"
+          />
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={zoneMut.isPending || !zoneId || !zoneReason.trim()}
+              onClick={() => zoneMut.mutate({ zoneId, reason: zoneReason })}
+            >
+              Apply override
+            </Button>
+            {property.zone_override_reason && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={zoneMut.isPending}
+                onClick={() => zoneMut.mutate({ zoneId: null })}
+              >
+                Back to detected
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Time on site</span>
+            {property.est_override_at ? <MetaChip>Overridden</MetaChip> : <MetaChip>Auto</MetaChip>}
+          </div>
+          <Input
+            aria-label="Minutes on site"
+            type="number"
+            min="1"
+            max="600"
+            value={minutes}
+            onChange={(e) => setMinutes(e.target.value)}
+            placeholder="Minutes"
+          />
+          <Input
+            aria-label="Time override reason"
+            value={estReason}
+            onChange={(e) => setEstReason(e.target.value)}
+            placeholder="Reason (required to override)"
+          />
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={estMut.isPending || !minutes || !estReason.trim()}
+              onClick={() => estMut.mutate({ minutes: parseInt(minutes, 10), reason: estReason })}
+            >
+              Apply override
+            </Button>
+            {property.est_override_at && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={estMut.isPending}
+                onClick={() => estMut.mutate({ minutes: null })}
+              >
+                Back to auto
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

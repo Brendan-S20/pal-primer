@@ -1,8 +1,17 @@
-// Right-side editing drawer for the client detail page (spec: viewing and
-// editing are separate; nothing edits inline). Three widths; on mobile every
-// size becomes a full-screen sheet. Closing with unsaved changes asks first
-// via a styled modal (QA follow-up 1.4: no native confirm dialogs anywhere).
+// Shared edit surface for the client detail page (UX round 3): a centered
+// modal dialog on desktop (drawers wasted space on large monitors), a
+// full-screen sheet on mobile. One component, one behavior — every editor
+// on the page inherits changes made here. Closing with unsaved changes asks
+// first via a styled modal; children close through context so the guard
+// applies to Cancel buttons too.
 import { createContext, useContext, useState, type ReactNode } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Sheet,
   SheetContent,
@@ -20,12 +29,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
 
-const SIZE_CLASS: Record<DrawerSize, string> = {
+const MODAL_SIZE_CLASS: Record<DrawerSize, string> = {
   sm: "sm:max-w-md",
-  md: "sm:max-w-xl",
-  lg: "sm:max-w-3xl",
+  md: "sm:max-w-2xl",
+  lg: "sm:max-w-4xl",
 };
 
 export type DrawerSize = "sm" | "md" | "lg";
@@ -35,6 +45,13 @@ export type DrawerSize = "sm" | "md" | "lg";
 const DrawerCloseContext = createContext<() => void>(() => {});
 export function useDrawerClose() {
   return useContext(DrawerCloseContext);
+}
+
+/** Ignore Escape when an autocomplete listbox is open: it should close the
+ * list, not the whole editor (Radix's capture-phase listener wins otherwise). */
+function escapeGuard(e: KeyboardEvent | CustomEvent) {
+  const target = (e as KeyboardEvent).target as HTMLElement | null;
+  if (target?.getAttribute?.("aria-expanded") === "true") e.preventDefault();
 }
 
 export function EditDrawer({
@@ -55,6 +72,7 @@ export function EditDrawer({
   dirty?: boolean;
   children: ReactNode;
 }) {
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
 
   function requestClose() {
@@ -67,61 +85,78 @@ export function EditDrawer({
     requestClose();
   }
 
+  const body = (
+    <DrawerCloseContext.Provider value={requestClose}>{children}</DrawerCloseContext.Provider>
+  );
+
+  const discardDialog = (
+    <AlertDialog open={confirmingDiscard} onOpenChange={setConfirmingDiscard}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Your edits in this panel haven't been saved.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => setConfirmingDiscard(false)}>
+            Keep editing
+          </AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={() => {
+              setConfirmingDiscard(false);
+              onClose();
+            }}
+          >
+            Discard changes
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
+  if (isDesktop) {
+    return (
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent
+          className={cn(
+            "flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0",
+            MODAL_SIZE_CLASS[size],
+          )}
+          onEscapeKeyDown={escapeGuard}
+        >
+          <DialogHeader className="border-b px-6 py-4 text-left">
+            <DialogTitle>{title}</DialogTitle>
+            {description ? <DialogDescription>{description}</DialogDescription> : null}
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto px-6 py-4">{body}</div>
+          {discardDialog}
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent
         side="right"
-        className={cn(
-          "flex w-full max-w-full flex-col gap-0 overflow-y-auto p-0",
-          SIZE_CLASS[size],
-        )}
-        onEscapeKeyDown={(e) => {
-          // Escape while an autocomplete listbox is open should close the
-          // list, not the drawer (Radix's document-level capture listener
-          // would otherwise win and trigger the discard-changes prompt).
-          const target = e.target as HTMLElement | null;
-          if (target?.getAttribute?.("aria-expanded") === "true") e.preventDefault();
-        }}
+        className="flex w-full max-w-full flex-col gap-0 overflow-y-auto p-0"
+        onEscapeKeyDown={escapeGuard}
       >
         <SheetHeader className="border-b px-6 py-4 text-left">
           <SheetTitle>{title}</SheetTitle>
           {description ? <SheetDescription>{description}</SheetDescription> : null}
         </SheetHeader>
-        <div className="flex-1 px-6 py-4">
-          <DrawerCloseContext.Provider value={requestClose}>{children}</DrawerCloseContext.Provider>
-        </div>
-
-        <AlertDialog open={confirmingDiscard} onOpenChange={setConfirmingDiscard}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Your edits in this panel haven't been saved.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setConfirmingDiscard(false)}>
-                Keep editing
-              </AlertDialogCancel>
-              <AlertDialogAction
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                onClick={() => {
-                  setConfirmingDiscard(false);
-                  onClose();
-                }}
-              >
-                Discard changes
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <div className="flex-1 px-6 py-4">{body}</div>
+        {discardDialog}
       </SheetContent>
     </Sheet>
   );
 }
 
-/** Sticky footer row for drawer forms: explicit Save / Cancel. Cancel goes
- * through the drawer's unsaved-changes guard automatically. */
+/** Sticky footer row for editor forms: explicit Save / Cancel. Cancel goes
+ * through the unsaved-changes guard automatically. */
 export function DrawerFooter({
   onCancel,
   children,

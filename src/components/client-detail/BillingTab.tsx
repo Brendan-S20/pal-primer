@@ -41,7 +41,7 @@ export function BillingTab({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-6">
       {/* Summary */}
-      <section className="rounded-lg border bg-card p-5">
+      <section className="rounded-lg border bg-card shadow-sm p-5">
         <h2 className="text-sm font-medium">Billing summary</h2>
         <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <div>
@@ -87,7 +87,7 @@ export function BillingTab({ clientId }: { clientId: string }) {
       <BillingPanel clientId={clientId} />
 
       {/* Credits */}
-      <section className="rounded-lg border bg-card p-5">
+      <section className="rounded-lg border bg-card shadow-sm p-5">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium">Credits</h2>
           <span
@@ -123,7 +123,7 @@ export function BillingTab({ clientId }: { clientId: string }) {
       </section>
 
       {/* Billing settings */}
-      <section className="rounded-lg border bg-card p-5">
+      <section className="rounded-lg border bg-card shadow-sm p-5">
         <h2 className="text-sm font-medium">Billing settings</h2>
         <div className="mt-3 flex flex-wrap items-start justify-between gap-3 text-sm">
           <div>
@@ -200,7 +200,7 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
   const methods = data?.methods ?? [];
 
   return (
-    <section className="rounded-lg border bg-card p-5">
+    <section className="rounded-lg border bg-card shadow-sm p-5">
       {dialog}
       <div className="flex items-center justify-between">
         <div>

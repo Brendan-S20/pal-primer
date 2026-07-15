@@ -142,7 +142,7 @@ function ClientDetail() {
       />
 
       <Tabs value={tab} onValueChange={setTab} className="space-y-5">
-        <TabsList className="flex h-auto w-full flex-wrap justify-start">
+        <TabsList className="inline-flex h-auto w-auto flex-wrap justify-start">
           <TabsTrigger
             value="summary"
             className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md px-3 py-1.5"
