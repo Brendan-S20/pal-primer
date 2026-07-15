@@ -146,12 +146,102 @@ export const getClient = createServerFn({ method: "GET" })
     const { data: client, error } = await supabase
       .from("clients")
       .select(
-        "id, display_name, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at",
+        "id, display_name, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source",
       )
       .eq("id", data.clientId)
       .single();
     if (error) throw new Error(error.message);
     return { client };
+  });
+
+/** Edit-client drawer (client detail refactor): contact, status, tags,
+ * preferences. Billing addresses live in Stripe, never here. */
+export const updateClient = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        clientId: z.string().uuid(),
+        displayName: z.string().min(1).max(200).optional(),
+        primaryEmail: z.string().email().max(200).or(z.literal("")).optional(),
+        primaryPhone: z.string().max(40).optional(),
+        accountType: z.enum(["residential", "commercial"]).optional(),
+        active: z.boolean().optional(),
+        tags: z.array(z.string().min(1).max(40)).max(30).optional(),
+        preferredContact: z.enum(["sms", "email", "phone"]).nullable().optional(),
+        referralSource: z.string().max(200).nullable().optional(),
+        smsOptOut: z.boolean().optional(),
+        emailOptOut: z.boolean().optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await requirePermission(supabase, userId, "view_client_directory");
+
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    const changed: string[] = [];
+    if (data.displayName !== undefined) {
+      patch.display_name = data.displayName;
+      changed.push("name");
+    }
+    if (data.primaryEmail !== undefined) {
+      patch.primary_email = data.primaryEmail || null;
+      changed.push("email");
+    }
+    if (data.primaryPhone !== undefined) {
+      patch.primary_phone = data.primaryPhone || null;
+      changed.push("phone");
+    }
+    if (data.accountType !== undefined) {
+      patch.account_type = data.accountType;
+      changed.push("client type");
+    }
+    if (data.active !== undefined) {
+      patch.active = data.active;
+      changed.push("status");
+    }
+    if (data.tags !== undefined) {
+      patch.tags = data.tags;
+      changed.push("tags");
+    }
+    if (data.preferredContact !== undefined) {
+      patch.preferred_contact = data.preferredContact;
+      changed.push("preferred contact");
+    }
+    if (data.referralSource !== undefined) {
+      patch.referral_source = data.referralSource || null;
+      changed.push("referral source");
+    }
+    if (data.smsOptOut !== undefined) {
+      patch.sms_opt_out = data.smsOptOut;
+      changed.push("SMS preference");
+    }
+    if (data.emailOptOut !== undefined) {
+      patch.email_opt_out = data.emailOptOut;
+      changed.push("email preference");
+    }
+    if (changed.length === 0) return { ok: true };
+
+    const { data: rows, error } = await supabase
+      .from("clients")
+      .update(patch as never)
+      .eq("id", data.clientId)
+      .select("id, organization_id");
+    if (error) throw new Error(error.message);
+    const row = rows?.[0];
+    if (!row) throw new Error("Client not found");
+
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: row.organization_id,
+      clientId: row.id,
+      actorUserId: userId,
+      kind: "client.updated",
+      summary: `Updated client ${changed.join(", ")}`,
+      meta: { fields: changed },
+    });
+    return { ok: true };
   });
 
 /** Office notes on the client record (gate quirks, preferences, history). */
@@ -275,28 +365,6 @@ const internalQuoteSchema = z.object({
   longitude: z.number().min(-180).max(180).optional(),
 });
 
-function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const R = 6371000;
-  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
-  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
-  const la1 = (a.lat * Math.PI) / 180;
-  const la2 = (b.lat * Math.PI) / 180;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
-function pointInPolygon(point: { lat: number; lng: number }, ring: number[][]): boolean {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i];
-    const [xj, yj] = ring[j];
-    const intersect =
-      yi > point.lat !== yj > point.lat &&
-      point.lng < ((xj - xi) * (point.lat - yi)) / (yj - yi) + xi;
-    if (intersect) inside = !inside;
-  }
-  return inside;
-}
-
 export const getInternalQuote = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => internalQuoteSchema.parse(d))
@@ -318,62 +386,16 @@ export const getInternalQuote = createServerFn({ method: "POST" })
       .eq("organization_id", orgId);
     if (zErr) throw new Error(zErr.message);
 
-    const pc = data.postalCode.trim();
-    const pt =
-      data.latitude != null && data.longitude != null
-        ? { lat: data.latitude, lng: data.longitude }
-        : null;
-    const DRIVE_M_PER_MIN = 800;
+    const { matchZone } = await import("@/lib/zone-match");
+    const z = matchZone((zones ?? []) as any[], {
+      postalCode: data.postalCode,
+      point:
+        data.latitude != null && data.longitude != null
+          ? { lat: data.latitude, lng: data.longitude }
+          : null,
+    });
 
-    const match = (zones ?? [])
-      .map((z: any) => {
-        const mode = (z.geo_match_mode ?? "zip") as string;
-        // Geo match takes precedence when configured and we have a point
-        if (pt) {
-          if (mode === "polygon" && z.boundary?.coordinates?.[0]) {
-            const ring = z.boundary.coordinates[0] as number[][];
-            if (pointInPolygon(pt, ring)) return { z, rank: -2, prefLen: 0 };
-          }
-          if (
-            mode === "radius" &&
-            z.center_latitude != null &&
-            z.center_longitude != null &&
-            z.radius_meters
-          ) {
-            if (
-              haversineMeters(pt, {
-                lat: Number(z.center_latitude),
-                lng: Number(z.center_longitude),
-              }) <= z.radius_meters
-            )
-              return { z, rank: -1, prefLen: 0 };
-          }
-          if (
-            mode === "drive_time" &&
-            z.center_latitude != null &&
-            z.center_longitude != null &&
-            z.drive_time_minutes
-          ) {
-            if (
-              haversineMeters(pt, {
-                lat: Number(z.center_latitude),
-                lng: Number(z.center_longitude),
-              }) <=
-              z.drive_time_minutes * DRIVE_M_PER_MIN
-            )
-              return { z, rank: -1, prefLen: 0 };
-          }
-        }
-        const exact = Array.isArray(z.zip_codes) && z.zip_codes.includes(pc);
-        const prefix = z.postal_prefix && pc.startsWith(z.postal_prefix);
-        if (!exact && !prefix) return null;
-        return { z, rank: exact ? 0 : 1, prefLen: (z.postal_prefix ?? "").length };
-      })
-      .filter(Boolean)
-      .sort((a: any, b: any) => a.rank - b.rank || b.prefLen - a.prefLen)[0] as any;
-
-    if (!match) return { available: false as const };
-    const z = match.z;
+    if (!z) return { available: false as const };
     const mult = Number((org.frequency_multipliers as any)?.[data.frequency] ?? 1);
     const mode = (z.pricing_mode ?? "flat") as "flat" | "per_sqft" | "per_acre";
 

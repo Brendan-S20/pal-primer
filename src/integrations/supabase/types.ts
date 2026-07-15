@@ -136,6 +136,63 @@ export type Database = {
           },
         ]
       }
+      activity_log: {
+        Row: {
+          actor_label: string | null
+          actor_user_id: string | null
+          client_id: string | null
+          created_at: string
+          id: string
+          kind: string
+          meta: Json
+          organization_id: string
+          property_id: string | null
+          subscription_id: string | null
+          summary: string
+        }
+        Insert: {
+          actor_label?: string | null
+          actor_user_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          id?: string
+          kind: string
+          meta?: Json
+          organization_id: string
+          property_id?: string | null
+          subscription_id?: string | null
+          summary: string
+        }
+        Update: {
+          actor_label?: string | null
+          actor_user_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          meta?: Json
+          organization_id?: string
+          property_id?: string | null
+          subscription_id?: string | null
+          summary?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_log_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_log_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       addon_charges: {
         Row: {
           addon_service_id: string | null
@@ -577,6 +634,67 @@ export type Database = {
           },
         ]
       }
+      client_notes: {
+        Row: {
+          audience: string
+          body: string
+          client_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          organization_id: string
+          pinned: boolean
+          property_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          audience: string
+          body: string
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          organization_id: string
+          pinned?: boolean
+          property_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          audience?: string
+          body?: string
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          organization_id?: string
+          pinned?: boolean
+          property_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_notes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_notes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_notes_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"]
@@ -605,15 +723,18 @@ export type Database = {
           notes: string | null
           organization_id: string
           portal_token: string
+          preferred_contact: string | null
           primary_email: string | null
           primary_phone: string | null
           referral_applied_at: string | null
           referral_code: string | null
+          referral_source: string | null
           referred_by_client_id: string | null
           review_asked_at: string | null
           review_submitted_at: string | null
           sms_opt_out: boolean
           stripe_customer_id: string | null
+          tags: string[]
           updated_at: string
         }
         Insert: {
@@ -643,15 +764,18 @@ export type Database = {
           notes?: string | null
           organization_id: string
           portal_token?: string
+          preferred_contact?: string | null
           primary_email?: string | null
           primary_phone?: string | null
           referral_applied_at?: string | null
           referral_code?: string | null
+          referral_source?: string | null
           referred_by_client_id?: string | null
           review_asked_at?: string | null
           review_submitted_at?: string | null
           sms_opt_out?: boolean
           stripe_customer_id?: string | null
+          tags?: string[]
           updated_at?: string
         }
         Update: {
@@ -681,15 +805,18 @@ export type Database = {
           notes?: string | null
           organization_id?: string
           portal_token?: string
+          preferred_contact?: string | null
           primary_email?: string | null
           primary_phone?: string | null
           referral_applied_at?: string | null
           referral_code?: string | null
+          referral_source?: string | null
           referred_by_client_id?: string | null
           review_asked_at?: string | null
           review_submitted_at?: string | null
           sms_opt_out?: boolean
           stripe_customer_id?: string | null
+          tags?: string[]
           updated_at?: string
         }
         Relationships: [
@@ -869,6 +996,7 @@ export type Database = {
       }
       dogs: {
         Row: {
+          active: boolean
           breed: string | null
           created_at: string
           dna_registered: boolean
@@ -882,6 +1010,7 @@ export type Database = {
           weight_class: string | null
         }
         Insert: {
+          active?: boolean
           breed?: string | null
           created_at?: string
           dna_registered?: boolean
@@ -895,6 +1024,7 @@ export type Database = {
           weight_class?: string | null
         }
         Update: {
+          active?: boolean
           breed?: string | null
           created_at?: string
           dna_registered?: boolean
@@ -2180,6 +2310,7 @@ export type Database = {
           dunning_pause_after_failures: number
           dunning_retry_days: number[]
           email_verified_at: string | null
+          est_time_config: Json | null
           field_addon_cap_cents: number
           franchise_royalty_percent: number
           frequency_multipliers: Json
@@ -2234,6 +2365,8 @@ export type Database = {
           sms_consent_phone: string | null
           sms_consent_text: string | null
           sms_from_number: string | null
+          std_base_price_cents: number | null
+          std_per_dog_addl_cents: number | null
           stripe_connect_account_id: string | null
           stripe_connect_charges_enabled: boolean
           stripe_connect_connected_at: string | null
@@ -2273,6 +2406,7 @@ export type Database = {
           dunning_pause_after_failures?: number
           dunning_retry_days?: number[]
           email_verified_at?: string | null
+          est_time_config?: Json | null
           field_addon_cap_cents?: number
           franchise_royalty_percent?: number
           frequency_multipliers?: Json
@@ -2327,6 +2461,8 @@ export type Database = {
           sms_consent_phone?: string | null
           sms_consent_text?: string | null
           sms_from_number?: string | null
+          std_base_price_cents?: number | null
+          std_per_dog_addl_cents?: number | null
           stripe_connect_account_id?: string | null
           stripe_connect_charges_enabled?: boolean
           stripe_connect_connected_at?: string | null
@@ -2366,6 +2502,7 @@ export type Database = {
           dunning_pause_after_failures?: number
           dunning_retry_days?: number[]
           email_verified_at?: string | null
+          est_time_config?: Json | null
           field_addon_cap_cents?: number
           franchise_royalty_percent?: number
           frequency_multipliers?: Json
@@ -2420,6 +2557,8 @@ export type Database = {
           sms_consent_phone?: string | null
           sms_consent_text?: string | null
           sms_from_number?: string | null
+          std_base_price_cents?: number | null
+          std_per_dog_addl_cents?: number | null
           stripe_connect_account_id?: string | null
           stripe_connect_charges_enabled?: boolean
           stripe_connect_connected_at?: string | null
@@ -3379,18 +3518,26 @@ export type Database = {
       properties: {
         Row: {
           access_notes: string | null
+          account_type: Database["public"]["Enums"]["account_type"] | null
           aggressive_dog: boolean
+          archived_at: string | null
+          auto_zone_id: string | null
           bees_wasps: boolean
           boundary: Json | null
           boundary_area_sqm: number | null
+          building_labels: string[] | null
           city: string
           client_id: string
+          commercial_sections: string[] | null
           country: string | null
           created_at: string
           do_not_enter_if_dog_out: boolean
           dog_in_yard_during_service: boolean
           earliest_service_time: string | null
           escape_risk: boolean
+          est_override_at: string | null
+          est_override_by: string | null
+          est_override_reason: string | null
           gate_code: string | null
           hazard_notes: string | null
           id: string
@@ -3413,21 +3560,32 @@ export type Database = {
           visit_contact_name: string | null
           visit_contact_phone: string | null
           yard_size: string | null
+          zone_id: string | null
+          zone_override_by: string | null
+          zone_override_reason: string | null
         }
         Insert: {
           access_notes?: string | null
+          account_type?: Database["public"]["Enums"]["account_type"] | null
           aggressive_dog?: boolean
+          archived_at?: string | null
+          auto_zone_id?: string | null
           bees_wasps?: boolean
           boundary?: Json | null
           boundary_area_sqm?: number | null
+          building_labels?: string[] | null
           city: string
           client_id: string
+          commercial_sections?: string[] | null
           country?: string | null
           created_at?: string
           do_not_enter_if_dog_out?: boolean
           dog_in_yard_during_service?: boolean
           earliest_service_time?: string | null
           escape_risk?: boolean
+          est_override_at?: string | null
+          est_override_by?: string | null
+          est_override_reason?: string | null
           gate_code?: string | null
           hazard_notes?: string | null
           id?: string
@@ -3450,21 +3608,32 @@ export type Database = {
           visit_contact_name?: string | null
           visit_contact_phone?: string | null
           yard_size?: string | null
+          zone_id?: string | null
+          zone_override_by?: string | null
+          zone_override_reason?: string | null
         }
         Update: {
           access_notes?: string | null
+          account_type?: Database["public"]["Enums"]["account_type"] | null
           aggressive_dog?: boolean
+          archived_at?: string | null
+          auto_zone_id?: string | null
           bees_wasps?: boolean
           boundary?: Json | null
           boundary_area_sqm?: number | null
+          building_labels?: string[] | null
           city?: string
           client_id?: string
+          commercial_sections?: string[] | null
           country?: string | null
           created_at?: string
           do_not_enter_if_dog_out?: boolean
           dog_in_yard_during_service?: boolean
           earliest_service_time?: string | null
           escape_risk?: boolean
+          est_override_at?: string | null
+          est_override_by?: string | null
+          est_override_reason?: string | null
           gate_code?: string | null
           hazard_notes?: string | null
           id?: string
@@ -3487,8 +3656,18 @@ export type Database = {
           visit_contact_name?: string | null
           visit_contact_phone?: string | null
           yard_size?: string | null
+          zone_id?: string | null
+          zone_override_by?: string | null
+          zone_override_reason?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "properties_auto_zone_id_fkey"
+            columns: ["auto_zone_id"]
+            isOneToOne: false
+            referencedRelation: "zones"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "properties_client_id_fkey"
             columns: ["client_id"]
@@ -3501,6 +3680,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "properties_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "zones"
             referencedColumns: ["id"]
           },
         ]
@@ -3940,10 +4126,16 @@ export type Database = {
           client_id: string
           created_at: string
           dog_count: number | null
+          end_notes: string | null
+          end_reason: string | null
+          ended_by: string | null
           ends_on: string | null
           frequency: Database["public"]["Enums"]["service_frequency"]
           id: string
+          interval_days: number | null
+          interval_weeks: number | null
           organization_id: string
+          paused_at: string | null
           preferred_time_of_day: string
           preferred_weekdays: number[] | null
           price_cents: number
@@ -3959,10 +4151,16 @@ export type Database = {
           client_id: string
           created_at?: string
           dog_count?: number | null
+          end_notes?: string | null
+          end_reason?: string | null
+          ended_by?: string | null
           ends_on?: string | null
           frequency: Database["public"]["Enums"]["service_frequency"]
           id?: string
+          interval_days?: number | null
+          interval_weeks?: number | null
           organization_id: string
+          paused_at?: string | null
           preferred_time_of_day?: string
           preferred_weekdays?: number[] | null
           price_cents: number
@@ -3978,10 +4176,16 @@ export type Database = {
           client_id?: string
           created_at?: string
           dog_count?: number | null
+          end_notes?: string | null
+          end_reason?: string | null
+          ended_by?: string | null
           ends_on?: string | null
           frequency?: Database["public"]["Enums"]["service_frequency"]
           id?: string
+          interval_days?: number | null
+          interval_weeks?: number | null
           organization_id?: string
+          paused_at?: string | null
           preferred_time_of_day?: string
           preferred_weekdays?: number[] | null
           price_cents?: number
@@ -5330,6 +5534,7 @@ export type Database = {
         | "twice_weekly"
         | "monthly"
         | "one_time"
+        | "every_n_days"
       skip_reason_code:
         | "client_cancelled_late"
         | "gate_locked"
@@ -5536,6 +5741,7 @@ export const Constants = {
         "twice_weekly",
         "monthly",
         "one_time",
+        "every_n_days",
       ],
       skip_reason_code: [
         "client_cancelled_late",

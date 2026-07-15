@@ -15,6 +15,8 @@ const RECORD = {
   preferred_weekdays: [1, 3],
   started_on: "2026-07-01",
   ends_on: "2026-09-30",
+  interval_weeks: null,
+  interval_days: null,
 };
 
 describe("subscriptionToFormValues (finding #8)", () => {
@@ -30,7 +32,19 @@ describe("subscriptionToFormValues (finding #8)", () => {
       preferredWeekdays: [1, 3],
       startedOn: "2026-07-01",
       endsOn: "2026-09-30",
+      intervalWeeks: "",
+      intervalDays: "",
     });
+  });
+
+  it("hydrates every-N-weeks and every-X-days intervals", () => {
+    expect(
+      subscriptionToFormValues({ ...RECORD, frequency: "weekly", interval_weeks: 3 }).intervalWeeks,
+    ).toBe("3");
+    expect(
+      subscriptionToFormValues({ ...RECORD, frequency: "every_n_days", interval_days: 5 })
+        .intervalDays,
+    ).toBe("5");
   });
 
   it("defaults start date to today and end date to open-ended when the record has none", () => {
