@@ -318,11 +318,18 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 stripe_payment_intent_id: pi.id,
                 raw_event: JSON.parse(JSON.stringify(event)),
               });
+              // Dunning (failure ladder, autopay pause, "card declined" SMS)
+              // applies only to charges against the SAVED card. A typo in the
+              // inline Payment Element (staff_inline / portal_inline /
+              // signup_inline) is a live person retrying a form, not a broken
+              // card on file — the failed payment row above is enough.
+              const failSource = pi.metadata?.source;
+              const isSavedCardCharge = failSource === "autopay" || failSource === "portal_saved_card";
               // Record error on client for autopay visibility
               const err = pi.last_payment_error?.message ?? "Card charge failed";
               const { data: inv } = await supabaseAdmin
                 .from("invoices").select("client_id, organization_id").eq("id", invoiceId).single();
-              if (inv?.client_id) {
+              if (inv?.client_id && isSavedCardCharge) {
                 // Dunning: increment failure count, pause autopay if past org threshold.
                 const [{ data: c }, { data: orgCfg }] = await Promise.all([
                   supabaseAdmin.from("clients")

@@ -328,15 +328,30 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
     if (invoice.stripe_payment_intent_id) {
       try {
         const existing = await stripe.paymentIntents.retrieve(invoice.stripe_payment_intent_id, {}, opts);
+        // An in-flight bank debit means the invoice IS being paid; minting a
+        // replacement intent would lose the reference and invite a second
+        // charge while the debit clears.
+        if (existing.status === "processing") {
+          throw new Error(
+            "A payment for this invoice is already processing. Bank payments can take a few days to clear.",
+          );
+        }
         if (
           existing.status === "requires_payment_method" ||
           existing.status === "requires_confirmation" ||
           existing.status === "requires_action"
         ) {
-          // Always update the reused intent: syncs amount/currency and pins
+          // Always update the reused intent: syncs amount/currency, pins
           // explicit payment_method_types so previously-minted "automatic"
-          // intents stop offering Klarna/Affirm/etc.
-          const updateParams = { amount: invoice.total_cents, currency, metadata };
+          // intents stop offering Klarna/Affirm/etc., and CLEARS
+          // setup_future_usage — a portal-minted intent saves the client's
+          // card by consent, but a card typed by staff must never be saved.
+          const updateParams = {
+            amount: invoice.total_cents,
+            currency,
+            metadata,
+            setup_future_usage: "" as const,
+          };
           try {
             pi = await stripe.paymentIntents.update(existing.id, {
               ...updateParams,
@@ -351,6 +366,9 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
           }
         }
       } catch (e) {
+        // The processing guard is a real answer for the caller, not a
+        // retrieve hiccup — let it surface instead of minting a new intent.
+        if ((e as Error).message?.startsWith("A payment for this invoice is already processing")) throw e;
         console.warn("retrieve existing PI failed, creating new", e);
       }
     }

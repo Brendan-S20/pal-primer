@@ -385,6 +385,17 @@ export const refreshBillingStatus = createServerFn({ method: "POST" })
       }
       return { billingStatus: status };
     }
+    // A just-paid default_incomplete subscription can still read "incomplete"
+    // for a few seconds while Stripe finalizes it. Demoting the org to
+    // canceled in that window would kill add-ons for a PAYING customer (and
+    // stick if the webhook is misconfigured) — report current state and let
+    // the next refresh or webhook settle it.
+    const settling = subs.data.find(
+      (sub) =>
+        sub.status === "incomplete" &&
+        Date.now() / 1000 - sub.created < 15 * 60,
+    );
+    if (settling) return { billingStatus: s.billingStatus };
     await supabaseAdmin.from("organizations").update({
       billing_status: "canceled",
       plan_status: "canceled",

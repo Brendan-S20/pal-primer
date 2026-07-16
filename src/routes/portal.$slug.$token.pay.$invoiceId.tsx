@@ -37,12 +37,33 @@ function getStripe(pk: string, stripeAccount?: string) {
 function PayInvoice() {
   const { slug, token, invoiceId } = Route.useParams();
   const createIntent = useServerFn(portalCreateInvoicePaymentIntent);
+  const navigate = useNavigate();
+
+  // Returning from a redirect flow (e.g. ACH bank auth): the payment is done
+  // or in flight, so go straight to billing WITHOUT minting a new intent —
+  // the mount-time query would otherwise reconcile-and-throw ("already
+  // paid") at the customer who just paid, or replace a processing intent.
+  const redirectStatus =
+    typeof window !== "undefined"
+      ? new URL(window.location.href).searchParams.get("redirect_status")
+      : null;
+  const returningFromRedirect = redirectStatus === "succeeded" || redirectStatus === "processing";
+  useEffect(() => {
+    if (returningFromRedirect) {
+      navigate({
+        to: "/portal/$slug/$token/billing",
+        params: { slug, token },
+        search: { paid: "1" } as never,
+      });
+    }
+  }, [returningFromRedirect, navigate, slug, token]);
 
   const intentQ = useQuery({
     queryKey: ["portal-pi", token, invoiceId],
     queryFn: () => createIntent({ data: { token, invoiceId } }),
     staleTime: 5 * 60 * 1000,
     retry: false,
+    enabled: !returningFromRedirect,
   });
 
   const stripePromise = useMemo(
@@ -121,20 +142,7 @@ function PayForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
-
-  // If the user returns from a redirect flow (e.g. ACH bank auth) with the
-  // payment_intent params in the URL, jump straight to the success page.
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    const redirectStatus = url.searchParams.get("redirect_status");
-    if (redirectStatus === "succeeded" || redirectStatus === "processing") {
-      navigate({
-        to: "/portal/$slug/$token/billing",
-        params: { slug, token },
-        search: { paid: "1" } as never,
-      });
-    }
-  }, [navigate, token]);
+  // Redirect returns are handled by the page before this form mounts.
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

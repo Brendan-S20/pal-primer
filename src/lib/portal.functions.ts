@@ -867,7 +867,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     const supabaseAdmin = await admin();
     const { data: invoice, error: iErr } = await supabaseAdmin
       .from("invoices")
-      .select("id, organization_id, client_id, total_cents, currency, status, stripe_payment_intent_id")
+      .select("id, organization_id, client_id, total_cents, currency, status, stripe_payment_intent_id, stripe_checkout_session_id")
       .eq("id", data.invoiceId)
       .single();
     if (iErr) throw new Error(iErr.message);
@@ -875,10 +875,10 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
     if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
-    // If the stored intent (or an old checkout session) already succeeded but
-    // the status is stale (webhook missed), reconcile instead of minting a new
-    // intent and charging the client a second time.
-    if (invoice.stripe_payment_intent_id) {
+    // If the stored intent OR a legacy hosted-checkout session already
+    // succeeded but the status is stale (webhook missed), reconcile instead
+    // of minting a new intent and charging the client a second time.
+    if (invoice.stripe_payment_intent_id || invoice.stripe_checkout_session_id) {
       const { reconcileInvoicePayment } = await import("@/lib/invoice-reconcile.server");
       if ((await reconcileInvoicePayment(invoice.id)) === "marked_paid") {
         throw new Error("Invoice already paid");
@@ -919,15 +919,30 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     if (invoice.stripe_payment_intent_id) {
       try {
         const existing = await stripe.paymentIntents.retrieve(invoice.stripe_payment_intent_id, {}, opts);
+        // An in-flight bank debit means the invoice IS being paid; minting a
+        // replacement intent here would lose the reference and invite a
+        // second charge while the debit clears.
+        if (existing.status === "processing") {
+          throw new Error(
+            "A payment for this invoice is already processing. Bank payments can take a few days to clear.",
+          );
+        }
         if (
           existing.status === "requires_payment_method" ||
           existing.status === "requires_confirmation" ||
           existing.status === "requires_action"
         ) {
-          // Always update the reused intent: syncs amount/currency and pins
+          // Always update the reused intent: syncs amount/currency, pins
           // explicit payment_method_types so previously-minted "automatic"
-          // intents stop offering Klarna/Affirm/etc.
-          const updateParams = { amount: invoice.total_cents, currency, metadata };
+          // intents stop offering Klarna/Affirm/etc., and (re)sets
+          // setup_future_usage — a staff-minted intent doesn't save the card,
+          // but the client paying it themselves consents to saving theirs.
+          const updateParams = {
+            amount: invoice.total_cents,
+            currency,
+            metadata,
+            setup_future_usage: "off_session" as const,
+          };
           try {
             pi = await stripe.paymentIntents.update(existing.id, {
               ...updateParams,
@@ -942,6 +957,9 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
           }
         }
       } catch (e) {
+        // The processing guard is a real answer for the caller, not a
+        // retrieve hiccup — let it surface instead of minting a new intent.
+        if ((e as Error).message?.startsWith("A payment for this invoice is already processing")) throw e;
         console.warn("retrieve existing PI failed, creating new", e);
       }
     }
