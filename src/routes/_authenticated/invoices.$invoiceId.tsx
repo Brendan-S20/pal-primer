@@ -3,8 +3,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
-import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
-import { getInvoice, createEmbeddedCheckoutForInvoice, voidInvoice } from "@/lib/invoices.functions";
+import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
+import { getInvoice, createInvoicePaymentIntent, voidInvoice } from "@/lib/invoices.functions";
+import { stripeAppearance } from "@/lib/stripe-appearance";
 import { getMyOrg } from "@/lib/org.functions";
 import { syncInvoice } from "@/lib/accounting.functions";
 import { sendInvoiceEmail, getEmailSendStatus } from "@/lib/notifications.functions";
@@ -21,8 +22,8 @@ function fmtCents(c: number, currency = "usd") {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format((c ?? 0) / 100);
 }
 
-// Connect embedded checkout: stripe.js must be initialized scoped to the org's
-// connected account (the session lives there). Cached per key+account.
+// Connect Payment Element: stripe.js must be initialized scoped to the org's
+// connected account (the intent lives there). Cached per key+account.
 const connectStripeCache = new Map<string, Promise<StripeJs | null>>();
 function getConnectStripe(pk: string, stripeAccount: string) {
   const key = `${pk}|${stripeAccount}`;
@@ -58,13 +59,19 @@ function InvoiceDetail() {
   const q = useQuery({ queryKey: ["invoice", invoiceId], queryFn: () => get({ data: { id: invoiceId } }) });
   const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
 
-  // In-app payment (re-review): embedded Stripe Checkout right on the invoice,
-  // for taking a card over the phone or in person — no checkout.stripe.com tab.
-  const embeddedFn = useServerFn(createEmbeddedCheckoutForInvoice);
-  const [embedded, setEmbedded] = useState<{ clientSecret: string; publishableKey: string; stripeAccount: string } | null>(null);
-  const embeddedM = useMutation({
-    mutationFn: async () => embeddedFn({ data: { id: invoiceId, returnUrl: window.location.href.split("?")[0] } }),
-    onSuccess: (r: any) => setEmbedded(r),
+  // In-app payment: Payment Element right on the invoice, for taking a card
+  // or ACH payment over the phone or in person — no checkout.stripe.com tab.
+  const intentFn = useServerFn(createInvoicePaymentIntent);
+  const [intent, setIntent] = useState<{
+    clientSecret: string;
+    publishableKey: string;
+    stripeAccount: string;
+    amountCents: number;
+    currency: string;
+  } | null>(null);
+  const intentM = useMutation({
+    mutationFn: async () => intentFn({ data: { id: invoiceId } }),
+    onSuccess: (r) => setIntent(r),
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -181,8 +188,8 @@ function InvoiceDetail() {
       <div className="flex gap-2">
         {invoice.status !== "paid" && invoice.status !== "void" && (
           <>
-            <Button onClick={() => (embedded ? setEmbedded(null) : embeddedM.mutate())} disabled={embeddedM.isPending}>
-              {embeddedM.isPending ? "Preparing…" : embedded ? "Hide payment form" : "Take payment here"}
+            <Button onClick={() => (intent ? setIntent(null) : intentM.mutate())} disabled={intentM.isPending}>
+              {intentM.isPending ? "Preparing…" : intent ? "Hide payment form" : "Take payment here"}
             </Button>
             {client?.primary_email && (
               <Button variant="outline" onClick={() => emailM.mutate()} disabled={emailM.isPending}>
@@ -215,15 +222,21 @@ function InvoiceDetail() {
         </Button>
       </div>
 
-      {embedded && invoice.status !== "paid" && (
-        <div className="overflow-hidden rounded-lg border bg-white">
-          <EmbeddedCheckoutProvider
-            stripe={getConnectStripe(embedded.publishableKey, embedded.stripeAccount)}
-            options={{ clientSecret: embedded.clientSecret }}
-          >
-            <EmbeddedCheckout />
-          </EmbeddedCheckoutProvider>
-        </div>
+      {intent && invoice.status !== "paid" && (
+        <Elements
+          stripe={getConnectStripe(intent.publishableKey, intent.stripeAccount)}
+          options={{ clientSecret: intent.clientSecret, appearance: stripeAppearance() }}
+        >
+          <StaffPayForm
+            amountCents={intent.amountCents}
+            currency={intent.currency}
+            onPaid={() => {
+              setIntent(null);
+              toast.success("Payment received. The invoice will update shortly.");
+              qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
+            }}
+          />
+        </Elements>
       )}
 
       {payments.length > 0 && (
@@ -254,5 +267,68 @@ function InvoiceDetail() {
         </div>
       )}
     </div>
+  );
+}
+
+// Inline Payment Element form: confirm on this page, no redirect for cards.
+// Bank-debit methods that need a redirect come back to this URL with ?paid=1,
+// where getInvoice reconciles against Stripe on load.
+function StaffPayForm({
+  amountCents,
+  currency,
+  onPaid,
+}: {
+  amountCents: number;
+  currency: string;
+  onPaid: () => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    setSubmitting(true);
+    setError(null);
+
+    const { error: submitError } = await elements.submit();
+    if (submitError) {
+      setError(submitError.message ?? "Please check the payment details.");
+      setSubmitting(false);
+      return;
+    }
+
+    const base = window.location.href.split("?")[0];
+    const { error: confirmError } = await stripe.confirmPayment({
+      elements,
+      confirmParams: { return_url: `${base}?paid=1` },
+      redirect: "if_required",
+    });
+
+    if (confirmError) {
+      setError(confirmError.message ?? "Payment failed. Please try another method.");
+      setSubmitting(false);
+      return;
+    }
+
+    // No redirect needed → charge succeeded (or is processing, e.g. ACH).
+    onPaid();
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="max-w-lg space-y-4 rounded-lg border bg-card p-4">
+      <PaymentElement onReady={() => setReady(true)} />
+      {error && (
+        <div className="rounded border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+      <Button type="submit" className="w-full" disabled={!stripe || !elements || !ready || submitting}>
+        {submitting ? "Processing…" : `Pay ${fmtCents(amountCents, currency)}`}
+      </Button>
+    </form>
   );
 }

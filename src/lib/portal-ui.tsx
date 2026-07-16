@@ -54,15 +54,12 @@ import {
   portalListInvoices,
   portalListPrepaidSubs,
   portalRequestSkip,
-  portalStartPrepaidTopup,
-  portalCreateCheckout,
   portalRescheduleVisit,
   portalChangeFrequency,
   portalListAddonCatalog,
   portalListClientAddons,
   portalSubscribeAddon,
   portalCancelAddon,
-  portalStartCardSetup,
   portalSetAutopay,
   portalRemoveCard,
   portalPayInvoiceWithSavedCard,
@@ -172,15 +169,12 @@ export function usePortal(token: string, slug?: string) {
   const listInvoicesFn = useServerFn(portalListInvoices);
   const listSubsFn = useServerFn(portalListPrepaidSubs);
   const skipFn = useServerFn(portalRequestSkip);
-  const topupFn = useServerFn(portalStartPrepaidTopup);
-  const checkoutFn = useServerFn(portalCreateCheckout);
   const rescheduleFn = useServerFn(portalRescheduleVisit);
   const changeFreqFn = useServerFn(portalChangeFrequency);
   const listAddonCatalogFn = useServerFn(portalListAddonCatalog);
   const listClientAddonsFn = useServerFn(portalListClientAddons);
   const subscribeAddonFn = useServerFn(portalSubscribeAddon);
   const cancelAddonFn = useServerFn(portalCancelAddon);
-  const startSetupFn = useServerFn(portalStartCardSetup);
   const setAutopayFn = useServerFn(portalSetAutopay);
   const removeCardFn = useServerFn(portalRemoveCard);
   const payWithSavedFn = useServerFn(portalPayInvoiceWithSavedCard);
@@ -312,25 +306,6 @@ export function usePortal(token: string, slug?: string) {
     },
     onError: (e) => toast.error((e as Error).message),
   });
-  const topupMut = useMutation({
-    mutationFn: (v: { subscriptionId: string; visitCount: number }) =>
-      topupFn({ data: { token, ...v } }),
-    onSuccess: async (r) => {
-      const { url } = await checkoutFn({
-        data: { token, invoiceId: r.invoiceId, returnUrl: window.location.href },
-      });
-      window.location.href = url;
-    },
-    onError: (e) => toast.error((e as Error).message),
-  });
-  const payMut = useMutation({
-    mutationFn: (invoiceId: string) =>
-      checkoutFn({ data: { token, invoiceId, returnUrl: window.location.href } }),
-    onSuccess: (r) => {
-      window.location.href = r.url;
-    },
-    onError: (e) => toast.error((e as Error).message),
-  });
   const rescheduleMut = useMutation({
     mutationFn: (v: { visitId: string; newDate: string }) =>
       rescheduleFn({ data: { token, ...v } }),
@@ -370,13 +345,6 @@ export function usePortal(token: string, slug?: string) {
     onSuccess: () => {
       toast.success("Add-on canceled");
       invalidatePortal();
-    },
-    onError: (e) => toast.error((e as Error).message),
-  });
-  const startSetupMut = useMutation({
-    mutationFn: () => startSetupFn({ data: { token, returnUrl: window.location.href } }),
-    onSuccess: (r) => {
-      window.location.href = r.url;
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -447,13 +415,10 @@ export function usePortal(token: string, slug?: string) {
     requestsQ,
     concernMut,
     skipMut,
-    topupMut,
-    payMut,
     rescheduleMut,
     freqMut,
     subscribeAddonMut,
     cancelAddonMut,
-    startSetupMut,
     setAutopayMut,
     removeCardMut,
     paySavedMut,

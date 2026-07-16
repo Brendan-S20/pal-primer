@@ -1,10 +1,13 @@
 // Billing tab redesign (spec): Summary, Payment Methods, Invoices, Credits,
 // Payments, Billing Settings. Add-ons intentionally live in Services now.
 // Cards stay in Stripe; HoundStack never stores card numbers.
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { CreditCard, Plus } from "lucide-react";
+import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
+import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Button } from "@/components/ui/button";
 import {
   EmptyState,
@@ -13,12 +16,14 @@ import {
   StatusChip,
 } from "@/components/client-detail/primitives";
 import { formatDay } from "@/lib/format";
+import { stripeAppearance } from "@/lib/stripe-appearance";
 import { getClientCredit, getClientBillingSummary } from "@/lib/invoices.functions";
 import {
   listClientPaymentMethods,
   setDefaultPaymentMethod,
   removePaymentMethod,
-  startCardSetupForClient,
+  createSetupIntentForClient,
+  finalizeCardSetupForClient,
 } from "@/lib/payment-methods.functions";
 import { BillingPanel, AutopayResume } from "@/components/client-detail/billing-panels";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
@@ -154,13 +159,27 @@ export function BillingTab({ clientId }: { clientId: string }) {
 
 // ── Payment methods (multiple cards, Stripe-backed) ────────────────────────
 
+// Cache Stripe.js per (publishable key + connected account) — Connect setup
+// requires the Payment Element scoped to the connected account.
+const stripeCache = new Map<string, Promise<StripeJs | null>>();
+function getStripe(pk: string, stripeAccount?: string) {
+  const key = `${pk}|${stripeAccount ?? ""}`;
+  let p = stripeCache.get(key);
+  if (!p) {
+    p = loadStripe(pk, stripeAccount ? { stripeAccount } : undefined);
+    stripeCache.set(key, p);
+  }
+  return p;
+}
+
 function PaymentMethodsPanel({ clientId }: { clientId: string }) {
   const qc = useQueryClient();
   const { confirm, dialog } = useConfirmDialog();
   const listFn = useServerFn(listClientPaymentMethods);
   const setDefaultFn = useServerFn(setDefaultPaymentMethod);
   const removeFn = useServerFn(removePaymentMethod);
-  const setupFn = useServerFn(startCardSetupForClient);
+  const finalizeFn = useServerFn(finalizeCardSetupForClient);
+  const [addOpen, setAddOpen] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["payment-methods", clientId],
@@ -170,6 +189,34 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
     qc.invalidateQueries({ queryKey: ["payment-methods", clientId] });
     qc.invalidateQueries({ queryKey: ["billing-summary", clientId] });
   };
+
+  // Redirect-return path: if the card needed a redirect (e.g. 3DS), Stripe
+  // sends staff back here with ?setup_intent=…&redirect_status=…. Finalize
+  // the save server-side, then scrub the params from the URL.
+  const handledRedirect = useRef(false);
+  useEffect(() => {
+    if (handledRedirect.current || typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const setupIntentId = url.searchParams.get("setup_intent");
+    const status = url.searchParams.get("redirect_status");
+    if (!setupIntentId) return;
+    handledRedirect.current = true;
+    ["setup_intent", "setup_intent_client_secret", "redirect_status"].forEach((k) =>
+      url.searchParams.delete(k),
+    );
+    window.history.replaceState({}, "", url.toString());
+    if (status === "succeeded") {
+      finalizeFn({ data: { clientId, setupIntentId } })
+        .then((r: any) => {
+          toast.success(`Added ${r.brand ?? "card"} ····${r.last4 ?? ""}`);
+          invalidate();
+        })
+        .catch((e) => toast.error((e as Error).message));
+    } else {
+      toast.error("The card wasn't saved. Please try again.");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId]);
 
   const defaultMut = useMutation({
     mutationFn: (paymentMethodId: string) => setDefaultFn({ data: { clientId, paymentMethodId } }),
@@ -187,16 +234,6 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
     },
     onError: (e) => toast.error((e as Error).message),
   });
-  const setupMut = useMutation({
-    mutationFn: () => setupFn({ data: { clientId, returnUrl: window.location.href } }),
-    onSuccess: (r: any) => {
-      // Same-tab navigation: window.open after an await is popup-blocked in
-      // Safari. Stripe's cancel/success URLs bring staff straight back here.
-      window.location.assign(r.url);
-    },
-    onError: (e) => toast.error((e as Error).message),
-  });
-
   const methods = data?.methods ?? [];
 
   return (
@@ -209,10 +246,23 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
             Stored securely in Stripe. Autopay charges the default card.
           </p>
         </div>
-        <Button size="sm" variant="outline" onClick={() => setupMut.mutate()} disabled={setupMut.isPending}>
-          <Plus className="mr-1 h-3.5 w-3.5" /> Add card
+        <Button size="sm" variant="outline" onClick={() => setAddOpen((v) => !v)}>
+          <Plus className="mr-1 h-3.5 w-3.5" /> {addOpen ? "Cancel" : "Add card"}
         </Button>
       </div>
+
+      {addOpen && (
+        <div className="mt-3">
+          <StaffCardSetup
+            clientId={clientId}
+            onDone={() => {
+              setAddOpen(false);
+              qc.removeQueries({ queryKey: ["staff-setup-intent", clientId] });
+              invalidate();
+            }}
+          />
+        </div>
+      )}
 
       {isLoading ? (
         <p className="mt-3 text-sm text-muted-foreground">Loading…</p>
@@ -226,7 +276,7 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
             title={`No cards on file${data?.hasCustomer === false ? " (no Stripe customer yet)" : ""}`}
             description="Add one here or let the client add it from their portal."
             actionLabel="Add card"
-            onAction={() => setupMut.mutate()}
+            onAction={() => setAddOpen(true)}
           />
         </div>
       ) : (
@@ -283,5 +333,80 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
         </ul>
       )}
     </section>
+  );
+}
+
+// Inline card save via the Stripe Payment Element on the connected account —
+// replaces the old hosted-Checkout redirect (mirrors the portal save-card flow).
+function StaffCardSetup({ clientId, onDone }: { clientId: string; onDone: () => void }) {
+  const createFn = useServerFn(createSetupIntentForClient);
+  const q = useQuery({
+    queryKey: ["staff-setup-intent", clientId],
+    queryFn: () => createFn({ data: { clientId } }),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+  const stripePromise = useMemo(
+    () => (q.data ? getStripe(q.data.publishableKey, q.data.stripeAccount) : null),
+    [q.data?.publishableKey, q.data?.stripeAccount],
+  );
+
+  if (q.isLoading) return <p className="text-sm text-muted-foreground">Loading secure card form…</p>;
+  if (q.error) return <p className="text-sm text-destructive">{(q.error as Error).message}</p>;
+  if (!q.data || !stripePromise) return null;
+
+  return (
+    <div className="rounded-md border bg-background p-4">
+      <Elements
+        stripe={stripePromise}
+        options={{ clientSecret: q.data.clientSecret, appearance: stripeAppearance() }}
+      >
+        <StaffCardSetupInner clientId={clientId} onDone={onDone} />
+      </Elements>
+    </div>
+  );
+}
+
+function StaffCardSetupInner({ clientId, onDone }: { clientId: string; onDone: () => void }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const finalizeFn = useServerFn(finalizeCardSetupForClient);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    setBusy(true);
+    try {
+      const { error, setupIntent } = await stripe.confirmSetup({
+        elements,
+        confirmParams: { return_url: window.location.href },
+        redirect: "if_required",
+      });
+      if (error) {
+        toast.error(error.message ?? "Couldn't save the card");
+        return;
+      }
+      if (!setupIntent?.id) {
+        toast.error("Card wasn't saved. Please try again.");
+        return;
+      }
+      const r: any = await finalizeFn({ data: { clientId, setupIntentId: setupIntent.id } });
+      toast.success(`Added ${r.brand ?? "card"} ····${r.last4 ?? ""}`);
+      onDone();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-3">
+      <PaymentElement />
+      <Button type="submit" size="sm" disabled={busy || !stripe}>
+        {busy ? "Saving…" : "Save card"}
+      </Button>
+    </form>
   );
 }

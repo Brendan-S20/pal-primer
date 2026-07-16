@@ -61,98 +61,6 @@ export const getBillingStatus = createServerFn({ method: "GET" })
     };
   });
 
-export const createBillingCheckout = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ returnUrl: z.string().url() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
-    const s = await getOrgBillingState(context.supabase, orgId);
-
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
-    // Per-employee model (#6): pick the tier by active-employee count, NOT by
-    // client count. Customers are unlimited on every plan, so the old
-    // client-count band logic collapses to the smallest plan for everyone —
-    // which would sell every org the Launch base regardless of headcount.
-    const { count: activeStaff } = await supabaseAdmin
-      .from("staff")
-      .select("id", { count: "exact", head: true })
-      .eq("organization_id", orgId)
-      .eq("active", true);
-    const seats = activeStaff ?? 0;
-
-    const { data: planRows } = await (supabaseAdmin as any)
-      .from("platform_plans")
-      .select("id, name, stripe_price_id, stripe_seat_price_id, included_seats")
-      .eq("is_active", true)
-      .eq("is_enterprise", false)
-      .not("stripe_price_id", "is", null)
-      .not("included_seats", "is", null)
-      .order("included_seats", { ascending: true });
-    const plans = (planRows ?? []) as Array<{
-      id: string; name: string; stripe_price_id: string;
-      stripe_seat_price_id: string | null; included_seats: number;
-    }>;
-    // Smallest tier whose included seats cover the headcount; if none does (more
-    // employees than the largest tier includes), take the largest and let the
-    // per-seat overage bill the remainder.
-    const targetPlan = plans.find((p) => p.included_seats >= seats) ?? plans[plans.length - 1];
-    if (!targetPlan || !targetPlan.stripe_price_id) {
-      throw new Error("No paid plan is available. Contact support.");
-    }
-
-    const secret = process.env.STRIPE_SECRET_KEY;
-    if (!secret) throw new Error("Billing is not configured. Contact support.");
-    const Stripe = (await import("stripe")).default;
-    const stripe = new Stripe(secret);
-
-    const { data: userData } = await context.supabase.auth.getUser();
-    const email = userData.user?.email ?? undefined;
-
-    // Reuse existing Stripe customer if we have a real one; ignore obvious
-    // seed placeholders like "cus_demo_seed".
-    let customerId = s.stripeCustomerId;
-    const looksReal = customerId && /^cus_[A-Za-z0-9]{6,}$/.test(customerId) && !customerId.includes("demo");
-    if (!looksReal) {
-      const customer = await stripe.customers.create({
-        email,
-        name: s.orgName,
-        metadata: { organization_id: orgId },
-      });
-      customerId = customer.id;
-      await supabaseAdmin.from("organizations")
-        .update({ stripe_customer_id: customerId })
-        .eq("id", orgId);
-    }
-
-    // The plan bills a flat base that covers the tier's included employees, plus
-    // a per-seat overage price for each active employee beyond that. Attach the
-    // seat-overage line item with a quantity equal to the current overage so the
-    // subscription starts out billing the right amount; ongoing seat changes are
-    // reconciled by syncOrgSeatQuantity (#6 seat sync).
-    const overage = Math.max(0, seats - targetPlan.included_seats);
-    const line_items: { price: string; quantity: number }[] = [
-      { price: targetPlan.stripe_price_id, quantity: 1 },
-    ];
-    if (targetPlan.stripe_seat_price_id && overage > 0) {
-      line_items.push({ price: targetPlan.stripe_seat_price_id, quantity: overage });
-    }
-
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      customer: customerId!,
-      line_items,
-      success_url: `${data.returnUrl}?upgraded=1`,
-      cancel_url: data.returnUrl,
-      client_reference_id: orgId,
-      subscription_data: {
-        metadata: { organization_id: orgId, plan_id: targetPlan.id },
-      },
-      metadata: { organization_id: orgId, plan_id: targetPlan.id, kind: "org_saas" },
-    });
-    return { url: session.url as string, planName: targetPlan.name };
-  });
-
 // Plan catalog for the in-app plan picker (embedded billing + onboarding).
 export const listPlatformPlans = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -169,13 +77,14 @@ export const listPlatformPlans = createServerFn({ method: "GET" })
     return { plans: data ?? [] };
   });
 
-// Embedded subscription checkout: same seat-aware logic as the redirect flow,
-// but ui_mode embedded so the whole purchase happens in-app — no trip to
-// checkout.stripe.com. Optionally takes an explicit planId from the plan
-// picker (onboarding / Plan & billing) instead of auto-sizing by headcount.
-export const createEmbeddedBillingCheckout = createServerFn({ method: "POST" })
+// In-app plan subscribe via the Payment Element: create the subscription
+// directly (payment_behavior default_incomplete) and hand the invoice's
+// client secret to a Payment Element — no Checkout session at all, hosted or
+// embedded. Optionally takes an explicit planId from the plan picker
+// (onboarding / Plan & billing) instead of auto-sizing by headcount.
+export const createPlanSubscription = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ returnUrl: z.string().url(), planId: z.string().uuid().optional() }).parse(d))
+  .inputValidator((d) => z.object({ planId: z.string().uuid().optional() }).parse(d))
   .handler(async ({ data, context }) => {
     const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
     const s = await getOrgBillingState(context.supabase, orgId);
@@ -234,30 +143,84 @@ export const createEmbeddedBillingCheckout = createServerFn({ method: "POST" })
         .eq("id", orgId);
     }
 
+    // The plan bills a flat base that covers the tier's included employees,
+    // plus a per-seat overage price for each active employee beyond that.
+    // Ongoing seat changes are reconciled by syncOrgSeatQuantity (#6).
     const overage = Math.max(0, seats - targetPlan.included_seats);
-    const line_items: { price: string; quantity: number }[] = [
+    const items: { price: string; quantity: number }[] = [
       { price: targetPlan.stripe_price_id, quantity: 1 },
     ];
     if (targetPlan.stripe_seat_price_id && overage > 0) {
-      line_items.push({ price: targetPlan.stripe_seat_price_id, quantity: overage });
+      items.push({ price: targetPlan.stripe_seat_price_id, quantity: overage });
     }
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      ui_mode: "embedded_page",
+    // Stripe v22 / 2025+ API: the invoice's client secret lives in
+    // latest_invoice.confirmation_secret (invoice.payment_intent is gone).
+    const clientSecretOf = (sub: import("stripe").Stripe.Subscription): string | null => {
+      const inv = sub.latest_invoice;
+      if (!inv || typeof inv === "string") return null;
+      return inv.confirmation_secret?.client_secret ?? null;
+    };
+
+    // Retry churn: a "default_incomplete" subscription is created before the
+    // owner pays, so an abandoned form leaves an incomplete sub behind. If one
+    // already exists for this org and it matches the exact items we'd create
+    // (same prices, same quantities), reuse its invoice's client secret instead
+    // of stacking another; otherwise cancel the stale one and start fresh.
+    const incomplete = await stripe.subscriptions.list({
       customer: customerId!,
-      line_items,
-      return_url: `${data.returnUrl}${data.returnUrl.includes("?") ? "&" : "?"}upgraded=1&session_id={CHECKOUT_SESSION_ID}`,
-      client_reference_id: orgId,
-      subscription_data: {
-        metadata: { organization_id: orgId, plan_id: targetPlan.id },
+      status: "incomplete",
+      limit: 10,
+      expand: ["data.latest_invoice.confirmation_secret"],
+    });
+    for (const sub of incomplete.data) {
+      if (sub.metadata?.kind !== "org_saas" || sub.metadata?.organization_id !== orgId) continue;
+      const subItems = sub.items?.data ?? [];
+      const sameItems =
+        sub.metadata?.plan_id === targetPlan.id &&
+        subItems.length === items.length &&
+        items.every((d) =>
+          subItems.some((it) => it.price?.id === d.price && (it.quantity ?? 1) === d.quantity),
+        );
+      const reusableSecret = sameItems ? clientSecretOf(sub) : null;
+      if (reusableSecret) {
+        return {
+          clientSecret: reusableSecret,
+          publishableKey,
+          planName: targetPlan.name,
+          subscriptionId: sub.id,
+        };
+      }
+      // Stale (different plan/seat mix, or no usable secret) — cancel so the
+      // customer never ends up with two competing subscriptions.
+      await stripe.subscriptions.cancel(sub.id).catch((e) => {
+        console.error("stale incomplete subscription cancel failed", (e as Error).message);
+      });
+    }
+
+    const sub = await stripe.subscriptions.create({
+      customer: customerId!,
+      items,
+      payment_behavior: "default_incomplete",
+      payment_settings: {
+        save_default_payment_method: "on_subscription",
+        payment_method_types: ["card"],
       },
       metadata: { organization_id: orgId, plan_id: targetPlan.id, kind: "org_saas" },
+      expand: ["latest_invoice.confirmation_secret"],
     });
+    const clientSecret = clientSecretOf(sub);
+    if (!clientSecret) throw new Error("Couldn't start the payment. Please try again.");
+
+    // Deliberately NOT persisting stripe_subscription_id here: billing-state
+    // treats a stored subscription id as "active", so an unpaid incomplete sub
+    // would flip the org paid prematurely. The webhook (or refreshBillingStatus
+    // after payment) records it once the subscription really activates.
     return {
-      clientSecret: session.client_secret as string,
+      clientSecret,
       publishableKey,
       planName: targetPlan.name,
+      subscriptionId: sub.id,
     };
   });
 
@@ -422,6 +385,17 @@ export const refreshBillingStatus = createServerFn({ method: "POST" })
       }
       return { billingStatus: status };
     }
+    // A just-paid default_incomplete subscription can still read "incomplete"
+    // for a few seconds while Stripe finalizes it. Demoting the org to
+    // canceled in that window would kill add-ons for a PAYING customer (and
+    // stick if the webhook is misconfigured) — report current state and let
+    // the next refresh or webhook settle it.
+    const settling = subs.data.find(
+      (sub) =>
+        sub.status === "incomplete" &&
+        Date.now() / 1000 - sub.created < 15 * 60,
+    );
+    if (settling) return { billingStatus: s.billingStatus };
     await supabaseAdmin.from("organizations").update({
       billing_status: "canceled",
       plan_status: "canceled",

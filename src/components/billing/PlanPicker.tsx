@@ -1,16 +1,21 @@
-// In-app plan selection + embedded Stripe checkout (no redirect to
-// checkout.stripe.com). Used by Settings → Plan & billing and the signup
-// onboarding path.
+// In-app plan selection + inline Stripe Payment Element (no redirect to
+// checkout.stripe.com and no embedded Checkout iframe). Used by Settings →
+// Plan & billing and the signup onboarding path.
 import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
-import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
+import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { listPlatformPlans, createEmbeddedBillingCheckout } from "@/lib/billing.functions";
+import { stripeAppearance } from "@/lib/stripe-appearance";
+import {
+  listPlatformPlans,
+  createPlanSubscription,
+  refreshBillingStatus,
+} from "@/lib/billing.functions";
 
 function money(cents: number | null | undefined) {
   if (cents == null) return "-";
@@ -88,6 +93,8 @@ export function PlanPicker({
   );
 }
 
+// Platform-account Stripe.js, cached at module scope (no stripeAccount —
+// the org's SaaS plan bills on the platform account, not a Connect account).
 const stripeCache = new Map<string, Promise<StripeJs | null>>();
 function getStripe(pk: string) {
   let p = stripeCache.get(pk);
@@ -98,8 +105,12 @@ function getStripe(pk: string) {
   return p;
 }
 
-/** Renders Stripe's embedded checkout for the chosen plan — the purchase
- *  happens right here, no redirect. */
+function withUpgradedFlag(url: string) {
+  return `${url}${url.includes("?") ? "&" : "?"}upgraded=1`;
+}
+
+/** Inline plan purchase via the Payment Element — the subscription is created
+ *  server-side (default_incomplete) and paid for right here, no Checkout. */
 export function EmbeddedPlanCheckout({
   planId,
   returnUrl,
@@ -109,13 +120,18 @@ export function EmbeddedPlanCheckout({
   returnUrl: string;
   onCancel: () => void;
 }) {
-  const createFn = useServerFn(createEmbeddedBillingCheckout);
-  const [session, setSession] = useState<{ clientSecret: string; publishableKey: string } | null>(null);
+  const createFn = useServerFn(createPlanSubscription);
+  const [session, setSession] = useState<{
+    clientSecret: string;
+    publishableKey: string;
+    planName: string;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const create = useMutation({
-    mutationFn: () => createFn({ data: { returnUrl, planId } }),
-    onSuccess: (r: any) => setSession({ clientSecret: r.clientSecret, publishableKey: r.publishableKey }),
+    mutationFn: () => createFn({ data: { planId } }),
+    onSuccess: (r: any) =>
+      setSession({ clientSecret: r.clientSecret, publishableKey: r.publishableKey, planName: r.planName }),
     onError: (e: Error) => { setError(e.message); toast.error(e.message); },
   });
 
@@ -135,21 +151,75 @@ export function EmbeddedPlanCheckout({
       </div>
     );
   }
-  if (!session) return <p className="text-sm text-muted-foreground">Preparing secure checkout…</p>;
+  if (!session) return <p className="text-sm text-muted-foreground">Preparing secure payment…</p>;
 
   return (
     <div className="space-y-2">
       <button className="text-xs text-muted-foreground underline" onClick={onCancel}>
         ← Back to plans
       </button>
-      <div className="overflow-hidden rounded-lg border bg-white">
-        <EmbeddedCheckoutProvider
-          stripe={getStripe(session.publishableKey)}
-          options={{ clientSecret: session.clientSecret }}
-        >
-          <EmbeddedCheckout />
-        </EmbeddedCheckoutProvider>
+      <div className="rounded-lg border bg-card p-5">
+        <h3 className="font-semibold">Subscribe to {session.planName}</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          You'll be charged now and then monthly. Cancel anytime in Settings → Plan &amp; billing.
+        </p>
+        <div className="mt-4">
+          <Elements
+            stripe={getStripe(session.publishableKey)}
+            options={{ clientSecret: session.clientSecret, appearance: stripeAppearance() }}
+          >
+            <PlanPaymentForm planName={session.planName} returnUrl={returnUrl} />
+          </Elements>
+        </div>
       </div>
     </div>
+  );
+}
+
+function PlanPaymentForm({ planName, returnUrl }: { planName: string; returnUrl: string }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const refreshFn = useServerFn(refreshBillingStatus);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    setBusy(true);
+    try {
+      const { error: submitError } = await elements.submit();
+      if (submitError) {
+        toast.error(submitError.message ?? "Please check your payment details");
+        return;
+      }
+      const { error } = await stripe.confirmPayment({
+        elements,
+        confirmParams: { return_url: withUpgradedFlag(returnUrl) },
+        redirect: "if_required",
+      });
+      if (error) {
+        toast.error(error.message ?? "Payment didn't go through");
+        return;
+      }
+      // Paid without a redirect: pull the fresh status from Stripe so the org
+      // flips active immediately (no webhook race), then run the same return
+      // path a redirect would have used.
+      await refreshFn().catch(() => {});
+      toast.success(`You're on ${planName}`);
+      window.location.assign(withUpgradedFlag(returnUrl));
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <PaymentElement />
+      <Button type="submit" className="w-full" disabled={busy || !stripe}>
+        {busy ? "Processing…" : "Subscribe"}
+      </Button>
+    </form>
   );
 }

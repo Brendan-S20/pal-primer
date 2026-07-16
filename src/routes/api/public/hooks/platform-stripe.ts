@@ -107,8 +107,28 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
             case "customer.subscription.updated":
             case "customer.subscription.deleted": {
               const sub = event.data.object as import("stripe").Stripe.Subscription;
+              // The in-app Payment Element flow creates the subscription with
+              // payment_behavior "default_incomplete", i.e. BEFORE the org has
+              // paid. Ignore that pre-payment state (and its 24h expiry) so an
+              // opened-then-abandoned payment form never marks the org past_due
+              // or canceled; activation arrives via the incomplete → active
+              // subscription.updated event (or invoice.paid).
+              if (sub.status === "incomplete" || sub.status === "incomplete_expired") break;
               const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null;
               const orgId = await orgFromCustomer(customerId);
+              if (orgId && event.type === "customer.subscription.deleted") {
+                // Explicitly canceling a stale incomplete sub (retrying the
+                // payment form, switching plans mid-attempt) emits deleted with
+                // status "canceled". Only the org's RECORDED subscription may
+                // cancel the plan and kill add-ons; incomplete subs are never
+                // persisted, so an unknown sub id here is one of those.
+                const { data: orgRow } = await supabaseAdmin
+                  .from("organizations")
+                  .select("stripe_subscription_id")
+                  .eq("id", orgId)
+                  .maybeSingle();
+                if ((orgRow as any)?.stripe_subscription_id !== sub.id) break;
+              }
               if (orgId) {
                 const statusMap: Record<string, "active" | "past_due" | "canceled" | "free"> = {
                   trialing: "active",

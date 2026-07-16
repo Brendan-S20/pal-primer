@@ -54,10 +54,14 @@ const checkoutSchema = quoteSchema.extend({
   street: z.string().trim().min(1).max(200),
   city: z.string().trim().max(120).optional().or(z.literal("")),
   region: z.string().trim().max(80).optional().or(z.literal("")),
-  origin: z.string().url(),
 });
 
-export const createSignupCheckout = createServerFn({ method: "POST" })
+/** In-app signup prepay (Payment Element): records the signup request and
+ * mints a PaymentIntent on the tenant's connected account. The prospect pays
+ * without ever leaving the signup page; the webhook provisions the client on
+ * payment_intent.succeeded (source "signup_inline"). Card only so payment
+ * settles instantly and provisioning isn't delayed by ACH clearing. */
+export const createSignupPaymentIntent = createServerFn({ method: "POST" })
   .inputValidator((d) => checkoutSchema.parse(d))
   .handler(async ({ data }) => {
     const sb = anon();
@@ -96,54 +100,42 @@ export const createSignupCheckout = createServerFn({ method: "POST" })
     if (srErr) throw new Error(srErr.message);
 
     // Signup prepay charges the tenant's client → the tenant's connected account.
-    const { requireOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
+    const { requireOrgStripeAccount, connectStripe, connectPublishableKey } = await import(
+      "@/lib/stripe-connect.server"
+    );
     const acct = await requireOrgStripeAccount(q.organization_id);
     const stripe = await connectStripe();
 
-    const successUrl = `${data.origin}/signup/success?sr=${sr.id}`;
-    const cancelUrl = `${data.origin}/signup/${encodeURIComponent(data.slug)}?canceled=1`;
-
-    const initial = q.initial_cleanup_cents;
-    const recurring = q.recurring_price_cents;
-
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      customer_email: data.email.toLowerCase(),
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: q.currency,
-            unit_amount: initial,
-            product_data: { name: "First-time cleanup" },
-          },
+    const amountCents = q.initial_cleanup_cents + q.recurring_price_cents;
+    const pi = await stripe.paymentIntents.create(
+      {
+        amount: amountCents,
+        currency: q.currency,
+        receipt_email: data.email.toLowerCase(),
+        payment_method_types: ["card"],
+        description: `First-time cleanup + first month prepay (${data.frequency.replace("_", "-")}, ${data.dog_count} dog${data.dog_count > 1 ? "s" : ""})`,
+        metadata: {
+          signup_request_id: sr.id,
+          organization_id: q.organization_id,
+          source: "signup_inline",
         },
-        {
-          quantity: 1,
-          price_data: {
-            currency: q.currency,
-            unit_amount: recurring,
-            product_data: {
-              name: `Prepay first month (${data.frequency.replace("_", "-")})`,
-              description: `${data.dog_count} dog${data.dog_count > 1 ? "s" : ""}`,
-            },
-          },
-        },
-      ],
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      metadata: {
-        signup_request_id: sr.id,
-        organization_id: q.organization_id,
       },
-    }, { stripeAccount: acct.accountId });
+      { stripeAccount: acct.accountId },
+    );
 
     await supabaseAdmin
       .from("signup_requests")
-      .update({ stripe_checkout_session_id: session.id })
+      .update({ stripe_payment_intent_id: pi.id })
       .eq("id", sr.id);
 
-    return { url: session.url as string };
+    return {
+      clientSecret: pi.client_secret as string,
+      publishableKey: connectPublishableKey(),
+      stripeAccount: acct.accountId,
+      amountCents,
+      currency: q.currency as string,
+      signupRequestId: sr.id as string,
+    };
   });
 
 export const getSignupStatus = createServerFn({ method: "GET" })

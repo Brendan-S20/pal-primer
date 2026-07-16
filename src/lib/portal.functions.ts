@@ -238,146 +238,6 @@ export const portalStartPrepaidTopup = createServerFn({ method: "POST" })
     return { invoiceId: id as string };
   });
 
-export const portalCreateCheckout = createServerFn({ method: "POST" })
-  .inputValidator((d) =>
-    z.object({
-      token: z.string().uuid(),
-      invoiceId: z.string().uuid(),
-      returnUrl: z.string().url(),
-    }).parse(d),
-  )
-  .handler(async ({ data }) => {
-    const { requirePortalSession } = await portalAuth();
-    const session = await requirePortalSession(data.token);
-    const supabaseAdmin = await admin();
-    const { data: invoice, error: iErr } = await supabaseAdmin
-      .from("invoices")
-      .select("id, organization_id, client_id, total_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id, checkout_url")
-      .eq("id", data.invoiceId)
-      .single();
-    if (iErr) throw new Error(iErr.message);
-    if (invoice.client_id !== session.clientId) throw new Error("Invoice not found");
-    if (invoice.status === "paid") throw new Error("Invoice already paid");
-    if (invoice.status === "void") throw new Error("Invoice is voided");
-    if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
-    // If a previous session/intent was already paid but the status is stale
-    // (webhook missed), reconcile instead of charging the client a second time.
-    if (invoice.stripe_checkout_session_id || invoice.stripe_payment_intent_id) {
-      const { reconcileInvoicePayment } = await import("@/lib/invoice-reconcile.server");
-      if ((await reconcileInvoicePayment(invoice.id)) === "marked_paid") {
-        throw new Error("Invoice already paid");
-      }
-    }
-
-    const { requireOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
-    const acct = await requireOrgStripeAccount(invoice.organization_id);
-    const { data: client } = await supabaseAdmin
-      .from("clients").select("display_name").eq("id", session.clientId).single();
-    const stripe = await connectStripe();
-    const checkout = await stripe.checkout.sessions.create({
-      mode: "payment",
-      success_url: `${data.returnUrl}?paid=1`,
-      cancel_url: data.returnUrl,
-      client_reference_id: invoice.id,
-      payment_method_types: ["card", "us_bank_account"],
-      line_items: [{
-        quantity: 1,
-        price_data: {
-          currency: invoice.currency ?? "usd",
-          unit_amount: invoice.total_cents,
-          product_data: { name: `Invoice ${invoice.id.slice(0, 8)}: ${client?.display_name ?? "Service"}` },
-        },
-      }],
-      metadata: { invoice_id: invoice.id, organization_id: invoice.organization_id, source: "portal" },
-    }, { stripeAccount: acct.accountId });
-
-    await supabaseAdmin
-      .from("invoices")
-      .update({
-        stripe_checkout_session_id: checkout.id,
-        checkout_url: checkout.url,
-        status: "open",
-      })
-      .eq("id", invoice.id);
-
-    return { url: checkout.url as string };
-  });
-
-// In-app payment: same connected-account Checkout session as
-// portalCreateCheckout, but ui_mode embedded so the client pays right on the
-// portal pay page — no checkout.stripe.com navigation. Mirrors the owner-side
-// createEmbeddedCheckoutForInvoice return shape.
-export const portalCreateEmbeddedCheckout = createServerFn({ method: "POST" })
-  .inputValidator((d) =>
-    z.object({
-      token: z.string().uuid(),
-      invoiceId: z.string().uuid(),
-      returnUrl: z.string().url(),
-    }).parse(d),
-  )
-  .handler(async ({ data }) => {
-    const { requirePortalSession } = await portalAuth();
-    const session = await requirePortalSession(data.token);
-    const supabaseAdmin = await admin();
-    const { data: invoice, error: iErr } = await supabaseAdmin
-      .from("invoices")
-      .select("id, organization_id, client_id, total_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id")
-      .eq("id", data.invoiceId)
-      .single();
-    if (iErr) throw new Error(iErr.message);
-    if (invoice.client_id !== session.clientId) throw new Error("Invoice not found");
-    if (invoice.status === "paid") throw new Error("Invoice already paid");
-    if (invoice.status === "void") throw new Error("Invoice is voided");
-    if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
-    // If a previous session/intent was already paid but the status is stale
-    // (webhook missed), reconcile instead of charging the client a second time.
-    if (invoice.stripe_checkout_session_id || invoice.stripe_payment_intent_id) {
-      const { reconcileInvoicePayment } = await import("@/lib/invoice-reconcile.server");
-      if ((await reconcileInvoicePayment(invoice.id)) === "marked_paid") {
-        throw new Error("Invoice already paid");
-      }
-    }
-
-    const { requireOrgStripeAccount, connectStripe, connectPublishableKey } = await import("@/lib/stripe-connect.server");
-    const acct = await requireOrgStripeAccount(invoice.organization_id);
-    const { data: client } = await supabaseAdmin
-      .from("clients").select("display_name").eq("id", session.clientId).single();
-    const stripe = await connectStripe();
-    const checkout = await stripe.checkout.sessions.create({
-      mode: "payment",
-      ui_mode: "embedded_page",
-      return_url: `${data.returnUrl}${data.returnUrl.includes("?") ? "&" : "?"}paid=1`,
-      client_reference_id: invoice.id,
-      payment_method_types: ["card", "us_bank_account"],
-      line_items: [{
-        quantity: 1,
-        price_data: {
-          currency: invoice.currency ?? "usd",
-          unit_amount: invoice.total_cents,
-          product_data: { name: `Invoice ${invoice.id.slice(0, 8)}: ${client?.display_name ?? "Service"}` },
-        },
-      }],
-      metadata: { invoice_id: invoice.id, organization_id: invoice.organization_id, source: "portal" },
-    }, { stripeAccount: acct.accountId });
-
-    await supabaseAdmin
-      .from("invoices")
-      .update({
-        stripe_checkout_session_id: checkout.id,
-        status: "open",
-      })
-      .eq("id", invoice.id);
-
-    return {
-      clientSecret: checkout.client_secret as string,
-      publishableKey: connectPublishableKey(),
-      stripeAccount: acct.accountId,
-      amountCents: invoice.total_cents as number,
-      currency: (invoice.currency ?? "usd") as string,
-      businessName: client?.display_name as string,
-    };
-  });
-
 const frequencyEnum = z.enum(["weekly", "biweekly", "twice_weekly", "monthly"]);
 const addonFreqEnum = z.enum(["weekly", "biweekly", "monthly", "quarterly", "yearly"]);
 
@@ -543,49 +403,6 @@ async function loadStripe(orgId: string): Promise<{ stripe: any; stripeAccount: 
   const stripe = await connectStripe();
   return { stripe, stripeAccount: acct.accountId };
 }
-
-/** Kick off a Stripe Checkout session in mode=setup to save a card. */
-export const portalStartCardSetup = createServerFn({ method: "POST" })
-  .inputValidator((d) => z.object({ token: z.string().uuid(), returnUrl: z.string().url() }).parse(d))
-  .handler(async ({ data }) => {
-    const { requirePortalSession } = await portalAuth();
-    const session = await requirePortalSession(data.token);
-    const supabaseAdmin = await admin();
-
-    const { data: cRow } = await supabaseAdmin
-      .from("clients")
-      .select("id, stripe_customer_id, primary_email, display_name")
-      .eq("id", session.clientId)
-      .single();
-    if (!cRow) throw new Error("Client not found");
-
-    const { stripe, stripeAccount } = await loadStripe(session.organizationId);
-    const { verifyClientStripeCustomer } = await import("@/lib/stripe-connect.server");
-    let customerId = await verifyClientStripeCustomer(stripe, stripeAccount, cRow);
-    if (!customerId) {
-      const cust = await stripe.customers.create({
-        email: cRow.primary_email ?? undefined,
-        name: cRow.display_name ?? undefined,
-        metadata: { client_id: cRow.id, organization_id: session.organizationId },
-      }, { stripeAccount });
-      customerId = cust.id;
-      await supabaseAdmin.from("clients").update({ stripe_customer_id: customerId }).eq("id", cRow.id);
-    }
-
-    const checkout = await stripe.checkout.sessions.create({
-      mode: "setup",
-      customer: customerId,
-      payment_method_types: ["card"],
-      success_url: `${data.returnUrl}?card_saved=1`,
-      cancel_url: data.returnUrl,
-      metadata: {
-        source: "portal_setup",
-        client_id: cRow.id,
-        organization_id: session.organizationId,
-      },
-    }, { stripeAccount });
-    return { url: checkout.url as string };
-  });
 
 /** Inline (embedded) card save: create a SetupIntent on the connected account
  *  for a Payment Element, instead of redirecting to hosted Checkout. */
@@ -1018,6 +835,20 @@ export const portalRedeemPromo = createServerFn({ method: "POST" })
 
 // ── In-app Payment Element (inline card/ACH) ───────────────────────────────
 
+// Explicit payment method types keep the Payment Element to card + ACH — no
+// Klarna/Affirm/Cash App clutter from automatic payment methods.
+const INVOICE_PM_TYPES = ["card", "us_bank_account"];
+
+// ACH requires activation on the connected account; when it isn't enabled the
+// PI create/update fails and we retry card-only.
+function isBankDebitUnavailableError(e: unknown): boolean {
+  const err = e as { message?: string; param?: string };
+  return (
+    /us_bank_account/i.test(err?.message ?? "") ||
+    /payment_method_types/.test(err?.param ?? "")
+  );
+}
+
 export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" })
   .inputValidator((d) =>
     z.object({
@@ -1036,7 +867,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     const supabaseAdmin = await admin();
     const { data: invoice, error: iErr } = await supabaseAdmin
       .from("invoices")
-      .select("id, organization_id, client_id, total_cents, currency, status, stripe_payment_intent_id")
+      .select("id, organization_id, client_id, total_cents, currency, status, stripe_payment_intent_id, stripe_checkout_session_id")
       .eq("id", data.invoiceId)
       .single();
     if (iErr) throw new Error(iErr.message);
@@ -1044,10 +875,10 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
     if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
-    // If the stored intent (or an old checkout session) already succeeded but
-    // the status is stale (webhook missed), reconcile instead of minting a new
-    // intent and charging the client a second time.
-    if (invoice.stripe_payment_intent_id) {
+    // If the stored intent OR a legacy hosted-checkout session already
+    // succeeded but the status is stale (webhook missed), reconcile instead
+    // of minting a new intent and charging the client a second time.
+    if (invoice.stripe_payment_intent_id || invoice.stripe_checkout_session_id) {
       const { reconcileInvoicePayment } = await import("@/lib/invoice-reconcile.server");
       if ((await reconcileInvoicePayment(invoice.id)) === "marked_paid") {
         throw new Error("Invoice already paid");
@@ -1088,35 +919,71 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     if (invoice.stripe_payment_intent_id) {
       try {
         const existing = await stripe.paymentIntents.retrieve(invoice.stripe_payment_intent_id, {}, opts);
+        // An in-flight bank debit means the invoice IS being paid; minting a
+        // replacement intent here would lose the reference and invite a
+        // second charge while the debit clears.
+        if (existing.status === "processing") {
+          throw new Error(
+            "A payment for this invoice is already processing. Bank payments can take a few days to clear.",
+          );
+        }
         if (
           existing.status === "requires_payment_method" ||
           existing.status === "requires_confirmation" ||
           existing.status === "requires_action"
         ) {
-          if (existing.amount !== invoice.total_cents || existing.currency !== currency) {
+          // Always update the reused intent: syncs amount/currency, pins
+          // explicit payment_method_types so previously-minted "automatic"
+          // intents stop offering Klarna/Affirm/etc., and (re)sets
+          // setup_future_usage — a staff-minted intent doesn't save the card,
+          // but the client paying it themselves consents to saving theirs.
+          const updateParams = {
+            amount: invoice.total_cents,
+            currency,
+            metadata,
+            setup_future_usage: "off_session" as const,
+          };
+          try {
             pi = await stripe.paymentIntents.update(existing.id, {
-              amount: invoice.total_cents,
-              currency,
-              metadata,
+              ...updateParams,
+              payment_method_types: INVOICE_PM_TYPES,
             }, opts);
-          } else {
-            pi = existing;
+          } catch (e) {
+            if (!isBankDebitUnavailableError(e)) throw e;
+            pi = await stripe.paymentIntents.update(existing.id, {
+              ...updateParams,
+              payment_method_types: ["card"],
+            }, opts);
           }
         }
       } catch (e) {
+        // The processing guard is a real answer for the caller, not a
+        // retrieve hiccup — let it surface instead of minting a new intent.
+        if ((e as Error).message?.startsWith("A payment for this invoice is already processing")) throw e;
         console.warn("retrieve existing PI failed, creating new", e);
       }
     }
 
     if (!pi) {
-      pi = await stripe.paymentIntents.create({
+      const createParams = {
         amount: invoice.total_cents,
         currency,
         customer: customerId,
-        automatic_payment_methods: { enabled: true },
-        setup_future_usage: "off_session",
+        setup_future_usage: "off_session" as const,
         metadata,
-      }, opts);
+      };
+      try {
+        pi = await stripe.paymentIntents.create({
+          ...createParams,
+          payment_method_types: INVOICE_PM_TYPES,
+        }, opts);
+      } catch (e) {
+        if (!isBankDebitUnavailableError(e)) throw e;
+        pi = await stripe.paymentIntents.create({
+          ...createParams,
+          payment_method_types: ["card"],
+        }, opts);
+      }
       await supabaseAdmin.from("invoices").update({
         stripe_payment_intent_id: pi.id,
         status: "open",
