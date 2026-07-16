@@ -10,10 +10,10 @@ export const listInvoices = createServerFn({ method: "GET" })
     await requirePermission(supabase, context.userId, "manage_client_billing");
     const { data, error } = await supabase
       .from("invoices")
-      .select("id, client_id, status, subtotal_cents, total_cents, currency, period_start, period_end, issued_at, paid_at, due_on, public_token, checkout_url, clients(display_name)")
+      .select("id, client_id, status, subtotal_cents, total_cents, currency, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, clients(display_name)")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
-    // due_on/public_token aren't in the generated types yet.
+    // due_on/send_after/sent_at/public_token aren't in the generated types yet.
     return (data ?? []) as any[] as Array<{
       id: string;
       client_id: string;
@@ -26,6 +26,8 @@ export const listInvoices = createServerFn({ method: "GET" })
       issued_at: string | null;
       paid_at: string | null;
       due_on: string | null;
+      send_after: string | null;
+      sent_at: string | null;
       public_token: string;
       checkout_url: string | null;
       clients: { display_name: string | null } | Array<{ display_name: string | null }> | null;
@@ -710,7 +712,7 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
         supabase
           .from("invoices")
           .select(
-            "id, client_id, status, kind, currency, subtotal_cents, total_cents, period_start, period_end, issued_at, paid_at, due_on, public_token, voided_at, notes, checkout_url, created_at, clients(id, display_name, primary_email, default_payment_method_id, default_card_brand, default_card_last4)",
+            "id, client_id, status, kind, currency, subtotal_cents, total_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, voided_at, notes, checkout_url, created_at, clients(id, display_name, primary_email, default_payment_method_id, default_card_brand, default_card_last4)",
           )
           .eq("id", data.invoiceId)
           .single(),
@@ -745,6 +747,8 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
         issued_at: string | null;
         paid_at: string | null;
         due_on: string | null;
+        send_after: string | null;
+        sent_at: string | null;
         public_token: string;
         voided_at: string | null;
         notes: string | null;

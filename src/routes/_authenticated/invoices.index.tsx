@@ -23,12 +23,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ChevronRight, Download, FileText, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Download, FileText, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { downloadCsv } from "@/lib/csv";
 import { HelpTip } from "@/components/HelpTip";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
-import { EmptyState, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
+import { EmptyState, MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import { InvoiceDrawer, isInvoiceOverdue } from "@/components/InvoiceDrawer";
 import { formatDay } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -256,6 +256,7 @@ function InvoicesPage() {
   // Row click opens the shared invoice drawer (QA round 8) instead of
   // navigating away; "Open full invoice" inside goes to the page.
   const [drawerInvoiceId, setDrawerInvoiceId] = useState<string | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn() });
   const invQ = useQuery({ queryKey: ["invoices"], queryFn: () => list() });
@@ -277,6 +278,7 @@ function InvoicesPage() {
       } else {
         toast.success(`Generated ${r.generated} invoice(s)`);
       }
+      setAdvancedOpen(false);
       qc.invalidateQueries({ queryKey: ["invoices"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -382,7 +384,9 @@ function InvoicesPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Invoices</h1>
-          <p className="text-sm text-muted-foreground">Bill clients for completed visits.</p>
+          <p className="text-sm text-muted-foreground">
+            Invoices generate automatically on each client's cadence.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -421,29 +425,50 @@ function InvoicesPage() {
           >
             <Download className="mr-1 h-4 w-4" /> Export CSV
           </Button>
-          {/* Generate-from-visits is one action with a date parameter — keep
-              the input and the button visually connected as a single cluster. */}
-          <div className="flex items-center gap-2 rounded-lg border bg-card px-2 py-1.5 shadow-sm">
-            <label htmlFor="invoices-through" className="pl-1 text-xs text-muted-foreground">
-              Through
-            </label>
-            <Input
-              id="invoices-through"
-              type="date"
-              className="h-8 w-36"
-              value={through}
-              onChange={(e) => setThrough(e.target.value)}
-            />
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => genM.mutate()}
-              disabled={genM.isPending}
-            >
-              {genM.isPending ? "Generating…" : "Generate from visits"}
-            </Button>
-            <HelpTip article="generate-invoices" />
-          </div>
+          {/* Full auto billing: generation runs nightly on each client's
+              cadence, so manual generate-from-visits is demoted to an
+              overflow dialog kept as a fallback. */}
+          <Dialog open={advancedOpen} onOpenChange={setAdvancedOpen}>
+            <DialogTrigger asChild>
+              <Button variant="ghost" size="sm" aria-label="Advanced invoicing actions">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Generate from visits (manual fallback)</DialogTitle>
+                <DialogDescription>
+                  Invoices generate automatically on each client's cadence, so you normally never
+                  need this. Use it to bill all unbilled completed visits through a date right
+                  now, for example before changing a client's cadence.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex items-end gap-2">
+                <div>
+                  <label htmlFor="invoices-through" className="text-xs text-muted-foreground">
+                    Through
+                  </label>
+                  <Input
+                    id="invoices-through"
+                    type="date"
+                    className="h-9 w-40"
+                    value={through}
+                    onChange={(e) => setThrough(e.target.value)}
+                  />
+                </div>
+                <HelpTip article="generate-invoices" />
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="secondary"
+                  onClick={() => genM.mutate()}
+                  disabled={genM.isPending}
+                >
+                  {genM.isPending ? "Generating…" : "Generate from visits"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <NewInvoiceDialog />
         </div>
       </div>
@@ -593,7 +618,7 @@ function InvoicesPage() {
           description={
             filtersActive
               ? "Try widening the search, status, or period filters."
-              : "Generate invoices from completed visits, or use New invoice to bill a client directly."
+              : "Invoices generate automatically when each client's billing cycle ends. Use New invoice to bill a client directly."
           }
           actionLabel={filtersActive ? "Reset filters" : undefined}
           onAction={filtersActive ? resetFilters : undefined}
@@ -664,7 +689,13 @@ function InvoicesPage() {
                       {fmtCents(inv.total_cents ?? 0, inv.currency ?? "usd")}
                     </td>
                     <td className="px-4 py-2.5">
-                      <StatusChip status={inv.status} />
+                      <span className="inline-flex flex-wrap items-center gap-1.5">
+                        <StatusChip status={inv.status} />
+                        {inv.status === "open" && !inv.sent_at && inv.send_after && (
+                          <MetaChip>Scheduled to send {formatDay(inv.send_after)}</MetaChip>
+                        )}
+                        {inv.sent_at && <MetaChip>Sent {formatDay(inv.sent_at)}</MetaChip>}
+                      </span>
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <button

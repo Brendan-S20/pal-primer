@@ -13,7 +13,7 @@ import { CreditCard, Link2, Mail, BellRing, ExternalLink, Ban } from "lucide-rea
 import { Button } from "@/components/ui/button";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
-import { SectionLabel, StatusChip } from "@/components/client-detail/primitives";
+import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { formatDateTime, formatDay } from "@/lib/format";
 import {
@@ -97,6 +97,9 @@ export function InvoiceDrawer({
       toast.success(
         `${reminder ? "Reminder" : "Invoice"} queued for ${r.recipient ?? "the client"}`,
       );
+      // A first send stamps sent_at (takes the invoice out of the grace
+      // window's auto-send loop) - refresh so the chips update.
+      if (!reminder) refresh();
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -117,6 +120,8 @@ export function InvoiceDrawer({
   const open = inv?.status === "open";
   const overdue = inv ? isInvoiceOverdue(inv.status, inv.due_on) : false;
   const hasSavedCard = !!client?.default_payment_method_id;
+  // Grace window (full auto billing): auto-generated invoice, not yet emailed.
+  const inGrace = open && !inv?.sent_at && !!inv?.send_after;
 
   return (
     <>
@@ -157,6 +162,10 @@ export function InvoiceDrawer({
                   Paid {formatDay(inv.paid_at)}
                 </span>
               )}
+              {inGrace && (
+                <MetaChip>Scheduled to send {formatDay(inv.send_after)}</MetaChip>
+              )}
+              {inv.sent_at && <MetaChip>Sent {formatDay(inv.sent_at)}</MetaChip>}
             </div>
 
             {client?.display_name && (
@@ -205,7 +214,8 @@ export function InvoiceDrawer({
                   disabled={emailMut.isPending}
                   onClick={() => emailMut.mutate(false)}
                 >
-                  <Mail className="mr-1 h-3.5 w-3.5" /> Send to client
+                  <Mail className="mr-1 h-3.5 w-3.5" />
+                  {inGrace ? "Send now" : "Send to client"}
                 </Button>
               )}
               {open && client?.primary_email && (

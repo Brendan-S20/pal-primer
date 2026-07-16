@@ -833,6 +833,7 @@ export type Database = {
           autopay_last_attempt_at: string | null
           autopay_last_error: string | null
           autopay_paused: boolean
+          billing_frequency: string
           churn_reason: string | null
           churn_score: number | null
           churn_scored_at: string | null
@@ -877,6 +878,7 @@ export type Database = {
           autopay_last_attempt_at?: string | null
           autopay_last_error?: string | null
           autopay_paused?: boolean
+          billing_frequency?: string
           churn_reason?: string | null
           churn_score?: number | null
           churn_scored_at?: string | null
@@ -921,6 +923,7 @@ export type Database = {
           autopay_last_attempt_at?: string | null
           autopay_last_error?: string | null
           autopay_paused?: boolean
+          billing_frequency?: string
           churn_reason?: string | null
           churn_score?: number | null
           churn_scored_at?: string | null
@@ -1138,12 +1141,14 @@ export type Database = {
           created_at: string
           dna_registered: boolean
           dna_registry_id: string | null
+          dna_status: string
           id: string
           name: string
           notes: string | null
           organization_id: string
           property_id: string
           temperament: Database["public"]["Enums"]["dog_temperament"]
+          unit_id: string | null
           weight_class: string | null
         }
         Insert: {
@@ -1152,12 +1157,14 @@ export type Database = {
           created_at?: string
           dna_registered?: boolean
           dna_registry_id?: string | null
+          dna_status?: string
           id?: string
           name: string
           notes?: string | null
           organization_id: string
           property_id: string
           temperament?: Database["public"]["Enums"]["dog_temperament"]
+          unit_id?: string | null
           weight_class?: string | null
         }
         Update: {
@@ -1166,12 +1173,14 @@ export type Database = {
           created_at?: string
           dna_registered?: boolean
           dna_registry_id?: string | null
+          dna_status?: string
           id?: string
           name?: string
           notes?: string | null
           organization_id?: string
           property_id?: string
           temperament?: Database["public"]["Enums"]["dog_temperament"]
+          unit_id?: string | null
           weight_class?: string | null
         }
         Relationships: [
@@ -1187,6 +1196,13 @@ export type Database = {
             columns: ["property_id"]
             isOneToOne: false
             referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dogs_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "property_units"
             referencedColumns: ["id"]
           },
         ]
@@ -1901,6 +1917,8 @@ export type Database = {
           period_end: string
           period_start: string | null
           public_token: string
+          send_after: string | null
+          sent_at: string | null
           status: Database["public"]["Enums"]["invoice_status"]
           stripe_checkout_session_id: string | null
           stripe_payment_intent_id: string | null
@@ -1927,6 +1945,8 @@ export type Database = {
           period_end: string
           period_start?: string | null
           public_token?: string
+          send_after?: string | null
+          sent_at?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
@@ -1953,6 +1973,8 @@ export type Database = {
           period_end?: string
           period_start?: string | null
           public_token?: string
+          send_after?: string | null
+          sent_at?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
@@ -2460,6 +2482,7 @@ export type Database = {
           google_review_url: string | null
           grace_expires_at: string | null
           id: string
+          invoice_grace_days: number
           invoice_net_days: number
           is_franchise_parent: boolean
           last_digest_sent_at: string | null
@@ -2557,6 +2580,7 @@ export type Database = {
           google_review_url?: string | null
           grace_expires_at?: string | null
           id?: string
+          invoice_grace_days?: number
           invoice_net_days?: number
           is_franchise_parent?: boolean
           last_digest_sent_at?: string | null
@@ -2654,6 +2678,7 @@ export type Database = {
           google_review_url?: string | null
           grace_expires_at?: string | null
           id?: string
+          invoice_grace_days?: number
           invoice_net_days?: number
           is_franchise_parent?: boolean
           last_digest_sent_at?: string | null
@@ -3852,6 +3877,60 @@ export type Database = {
           },
         ]
       }
+      property_units: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          offending_count: number
+          organization_id: string
+          property_id: string
+          resident_email: string | null
+          resident_name: string | null
+          resident_phone: string | null
+          unit_label: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          offending_count?: number
+          organization_id: string
+          property_id: string
+          resident_email?: string | null
+          resident_name?: string | null
+          resident_phone?: string | null
+          unit_label: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          offending_count?: number
+          organization_id?: string
+          property_id?: string
+          resident_email?: string | null
+          resident_name?: string | null
+          resident_phone?: string | null
+          unit_label?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_units_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_units_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       push_subscriptions: {
         Row: {
           auth: string | null
@@ -4492,6 +4571,77 @@ export type Database = {
           },
         ]
       }
+      unit_incidents: {
+        Row: {
+          charged_cents: number | null
+          created_at: string
+          created_by: string | null
+          dog_id: string | null
+          id: string
+          incident_on: string
+          kind: string
+          notes: string | null
+          organization_id: string
+          property_id: string
+          unit_id: string
+        }
+        Insert: {
+          charged_cents?: number | null
+          created_at?: string
+          created_by?: string | null
+          dog_id?: string | null
+          id?: string
+          incident_on?: string
+          kind: string
+          notes?: string | null
+          organization_id: string
+          property_id: string
+          unit_id: string
+        }
+        Update: {
+          charged_cents?: number | null
+          created_at?: string
+          created_by?: string | null
+          dog_id?: string | null
+          id?: string
+          incident_on?: string
+          kind?: string
+          notes?: string | null
+          organization_id?: string
+          property_id?: string
+          unit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "unit_incidents_dog_id_fkey"
+            columns: ["dog_id"]
+            isOneToOne: false
+            referencedRelation: "dogs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unit_incidents_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unit_incidents_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unit_incidents_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "property_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -4939,6 +5089,9 @@ export type Database = {
           boundary: Json | null
           center_latitude: number | null
           center_longitude: number | null
+          commercial_base_cents: number | null
+          commercial_per_acre_cents: number | null
+          commercial_per_unit_cents: number | null
           created_at: string
           drive_time_minutes: number | null
           geo_match_mode: string
@@ -4965,6 +5118,9 @@ export type Database = {
           boundary?: Json | null
           center_latitude?: number | null
           center_longitude?: number | null
+          commercial_base_cents?: number | null
+          commercial_per_acre_cents?: number | null
+          commercial_per_unit_cents?: number | null
           created_at?: string
           drive_time_minutes?: number | null
           geo_match_mode?: string
@@ -4991,6 +5147,9 @@ export type Database = {
           boundary?: Json | null
           center_latitude?: number | null
           center_longitude?: number | null
+          commercial_base_cents?: number | null
+          commercial_per_acre_cents?: number | null
+          commercial_per_unit_cents?: number | null
           created_at?: string
           drive_time_minutes?: number | null
           geo_match_mode?: string
@@ -5026,6 +5185,10 @@ export type Database = {
     }
     Functions: {
       accept_org_invite_for_current_user: { Args: never; Returns: string }
+      admin_generate_invoice_for_client: {
+        Args: { _client_id: string; _through: string }
+        Returns: string
+      }
       admin_generate_invoices_for_org: {
         Args: { _org_id: string; _through: string }
         Returns: number
@@ -5633,6 +5796,7 @@ export type Database = {
           votes: number
         }[]
       }
+      run_billing_cycles: { Args: { _org_id?: string }; Returns: number }
       set_staff_active: {
         Args: { _active: boolean; _staff_id: string }
         Returns: undefined

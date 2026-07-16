@@ -157,12 +157,13 @@ export const getClient = createServerFn({ method: "GET" })
     const { data: client, error } = await supabase
       .from("clients")
       .select(
-        "id, display_name, first_name, last_name, company, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused",
+        "id, display_name, first_name, last_name, company, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused, billing_frequency",
       )
       .eq("id", data.clientId)
       .single();
     if (error) throw new Error(error.message);
-    return { client };
+    // billing_frequency isn't in the generated types yet.
+    return { client: client as any };
   });
 
 /** Edit-client drawer (client detail refactor): contact, status, tags,
@@ -186,6 +187,9 @@ export const updateClient = createServerFn({ method: "POST" })
         referralSource: z.string().max(200).nullable().optional(),
         smsOptOut: z.boolean().optional(),
         emailOptOut: z.boolean().optional(),
+        billingFrequency: z
+          .enum(["after_each_visit", "weekly", "monthly", "quarterly", "yearly"])
+          .optional(),
       })
       .parse(d),
   )
@@ -244,6 +248,10 @@ export const updateClient = createServerFn({ method: "POST" })
     if (data.emailOptOut !== undefined) {
       patch.email_opt_out = data.emailOptOut;
       changed.push("email preference");
+    }
+    if (data.billingFrequency !== undefined) {
+      patch.billing_frequency = data.billingFrequency;
+      changed.push("billing cadence");
     }
     if (changed.length === 0) return { ok: true };
 
@@ -379,9 +387,13 @@ export const listDogsForClient = createServerFn({ method: "GET" })
     if (pErr) throw new Error(pErr.message);
     const ids = (props ?? []).map((p: any) => p.id);
     if (!ids.length) return { dogs: [] };
-    const { data: dogs, error } = await supabase
+    // Cast: unit_id/dna_status ship with the commercial-units migration;
+    // generated types lag until regenerated.
+    const { data: dogs, error } = await (supabase as any)
       .from("dogs")
-      .select("id, property_id, name, breed, weight_class, temperament, notes, active")
+      .select(
+        "id, property_id, name, breed, weight_class, temperament, notes, active, unit_id, dna_status",
+      )
       .in("property_id", ids)
       .order("name");
     if (error) throw new Error(error.message);
