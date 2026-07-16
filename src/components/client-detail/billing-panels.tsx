@@ -21,13 +21,11 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
   getClientBillingSummary,
   generateInvoiceForClient,
-  getInvoicePortalLink,
   voidInvoice,
   resumeAutopay,
-  getInvoiceDetail,
 } from "@/lib/invoices.functions";
-import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
-import { formatDateTime, formatDay } from "@/lib/format";
+import { InvoiceDrawer, isInvoiceOverdue } from "@/components/InvoiceDrawer";
+import { formatDay } from "@/lib/format";
 import {
   listAddonServices,
   listClientAddons,
@@ -83,7 +81,6 @@ export function BillingPanel({ clientId }: { clientId: string }) {
   const { confirm, dialog } = useConfirmDialog();
   const summaryFn = useServerFn(getClientBillingSummary);
   const genFn = useServerFn(generateInvoiceForClient);
-  const portalLinkFn = useServerFn(getInvoicePortalLink);
   const voidFn = useServerFn(voidInvoice);
 
   const { data } = useQuery({
@@ -109,19 +106,19 @@ export function BillingPanel({ clientId }: { clientId: string }) {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  // In-app payments: staff copy the client's portal billing link (pays inside
-  // our app) instead of minting a hosted checkout.stripe.com URL.
-  const linkMut = useMutation({
-    mutationFn: (id: string) => portalLinkFn({ data: { invoiceId: id } }),
-    onSuccess: (r: { url: string }) => {
-      navigator.clipboard.writeText(r.url).then(
-        () => toast.success("Portal link copied to clipboard"),
-        () => toast.error("Copy failed, opening in new tab"),
-      );
-      invalidate();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  // Public pay link (QA round 8): staff copy the no-login /pay/i/{token}
+  // link — the client pays right on the invoice, no portal OTP needed.
+  const copyPayLink = (inv: any) => {
+    if (!inv.public_token) {
+      toast.error("This invoice has no pay link yet");
+      return;
+    }
+    const url = `${window.location.origin}/pay/i/${inv.public_token}`;
+    navigator.clipboard.writeText(url).then(
+      () => toast.success("Pay link copied to clipboard"),
+      () => toast.error("Copy failed"),
+    );
+  };
 
   const voidMut = useMutation({
     mutationFn: (id: string) => voidFn({ data: { id } }),
@@ -170,71 +167,68 @@ export function BillingPanel({ clientId }: { clientId: string }) {
           </div>
         ) : (
           <ul className="mt-3 divide-y text-sm">
-            {invoices.map((inv: any) => (
-              <li key={inv.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <div
-                  className="cursor-pointer"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setDetailInvoiceId(inv.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setDetailInvoiceId(inv.id);
-                    }
-                  }}
-                >
+            {invoices.map((inv: any) => {
+              const overdue = isInvoiceOverdue(inv.status, inv.due_on);
+              return (
+                <li key={inv.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <div
+                    className="cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setDetailInvoiceId(inv.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setDetailInvoiceId(inv.id);
+                      }
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs text-primary">#{inv.id.slice(0, 8)}</span>
+                      <InvoiceStatusBadge status={inv.status} />
+                      <span className="text-xs text-muted-foreground">{inv.kind}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {inv.period_start
+                        ? `${formatDay(inv.period_start)} to ${formatDay(inv.period_end)}`
+                        : formatDay(inv.created_at)}
+                      {inv.due_on && inv.status !== "paid" && inv.status !== "void" && (
+                        <span className={overdue ? "ml-2 font-medium text-destructive" : "ml-2"}>
+                          {overdue ? "Overdue" : "Due"} {formatDay(inv.due_on)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                   <div className="flex items-center gap-2">
-                    <Link
-                      to="/invoices/$invoiceId"
-                      params={{ invoiceId: inv.id }}
-                      className="font-mono text-xs text-primary hover:underline"
-                    >
-                      #{inv.id.slice(0, 8)}
-                    </Link>
-                    <InvoiceStatusBadge status={inv.status} />
-                    <span className="text-xs text-muted-foreground">{inv.kind}</span>
+                    <span className="font-medium">${(inv.total_cents / 100).toFixed(2)}</span>
+                    {inv.status === "open" && (
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => copyPayLink(inv)}>
+                          Copy pay link
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={voidMut.isPending}
+                          onClick={async () => {
+                            if (
+                              await confirm({
+                                title: "Void this invoice?",
+                                destructive: true,
+                                confirmLabel: "Void invoice",
+                              })
+                            )
+                              voidMut.mutate(inv.id);
+                          }}
+                        >
+                          Void
+                        </Button>
+                      </>
+                    )}
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {inv.period_start
-                      ? `${formatDay(inv.period_start)} to ${formatDay(inv.period_end)}`
-                      : formatDay(inv.created_at)}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">${(inv.total_cents / 100).toFixed(2)}</span>
-                  {inv.status === "open" && (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={linkMut.isPending}
-                        onClick={() => linkMut.mutate(inv.id)}
-                      >
-                        Copy portal link
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={voidMut.isPending}
-                        onClick={async () => {
-                          if (
-                            await confirm({
-                              title: "Void this invoice?",
-                              destructive: true,
-                              confirmLabel: "Void invoice",
-                            })
-                          )
-                            voidMut.mutate(inv.id);
-                        }}
-                      >
-                        Void
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -276,104 +270,13 @@ export function BillingPanel({ clientId }: { clientId: string }) {
         )}
       </section>
 
-      <InvoiceDetailDrawer invoiceId={detailInvoiceId} onClose={() => setDetailInvoiceId(null)} />
+      {/* Shared rich drawer (QA round 8): same surface as the invoices index. */}
+      <InvoiceDrawer
+        invoiceId={detailInvoiceId}
+        onClose={() => setDetailInvoiceId(null)}
+        onChanged={invalidate}
+      />
     </>
-  );
-}
-
-// ── Invoice detail drawer (QA follow-up 2.3) ────────────────────────────────
-
-function InvoiceDetailDrawer({
-  invoiceId,
-  onClose,
-}: {
-  invoiceId: string | null;
-  onClose: () => void;
-}) {
-  const detailFn = useServerFn(getInvoiceDetail);
-  const { data, isLoading } = useQuery({
-    queryKey: ["invoice-detail", invoiceId],
-    queryFn: () => detailFn({ data: { invoiceId: invoiceId! } }),
-    enabled: !!invoiceId,
-  });
-  const inv = data?.invoice as any;
-  const lines = data?.lineItems ?? [];
-  const pays = data?.payments ?? [];
-
-  return (
-    <EditDrawer
-      open={!!invoiceId}
-      onClose={onClose}
-      title={inv ? `Invoice #${String(inv.id).slice(0, 8)}` : "Invoice"}
-      size="md"
-    >
-      {isLoading || !inv ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : (
-        <div className="space-y-5 text-sm">
-          <div className="flex flex-wrap items-center gap-2">
-            <InvoiceStatusBadge status={inv.status} />
-            <span className="text-xs text-muted-foreground">{inv.kind}</span>
-            <span className="text-xs text-muted-foreground">
-              {inv.period_start
-                ? `${formatDay(inv.period_start)} to ${formatDay(inv.period_end)}`
-                : formatDateTime(inv.created_at)}
-            </span>
-          </div>
-
-          <div>
-            <SectionLabel>Line items</SectionLabel>
-            {lines.length === 0 ? (
-              <p className="mt-1.5 text-muted-foreground">No line items recorded.</p>
-            ) : (
-              <ul className="mt-1.5 divide-y">
-                {lines.map((l: any) => (
-                  <li key={l.id} className="flex items-center justify-between gap-2 py-1.5">
-                    <span className="min-w-0 truncate">{l.description}</span>
-                    <span className="shrink-0 font-medium">${(l.amount_cents / 100).toFixed(2)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="mt-2 flex items-center justify-between border-t pt-2 font-medium">
-              <span>Total</span>
-              <span>${(inv.total_cents / 100).toFixed(2)}</span>
-            </div>
-          </div>
-
-          <div>
-            <SectionLabel>Payment attempts</SectionLabel>
-            {pays.length === 0 ? (
-              <p className="mt-1.5 text-muted-foreground">No payment attempts yet.</p>
-            ) : (
-              <ul className="mt-1.5 divide-y">
-                {pays.map((p: any) => (
-                  <li key={p.id} className="flex items-center justify-between gap-2 py-1.5">
-                    <span className="text-muted-foreground">
-                      {formatDateTime(p.paid_at ?? p.created_at)}
-                    </span>
-                    <span className="flex items-center gap-2">
-                      <StatusChip status={p.status} />
-                      <span className="font-medium">${(p.amount_cents / 100).toFixed(2)}</span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <DrawerFooter>
-            <Link
-              to="/invoices/$invoiceId"
-              params={{ invoiceId: inv.id }}
-              className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
-            >
-              Open full invoice
-            </Link>
-          </DrawerFooter>
-        </div>
-      )}
-    </EditDrawer>
   );
 }
 
@@ -792,7 +695,13 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
                   {c.quantity > 1 && (
                     <span className="ml-1 text-xs text-muted-foreground">× {c.quantity}</span>
                   )}
-                  <StatusChip status={c.status} className="ml-2" />
+                  <StatusChip
+                    status={c.status}
+                    className="ml-2"
+                    // 'pending' is billing-internal jargon: the charge is
+                    // live and lands on the next invoice, nothing to accept.
+                    label={c.status === "pending" ? "Unbilled, next invoice" : undefined}
+                  />
                   {c.source === "field" && <MetaChip className="ml-1">Field</MetaChip>}
                 </span>
                 <span className="flex items-center gap-2">

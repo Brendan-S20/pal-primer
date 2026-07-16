@@ -251,6 +251,149 @@ export const setAddonSubscriptionStatus = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// ── Client portal add-on requests (QA round 8) ──────────────────────────────
+// Staff-added add-ons are live immediately (one-time charges are simply
+// unbilled until the next invoice; recurring subscriptions start at once).
+// Portal requests land in addon_requests as 'pending' and need a staff
+// decision before anything becomes billable.
+
+export const listAddonRequests = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await requirePermission(context.supabase, context.userId, "manage_client_billing");
+    const { data: rows, error } = await ((context.supabase as any).from("addon_requests"))
+      .select(
+        "id, client_id, addon_service_id, property_id, kind, frequency, quantity, unit_price_cents, status, created_at, addon_services(name), properties(street)",
+      )
+      .eq("client_id", data.clientId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return { requests: rows ?? [] };
+  });
+
+async function loadPendingRequest(supabase: any, requestId: string) {
+  const { data: req, error } = await ((supabase as any).from("addon_requests"))
+    .select("*, addon_services(name)")
+    .eq("id", requestId)
+    .single();
+  if (error) throw new Error(error.message);
+  if (req.status !== "pending") throw new Error("This request was already decided");
+  return req;
+}
+
+export const approveAddonRequest = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ requestId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await requirePermission(supabase, userId, "manage_client_billing");
+    const req = await loadPendingRequest(supabase, data.requestId);
+    const name = req.addon_services?.name ?? "Add-on";
+
+    // Claim FIRST: two concurrent approvals (double-click, two staff) must
+    // not both create the billable object. The status flip is the atomic
+    // gate; whoever matches zero rows lost the race and stops here.
+    const { data: claimed, error: claimErr } = await ((supabase as any).from("addon_requests"))
+      .update({ status: "approved", decided_by: userId, decided_at: new Date().toISOString() })
+      .eq("id", data.requestId)
+      .eq("status", "pending")
+      .select("id");
+    if (claimErr) throw new Error(claimErr.message);
+    if (!claimed || claimed.length === 0) throw new Error("This request was already decided");
+
+    const revertClaim = async () => {
+      await ((supabase as any).from("addon_requests"))
+        .update({ status: "pending", decided_by: null, decided_at: null })
+        .eq("id", data.requestId);
+    };
+
+    if (req.kind === "one_time") {
+      // create_addon_charge handles prepaid credit; price is the snapshot the
+      // client saw when requesting.
+      const { data: chargeId, error } = await supabase.rpc("create_addon_charge", {
+        _client_id: req.client_id,
+        _addon_service_id: req.addon_service_id,
+        _quantity: req.quantity,
+        _unit_price_cents: req.unit_price_cents,
+        _description: name,
+        _visit_id: undefined,
+        _source: "office",
+        _note: "Approved client portal request",
+      });
+      if (error) {
+        await revertClaim();
+        throw new Error(error.message);
+      }
+      if (req.property_id) {
+        await ((supabase as any).from("addon_charges"))
+          .update({ property_id: req.property_id })
+          .eq("id", chargeId);
+      }
+    } else {
+      const started = new Date().toISOString().slice(0, 10);
+      const { error } = await ((supabase as any).from("addon_subscriptions")).insert({
+        organization_id: req.organization_id,
+        client_id: req.client_id,
+        addon_service_id: req.addon_service_id,
+        property_id: req.property_id,
+        frequency: req.frequency,
+        price_cents: req.unit_price_cents,
+        quantity: req.quantity,
+        started_on: started,
+        next_charge_on: started,
+      });
+      if (error) {
+        await revertClaim();
+        throw new Error(error.message);
+      }
+    }
+
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: req.organization_id,
+      clientId: req.client_id,
+      actorUserId: userId,
+      kind: "addon.request_approved",
+      summary: `Approved the client's ${name} request${req.kind === "recurring" ? ` (${req.frequency})` : ""}`,
+      meta: { request_id: req.id, kind: req.kind },
+    });
+    return { ok: true };
+  });
+
+export const declineAddonRequest = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ requestId: z.string().uuid(), reason: z.string().max(500).optional() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await requirePermission(supabase, userId, "manage_client_billing");
+    const req = await loadPendingRequest(supabase, data.requestId);
+    const { error } = await ((supabase as any).from("addon_requests"))
+      .update({
+        status: "declined",
+        decided_by: userId,
+        decided_at: new Date().toISOString(),
+        decline_reason: data.reason?.trim() || null,
+      })
+      .eq("id", data.requestId)
+      .eq("status", "pending");
+    if (error) throw new Error(error.message);
+
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: req.organization_id,
+      clientId: req.client_id,
+      actorUserId: userId,
+      kind: "addon.request_declined",
+      summary: `Declined the client's ${req.addon_services?.name ?? "add-on"} request${data.reason?.trim() ? `: ${data.reason.trim()}` : ""}`,
+      meta: { request_id: req.id },
+    });
+    return { ok: true };
+  });
+
 export const generateAddonCharges = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ through: z.string() }).parse(d))

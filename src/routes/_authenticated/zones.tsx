@@ -30,6 +30,13 @@ export const Route = createFileRoute("/_authenticated/zones")({
 const money = (cents: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format((cents ?? 0) / 100);
 
+// Zone saves re-run zone detection across the org's properties (QA round 8:
+// "I updated a zone and none of the properties adjusted to it").
+const reassignedToastMsg = (verb: string, n: number | undefined) =>
+  n && n > 0
+    ? `${verb}. ${n} ${n === 1 ? "property" : "properties"} re-assigned.`
+    : verb;
+
 function ZipChips({
   value,
   onChange,
@@ -110,6 +117,7 @@ function ZonesPage() {
   const [perDog, setPerDog] = useState("5.00");
   const [initialCleanup, setInitialCleanup] = useState("0");
   const [priceNote, setPriceNote] = useState("");
+  const [priority, setPriority] = useState("0");
 
   const resetForm = () => {
     setName("");
@@ -118,6 +126,7 @@ function ZonesPage() {
     setPerDog("5.00");
     setInitialCleanup("0");
     setPriceNote("");
+    setPriority("0");
   };
 
   const mut = useMutation({
@@ -130,10 +139,11 @@ function ZonesPage() {
           perDogAddlCents: Math.round((parseFloat(perDog) || 0) * 100),
           initialCleanupCents: Math.round((parseFloat(initialCleanup) || 0) * 100),
           priceNote: priceNote || undefined,
+          priority: parseInt(priority, 10) || 0,
         },
       }),
-    onSuccess: () => {
-      toast.success("Zone created");
+    onSuccess: (res: any) => {
+      toast.success(reassignedToastMsg("Zone created", res?.propertiesUpdated));
       resetForm();
       setShowNew(false);
       qc.invalidateQueries({ queryKey: ["zones"] });
@@ -192,6 +202,21 @@ function ZonesPage() {
                   placeholder="Weekday only, gate codes"
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="prio">Priority</Label>
+              <Input
+                id="prio"
+                type="number"
+                inputMode="numeric"
+                className="w-32"
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                When zones overlap, the higher priority wins.
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -326,6 +351,7 @@ function ZoneCard({ zone, canEdit }: { zone: any; canEdit: boolean }) {
   const [areaMin, setAreaMin] = useState<string>(
     ((zone.area_min_charge_cents ?? 0) / 100).toFixed(2),
   );
+  const [priority, setPriority] = useState<string>(String(zone.priority ?? 0));
 
   const saveMut = useMutation({
     mutationFn: () =>
@@ -342,10 +368,11 @@ function ZoneCard({ zone, canEdit }: { zone: any; canEdit: boolean }) {
           pricePerSqftCents: parseFloat(perSqft) > 0 ? parseFloat(perSqft) * 100 : 0,
           pricePerAcreCents: Math.round((parseFloat(perAcre) || 0) * 100),
           areaMinChargeCents: Math.round((parseFloat(areaMin) || 0) * 100),
+          priority: parseInt(priority, 10) || 0,
         },
       }),
-    onSuccess: () => {
-      toast.success("Zone updated");
+    onSuccess: (res: any) => {
+      toast.success(reassignedToastMsg("Zone saved", res?.propertiesUpdated));
       setEditing(false);
       qc.invalidateQueries({ queryKey: ["zones"] });
     },
@@ -354,8 +381,8 @@ function ZoneCard({ zone, canEdit }: { zone: any; canEdit: boolean }) {
 
   const delMut = useMutation({
     mutationFn: () => del({ data: { id: zone.id } }),
-    onSuccess: () => {
-      toast.success("Zone deleted");
+    onSuccess: (res: any) => {
+      toast.success(reassignedToastMsg("Zone deleted", res?.propertiesUpdated));
       qc.invalidateQueries({ queryKey: ["zones"] });
     },
     onError: (e) => toast.error((e as Error).message),
@@ -372,6 +399,11 @@ function ZoneCard({ zone, canEdit }: { zone: any; canEdit: boolean }) {
               {zone.postal_prefix && (
                 <Badge variant="outline" className="text-xs">
                   prefix {zone.postal_prefix}
+                </Badge>
+              )}
+              {(zone.priority ?? 0) !== 0 && (
+                <Badge variant="outline" className="text-xs" title="When zones overlap, the higher priority wins.">
+                  priority {zone.priority}
                 </Badge>
               )}
             </div>
@@ -461,6 +493,19 @@ function ZoneCard({ zone, canEdit }: { zone: any; canEdit: boolean }) {
         <div className="space-y-2">
           <Label>ZIP codes served</Label>
           <ZipChips value={zips} onChange={setZips} />
+        </div>
+        <div className="space-y-2">
+          <Label>Priority</Label>
+          <Input
+            type="number"
+            inputMode="numeric"
+            className="w-32"
+            value={priority}
+            onChange={(e) => setPriority(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            When zones overlap, the higher priority wins.
+          </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="space-y-2">
@@ -586,8 +631,8 @@ function ZoneCoverageSection({ zone, canEdit }: { zone: any; canEdit: boolean })
           driveTimeMinutes: v.driveTimeMinutes,
         },
       }),
-    onSuccess: () => {
-      toast.success("Coverage saved");
+    onSuccess: (res: any) => {
+      toast.success(reassignedToastMsg("Coverage saved", res?.propertiesUpdated));
       qc.invalidateQueries({ queryKey: ["zones"] });
       setOpen(false);
     },
@@ -607,8 +652,8 @@ function ZoneCoverageSection({ zone, canEdit }: { zone: any; canEdit: boolean })
           driveTimeMinutes: null,
         },
       }),
-    onSuccess: () => {
-      toast.success("Reverted to ZIP matching");
+    onSuccess: (res: any) => {
+      toast.success(reassignedToastMsg("Reverted to ZIP matching", res?.propertiesUpdated));
       qc.invalidateQueries({ queryKey: ["zones"] });
     },
     onError: (e) => toast.error((e as Error).message),

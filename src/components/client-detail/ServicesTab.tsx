@@ -54,6 +54,11 @@ import {
 } from "@/lib/subscription-form";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { PrepayInline } from "@/components/client-detail/billing-panels";
+import {
+  listAddonRequests,
+  approveAddonRequest,
+  declineAddonRequest,
+} from "@/lib/addons.functions";
 import { generatePrepaidInvoice } from "@/lib/invoices.functions";
 import { generateVisits } from "@/lib/visits.functions";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
@@ -422,6 +427,7 @@ export function ServicesTab({
   return (
     <div className="space-y-4">
       {confirmDialog}
+      {canBill && <AddonRequestsPanel clientId={clientId} />}
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-muted-foreground">
           {liveSubs.length} service{liveSubs.length === 1 ? "" : "s"}
@@ -497,6 +503,96 @@ export function ServicesTab({
         }}
       />
     </div>
+  );
+}
+
+// ── Client portal add-on requests (QA round 8) ──────────────────────────────
+// Portal requests are pending until staff approve (creates the real charge or
+// subscription) or decline. Staff-added add-ons never appear here — they are
+// billable immediately.
+
+function AddonRequestsPanel({ clientId }: { clientId: string }) {
+  const qc = useQueryClient();
+  const listFn = useServerFn(listAddonRequests);
+  const approveFn = useServerFn(approveAddonRequest);
+  const declineFn = useServerFn(declineAddonRequest);
+  const { data } = useQuery({
+    queryKey: ["addon-requests", clientId],
+    queryFn: () => listFn({ data: { clientId } }),
+  });
+  const requests: any[] = (data as any)?.requests ?? [];
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["addon-requests", clientId] });
+    qc.invalidateQueries({ queryKey: ["client-addons", clientId] });
+    qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
+  };
+  const approveMut = useMutation({
+    mutationFn: (id: string) => approveFn({ data: { requestId: id } }),
+    onSuccess: () => {
+      toast.success("Request approved");
+      invalidate();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const declineMut = useMutation({
+    mutationFn: (id: string) => declineFn({ data: { requestId: id } }),
+    onSuccess: () => {
+      toast.success("Request declined");
+      invalidate();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  if (requests.length === 0) return null;
+
+  return (
+    <section className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-4">
+      <h2 className="text-sm font-medium">
+        Client requests from the portal ({requests.length})
+      </h2>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        Nothing is billed until a request is approved.
+      </p>
+      <ul className="mt-2 space-y-2">
+        {requests.map((r: any) => (
+          <li
+            key={r.id}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-card px-3 py-2 text-sm"
+          >
+            <div>
+              <span className="font-medium">{r.addon_services?.name ?? "Add-on"}</span>
+              <span className="text-muted-foreground">
+                {" "}
+                · ${((r.unit_price_cents * r.quantity) / 100).toFixed(2)}
+                {r.kind === "recurring" ? ` ${String(r.frequency ?? "").replace(/_/g, " ")}` : " one time"}
+                {r.quantity > 1 ? ` · qty ${r.quantity}` : ""}
+                {r.properties?.street ? ` · ${r.properties.street}` : ""}
+                {" · requested "}
+                {formatDay(r.created_at)}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                onClick={() => approveMut.mutate(r.id)}
+                disabled={approveMut.isPending || declineMut.isPending}
+              >
+                Approve
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => declineMut.mutate(r.id)}
+                disabled={approveMut.isPending || declineMut.isPending}
+              >
+                Decline
+              </Button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

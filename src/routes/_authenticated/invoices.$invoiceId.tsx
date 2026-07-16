@@ -159,6 +159,9 @@ function InvoiceDetail() {
 
   const shortId = invoice.id.slice(0, 8);
   const subtotalCents = (invoice as any).subtotal_cents as number | null | undefined;
+  const dueOn = (invoice as any).due_on as string | null | undefined;
+  const overdue =
+    invoice.status === "open" && !!dueOn && dueOn < new Date().toISOString().slice(0, 10);
   const period =
     invoice.period_start && invoice.period_end && invoice.period_start !== invoice.period_end
       ? `${formatDay(invoice.period_start)} to ${formatDay(invoice.period_end)}`
@@ -186,6 +189,14 @@ function InvoiceDetail() {
               {invoice.issued_at && (
                 <p>
                   <span className="text-muted-foreground">Issued</span> {formatDay(String(invoice.issued_at))}
+                </p>
+              )}
+              {dueOn && invoice.status !== "paid" && invoice.status !== "void" && (
+                <p className={overdue ? "font-medium text-destructive" : ""}>
+                  <span className={overdue ? "" : "text-muted-foreground"}>
+                    {overdue ? "Overdue since" : "Due"}
+                  </span>{" "}
+                  {formatDay(dueOn)}
                 </p>
               )}
               {period && (
@@ -270,6 +281,20 @@ function InvoiceDetail() {
             {client?.primary_email && (
               <Button variant="outline" onClick={() => emailM.mutate()} disabled={emailM.isPending}>
                 {emailM.isPending ? "Sending…" : "Email invoice to client"}
+              </Button>
+            )}
+            {(invoice as any).public_token && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const url = `${window.location.origin}/pay/i/${(invoice as any).public_token}`;
+                  navigator.clipboard.writeText(url).then(
+                    () => toast.success("Pay link copied to clipboard"),
+                    () => toast.error("Copy failed"),
+                  );
+                }}
+              >
+                Copy pay link
               </Button>
             )}
           </>

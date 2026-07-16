@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
@@ -29,6 +29,7 @@ import { downloadCsv } from "@/lib/csv";
 import { HelpTip } from "@/components/HelpTip";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
+import { InvoiceDrawer, isInvoiceOverdue } from "@/components/InvoiceDrawer";
 import { formatDay } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -245,7 +246,6 @@ function InvoicesPage() {
   const voidBulk = useServerFn(bulkVoidInvoices);
   const paidBulk = useServerFn(bulkMarkInvoicesPaid);
   const qc = useQueryClient();
-  const navigate = useNavigate();
 
   const [through, setThrough] = useState(() => new Date().toISOString().slice(0, 10));
   const [status, setStatus] = useState<StatusKey>("all");
@@ -253,6 +253,9 @@ function InvoicesPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [selected, setSelected] = useState<Record<string, boolean>>({});
+  // Row click opens the shared invoice drawer (QA round 8) instead of
+  // navigating away; "Open full invoice" inside goes to the page.
+  const [drawerInvoiceId, setDrawerInvoiceId] = useState<string | null>(null);
 
   const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn() });
   const invQ = useQuery({ queryKey: ["invoices"], queryFn: () => list() });
@@ -396,6 +399,7 @@ function InvoicesPage() {
                   "Period end",
                   "Total",
                   "Issued",
+                  "Due",
                   "Paid",
                 ],
                 filtered.map((inv) => {
@@ -408,6 +412,7 @@ function InvoicesPage() {
                     inv.period_end ?? "",
                     ((inv.total_cents ?? 0) / 100).toFixed(2),
                     (inv.issued_at ?? "").slice(0, 10),
+                    inv.due_on ?? "",
                     (inv.paid_at ?? "").slice(0, 10),
                   ];
                 }),
@@ -608,6 +613,7 @@ function InvoicesPage() {
                 <th className="px-4 py-2 font-semibold">Client</th>
                 <th className="px-4 py-2 font-semibold">Invoice</th>
                 <th className="px-4 py-2 font-semibold">Period</th>
+                <th className="px-4 py-2 font-semibold">Due</th>
                 <th className="px-4 py-2 text-right font-semibold">Total</th>
                 <th className="px-4 py-2 font-semibold">Status</th>
                 <th className="w-10 px-4 py-2" />
@@ -617,13 +623,12 @@ function InvoicesPage() {
               {filtered.map((inv) => {
                 const client = Array.isArray(inv.clients) ? inv.clients[0] : inv.clients;
                 const checked = !!selected[inv.id];
+                const overdue = isInvoiceOverdue(inv.status, inv.due_on);
                 return (
                   <tr
                     key={inv.id}
                     className="cursor-pointer border-b last:border-0 hover:bg-muted/30"
-                    onClick={() =>
-                      navigate({ to: "/invoices/$invoiceId", params: { invoiceId: inv.id } })
-                    }
+                    onClick={() => setDrawerInvoiceId(inv.id)}
                   >
                     <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
                       <Checkbox
@@ -641,22 +646,38 @@ function InvoicesPage() {
                     <td className="px-4 py-2.5 text-muted-foreground">
                       {periodLabel(inv.period_start, inv.period_end)}
                     </td>
+                    <td className="px-4 py-2.5">
+                      {inv.due_on && inv.status !== "paid" && inv.status !== "void" ? (
+                        <span className={overdue ? "font-medium text-destructive" : "text-muted-foreground"}>
+                          {formatDay(inv.due_on)}
+                          {overdue && (
+                            <span className="ml-1.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-xs">
+                              Overdue
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 text-right tabular-nums">
-                      {fmtCents(inv.total_cents, inv.currency)}
+                      {fmtCents(inv.total_cents ?? 0, inv.currency ?? "usd")}
                     </td>
                     <td className="px-4 py-2.5">
                       <StatusChip status={inv.status} />
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      <Link
-                        to="/invoices/$invoiceId"
-                        params={{ invoiceId: inv.id }}
+                      <button
+                        type="button"
                         aria-label={`Open invoice for ${client?.display_name ?? "client"}`}
                         className="inline-flex rounded-md p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDrawerInvoiceId(inv.id);
+                        }}
                       >
                         <ChevronRight className="h-4 w-4" />
-                      </Link>
+                      </button>
                     </td>
                   </tr>
                 );
@@ -665,6 +686,12 @@ function InvoicesPage() {
           </table>
         </div>
       )}
+
+      <InvoiceDrawer
+        invoiceId={drawerInvoiceId}
+        onClose={() => setDrawerInvoiceId(null)}
+        onChanged={() => qc.invalidateQueries({ queryKey: ["invoices"] })}
+      />
     </div>
   );
 }

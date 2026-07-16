@@ -75,6 +75,7 @@ import { Route as AuthenticatedImportsIndexRouteImport } from './routes/_authent
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
 import { Route as PortalSlugTokenRouteImport } from './routes/portal.$slug.$token'
 import { Route as PlatformTenantsIdRouteImport } from './routes/platform.tenants.$id'
+import { Route as PayITokenRouteImport } from './routes/pay.i.$token'
 import { Route as EmailTransactionalSendRouteImport } from './routes/email/transactional/send'
 import { Route as EmailTransactionalPreviewRouteImport } from './routes/email/transactional/preview'
 import { Route as EmailQueueProcessRouteImport } from './routes/email/queue/process'
@@ -459,6 +460,11 @@ const PlatformTenantsIdRoute = PlatformTenantsIdRouteImport.update({
   path: '/tenants/$id',
   getParentRoute: () => PlatformRoute,
 } as any)
+const PayITokenRoute = PayITokenRouteImport.update({
+  id: '/pay/i/$token',
+  path: '/pay/i/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EmailTransactionalSendRoute = EmailTransactionalSendRouteImport.update({
   id: '/email/transactional/send',
   path: '/email/transactional/send',
@@ -818,6 +824,7 @@ export interface FileRoutesByFullPath {
   '/email/queue/process': typeof EmailQueueProcessRoute
   '/email/transactional/preview': typeof EmailTransactionalPreviewRoute
   '/email/transactional/send': typeof EmailTransactionalSendRoute
+  '/pay/i/$token': typeof PayITokenRoute
   '/platform/tenants/$id': typeof PlatformTenantsIdRoute
   '/portal/$slug/$token': typeof PortalSlugTokenRouteWithChildren
   '/clients/': typeof AuthenticatedClientsIndexRoute
@@ -927,6 +934,7 @@ export interface FileRoutesByTo {
   '/email/queue/process': typeof EmailQueueProcessRoute
   '/email/transactional/preview': typeof EmailTransactionalPreviewRoute
   '/email/transactional/send': typeof EmailTransactionalSendRoute
+  '/pay/i/$token': typeof PayITokenRoute
   '/platform/tenants/$id': typeof PlatformTenantsIdRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
   '/imports': typeof AuthenticatedImportsIndexRoute
@@ -1043,6 +1051,7 @@ export interface FileRoutesById {
   '/email/queue/process': typeof EmailQueueProcessRoute
   '/email/transactional/preview': typeof EmailTransactionalPreviewRoute
   '/email/transactional/send': typeof EmailTransactionalSendRoute
+  '/pay/i/$token': typeof PayITokenRoute
   '/platform/tenants/$id': typeof PlatformTenantsIdRoute
   '/portal/$slug/$token': typeof PortalSlugTokenRouteWithChildren
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
@@ -1160,6 +1169,7 @@ export interface FileRouteTypes {
     | '/email/queue/process'
     | '/email/transactional/preview'
     | '/email/transactional/send'
+    | '/pay/i/$token'
     | '/platform/tenants/$id'
     | '/portal/$slug/$token'
     | '/clients/'
@@ -1269,6 +1279,7 @@ export interface FileRouteTypes {
     | '/email/queue/process'
     | '/email/transactional/preview'
     | '/email/transactional/send'
+    | '/pay/i/$token'
     | '/platform/tenants/$id'
     | '/clients'
     | '/imports'
@@ -1384,6 +1395,7 @@ export interface FileRouteTypes {
     | '/email/queue/process'
     | '/email/transactional/preview'
     | '/email/transactional/send'
+    | '/pay/i/$token'
     | '/platform/tenants/$id'
     | '/portal/$slug/$token'
     | '/_authenticated/clients/'
@@ -1441,6 +1453,7 @@ export interface RootRouteChildren {
   EmailQueueProcessRoute: typeof EmailQueueProcessRoute
   EmailTransactionalPreviewRoute: typeof EmailTransactionalPreviewRoute
   EmailTransactionalSendRoute: typeof EmailTransactionalSendRoute
+  PayITokenRoute: typeof PayITokenRoute
   ApiPublicHooksAnnouncementEmailsRoute: typeof ApiPublicHooksAnnouncementEmailsRoute
   ApiPublicHooksNightlyRoute: typeof ApiPublicHooksNightlyRoute
   ApiPublicHooksPlatformStripeRoute: typeof ApiPublicHooksPlatformStripeRoute
@@ -1915,6 +1928,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/platform/tenants/$id'
       preLoaderRoute: typeof PlatformTenantsIdRouteImport
       parentRoute: typeof PlatformRoute
+    }
+    '/pay/i/$token': {
+      id: '/pay/i/$token'
+      path: '/pay/i/$token'
+      fullPath: '/pay/i/$token'
+      preLoaderRoute: typeof PayITokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/email/transactional/send': {
       id: '/email/transactional/send'
@@ -2521,6 +2541,7 @@ const rootRouteChildren: RootRouteChildren = {
   EmailQueueProcessRoute: EmailQueueProcessRoute,
   EmailTransactionalPreviewRoute: EmailTransactionalPreviewRoute,
   EmailTransactionalSendRoute: EmailTransactionalSendRoute,
+  PayITokenRoute: PayITokenRoute,
   ApiPublicHooksAnnouncementEmailsRoute: ApiPublicHooksAnnouncementEmailsRoute,
   ApiPublicHooksNightlyRoute: ApiPublicHooksNightlyRoute,
   ApiPublicHooksPlatformStripeRoute: ApiPublicHooksPlatformStripeRoute,

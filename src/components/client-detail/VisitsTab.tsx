@@ -4,18 +4,27 @@
 // permission-gated timestamp correction; >10 visits group Upcoming/Past
 // with status + property filters.
 import { useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { CalendarOff, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { correctVisitTimestamps } from "@/lib/visits.functions";
+import {
+  correctVisitTimestamps,
+  completeVisitFromOffice,
+  rescheduleVisitFromOffice,
+  cancelVisitFromOffice,
+  reassignVisit,
+  listStaff,
+} from "@/lib/visits.functions";
+import { listClientHolds } from "@/lib/clients.functions";
 import { formatDay, formatTime, formatClock } from "@/lib/format";
 import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 
 function fmtWindow(v: any): string {
   if (v.eta_start && v.eta_end) return `${formatTime(v.eta_start)} - ${formatTime(v.eta_end)}`;
@@ -61,6 +70,23 @@ export function VisitsTab({
   const [detailVisit, setDetailVisit] = useState<any | null>(null);
   const [view, setView] = useState<"list" | "calendar">("list");
 
+  // Vacation hold banner (QA round 8): an active or upcoming hold explains
+  // why no visits exist in a range. Managed from the header's ••• menu.
+  const listHoldsFn = useServerFn(listClientHolds);
+  const { data: holdsData } = useQuery({
+    queryKey: ["client-holds", clientId],
+    queryFn: () => listHoldsFn({ data: { clientId } }),
+  });
+  const activeHold = useMemo(() => {
+    const today = todayISO();
+    const holds = ((holdsData as any)?.holds ?? []) as any[];
+    return (
+      holds
+        .filter((h) => h.ends_on >= today)
+        .sort((a, b) => (a.starts_on < b.starts_on ? -1 : 1))[0] ?? null
+    );
+  }, [holdsData]);
+
   const serviceById = useMemo(
     () => new Map(subscriptions.map((s: any) => [s.id, s])),
     [subscriptions],
@@ -85,16 +111,33 @@ export function VisitsTab({
     .sort((a: any, b: any) => (a.scheduled_on < b.scheduled_on ? -1 : 1));
   const past = filtered.filter((v: any) => !(v.scheduled_on >= today && v.status === "scheduled"));
 
+  const holdBanner = activeHold ? (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+      <CalendarOff className="h-4 w-4 shrink-0" />
+      <span>
+        {activeHold.starts_on > today
+          ? `Vacation hold ${formatDay(activeHold.starts_on)} to ${formatDay(activeHold.ends_on)}`
+          : `On hold until ${formatDay(activeHold.ends_on)}`}
+        {" — no visits are scheduled or generated in that range."}
+        {activeHold.reason ? ` Reason: ${activeHold.reason}.` : ""}
+      </span>
+    </div>
+  ) : null;
+
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (visits.length === 0)
     return (
-      <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-        No visits yet. They appear here once a service starts generating them.
+      <div className="space-y-4">
+        {holdBanner}
+        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+          No visits yet. They appear here once a service starts generating them.
+        </div>
       </div>
     );
 
   return (
     <div className="space-y-4">
+      {holdBanner}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
           {grouped && (
@@ -488,6 +531,17 @@ function fromLocalInput(v: string): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+const SKIP_CODES: Array<{ value: string; label: string }> = [
+  { value: "client_cancelled_late", label: "Client canceled late" },
+  { value: "gate_locked", label: "Gate locked" },
+  { value: "dog_outside", label: "Dog outside" },
+  { value: "weather", label: "Weather" },
+  { value: "our_fault", label: "Our fault" },
+  { value: "access_blocked", label: "Access blocked" },
+  { value: "unsafe_conditions", label: "Unsafe conditions" },
+  { value: "other", label: "Other" },
+];
+
 function VisitDetailDrawer({
   visit: v,
   onClose,
@@ -502,11 +556,70 @@ function VisitDetailDrawer({
   canCorrect: boolean;
 }) {
   const qc = useQueryClient();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const correctFn = useServerFn(correctVisitTimestamps);
   const [correcting, setCorrecting] = useState(false);
   const [startedAt, setStartedAt] = useState("");
   const [completedAt, setCompletedAt] = useState("");
   const [reason, setReason] = useState("");
+
+  // Office actions (QA round 8): complete / reschedule / cancel / reassign.
+  const [action, setAction] = useState<"reschedule" | "cancel" | "reassign" | null>(null);
+  const [newDate, setNewDate] = useState("");
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelCode, setCancelCode] = useState("other");
+  const [newStaffId, setNewStaffId] = useState("");
+
+  const completeFn = useServerFn(completeVisitFromOffice);
+  const rescheduleFn = useServerFn(rescheduleVisitFromOffice);
+  const cancelFn = useServerFn(cancelVisitFromOffice);
+  const reassignFn = useServerFn(reassignVisit);
+  const listStaffFn = useServerFn(listStaff);
+
+  const scheduled = v?.status === "scheduled";
+  const { data: staffData } = useQuery({
+    queryKey: ["org-staff"],
+    queryFn: () => listStaffFn(),
+    enabled: canCorrect && scheduled,
+    staleTime: 60_000,
+  });
+  const staff = ((staffData as any)?.staff ?? []).filter((s: any) => s.is_field_tech !== false);
+
+  const afterAction = (msg: string) => {
+    toast.success(msg);
+    setAction(null);
+    setNewDate("");
+    setCancelReason("");
+    setNewStaffId("");
+    qc.invalidateQueries({ queryKey: ["client-visit-history", clientId] });
+    qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
+    onClose();
+  };
+
+  const completeMut = useMutation({
+    mutationFn: () => completeFn({ data: { visitId: v.id } }),
+    onSuccess: () => afterAction("Visit marked completed"),
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const rescheduleMut = useMutation({
+    mutationFn: () => rescheduleFn({ data: { visitId: v.id, newDate } }),
+    onSuccess: () => afterAction("Visit rescheduled"),
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const cancelMut = useMutation({
+    mutationFn: () =>
+      cancelFn({
+        data: { visitId: v.id, reason: cancelReason.trim(), code: cancelCode as any },
+      }),
+    onSuccess: () => afterAction("Visit canceled"),
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const reassignMut = useMutation({
+    mutationFn: () =>
+      reassignFn({ data: { visitId: v.id, staffId: newStaffId || null } }),
+    onSuccess: () => afterAction(newStaffId ? "Visit reassigned" : "Visit unassigned"),
+    onError: (e) => toast.error((e as Error).message),
+  });
 
   const mut = useMutation({
     mutationFn: () =>
@@ -532,6 +645,7 @@ function VisitDetailDrawer({
   if (!v) return null;
   const service = v.subscription_id ? serviceById.get(v.subscription_id) : null;
   const dur = durationMin(v);
+  const canComplete = v.status === "scheduled" || v.status === "in_progress";
 
   return (
     <EditDrawer
@@ -586,6 +700,180 @@ function VisitDetailDrawer({
             </div>
           )}
         </dl>
+
+        {confirmDialog}
+
+        {canCorrect && (canComplete || scheduled) && (
+          <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {canComplete && (
+                <Button
+                  size="sm"
+                  disabled={completeMut.isPending}
+                  onClick={async () => {
+                    if (
+                      await confirm({
+                        title: "Mark this visit completed?",
+                        description:
+                          "It's recorded as completed now; adjust the exact times afterward with Correct timestamps if needed. Completed visits are billable.",
+                        confirmLabel: "Mark completed",
+                      })
+                    )
+                      completeMut.mutate();
+                  }}
+                >
+                  {completeMut.isPending ? "Completing…" : "Mark completed"}
+                </Button>
+              )}
+              {scheduled && (
+                <>
+                  <Button
+                    size="sm"
+                    variant={action === "reschedule" ? "default" : "outline"}
+                    onClick={() => setAction(action === "reschedule" ? null : "reschedule")}
+                  >
+                    Reschedule…
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={action === "reassign" ? "default" : "outline"}
+                    onClick={() => setAction(action === "reassign" ? null : "reassign")}
+                  >
+                    Reassign…
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={action === "cancel" ? "destructive" : "outline"}
+                    className={action === "cancel" ? undefined : "text-destructive"}
+                    onClick={() => setAction(action === "cancel" ? null : "cancel")}
+                  >
+                    Cancel visit…
+                  </Button>
+                </>
+              )}
+            </div>
+
+            {action === "reschedule" && scheduled && (
+              <form
+                className="space-y-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (newDate) rescheduleMut.mutate();
+                }}
+              >
+                <div>
+                  <Label htmlFor="va-date" className="text-xs">
+                    New date
+                  </Label>
+                  <Input
+                    id="va-date"
+                    type="date"
+                    className="w-44"
+                    value={newDate}
+                    onChange={(e) => setNewDate(e.target.value)}
+                    required
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Moving the visit clears its route assignment for the day; dispatch re-assigns it.
+                </p>
+                <Button type="submit" size="sm" disabled={rescheduleMut.isPending || !newDate}>
+                  {rescheduleMut.isPending ? "Moving…" : "Move visit"}
+                </Button>
+              </form>
+            )}
+
+            {action === "reassign" && scheduled && (
+              <form
+                className="space-y-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  reassignMut.mutate();
+                }}
+              >
+                <div>
+                  <Label htmlFor="va-staff" className="text-xs">
+                    Technician
+                  </Label>
+                  <select
+                    id="va-staff"
+                    value={newStaffId}
+                    onChange={(e) => setNewStaffId(e.target.value)}
+                    className="block h-9 w-56 rounded-md border bg-background px-2 text-sm"
+                  >
+                    <option value="">Unassigned</option>
+                    {staff.map((s: any) => (
+                      <option key={s.id} value={s.id}>
+                        {s.display_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={reassignMut.isPending || newStaffId === (v.assigned_staff_id ?? "")}
+                >
+                  {reassignMut.isPending ? "Reassigning…" : "Reassign visit"}
+                </Button>
+              </form>
+            )}
+
+            {action === "cancel" && scheduled && (
+              <form
+                className="space-y-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (cancelReason.trim()) cancelMut.mutate();
+                }}
+              >
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="va-code" className="text-xs">
+                      Reason code
+                    </Label>
+                    <select
+                      id="va-code"
+                      value={cancelCode}
+                      onChange={(e) => setCancelCode(e.target.value)}
+                      className="block h-9 w-full rounded-md border bg-background px-2 text-sm"
+                    >
+                      {SKIP_CODES.map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label htmlFor="va-reason" className="text-xs">
+                      Reason
+                    </Label>
+                    <Input
+                      id="va-reason"
+                      value={cancelReason}
+                      onChange={(e) => setCancelReason(e.target.value)}
+                      placeholder="Required"
+                      required
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  The visit is recorded as skipped with this reason; the org's skip-billing rules
+                  decide whether any charge applies.
+                </p>
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="destructive"
+                  disabled={cancelMut.isPending || !cancelReason.trim()}
+                >
+                  {cancelMut.isPending ? "Canceling…" : "Cancel visit"}
+                </Button>
+              </form>
+            )}
+          </div>
+        )}
 
         {canCorrect && (v.status === "completed" || v.status === "in_progress") && (
           <div className="rounded-md border bg-muted/20 p-3">

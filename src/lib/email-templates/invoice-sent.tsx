@@ -9,6 +9,8 @@ interface Props {
   amountCents?: number;
   invoiceUrl?: string;
   periodLabel?: string;
+  /** Reminder re-send of an already-sent invoice (QA round 8). */
+  reminder?: boolean;
 }
 
 const InvoiceSent = ({
@@ -17,20 +19,31 @@ const InvoiceSent = ({
   amountCents = 0,
   invoiceUrl,
   periodLabel,
+  reminder = false,
 }: Props) => (
   <Html lang="en">
     <Head />
-    <Preview>New invoice from {orgName}: {fmtMoney(amountCents)}</Preview>
+    <Preview>
+      {reminder
+        ? `Reminder: invoice from ${orgName}: ${fmtMoney(amountCents)}`
+        : `New invoice from ${orgName}: ${fmtMoney(amountCents)}`}
+    </Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
-        <Heading style={styles.h1}>New invoice</Heading>
-        <Text style={styles.text}>Hi {clientName}, a new invoice from {orgName} is ready.</Text>
+        <Heading style={styles.h1}>{reminder ? "Invoice reminder" : "New invoice"}</Heading>
+        <Text style={styles.text}>
+          {reminder
+            ? `Hi ${clientName}, a friendly reminder that your invoice from ${orgName} is still open.`
+            : `Hi ${clientName}, a new invoice from ${orgName} is ready.`}
+        </Text>
         <Text style={styles.amount}>{fmtMoney(amountCents)}</Text>
         {periodLabel ? <Text style={styles.text}>{periodLabel}</Text> : null}
         {invoiceUrl ? (
           <Button style={styles.button} href={invoiceUrl}>View &amp; pay invoice</Button>
         ) : null}
-        <Text style={styles.small}>Thanks for your business.</Text>
+        <Text style={styles.small}>
+          {reminder ? "If you've already paid, please ignore this email." : "Thanks for your business."}
+        </Text>
       </Container>
     </Body>
   </Html>
@@ -38,7 +51,8 @@ const InvoiceSent = ({
 
 export const template = {
   component: InvoiceSent,
-  subject: (d: Record<string, any>) => `Invoice ${fmtMoney(d.amountCents ?? 0)} from ${d.orgName ?? "your service"}`,
+  subject: (d: Record<string, any>) =>
+    `${d.reminder ? "Reminder: invoice" : "Invoice"} ${fmtMoney(d.amountCents ?? 0)} from ${d.orgName ?? "your service"}`,
   displayName: "Invoice sent",
   previewData: {
     orgName: "Acme Scoop Co.",

@@ -7,6 +7,22 @@ async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   return (await resolveCaller(supabase, userId)).orgId;
 }
 
+// Retroactive zone detection (QA round 8): after any zone change, re-run
+// detection across the org's properties so pre-existing clients pick up the
+// new boundaries without someone re-saving each address. Best effort — a
+// redetect failure must never fail the zone save itself.
+async function redetectBestEffort(supabase: any, orgId: string): Promise<number> {
+  try {
+    const { redetectZonesForOrg } = await import("@/lib/zones-redetect.server");
+    const updated = await redetectZonesForOrg(supabase, orgId);
+    console.info(`[zones] redetect for org ${orgId}: ${updated} properties re-assigned`);
+    return updated;
+  } catch (e) {
+    console.error(`[zones] redetect failed for org ${orgId}:`, e);
+    return 0;
+  }
+}
+
 function normalizeZips(input: string[] | undefined): string[] {
   if (!input) return [];
   const cleaned = input
@@ -20,10 +36,10 @@ export const listZones = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("zones")
       .select(
-        "id, name, postal_prefix, zip_codes, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
+        "id, name, priority, postal_prefix, zip_codes, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
       )
       .eq("organization_id", orgId)
       .order("name");
@@ -53,6 +69,9 @@ const zoneWriteSchema = z.object({
   pricePerSqftCents: z.number().min(0).max(10000).optional(),
   pricePerAcreCents: z.number().int().min(0).optional(),
   areaMinChargeCents: z.number().int().min(0).optional(),
+  // Overlap tie-breaker: higher priority wins among zones matching at the
+  // same specificity level (see src/lib/zone-match.ts).
+  priority: z.number().int().min(-999).max(999).optional(),
   geoMatchMode: z.enum(["zip", "radius", "polygon", "drive_time"]).optional(),
   boundary: polygonSchema.optional(),
   centerLatitude: z.number().min(-90).max(90).nullable().optional(),
@@ -67,10 +86,11 @@ export const createZone = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
-    const { data: row, error } = await supabase
+    const { data: row, error } = await (supabase as any)
       .from("zones")
       .insert({
         organization_id: orgId,
+        priority: data.priority ?? 0,
         name: data.name,
         zip_codes: normalizeZips(data.zipCodes),
         postal_prefix: data.postalPrefix || null,
@@ -95,7 +115,10 @@ export const createZone = createServerFn({ method: "POST" })
       .select("id")
       .single();
     if (error) throw new Error(error.message);
-    return { id: row.id as string };
+
+    // A new zone can capture existing properties immediately.
+    const propertiesUpdated = await redetectBestEffort(supabase, orgId);
+    return { id: row.id as string, propertiesUpdated };
   });
 
 const updateZoneSchema = zoneWriteSchema.extend({ id: z.string().uuid() }).partial({ name: true });
@@ -122,6 +145,7 @@ export const updateZone = createServerFn({ method: "POST" })
     if (data.pricePerSqftCents !== undefined) patch.price_per_sqft_cents = data.pricePerSqftCents;
     if (data.pricePerAcreCents !== undefined) patch.price_per_acre_cents = data.pricePerAcreCents;
     if (data.areaMinChargeCents !== undefined) patch.area_min_charge_cents = data.areaMinChargeCents;
+    if (data.priority !== undefined) patch.priority = data.priority;
     if (data.geoMatchMode !== undefined) patch.geo_match_mode = data.geoMatchMode;
     if (data.boundary !== undefined) patch.boundary = data.boundary as any;
     if (data.centerLatitude !== undefined) patch.center_latitude = data.centerLatitude;
@@ -135,7 +159,10 @@ export const updateZone = createServerFn({ method: "POST" })
       .eq("id", data.id)
       .eq("organization_id", orgId);
     if (error) throw new Error(error.message);
-    return { ok: true };
+
+    // Changed coverage/priority can re-assign existing properties.
+    const propertiesUpdated = await redetectBestEffort(supabase, orgId);
+    return { ok: true, propertiesUpdated };
   });
 
 export const deleteZone = createServerFn({ method: "POST" })
@@ -150,5 +177,8 @@ export const deleteZone = createServerFn({ method: "POST" })
       .eq("id", data.id)
       .eq("organization_id", orgId);
     if (error) throw new Error(error.message);
-    return { ok: true };
+
+    // Properties in the deleted zone can fall to another zone (or none).
+    const propertiesUpdated = await redetectBestEffort(supabase, orgId);
+    return { ok: true, propertiesUpdated };
   });

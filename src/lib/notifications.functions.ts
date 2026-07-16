@@ -2,23 +2,35 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-// Manually email an existing invoice to the client.
+// Manually email an existing invoice to the client. With reminder: true the
+// same template renders as a payment reminder ("Reminder: …" subject), and
+// the idempotency key is date-stamped so staff can re-remind on later days
+// without the pipeline deduping it away (max one reminder per day).
 export const sendInvoiceEmail = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ invoiceId: z.string().uuid() }).parse(d))
+  .inputValidator((d) =>
+    z.object({ invoiceId: z.string().uuid(), reminder: z.boolean().optional() }).parse(d),
+  )
   .handler(async ({ data, context }) => {
     const { supabase } = context;
-    const { data: inv, error } = await supabase
+    const { data: invRow, error } = await supabase
       .from("invoices")
-      .select("id, organization_id, client_id, total_cents, period_start, period_end, clients(portal_token)")
+      .select("id, organization_id, client_id, total_cents, period_start, period_end, public_token, clients(portal_token)")
       .eq("id", data.invoiceId)
       .single();
     if (error) throw new Error(error.message);
-    const token = (inv as any).clients?.portal_token as string | undefined;
-    const { buildPortalLink } = await import("@/lib/portal-links.server");
-    const invoiceUrl =
-      (await buildPortalLink(inv.organization_id, token)) ??
-      (process.env.APP_URL || "https://app.houndstack.com");
+    // public_token isn't in the generated types yet.
+    const inv = invRow as any;
+    // Prefer the no-login public pay link (QA round 8); fall back to the
+    // portal link for any legacy invoice without a token.
+    const publicToken = (inv as any).public_token as string | undefined;
+    const appUrl = process.env.APP_URL || "https://app.houndstack.com";
+    let invoiceUrl = publicToken ? `${appUrl}/pay/i/${publicToken}` : undefined;
+    if (!invoiceUrl) {
+      const token = (inv as any).clients?.portal_token as string | undefined;
+      const { buildPortalLink } = await import("@/lib/portal-links.server");
+      invoiceUrl = (await buildPortalLink(inv.organization_id, token)) ?? appUrl;
+    }
     const period =
       inv.period_start && inv.period_end
         ? `Services from ${inv.period_start} to ${inv.period_end}`
@@ -29,11 +41,14 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
       clientId: inv.client_id,
       templateName: "invoice-sent",
       notifyKey: "notify_email_invoice_sent",
-      idempotencyKey: `invoice-sent-${inv.id}`,
+      idempotencyKey: data.reminder
+        ? `invoice-reminder-${inv.id}-${new Date().toISOString().slice(0, 10)}`
+        : `invoice-sent-${inv.id}`,
       templateData: {
         amountCents: inv.total_cents,
         invoiceUrl,
         periodLabel: period,
+        reminder: data.reminder === true,
       },
     });
     if (!res.ok) throw new Error(`Email not sent: ${res.reason}`);
