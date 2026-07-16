@@ -334,7 +334,8 @@ export function usePortal(token: string, slug?: string) {
       propertyId?: string | null;
     }) => subscribeAddonFn({ data: { token, ...v } }),
     onSuccess: () => {
-      toast.success("Added to your next visit");
+      // Portal add-ons are REQUESTS now: nothing bills until staff approve.
+      toast.success("Request sent. We'll confirm it shortly.");
       invalidatePortal();
     },
     onError: (e) => toast.error((e as Error).message),

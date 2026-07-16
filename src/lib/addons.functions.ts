@@ -292,6 +292,23 @@ export const approveAddonRequest = createServerFn({ method: "POST" })
     const req = await loadPendingRequest(supabase, data.requestId);
     const name = req.addon_services?.name ?? "Add-on";
 
+    // Claim FIRST: two concurrent approvals (double-click, two staff) must
+    // not both create the billable object. The status flip is the atomic
+    // gate; whoever matches zero rows lost the race and stops here.
+    const { data: claimed, error: claimErr } = await ((supabase as any).from("addon_requests"))
+      .update({ status: "approved", decided_by: userId, decided_at: new Date().toISOString() })
+      .eq("id", data.requestId)
+      .eq("status", "pending")
+      .select("id");
+    if (claimErr) throw new Error(claimErr.message);
+    if (!claimed || claimed.length === 0) throw new Error("This request was already decided");
+
+    const revertClaim = async () => {
+      await ((supabase as any).from("addon_requests"))
+        .update({ status: "pending", decided_by: null, decided_at: null })
+        .eq("id", data.requestId);
+    };
+
     if (req.kind === "one_time") {
       // create_addon_charge handles prepaid credit; price is the snapshot the
       // client saw when requesting.
@@ -305,7 +322,10 @@ export const approveAddonRequest = createServerFn({ method: "POST" })
         _source: "office",
         _note: "Approved client portal request",
       });
-      if (error) throw new Error(error.message);
+      if (error) {
+        await revertClaim();
+        throw new Error(error.message);
+      }
       if (req.property_id) {
         await ((supabase as any).from("addon_charges"))
           .update({ property_id: req.property_id })
@@ -324,14 +344,11 @@ export const approveAddonRequest = createServerFn({ method: "POST" })
         started_on: started,
         next_charge_on: started,
       });
-      if (error) throw new Error(error.message);
+      if (error) {
+        await revertClaim();
+        throw new Error(error.message);
+      }
     }
-
-    const { error: uErr } = await ((supabase as any).from("addon_requests"))
-      .update({ status: "approved", decided_by: userId, decided_at: new Date().toISOString() })
-      .eq("id", data.requestId)
-      .eq("status", "pending");
-    if (uErr) throw new Error(uErr.message);
 
     const { logActivity } = await import("@/lib/activity.server");
     await logActivity(supabase, {

@@ -857,6 +857,17 @@ export const createClientHold = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
 
+    // The hold's client must belong to the caller's org (a DB trigger also
+    // enforces this): otherwise a foreign client id would delete ANOTHER
+    // tenant's scheduled visits via the SECURITY DEFINER clearing trigger.
+    const { data: holdClient, error: hcErr } = await supabase
+      .from("clients")
+      .select("organization_id")
+      .eq("id", data.clientId)
+      .single();
+    if (hcErr) throw new Error(hcErr.message);
+    if (holdClient.organization_id !== orgId) throw new Error("Client not found");
+
     // Count what the hold is about to remove (the DB trigger deletes them on
     // insert) so the activity entry can say so.
     const { count } = await supabase

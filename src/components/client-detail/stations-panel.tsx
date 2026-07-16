@@ -200,7 +200,10 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
         onSubmit={(e) => {
           e.preventDefault();
           if (!draft.label || !draft.propertyId) return;
-          if (!draft.position) {
+          // New stations need a marker; EDITING a legacy marker-less station
+          // must still be possible (rename, liner size) or those rows would
+          // be permanently locked for anyone not standing on site.
+          if (!draft.position && !draft.id) {
             setMarkerMissing(true);
             toast.error("Place the station on the map first");
             return;
@@ -213,8 +216,9 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
             locationDescription: draft.notes || null,
             linerSize: draft.linerSize || null,
             section: draft.section || null,
-            latitude: draft.position.lat,
-            longitude: draft.position.lng,
+            ...(draft.position
+              ? { latitude: draft.position.lat, longitude: draft.position.lng }
+              : {}),
           });
         }}
       >
@@ -223,7 +227,11 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
           <select
             className="h-10 w-full rounded-md border bg-background px-3 text-sm"
             value={draft.propertyId}
-            onChange={(e) => setDraft({ ...draft, propertyId: e.target.value, section: "" })}
+            // A marker dropped on property A must not silently become the
+            // location on property B: clear it with the section.
+            onChange={(e) =>
+              setDraft({ ...draft, propertyId: e.target.value, section: "", position: null })
+            }
           >
             {properties.map((p: any) => (
               <option key={p.id} value={p.id}>

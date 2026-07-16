@@ -333,6 +333,20 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               // card on file — the failed payment row above is enough.
               const failSource = pi.metadata?.source;
               const isSavedCardCharge = failSource === "autopay" || failSource === "portal_saved_card";
+              // A staff-initiated saved-card charge that declines is still a
+              // decline of the CARD ON FILE: record card health so the
+              // Billing tab shows it, but don't escalate (no failure count,
+              // no autopay pause, no SMS — staff saw the error live).
+              if (failSource === "staff_saved_card") {
+                const { data: failInv } = await supabaseAdmin
+                  .from("invoices").select("client_id").eq("id", invoiceId).maybeSingle();
+                if ((failInv as any)?.client_id) {
+                  await supabaseAdmin.from("clients").update({
+                    autopay_last_error: pi.last_payment_error?.message ?? "Card charge failed",
+                    autopay_last_attempt_at: new Date().toISOString(),
+                  }).eq("id", (failInv as any).client_id);
+                }
+              }
               // Record error on client for autopay visibility
               const err = pi.last_payment_error?.message ?? "Card charge failed";
               const { data: inv } = await supabaseAdmin

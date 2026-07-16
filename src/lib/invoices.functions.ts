@@ -489,6 +489,27 @@ export const chargeInvoiceWithSavedCard = createServerFn({ method: "POST" })
       .select("id, stripe_customer_id, default_payment_method_id, default_card_brand, default_card_last4")
       .eq("id", invoice.client_id)
       .single();
+    // In-flight bank debit guard (same rule as the minting fns): a stored PI
+    // in "processing" means the invoice IS being paid — charging the saved
+    // card on top would collect twice when the debit clears.
+    if (invoice.stripe_payment_intent_id) {
+      const { requireOrgStripeAccount: acctFn, connectStripe: stripeFn } = await import("@/lib/stripe-connect.server");
+      const guardAcct = await acctFn(invoice.organization_id);
+      const guardStripe = await stripeFn();
+      try {
+        const existing = await guardStripe.paymentIntents.retrieve(
+          invoice.stripe_payment_intent_id, {}, { stripeAccount: guardAcct.accountId },
+        );
+        if (existing.status === "processing") {
+          throw new Error(
+            "A payment for this invoice is already processing. Bank payments can take a few days to clear.",
+          );
+        }
+      } catch (e) {
+        if ((e as Error).message?.startsWith("A payment for this invoice is already processing")) throw e;
+        // Retrieve hiccups don't block the charge; the reconcile above ran.
+      }
+    }
     if (cErr) throw new Error(cErr.message);
     if (!c.stripe_customer_id || !c.default_payment_method_id) {
       throw new Error("No saved card on file for this client");
@@ -519,7 +540,10 @@ export const chargeInvoiceWithSavedCard = createServerFn({ method: "POST" })
         },
       }, {
         // Prevent a double-click (or a retried request) from charging twice.
-        idempotencyKey: `staff-saved-card-${invoice.id}-${invoice.total_cents}`,
+        // The payment-method id is part of the key: after a decline the
+        // client may save a NEW card the same day, and replaying the old
+        // key with different params would be an idempotency_error.
+        idempotencyKey: `staff-saved-card-${invoice.id}-${invoice.total_cents}-${c.default_payment_method_id}`,
         stripeAccount: acct.accountId,
       });
       await supabase
