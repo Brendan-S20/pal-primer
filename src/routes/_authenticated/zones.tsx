@@ -352,6 +352,19 @@ function ZoneCard({ zone, canEdit }: { zone: any; canEdit: boolean }) {
     ((zone.area_min_charge_cents ?? 0) / 100).toFixed(2),
   );
   const [priority, setPriority] = useState<string>(String(zone.priority ?? 0));
+  // Commercial (HOA) pricing: base + per-unit x units + per-acre x acres.
+  // Blank = not configured (the service drawer shows a setup hint instead).
+  const dollarsOrBlank = (cents: number | null | undefined) =>
+    cents != null ? (cents / 100).toFixed(2) : "";
+  const [commBase, setCommBase] = useState<string>(dollarsOrBlank(zone.commercial_base_cents));
+  const [commPerUnit, setCommPerUnit] = useState<string>(
+    dollarsOrBlank(zone.commercial_per_unit_cents),
+  );
+  const [commPerAcre, setCommPerAcre] = useState<string>(
+    dollarsOrBlank(zone.commercial_per_acre_cents),
+  );
+  const centsOrNull = (v: string) =>
+    v.trim() === "" ? null : Math.round((parseFloat(v) || 0) * 100);
 
   const saveMut = useMutation({
     mutationFn: () =>
@@ -368,6 +381,9 @@ function ZoneCard({ zone, canEdit }: { zone: any; canEdit: boolean }) {
           pricePerSqftCents: parseFloat(perSqft) > 0 ? parseFloat(perSqft) * 100 : 0,
           pricePerAcreCents: Math.round((parseFloat(perAcre) || 0) * 100),
           areaMinChargeCents: Math.round((parseFloat(areaMin) || 0) * 100),
+          commercialBaseCents: centsOrNull(commBase),
+          commercialPerUnitCents: centsOrNull(commPerUnit),
+          commercialPerAcreCents: centsOrNull(commPerAcre),
           priority: parseInt(priority, 10) || 0,
         },
       }),
@@ -450,6 +466,16 @@ function ZoneCard({ zone, canEdit }: { zone: any; canEdit: boolean }) {
               <div className="mt-1 text-xs text-primary">
                 {money(zone.price_per_acre_cents)}/acre
                 {zone.area_min_charge_cents > 0 && ` · min ${money(zone.area_min_charge_cents)}`}
+              </div>
+            )}
+            {(zone.commercial_base_cents ?? 0) +
+              (zone.commercial_per_unit_cents ?? 0) +
+              (zone.commercial_per_acre_cents ?? 0) >
+              0 && (
+              <div className="mt-1 text-xs text-muted-foreground">
+                Commercial: {money(zone.commercial_base_cents ?? 0)} base +{" "}
+                {money(zone.commercial_per_unit_cents ?? 0)}/unit +{" "}
+                {money(zone.commercial_per_acre_cents ?? 0)}/acre
               </div>
             )}
           </div>
@@ -598,6 +624,53 @@ function ZoneCard({ zone, canEdit }: { zone: any; canEdit: boolean }) {
             </>
           )}
         </div>
+
+        <fieldset className="space-y-2 rounded-md border bg-muted/20 p-3">
+          <legend className="px-1 text-sm font-medium">Commercial pricing</legend>
+          <p className="text-xs text-muted-foreground">
+            For HOA and commercial properties: per-visit price = base + per-unit × units +
+            per-acre × grounds acreage, then the frequency multiplier. Leave blank if this zone
+            doesn't serve commercial accounts.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Base / visit ($)</Label>
+              <div className="flex items-center gap-1">
+                <span className="text-muted-foreground">$</span>
+                <Input
+                  inputMode="decimal"
+                  value={commBase}
+                  onChange={(e) => setCommBase(e.target.value)}
+                  placeholder="100.00"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Per unit ($)</Label>
+              <div className="flex items-center gap-1">
+                <span className="text-muted-foreground">$</span>
+                <Input
+                  inputMode="decimal"
+                  value={commPerUnit}
+                  onChange={(e) => setCommPerUnit(e.target.value)}
+                  placeholder="3.50"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Per acre ($)</Label>
+              <div className="flex items-center gap-1">
+                <span className="text-muted-foreground">$</span>
+                <Input
+                  inputMode="decimal"
+                  value={commPerAcre}
+                  onChange={(e) => setCommPerAcre(e.target.value)}
+                  placeholder="40.00"
+                />
+              </div>
+            </div>
+          </div>
+        </fieldset>
 
         <div className="flex justify-end gap-2 border-t pt-3">
           <Button variant="ghost" onClick={() => setEditing(false)}>

@@ -41,7 +41,11 @@ import {
   deleteDraftSubscription,
   getStandardPricing,
 } from "@/lib/subscriptions.functions";
-import { computeZoneVisitPrice } from "@/lib/pricing";
+import {
+  computeZoneVisitPrice,
+  computeCommercialZonePrice,
+  zoneHasCommercialPricing,
+} from "@/lib/pricing";
 import {
   subscriptionToFormValues,
   blankSubscriptionFormValues,
@@ -844,8 +848,9 @@ function ServiceDrawer({
   // Breakdown parts (QA follow-up 1.2): the owner must be able to derive the
   // zone price from the Zones page config, so show every component.
   const extraDogs = Math.max(0, dogsForPricing - 1);
+  // Standard pricing is per-dog residential math — hidden for commercial.
   const stdParts =
-    std?.basePriceCents != null
+    accountType === "residential" && std?.basePriceCents != null
       ? {
           base: std.basePriceCents,
           dogAdj: extraDogs * (std.perDogAddlCents ?? 0),
@@ -855,21 +860,22 @@ function ServiceDrawer({
   const standardCents = stdParts
     ? Math.round((stdParts.base + stdParts.dogAdj) * freqMultiplier)
     : null;
-  const zonePrice = pricingZone
-    ? computeZoneVisitPrice(
-        {
-          base_price_cents: pricingZone.base_price_cents,
-          per_dog_addl_cents: pricingZone.per_dog_addl_cents,
-          pricing_mode: (pricingZone.pricing_mode ?? "flat") as "flat" | "per_sqft" | "per_acre",
-          price_per_sqft_cents: Number(pricingZone.price_per_sqft_cents ?? 0),
-          price_per_acre_cents: pricingZone.price_per_acre_cents,
-          area_min_charge_cents: pricingZone.area_min_charge_cents,
-        },
-        {
-          dogCount: dogsForPricing,
-          boundaryAreaSqm: selectedProperty?.boundary_area_sqm
-            ? Number(selectedProperty.boundary_area_sqm)
-            : null,
+  const zonePrice =
+    accountType === "residential" && pricingZone
+      ? computeZoneVisitPrice(
+          {
+            base_price_cents: pricingZone.base_price_cents,
+            per_dog_addl_cents: pricingZone.per_dog_addl_cents,
+            pricing_mode: (pricingZone.pricing_mode ?? "flat") as "flat" | "per_sqft" | "per_acre",
+            price_per_sqft_cents: Number(pricingZone.price_per_sqft_cents ?? 0),
+            price_per_acre_cents: pricingZone.price_per_acre_cents,
+            area_min_charge_cents: pricingZone.area_min_charge_cents,
+          },
+          {
+            dogCount: dogsForPricing,
+            boundaryAreaSqm: selectedProperty?.boundary_area_sqm
+              ? Number(selectedProperty.boundary_area_sqm)
+              : null,
           multiplier: freqMultiplier,
         },
       )
@@ -886,7 +892,37 @@ function ServiceDrawer({
         perVisit: zonePrice.perVisitCents,
       }
     : null;
-  const zoneCents = zonePrice ? zonePrice.recurringCents : null;
+  // Commercial zone pricing (HOA model): base + per-unit x units + per-acre x
+  // acres from the property's drawn boundary, then the schedule multiplier.
+  const unitsForPricing =
+    accountType === "commercial" ? Math.max(1, parseInt(form.unitCount, 10) || 1) : 0;
+  const commercialFields = pricingZone
+    ? {
+        commercial_base_cents: pricingZone.commercial_base_cents ?? null,
+        commercial_per_unit_cents: pricingZone.commercial_per_unit_cents ?? null,
+        commercial_per_acre_cents: pricingZone.commercial_per_acre_cents ?? null,
+      }
+    : null;
+  const commercialConfigured =
+    accountType === "commercial" && commercialFields
+      ? zoneHasCommercialPricing(commercialFields)
+      : false;
+  const commercialPrice =
+    commercialConfigured && commercialFields
+      ? computeCommercialZonePrice(commercialFields, {
+          unitCount: unitsForPricing,
+          boundaryAreaSqm: selectedProperty?.boundary_area_sqm
+            ? Number(selectedProperty.boundary_area_sqm)
+            : null,
+          multiplier: freqMultiplier,
+        })
+      : null;
+  const zoneCents =
+    accountType === "commercial"
+      ? (commercialPrice?.recurringCents ?? null)
+      : zonePrice
+        ? zonePrice.recurringCents
+        : null;
   const finalCents =
     priceValue != null && Number.isFinite(priceValue) ? Math.round(priceValue * 100) : null;
   const priceSource =
@@ -1183,12 +1219,69 @@ function ServiceDrawer({
           </select>
         </div>
 
-        {(standardCents != null || zoneCents != null) && (
+        {(standardCents != null ||
+          zoneCents != null ||
+          (accountType === "commercial" && pricingZone)) && (
           <div className="rounded-md border bg-muted/20 p-3 text-sm">
             <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Price comparison (per visit at this schedule)
             </div>
+            {accountType === "commercial" && pricingZone && !commercialConfigured && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                This zone has no commercial pricing yet. Set base, per-unit, and per-acre rates on
+                the Zones page to compare against it here.
+              </p>
+            )}
             <dl className="mt-2 space-y-1">
+              {commercialPrice && zoneCents != null && (
+                <>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <dt>{pricingZone?.name} zone commercial base</dt>
+                    <dd>${(commercialPrice.baseCents / 100).toFixed(2)}</dd>
+                  </div>
+                  {commercialPrice.unitCents > 0 && (
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <dt>
+                        Units ({unitsForPricing} × $
+                        {((pricingZone?.commercial_per_unit_cents ?? 0) / 100).toFixed(2)})
+                      </dt>
+                      <dd>+${(commercialPrice.unitCents / 100).toFixed(2)}</dd>
+                    </div>
+                  )}
+                  {commercialPrice.acreageCents > 0 && (
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <dt>Acreage charge</dt>
+                      <dd>+${(commercialPrice.acreageCents / 100).toFixed(2)}</dd>
+                    </div>
+                  )}
+                  {freqMultiplier !== 1 && (
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <dt>
+                        Schedule adjustment (${(commercialPrice.perVisitCents / 100).toFixed(2)} ×{" "}
+                        {freqMultiplier})
+                      </dt>
+                      <dd>
+                        +${((zoneCents - commercialPrice.perVisitCents) / 100).toFixed(2)}
+                      </dd>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between border-t pt-1">
+                    <dt className="text-muted-foreground">{pricingZone?.name} zone price</dt>
+                    <dd className="flex items-center gap-2">
+                      ${(zoneCents / 100).toFixed(2)}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => set("priceDollars", (zoneCents / 100).toFixed(2))}
+                      >
+                        Use zone
+                      </Button>
+                    </dd>
+                  </div>
+                </>
+              )}
               {zoneParts && zoneCents != null && (
                 <>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">

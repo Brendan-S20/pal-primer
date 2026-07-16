@@ -14,6 +14,7 @@ import { getClientBillingSummary, getClientCredit } from "@/lib/invoices.functio
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermissions } from "@/hooks/useMyRole";
 import { ClientHeader } from "@/components/client-detail/ClientHeader";
+import { UnitsTab } from "@/components/client-detail/UnitsTab";
 import { EditClientDrawer } from "@/components/client-detail/EditClientDrawer";
 import { SummaryTab } from "@/components/client-detail/SummaryTab";
 import { PropertiesTab } from "@/components/client-detail/PropertiesTab";
@@ -29,6 +30,7 @@ import { ReviewsReferralsTab } from "@/components/client-detail/ReviewsReferrals
 const TABS = [
   "summary",
   "properties",
+  "units",
   "services",
   "visits",
   "billing",
@@ -126,6 +128,13 @@ function ClientDetail() {
     (s: any) => s.status === "active" && !isServiceEnded(s, todayISO),
   );
   const isCommercial = client.account_type === "commercial";
+  // Units exist for HOA/commercial portfolios: gate on the client's account
+  // type or any commercial property (same signal as unit_count on services).
+  const hasCommercialProperty =
+    isCommercial ||
+    activeProperties.some((p: any) => (p.account_type ?? client.account_type) === "commercial");
+  // A deep link to ?tab=units on a residential client falls back to Summary.
+  const effectiveTab: TabValue = tab === "units" && !hasCommercialProperty ? "summary" : tab;
 
   return (
     <div className="space-y-5">
@@ -145,7 +154,7 @@ function ClientDetail() {
         onEditClient={() => setEditClientOpen(true)}
       />
 
-      <Tabs value={tab} onValueChange={setTab} className="space-y-5">
+      <Tabs value={effectiveTab} onValueChange={setTab} className="space-y-5">
         <TabsList className="inline-flex h-auto w-auto flex-wrap justify-start">
           <TabsTrigger
             value="summary"
@@ -159,6 +168,14 @@ function ClientDetail() {
           >
             Properties
           </TabsTrigger>
+          {hasCommercialProperty && (
+            <TabsTrigger
+              value="units"
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md px-3 py-1.5"
+            >
+              Units
+            </TabsTrigger>
+          )}
           <TabsTrigger
             value="services"
             className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md px-3 py-1.5"
@@ -225,8 +242,21 @@ function ClientDetail() {
             zones={zones}
             visits={visits}
             canManagePricing={canManagePricing}
+            onGoToTab={setTab}
           />
         </TabsContent>
+
+        {hasCommercialProperty && (
+          <TabsContent value="units">
+            <UnitsTab
+              clientId={clientId}
+              client={client}
+              properties={activeProperties}
+              canBill={canBill}
+              onGoToTab={setTab}
+            />
+          </TabsContent>
+        )}
 
         <TabsContent value="services" className="space-y-6">
           <ServicesTab

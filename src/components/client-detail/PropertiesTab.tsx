@@ -107,6 +107,7 @@ export function PropertiesTab({
   zones,
   visits,
   canManagePricing,
+  onGoToTab,
 }: {
   clientId: string;
   client: any;
@@ -114,6 +115,8 @@ export function PropertiesTab({
   zones: any[];
   visits: any[];
   canManagePricing: boolean;
+  /** Tab navigation for cross-tab pointers (commercial dogs live on Units). */
+  onGoToTab?: (tab: string) => void;
 }) {
   const qc = useQueryClient();
   const listPropsFn = useServerFn(listPropertiesForClient);
@@ -196,6 +199,7 @@ export function PropertiesTab({
               onToggle={() => toggle(p.id)}
               onEdit={() => setDrawerProp(p.id)}
               canManagePricing={canManagePricing}
+              onGoToTab={onGoToTab}
             />
           ))}
         </ul>
@@ -265,6 +269,7 @@ function PropertyCard({
   onToggle,
   onEdit,
   canManagePricing,
+  onGoToTab,
 }: {
   property: any;
   client: any;
@@ -277,6 +282,7 @@ function PropertyCard({
   onToggle: () => void;
   onEdit: () => void;
   canManagePricing: boolean;
+  onGoToTab?: (tab: string) => void;
 }) {
   const qc = useQueryClient();
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
@@ -631,14 +637,32 @@ function PropertyCard({
             </div>
           </div>
 
-          <DogsSection
-            propertyId={p.id}
-            clientId={clientId}
-            dogs={dogs}
-            billedDogCounts={activeSubs
-              .filter((x: any) => x.account_type === "residential" && x.dog_count != null)
-              .map((x: any) => x.dog_count as number)}
-          />
+          {isCommercial ? (
+            // Commercial dogs belong to units (PooPrints model) — manage them
+            // on the Units tab, not here.
+            <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+              <DogIcon className="h-4 w-4" />
+              <span>Dogs are managed per unit on the Units tab.</span>
+              {onGoToTab && (
+                <button
+                  type="button"
+                  className="text-primary hover:underline"
+                  onClick={() => onGoToTab("units")}
+                >
+                  Go to Units
+                </button>
+              )}
+            </div>
+          ) : (
+            <DogsSection
+              propertyId={p.id}
+              clientId={clientId}
+              dogs={dogs}
+              billedDogCounts={activeSubs
+                .filter((x: any) => x.account_type === "residential" && x.dog_count != null)
+                .map((x: any) => x.dog_count as number)}
+            />
+          )}
         </div>
       )}
     </li>

@@ -52,6 +52,16 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
       },
     });
     if (!res.ok) throw new Error(`Email not sent: ${res.reason}`);
+    // Stamp sent_at (full auto billing): a "Send now" during the grace window
+    // takes the invoice out of the nightly auto-send loop, so the client can
+    // never get the invoice email twice. Reminders don't re-stamp.
+    if (!data.reminder) {
+      await supabase
+        .from("invoices")
+        .update({ sent_at: new Date().toISOString() } as any)
+        .eq("id", inv.id)
+        .is("sent_at" as any, null);
+    }
     // The email is QUEUED here (a cron flips it to sent/failed within ~1 min).
     // Return the log id + recipient so the UI can poll for the real outcome
     // rather than claim "emailed" before it actually sends (finding #32).

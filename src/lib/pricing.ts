@@ -53,3 +53,56 @@ export function computeZoneVisitPrice(zone: ZonePricingFields, input: VisitPrice
   const recurringCents = Math.round(perVisitCents * (input.multiplier ?? 1));
   return { areaBasisCents, perVisitCents, recurringCents };
 }
+
+// ── Commercial (HOA) zone pricing ───────────────────────────────────────────
+// Commercial properties price by units and grounds, not dogs:
+// per-visit = commercial base + per-unit x units + per-acre x acres, then the
+// frequency multiplier. Every component SUMS (same rule as residential).
+
+export interface CommercialZonePricingFields {
+  commercial_base_cents: number | null;
+  commercial_per_unit_cents: number | null;
+  commercial_per_acre_cents: number | null;
+}
+
+export interface CommercialPriceInput {
+  unitCount: number;
+  boundaryAreaSqm?: number | null;
+  /** Frequency multiplier (1 = weekly baseline). */
+  multiplier?: number;
+}
+
+export interface CommercialPriceResult {
+  baseCents: number;
+  /** per-unit rate x unit count. */
+  unitCents: number;
+  /** per-acre rate x acres from the drawn boundary (0 when no boundary). */
+  acreageCents: number;
+  /** Full per-visit price before the frequency multiplier. */
+  perVisitCents: number;
+  /** Per-visit price after the frequency multiplier. */
+  recurringCents: number;
+}
+
+/** True when the zone has any commercial pricing component configured. */
+export function zoneHasCommercialPricing(zone: CommercialZonePricingFields): boolean {
+  return (
+    (zone.commercial_base_cents ?? 0) > 0 ||
+    (zone.commercial_per_unit_cents ?? 0) > 0 ||
+    (zone.commercial_per_acre_cents ?? 0) > 0
+  );
+}
+
+export function computeCommercialZonePrice(
+  zone: CommercialZonePricingFields,
+  input: CommercialPriceInput,
+): CommercialPriceResult {
+  const baseCents = zone.commercial_base_cents ?? 0;
+  const unitCents = Math.max(0, input.unitCount) * (zone.commercial_per_unit_cents ?? 0);
+  const acreageCents = input.boundaryAreaSqm
+    ? Math.round((input.boundaryAreaSqm / SQM_PER_ACRE) * (zone.commercial_per_acre_cents ?? 0))
+    : 0;
+  const perVisitCents = baseCents + unitCents + acreageCents;
+  const recurringCents = Math.round(perVisitCents * (input.multiplier ?? 1));
+  return { baseCents, unitCents, acreageCents, perVisitCents, recurringCents };
+}

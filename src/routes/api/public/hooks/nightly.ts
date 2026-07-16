@@ -76,12 +76,25 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           }
 
           if (org.auto_invoice_enabled) {
-            const { data: n, error } = await supabaseAdmin.rpc("admin_generate_invoices_for_org", {
+            // Full auto billing with grace: run_billing_cycles respects each
+            // client's billing_frequency and stamps send_after (grace window),
+            // replacing the old cadence-blind admin_generate_invoices_for_org
+            // sweep. Idempotent with the DB-side pg_cron run of the same fn.
+            const { data: n, error } = await (supabaseAdmin as any).rpc("run_billing_cycles", {
               _org_id: org.id,
-              _through: todayStr,
             });
             perOrg.invoices_generated = error ? `err: ${error.message}` : (n as number);
           }
+
+          // Grace-window auto-send: open invoices whose send_after has arrived
+          // and that were never emailed get the invoice email now. Rendering
+          // lives app-side (react-email), so this must run here rather than in
+          // SQL. sent_at is the idempotency guard against double emails.
+          perOrg.invoices_auto_sent = await autoSendScheduledInvoices(
+            supabaseAdmin,
+            org.id,
+            todayStr,
+          );
 
           // Overdue reminders are automated notifications → PLATFORM Twilio sender.
           const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
@@ -200,6 +213,68 @@ async function generateRoyaltiesForParent(supabaseAdmin: any, parentOrgId: strin
     if (!upErr) generated += 1;
   }
   return generated;
+}
+
+// Auto-send invoices whose grace window has ended (full auto billing).
+// Selects open invoices with sent_at null and send_after <= today, enqueues
+// the same "invoice-sent" email the manual "Send now" action uses (identical
+// idempotency key, so the email pipeline dedupes a manual send racing this
+// loop), then stamps sent_at so the invoice is never emailed twice. Transient
+// failures (render/enqueue) leave sent_at null and retry the next night;
+// permanent skips (opt-out, suppression, no recipient, org toggle off) also
+// retry, but enqueueAppEmail short-circuits those cheaply without sending.
+async function autoSendScheduledInvoices(
+  supabaseAdmin: any,
+  orgId: string,
+  todayStr: string,
+): Promise<number | string> {
+  const { data: invoices, error } = await supabaseAdmin
+    .from("invoices")
+    .select("id, client_id, total_cents, period_start, period_end, public_token, send_after, sent_at")
+    .eq("organization_id", orgId)
+    .eq("status", "open")
+    .is("sent_at", null)
+    .not("send_after", "is", null)
+    .lte("send_after", todayStr);
+  if (error) return `err: ${error.message}`;
+  if (!invoices?.length) return 0;
+
+  const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+  const base = appUrl();
+  let sent = 0;
+  for (const inv of invoices as any[]) {
+    const invoiceUrl = inv.public_token ? `${base}/pay/i/${inv.public_token}` : base;
+    const period =
+      inv.period_start && inv.period_end
+        ? `Services from ${inv.period_start} to ${inv.period_end}`
+        : undefined;
+    try {
+      const res = await enqueueAppEmail({
+        organizationId: orgId,
+        clientId: inv.client_id,
+        templateName: "invoice-sent",
+        notifyKey: "notify_email_invoice_sent",
+        idempotencyKey: `invoice-sent-${inv.id}`,
+        templateData: {
+          amountCents: inv.total_cents,
+          invoiceUrl,
+          periodLabel: period,
+          reminder: false,
+        },
+      });
+      if (res.ok) {
+        await supabaseAdmin
+          .from("invoices")
+          .update({ sent_at: new Date().toISOString() })
+          .eq("id", inv.id)
+          .is("sent_at", null);
+        sent++;
+      }
+    } catch (e) {
+      console.error("invoice auto-send failed", inv.id, e);
+    }
+  }
+  return sent;
 }
 
 async function sendOverdueReminders(

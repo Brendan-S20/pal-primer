@@ -39,6 +39,12 @@ export function EditClientDrawer({
       referralSource: client?.referral_source ?? "",
       smsOptOut: !!client?.sms_opt_out,
       emailOptOut: !!client?.email_opt_out,
+      billingFrequency: (client?.billing_frequency ?? "monthly") as
+        | "after_each_visit"
+        | "weekly"
+        | "monthly"
+        | "quarterly"
+        | "yearly",
     }),
     [client],
   );
@@ -75,6 +81,7 @@ export function EditClientDrawer({
           referralSource: form.referralSource || null,
           smsOptOut: form.smsOptOut,
           emailOptOut: form.emailOptOut,
+          billingFrequency: form.billingFrequency,
         },
       }),
     onSuccess: () => {
@@ -210,6 +217,25 @@ export function EditClientDrawer({
               placeholder="Google, neighbor, truck wrap"
             />
           </div>
+        </div>
+        <div>
+          <Label htmlFor="ec-billfreq">Billing cadence</Label>
+          <select
+            id="ec-billfreq"
+            value={form.billingFrequency}
+            onChange={(e) => set("billingFrequency", e.target.value as typeof form.billingFrequency)}
+            className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+          >
+            <option value="after_each_visit">After each visit</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+            <option value="quarterly">Quarterly</option>
+            <option value="yearly">Yearly</option>
+          </select>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Invoices for completed visits generate automatically at the end of each cycle, then
+            send after your grace period (Settings, Automation).
+          </p>
         </div>
         <fieldset className="rounded-md border bg-muted/20 p-3">
           <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
