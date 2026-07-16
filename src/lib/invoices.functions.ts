@@ -252,21 +252,38 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
     return { ok, failed };
   });
 
-export const createCheckoutForInvoice = createServerFn({ method: "POST" })
+// In-app payment (Payment Element): staff take a card or ACH payment right on
+// the invoice page. Mirrors the portal's portalCreateInvoicePaymentIntent but
+// staff-authenticated, and never saves the client's payment method — only the
+// client can consent to that from their portal.
+const INVOICE_PM_TYPES = ["card", "us_bank_account"];
+
+// ACH requires activation on the connected account; when it isn't enabled the
+// PI create/update fails and we retry card-only.
+function isBankDebitUnavailableError(e: unknown): boolean {
+  const err = e as { message?: string; param?: string };
+  return (
+    /us_bank_account/i.test(err?.message ?? "") ||
+    /payment_method_types/.test(err?.param ?? "")
+  );
+}
+
+export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ id: z.string().uuid(), returnUrl: z.string().url() }).parse(d))
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
     await requirePermission(supabase, context.userId, "manage_client_billing");
     // Read invoice + verify access via RLS
     const { data: invoice, error } = await supabase
       .from("invoices")
-      .select("id, organization_id, client_id, total_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id, clients(display_name, primary_email)")
+      .select("id, organization_id, client_id, total_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id")
       .eq("id", data.id)
       .single();
     if (error) throw new Error(error.message);
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
+    if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
     // If a previous session/intent was already paid but the status is stale
     // (webhook missed), reconcile instead of minting a second charge.
     if (invoice.stripe_checkout_session_id || invoice.stripe_payment_intent_id) {
@@ -275,100 +292,103 @@ export const createCheckoutForInvoice = createServerFn({ method: "POST" })
         throw new Error("Invoice already paid");
       }
     }
-    if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
+
+    const { data: cRow, error: cErr } = await supabase
+      .from("clients")
+      .select("id, stripe_customer_id, primary_email, display_name")
+      .eq("id", invoice.client_id)
+      .single();
+    if (cErr) throw new Error(cErr.message);
 
     // Tenant->client charge: runs on the org's own connected Stripe account.
-    const { requireOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
+    const { requireOrgStripeAccount, connectStripe, connectPublishableKey, verifyClientStripeCustomer } = await import("@/lib/stripe-connect.server");
     const acct = await requireOrgStripeAccount(invoice.organization_id);
     const stripe = await connectStripe();
-    const client = Array.isArray(invoice.clients) ? invoice.clients[0] : (invoice.clients as { display_name?: string; primary_email?: string } | null);
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      success_url: `${data.returnUrl}?paid=1`,
-      cancel_url: data.returnUrl,
-      client_reference_id: invoice.id,
-      customer_email: client?.primary_email ?? undefined,
-      line_items: [{
-        quantity: 1,
-        price_data: {
-          currency: invoice.currency ?? "usd",
-          unit_amount: invoice.total_cents,
-          product_data: { name: `Invoice ${invoice.id.slice(0, 8)}: ${client?.display_name ?? "Service"}` },
-        },
-      }],
-      metadata: { invoice_id: invoice.id, organization_id: invoice.organization_id },
-    }, { stripeAccount: acct.accountId });
+    const opts = { stripeAccount: acct.accountId };
 
-    // Persist checkout session details (RLS: manager)
-    const { error: upErr } = await supabase
-      .from("invoices")
-      .update({
-        stripe_checkout_session_id: session.id,
-        checkout_url: session.url,
-        status: "open",
-      })
-      .eq("id", invoice.id);
-    if (upErr) throw new Error(upErr.message);
+    let customerId = await verifyClientStripeCustomer(stripe, acct.accountId, cRow);
+    if (!customerId) {
+      const cust = await stripe.customers.create({
+        email: cRow.primary_email ?? undefined,
+        name: cRow.display_name ?? undefined,
+        metadata: { client_id: cRow.id, organization_id: invoice.organization_id },
+      }, opts);
+      customerId = cust.id;
+      await supabase.from("clients").update({ stripe_customer_id: customerId }).eq("id", cRow.id);
+    }
 
-    return { url: session.url as string, sessionId: session.id };
-  });
+    const currency = (invoice.currency ?? "usd").toLowerCase();
+    const metadata = {
+      invoice_id: invoice.id,
+      organization_id: invoice.organization_id,
+      source: "staff_inline",
+    };
 
-// Embedded in-app checkout for an invoice (re-review): same connected-account
-// session as createCheckoutForInvoice, but ui_mode embedded so staff can take
-// the payment without leaving the app.
-export const createEmbeddedCheckoutForInvoice = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ id: z.string().uuid(), returnUrl: z.string().url() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    await requirePermission(supabase, context.userId, "manage_client_billing");
-    const { data: invoice, error } = await supabase
-      .from("invoices")
-      .select("id, organization_id, client_id, total_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id, clients(display_name, primary_email)")
-      .eq("id", data.id)
-      .single();
-    if (error) throw new Error(error.message);
-    if (invoice.status === "paid") throw new Error("Invoice already paid");
-    if (invoice.status === "void") throw new Error("Invoice is voided");
-    if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
-    if (invoice.stripe_checkout_session_id || invoice.stripe_payment_intent_id) {
-      const { reconcileInvoicePayment } = await import("@/lib/invoice-reconcile.server");
-      if ((await reconcileInvoicePayment(invoice.id)) === "marked_paid") {
-        throw new Error("Invoice already paid");
+    let pi: import("stripe").Stripe.PaymentIntent | null = null;
+    if (invoice.stripe_payment_intent_id) {
+      try {
+        const existing = await stripe.paymentIntents.retrieve(invoice.stripe_payment_intent_id, {}, opts);
+        if (
+          existing.status === "requires_payment_method" ||
+          existing.status === "requires_confirmation" ||
+          existing.status === "requires_action"
+        ) {
+          // Always update the reused intent: syncs amount/currency and pins
+          // explicit payment_method_types so previously-minted "automatic"
+          // intents stop offering Klarna/Affirm/etc.
+          const updateParams = { amount: invoice.total_cents, currency, metadata };
+          try {
+            pi = await stripe.paymentIntents.update(existing.id, {
+              ...updateParams,
+              payment_method_types: INVOICE_PM_TYPES,
+            }, opts);
+          } catch (e) {
+            if (!isBankDebitUnavailableError(e)) throw e;
+            pi = await stripe.paymentIntents.update(existing.id, {
+              ...updateParams,
+              payment_method_types: ["card"],
+            }, opts);
+          }
+        }
+      } catch (e) {
+        console.warn("retrieve existing PI failed, creating new", e);
       }
     }
 
-    const { requireOrgStripeAccount, connectStripe, connectPublishableKey } = await import("@/lib/stripe-connect.server");
-    const acct = await requireOrgStripeAccount(invoice.organization_id);
-    const stripe = await connectStripe();
-    const client = Array.isArray(invoice.clients) ? invoice.clients[0] : (invoice.clients as { display_name?: string; primary_email?: string } | null);
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      ui_mode: "embedded_page",
-      return_url: `${data.returnUrl}${data.returnUrl.includes("?") ? "&" : "?"}paid=1`,
-      client_reference_id: invoice.id,
-      customer_email: client?.primary_email ?? undefined,
-      line_items: [{
-        quantity: 1,
-        price_data: {
-          currency: invoice.currency ?? "usd",
-          unit_amount: invoice.total_cents,
-          product_data: { name: `Invoice ${invoice.id.slice(0, 8)}: ${client?.display_name ?? "Service"}` },
-        },
-      }],
-      metadata: { invoice_id: invoice.id, organization_id: invoice.organization_id },
-    }, { stripeAccount: acct.accountId });
-
-    const { error: upErr } = await supabase
-      .from("invoices")
-      .update({ stripe_checkout_session_id: session.id, status: "open" })
-      .eq("id", invoice.id);
-    if (upErr) throw new Error(upErr.message);
+    if (!pi) {
+      // No setup_future_usage here: staff must not save the client's payment
+      // method without the client's own consent (portal flow only).
+      const createParams = {
+        amount: invoice.total_cents,
+        currency,
+        customer: customerId,
+        metadata,
+      };
+      try {
+        pi = await stripe.paymentIntents.create({
+          ...createParams,
+          payment_method_types: INVOICE_PM_TYPES,
+        }, opts);
+      } catch (e) {
+        if (!isBankDebitUnavailableError(e)) throw e;
+        pi = await stripe.paymentIntents.create({
+          ...createParams,
+          payment_method_types: ["card"],
+        }, opts);
+      }
+      const { error: upErr } = await supabase
+        .from("invoices")
+        .update({ stripe_payment_intent_id: pi.id, status: "open" })
+        .eq("id", invoice.id);
+      if (upErr) throw new Error(upErr.message);
+    }
 
     return {
-      clientSecret: session.client_secret as string,
+      clientSecret: pi.client_secret as string,
       publishableKey: connectPublishableKey(),
       stripeAccount: acct.accountId,
+      amountCents: invoice.total_cents as number,
+      currency,
     };
   });
 

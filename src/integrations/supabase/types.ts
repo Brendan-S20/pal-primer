@@ -3887,6 +3887,7 @@ export type Database = {
           status: string
           street: string
           stripe_checkout_session_id: string | null
+          stripe_payment_intent_id: string | null
           updated_at: string
           zone_id: string | null
         }
@@ -3910,6 +3911,7 @@ export type Database = {
           status?: string
           street: string
           stripe_checkout_session_id?: string | null
+          stripe_payment_intent_id?: string | null
           updated_at?: string
           zone_id?: string | null
         }
@@ -3933,6 +3935,7 @@ export type Database = {
           status?: string
           street?: string
           stripe_checkout_session_id?: string | null
+          stripe_payment_intent_id?: string | null
           updated_at?: string
           zone_id?: string | null
         }

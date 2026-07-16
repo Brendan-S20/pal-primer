@@ -4,7 +4,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 async function provisionSignup(
   supabaseAdmin: SupabaseClient,
   signupRequestId: string,
-  session: import("stripe").Stripe.Checkout.Session,
+  // Works for both flows: legacy hosted Checkout (session id) and the
+  // in-app Payment Element (payment intent id).
+  paid: { amountTotalCents: number; stripeRef: string },
 ) {
   const { data: sr, error } = await supabaseAdmin
     .from("signup_requests")
@@ -66,14 +68,14 @@ async function provisionSignup(
     if (subErr) throw new Error(subErr.message);
 
     // Credit the prepay portion to the client's balance
-    const prepay = (session.amount_total ?? 0) - (sr.initial_cleanup_cents ?? 0);
+    const prepay = paid.amountTotalCents - (sr.initial_cleanup_cents ?? 0);
     if (prepay > 0) {
       await supabaseAdmin.from("credit_ledger").insert({
         organization_id: sr.organization_id,
         client_id: client.id,
         delta_cents: prepay,
         kind: "prepayment",
-        note: `Signup prepay via Stripe ${session.id}`,
+        note: `Signup prepay via Stripe ${paid.stripeRef}`,
       });
     }
 
@@ -210,7 +212,10 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               const { data: sr } = await supabaseAdmin
                 .from("signup_requests").select("organization_id").eq("id", signupRequestId).maybeSingle();
               if (await accountMatches((sr as any)?.organization_id)) {
-                await provisionSignup(supabaseAdmin, signupRequestId, session);
+                await provisionSignup(supabaseAdmin, signupRequestId, {
+                  amountTotalCents: session.amount_total ?? 0,
+                  stripeRef: session.id,
+                });
               } else {
                 console.error("signup webhook account mismatch", { signupRequestId, eventAccount: event.account });
               }
@@ -244,12 +249,31 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             }
           } else if (event.type === "payment_intent.succeeded") {
             const pi = event.data.object as import("stripe").Stripe.PaymentIntent;
+
+            // In-app signup prepay (Payment Element): provision the client
+            // once the intent settles, same account-match rule as Checkout.
+            const piSignupId = pi.metadata?.signup_request_id;
+            if (piSignupId && pi.metadata?.source === "signup_inline") {
+              const { data: sr } = await supabaseAdmin
+                .from("signup_requests").select("organization_id").eq("id", piSignupId).maybeSingle();
+              if (await accountMatches((sr as any)?.organization_id)) {
+                await provisionSignup(supabaseAdmin, piSignupId, {
+                  amountTotalCents: pi.amount,
+                  stripeRef: pi.id,
+                });
+              } else {
+                console.error("signup webhook account mismatch", { signupRequestId: piSignupId, eventAccount: event.account });
+              }
+              return new Response("ok", { status: 200 });
+            }
+
             const invoiceId = pi.metadata?.invoice_id;
-            // Only handle PI-first flows (saved card, autopay, inline Payment
-            // Element); Checkout flows are already finalized above via
-            // checkout.session.completed and their PIs carry no invoice metadata.
+            // Only handle PI-first flows (saved card, autopay, portal + staff
+            // inline Payment Element); Checkout flows are already finalized
+            // above via checkout.session.completed and their PIs carry no
+            // invoice metadata.
             const source = pi.metadata?.source;
-            if (invoiceId && (source === "portal_saved_card" || source === "autopay" || source === "portal_inline")) {
+            if (invoiceId && (source === "portal_saved_card" || source === "autopay" || source === "portal_inline" || source === "staff_inline")) {
               const { data: inv } = await supabaseAdmin
                 .from("invoices").select("id, organization_id, total_cents, currency, status, client_id")
                 .eq("id", invoiceId).single();
