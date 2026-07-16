@@ -5,6 +5,26 @@
 // /platform/plans), so if bands change in the DB every surface updates in one
 // place.
 
+/**
+ * Period end for a Stripe subscription across API versions. Stripe's
+ * 2025+ API (pinned by stripe v22) removed current_period_end from the
+ * Subscription object — it now lives on each subscription ITEM. Reading
+ * the top-level field returns undefined at runtime, which was silently
+ * nulling stored renewal dates. Prefer the legacy field when present,
+ * else the latest item period end.
+ */
+export function subscriptionPeriodEnd(sub: unknown): number | null {
+  const s = sub as {
+    current_period_end?: number | null;
+    items?: { data?: Array<{ current_period_end?: number | null }> };
+  };
+  if (s.current_period_end) return s.current_period_end;
+  const itemEnds = (s.items?.data ?? [])
+    .map((i) => i.current_period_end)
+    .filter((n): n is number => typeof n === "number" && n > 0);
+  return itemEnds.length ? Math.max(...itemEnds) : null;
+}
+
 type PlanRow = {
   id: string;
   name: string;

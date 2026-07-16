@@ -140,14 +140,17 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
                   incomplete: "past_due",
                   incomplete_expired: "canceled",
                 };
-                const currentPeriodEnd = (sub as any).current_period_end as number | undefined;
+                const { subscriptionPeriodEnd } = await import("@/lib/billing-state.server");
+                const currentPeriodEnd = subscriptionPeriodEnd(sub);
                 const mapped = statusMap[sub.status] ?? "active";
                 const orgUpdate: Record<string, unknown> = {
                   stripe_subscription_id: sub.id,
                   plan_status: mapped,
-                  current_period_end: currentPeriodEnd
-                    ? new Date(currentPeriodEnd * 1000).toISOString()
-                    : null,
+                  // Omit rather than null when unresolvable: don't wipe a
+                  // stored renewal date on an event that lacks item data.
+                  ...(currentPeriodEnd
+                    ? { current_period_end: new Date(currentPeriodEnd * 1000).toISOString() }
+                    : {}),
                 };
                 // Propagate plan identity: subscriptions created/switched by
                 // the app carry plan_id in metadata. Only overwrite when the

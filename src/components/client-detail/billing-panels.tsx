@@ -414,6 +414,7 @@ export function AutopayResume({
 
 export function AddonsPanel({ clientId }: { clientId: string }) {
   const qc = useQueryClient();
+  const { confirm: confirmAddon, dialog: addonConfirmDialog } = useConfirmDialog();
   const listSvc = useServerFn(listAddonServices);
   const listAddons = useServerFn(listClientAddons);
   const createCharge = useServerFn(createAddonCharge);
@@ -510,6 +511,7 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
 
   return (
     <section className="rounded-lg border bg-card shadow-sm p-5">
+      {addonConfirmDialog}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-medium">Add-ons &amp; cross-sells</h2>
         {!showAdd && (
@@ -712,9 +714,22 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => statusMut.mutate({ id: s.id, status: "canceled" })}
+                      className="text-destructive hover:text-destructive"
+                      onClick={async () => {
+                        // Ends the recurring add-on, not a form dismiss:
+                        // destructive styling + confirm, no X-icon dress.
+                        if (
+                          await confirmAddon({
+                            title: "Cancel this add-on?",
+                            description: `${s.addon_services?.name ?? "This add-on"} stops billing and won't be charged again. Past charges are kept.`,
+                            confirmLabel: "Cancel add-on",
+                            destructive: true,
+                          })
+                        )
+                          statusMut.mutate({ id: s.id, status: "canceled" });
+                      }}
                     >
-                      <X className="mr-1 h-3.5 w-3.5" /> Cancel
+                      Cancel add-on…
                     </Button>
                   )}
                 </div>

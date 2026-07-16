@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { getOrgBillingState } from "./billing-state.server";
+import { getOrgBillingState, subscriptionPeriodEnd } from "./billing-state.server";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 
 // Kept for back-compat with anything still importing this.
@@ -187,6 +187,10 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
         const updated = await stripe.subscriptions.update(existingSub.id, {
           ...(itemUpdates.length > 0 ? { items: itemUpdates } : {}),
           proration_behavior: "create_prorations",
+          // Choosing a new plan is an explicit "keep billing me": a pending
+          // cancel-at-period-end must not silently kill the plan they just
+          // switched to (and paid prorations for).
+          cancel_at_period_end: false,
           metadata: {
             ...existingSub.metadata,
             organization_id: orgId,
@@ -197,7 +201,7 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
 
         // Reflect the new plan identity immediately (don't wait for the
         // webhook); status stays whatever it was (active / past_due).
-        const periodEnd = (updated as unknown as { current_period_end?: number }).current_period_end;
+        const periodEnd = subscriptionPeriodEnd(updated);
         await supabaseAdmin
           .from("organizations")
           .update({
@@ -325,9 +329,8 @@ export const cancelBillingSubscription = createServerFn({ method: "POST" })
     const sub = await stripe.subscriptions.update(s.stripeSubscriptionId, {
       cancel_at_period_end: true,
     });
-    const endsAt = (sub as any).current_period_end
-      ? new Date((sub as any).current_period_end * 1000).toISOString()
-      : null;
+    const cancelEnd = subscriptionPeriodEnd(sub);
+    const endsAt = cancelEnd ? new Date(cancelEnd * 1000).toISOString() : null;
     return { ok: true, endsAt };
   });
 
@@ -422,7 +425,7 @@ export const listSubscriptionItems = createServerFn({ method: "GET" })
         intervalCount: price.recurring?.interval_count ?? 1,
       };
     });
-    const periodEnd = (sub as unknown as { current_period_end?: number }).current_period_end;
+    const periodEnd = subscriptionPeriodEnd(sub);
     return {
       items,
       subscriptionId: sub.id,
@@ -470,12 +473,16 @@ export const refreshBillingStatus = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     if (active) {
       const status = active.status === "past_due" ? "past_due" : "active";
-      const periodEnd = (active as unknown as { current_period_end?: number }).current_period_end;
+      const periodEnd = subscriptionPeriodEnd(active);
       const update: Record<string, unknown> = {
         stripe_subscription_id: active.id,
         billing_status: status,
         plan_status: status,
-        current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
+        // Never null a stored renewal date just because this read couldn't
+        // resolve one — omit the column instead.
+        ...(periodEnd
+          ? { current_period_end: new Date(periodEnd * 1000).toISOString() }
+          : {}),
       };
       // Propagate plan identity: the subscription carries plan_id in its
       // metadata (set at create/switch). Only overwrite when it's present AND
