@@ -315,7 +315,7 @@ export const listClientVisitHistory = createServerFn({ method: "GET" })
     const { supabase } = context;
     await requirePermission(supabase, context.userId, "view_client_directory");
     const select =
-      "id, subscription_id, property_id, scheduled_on, status, started_at, completed_at, eta_start, eta_end, skip_reason_code, skip_reason, rescheduled_from, is_deepclean, properties(street, earliest_service_time, latest_service_time), subscriptions(earliest_time, latest_time), staff:assigned_staff_id(display_name)";
+      "id, subscription_id, property_id, scheduled_on, status, assigned_staff_id, started_at, completed_at, eta_start, eta_end, skip_reason_code, skip_reason, rescheduled_from, is_deepclean, properties(street, earliest_service_time, latest_service_time), subscriptions(earliest_time, latest_time), staff:assigned_staff_id(display_name)";
     const limit = data.limit ?? 100;
     const today = new Date().toISOString().slice(0, 10);
     // Two windows so a heavily scheduled client (many future visits) can't
@@ -483,7 +483,7 @@ export const getInternalQuote = createServerFn({ method: "POST" })
     const { data: zones, error: zErr } = await supabase
       .from("zones")
       .select(
-        "id, name, postal_prefix, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
+        "id, name, priority, postal_prefix, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
       )
       .eq("organization_id", orgId);
     if (zErr) throw new Error(zErr.message);
@@ -811,6 +811,134 @@ export const deleteClientIfNoHistory = createServerFn({ method: "POST" })
       actorUserId: userId,
       kind: "client.deleted",
       summary: `Deleted client ${client.display_name} (no history)`,
+    });
+    return { ok: true };
+  });
+
+// ── Vacation holds (QA round 8) ─────────────────────────────────────────────
+// A hold is a date range during which the client gets no visits: creating one
+// removes already-scheduled visits in the range (DB trigger) and
+// generate_visits_core skips dates inside a hold. RLS: org members read,
+// office roles (can_write_org) write.
+
+function localToday(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export const listClientHolds = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    await requirePermission(supabase, userId, "view_client_directory");
+    const { data: rows, error } = await ((supabase as any).from("client_holds"))
+      .select("id, client_id, starts_on, ends_on, reason, created_at")
+      .eq("client_id", data.clientId)
+      .order("starts_on", { ascending: false });
+    if (error) throw new Error(error.message);
+    return { holds: rows ?? [] };
+  });
+
+export const createClientHold = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        clientId: z.string().uuid(),
+        startsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        endsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        reason: z.string().max(500).optional(),
+      })
+      .refine((v) => v.endsOn >= v.startsOn, { message: "The hold must end on or after it starts" })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+
+    // Count what the hold is about to remove (the DB trigger deletes them on
+    // insert) so the activity entry can say so.
+    const { count } = await supabase
+      .from("visits")
+      .select("id", { count: "exact", head: true })
+      .eq("client_id", data.clientId)
+      .eq("status", "scheduled")
+      .gte("scheduled_on", data.startsOn)
+      .lte("scheduled_on", data.endsOn);
+
+    const { data: row, error } = await ((supabase as any).from("client_holds"))
+      .insert({
+        organization_id: orgId,
+        client_id: data.clientId,
+        starts_on: data.startsOn,
+        ends_on: data.endsOn,
+        reason: data.reason?.trim() || null,
+        created_by: userId,
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+
+    const removed = count ?? 0;
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId,
+      clientId: data.clientId,
+      actorUserId: userId,
+      kind: "client.hold_created",
+      summary:
+        `Placed a vacation hold ${data.startsOn} to ${data.endsOn}` +
+        (removed ? ` (${removed} scheduled visit${removed === 1 ? "" : "s"} removed)` : "") +
+        (data.reason?.trim() ? `: ${data.reason.trim()}` : ""),
+      meta: { starts_on: data.startsOn, ends_on: data.endsOn, removed_visits: removed },
+    });
+    return { id: row!.id as string, removedVisits: removed };
+  });
+
+/** End a hold early (or remove one that hasn't started). Visits already
+ * removed by the hold are not recreated; use Generate schedule if needed. */
+export const endClientHold = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ holdId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+    const { data: hold, error: hErr } = await ((supabase as any).from("client_holds"))
+      .select("id, client_id, starts_on, ends_on")
+      .eq("id", data.holdId)
+      .single();
+    if (hErr) throw new Error(hErr.message);
+
+    const today = localToday();
+    if (hold.ends_on < today) throw new Error("This hold has already ended");
+
+    let summary: string;
+    if (hold.starts_on >= today) {
+      // Not started yet (or starts today): remove it entirely.
+      const { error } = await ((supabase as any).from("client_holds")).delete().eq("id", data.holdId);
+      if (error) throw new Error(error.message);
+      summary = `Removed the vacation hold ${hold.starts_on} to ${hold.ends_on}`;
+    } else {
+      // In progress: close it as of yesterday so today is serviceable again.
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      const yesterday = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, "0")}-${String(y.getDate()).padStart(2, "0")}`;
+      const { error } = await ((supabase as any).from("client_holds"))
+        .update({ ends_on: yesterday })
+        .eq("id", data.holdId);
+      if (error) throw new Error(error.message);
+      summary = `Ended the vacation hold early (was ${hold.starts_on} to ${hold.ends_on})`;
+    }
+
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId,
+      clientId: hold.client_id,
+      actorUserId: userId,
+      kind: "client.hold_ended",
+      summary,
+      meta: { starts_on: hold.starts_on, ends_on: hold.ends_on },
     });
     return { ok: true };
   });

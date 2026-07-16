@@ -111,6 +111,10 @@ export function SummaryTab({
   for (const sub of activeSubs) {
     const zone = zones.find((z: any) => z.id === sub.zone_id);
     if (!zone || !sub.price_cents) continue;
+    // Area charge included (QA round 8): omitting boundaryAreaSqm made the
+    // baseline too low for per-acre/per-sqft zones, so underpricing alerts
+    // under-fired exactly where the price gap is biggest.
+    const subProperty = properties.find((p: any) => p.id === sub.property_id);
     const ref = computeZoneVisitPrice(
       {
         base_price_cents: zone.base_price_cents,
@@ -120,7 +124,12 @@ export function SummaryTab({
         price_per_acre_cents: zone.price_per_acre_cents,
         area_min_charge_cents: zone.area_min_charge_cents,
       },
-      { dogCount: sub.dog_count ?? 1 },
+      {
+        dogCount: sub.dog_count ?? 1,
+        boundaryAreaSqm: subProperty?.boundary_area_sqm
+          ? Number(subProperty.boundary_area_sqm)
+          : null,
+      },
     ).perVisitCents;
     if (ref > 0 && sub.price_cents < ref * 0.5) {
       alerts.push({

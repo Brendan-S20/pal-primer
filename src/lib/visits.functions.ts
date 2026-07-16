@@ -440,6 +440,32 @@ export const reassignVisit = createServerFn({ method: "POST" })
       _staff_id: data.staffId as string,
     });
     if (error) throw new Error(error.message);
+    // QA round 8: reassignment shows on the client's Activity timeline.
+    try {
+      const [{ data: v }, { data: staff }] = await Promise.all([
+        context.supabase
+          .from("visits")
+          .select("organization_id, client_id, property_id, scheduled_on")
+          .eq("id", data.visitId)
+          .single(),
+        data.staffId
+          ? context.supabase.from("staff").select("display_name").eq("id", data.staffId).maybeSingle()
+          : Promise.resolve({ data: null } as any),
+      ]);
+      if (v) {
+        const { logActivity } = await import("@/lib/activity.server");
+        await logActivity(context.supabase, {
+          orgId: v.organization_id,
+          clientId: v.client_id,
+          propertyId: v.property_id,
+          actorUserId: context.userId,
+          kind: "visit.reassigned",
+          summary: data.staffId
+            ? `Reassigned the visit on ${v.scheduled_on} to ${staff?.display_name ?? "another tech"}`
+            : `Unassigned the visit on ${v.scheduled_on}`,
+        });
+      }
+    } catch {}
     return { ok: true };
   });
 
@@ -584,6 +610,138 @@ export const correctVisitTimestamps = createServerFn({ method: "POST" })
         before: { started_at: before.started_at, completed_at: before.completed_at },
         after: { started_at: data.startedAt, completed_at: data.completedAt },
       },
+    });
+    return { ok: true };
+  });
+
+// ── Office visit actions (QA round 8, client detail Visits tab) ─────────────
+// The tech-facing complete_visit / skip_visit RPCs authorize the ASSIGNED
+// TECH (and complete requires a photo). These office variants call the
+// office_* SQL functions (can_write_org inside) and log to the timeline.
+
+async function loadVisitForOfficeAction(supabase: any, userId: string, visitId: string) {
+  const { requirePermission } = await import("@/lib/authz.server");
+  await requirePermission(supabase, userId, "manage_client_billing");
+  const { data: v, error } = await supabase
+    .from("visits")
+    .select("id, organization_id, client_id, property_id, scheduled_on, status")
+    .eq("id", visitId)
+    .single();
+  if (error) throw new Error(error.message);
+  return v as {
+    id: string;
+    organization_id: string;
+    client_id: string;
+    property_id: string | null;
+    scheduled_on: string;
+    status: string;
+  };
+}
+
+/** Mark a scheduled/in-progress visit completed from the office. Timestamps
+ * default sensibly (completed now, started kept or now); use the timestamp
+ * correction flow afterwards if the real times differ. */
+export const completeVisitFromOffice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ visitId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
+    if (v.status !== "scheduled" && v.status !== "in_progress")
+      throw new Error("Only scheduled or in-progress visits can be completed");
+    const { error } = await (supabase as any).rpc("office_complete_visit", {
+      _visit_id: data.visitId,
+    });
+    if (error) throw new Error(error.message);
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: v.organization_id,
+      clientId: v.client_id,
+      propertyId: v.property_id,
+      actorUserId: userId,
+      kind: "visit.completed",
+      summary: `Marked the visit on ${v.scheduled_on} completed from the office`,
+    });
+    return { ok: true };
+  });
+
+/** Move a scheduled visit to a new date. Wraps the reschedule_visit RPC
+ * (can_write_org inside) and records the move on the Activity timeline. */
+export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        visitId: z.string().uuid(),
+        newDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
+    if (v.status !== "scheduled") throw new Error("Only scheduled visits can be rescheduled");
+    const { error } = await supabase.rpc("reschedule_visit", {
+      _visit_id: data.visitId,
+      _new_date: data.newDate,
+    });
+    if (error) throw new Error(error.message);
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: v.organization_id,
+      clientId: v.client_id,
+      propertyId: v.property_id,
+      actorUserId: userId,
+      kind: "visit.rescheduled",
+      summary: `Rescheduled the visit from ${v.scheduled_on} to ${data.newDate}`,
+      meta: { from: v.scheduled_on, to: data.newDate },
+    });
+    return { ok: true };
+  });
+
+/** Cancel (skip) a scheduled visit from the office. A reason is required;
+ * the org's skip-billing rules apply through office_skip_visit. */
+export const cancelVisitFromOffice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        visitId: z.string().uuid(),
+        reason: z.string().min(1).max(500),
+        code: z
+          .enum([
+            "client_cancelled_late",
+            "gate_locked",
+            "dog_outside",
+            "weather",
+            "our_fault",
+            "access_blocked",
+            "unsafe_conditions",
+            "other",
+          ])
+          .default("other"),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
+    if (v.status !== "scheduled") throw new Error("Only scheduled visits can be canceled");
+    const { error } = await (supabase as any).rpc("office_skip_visit", {
+      _visit_id: data.visitId,
+      _reason: data.reason,
+      _code: data.code,
+    });
+    if (error) throw new Error(error.message);
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: v.organization_id,
+      clientId: v.client_id,
+      propertyId: v.property_id,
+      actorUserId: userId,
+      kind: "visit.canceled",
+      summary: `Canceled the visit on ${v.scheduled_on}: ${data.reason}`,
+      meta: { reason: data.reason, code: data.code },
     });
     return { ok: true };
   });

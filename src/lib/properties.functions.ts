@@ -154,7 +154,7 @@ export async function detectZoneId(
   const { data: zones, error } = await supabase
     .from("zones")
     .select(
-      "id, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
+      "id, priority, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
     )
     .eq("organization_id", orgId);
   if (error) return null;

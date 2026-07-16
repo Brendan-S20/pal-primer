@@ -1,5 +1,5 @@
 // Client detail page (docs/client-detail-refactor.md): a persistent header,
-// six tabs, read-only by default, editing in right-side drawers. The heavy
+// eight tabs, read-only by default, editing in right-side drawers. The heavy
 // lifting lives in src/components/client-detail/*.
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -24,6 +24,7 @@ import { AddonsPanel } from "@/components/client-detail/billing-panels";
 import { BillingTab } from "@/components/client-detail/BillingTab";
 import { StationsPanel } from "@/components/client-detail/stations-panel";
 import { CommunicationTab } from "@/components/client-detail/CommunicationTab";
+import { ReviewsReferralsTab } from "@/components/client-detail/ReviewsReferralsTab";
 
 const TABS = [
   "summary",
@@ -32,6 +33,7 @@ const TABS = [
   "visits",
   "billing",
   "communication",
+  "reviews",
   "activity",
 ] as const;
 type TabValue = (typeof TABS)[number];
@@ -184,6 +186,12 @@ function ClientDetail() {
             Communication
           </TabsTrigger>
           <TabsTrigger
+            value="reviews"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md px-3 py-1.5"
+          >
+            Reviews & referrals
+          </TabsTrigger>
+          <TabsTrigger
             value="activity"
             className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md px-3 py-1.5"
           >
@@ -253,7 +261,11 @@ function ClientDetail() {
         )}
 
         <TabsContent value="communication">
-          <CommunicationTab client={client} clientId={clientId} canBill={canBill} />
+          <CommunicationTab client={client} />
+        </TabsContent>
+
+        <TabsContent value="reviews">
+          <ReviewsReferralsTab client={client} clientId={clientId} canBill={canBill} />
         </TabsContent>
 
         <TabsContent value="activity">

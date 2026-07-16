@@ -29,14 +29,23 @@ export const upsertStation = createServerFn({ method: "POST" })
     clientId: z.string().uuid(),
     propertyId: z.string().uuid(),
     label: z.string().min(1).max(120),
+    // Optional note ("behind the mail kiosk"); the map marker is the location.
     locationDescription: z.string().max(300).optional().nullable(),
     linerSize: z.string().max(60).optional().nullable(),
-    capacityLiners: z.number().int().min(0).max(999).optional().nullable(),
+    latitude: z.number().min(-90).max(90).optional().nullable(),
+    longitude: z.number().min(-180).max(180).optional().nullable(),
+    // Must match one of the property's commercial_sections values.
+    section: z.string().max(120).optional().nullable(),
     active: z.boolean().optional(),
     sortOrder: z.number().int().optional(),
-  }).parse(d))
+  })
+    .refine((v) => (v.latitude == null) === (v.longitude == null), {
+      message: "Latitude and longitude must be set together",
+    })
+    .parse(d))
   .handler(async ({ data, context }) => {
     const org = await orgId(context.supabase, context.userId);
+    // capacity_liners is intentionally no longer written (QA round 8).
     const payload: any = {
       organization_id: org,
       client_id: data.clientId,
@@ -44,7 +53,9 @@ export const upsertStation = createServerFn({ method: "POST" })
       label: data.label,
       location_description: data.locationDescription ?? null,
       liner_size: data.linerSize ?? null,
-      capacity_liners: data.capacityLiners ?? null,
+      latitude: data.latitude ?? null,
+      longitude: data.longitude ?? null,
+      section: data.section ?? null,
       active: data.active ?? true,
       sort_order: data.sortOrder ?? 0,
       updated_at: new Date().toISOString(),

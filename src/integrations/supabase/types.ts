@@ -319,6 +319,86 @@ export type Database = {
           },
         ]
       }
+      addon_requests: {
+        Row: {
+          addon_service_id: string
+          client_id: string
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decline_reason: string | null
+          frequency: Database["public"]["Enums"]["addon_frequency"] | null
+          id: string
+          kind: Database["public"]["Enums"]["addon_kind"]
+          organization_id: string
+          property_id: string | null
+          quantity: number
+          status: string
+          unit_price_cents: number
+        }
+        Insert: {
+          addon_service_id: string
+          client_id: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decline_reason?: string | null
+          frequency?: Database["public"]["Enums"]["addon_frequency"] | null
+          id?: string
+          kind: Database["public"]["Enums"]["addon_kind"]
+          organization_id: string
+          property_id?: string | null
+          quantity?: number
+          status?: string
+          unit_price_cents: number
+        }
+        Update: {
+          addon_service_id?: string
+          client_id?: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decline_reason?: string | null
+          frequency?: Database["public"]["Enums"]["addon_frequency"] | null
+          id?: string
+          kind?: Database["public"]["Enums"]["addon_kind"]
+          organization_id?: string
+          property_id?: string | null
+          quantity?: number
+          status?: string
+          unit_price_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "addon_requests_addon_service_id_fkey"
+            columns: ["addon_service_id"]
+            isOneToOne: false
+            referencedRelation: "addon_services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "addon_requests_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "addon_requests_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "addon_requests_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       addon_services: {
         Row: {
           active: boolean
@@ -627,6 +707,54 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "blackout_dates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_holds: {
+        Row: {
+          client_id: string
+          created_at: string
+          created_by: string | null
+          ends_on: string
+          id: string
+          organization_id: string
+          reason: string | null
+          starts_on: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          created_by?: string | null
+          ends_on: string
+          id?: string
+          organization_id: string
+          reason?: string | null
+          starts_on: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          created_by?: string | null
+          ends_on?: string
+          id?: string
+          organization_id?: string
+          reason?: string | null
+          starts_on?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_holds_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_holds_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -1761,6 +1889,7 @@ export type Database = {
           client_id: string
           created_at: string
           currency: string
+          due_on: string | null
           id: string
           issued_at: string | null
           kind: Database["public"]["Enums"]["invoice_kind"]
@@ -1771,6 +1900,7 @@ export type Database = {
           paid_at: string | null
           period_end: string
           period_start: string | null
+          public_token: string
           status: Database["public"]["Enums"]["invoice_status"]
           stripe_checkout_session_id: string | null
           stripe_payment_intent_id: string | null
@@ -1785,6 +1915,7 @@ export type Database = {
           client_id: string
           created_at?: string
           currency?: string
+          due_on?: string | null
           id?: string
           issued_at?: string | null
           kind?: Database["public"]["Enums"]["invoice_kind"]
@@ -1795,6 +1926,7 @@ export type Database = {
           paid_at?: string | null
           period_end: string
           period_start?: string | null
+          public_token?: string
           status?: Database["public"]["Enums"]["invoice_status"]
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
@@ -1809,6 +1941,7 @@ export type Database = {
           client_id?: string
           created_at?: string
           currency?: string
+          due_on?: string | null
           id?: string
           issued_at?: string | null
           kind?: Database["public"]["Enums"]["invoice_kind"]
@@ -1819,6 +1952,7 @@ export type Database = {
           paid_at?: string | null
           period_end?: string
           period_start?: string | null
+          public_token?: string
           status?: Database["public"]["Enums"]["invoice_status"]
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
@@ -2326,6 +2460,7 @@ export type Database = {
           google_review_url: string | null
           grace_expires_at: string | null
           id: string
+          invoice_net_days: number
           is_franchise_parent: boolean
           last_digest_sent_at: string | null
           lead_form_config: Json
@@ -2422,6 +2557,7 @@ export type Database = {
           google_review_url?: string | null
           grace_expires_at?: string | null
           id?: string
+          invoice_net_days?: number
           is_franchise_parent?: boolean
           last_digest_sent_at?: string | null
           lead_form_config?: Json
@@ -2518,6 +2654,7 @@ export type Database = {
           google_review_url?: string | null
           grace_expires_at?: string | null
           id?: string
+          invoice_net_days?: number
           is_franchise_parent?: boolean
           last_digest_sent_at?: string | null
           lead_form_config?: Json
@@ -4696,10 +4833,13 @@ export type Database = {
           created_at: string
           id: string
           label: string
+          latitude: number | null
           liner_size: string | null
           location_description: string | null
+          longitude: number | null
           organization_id: string
           property_id: string
+          section: string | null
           sort_order: number
           updated_at: string
         }
@@ -4710,10 +4850,13 @@ export type Database = {
           created_at?: string
           id?: string
           label: string
+          latitude?: number | null
           liner_size?: string | null
           location_description?: string | null
+          longitude?: number | null
           organization_id: string
           property_id: string
+          section?: string | null
           sort_order?: number
           updated_at?: string
         }
@@ -4724,10 +4867,13 @@ export type Database = {
           created_at?: string
           id?: string
           label?: string
+          latitude?: number | null
           liner_size?: string | null
           location_description?: string | null
+          longitude?: number | null
           organization_id?: string
           property_id?: string
+          section?: string | null
           sort_order?: number
           updated_at?: string
         }
@@ -4808,6 +4954,7 @@ export type Database = {
           price_per_acre_cents: number
           price_per_sqft_cents: number
           pricing_mode: string
+          priority: number
           radius_meters: number | null
           zip_codes: string[]
         }
@@ -4833,6 +4980,7 @@ export type Database = {
           price_per_acre_cents?: number
           price_per_sqft_cents?: number
           pricing_mode?: string
+          priority?: number
           radius_meters?: number | null
           zip_codes?: string[]
         }
@@ -4858,6 +5006,7 @@ export type Database = {
           price_per_acre_cents?: number
           price_per_sqft_cents?: number
           pricing_mode?: string
+          priority?: number
           radius_meters?: number | null
           zip_codes?: string[]
         }
@@ -5116,6 +5265,15 @@ export type Database = {
           _from: string
         }
         Returns: string
+      }
+      office_complete_visit: { Args: { _visit_id: string }; Returns: undefined }
+      office_skip_visit: {
+        Args: {
+          _code?: Database["public"]["Enums"]["skip_reason_code"]
+          _reason: string
+          _visit_id: string
+        }
+        Returns: undefined
       }
       optimize_route_for_day: {
         Args: {

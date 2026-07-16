@@ -269,11 +269,19 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
 
             const invoiceId = pi.metadata?.invoice_id;
             // Only handle PI-first flows (saved card, autopay, portal + staff
-            // inline Payment Element); Checkout flows are already finalized
-            // above via checkout.session.completed and their PIs carry no
-            // invoice metadata.
+            // inline Payment Element, public pay link); Checkout flows are
+            // already finalized above via checkout.session.completed and
+            // their PIs carry no invoice metadata.
             const source = pi.metadata?.source;
-            if (invoiceId && (source === "portal_saved_card" || source === "autopay" || source === "portal_inline" || source === "staff_inline")) {
+            if (
+              invoiceId &&
+              (source === "portal_saved_card" ||
+                source === "autopay" ||
+                source === "portal_inline" ||
+                source === "staff_inline" ||
+                source === "staff_saved_card" ||
+                source === "public_link")
+            ) {
               const { data: inv } = await supabaseAdmin
                 .from("invoices").select("id, organization_id, total_cents, currency, status, client_id")
                 .eq("id", invoiceId).single();

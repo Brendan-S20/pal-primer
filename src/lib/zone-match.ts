@@ -2,12 +2,19 @@
 // auto-assignment (client detail refactor). Pure math: callers load the
 // org's zones and pass them in.
 //
-// Precedence: polygon containment beats radius/drive-time proximity, which
-// beats an exact ZIP match, which beats a postal-prefix match (longest
-// prefix wins). Mirrors the original getInternalQuote behavior exactly.
+// Precedence (QA round 8 — overlap priority):
+//   1. Specificity level: polygon containment beats radius/drive-time
+//      proximity, which beats an exact ZIP match, which beats a
+//      postal-prefix match.
+//   2. `priority` (higher wins) is the FIRST tie-breaker among zones that
+//      match at the SAME specificity level — it never lets, say, a prefix
+//      match beat an exact ZIP match.
+//   3. Longest postal prefix wins among equal-priority prefix matches.
+// Mirrored in the public_quote RPC (ZIP levels only).
 
 export interface ZoneMatchFields {
   id: string;
+  priority?: number | null;
   postal_prefix?: string | null;
   zip_codes?: string[] | null;
   geo_match_mode?: string | null;
@@ -100,7 +107,14 @@ export function matchZone<Z extends ZoneMatchFields>(
       return { z, rank: exact ? 0 : 1, prefLen: (z.postal_prefix ?? "").length };
     })
     .filter((m): m is { z: Z; rank: number; prefLen: number } => m !== null)
-    .sort((a, b) => a.rank - b.rank || b.prefLen - a.prefLen)[0];
+    // Specificity rank first, then priority (higher wins) within a rank,
+    // then longest prefix. See the precedence comment at the top.
+    .sort(
+      (a, b) =>
+        a.rank - b.rank ||
+        (b.z.priority ?? 0) - (a.z.priority ?? 0) ||
+        b.prefLen - a.prefLen,
+    )[0];
 
   return best ? best.z : null;
 }
