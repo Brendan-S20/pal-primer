@@ -9,8 +9,9 @@ import { stripeAppearance } from "@/lib/stripe-appearance";
 import { getMyOrg } from "@/lib/org.functions";
 import { syncInvoice } from "@/lib/accounting.functions";
 import { sendInvoiceEmail, getEmailSendStatus } from "@/lib/notifications.functions";
+import { formatDay, formatDateTime } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
+import { StatusChip, SectionLabel } from "@/components/client-detail/primitives";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { toast } from "sonner";
 
@@ -20,6 +21,21 @@ export const Route = createFileRoute("/_authenticated/invoices/$invoiceId")({
 
 function fmtCents(c: number, currency = "usd") {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format((c ?? 0) / 100);
+}
+
+// StatusChip tone mapping for invoice statuses that aren't in the shared
+// palette. paid/open/void map directly; draft renders inert gray and
+// uncollectible borrows the destructive "overdue" tone.
+const CHIP_STATUS: Record<string, string> = { draft: "inactive", uncollectible: "overdue" };
+const CHIP_LABEL: Record<string, string> = { draft: "Draft", uncollectible: "Uncollectible" };
+function InvoiceChip({ status, label, className }: { status: string; label?: string; className?: string }) {
+  return (
+    <StatusChip
+      status={CHIP_STATUS[status] ?? status}
+      label={label ?? CHIP_LABEL[status]}
+      className={className}
+    />
+  );
 }
 
 // Connect Payment Element: stripe.js must be initialized scoped to the org's
@@ -35,17 +51,21 @@ function getConnectStripe(pk: string, stripeAccount: string) {
   return p;
 }
 
-// Print stylesheet for "Download / print": everything on the page is hidden
-// except the invoice sheet, which is repositioned to the top-left of the page.
-// Elements marked .print-only (org name, issued date, status line) only render
-// on paper.
+// Print stylesheet for "Download / print": only the invoice document
+// (.invoice-print-area — header, bill-to, line items, totals) prints. The
+// toolbar, payment form, and payment history live outside the print area and
+// are never included. On paper the card flattens to a plain white sheet.
 const PRINT_STYLES = `
-.print-only { display: none; }
 @media print {
   body * { visibility: hidden; }
   .invoice-print-area, .invoice-print-area * { visibility: visible; }
-  .invoice-print-area { position: absolute; inset: 0; padding: 24px; background: white; color: black; }
-  .print-only { display: block; }
+  .invoice-print-area {
+    position: absolute; left: 0; top: 0; width: 100%;
+    margin: 0; padding: 24px;
+    background: white; color: black;
+    border: none; border-radius: 0; box-shadow: none;
+  }
+  .invoice-print-area * { box-shadow: none !important; }
 }
 `;
 
@@ -137,74 +157,121 @@ function InvoiceDetail() {
   const client = Array.isArray(invoice.clients) ? invoice.clients[0] : invoice.clients;
   const orgName = orgQ.data?.organization?.name;
 
+  const shortId = invoice.id.slice(0, 8);
+  const subtotalCents = (invoice as any).subtotal_cents as number | null | undefined;
+  const period =
+    invoice.period_start && invoice.period_end && invoice.period_start !== invoice.period_end
+      ? `${formatDay(invoice.period_start)} to ${formatDay(invoice.period_end)}`
+      : invoice.period_end
+        ? formatDay(invoice.period_end)
+        : null;
+
   return (
     <div className="space-y-6">
       <style>{PRINT_STYLES}</style>
       <Link to="/invoices" className="text-sm text-muted-foreground hover:underline">← Invoices</Link>
 
-      <div className="invoice-print-area space-y-6">
-        <div>
-          {orgName && <p className="print-only text-lg font-semibold">{orgName}</p>}
-          <div className="mt-2 flex items-center gap-3">
-            <h1 className="text-2xl font-semibold">Invoice {invoice.id.slice(0, 8)}</h1>
-            <InvoiceStatusBadge status={invoice.status} />
+      {/* The invoice document: the only thing that prints. */}
+      <div className="invoice-print-area rounded-xl border bg-card p-6 shadow-sm sm:p-8">
+        {/* Document header: issuer left, invoice meta right */}
+        <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            {orgName && <p className="text-lg font-semibold">{orgName}</p>}
+            <h1 className="mt-1 text-3xl font-semibold tracking-tight">Invoice</h1>
+            <p className="mt-0.5 font-mono text-sm text-muted-foreground">#{shortId}</p>
           </div>
-          <p className="text-sm text-muted-foreground">{client?.display_name} · {client?.primary_email ?? "no email"}</p>
-          <p className="print-only text-sm">
-            Status: {invoice.status}
-            {invoice.issued_at ? ` · Issued ${String(invoice.issued_at).slice(0, 10)}` : ""}
-          </p>
+          <div className="flex flex-col items-start gap-2 text-sm sm:items-end">
+            <InvoiceChip status={invoice.status} />
+            <div className="space-y-0.5 sm:text-right">
+              {invoice.issued_at && (
+                <p>
+                  <span className="text-muted-foreground">Issued</span> {formatDay(String(invoice.issued_at))}
+                </p>
+              )}
+              {period && (
+                <p>
+                  <span className="text-muted-foreground">Period</span> {period}
+                </p>
+              )}
+            </div>
+          </div>
         </div>
 
-        <div className="rounded-lg border bg-card">
-          <div className="border-b p-4 text-sm text-muted-foreground">
-            {invoice.period_start ? `${invoice.period_start} → ` : ""}{invoice.period_end}
-          </div>
+        {/* Billed to */}
+        <div className="mt-8">
+          <SectionLabel>Billed to</SectionLabel>
+          <p className="mt-1.5 text-sm font-medium">{client?.display_name ?? "Client"}</p>
+          <p className="text-sm text-muted-foreground">{client?.primary_email ?? "No email on file"}</p>
+        </div>
+
+        {/* Line items */}
+        <div className="mt-8">
           <table className="w-full text-sm">
-            <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2">Description</th>
-                <th className="px-4 py-2 text-right">Amount</th>
+            <thead>
+              <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="pb-2 pr-4 font-semibold">Description</th>
+                <th className="pb-2 text-right font-semibold">Amount</th>
               </tr>
             </thead>
-            <tbody>
-              {items.map((it) => (
-                <tr key={it.id} className="border-b last:border-0">
-                  <td className="px-4 py-2">{it.description}</td>
-                  <td className="px-4 py-2 text-right">{fmtCents(it.amount_cents, invoice.currency)}</td>
+            <tbody className="divide-y">
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={2} className="py-6 text-center text-muted-foreground">
+                    No line items on this invoice.
+                  </td>
                 </tr>
-              ))}
+              ) : (
+                items.map((it) => (
+                  <tr key={it.id}>
+                    <td className="py-2.5 pr-4">{it.description}</td>
+                    <td className="py-2.5 text-right tabular-nums">{fmtCents(it.amount_cents, invoice.currency)}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
-            <tfoot>
-              <tr className="font-medium">
-                <td className="px-4 py-3">Total</td>
-                <td className="px-4 py-3 text-right">{fmtCents(invoice.total_cents, invoice.currency)}</td>
-              </tr>
-            </tfoot>
           </table>
+
+          {/* Totals, bottom-right */}
+          <div className="mt-4 flex justify-end border-t pt-4">
+            <div className="w-full max-w-xs space-y-2">
+              {subtotalCents != null && (
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Subtotal</span>
+                  <span className="tabular-nums">{fmtCents(subtotalCents, invoice.currency)}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-sm font-medium">
+                  Total
+                  {invoice.status === "paid" && <InvoiceChip status="paid" label="PAID" />}
+                </span>
+                <span className="text-xl font-semibold tabular-nums">
+                  {fmtCents(invoice.total_cents, invoice.currency)}
+                </span>
+              </div>
+              {invoice.status === "paid" && invoice.paid_at && (
+                <p className="text-right text-xs text-muted-foreground">Paid {formatDay(String(invoice.paid_at))}</p>
+              )}
+              {invoice.status === "void" && (
+                <p className="text-right text-xs text-muted-foreground">This invoice was voided and is no longer payable.</p>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="flex gap-2">
+      {/* Actions toolbar (never prints) */}
+      <div className="flex flex-wrap items-center gap-2">
         {invoice.status !== "paid" && invoice.status !== "void" && (
           <>
             <Button onClick={() => (intent ? setIntent(null) : intentM.mutate())} disabled={intentM.isPending}>
-              {intentM.isPending ? "Preparing…" : intent ? "Hide payment form" : "Take payment here"}
+              {intentM.isPending ? "Preparing…" : intent ? "Hide payment form" : "Take payment"}
             </Button>
             {client?.primary_email && (
               <Button variant="outline" onClick={() => emailM.mutate()} disabled={emailM.isPending}>
                 {emailM.isPending ? "Sending…" : "Email invoice to client"}
               </Button>
             )}
-            <ConfirmButton
-              title="Void this invoice?"
-              description="Voiding removes this invoice from the client's balance and can't be undone."
-              confirmLabel="Void invoice"
-              onConfirm={() => voidM.mutate()}
-              disabled={voidM.isPending}
-            >
-              Void
-            </ConfirmButton>
           </>
         )}
         {invoice.status === "paid" && !(invoice as any).accounting_remote_id && (
@@ -212,52 +279,87 @@ function InvoiceDetail() {
             {syncM.isPending ? "Syncing…" : "Sync to accounting"}
           </Button>
         )}
+        <Button variant="outline" onClick={() => window.print()}>
+          Download / print
+        </Button>
+        {invoice.status !== "paid" && invoice.status !== "void" && (
+          <ConfirmButton
+            title="Void this invoice?"
+            description="Voiding removes this invoice from the client's balance and can't be undone."
+            confirmLabel="Void invoice"
+            onConfirm={() => voidM.mutate()}
+            disabled={voidM.isPending}
+          >
+            Void
+          </ConfirmButton>
+        )}
         {(invoice as any).accounting_remote_id && (
           <span className="self-center text-xs text-muted-foreground">
             Synced · {(invoice as any).accounting_remote_id}
           </span>
         )}
-        <Button variant="outline" onClick={() => window.print()}>
-          Download / print
-        </Button>
       </div>
 
+      {/* Integrated payment card: charge summary left, Payment Element right */}
       {intent && invoice.status !== "paid" && (
-        <Elements
-          stripe={getConnectStripe(intent.publishableKey, intent.stripeAccount)}
-          options={{ clientSecret: intent.clientSecret, appearance: stripeAppearance() }}
-        >
-          <StaffPayForm
-            amountCents={intent.amountCents}
-            currency={intent.currency}
-            onPaid={() => {
-              setIntent(null);
-              toast.success("Payment received. The invoice will update shortly.");
-              qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
-            }}
-          />
-        </Elements>
+        <section className="rounded-xl border bg-card p-6 shadow-sm">
+          <SectionLabel>Take payment</SectionLabel>
+          <div className="mt-4 grid gap-8 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium">{client?.display_name ?? "Client"}</p>
+                <p className="font-mono text-xs text-muted-foreground">Invoice #{shortId}</p>
+              </div>
+              <div>
+                <SectionLabel>Amount due</SectionLabel>
+                <p className="mt-1 text-3xl font-semibold tabular-nums">
+                  {fmtCents(intent.amountCents, intent.currency)}
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Card charges confirm right away. Bank debits show as pending until they clear.
+              </p>
+            </div>
+            <div>
+              <Elements
+                stripe={getConnectStripe(intent.publishableKey, intent.stripeAccount)}
+                options={{ clientSecret: intent.clientSecret, appearance: stripeAppearance() }}
+              >
+                <StaffPayForm
+                  amountCents={intent.amountCents}
+                  currency={intent.currency}
+                  onPaid={() => {
+                    setIntent(null);
+                    toast.success("Payment received. The invoice will update shortly.");
+                    qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
+                  }}
+                />
+              </Elements>
+            </div>
+          </div>
+        </section>
       )}
 
+      {/* Payment history (never prints) */}
       {payments.length > 0 && (
         <div>
-          <h2 className="mb-2 text-sm font-medium">Payments</h2>
-          <div className="rounded-lg border bg-card">
+          <SectionLabel className="mb-2">Payments</SectionLabel>
+          <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
             <table className="w-full text-sm">
-              <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
+              <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-2">When</th>
-                  <th className="px-4 py-2">Amount</th>
-                  <th className="px-4 py-2">Status</th>
-                  <th className="px-4 py-2">Stripe PI</th>
+                  <th className="px-4 py-2 font-semibold">When</th>
+                  <th className="px-4 py-2 font-semibold">Amount</th>
+                  <th className="px-4 py-2 font-semibold">Status</th>
+                  <th className="px-4 py-2 font-semibold">Stripe PI</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y">
                 {payments.map((p) => (
-                  <tr key={p.id} className="border-b last:border-0">
-                    <td className="px-4 py-2">{p.paid_at ?? p.created_at}</td>
-                    <td className="px-4 py-2">{fmtCents(p.amount_cents, invoice.currency)}</td>
-                    <td className="px-4 py-2">{p.status}</td>
+                  <tr key={p.id}>
+                    <td className="px-4 py-2">{formatDateTime(p.paid_at ?? p.created_at) || (p.paid_at ?? p.created_at)}</td>
+                    <td className="px-4 py-2 tabular-nums">{fmtCents(p.amount_cents, invoice.currency)}</td>
+                    <td className="px-4 py-2"><StatusChip status={p.status} /></td>
                     <td className="px-4 py-2 font-mono text-xs">{p.stripe_payment_intent_id ?? "-"}</td>
                   </tr>
                 ))}
@@ -319,7 +421,7 @@ function StaffPayForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-lg space-y-4 rounded-lg border bg-card p-4">
+    <form onSubmit={handleSubmit} className="space-y-4">
       <PaymentElement onReady={() => setReady(true)} />
       {error && (
         <div className="rounded border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive">

@@ -6,7 +6,7 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { MoreHorizontal, Navigation, Pencil, Phone } from "lucide-react";
+import { MessageSquare, MoreHorizontal, Navigation, Pencil, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -209,7 +209,7 @@ export function ClientHeader({
           )}
           <Link to="/messages/$clientId" params={{ clientId }}>
             <Button variant="outline" size="sm">
-              Message
+              <MessageSquare className="mr-1.5 h-3.5 w-3.5" /> Message
             </Button>
           </Link>
           <Button size="sm" onClick={onEditClient}>

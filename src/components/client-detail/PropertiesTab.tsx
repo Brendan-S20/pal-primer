@@ -20,6 +20,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -904,7 +905,7 @@ function DogsSection({
                   : "Add dog"}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={resetForm}>
-              Cancel
+              <X className="mr-1 h-3.5 w-3.5" /> Cancel
             </Button>
           </div>
         </form>

@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
-import { FileText, Plus } from "lucide-react";
+import { FileText, Plus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -414,6 +414,7 @@ export function AutopayResume({
 
 export function AddonsPanel({ clientId }: { clientId: string }) {
   const qc = useQueryClient();
+  const { confirm: confirmAddon, dialog: addonConfirmDialog } = useConfirmDialog();
   const listSvc = useServerFn(listAddonServices);
   const listAddons = useServerFn(listClientAddons);
   const createCharge = useServerFn(createAddonCharge);
@@ -510,6 +511,7 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
 
   return (
     <section className="rounded-lg border bg-card shadow-sm p-5">
+      {addonConfirmDialog}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-medium">Add-ons &amp; cross-sells</h2>
         {!showAdd && (
@@ -669,10 +671,10 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
           </div>
           <button
             type="button"
-            className="mt-3 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            className="mt-3 inline-flex items-center gap-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
             onClick={() => setShowAdd(false)}
           >
-            Cancel
+            <X className="h-3 w-3" /> Cancel
           </button>
         </div>
       )}
@@ -712,9 +714,22 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => statusMut.mutate({ id: s.id, status: "canceled" })}
+                      className="text-destructive hover:text-destructive"
+                      onClick={async () => {
+                        // Ends the recurring add-on, not a form dismiss:
+                        // destructive styling + confirm, no X-icon dress.
+                        if (
+                          await confirmAddon({
+                            title: "Cancel this add-on?",
+                            description: `${s.addon_services?.name ?? "This add-on"} stops billing and won't be charged again. Past charges are kept.`,
+                            confirmLabel: "Cancel add-on",
+                            destructive: true,
+                          })
+                        )
+                          statusMut.mutate({ id: s.id, status: "canceled" });
+                      }}
                     >
-                      Cancel
+                      Cancel add-on…
                     </Button>
                   )}
                 </div>

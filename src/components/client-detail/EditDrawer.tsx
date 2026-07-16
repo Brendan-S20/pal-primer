@@ -29,6 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { X } from "lucide-react";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
 
@@ -169,14 +170,17 @@ export function DrawerFooter({
   children: ReactNode;
 }) {
   const requestClose = useDrawerClose();
+  // -mx-6/-mb-4 cancel the scroll body's px-6 py-4 so the footer sits flush
+  // against the dialog's bottom edge (the content root is overflow-hidden
+  // with rounded corners, so no rounding of our own is needed).
   return (
-    <div className="sticky bottom-0 -mx-6 mt-6 flex items-center justify-end gap-2 border-t bg-background px-6 py-3">
+    <div className="sticky bottom-0 -mx-6 -mb-4 mt-6 flex items-center justify-end gap-2 border-t bg-background px-6 py-3">
       <button
         type="button"
         onClick={onCancel ?? requestClose}
-        className="rounded-md border px-4 py-2 text-sm hover:bg-muted"
+        className="inline-flex items-center rounded-md border px-4 py-2 text-sm hover:bg-muted"
       >
-        Cancel
+        <X className="mr-1.5 h-3.5 w-3.5" /> Cancel
       </button>
       {children}
     </div>

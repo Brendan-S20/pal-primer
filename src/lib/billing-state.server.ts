@@ -5,6 +5,26 @@
 // /platform/plans), so if bands change in the DB every surface updates in one
 // place.
 
+/**
+ * Period end for a Stripe subscription across API versions. Stripe's
+ * 2025+ API (pinned by stripe v22) removed current_period_end from the
+ * Subscription object — it now lives on each subscription ITEM. Reading
+ * the top-level field returns undefined at runtime, which was silently
+ * nulling stored renewal dates. Prefer the legacy field when present,
+ * else the latest item period end.
+ */
+export function subscriptionPeriodEnd(sub: unknown): number | null {
+  const s = sub as {
+    current_period_end?: number | null;
+    items?: { data?: Array<{ current_period_end?: number | null }> };
+  };
+  if (s.current_period_end) return s.current_period_end;
+  const itemEnds = (s.items?.data ?? [])
+    .map((i) => i.current_period_end)
+    .filter((n): n is number => typeof n === "number" && n > 0);
+  return itemEnds.length ? Math.max(...itemEnds) : null;
+}
+
 type PlanRow = {
   id: string;
   name: string;
@@ -13,6 +33,8 @@ type PlanRow = {
   client_limit_max: number | null;
   price_cents: number | null;
   price_per_client_cents: number | null;
+  included_seats: number | null;
+  price_per_seat_cents: number | null;
   stripe_price_id: string | null;
   is_free: boolean;
   sort_order: number | null;
@@ -47,6 +69,8 @@ export type BillingState = {
   isPaidTier: boolean;
   priceCents: number | null;
   pricePerClientCents: number | null;
+  includedSeats: number | null;
+  pricePerSeatCents: number | null;
   monthlyEstimateCents: number | null; // final $ owed if per-client
   stripePriceId: string | null;
   stripeCustomerId: string | null;
@@ -110,7 +134,7 @@ export async function getOrgBillingState(
     supabase
       .from("platform_plans")
       .select(
-        "id, name, slug, client_limit_min, client_limit_max, price_cents, price_per_client_cents, stripe_price_id, is_free, sort_order",
+        "id, name, slug, client_limit_min, client_limit_max, price_cents, price_per_client_cents, included_seats, price_per_seat_cents, stripe_price_id, is_free, sort_order",
       )
       .eq("is_active", true)
       .order("sort_order", { ascending: true }),
@@ -138,7 +162,7 @@ export async function getBulkOrgBillingState(
     supabase
       .from("platform_plans")
       .select(
-        "id, name, slug, client_limit_min, client_limit_max, price_cents, price_per_client_cents, stripe_price_id, is_free, sort_order",
+        "id, name, slug, client_limit_min, client_limit_max, price_cents, price_per_client_cents, included_seats, price_per_seat_cents, stripe_price_id, is_free, sort_order",
       )
       .eq("is_active", true)
       .order("sort_order", { ascending: true }),
@@ -196,6 +220,8 @@ function buildBillingState(o: OrgRow, plans: PlanRow[]): BillingState {
     isPaidTier,
     priceCents,
     pricePerClientCents: perClientCents,
+    includedSeats: displayPlan?.included_seats ?? null,
+    pricePerSeatCents: displayPlan?.price_per_seat_cents ?? null,
     monthlyEstimateCents,
     stripePriceId: displayPlan?.stripe_price_id ?? null,
     stripeCustomerId: o.stripe_customer_id,

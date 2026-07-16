@@ -6,6 +6,7 @@ import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getBillingStatus } from "@/lib/billing.functions";
 import { PlanPicker, EmbeddedPlanCheckout } from "@/components/billing/PlanPicker";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { APP_NAME } from "@/lib/scoop";
 
 // Post-signup onboarding path (Brendan's re-review): "Create account" lands
@@ -30,6 +31,24 @@ function OnboardingPage() {
       : "welcome",
   );
   const [planId, setPlanId] = useState<string | null>(null);
+  const { confirm, dialog } = useConfirmDialog();
+
+  // Already-subscribed orgs revisiting onboarding: the checkout step
+  // switches the LIVE subscription in place (prorated, no payment form),
+  // so picking a plan must be confirmed like it is in Settings > Billing.
+  async function pickPlan(id: string) {
+    if (billing?.isPaidTier) {
+      const ok = await confirm({
+        title: "Switch your plan?",
+        description:
+          "You already have an active subscription. Switching changes it right away and the difference is prorated on your next invoice.",
+        confirmLabel: "Switch plan",
+      });
+      if (!ok) return;
+    }
+    setPlanId(id);
+    setStep("checkout");
+  }
 
   const steps: Array<{ key: Step; label: string }> = [
     { key: "welcome", label: "Welcome" },
@@ -40,6 +59,7 @@ function OnboardingPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
+      {dialog}
       <div className="flex items-center gap-2">
         {steps.map((s, i) => (
           <div key={s.key} className="flex flex-1 items-center gap-2">
@@ -84,10 +104,7 @@ function OnboardingPage() {
               Payment happens right here. You won't leave the app. Change or cancel anytime.
             </p>
           </div>
-          <PlanPicker
-            currentSlug={billing?.planSlug}
-            onSelect={(id) => { setPlanId(id); setStep("checkout"); }}
-          />
+          <PlanPicker currentSlug={billing?.planSlug} onSelect={pickPlan} />
           <div className="flex gap-2">
             <Button variant="ghost" onClick={() => setStep("welcome")}>Back</Button>
             <Button variant="ghost" onClick={() => navigate({ to: "/dashboard" })}>
@@ -102,6 +119,9 @@ function OnboardingPage() {
           planId={planId}
           returnUrl={typeof window !== "undefined" ? `${window.location.origin}/onboarding?paid=1` : "https://app.houndstack.com/onboarding?paid=1"}
           onCancel={() => setStep("plan")}
+          // Already subscribed (e.g. revisiting onboarding): the plan was
+          // switched in place, no payment form needed.
+          onSwitched={() => setStep("done")}
         />
       )}
 

@@ -7,7 +7,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -653,7 +653,7 @@ function VisitDetailDrawer({
                     {mut.isPending ? "Saving…" : "Save correction"}
                   </Button>
                   <Button type="button" size="sm" variant="ghost" onClick={() => setCorrecting(false)}>
-                    Cancel
+                    <X className="mr-1 h-3.5 w-3.5" /> Cancel
                   </Button>
                 </div>
               </form>
