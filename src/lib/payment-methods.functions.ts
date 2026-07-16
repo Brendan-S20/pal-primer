@@ -187,18 +187,15 @@ export const removePaymentMethod = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-/** Staff-initiated hosted Checkout (mode=setup) to add a card. Reuses the
- * portal_setup webhook finalizer, so the new card lands as the default. */
-export const startCardSetupForClient = createServerFn({ method: "POST" })
+/** Staff-initiated inline card save: create a SetupIntent on the connected
+ * account for a Payment Element, instead of redirecting to hosted Checkout. */
+export const createSetupIntentForClient = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z.object({ clientId: z.string().uuid(), returnUrl: z.string().url() }).parse(d),
-  )
+  .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const client = await loadClientForBilling(context.supabase, context.userId, data.clientId);
-    const { requireOrgStripeAccount, connectStripe, verifyClientStripeCustomer } = await import(
-      "@/lib/stripe-connect.server"
-    );
+    const { requireOrgStripeAccount, connectStripe, connectPublishableKey, verifyClientStripeCustomer } =
+      await import("@/lib/stripe-connect.server");
     const acct = await requireOrgStripeAccount(client.organization_id);
     const stripe = await connectStripe();
     const opts = { stripeAccount: acct.accountId };
@@ -221,22 +218,71 @@ export const startCardSetupForClient = createServerFn({ method: "POST" })
       if (error) throw new Error(error.message);
     }
 
-    const checkout = await stripe.checkout.sessions.create(
+    const si = await stripe.setupIntents.create(
       {
-        mode: "setup",
         customer: customerId,
         payment_method_types: ["card"],
-        success_url: `${data.returnUrl}${data.returnUrl.includes("?") ? "&" : "?"}card_saved=1`,
-        cancel_url: data.returnUrl,
+        usage: "off_session",
         metadata: {
-          // Distinct from portal_setup: the webhook must NOT flip autopay on
-          // for a staff-added card (the client may have chosen autopay off).
-          source: "staff_setup",
+          // Distinct from portal_setup_inline: a staff-added card must NOT
+          // flip autopay on (the client may have chosen autopay off).
+          source: "staff_setup_inline",
           client_id: client.id,
           organization_id: client.organization_id,
         },
       },
       opts,
     );
-    return { url: checkout.url as string };
+    return {
+      clientSecret: si.client_secret as string,
+      publishableKey: connectPublishableKey(),
+      stripeAccount: acct.accountId,
+    };
+  });
+
+/** Finalize an inline card save: mark the confirmed payment method as the
+ * client's default and record the card details. Never touches autopay —
+ * that's the client's choice from the portal (staff_setup rule). */
+export const finalizeCardSetupForClient = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ clientId: z.string().uuid(), setupIntentId: z.string().min(3) }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const client = await loadClientForBilling(context.supabase, context.userId, data.clientId);
+    const { stripe, opts } = await stripeFor(client.organization_id);
+
+    const si = await stripe.setupIntents.retrieve(data.setupIntentId, {}, opts);
+    const pmId = typeof si.payment_method === "string" ? si.payment_method : si.payment_method?.id;
+    const customerId = typeof si.customer === "string" ? si.customer : si.customer?.id;
+    if (!pmId || !customerId) throw new Error("Card wasn't saved. Please try again.");
+    // Security: the SetupIntent must be the one we minted for THIS client, so
+    // a pasted/guessed seti_… id from another client can't bind their card here.
+    if (si.metadata?.client_id !== client.id) throw new Error("Card setup could not be verified.");
+
+    const pm = await stripe.paymentMethods.retrieve(pmId, {}, opts);
+    await stripe.customers.update(
+      customerId,
+      { invoice_settings: { default_payment_method: pmId } },
+      opts,
+    );
+    const { error } = await context.supabase
+      .from("clients")
+      .update({
+        stripe_customer_id: customerId,
+        default_payment_method_id: pmId,
+        default_card_brand: pm.card?.brand ?? null,
+        default_card_last4: pm.card?.last4 ?? null,
+      })
+      .eq("id", client.id);
+    if (error) throw new Error(error.message);
+
+    await logActivity(context.supabase, {
+      orgId: client.organization_id,
+      clientId: client.id,
+      actorUserId: context.userId,
+      kind: "billing.card_added",
+      summary: `Added ${pm.card?.brand ?? "card"} ****${pm.card?.last4 ?? ""}`,
+    });
+    return { ok: true, brand: pm.card?.brand ?? null, last4: pm.card?.last4 ?? null };
   });
