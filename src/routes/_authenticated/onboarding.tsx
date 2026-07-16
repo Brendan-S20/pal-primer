@@ -5,7 +5,11 @@ import { useServerFn } from "@tanstack/react-start";
 import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getBillingStatus } from "@/lib/billing.functions";
-import { PlanPicker, EmbeddedPlanCheckout } from "@/components/billing/PlanPicker";
+import {
+  PlanPicker,
+  EmbeddedPlanCheckout,
+  type BillingInterval,
+} from "@/components/billing/PlanPicker";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { APP_NAME } from "@/lib/scoop";
 
@@ -30,23 +34,23 @@ function OnboardingPage() {
       ? "done"
       : "welcome",
   );
-  const [planId, setPlanId] = useState<string | null>(null);
+  const [plan, setPlan] = useState<{ planId: string; interval: BillingInterval } | null>(null);
   const { confirm, dialog } = useConfirmDialog();
 
   // Already-subscribed orgs revisiting onboarding: the checkout step
   // switches the LIVE subscription in place (prorated, no payment form),
   // so picking a plan must be confirmed like it is in Settings > Billing.
-  async function pickPlan(id: string) {
+  async function pickPlan(id: string, _name: string, interval: BillingInterval) {
     if (billing?.isPaidTier) {
       const ok = await confirm({
         title: "Switch your plan?",
         description:
-          "You already have an active subscription. Switching changes it right away and the difference is prorated on your next invoice.",
+          "You already have an active subscription. Switching changes it right away. If the new plan costs more, the prorated difference is charged today; if it costs less, the difference is credited to your next invoice.",
         confirmLabel: "Switch plan",
       });
       if (!ok) return;
     }
-    setPlanId(id);
+    setPlan({ planId: id, interval });
     setStep("checkout");
   }
 
@@ -114,9 +118,10 @@ function OnboardingPage() {
         </div>
       )}
 
-      {step === "checkout" && planId && (
+      {step === "checkout" && plan && (
         <EmbeddedPlanCheckout
-          planId={planId}
+          planId={plan.planId}
+          interval={plan.interval}
           returnUrl={typeof window !== "undefined" ? `${window.location.origin}/onboarding?paid=1` : "https://app.houndstack.com/onboarding?paid=1"}
           onCancel={() => setStep("plan")}
           // Already subscribed (e.g. revisiting onboarding): the plan was

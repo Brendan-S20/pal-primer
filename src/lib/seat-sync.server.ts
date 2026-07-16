@@ -46,18 +46,26 @@ export async function syncOrgSeatQuantity(orgId: string): Promise<SeatSyncResult
   if (sub.status === "canceled" || sub.status === "incomplete_expired") return { skipped: `status_${sub.status}` };
 
   const priceIds = sub.items.data.map((i) => priceIdOf(i as any));
+  if (!priceIds.length) return { skipped: "no_items" };
 
-  // The base price on the subscription tells us which per-employee plan this is.
-  // Legacy per-client plans have a null stripe_seat_price_id and are excluded,
-  // so they're never touched.
+  // The base price on the subscription tells us which per-employee plan this
+  // is — it may be the MONTHLY or the ANNUAL base price, and the seat-overage
+  // item must use the matching interval's seat price (Stripe forbids mixing
+  // intervals on one subscription). Legacy per-client plans have a null
+  // stripe_seat_price_id and are excluded, so they're never touched.
+  const idList = `(${priceIds.join(",")})`;
   const { data: plan } = await (supabaseAdmin as any)
     .from("platform_plans")
-    .select("included_seats, stripe_seat_price_id")
-    .in("stripe_price_id", priceIds)
+    .select("included_seats, stripe_seat_price_id, stripe_price_id, stripe_annual_price_id, stripe_annual_seat_price_id")
+    .or(`stripe_price_id.in.${idList},stripe_annual_price_id.in.${idList}`)
     .not("stripe_seat_price_id", "is", null)
     .maybeSingle();
   const includedSeats = plan?.included_seats as number | null | undefined;
-  const seatPriceId = plan?.stripe_seat_price_id as string | null | undefined;
+  const isAnnual =
+    !!plan?.stripe_annual_price_id && priceIds.includes(plan.stripe_annual_price_id);
+  const seatPriceId = (isAnnual
+    ? plan?.stripe_annual_seat_price_id
+    : plan?.stripe_seat_price_id) as string | null | undefined;
   if (includedSeats == null || !seatPriceId) return { skipped: "not_per_employee_plan" };
 
   const { count } = await supabaseAdmin

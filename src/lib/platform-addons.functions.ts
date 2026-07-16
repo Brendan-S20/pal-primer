@@ -114,22 +114,29 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
     const stripe = await getStripe();
     const oneTime = addon.billing_interval === "one_time";
 
-    // Mint the Stripe product/price on first ever subscribe of this add-on.
-    // Idempotency keys make a two-tab race resolve to the SAME product/price
-    // instead of two parallel ones (QA finding: double-billing risk).
+    // Mint the Stripe product (and, when needed, the stored price) on first
+    // ever subscribe of this add-on. Idempotency keys make a two-tab race
+    // resolve to the SAME product/price instead of two parallel ones (QA
+    // finding: double-billing risk). The product is needed even when a stored
+    // price exists — the annual price_data path below attaches to it.
     let priceId: string | null = addon.stripe_price_id;
     let productId: string | null = addon.stripe_product_id;
-    if (!priceId) {
-      if (!productId) {
-        const product = await stripe.products.create(
-          { name: `${addon.name} (add-on)`, description: addon.description ?? undefined },
-          { idempotencyKey: `addon-product-${addon.id}` },
-        );
-        productId = product.id;
-      }
+    if (!productId) {
+      const product = await stripe.products.create(
+        { name: `${addon.name} (add-on)`, description: addon.description ?? undefined },
+        { idempotencyKey: `addon-product-${addon.id}` },
+      );
+      productId = product.id;
+      await (supabaseAdmin as any)
+        .from("platform_addons")
+        .update({ stripe_product_id: productId, updated_at: new Date().toISOString() })
+        .eq("id", addon.id);
+    }
+    const ensureStoredPrice = async (): Promise<string> => {
+      if (priceId) return priceId;
       const price = await stripe.prices.create(
         {
-          product: productId,
+          product: productId!,
           unit_amount: addon.price_cents,
           currency: "usd",
           ...(oneTime
@@ -141,9 +148,10 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
       priceId = price.id;
       await (supabaseAdmin as any)
         .from("platform_addons")
-        .update({ stripe_product_id: productId, stripe_price_id: priceId, updated_at: new Date().toISOString() })
+        .update({ stripe_price_id: priceId, updated_at: new Date().toISOString() })
         .eq("id", addon.id);
-    }
+      return priceId;
+    };
 
     // One-time services (e.g. done-for-you setup) go on the next invoice as
     // an invoice item; recurring ones become a subscription item. Both use an
@@ -156,22 +164,55 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
       await stripe.invoiceItems.create(
         {
           customer: orgRow.stripe_customer_id,
-          pricing: { price: priceId! },
+          pricing: { price: await ensureStoredPrice() },
           subscription: org.stripe_subscription_id,
         },
         { idempotencyKey: `addon-buy-${orgId}-${addon.id}` },
       );
     } else {
-      const item = await stripe.subscriptionItems.create(
-        {
-          subscription: org.stripe_subscription_id,
-          price: priceId!,
-          quantity: 1,
-          // Prorated onto the next invoice rather than a standalone charge.
-          proration_behavior: "create_prorations",
-        },
-        { idempotencyKey: `addon-item-${orgId}-${addon.id}` },
-      );
+      // The new item must match the subscription's billing interval — Stripe
+      // forbids mixing month and year items on one subscription.
+      const sub = await stripe.subscriptions.retrieve(org.stripe_subscription_id, {
+        expand: ["items.data.price"],
+      });
+      const subInterval =
+        (sub.items?.data?.[0] as any)?.price?.recurring?.interval === "year" ? "year" : "month";
+      const addonInterval = addon.billing_interval === "year" ? "year" : "month";
+
+      let item: import("stripe").Stripe.SubscriptionItem;
+      if (subInterval === "year" && addonInterval === "month") {
+        // Annual subscription, monthly-priced add-on: bill it annually at
+        // exactly 12x the monthly amount via an on-the-fly price. Add-ons
+        // carry NO annual discount (only plans get two months free).
+        item = await stripe.subscriptionItems.create(
+          {
+            subscription: org.stripe_subscription_id,
+            price_data: {
+              currency: "usd",
+              product: productId!,
+              recurring: { interval: "year" },
+              unit_amount: addon.price_cents * 12,
+            },
+            quantity: 1,
+            // Adding to an active sub charges the prorated difference NOW
+            // (UX round 7): the invoice is created and auto-charged today.
+            proration_behavior: "always_invoice",
+          },
+          { idempotencyKey: `addon-item-${orgId}-${addon.id}-year` },
+        );
+      } else {
+        item = await stripe.subscriptionItems.create(
+          {
+            subscription: org.stripe_subscription_id,
+            price: await ensureStoredPrice(),
+            quantity: 1,
+            // Adding to an active sub charges the prorated difference NOW
+            // (UX round 7): the invoice is created and auto-charged today.
+            proration_behavior: "always_invoice",
+          },
+          { idempotencyKey: `addon-item-${orgId}-${addon.id}` },
+        );
+      }
       itemId = item.id;
     }
 
@@ -224,6 +265,9 @@ export const cancelPlatformAddon = createServerFn({ method: "POST" })
     if (row.stripe_subscription_item_id) {
       const stripe = await getStripe();
       try {
+        // Removals keep "create_prorations" deliberately: the unused time is
+        // credited on the NEXT invoice rather than refunded immediately
+        // (upgrades charge now, downgrades/removals credit later).
         await stripe.subscriptionItems.del(row.stripe_subscription_item_id, {
           proration_behavior: "create_prorations",
         });

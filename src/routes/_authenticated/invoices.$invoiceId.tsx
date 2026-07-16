@@ -351,7 +351,7 @@ function InvoiceDetail() {
                   <th className="px-4 py-2 font-semibold">When</th>
                   <th className="px-4 py-2 font-semibold">Amount</th>
                   <th className="px-4 py-2 font-semibold">Status</th>
-                  <th className="px-4 py-2 font-semibold">Stripe PI</th>
+                  <th className="px-4 py-2 font-semibold">Payment reference</th>
                 </tr>
               </thead>
               <tbody className="divide-y">

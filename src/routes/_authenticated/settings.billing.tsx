@@ -2,17 +2,27 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
+import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import {
   getBillingStatus,
-  createBillingPortal,
   refreshBillingStatus,
   listPlatformInvoices,
   cancelBillingSubscription,
   resumeBillingSubscription,
   listSubscriptionItems,
   createPlanSubscription,
+  listOrgPaymentMethods,
+  createOrgSetupIntent,
+  finalizeOrgPaymentMethod,
+  setDefaultOrgPaymentMethod,
+  removeOrgPaymentMethod,
 } from "@/lib/billing.functions";
-import { PlanPicker, EmbeddedPlanCheckout } from "@/components/billing/PlanPicker";
+import {
+  PlanPicker,
+  EmbeddedPlanCheckout,
+  getPlatformStripe,
+  type BillingInterval,
+} from "@/components/billing/PlanPicker";
 import {
   listPlatformAddons,
   subscribePlatformAddon,
@@ -21,6 +31,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { StatusChip, MetaChip, SectionLabel } from "@/components/client-detail/primitives";
 import { formatDay } from "@/lib/format";
+import { stripeAppearance } from "@/lib/stripe-appearance";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 
@@ -54,7 +65,6 @@ function BillingPage() {
   const qc = useQueryClient();
   const { confirm, dialog } = useConfirmDialog();
   const statusFn = useServerFn(getBillingStatus);
-  const portalFn = useServerFn(createBillingPortal);
   const refreshFn = useServerFn(refreshBillingStatus);
   const itemsFn = useServerFn(listSubscriptionItems);
   const createSubFn = useServerFn(createPlanSubscription);
@@ -89,7 +99,9 @@ function BillingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null);
+  const [checkout, setCheckout] = useState<{ planId: string; interval: BillingInterval } | null>(
+    null,
+  );
   const cancelFn = useServerFn(cancelBillingSubscription);
   const resumeFn = useServerFn(resumeBillingSubscription);
   const cancelSub = useMutation({
@@ -112,14 +124,6 @@ function BillingPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
-  const portal = useMutation({
-    mutationFn: () => portalFn({ data: { returnUrl: window.location.href } }),
-    onSuccess: (r) => {
-      if (r.url) window.location.href = r.url;
-      else toast.error("No portal URL returned");
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
   const refresh = useMutation({
     mutationFn: () => refreshFn(),
     onSuccess: () => {
@@ -133,32 +137,52 @@ function BillingPage() {
   // existing subscription is updated with proration. The selected card shows
   // "Switching…" immediately and the Current plan marker moves on success.
   const switchPlan = useMutation({
-    mutationFn: (vars: { planId: string; planName: string }) =>
-      createSubFn({ data: { planId: vars.planId } }),
+    mutationFn: (vars: { planId: string; planName: string; interval: BillingInterval }) =>
+      createSubFn({ data: { planId: vars.planId, interval: vars.interval } }),
     onSuccess: (r: any, vars) => {
       if (r.switched) {
-        toast.success(`Plan switched to ${r.planName}`);
+        if (r.chargeFailed) {
+          toast.warning(
+            "Plan switched. We couldn't charge the difference automatically; it will be retried.",
+          );
+        } else {
+          toast.success(`Plan switched to ${r.planName}`);
+        }
         invalidateBilling();
       } else {
         // No live subscription after all (e.g. it lapsed on Stripe's side):
         // fall into the normal payment form for the chosen plan.
-        setCheckoutPlanId(vars.planId);
+        setCheckout({ planId: vars.planId, interval: vars.interval });
       }
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const onPickPlan = async (planId: string, planName: string) => {
+  const currentInterval: BillingInterval | null = (subInfo as any)?.planInterval ?? null;
+
+  const onPickPlan = async (planId: string, planName: string, interval: BillingInterval) => {
     if (data?.isPaidTier) {
-      const ok = await confirm({
-        title: `Switch to ${planName}?`,
-        description:
-          "The change applies right away. The price difference is prorated on your next invoice, and no new payment details are needed.",
-        confirmLabel: "Switch plan",
-      });
-      if (ok) switchPlan.mutate({ planId, planName });
+      const intervalChanged = !!currentInterval && interval !== currentInterval;
+      const copy = intervalChanged
+        ? interval === "year"
+          ? {
+              title: "Switch to annual billing?",
+              description: "You'll be charged the prorated difference today.",
+            }
+          : {
+              title: "Switch to monthly billing?",
+              description:
+                "Your plan changes right away. Unused time is credited to your next invoice.",
+            }
+        : {
+            title: `Switch to ${planName}?`,
+            description:
+              "The change applies right away. If the new plan costs more, the prorated difference is charged to your card today; if it costs less, the difference is credited to your next invoice.",
+          };
+      const ok = await confirm({ ...copy, confirmLabel: "Switch plan" });
+      if (ok) switchPlan.mutate({ planId, planName, interval });
     } else {
-      setCheckoutPlanId(planId);
+      setCheckout({ planId, interval });
     }
   };
 
@@ -167,6 +191,13 @@ function BillingPage() {
   const chip = STATUS_CHIP[data.billingStatus] ?? { status: "inactive", label: data.billingStatus };
   const cancelPending = !!(subInfo as any)?.cancelAtPeriodEnd;
   const periodEnd = (subInfo as any)?.currentPeriodEnd ?? data.currentPeriodEnd;
+  // Annual orgs: the plan card shows the real yearly amount from the
+  // subscription's base item instead of the catalog's monthly price.
+  const baseItem = ((subInfo as any)?.items ?? []).find((i: any) => i.kind === "base");
+  const annualBaseCents =
+    currentInterval === "year" && baseItem?.unitAmountCents != null
+      ? baseItem.unitAmountCents * (baseItem.quantity ?? 1)
+      : null;
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
@@ -199,9 +230,11 @@ function BillingPage() {
               {cancelPending && <MetaChip>Cancels at period end</MetaChip>}
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              {data.monthlyEstimateCents != null
-                ? `${formatUsd(data.monthlyEstimateCents)}/month`
-                : "No charge"}
+              {annualBaseCents != null
+                ? `${formatUsd(annualBaseCents)}/year`
+                : data.monthlyEstimateCents != null
+                  ? `${formatUsd(data.monthlyEstimateCents)}/month`
+                  : "No charge"}
               {data.includedSeats != null && ` · Includes ${data.includedSeats} employee${data.includedSeats === 1 ? "" : "s"}`}
             </p>
             {data.isPaidTier && periodEnd && (
@@ -218,24 +251,8 @@ function BillingPage() {
             )}
             {data.billingStatus === "past_due" && (
               <p className="mt-2 text-sm text-destructive">
-                Your last payment failed. Update your payment method to keep your plan.
+                Your last payment failed. Update your payment method below to keep your plan.
               </p>
-            )}
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-3">
-            <div className="text-right">
-              <p className="text-sm text-muted-foreground">Active clients</p>
-              <p className="text-xl font-semibold">{data.activeClientCount}</p>
-            </div>
-            {data.isPaidTier && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => portal.mutate()}
-                disabled={portal.isPending}
-              >
-                {portal.isPending ? "Opening…" : "Update payment method"}
-              </Button>
             )}
           </div>
         </div>
@@ -250,26 +267,29 @@ function BillingPage() {
           <p className="text-sm text-muted-foreground">
             Unlimited customers, dogs, jobs, routes, and zones on every tier. You're billed per
             employee.
-            {data.isPaidTier && " Switching is instant and prorated. No new card details needed."}
+            {data.isPaidTier &&
+              " Switching is instant: upgrades charge the prorated difference today, downgrades credit your next invoice."}
           </p>
         </div>
-        {checkoutPlanId ? (
+        {checkout ? (
           <EmbeddedPlanCheckout
-            planId={checkoutPlanId}
+            planId={checkout.planId}
+            interval={checkout.interval}
             returnUrl={
               typeof window !== "undefined"
                 ? window.location.href.split("?")[0]
                 : "https://app.houndstack.com/settings/billing"
             }
-            onCancel={() => setCheckoutPlanId(null)}
+            onCancel={() => setCheckout(null)}
             onSwitched={() => {
-              setCheckoutPlanId(null);
+              setCheckout(null);
               invalidateBilling();
             }}
           />
         ) : (
           <PlanPicker
             currentSlug={data.planSlug}
+            currentInterval={currentInterval}
             onSelect={onPickPlan}
             switchingPlanId={switchPlan.isPending ? switchPlan.variables?.planId : null}
             chooseLabel={data.isPaidTier ? "Switch to this plan" : "Choose plan"}
@@ -277,7 +297,9 @@ function BillingPage() {
         )}
       </section>
 
-      <PlatformAddonsSection />
+      {data.isPaidTier && <PaymentMethodsCard />}
+
+      <PlatformAddonsSection planInterval={currentInterval} />
 
       {data.isPaidTier && (
         <NextInvoice subInfo={subInfo as any} isLoading={subInfoLoading} />
@@ -337,10 +359,212 @@ function BillingPage() {
   );
 }
 
+// In-app payment methods for the org's subscription (replaces the hosted
+// billing portal round-trip): list cards, set the default, remove, and add a
+// new card inline via a SetupIntent + Payment Element.
+function PaymentMethodsCard() {
+  const qc = useQueryClient();
+  const { confirm, dialog } = useConfirmDialog();
+  const listFn = useServerFn(listOrgPaymentMethods);
+  const setDefaultFn = useServerFn(setDefaultOrgPaymentMethod);
+  const removeFn = useServerFn(removeOrgPaymentMethod);
+  const [adding, setAdding] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["org-payment-methods"],
+    queryFn: () => listFn(),
+  });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["org-payment-methods"] });
+    qc.invalidateQueries({ queryKey: ["billing-status"] });
+  };
+
+  const makeDefault = useMutation({
+    mutationFn: (paymentMethodId: string) => setDefaultFn({ data: { paymentMethodId } }),
+    onSuccess: () => {
+      toast.success("Default card updated");
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const remove = useMutation({
+    mutationFn: (paymentMethodId: string) => removeFn({ data: { paymentMethodId } }),
+    onSuccess: () => {
+      toast.success("Card removed");
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const methods = data?.methods ?? [];
+  const brandLabel = (b: string) => (b ? b.charAt(0).toUpperCase() + b.slice(1) : "Card");
+
+  return (
+    <section className="rounded-xl border bg-card p-6 shadow-sm">
+      {dialog}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Payment methods</h2>
+          <p className="text-sm text-muted-foreground">
+            The default card pays your subscription. Payments are processed securely.
+          </p>
+        </div>
+        {!adding && (
+          <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+            Add card
+          </Button>
+        )}
+      </div>
+      {isLoading ? (
+        <p className="mt-3 text-sm text-muted-foreground">Loading…</p>
+      ) : methods.length === 0 && !adding ? (
+        <p className="mt-3 text-sm text-muted-foreground">
+          No saved cards yet. Add one so your subscription can renew.
+        </p>
+      ) : (
+        <ul className="mt-3 divide-y">
+          {methods.map((m) => (
+            <li key={m.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <p className="font-medium">
+                  {brandLabel(m.brand)} ****{m.last4}
+                </p>
+                <span className="text-xs text-muted-foreground">
+                  Expires {String(m.expMonth).padStart(2, "0")}/{String(m.expYear).slice(-2)}
+                </span>
+                {m.isDefault && <MetaChip>Default</MetaChip>}
+              </div>
+              <div className="flex items-center gap-2">
+                {!m.isDefault && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={makeDefault.isPending}
+                    onClick={() => makeDefault.mutate(m.id)}
+                  >
+                    Set as default
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={remove.isPending}
+                  onClick={async () => {
+                    if (
+                      await confirm({
+                        title: `Remove ${brandLabel(m.brand)} ****${m.last4}?`,
+                        destructive: true,
+                        confirmLabel: "Remove card",
+                      })
+                    ) {
+                      remove.mutate(m.id);
+                    }
+                  }}
+                >
+                  Remove
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {adding && (
+        <div className="mt-4">
+          <OrgCardSetup
+            onDone={() => {
+              setAdding(false);
+              invalidate();
+            }}
+            onCancel={() => setAdding(false)}
+          />
+        </div>
+      )}
+    </section>
+  );
+}
+
+// Inline card save for the org's platform billing customer: SetupIntent +
+// Payment Element, then a server-side finalize that verifies the intent and
+// promotes the card to the customer AND subscription default.
+function OrgCardSetup({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+  const setupFn = useServerFn(createOrgSetupIntent);
+  const q = useQuery({
+    queryKey: ["org-setup-intent"],
+    queryFn: () => setupFn(),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 0,
+  });
+
+  if (q.isLoading) return <p className="text-sm text-muted-foreground">Loading secure card form…</p>;
+  if (q.error) return <p className="text-sm text-destructive">{(q.error as Error).message}</p>;
+  if (!q.data) return null;
+
+  return (
+    <div className="rounded-md border bg-background p-4">
+      <Elements
+        stripe={getPlatformStripe(q.data.publishableKey)}
+        options={{ clientSecret: q.data.clientSecret, appearance: stripeAppearance() }}
+      >
+        <OrgCardSetupInner onDone={onDone} onCancel={onCancel} />
+      </Elements>
+    </div>
+  );
+}
+
+function OrgCardSetupInner({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const finalizeFn = useServerFn(finalizeOrgPaymentMethod);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    setBusy(true);
+    try {
+      const { error, setupIntent } = await stripe.confirmSetup({
+        elements,
+        confirmParams: { return_url: window.location.href },
+        redirect: "if_required",
+      });
+      if (error) {
+        toast.error(error.message ?? "Couldn't save the card");
+        return;
+      }
+      if (!setupIntent?.id) {
+        toast.error("Card wasn't saved. Please try again.");
+        return;
+      }
+      const r: any = await finalizeFn({ data: { setupIntentId: setupIntent.id } });
+      toast.success(`Added ${r.brand ?? "card"} ****${r.last4 ?? ""}. It's now your default card`);
+      onDone();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-3">
+      <PaymentElement />
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={busy || !stripe}>
+          {busy ? "Saving…" : "Save card"}
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 // Platform -> tenant software add-ons (the upsell shelf): bolt-ons like the
 // AI Receptionist that attach to the org's existing plan subscription as a
 // Stripe subscription item and flip the matching feature on.
-function PlatformAddonsSection() {
+function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval | null }) {
   const qc = useQueryClient();
   const { confirm, dialog } = useConfirmDialog();
   const listFn = useServerFn(listPlatformAddons);
@@ -357,8 +581,13 @@ function PlatformAddonsSection() {
   };
   const subscribe = useMutation({
     mutationFn: (addonId: string) => subFn({ data: { addonId } }),
-    onSuccess: () => {
-      toast.success("Add-on added to your subscription");
+    onSuccess: (_r, addonId) => {
+      const addon = (data?.addons ?? []).find((x) => x.id === addonId);
+      toast.success(
+        addon?.billing_interval === "one_time"
+          ? "Purchase added. It will appear on your next invoice"
+          : "Add-on added. The prorated amount for this period is charged today",
+      );
       invalidate();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -407,12 +636,25 @@ function PlatformAddonsSection() {
                     />
                   )}
                 </div>
-                <p className="whitespace-nowrap text-sm font-semibold">
-                  {formatUsd(a.price_cents)}
-                  <span className="font-normal text-muted-foreground">
-                    {a.billing_interval === "one_time" ? " one time" : `/${a.billing_interval}`}
-                  </span>
-                </p>
+                {/* Annual orgs pay recurring add-ons yearly at 12x the monthly
+                    amount (no discount), so show the amount they'll actually
+                    be billed. One-time add-ons are unaffected by interval. */}
+                {planInterval === "year" && a.billing_interval === "month" ? (
+                  <p className="whitespace-nowrap text-right text-sm font-semibold">
+                    {formatUsd(a.price_cents * 12)}
+                    <span className="font-normal text-muted-foreground">/yr</span>
+                    <span className="block text-xs font-normal text-muted-foreground">
+                      billed with your annual plan
+                    </span>
+                  </p>
+                ) : (
+                  <p className="whitespace-nowrap text-sm font-semibold">
+                    {formatUsd(a.price_cents)}
+                    <span className="font-normal text-muted-foreground">
+                      {a.billing_interval === "one_time" ? " one time" : `/${a.billing_interval}`}
+                    </span>
+                  </p>
+                )}
               </div>
               {a.description && (
                 <p className="mt-1 flex-1 text-sm text-muted-foreground">{a.description}</p>
@@ -494,6 +736,7 @@ function NextInvoice({
           intervalCount: number;
         }>;
         currentPeriodEnd: string | null;
+        planInterval?: "month" | "year" | null;
       }
     | undefined;
   isLoading: boolean;
@@ -504,28 +747,38 @@ function NextInvoice({
     ...items.filter((i) => i.kind === "seat"),
     ...items.filter((i) => i.kind === "addon"),
   ];
-  const monthlyTotal = items.reduce(
+  // Total in the subscription's own interval (all items share it; anything
+  // odd an admin attached by hand is excluded and called out).
+  const planInterval = subInfo?.planInterval ?? "month";
+  const total = items.reduce(
     (sum, i) =>
-      i.unitAmountCents != null && i.interval === "month" && i.intervalCount === 1
+      i.unitAmountCents != null && i.interval === planInterval && i.intervalCount === 1
         ? sum + i.unitAmountCents * (i.quantity ?? 1)
         : sum,
     0,
   );
-  const allMonthly = items.every((i) => i.interval === "month" && i.intervalCount === 1);
+  const allSameInterval = items.every(
+    (i) => i.interval === planInterval && i.intervalCount === 1,
+  );
+  const totalLabel = planInterval === "year" ? "Yearly total" : "Monthly total";
+  const totalSuffix = planInterval === "year" ? "/yr" : "/mo";
 
+  const intervalSuffix = (i: (typeof items)[number]) =>
+    i.interval
+      ? `/${i.intervalCount > 1 ? `${i.intervalCount} ` : ""}${
+          i.interval === "month" ? "mo" : i.interval === "year" ? "yr" : i.interval
+        }`
+      : "";
   const lineLabel = (i: (typeof items)[number]) => {
     if (i.kind === "seat") {
-      return `Extra employees (${i.quantity} × ${formatUsd(i.unitAmountCents)})`;
+      return `Extra employees (${i.quantity} × ${formatUsd(i.unitAmountCents)}${intervalSuffix(i)})`;
     }
     return i.name;
   };
   const lineAmount = (i: (typeof items)[number]) => {
     if (i.unitAmountCents == null) return "-";
-    const total = formatUsd(i.unitAmountCents * (i.quantity ?? 1));
-    const interval = i.interval
-      ? `/${i.intervalCount > 1 ? `${i.intervalCount} ` : ""}${i.interval === "month" ? "mo" : i.interval}`
-      : "";
-    return `${total}${interval}`;
+    const lineTotal = formatUsd(i.unitAmountCents * (i.quantity ?? 1));
+    return `${lineTotal}${intervalSuffix(i)}`;
   };
 
   return (
@@ -558,8 +811,10 @@ function NextInvoice({
             ))}
           </ul>
           <div className="mt-1 flex items-center justify-between border-t pt-3">
-            <p className="text-sm font-semibold">{allMonthly ? "Monthly total" : "Monthly total (excludes yearly items)"}</p>
-            <p className="text-sm font-semibold">{formatUsd(monthlyTotal)}/mo</p>
+            <p className="text-sm font-semibold">
+              {allSameInterval ? totalLabel : `${totalLabel} (excludes other billing periods)`}
+            </p>
+            <p className="text-sm font-semibold">{formatUsd(total)}{totalSuffix}</p>
           </div>
         </>
       )}

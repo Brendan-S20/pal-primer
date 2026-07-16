@@ -140,8 +140,8 @@ export function BillingTab({ clientId }: { clientId: string }) {
               />
             </div>
             <p className="mt-2 max-w-md text-xs text-muted-foreground">
-              Clients turn autopay on or off from their portal. Billing addresses are managed by
-              Stripe with the card and are not stored in HoundStack.
+              Clients turn autopay on or off from their portal. Billing addresses are kept with the
+              card by our payment processor and are not stored in HoundStack.
             </p>
           </div>
           {c?.autopay_paused && (
@@ -243,7 +243,8 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
         <div>
           <h2 className="text-sm font-medium">Payment methods</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Stored securely in Stripe. Autopay charges the default card.
+            Card details are stored with our payment processor, never on HoundStack. Autopay
+            charges the default card.
           </p>
         </div>
         <Button size="sm" variant="outline" onClick={() => setAddOpen((v) => !v)}>
@@ -273,7 +274,7 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
           <EmptyState
             compact
             icon={CreditCard}
-            title={`No cards on file${data?.hasCustomer === false ? " (no Stripe customer yet)" : ""}`}
+            title={`No cards on file${data?.hasCustomer === false ? " (no billing profile yet)" : ""}`}
             description="Add one here or let the client add it from their portal."
             actionLabel="Add card"
             onAction={() => setAddOpen(true)}

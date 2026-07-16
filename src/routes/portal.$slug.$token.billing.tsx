@@ -106,7 +106,7 @@ function PortalBilling() {
           />
         )}
         <p className="text-xs text-muted-foreground">
-          We accept credit/debit cards and ACH bank transfers via Stripe. Your data never touches our servers.
+          We accept credit and debit cards plus ACH bank transfers. Your card details never touch our servers.
         </p>
       </div>
 

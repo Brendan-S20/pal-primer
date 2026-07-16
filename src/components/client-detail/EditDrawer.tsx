@@ -134,7 +134,9 @@ export function EditDrawer({
             <DialogTitle>{title}</DialogTitle>
             {description ? <DialogDescription>{description}</DialogDescription> : null}
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto px-6 py-4">{body}</div>
+          {/* No bottom padding: DrawerFooter is the last row and must sit
+              flush against the dialog's bottom edge in every scroll state. */}
+          <div className="flex-1 overflow-y-auto px-6 pt-4">{body}</div>
           {discardDialog}
         </DialogContent>
       </Dialog>
@@ -152,7 +154,7 @@ export function EditDrawer({
           <SheetTitle>{title}</SheetTitle>
           {description ? <SheetDescription>{description}</SheetDescription> : null}
         </SheetHeader>
-        <div className="flex-1 px-6 py-4">{body}</div>
+        <div className="flex-1 px-6 pt-4">{body}</div>
         {discardDialog}
       </SheetContent>
     </Sheet>
@@ -170,11 +172,12 @@ export function DrawerFooter({
   children: ReactNode;
 }) {
   const requestClose = useDrawerClose();
-  // -mx-6/-mb-4 cancel the scroll body's px-6 py-4 so the footer sits flush
-  // against the dialog's bottom edge (the content root is overflow-hidden
-  // with rounded corners, so no rounding of our own is needed).
+  // -mx-6 cancels the scroll body's horizontal padding; the body has NO
+  // bottom padding (see EditDrawer), so no vertical compensation games —
+  // the footer's border box ends exactly at the dialog's bottom edge,
+  // pinned there by sticky while the content scrolls.
   return (
-    <div className="sticky bottom-0 -mx-6 -mb-4 mt-6 flex items-center justify-end gap-2 border-t bg-background px-6 py-3">
+    <div className="sticky bottom-0 -mx-6 mt-6 flex items-center justify-end gap-2 border-t bg-background px-6 py-3">
       <button
         type="button"
         onClick={onCancel ?? requestClose}
