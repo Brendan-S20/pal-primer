@@ -105,7 +105,7 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
 
     const { data: existing } = await (supabaseAdmin as any)
       .from("org_platform_addons")
-      .select("status")
+      .select("status, canceled_at")
       .eq("organization_id", orgId)
       .eq("addon_id", addon.id)
       .maybeSingle();
@@ -113,6 +113,13 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
 
     const stripe = await getStripe();
     const oneTime = addon.billing_interval === "one_time";
+    // Idempotency generation: retries of THIS attempt dedupe, but a re-add
+    // after a removal must NOT replay the original create (Stripe would
+    // return the deleted item's id and the org would get the add-on unbilled).
+    // The prior row's canceled_at is stable per re-add generation.
+    const idemGen = existing?.canceled_at
+      ? new Date(existing.canceled_at).getTime()
+      : "first";
 
     // Mint the Stripe product (and, when needed, the stored price) on first
     // ever subscribe of this add-on. Idempotency keys make a two-tab race
@@ -167,7 +174,7 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
           pricing: { price: await ensureStoredPrice() },
           subscription: org.stripe_subscription_id,
         },
-        { idempotencyKey: `addon-buy-${orgId}-${addon.id}` },
+        { idempotencyKey: `addon-buy-${orgId}-${addon.id}-${idemGen}` },
       );
     } else {
       // The new item must match the subscription's billing interval — Stripe
@@ -198,7 +205,7 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
             // (UX round 7): the invoice is created and auto-charged today.
             proration_behavior: "always_invoice",
           },
-          { idempotencyKey: `addon-item-${orgId}-${addon.id}-year` },
+          { idempotencyKey: `addon-item-${orgId}-${addon.id}-year-${idemGen}` },
         );
       } else {
         item = await stripe.subscriptionItems.create(
@@ -210,7 +217,7 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
             // (UX round 7): the invoice is created and auto-charged today.
             proration_behavior: "always_invoice",
           },
-          { idempotencyKey: `addon-item-${orgId}-${addon.id}` },
+          { idempotencyKey: `addon-item-${orgId}-${addon.id}-${idemGen}` },
         );
       }
       itemId = item.id;
@@ -272,9 +279,40 @@ export const cancelPlatformAddon = createServerFn({ method: "POST" })
           proration_behavior: "create_prorations",
         });
       } catch (e: any) {
-        // Already gone on Stripe's side (e.g. the whole subscription was
-        // canceled): still clean up our record.
         if (e?.code !== "resource_missing") throw e;
+        // The stored item id is stale (e.g. an interval switch replaced the
+        // item and the re-point write failed). The REPLACEMENT item may still
+        // be billing: find it on the live subscription by product and delete
+        // it, or the org pays forever for an add-on that reads as removed.
+        try {
+          const { data: addonRow } = await (supabaseAdmin as any)
+            .from("platform_addons")
+            .select("stripe_product_id")
+            .eq("id", data.addonId)
+            .maybeSingle();
+          const { data: org } = await (supabaseAdmin as any)
+            .from("organizations")
+            .select("stripe_subscription_id")
+            .eq("id", orgId)
+            .maybeSingle();
+          if (addonRow?.stripe_product_id && org?.stripe_subscription_id) {
+            const sub = await stripe.subscriptions.retrieve(org.stripe_subscription_id);
+            const live = (sub.items?.data ?? []).find((it: any) => {
+              const prod =
+                typeof it.price?.product === "string" ? it.price.product : it.price?.product?.id;
+              return prod === addonRow.stripe_product_id;
+            });
+            if (live) {
+              await stripe.subscriptionItems.del(live.id, {
+                proration_behavior: "create_prorations",
+              });
+            }
+          }
+        } catch (healErr) {
+          // The subscription itself may be gone (fully canceled org) — then
+          // there is nothing billing and cleanup below is correct.
+          console.error("stale add-on item self-heal failed", (healErr as Error).message);
+        }
       }
     }
 

@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getBillingStatus } from "@/lib/billing.functions";
+import { getBillingStatus, listSubscriptionItems } from "@/lib/billing.functions";
 import {
   PlanPicker,
   EmbeddedPlanCheckout,
@@ -28,6 +28,16 @@ function OnboardingPage() {
   const navigate = useNavigate();
   const statusFn = useServerFn(getBillingStatus);
   const { data: billing } = useQuery({ queryKey: ["billing-status"], queryFn: () => statusFn() });
+  // A paid org revisiting onboarding keeps its live billing interval: without
+  // this the toggle defaults to monthly and picking any plan would silently
+  // rewrite an annual subscription to monthly billing.
+  const itemsFn = useServerFn(listSubscriptionItems);
+  const { data: subInfo } = useQuery({
+    queryKey: ["billing-subscription-items"],
+    queryFn: () => itemsFn(),
+    enabled: !!billing?.isPaidTier,
+  });
+  const currentInterval = ((subInfo as any)?.planInterval ?? null) as "month" | "year" | null;
   // Returning from the embedded checkout lands back here with ?paid=1.
   const [step, setStep] = useState<Step>(() =>
     typeof window !== "undefined" && new URL(window.location.href).searchParams.get("paid") === "1"
@@ -108,7 +118,11 @@ function OnboardingPage() {
               Payment happens right here. You won't leave the app. Change or cancel anytime.
             </p>
           </div>
-          <PlanPicker currentSlug={billing?.planSlug} onSelect={pickPlan} />
+          <PlanPicker
+            currentSlug={billing?.planSlug}
+            currentInterval={currentInterval}
+            onSelect={pickPlan}
+          />
           <div className="flex gap-2">
             <Button variant="ghost" onClick={() => setStep("welcome")}>Back</Button>
             <Button variant="ghost" onClick={() => navigate({ to: "/dashboard" })}>

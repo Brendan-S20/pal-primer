@@ -319,15 +319,22 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
         // instead of pretending the charge landed.
         let chargeFailed = false;
         if (chargeNow) {
+          // Only a failed PAY flags chargeFailed: a transient retrieve error
+          // says nothing about the charge (auto-collection may land fine).
+          let invoice: import("stripe").Stripe.Invoice | null = null;
           try {
             const li = updated.latest_invoice;
-            const invoice = typeof li === "string" ? await stripe.invoices.retrieve(li) : li;
-            if (invoice?.id && invoice.status === "open" && (invoice.amount_due ?? 0) > 0) {
-              await stripe.invoices.pay(invoice.id);
-            }
+            invoice = typeof li === "string" ? await stripe.invoices.retrieve(li) : (li ?? null);
           } catch (e) {
-            console.error("proration invoice charge failed", (e as Error).message);
-            chargeFailed = true;
+            console.error("proration invoice retrieve failed (auto-collection will handle it)", (e as Error).message);
+          }
+          if (invoice?.id && invoice.status === "open" && (invoice.amount_due ?? 0) > 0) {
+            try {
+              await stripe.invoices.pay(invoice.id);
+            } catch (e) {
+              console.error("proration invoice charge failed", (e as Error).message);
+              chargeFailed = true;
+            }
           }
         }
 
