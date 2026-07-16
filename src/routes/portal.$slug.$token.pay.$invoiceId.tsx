@@ -119,7 +119,7 @@ function PayInvoice() {
 
       <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
         <ShieldCheck className="h-3.5 w-3.5" />
-        Payments processed securely by Stripe. Cards + ACH accepted.
+        Payments are processed securely. Cards and ACH accepted.
       </p>
     </div>
   );

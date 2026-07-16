@@ -13,7 +13,6 @@ import { listClients } from "@/lib/clients.functions";
 import { getMyOrg } from "@/lib/org.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -24,11 +23,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Download, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Download, FileText, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { downloadCsv } from "@/lib/csv";
 import { HelpTip } from "@/components/HelpTip";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { EmptyState, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
+import { formatDay } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/invoices/")({
   component: InvoicesPage,
@@ -43,6 +45,16 @@ function fmtCents(c: number, currency = "usd") {
 
 const STATUSES = ["draft", "open", "paid", "void", "uncollectible"] as const;
 type StatusKey = (typeof STATUSES)[number] | "all";
+
+function statusLabel(s: StatusKey) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** "Wed, May 28 to Wed, Jun 25" instead of raw ISO dates. */
+function periodLabel(start: string | null | undefined, end: string | null | undefined) {
+  if (start && end) return `${formatDay(start)} to ${formatDay(end)}`;
+  return formatDay(end ?? start) || "-";
+}
 
 /** P3.1 quick charge — bill a client right now, no visit required. */
 function NewInvoiceDialog() {
@@ -184,6 +196,47 @@ function NewInvoiceDialog() {
   );
 }
 
+/** Clickable summary stat: clicking applies (or clears) the matching status filter. */
+function StatCard({
+  label,
+  value,
+  sub,
+  active,
+  destructive = false,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  active: boolean;
+  destructive?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "rounded-xl border bg-card p-4 text-left shadow-sm transition-colors hover:bg-muted/30",
+        destructive && "border-destructive/30 bg-destructive/5 hover:bg-destructive/10",
+        active && "ring-2 ring-primary/50",
+      )}
+    >
+      <SectionLabel>{label}</SectionLabel>
+      <div
+        className={cn(
+          "mt-1 text-2xl font-semibold tabular-nums",
+          destructive && "text-destructive",
+        )}
+      >
+        {value}
+      </div>
+      {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
+    </button>
+  );
+}
+
 function InvoicesPage() {
   const { confirm, dialog } = useConfirmDialog();
   const list = useServerFn(listInvoices);
@@ -192,6 +245,7 @@ function InvoicesPage() {
   const voidBulk = useServerFn(bulkVoidInvoices);
   const paidBulk = useServerFn(bulkMarkInvoicesPaid);
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const [through, setThrough] = useState(() => new Date().toISOString().slice(0, 10));
   const [status, setStatus] = useState<StatusKey>("all");
@@ -225,6 +279,33 @@ function InvoicesPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const stats = useMemo(() => {
+    const all = invQ.data ?? [];
+    const monthPrefix = new Date().toISOString().slice(0, 7);
+    let outstandingCents = 0;
+    let openCount = 0;
+    let paidThisMonthCents = 0;
+    let paidThisMonthCount = 0;
+    let draftCount = 0;
+    for (const inv of all) {
+      if (inv.status === "open") {
+        openCount += 1;
+        outstandingCents += inv.total_cents ?? 0;
+      } else if (inv.status === "paid") {
+        const paidDay = (inv.paid_at ?? inv.period_end ?? "").slice(0, 7);
+        if (paidDay === monthPrefix) {
+          paidThisMonthCents += inv.total_cents ?? 0;
+          paidThisMonthCount += 1;
+        }
+      } else if (inv.status === "draft") {
+        draftCount += 1;
+      }
+    }
+    return { outstandingCents, openCount, paidThisMonthCents, paidThisMonthCount, draftCount };
+  }, [invQ.data]);
+
+  const toggleStatusFilter = (s: StatusKey) => setStatus((prev) => (prev === s ? "all" : s));
+
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
     return (invQ.data ?? []).filter((inv) => {
@@ -239,6 +320,14 @@ function InvoicesPage() {
       return true;
     });
   }, [invQ.data, status, search, from, to]);
+
+  const filtersActive = Boolean(search || from || to || status !== "all");
+  const resetFilters = () => {
+    setSearch("");
+    setFrom("");
+    setTo("");
+    setStatus("all");
+  };
 
   const selectedIds = useMemo(
     () =>
@@ -292,9 +381,9 @@ function InvoicesPage() {
           <h1 className="text-2xl font-semibold">Invoices</h1>
           <p className="text-sm text-muted-foreground">Bill clients for completed visits.</p>
         </div>
-        <div className="flex items-end gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
-            variant="outline"
+            variant="ghost"
             disabled={!filtered.length}
             onClick={() =>
               downloadCsv(
@@ -327,32 +416,87 @@ function InvoicesPage() {
           >
             <Download className="mr-1 h-4 w-4" /> Export CSV
           </Button>
-          <NewInvoiceDialog />
-          <div>
-            <label className="text-xs text-muted-foreground">Through date</label>
-            <Input type="date" value={through} onChange={(e) => setThrough(e.target.value)} />
-          </div>
-          <Button variant="outline" onClick={() => genM.mutate()} disabled={genM.isPending}>
-            {genM.isPending ? "Generating…" : "Generate from visits"}
-          </Button>
-          <span className="pb-2">
+          {/* Generate-from-visits is one action with a date parameter — keep
+              the input and the button visually connected as a single cluster. */}
+          <div className="flex items-center gap-2 rounded-lg border bg-card px-2 py-1.5 shadow-sm">
+            <label htmlFor="invoices-through" className="pl-1 text-xs text-muted-foreground">
+              Through
+            </label>
+            <Input
+              id="invoices-through"
+              type="date"
+              className="h-8 w-36"
+              value={through}
+              onChange={(e) => setThrough(e.target.value)}
+            />
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => genM.mutate()}
+              disabled={genM.isPending}
+            >
+              {genM.isPending ? "Generating…" : "Generate from visits"}
+            </Button>
             <HelpTip article="generate-invoices" />
-          </span>
+          </div>
+          <NewInvoiceDialog />
         </div>
       </div>
 
+      {/* Summary stats — click one to filter by that status */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Outstanding"
+          value={fmtCents(stats.outstandingCents)}
+          sub="Awaiting payment"
+          destructive={stats.outstandingCents > 0}
+          active={status === "open"}
+          onClick={() => toggleStatusFilter("open")}
+        />
+        <StatCard
+          label="Open invoices"
+          value={String(stats.openCount)}
+          sub={stats.openCount === 1 ? "1 invoice open" : `${stats.openCount} invoices open`}
+          active={status === "open"}
+          onClick={() => toggleStatusFilter("open")}
+        />
+        <StatCard
+          label="Paid this month"
+          value={fmtCents(stats.paidThisMonthCents)}
+          sub={
+            stats.paidThisMonthCount === 1
+              ? "1 invoice paid"
+              : `${stats.paidThisMonthCount} invoices paid`
+          }
+          active={status === "paid"}
+          onClick={() => toggleStatusFilter("paid")}
+        />
+        {stats.draftCount > 0 && (
+          <StatCard
+            label="Drafts"
+            value={String(stats.draftCount)}
+            sub="Not yet issued"
+            active={status === "draft"}
+            onClick={() => toggleStatusFilter("draft")}
+          />
+        )}
+      </div>
+
       {/* Filters */}
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-3">
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-3 shadow-sm">
         <div className="min-w-[200px] flex-1">
-          <label className="text-xs text-muted-foreground">Search client</label>
+          <label htmlFor="invoices-search" className="text-xs text-muted-foreground">
+            Search client
+          </label>
           <Input
+            id="invoices-search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Client name…"
           />
         </div>
         <div>
-          <label className="text-xs text-muted-foreground">Status</label>
+          <span className="text-xs text-muted-foreground">Status</span>
           <div className="flex flex-wrap gap-1">
             {(["all", ...STATUSES] as StatusKey[]).map((s) => (
               <Button
@@ -362,30 +506,30 @@ function InvoicesPage() {
                 variant={status === s ? "default" : "outline"}
                 onClick={() => setStatus(s)}
               >
-                {s}
+                {statusLabel(s)}
               </Button>
             ))}
           </div>
         </div>
         <div>
-          <label className="text-xs text-muted-foreground">Period from</label>
-          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <label htmlFor="invoices-from" className="text-xs text-muted-foreground">
+            Period from
+          </label>
+          <Input
+            id="invoices-from"
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+          />
         </div>
         <div>
-          <label className="text-xs text-muted-foreground">to</label>
-          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          <label htmlFor="invoices-to" className="text-xs text-muted-foreground">
+            Period to
+          </label>
+          <Input id="invoices-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
-        {(search || from || to || status !== "all") && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setSearch("");
-              setFrom("");
-              setTo("");
-              setStatus("all");
-            }}
-          >
+        {filtersActive && (
+          <Button variant="ghost" size="sm" onClick={resetFilters}>
             Reset
           </Button>
         )}
@@ -393,10 +537,12 @@ function InvoicesPage() {
 
       {/* Bulk action bar */}
       {selectedIds.length > 0 && (
-        <div className="flex items-center justify-between rounded-lg border bg-accent/40 px-4 py-2 text-sm">
+        <div className="flex items-center justify-between rounded-xl border bg-accent/40 px-4 py-2 text-sm shadow-sm">
           <div>
             <span className="font-medium">{selectedIds.length} selected</span>
-            <span className="ml-3 text-muted-foreground">Total {fmtCents(totalSelected)}</span>
+            <span className="ml-3 tabular-nums text-muted-foreground">
+              Total {fmtCents(totalSelected)}
+            </span>
           </div>
           <div className="flex gap-2">
             <Button
@@ -431,70 +577,94 @@ function InvoicesPage() {
         </div>
       )}
 
-      <div className="rounded-lg border bg-card">
-        <table className="w-full text-sm">
-          <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
-            <tr>
-              <th className="w-10 px-4 py-2">
-                <Checkbox checked={allVisibleSelected} onCheckedChange={toggleAll} />
-              </th>
-              <th className="px-4 py-2">Client</th>
-              <th className="px-4 py-2">Period</th>
-              <th className="px-4 py-2">Total</th>
-              <th className="px-4 py-2">Status</th>
-              <th className="px-4 py-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {invQ.isLoading ? (
+      {invQ.isLoading ? (
+        <div className="rounded-xl border bg-card p-8 text-center text-sm text-muted-foreground shadow-sm">
+          Loading…
+        </div>
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={FileText}
+          title={filtersActive ? "No invoices match" : "No invoices yet"}
+          description={
+            filtersActive
+              ? "Try widening the search, status, or period filters."
+              : "Generate invoices from completed visits, or use New invoice to bill a client directly."
+          }
+          actionLabel={filtersActive ? "Reset filters" : undefined}
+          onAction={filtersActive ? resetFilters : undefined}
+        />
+      ) : (
+        <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
+          <table className="w-full text-sm">
+            <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
-                  Loading…
-                </td>
+                <th className="w-10 px-4 py-2">
+                  <Checkbox
+                    checked={allVisibleSelected}
+                    onCheckedChange={toggleAll}
+                    aria-label="Select all invoices"
+                  />
+                </th>
+                <th className="px-4 py-2 font-semibold">Client</th>
+                <th className="px-4 py-2 font-semibold">Invoice</th>
+                <th className="px-4 py-2 font-semibold">Period</th>
+                <th className="px-4 py-2 text-right font-semibold">Total</th>
+                <th className="px-4 py-2 font-semibold">Status</th>
+                <th className="w-10 px-4 py-2" />
               </tr>
-            ) : filtered.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
-                  No invoices match.
-                </td>
-              </tr>
-            ) : (
-              filtered.map((inv) => {
+            </thead>
+            <tbody>
+              {filtered.map((inv) => {
                 const client = Array.isArray(inv.clients) ? inv.clients[0] : inv.clients;
                 const checked = !!selected[inv.id];
                 return (
-                  <tr key={inv.id} className="border-b last:border-0 hover:bg-muted/20">
-                    <td className="px-4 py-2">
+                  <tr
+                    key={inv.id}
+                    className="cursor-pointer border-b last:border-0 hover:bg-muted/30"
+                    onClick={() =>
+                      navigate({ to: "/invoices/$invoiceId", params: { invoiceId: inv.id } })
+                    }
+                  >
+                    <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
                       <Checkbox
                         checked={checked}
-                        onCheckedChange={(v) => setSelected((prev) => ({ ...prev, [inv.id]: !!v }))}
+                        onCheckedChange={(v) =>
+                          setSelected((prev) => ({ ...prev, [inv.id]: !!v }))
+                        }
+                        aria-label={`Select invoice for ${client?.display_name ?? "client"}`}
                       />
                     </td>
-                    <td className="px-4 py-2">{client?.display_name ?? "-"}</td>
-                    <td className="px-4 py-2 text-muted-foreground">
-                      {inv.period_start ? `${inv.period_start} → ` : ""}
-                      {inv.period_end}
+                    <td className="px-4 py-2.5 font-medium">{client?.display_name ?? "-"}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
+                      #{inv.id.slice(0, 8)}
                     </td>
-                    <td className="px-4 py-2">{fmtCents(inv.total_cents, inv.currency)}</td>
-                    <td className="px-4 py-2">
-                      <InvoiceStatusBadge status={inv.status} />
+                    <td className="px-4 py-2.5 text-muted-foreground">
+                      {periodLabel(inv.period_start, inv.period_end)}
                     </td>
-                    <td className="px-4 py-2 text-right">
+                    <td className="px-4 py-2.5 text-right tabular-nums">
+                      {fmtCents(inv.total_cents, inv.currency)}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <StatusChip status={inv.status} />
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
                       <Link
                         to="/invoices/$invoiceId"
                         params={{ invoiceId: inv.id }}
-                        className="text-primary hover:underline"
+                        aria-label={`Open invoice for ${client?.display_name ?? "client"}`}
+                        className="inline-flex rounded-md p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        Open →
+                        <ChevronRight className="h-4 w-4" />
                       </Link>
                     </td>
                   </tr>
                 );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

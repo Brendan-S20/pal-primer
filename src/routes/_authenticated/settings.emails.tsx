@@ -17,7 +17,7 @@ export const Route = createFileRoute("/_authenticated/settings/emails")({
 const ROWS: Array<{ key: keyof Settings; label: string; help: string }> = [
   { key: "notify_email_welcome", label: "Welcome email", help: "Sent to a new client when their record is created." },
   { key: "notify_email_invoice_sent", label: "Invoice sent", help: "Sent when you email a new invoice from the invoice page." },
-  { key: "notify_email_payment_received", label: "Payment received (receipt)", help: "Sent automatically when Stripe confirms payment." },
+  { key: "notify_email_payment_received", label: "Payment received (receipt)", help: "Sent automatically when a payment is confirmed." },
   { key: "notify_email_overdue", label: "Overdue reminder", help: "Sent by the nightly worker when an invoice is past due." },
   { key: "notify_email_visit_completed", label: "Visit completed", help: "Sent after a tech marks a visit complete. Off by default (can be chatty)." },
   { key: "notify_email_weather_reschedule", label: "Weather reschedule", help: "Sent when a visit is bumped due to weather." },

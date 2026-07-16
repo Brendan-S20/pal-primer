@@ -3099,6 +3099,7 @@ export type Database = {
       }
       platform_plans: {
         Row: {
+          annual_price_cents: number | null
           client_limit_max: number | null
           client_limit_min: number
           created_at: string
@@ -3117,12 +3118,15 @@ export type Database = {
           price_per_seat_cents: number | null
           slug: string
           sort_order: number
+          stripe_annual_price_id: string | null
+          stripe_annual_seat_price_id: string | null
           stripe_price_id: string | null
           stripe_product_id: string | null
           stripe_seat_price_id: string | null
           updated_at: string
         }
         Insert: {
+          annual_price_cents?: number | null
           client_limit_max?: number | null
           client_limit_min: number
           created_at?: string
@@ -3141,12 +3145,15 @@ export type Database = {
           price_per_seat_cents?: number | null
           slug: string
           sort_order?: number
+          stripe_annual_price_id?: string | null
+          stripe_annual_seat_price_id?: string | null
           stripe_price_id?: string | null
           stripe_product_id?: string | null
           stripe_seat_price_id?: string | null
           updated_at?: string
         }
         Update: {
+          annual_price_cents?: number | null
           client_limit_max?: number | null
           client_limit_min?: number
           created_at?: string
@@ -3165,6 +3172,8 @@ export type Database = {
           price_per_seat_cents?: number | null
           slug?: string
           sort_order?: number
+          stripe_annual_price_id?: string | null
+          stripe_annual_seat_price_id?: string | null
           stripe_price_id?: string | null
           stripe_product_id?: string | null
           stripe_seat_price_id?: string | null
