@@ -315,7 +315,7 @@ export const listClientVisitHistory = createServerFn({ method: "GET" })
     const { supabase } = context;
     await requirePermission(supabase, context.userId, "view_client_directory");
     const select =
-      "id, subscription_id, property_id, scheduled_on, status, started_at, completed_at, eta_start, eta_end, skip_reason_code, skip_reason, rescheduled_from, is_deepclean, properties(street, earliest_service_time, latest_service_time), staff:assigned_staff_id(display_name)";
+      "id, subscription_id, property_id, scheduled_on, status, started_at, completed_at, eta_start, eta_end, skip_reason_code, skip_reason, rescheduled_from, is_deepclean, properties(street, earliest_service_time, latest_service_time), subscriptions(earliest_time, latest_time), staff:assigned_staff_id(display_name)";
     const limit = data.limit ?? 100;
     const today = new Date().toISOString().slice(0, 10);
     // Two windows so a heavily scheduled client (many future visits) can't

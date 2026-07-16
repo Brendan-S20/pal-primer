@@ -4,7 +4,6 @@
 // with detected/override badges, dogs per property (deactivate, don't
 // delete), commercial-only fields, and Archive / Delete-when-allowed.
 import { useMemo, useState } from "react";
-import { Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -33,7 +32,7 @@ import { Navigation } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EmptyState, MetaChip, SectionLabel } from "@/components/client-detail/primitives";
-import { formatClock, formatDay } from "@/lib/format";
+import { formatDay } from "@/lib/format";
 import { BoundaryPreview } from "@/components/BoundaryPreview";
 import { formatArea } from "@/components/BoundarySketch";
 import {
@@ -419,11 +418,6 @@ function PropertyCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem asChild>
-                  <Link to="/properties/$propertyId/boundary" params={{ propertyId: p.id }}>
-                    <MapPin className="mr-2 h-3.5 w-3.5" /> Full-screen map
-                  </Link>
-                </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={archiveMut.isPending}
                   onSelect={async () => {
@@ -494,7 +488,12 @@ function PropertyCard({
             <div>
               {p.boundary ? (
                 <>
-                  <BoundaryPreview boundary={p.boundary} areaSqm={p.boundary_area_sqm} height={220} />
+                  <BoundaryPreview
+                    boundary={p.boundary}
+                    areaSqm={p.boundary_area_sqm}
+                    height={220}
+                    title={p.street}
+                  />
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     {yardCat && (
                       <span>
@@ -631,8 +630,6 @@ function PropertyCard({
             </div>
           </div>
 
-          <ServiceWindowRow property={p} />
-
           <DogsSection
             propertyId={p.id}
             clientId={clientId}
@@ -644,33 +641,6 @@ function PropertyCard({
         </div>
       )}
     </li>
-  );
-}
-
-// ── Service window (read-only per spec 3.4; edited in the property drawer) ──
-
-function ServiceWindowRow({ property }: { property: any }) {
-  const early = property.earliest_service_time as string | null;
-  const late = property.latest_service_time as string | null;
-  const display =
-    early && late
-      ? `${formatClock(early)} – ${formatClock(late)}`
-      : early
-        ? `After ${formatClock(early)}`
-        : late
-          ? `Before ${formatClock(late)}`
-          : null;
-
-  return (
-    <div>
-      <SectionLabel>Service window</SectionLabel>
-      <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
-        {display ? <span className="font-medium">{display}</span> : <MetaChip>Anytime</MetaChip>}
-        <span className="text-xs text-muted-foreground">
-          When the team may arrive. Edit it from the property drawer.
-        </span>
-      </div>
-    </div>
   );
 }
 
@@ -695,7 +665,10 @@ function DogsSection({
     qc.invalidateQueries({ queryKey: ["properties", clientId] });
   };
 
+  // One form, two modes: adding a new dog or editing an existing one (UX
+  // round 4: dogs must be editable right here, not just add/deactivate).
   const [adding, setAdding] = useState(false);
+  const [editingDogId, setEditingDogId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [breed, setBreed] = useState("");
   const [breedChoice, setBreedChoice] = useState("");
@@ -703,26 +676,45 @@ function DogsSection({
   const [temperament, setTemperament] = useState<"friendly" | "nervous" | "aggressive" | "unknown">("unknown");
   const [notes, setNotes] = useState("");
 
+  const resetForm = () => {
+    setAdding(false);
+    setEditingDogId(null);
+    setName("");
+    setBreed("");
+    setBreedChoice("");
+    setSize("");
+    setNotes("");
+    setTemperament("unknown");
+  };
+
+  const startEdit = (d: any) => {
+    setEditingDogId(d.id);
+    setAdding(true);
+    setName(d.name ?? "");
+    const knownBreed = d.breed && COMMON_BREEDS.includes(d.breed);
+    setBreed(d.breed ?? "");
+    setBreedChoice(d.breed ? (knownBreed ? d.breed : "__other") : "");
+    setSize(d.weight_class ?? "");
+    setTemperament((d.temperament ?? "unknown") as typeof temperament);
+    setNotes(d.notes ?? "");
+  };
+
   const addMut = useMutation({
-    mutationFn: () =>
-      addFn({
-        data: {
-          propertyId,
-          name: name.trim(),
-          breed: breed || null,
-          weightClass: size || null,
-          temperament,
-          notes: notes || null,
-        },
-      }),
+    mutationFn: () => {
+      const fields = {
+        name: name.trim(),
+        breed: breed || null,
+        weightClass: size || null,
+        temperament,
+        notes: notes || null,
+      };
+      const run = editingDogId
+        ? updateFn({ data: { id: editingDogId, ...fields } })
+        : addFn({ data: { propertyId, ...fields } });
+      return run.then(() => ({ ok: true }));
+    },
     onSuccess: () => {
-      setAdding(false);
-      setName("");
-      setBreed("");
-      setBreedChoice("");
-      setSize("");
-      setNotes("");
-      setTemperament("unknown");
+      resetForm();
       invalidate();
     },
     onError: (e) => toast.error((e as Error).message),
@@ -771,14 +763,24 @@ function DogsSection({
               </span>
               {d.notes && <span className="text-xs text-muted-foreground">{d.notes}</span>}
             </span>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 text-xs text-muted-foreground"
-              onClick={() => toggleMut.mutate({ id: d.id, active: false })}
-            >
-              Mark inactive
-            </Button>
+            <span className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs"
+                onClick={() => startEdit(d)}
+              >
+                Edit
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs text-muted-foreground"
+                onClick={() => toggleMut.mutate({ id: d.id, active: false })}
+              >
+                Mark inactive
+              </Button>
+            </span>
           </li>
         ))}
         {activeDogs.length === 0 && !adding && (
@@ -895,9 +897,13 @@ function DogsSection({
           </div>
           <div className="flex gap-2 sm:col-span-5">
             <Button type="submit" size="sm" disabled={addMut.isPending || !name.trim()}>
-              {addMut.isPending ? "Adding…" : "Add dog"}
+              {addMut.isPending
+                ? "Saving…"
+                : editingDogId
+                  ? "Save dog"
+                  : "Add dog"}
             </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setAdding(false)}>
+            <Button type="button" size="sm" variant="ghost" onClick={resetForm}>
               Cancel
             </Button>
           </div>

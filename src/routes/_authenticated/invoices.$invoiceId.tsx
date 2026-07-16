@@ -4,7 +4,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
-import { getInvoice, createCheckoutForInvoice, createEmbeddedCheckoutForInvoice, voidInvoice } from "@/lib/invoices.functions";
+import { getInvoice, createEmbeddedCheckoutForInvoice, voidInvoice } from "@/lib/invoices.functions";
+import { getMyOrg } from "@/lib/org.functions";
 import { syncInvoice } from "@/lib/accounting.functions";
 import { sendInvoiceEmail, getEmailSendStatus } from "@/lib/notifications.functions";
 import { Button } from "@/components/ui/button";
@@ -33,23 +34,29 @@ function getConnectStripe(pk: string, stripeAccount: string) {
   return p;
 }
 
+// Print stylesheet for "Download / print": everything on the page is hidden
+// except the invoice sheet, which is repositioned to the top-left of the page.
+// Elements marked .print-only (org name, issued date, status line) only render
+// on paper.
+const PRINT_STYLES = `
+.print-only { display: none; }
+@media print {
+  body * { visibility: hidden; }
+  .invoice-print-area, .invoice-print-area * { visibility: visible; }
+  .invoice-print-area { position: absolute; inset: 0; padding: 24px; background: white; color: black; }
+  .print-only { display: block; }
+}
+`;
+
 function InvoiceDetail() {
   const { invoiceId } = Route.useParams();
   const get = useServerFn(getInvoice);
-  const checkout = useServerFn(createCheckoutForInvoice);
   const voidFn = useServerFn(voidInvoice);
+  const orgFn = useServerFn(getMyOrg);
   const qc = useQueryClient();
 
   const q = useQuery({ queryKey: ["invoice", invoiceId], queryFn: () => get({ data: { id: invoiceId } }) });
-
-  const checkoutM = useMutation({
-    mutationFn: async () => checkout({ data: { id: invoiceId, returnUrl: window.location.href } }),
-    onSuccess: (r) => {
-      if (r.url) window.open(r.url, "_blank");
-      qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
 
   // In-app payment (re-review): embedded Stripe Checkout right on the invoice,
   // for taking a card over the phone or in person — no checkout.stripe.com tab.
@@ -121,44 +128,54 @@ function InvoiceDetail() {
   if (!q.data) return <p>Not found.</p>;
   const { invoice, items, payments } = q.data;
   const client = Array.isArray(invoice.clients) ? invoice.clients[0] : invoice.clients;
+  const orgName = orgQ.data?.organization?.name;
 
   return (
     <div className="space-y-6">
-      <div>
-        <Link to="/invoices" className="text-sm text-muted-foreground hover:underline">← Invoices</Link>
-        <div className="mt-2 flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">Invoice {invoice.id.slice(0, 8)}</h1>
-          <InvoiceStatusBadge status={invoice.status} />
-        </div>
-        <p className="text-sm text-muted-foreground">{client?.display_name} · {client?.primary_email ?? "no email"}</p>
-      </div>
+      <style>{PRINT_STYLES}</style>
+      <Link to="/invoices" className="text-sm text-muted-foreground hover:underline">← Invoices</Link>
 
-      <div className="rounded-lg border bg-card">
-        <div className="border-b p-4 text-sm text-muted-foreground">
-          {invoice.period_start ? `${invoice.period_start} → ` : ""}{invoice.period_end}
+      <div className="invoice-print-area space-y-6">
+        <div>
+          {orgName && <p className="print-only text-lg font-semibold">{orgName}</p>}
+          <div className="mt-2 flex items-center gap-3">
+            <h1 className="text-2xl font-semibold">Invoice {invoice.id.slice(0, 8)}</h1>
+            <InvoiceStatusBadge status={invoice.status} />
+          </div>
+          <p className="text-sm text-muted-foreground">{client?.display_name} · {client?.primary_email ?? "no email"}</p>
+          <p className="print-only text-sm">
+            Status: {invoice.status}
+            {invoice.issued_at ? ` · Issued ${String(invoice.issued_at).slice(0, 10)}` : ""}
+          </p>
         </div>
-        <table className="w-full text-sm">
-          <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
-            <tr>
-              <th className="px-4 py-2">Description</th>
-              <th className="px-4 py-2 text-right">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((it) => (
-              <tr key={it.id} className="border-b last:border-0">
-                <td className="px-4 py-2">{it.description}</td>
-                <td className="px-4 py-2 text-right">{fmtCents(it.amount_cents, invoice.currency)}</td>
+
+        <div className="rounded-lg border bg-card">
+          <div className="border-b p-4 text-sm text-muted-foreground">
+            {invoice.period_start ? `${invoice.period_start} → ` : ""}{invoice.period_end}
+          </div>
+          <table className="w-full text-sm">
+            <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2">Description</th>
+                <th className="px-4 py-2 text-right">Amount</th>
               </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="font-medium">
-              <td className="px-4 py-3">Total</td>
-              <td className="px-4 py-3 text-right">{fmtCents(invoice.total_cents, invoice.currency)}</td>
-            </tr>
-          </tfoot>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((it) => (
+                <tr key={it.id} className="border-b last:border-0">
+                  <td className="px-4 py-2">{it.description}</td>
+                  <td className="px-4 py-2 text-right">{fmtCents(it.amount_cents, invoice.currency)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="font-medium">
+                <td className="px-4 py-3">Total</td>
+                <td className="px-4 py-3 text-right">{fmtCents(invoice.total_cents, invoice.currency)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       </div>
 
       <div className="flex gap-2">
@@ -166,9 +183,6 @@ function InvoiceDetail() {
           <>
             <Button onClick={() => (embedded ? setEmbedded(null) : embeddedM.mutate())} disabled={embeddedM.isPending}>
               {embeddedM.isPending ? "Preparing…" : embedded ? "Hide payment form" : "Take payment here"}
-            </Button>
-            <Button variant="outline" onClick={() => checkoutM.mutate()} disabled={checkoutM.isPending}>
-              {checkoutM.isPending ? "Opening Stripe…" : "Get payment link"}
             </Button>
             {client?.primary_email && (
               <Button variant="outline" onClick={() => emailM.mutate()} disabled={emailM.isPending}>
@@ -196,6 +210,9 @@ function InvoiceDetail() {
             Synced · {(invoice as any).accounting_remote_id}
           </span>
         )}
+        <Button variant="outline" onClick={() => window.print()}>
+          Download / print
+        </Button>
       </div>
 
       {embedded && invoice.status !== "paid" && (

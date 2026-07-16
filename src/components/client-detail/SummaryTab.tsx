@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { AlertTriangle, CalendarClock, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatFrequency } from "@/lib/subscription-form";
+import { formatFrequency, isServiceEnded } from "@/lib/subscription-form";
 import { computeZoneVisitPrice } from "@/lib/pricing";
 import { formatDay, formatDateTime, formatPhone } from "@/lib/format";
 import { listClientMessages } from "@/lib/messages.functions";
@@ -49,7 +49,7 @@ export function SummaryTab({
   const today = todayISO();
   const activeProps = properties.filter((p: any) => !p.archived_at);
   const activeSubs = subscriptions.filter(
-    (s: any) => s.status === "active" && (!s.ends_on || s.ends_on >= today),
+    (s: any) => s.status === "active" && !isServiceEnded(s, today),
   );
   const upcoming = [...visits]
     .filter((v: any) => v.status === "scheduled" && v.scheduled_on >= today)
@@ -143,11 +143,14 @@ export function SummaryTab({
       tab: "properties",
     });
 
+  // The arrival window lives on the service (UX round 4); legacy property
+  // windows still count so migrated clients aren't nagged.
   if (
-    activeProps.length > 0 &&
+    activeSubs.length > 0 &&
+    activeSubs.every((s: any) => !s.earliest_time && !s.latest_time) &&
     activeProps.every((p: any) => !p.earliest_service_time && !p.latest_service_time)
   )
-    alerts.push({ severity: "info", text: "No arrival window configured (visits can happen anytime).", tab: "properties" });
+    alerts.push({ severity: "info", text: "No arrival window configured (visits can happen anytime).", tab: "services" });
   if (activeProps.some((p: any) => !p.boundary))
     alerts.push({
       severity: "info",

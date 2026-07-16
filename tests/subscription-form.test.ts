@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { subscriptionToFormValues, blankSubscriptionFormValues } from "@/lib/subscription-form";
+import {
+  subscriptionToFormValues,
+  blankSubscriptionFormValues,
+  isServiceEnded,
+} from "@/lib/subscription-form";
 
 // Finding #8: the edit form must mirror the actual subscription record, not
 // hardcoded defaults (weekly / $25 / 1 dog / no property).
@@ -17,6 +21,8 @@ const RECORD = {
   ends_on: "2026-09-30",
   interval_weeks: null,
   interval_days: null,
+  earliest_time: "08:00:00",
+  latest_time: "12:30:00",
 };
 
 describe("subscriptionToFormValues (finding #8)", () => {
@@ -34,6 +40,9 @@ describe("subscriptionToFormValues (finding #8)", () => {
       endsOn: "2026-09-30",
       intervalWeeks: "",
       intervalDays: "",
+      // HH:MM:SS from Postgres becomes HH:MM for input[type=time].
+      earliestTime: "08:00",
+      latestTime: "12:30",
     });
   });
 
@@ -87,5 +96,29 @@ describe("blankSubscriptionFormValues (finding #8)", () => {
     const v = blankSubscriptionFormValues({ properties: [] });
     expect(v.startedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(v.endsOn).toBe("");
+  });
+});
+
+// UX round 4: ended services must actually read as ended everywhere.
+describe("isServiceEnded", () => {
+  const today = "2026-07-16";
+
+  it("canceled status is ended regardless of dates", () => {
+    expect(isServiceEnded({ status: "canceled", ends_on: null }, today)).toBe(true);
+    expect(isServiceEnded({ status: "canceled", ends_on: "2027-01-01" }, today)).toBe(true);
+  });
+
+  it("an end date today or earlier is ended even if status never flipped", () => {
+    expect(isServiceEnded({ status: "active", ends_on: "2026-07-16" }, today)).toBe(true);
+    expect(isServiceEnded({ status: "active", ends_on: "2026-07-01" }, today)).toBe(true);
+  });
+
+  it("a future end date is still live", () => {
+    expect(isServiceEnded({ status: "active", ends_on: "2026-07-17" }, today)).toBe(false);
+  });
+
+  it("open-ended active and paused services are live", () => {
+    expect(isServiceEnded({ status: "active", ends_on: null }, today)).toBe(false);
+    expect(isServiceEnded({ status: "paused", ends_on: null }, today)).toBe(false);
   });
 });

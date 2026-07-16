@@ -955,8 +955,12 @@ function VisitCardView({
             </div>
           )}
           {(() => {
-            const s = p?.earliest_service_time?.slice(0, 5);
-            const e = p?.latest_service_time?.slice(0, 5);
+            // The window lives on the service now; fall back to the legacy
+            // property window only when the service has none at all.
+            const sub = (visit as any).subscriptions;
+            const useSub = !!(sub?.earliest_time || sub?.latest_time);
+            const s = (useSub ? sub.earliest_time : p?.earliest_service_time)?.slice(0, 5);
+            const e = (useSub ? sub.latest_time : p?.latest_service_time)?.slice(0, 5);
             if (!s && !e) return null;
             const label = s && e ? `${s}-${e}` : s ? `${s} onward` : `until ${e}`;
             return <div className="mt-0.5 text-[10px] text-muted-foreground">Window {label}</div>;

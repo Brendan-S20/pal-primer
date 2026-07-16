@@ -203,7 +203,7 @@ export const listVisitsForDay = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("visits")
       .select(
-        "id, scheduled_on, status, sequence, assigned_staff_id, zone_id, property_id, client_id, subscription_id, eta_start, eta_end, travel_km, travel_min, window_violated, weather_flagged, weather_note, clients(display_name), properties(street, city, postal_code, latitude, longitude, earliest_service_time, latest_service_time, service_duration_min), zones(name, postal_prefix), staff(display_name), subscriptions(price_cents, frequency, preferred_time_of_day)",
+        "id, scheduled_on, status, sequence, assigned_staff_id, zone_id, property_id, client_id, subscription_id, eta_start, eta_end, travel_km, travel_min, window_violated, weather_flagged, weather_note, clients(display_name), properties(street, city, postal_code, latitude, longitude, earliest_service_time, latest_service_time, service_duration_min), zones(name, postal_prefix), staff(display_name), subscriptions(price_cents, frequency, preferred_time_of_day, earliest_time, latest_time)",
       )
       .eq("organization_id", orgId)
       .eq("scheduled_on", data.day)
@@ -231,7 +231,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
          properties(id, street, city, region, postal_code, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, latitude, longitude),
          zones(name),
          staff(id, display_name),
-         subscriptions(price_cents, frequency, preferred_time_of_day),
+         subscriptions(price_cents, frequency, preferred_time_of_day, earliest_time, latest_time),
          visit_photos(id, storage_path, kind, created_at)`,
       )
       .eq("id", data.visitId)

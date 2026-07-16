@@ -6,7 +6,7 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { MoreHorizontal, Pencil } from "lucide-react";
+import { MoreHorizontal, Navigation, Pencil, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { updateClient, deleteClientIfNoHistory } from "@/lib/clients.functions";
 import { pauseSubscription } from "@/lib/subscriptions.functions";
+import { isServiceEnded } from "@/lib/subscription-form";
 import { getMyOrg } from "@/lib/org.functions";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { StatusChip, MetaChip } from "@/components/client-detail/primitives";
@@ -27,7 +28,7 @@ import { formatPhone, formatDay } from "@/lib/format";
 export function deriveClientStatus(client: any, subscriptions: any[]): string {
   if (client.active === false) return "inactive";
   const today = new Date().toISOString().slice(0, 10);
-  const live = subscriptions.filter((s) => !s.ends_on || s.ends_on >= today);
+  const live = subscriptions.filter((s) => !isServiceEnded(s, today));
   const active = live.filter((s) => s.status === "active").length;
   const paused = live.filter((s) => s.status === "paused").length;
   if (active > 0 && paused > 0) return "partially_paused";
@@ -47,6 +48,7 @@ export function ClientHeader({
   client,
   clientId,
   subscriptions,
+  properties = [],
   propertyCount,
   activeServiceCount,
   outstandingCents,
@@ -56,6 +58,8 @@ export function ClientHeader({
   client: any;
   clientId: string;
   subscriptions: any[];
+  /** Active properties; the first one drives the Navigate action. */
+  properties?: any[];
   propertyCount: number;
   activeServiceCount: number;
   /** null = caller can't see billing; hide the stat rather than show 0. */
@@ -99,7 +103,7 @@ export function ClientHeader({
   });
   const today = new Date().toISOString().slice(0, 10);
   const pausableSubs = subscriptions.filter(
-    (s) => s.status === "active" && (!s.ends_on || s.ends_on >= today),
+    (s) => s.status === "active" && !isServiceEnded(s, today),
   );
   const pauseAllMut = useMutation({
     mutationFn: async () => {
@@ -124,6 +128,7 @@ export function ClientHeader({
       : null;
 
   const derivedStatus = deriveClientStatus(client, subscriptions);
+  const navProperty = properties.find((p: any) => !p.archived_at) ?? null;
 
   const initials = (client.display_name ?? "?")
     .split(/\s+/)
@@ -173,6 +178,35 @@ export function ClientHeader({
         </div>
 
         <div className="flex items-center gap-2">
+          {client.primary_phone && (
+            <a href={`tel:${client.primary_phone}`}>
+              <Button variant="outline" size="sm">
+                <Phone className="mr-1.5 h-3.5 w-3.5" /> Call
+              </Button>
+            </a>
+          )}
+          {navProperty && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                // Directions to the pin when we have one, else the address.
+                const dest =
+                  navProperty.latitude != null && navProperty.longitude != null
+                    ? `${navProperty.latitude},${navProperty.longitude}`
+                    : encodeURIComponent(
+                        `${navProperty.street}, ${navProperty.city} ${navProperty.postal_code}`,
+                      );
+                window.open(
+                  `https://www.google.com/maps/dir/?api=1&destination=${dest}`,
+                  "_blank",
+                  "noopener",
+                );
+              }}
+            >
+              <Navigation className="mr-1.5 h-3.5 w-3.5" /> Navigate
+            </Button>
+          )}
           <Link to="/messages/$clientId" params={{ clientId }}>
             <Button variant="outline" size="sm">
               Message

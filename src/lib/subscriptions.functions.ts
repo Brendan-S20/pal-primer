@@ -18,6 +18,14 @@ const frequencySchema = z.enum([
   "every_n_days",
 ]);
 
+// Arrival window (UX round 4): lives on the service, not the property — a
+// property can host several services with different windows.
+const windowTimeSchema = z
+  .string()
+  .regex(/^\d{2}:\d{2}$/)
+  .nullable()
+  .optional();
+
 const createSubSchema = z
   .object({
     clientId: z.string().uuid(),
@@ -41,9 +49,14 @@ const createSubSchema = z
       .nullable()
       .optional(),
     preferredWeekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
+    earliestTime: windowTimeSchema,
+    latestTime: windowTimeSchema,
   })
   .refine((v) => !v.endsOn || !v.startedOn || v.endsOn >= v.startedOn, {
     message: "End date can't be before the start date",
+  })
+  .refine((v) => !v.earliestTime || !v.latestTime || v.earliestTime < v.latestTime, {
+    message: "The window's earliest time must be before its latest time",
   })
   .refine((v) => v.frequency !== "every_n_days" || !!v.intervalDays, {
     message: "Every X days needs the number of days",
@@ -90,6 +103,8 @@ export const createSubscription = createServerFn({ method: "POST" })
         ends_on: data.endsOn ?? null,
         preferred_weekdays:
           data.preferredWeekdays && data.preferredWeekdays.length ? data.preferredWeekdays : null,
+        earliest_time: data.earliestTime ?? null,
+        latest_time: data.latestTime ?? null,
       })
       .select("id")
       .single();
@@ -140,12 +155,17 @@ const updateSubSchema = z
       .nullable()
       .optional(),
     preferredWeekdays: z.array(z.number().int().min(0).max(6)).max(7).optional(),
+    earliestTime: windowTimeSchema,
+    latestTime: windowTimeSchema,
   })
   .refine((v) => !v.endsOn || !v.startedOn || v.endsOn >= v.startedOn, {
     message: "End date can't be before the start date",
   })
   .refine((v) => v.frequency !== "every_n_days" || !!v.intervalDays, {
     message: "Every X days needs the number of days",
+  })
+  .refine((v) => !v.earliestTime || !v.latestTime || v.earliestTime < v.latestTime, {
+    message: "The window's earliest time must be before its latest time",
   });
 
 export const updateSubscription = createServerFn({ method: "POST" })
@@ -179,6 +199,9 @@ export const updateSubscription = createServerFn({ method: "POST" })
         ends_on: data.endsOn ?? null,
         preferred_weekdays:
           data.preferredWeekdays && data.preferredWeekdays.length ? data.preferredWeekdays : null,
+        // undefined = leave the window alone; null = clear it.
+        ...(data.earliestTime !== undefined ? { earliest_time: data.earliestTime } : {}),
+        ...(data.latestTime !== undefined ? { latest_time: data.latestTime } : {}),
       })
       .eq("id", data.subscriptionId)
       .select("organization_id");
@@ -220,7 +243,7 @@ export const listSubscriptionsForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("subscriptions")
       .select(
-        "id, account_type, frequency, price_cents, dog_count, unit_count, zone_id, status, started_on, ends_on, property_id, billing_cadence, preferred_weekdays, interval_weeks, interval_days, paused_at, end_reason, end_notes",
+        "id, account_type, frequency, price_cents, dog_count, unit_count, zone_id, status, started_on, ends_on, property_id, billing_cadence, preferred_weekdays, interval_weeks, interval_days, paused_at, end_reason, end_notes, earliest_time, latest_time",
       )
       .eq("client_id", data.clientId)
       .order("created_at");
@@ -335,8 +358,12 @@ export const endSubscription = createServerFn({ method: "POST" })
     if (data.effectiveDate < sub.started_on)
       throw new Error("End date can't be before the service started");
 
-    // ends_on drives everything: generation stops there and the DB trigger
-    // trims future scheduled visits past it. Rows are never deleted here.
+    // ends_on drives generation (it stops there) and the DB trigger trims
+    // future scheduled visits past it. Rows are never deleted here. Status
+    // flips to canceled once the end date is reached; a future-dated end
+    // stays active until then (visits through the end date still happen)
+    // and the isServiceEnded helper handles the flip in the UI.
+    const today = new Date().toISOString().slice(0, 10);
     const { error } = await supabase
       .from("subscriptions")
       .update({
@@ -345,7 +372,7 @@ export const endSubscription = createServerFn({ method: "POST" })
         end_notes: data.notes || null,
         ended_by: userId,
         paused_at: null,
-        status: "active",
+        status: data.effectiveDate <= today ? "canceled" : "active",
       })
       .eq("id", sub.id);
     if (error) throw new Error(error.message);

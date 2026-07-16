@@ -1,12 +1,16 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { portalCreateSetupIntent, portalFinalizeCardSetup } from "@/lib/portal.functions";
+import {
+  portalCreateSetupIntent,
+  portalFinalizeCardSetup,
+  portalStartPrepaidTopup,
+} from "@/lib/portal.functions";
 import {
   usePortalCtx, EmptyBox, InvoiceStatusBadge, PromoRedeemCard, TopupRow,
   fmtDayShort, money,
@@ -28,12 +32,27 @@ function getStripe(pk: string, stripeAccount?: string) {
 
 function PortalBilling() {
   const { slug, token } = Route.useParams();
+  const navigate = useNavigate();
   const {
     clientQ, invoicesQ, subsQ,
-    setAutopayMut, removeCardMut, paySavedMut, topupMut, promoMut,
+    setAutopayMut, removeCardMut, paySavedMut, promoMut,
   } = usePortalCtx();
   const c = clientQ.data as any;
   const [showCard, setShowCard] = useState(false);
+
+  // In-app top-up: create the prepaid invoice, then pay it on the in-app pay
+  // page (embedded checkout) instead of redirecting to hosted Stripe Checkout.
+  const topupFn = useServerFn(portalStartPrepaidTopup);
+  const topupMut = useMutation({
+    mutationFn: (v: { subscriptionId: string; visitCount: number }) =>
+      topupFn({ data: { token, ...v } }),
+    onSuccess: (r) =>
+      navigate({
+        to: "/portal/$slug/$token/pay/$invoiceId",
+        params: { slug, token, invoiceId: r.invoiceId },
+      }),
+    onError: (e) => toast.error((e as Error).message),
+  });
 
   return (
     <div className="space-y-4">

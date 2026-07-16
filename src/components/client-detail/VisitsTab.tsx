@@ -7,6 +7,8 @@ import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,8 +19,12 @@ import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer"
 
 function fmtWindow(v: any): string {
   if (v.eta_start && v.eta_end) return `${formatTime(v.eta_start)} - ${formatTime(v.eta_end)}`;
-  const early = v.properties?.earliest_service_time;
-  const late = v.properties?.latest_service_time;
+  // The arrival window lives on the service (UX round 4); the property
+  // window is a legacy fallback for rows whose service has none.
+  const sub = v.subscriptions;
+  const useSub = !!(sub?.earliest_time || sub?.latest_time);
+  const early = useSub ? sub.earliest_time : v.properties?.earliest_service_time;
+  const late = useSub ? sub.latest_time : v.properties?.latest_service_time;
   if (early && late) return `${formatClock(early)} - ${formatClock(late)}`;
   if (early) return `After ${formatClock(early)}`;
   if (late) return `Before ${formatClock(late)}`;
@@ -53,6 +59,7 @@ export function VisitsTab({
   const [statusFilter, setStatusFilter] = useState("all");
   const [propertyFilter, setPropertyFilter] = useState("all");
   const [detailVisit, setDetailVisit] = useState<any | null>(null);
+  const [view, setView] = useState<"list" | "calendar">("list");
 
   const serviceById = useMemo(
     () => new Map(subscriptions.map((s: any) => [s.id, s])),
@@ -88,50 +95,74 @@ export function VisitsTab({
 
   return (
     <div className="space-y-4">
-      {grouped && (
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <Label htmlFor="vf-status" className="text-xs text-muted-foreground">
-              Status
-            </Label>
-            <select
-              id="vf-status"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="block h-9 rounded-md border bg-background px-2 text-sm"
-            >
-              <option value="all">All statuses</option>
-              <option value="scheduled">Scheduled</option>
-              <option value="in_progress">In progress</option>
-              <option value="completed">Completed</option>
-              <option value="skipped">Skipped</option>
-              <option value="canceled">Canceled</option>
-            </select>
-          </div>
-          {properties.length > 1 && (
-            <div>
-              <Label htmlFor="vf-prop" className="text-xs text-muted-foreground">
-                Property
-              </Label>
-              <select
-                id="vf-prop"
-                value={propertyFilter}
-                onChange={(e) => setPropertyFilter(e.target.value)}
-                className="block h-9 rounded-md border bg-background px-2 text-sm"
-              >
-                <option value="all">All properties</option>
-                {properties.map(([id, street]) => (
-                  <option key={id} value={id}>
-                    {street}
-                  </option>
-                ))}
-              </select>
-            </div>
+          {grouped && (
+            <>
+              <div>
+                <Label htmlFor="vf-status" className="text-xs text-muted-foreground">
+                  Status
+                </Label>
+                <select
+                  id="vf-status"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="block h-9 rounded-md border bg-background px-2 text-sm"
+                >
+                  <option value="all">All statuses</option>
+                  <option value="scheduled">Scheduled</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="skipped">Skipped</option>
+                  <option value="canceled">Canceled</option>
+                </select>
+              </div>
+              {properties.length > 1 && (
+                <div>
+                  <Label htmlFor="vf-prop" className="text-xs text-muted-foreground">
+                    Property
+                  </Label>
+                  <select
+                    id="vf-prop"
+                    value={propertyFilter}
+                    onChange={(e) => setPropertyFilter(e.target.value)}
+                    className="block h-9 rounded-md border bg-background px-2 text-sm"
+                  >
+                    <option value="all">All properties</option>
+                    {properties.map(([id, street]) => (
+                      <option key={id} value={id}>
+                        {street}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </>
           )}
         </div>
-      )}
+        <div className="ml-auto flex items-center gap-1" role="group" aria-label="View">
+          <Button
+            size="sm"
+            variant={view === "list" ? "default" : "outline"}
+            aria-pressed={view === "list"}
+            onClick={() => setView("list")}
+          >
+            List
+          </Button>
+          <Button
+            size="sm"
+            variant={view === "calendar" ? "default" : "outline"}
+            aria-pressed={view === "calendar"}
+            onClick={() => setView("calendar")}
+          >
+            Calendar
+          </Button>
+        </div>
+      </div>
 
-      {grouped ? (
+      {view === "calendar" ? (
+        <VisitCalendar visits={filtered} onOpen={setDetailVisit} />
+      ) : grouped ? (
         <>
           <VisitGroup title={`Upcoming (${upcoming.length})`} visits={upcoming} onOpen={setDetailVisit} serviceById={serviceById} />
           <VisitGroup title={`Past (${past.length})`} visits={past} onOpen={setDetailVisit} serviceById={serviceById} />
@@ -268,6 +299,176 @@ function VisitTable({
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// ── Calendar view ───────────────────────────────────────────────────────────
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// Same tones StatusChip uses for visit statuses (chips here must be buttons,
+// so the span-based StatusChip does not fit).
+const CHIP_TONES: Record<string, string> = {
+  scheduled: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
+  in_progress: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  completed: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+  skipped: "bg-muted text-muted-foreground",
+  canceled: "bg-destructive/15 text-destructive",
+};
+
+/** Local YYYY-MM-DD key for a Date (no UTC parsing pitfalls). */
+function dateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function statusLabel(s: string): string {
+  const words = String(s).replace(/[_-]/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1).toLowerCase();
+}
+
+function VisitCalendar({ visits, onOpen }: { visits: any[]; onOpen: (v: any) => void }) {
+  const [month, setMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+
+  const byDay = useMemo(() => {
+    const map = new Map<string, any[]>();
+    for (const v of visits) {
+      // scheduled_on is a date-only string; compare by string, never new Date(s).
+      const key = String(v.scheduled_on ?? "").slice(0, 10);
+      if (!key) continue;
+      const list = map.get(key);
+      if (list) list.push(v);
+      else map.set(key, [v]);
+    }
+    return map;
+  }, [visits]);
+
+  const weeks = useMemo(() => {
+    // First cell is the Sunday on or before the 1st; always render 6 weeks.
+    const first = new Date(month.getFullYear(), month.getMonth(), 1);
+    const start = new Date(first.getFullYear(), first.getMonth(), 1 - first.getDay());
+    const rows: Date[][] = [];
+    for (let w = 0; w < 6; w++) {
+      const row: Date[] = [];
+      for (let d = 0; d < 7; d++) {
+        row.push(new Date(start.getFullYear(), start.getMonth(), start.getDate() + w * 7 + d));
+      }
+      rows.push(row);
+    }
+    return rows;
+  }, [month]);
+
+  const todayKey = todayISO();
+  const monthLabel = month.toLocaleString([], { month: "long", year: "numeric" });
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-8 w-8"
+          aria-label="Previous month"
+          onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-8 w-8"
+          aria-label="Next month"
+          onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const now = new Date();
+            setMonth(new Date(now.getFullYear(), now.getMonth(), 1));
+          }}
+        >
+          Today
+        </Button>
+        <span className="ml-1 text-sm font-medium">{monthLabel}</span>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
+        <table role="grid" className="w-full min-w-[560px] table-fixed text-sm">
+          <thead>
+            <tr className="border-b">
+              {WEEKDAYS.map((d) => (
+                <th
+                  key={d}
+                  scope="col"
+                  className="px-1.5 py-2 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                >
+                  {d}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {weeks.map((week, wi) => (
+              <tr key={wi} className="border-b last:border-0">
+                {week.map((day) => {
+                  const key = dateKey(day);
+                  const inMonth = day.getMonth() === month.getMonth();
+                  const isToday = key === todayKey;
+                  const dayVisits = byDay.get(key) ?? [];
+                  const shown = dayVisits.slice(0, 3);
+                  const hiddenCount = dayVisits.length - shown.length;
+                  return (
+                    <td key={key} className="border-r p-1 align-top last:border-r-0">
+                      <div className="min-h-[5.5rem] space-y-1">
+                        <span
+                          className={cn(
+                            "inline-flex h-6 w-6 items-center justify-center rounded-full text-xs",
+                            !inMonth && "text-muted-foreground/50",
+                            isToday && "font-semibold text-primary ring-1 ring-primary",
+                          )}
+                        >
+                          {day.getDate()}
+                        </span>
+                        {shown.map((v: any) => (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => onOpen(v)}
+                            title={`${v.properties?.street ?? "Visit"} - ${fmtWindow(v)}`}
+                            aria-label={`${statusLabel(v.status)} visit at ${v.properties?.street ?? "unknown property"} on ${formatDay(v.scheduled_on)}`}
+                            className={cn(
+                              "block w-full truncate rounded-md px-1.5 py-0.5 text-left text-xs font-medium",
+                              CHIP_TONES[v.status] ?? "bg-muted text-muted-foreground",
+                            )}
+                          >
+                            {v.properties?.street ?? (v.eta_start ? formatTime(v.eta_start) : "Visit")}
+                          </button>
+                        ))}
+                        {hiddenCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => onOpen(dayVisits[3])}
+                            title={`${hiddenCount} more ${hiddenCount === 1 ? "visit" : "visits"} on ${formatDay(key)}`}
+                            className="block w-full truncate rounded-md px-1.5 py-0.5 text-left text-xs text-muted-foreground hover:bg-muted"
+                          >
+                            +{hiddenCount} more
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

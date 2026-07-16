@@ -49,6 +49,18 @@ export function formatTime(iso: string | null | undefined): string {
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+/** Arrival window: "8:00 AM – 12:00 PM", "After 8:00 AM", "By 12:00 PM",
+ * or "Anytime" when no bound is set. */
+export function formatWindow(
+  earliest: string | null | undefined,
+  latest: string | null | undefined,
+): string {
+  if (earliest && latest) return `${formatClock(earliest)} – ${formatClock(latest)}`;
+  if (earliest) return `After ${formatClock(earliest)}`;
+  if (latest) return `By ${formatClock(latest)}`;
+  return "Anytime";
+}
+
 /** "8:00 AM" from a Postgres time-of-day string like "08:00:00". */
 export function formatClock(hhmm: string | null | undefined): string {
   if (!hhmm) return "";

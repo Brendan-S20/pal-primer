@@ -4141,6 +4141,7 @@ export type Database = {
           client_id: string
           created_at: string
           dog_count: number | null
+          earliest_time: string | null
           end_notes: string | null
           end_reason: string | null
           ended_by: string | null
@@ -4149,6 +4150,7 @@ export type Database = {
           id: string
           interval_days: number | null
           interval_weeks: number | null
+          latest_time: string | null
           organization_id: string
           paused_at: string | null
           preferred_time_of_day: string
@@ -4166,6 +4168,7 @@ export type Database = {
           client_id: string
           created_at?: string
           dog_count?: number | null
+          earliest_time?: string | null
           end_notes?: string | null
           end_reason?: string | null
           ended_by?: string | null
@@ -4174,6 +4177,7 @@ export type Database = {
           id?: string
           interval_days?: number | null
           interval_weeks?: number | null
+          latest_time?: string | null
           organization_id: string
           paused_at?: string | null
           preferred_time_of_day?: string
@@ -4191,6 +4195,7 @@ export type Database = {
           client_id?: string
           created_at?: string
           dog_count?: number | null
+          earliest_time?: string | null
           end_notes?: string | null
           end_reason?: string | null
           ended_by?: string | null
@@ -4199,6 +4204,7 @@ export type Database = {
           id?: string
           interval_days?: number | null
           interval_weeks?: number | null
+          latest_time?: string | null
           organization_id?: string
           paused_at?: string | null
           preferred_time_of_day?: string

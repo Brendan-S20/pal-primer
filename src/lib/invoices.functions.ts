@@ -372,6 +372,30 @@ export const createEmbeddedCheckoutForInvoice = createServerFn({ method: "POST" 
     };
   });
 
+// In-app payments follow-up: staff share the client's PORTAL billing link
+// (which pays inside our app) instead of a raw checkout.stripe.com URL.
+export const getInvoicePortalLink = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ invoiceId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    await requirePermission(supabase, context.userId, "manage_client_billing");
+    const { data: invoice, error } = await supabase
+      .from("invoices")
+      .select("id, organization_id, client_id, clients(portal_token)")
+      .eq("id", data.invoiceId)
+      .single();
+    if (error) throw new Error(error.message);
+    const client = Array.isArray(invoice.clients)
+      ? invoice.clients[0]
+      : (invoice.clients as { portal_token?: string | null } | null);
+    if (!client?.portal_token) throw new Error("Client has no portal link");
+    const { buildPortalLink } = await import("@/lib/portal-links.server");
+    const base = await buildPortalLink(invoice.organization_id, client.portal_token);
+    if (!base) throw new Error("Could not build the portal link");
+    return { url: `${base}/billing` };
+  });
+
 export const listUnbilledForClient = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
