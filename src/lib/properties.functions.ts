@@ -6,6 +6,14 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 // still accepted (older forms send it) but never written.
 const yardSize = z.enum(["small", "medium", "large", "xlarge"]).optional();
 
+// GeoJSON Polygon: coordinates = [ [ [lng, lat], ... ] ]  first == last
+const polygonSchema = z
+  .object({
+    type: z.literal("Polygon"),
+    coordinates: z.array(z.array(z.tuple([z.number(), z.number()])).min(4)).min(1),
+  })
+  .nullable();
+
 const createPropSchema = z.object({
   clientId: z.string().uuid(),
   label: z.string().max(120).optional(),
@@ -39,6 +47,9 @@ const createPropSchema = z.object({
   visitContactName: z.string().max(120).optional(),
   visitContactPhone: z.string().max(30).optional(),
   visitContactEmail: z.string().email().max(200).optional().or(z.literal("")),
+  // Service boundary sketched during creation (UX round 4: no more
+  // save-then-reopen to draw the yard).
+  boundary: polygonSchema.optional(),
 });
 
 export const createProperty = createServerFn({ method: "POST" })
@@ -110,10 +121,18 @@ export const createProperty = createServerFn({ method: "POST" })
         visit_contact_email: data.visitContactEmail || null,
         latitude: geo?.latitude ?? null,
         longitude: geo?.longitude ?? null,
+        boundary: (data.boundary as any) ?? null,
+        boundary_area_sqm: data.boundary ? polygonAreaSqm(data.boundary as any) : null,
       })
       .select("id")
       .single();
     if (error) throw new Error(error.message);
+
+    if (data.boundary) {
+      // Boundary drives yard size (DB trigger) and the time estimate.
+      const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
+      await recomputePropertyEstimate(supabase, row.id as string);
+    }
 
     const { logActivity } = await import("@/lib/activity.server");
     await logActivity(supabase, {
@@ -317,14 +336,6 @@ export const listPropertiesForClient = createServerFn({ method: "GET" })
     return { properties: rows ?? [] };
   });
 
-// GeoJSON Polygon: coordinates = [ [ [lng, lat], ... ] ]  first == last
-const polygonSchema = z
-  .object({
-    type: z.literal("Polygon"),
-    coordinates: z.array(z.array(z.tuple([z.number(), z.number()])).min(4)).min(1),
-  })
-  .nullable();
-
 // Shoelace on lat/lng, projected as equirectangular around the polygon centroid.
 function polygonAreaSqm(poly: { coordinates: number[][][] } | null): number | null {
   if (!poly) return null;
@@ -345,6 +356,32 @@ function polygonAreaSqm(poly: { coordinates: number[][][] } | null): number | nu
   }
   return Math.abs(a / 2);
 }
+
+/** Geocode an address before the property exists (UX round 4): centers the
+ * create-mode boundary sketch for manually typed addresses. Same geocoder
+ * the create path uses, so the preview pin matches what save would compute. */
+export const geocodePreview = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        street: z.string().min(1).max(200),
+        city: z.string().min(1).max(120),
+        region: z.string().max(120).optional(),
+        postalCode: z.string().min(1).max(20),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { geocodeAddress } = await import("./geocode.server");
+    const geo = await geocodeAddress({
+      street: data.street,
+      city: data.city,
+      region: data.region,
+      postal_code: data.postalCode,
+    });
+    return { point: geo ? { latitude: geo.latitude, longitude: geo.longitude } : null };
+  });
 
 export const getPropertyBoundary = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])

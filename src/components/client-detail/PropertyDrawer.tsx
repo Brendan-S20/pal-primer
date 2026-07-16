@@ -15,13 +15,12 @@ import {
   updatePropertyBoundary,
   setPropertyZoneOverride,
   setPropertyEstimateOverride,
+  geocodePreview,
 } from "@/lib/properties.functions";
 import { BoundarySketch, type PolygonGeoJSON } from "@/components/BoundarySketch";
-import { updatePropertyWindow } from "@/lib/visits.functions";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { AddressAutocomplete, type ResolvedAddress } from "@/components/AddressAutocomplete";
 // (Badge replaced by MetaChip per Stage 3 taxonomy.)
-import { TimeField } from "@/components/fields";
 import { MetaChip, SectionLabel } from "@/components/client-detail/primitives";
 
 const HAZARD_FIELDS: Array<[string, string]> = [
@@ -56,7 +55,6 @@ export function PropertyDrawer({
   const qc = useQueryClient();
   const createFn = useServerFn(createProperty);
   const updateFn = useServerFn(updateProperty);
-  const windowFn = useServerFn(updatePropertyWindow);
 
   const initial = useMemo(
     () => ({
@@ -73,9 +71,6 @@ export function PropertyDrawer({
         | "residential"
         | "commercial",
       gateCode: property?.gate_code ?? "",
-      // Arrival window ("HH:MM", "" = anytime) — saved via updatePropertyWindow.
-      earliestTime: (property?.earliest_service_time?.slice(0, 5) ?? "") as string,
-      latestTime: (property?.latest_service_time?.slice(0, 5) ?? "") as string,
       hazardNotes: property?.hazard_notes ?? "",
       vcName: property?.visit_contact_name ?? "",
       vcPhone: property?.visit_contact_phone ?? "",
@@ -102,6 +97,7 @@ export function PropertyDrawer({
       setMatchedZoneName(null);
       setBoundaryDirty(false);
       setOverridesDirty(false);
+      setPendingBoundary(null);
     }
     wasOpen.current = open;
   }, [open, initial]);
@@ -114,6 +110,21 @@ export function PropertyDrawer({
   // state; the close guard has to know about them too.
   const [boundaryDirty, setBoundaryDirty] = useState(false);
   const [overridesDirty, setOverridesDirty] = useState(false);
+  // Create mode: the sketched polygon rides along with the create call
+  // (UX round 4: the boundary map must be available before the first save).
+  const [pendingBoundary, setPendingBoundary] = useState<PolygonGeoJSON | null>(null);
+
+  // A sketched-but-unsaved boundary describes one specific location; any
+  // address change makes it wrong, so it must not ride along silently.
+  function discardPendingBoundary() {
+    setPendingBoundary((prev) => {
+      if (prev) {
+        toast.info("Attached boundary removed because the address changed. Redraw it below.");
+      }
+      return null;
+    });
+    setBoundaryDirty(false);
+  }
 
   function applyResolved(r: ResolvedAddress) {
     setForm((f) => ({
@@ -130,6 +141,7 @@ export function PropertyDrawer({
       addressSource: "matched",
     }));
     setMatchedZoneName(r.zoneName);
+    if (!property) discardPendingBoundary();
   }
 
   // Any hand edit to an address field invalidates whatever point we had:
@@ -145,6 +157,7 @@ export function PropertyDrawer({
       longitude: null,
     }));
     setMatchedZoneName(null);
+    if (!property) discardPendingBoundary();
   }
 
   const isCommercial = form.accountType === "commercial";
@@ -185,34 +198,8 @@ export function PropertyDrawer({
       };
       const run = property
         ? updateFn({ data: { propertyId: property.id, ...common } })
-        : createFn({ data: { clientId, ...common } });
-      return run.then(async (res: any) => {
-        // Arrival window lives in its own server fn; save it after the main
-        // create/update succeeds. Existing properties: only when changed.
-        // New properties: only when a value was actually set.
-        const windowChanged =
-          form.earliestTime !== initial.earliestTime || form.latestTime !== initial.latestTime;
-        const targetId = property ? property.id : (res?.id as string | undefined);
-        const shouldSave = property ? windowChanged : !!(form.earliestTime || form.latestTime);
-        if (shouldSave && targetId) {
-          try {
-            await windowFn({
-              data: {
-                propertyId: targetId,
-                earliest_service_time: form.earliestTime || null,
-                latest_service_time: form.latestTime || null,
-              },
-            });
-          } catch (e) {
-            // The property itself saved; failing the whole mutation here
-            // would leave the drawer open and invite a duplicate create.
-            toast.error(
-              `Property saved, but the arrival window didn't: ${(e as Error).message}. Edit the property to retry.`,
-            );
-          }
-        }
-        return { ok: true };
-      });
+        : createFn({ data: { clientId, ...common, boundary: pendingBoundary ?? undefined } });
+      return run.then(() => ({ ok: true }));
     },
     onSuccess: () => {
       toast.success(property ? "Property saved" : "Property added");
@@ -293,7 +280,7 @@ export function PropertyDrawer({
             )}
             {form.addressSource === "matched" && (
               <span className="text-xs text-muted-foreground">
-                Map pin placed automatically. Draw the boundary after saving to set yard size.
+                Map pin placed automatically. Draw the boundary below to set yard size.
               </span>
             )}
           </div>
@@ -324,26 +311,6 @@ export function PropertyDrawer({
           <div>
             <Label htmlFor="pd-gate">Gate code</Label>
             <Input id="pd-gate" value={form.gateCode} onChange={(e) => set("gateCode", e.target.value)} />
-          </div>
-        </div>
-
-        <div className="rounded-md border bg-muted/20 p-3">
-          <SectionLabel>Service window</SectionLabel>
-          <p className="mt-1 text-xs text-muted-foreground">
-            When the team may arrive. This is a window, not the actual arrival time. Leave both on
-            Anytime for no window.
-          </p>
-          <div className="mt-2 grid gap-3 sm:grid-cols-2">
-            <TimeField
-              label="Earliest arrival"
-              value={form.earliestTime}
-              onChange={(v) => set("earliestTime", v)}
-            />
-            <TimeField
-              label="Latest arrival"
-              value={form.latestTime}
-              onChange={(v) => set("latestTime", v)}
-            />
           </div>
         </div>
 
@@ -447,10 +414,23 @@ export function PropertyDrawer({
           </div>
         </div>
 
-        {property && (
+        {property ? (
           <BoundarySection
             property={property}
             clientId={clientId}
+            onDirtyChange={setBoundaryDirty}
+          />
+        ) : (
+          <NewBoundarySection
+            street={form.street}
+            city={form.city}
+            region={form.region}
+            postalCode={form.postalCode}
+            latitude={form.latitude}
+            longitude={form.longitude}
+            onLocate={(p) => setForm((f) => ({ ...f, latitude: p.latitude, longitude: p.longitude }))}
+            pendingBoundary={pendingBoundary}
+            onBoundary={setPendingBoundary}
             onDirtyChange={setBoundaryDirty}
           />
         )}
@@ -474,6 +454,105 @@ export function PropertyDrawer({
   );
 }
 
+
+// ── Boundary while creating (UX round 4: no save-then-reopen) ──────────────
+// The property doesn't exist yet, so the sketch stashes its polygon locally
+// and the create call carries it. Manual addresses have no pin until saved;
+// "Locate on map" geocodes what's typed so the sketch can center.
+
+function NewBoundarySection({
+  street,
+  city,
+  region,
+  postalCode,
+  latitude,
+  longitude,
+  onLocate,
+  pendingBoundary,
+  onBoundary,
+  onDirtyChange,
+}: {
+  street: string;
+  city: string;
+  region: string;
+  postalCode: string;
+  latitude: number | null;
+  longitude: number | null;
+  onLocate: (p: { latitude: number; longitude: number }) => void;
+  pendingBoundary: PolygonGeoJSON | null;
+  onBoundary: (p: PolygonGeoJSON | null) => void;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
+  const geocodeFn = useServerFn(geocodePreview);
+  const locateMut = useMutation({
+    mutationFn: () =>
+      geocodeFn({
+        data: { street, city, region: region || undefined, postalCode },
+      }),
+    onSuccess: (r: any) => {
+      if (r?.point) onLocate(r.point);
+      else toast.error("Couldn't find that address on the map. Check the street, city, and ZIP.");
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const hasPoint = latitude != null && longitude != null;
+  const canLocate = street.trim() !== "" && city.trim() !== "" && postalCode.trim() !== "";
+
+  return (
+    <div className="rounded-md border bg-muted/20 p-3">
+      <SectionLabel>Service boundary</SectionLabel>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Outline the serviced yard now; it saves with the property. Yard size and estimated time
+        are derived from it automatically.
+      </p>
+      {!hasPoint ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!canLocate || locateMut.isPending}
+            onClick={() => locateMut.mutate()}
+          >
+            {locateMut.isPending ? "Locating…" : "Locate on map"}
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {canLocate
+              ? "Find the address on the map to start drawing."
+              : "Enter the street, city, and ZIP first."}
+          </span>
+        </div>
+      ) : (
+        <div className="mt-2">
+          <BoundarySketch
+            key={`${latitude},${longitude}`}
+            center={{ lat: Number(latitude), lng: Number(longitude) }}
+            initial={pendingBoundary}
+            saveLabel="Attach boundary"
+            onSave={(polygon) => {
+              onBoundary(polygon);
+              onDirtyChange?.(false);
+              toast.success(
+                polygon
+                  ? "Boundary attached. It saves with the property."
+                  : "Boundary cleared",
+              );
+            }}
+            areaSqm={null}
+            height={340}
+            onDirtyChange={onDirtyChange}
+          />
+          {pendingBoundary && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Boundary attached; it will be saved with the property.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Inline boundary editing (UX round 3: no page hop) ──────────────────────
 // Its own save button: redrawing a yard shouldn't be coupled to the form's

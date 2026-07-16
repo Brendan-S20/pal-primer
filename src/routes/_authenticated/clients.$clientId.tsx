@@ -8,6 +8,7 @@ import { useState } from "react";
 import { getClient, listClientVisitHistory, listDogsForClient } from "@/lib/clients.functions";
 import { listPropertiesForClient } from "@/lib/properties.functions";
 import { listSubscriptionsForClient } from "@/lib/subscriptions.functions";
+import { isServiceEnded } from "@/lib/subscription-form";
 import { listZones } from "@/lib/zones.functions";
 import { getClientBillingSummary, getClientCredit } from "@/lib/invoices.functions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -120,7 +121,7 @@ function ClientDetail() {
   const today = new Date();
   const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const activeSubs = subs.filter(
-    (s: any) => s.status === "active" && (!s.ends_on || s.ends_on >= todayISO),
+    (s: any) => s.status === "active" && !isServiceEnded(s, todayISO),
   );
   const isCommercial = client.account_type === "commercial";
 
@@ -134,6 +135,7 @@ function ClientDetail() {
         client={client}
         clientId={clientId}
         subscriptions={subs}
+        properties={activeProperties}
         propertyCount={activeProperties.length}
         activeServiceCount={activeSubs.length}
         outstandingCents={canBill ? (billing?.openTotalCents ?? 0) : null}

@@ -21,7 +21,7 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
   getClientBillingSummary,
   generateInvoiceForClient,
-  createCheckoutForInvoice,
+  getInvoicePortalLink,
   voidInvoice,
   resumeAutopay,
   getInvoiceDetail,
@@ -83,7 +83,7 @@ export function BillingPanel({ clientId }: { clientId: string }) {
   const { confirm, dialog } = useConfirmDialog();
   const summaryFn = useServerFn(getClientBillingSummary);
   const genFn = useServerFn(generateInvoiceForClient);
-  const checkoutFn = useServerFn(createCheckoutForInvoice);
+  const portalLinkFn = useServerFn(getInvoicePortalLink);
   const voidFn = useServerFn(voidInvoice);
 
   const { data } = useQuery({
@@ -109,11 +109,13 @@ export function BillingPanel({ clientId }: { clientId: string }) {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // In-app payments: staff copy the client's portal billing link (pays inside
+  // our app) instead of minting a hosted checkout.stripe.com URL.
   const linkMut = useMutation({
-    mutationFn: (id: string) => checkoutFn({ data: { id, returnUrl: window.location.href } }),
+    mutationFn: (id: string) => portalLinkFn({ data: { invoiceId: id } }),
     onSuccess: (r: { url: string }) => {
       navigator.clipboard.writeText(r.url).then(
-        () => toast.success("Pay link copied to clipboard"),
+        () => toast.success("Portal link copied to clipboard"),
         () => toast.error("Copy failed, opening in new tab"),
       );
       invalidate();
@@ -209,7 +211,7 @@ export function BillingPanel({ clientId }: { clientId: string }) {
                         disabled={linkMut.isPending}
                         onClick={() => linkMut.mutate(inv.id)}
                       >
-                        Copy pay link
+                        Copy portal link
                       </Button>
                       <Button
                         size="sm"

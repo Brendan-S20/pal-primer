@@ -6,7 +6,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { CalendarClock, MoreHorizontal, Pause, Play, Plus, Square, Trash2 } from "lucide-react";
+import {
+  CalendarClock,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  MoreHorizontal,
+  Pause,
+  Play,
+  Plus,
+  Square,
+  Trash2,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,8 +29,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { DateField } from "@/components/fields";
-import { formatDay } from "@/lib/format";
+import { DateField, TimeField } from "@/components/fields";
+import { formatDay, formatWindow } from "@/lib/format";
 import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import {
   createSubscription,
@@ -37,6 +48,7 @@ import {
   scheduleChoiceFromRecord,
   scheduleChoiceToFields,
   formatFrequency,
+  isServiceEnded,
   type ScheduleChoice,
   type SubscriptionFormValues,
 } from "@/lib/subscription-form";
@@ -161,9 +173,17 @@ export function ServicesTab({
   const prepayMut = useMutation({
     mutationFn: (v: { subscriptionId: string; visitCount: number }) => prepayFn({ data: v }),
     onSuccess: (r: any) => {
-      toast.success("Prepaid invoice created");
+      // Stay on the page (UX round 4): the invoice is one click away on the
+      // Billing tab, and yanking the user off the client page lost context.
+      toast.success("Prepaid invoice created. Find it on the Billing tab.", {
+        action: {
+          label: "View invoice",
+          onClick: () => window.location.assign(`/invoices/${r.invoiceId}`),
+        },
+      });
       qc.invalidateQueries({ queryKey: ["credit", clientId] });
-      window.location.href = `/invoices/${r.invoiceId}`;
+      qc.invalidateQueries({ queryKey: ["billing-summary", clientId] });
+      invalidate();
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -183,30 +203,14 @@ export function ServicesTab({
 
   const streetById = new Map(properties.map((p: any) => [p.id, p.street]));
 
-  return (
-    <div className="space-y-4">
-      {confirmDialog}
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-muted-foreground">
-          {subscriptions.length} service{subscriptions.length === 1 ? "" : "s"}
-        </h2>
-        {properties.length > 0 && canManagePricing && (
-          <Button size="sm" onClick={() => setDrawerSub("new")}>
-            <Plus className="mr-1 h-4 w-4" /> Add Service
-          </Button>
-        )}
-      </div>
+  // Ended services drop out of the main list into a collapsed section (UX
+  // round 4: "when I end a service, it doesn't end or go away").
+  const liveSubs = subscriptions.filter((s: any) => !isServiceEnded(s, today));
+  const endedSubs = subscriptions.filter((s: any) => isServiceEnded(s, today));
+  const [showEnded, setShowEnded] = useState(false);
 
-      {subscriptions.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          {properties.length === 0
-            ? "Add a property first, then set up service."
-            : "No services yet. Add one to start generating visits."}
-        </div>
-      ) : (
-        <ul className="space-y-3">
-          {subscriptions.map((s: any) => {
-            const ended = s.ends_on && s.ends_on < today;
+  const renderServiceRow = (s: any) => {
+            const ended = isServiceEnded(s, today);
             const paused = s.status === "paused";
             const started = s.started_on && s.started_on <= today;
             const nextVisit = nextVisitBySub.get(s.id);
@@ -281,6 +285,12 @@ export function ServicesTab({
                       {s.preferred_weekdays?.length ? (
                         <span>{s.preferred_weekdays.map((d: number) => WEEKDAYS[d]).join(" ")}</span>
                       ) : null}
+                      {(s.earliest_time || s.latest_time) && (
+                        <span className="inline-flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {formatWindow(s.earliest_time, s.latest_time)}
+                        </span>
+                      )}
                       {!ended && !paused && nextVisit && (
                         <span className="inline-flex items-center gap-1">
                           <CalendarClock className="h-3 w-3" />
@@ -407,8 +417,53 @@ export function ServicesTab({
                 </div>
               </li>
             );
-          })}
-        </ul>
+  };
+
+  return (
+    <div className="space-y-4">
+      {confirmDialog}
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-medium text-muted-foreground">
+          {liveSubs.length} service{liveSubs.length === 1 ? "" : "s"}
+        </h2>
+        {properties.length > 0 && canManagePricing && (
+          <Button size="sm" onClick={() => setDrawerSub("new")}>
+            <Plus className="mr-1 h-4 w-4" /> Add Service
+          </Button>
+        )}
+      </div>
+
+      {liveSubs.length === 0 ? (
+        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+          {properties.length === 0
+            ? "Add a property first, then set up service."
+            : endedSubs.length > 0
+              ? "No active services. Past services are below."
+              : "No services yet. Add one to start generating visits."}
+        </div>
+      ) : (
+        <ul className="space-y-3">{liveSubs.map(renderServiceRow)}</ul>
+      )}
+
+      {endedSubs.length > 0 && (
+        <div>
+          <button
+            type="button"
+            aria-expanded={showEnded}
+            onClick={() => setShowEnded((v) => !v)}
+            className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            {showEnded ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+            Ended services ({endedSubs.length})
+          </button>
+          {showEnded && (
+            <ul className="mt-3 space-y-3 opacity-80">{endedSubs.map(renderServiceRow)}</ul>
+          )}
+        </div>
       )}
 
       <ServiceDrawer
@@ -501,6 +556,10 @@ function ServiceDetailDrawer({
           <div>
             <dt className="text-xs text-muted-foreground">Billing</dt>
             <dd className="capitalize">{s.billing_cadence}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Arrival window</dt>
+            <dd>{formatWindow(s.earliest_time, s.latest_time)}</dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Started</dt>
@@ -658,6 +717,8 @@ function ServiceDrawer({
     if (!Number.isFinite(n) || n < 1 || n > 90) errors.intervalDays = "Between 1 and 90 days";
   }
   if (!form.propertyId) errors.propertyId = "Choose a property";
+  if (form.earliestTime && form.latestTime && form.earliestTime >= form.latestTime)
+    errors.window = "The earliest arrival must be before the latest arrival";
   const hasErrors = Object.keys(errors).length > 0;
   const fieldError = (k: string) => (showErrors && errors[k] ? errors[k] : null);
 
@@ -770,6 +831,8 @@ function ServiceDrawer({
         startedOn: form.startedOn || undefined,
         endsOn: form.endsOn || null,
         preferredWeekdays: form.preferredWeekdays.length ? form.preferredWeekdays : undefined,
+        earliestTime: form.earliestTime || null,
+        latestTime: form.latestTime || null,
       };
       const run = subscription
         ? updateFn({ data: { subscriptionId: subscription.id, ...common } })
@@ -982,6 +1045,29 @@ function ServiceDrawer({
               minISO={form.startedOn || undefined}
               hint="Leave open-ended unless the service has a known last day."
             />
+          )}
+        </div>
+
+        <div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <TimeField
+              label="Earliest arrival"
+              value={form.earliestTime}
+              onChange={(v) => set("earliestTime", v)}
+            />
+            <TimeField
+              label="Latest arrival"
+              value={form.latestTime}
+              onChange={(v) => set("latestTime", v)}
+            />
+          </div>
+          {fieldError("window") ? (
+            <p className="mt-1 text-xs text-destructive">{fieldError("window")}</p>
+          ) : (
+            <p className="mt-1 text-xs text-muted-foreground">
+              The arrival window for this service's visits. Leave as anytime if the client has no
+              preference.
+            </p>
           )}
         </div>
 

@@ -18,6 +18,8 @@ export type SubscriptionRecord = {
   ends_on?: string | null;
   interval_weeks?: number | null;
   interval_days?: number | null;
+  earliest_time?: string | null;
+  latest_time?: string | null;
 };
 
 export type SubscriptionFormValues = {
@@ -37,6 +39,10 @@ export type SubscriptionFormValues = {
   intervalWeeks: string;
   /** Every X days (every_n_days frequency only). */
   intervalDays: string;
+  /** Arrival window start, "HH:MM" or "" for anytime. */
+  earliestTime: string;
+  /** Arrival window end, "HH:MM" or "" for anytime. */
+  latestTime: string;
 };
 
 // The five scheduling choices the UI offers (spec): calendar-monthly and
@@ -111,6 +117,22 @@ export function formatFrequency(s: {
   }
 }
 
+/**
+ * Single source of truth for "this service is over" (UX round 4: ended
+ * services kept showing as active). A service is ended when its status is
+ * canceled, or its end date has been reached even if the status flip hasn't
+ * happened yet (ended from an older build, or ends_on arrived while the row
+ * still said active). `today` is an ISO date (YYYY-MM-DD); pass it in so
+ * callers share one "now" per render.
+ */
+export function isServiceEnded(
+  s: { status?: string | null; ends_on?: string | null },
+  today: string,
+): boolean {
+  if (s.status === "canceled") return true;
+  return s.ends_on != null && s.ends_on !== "" && s.ends_on <= today;
+}
+
 function localTodayISO(): string {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
@@ -131,6 +153,9 @@ export function subscriptionToFormValues(s: SubscriptionRecord): SubscriptionFor
     endsOn: s.ends_on ?? "",
     intervalWeeks: s.interval_weeks && s.interval_weeks > 1 ? String(s.interval_weeks) : "",
     intervalDays: s.interval_days ? String(s.interval_days) : "",
+    // Postgres time comes back as HH:MM:SS; the form (and input[type=time]) use HH:MM.
+    earliestTime: s.earliest_time ? s.earliest_time.slice(0, 5) : "",
+    latestTime: s.latest_time ? s.latest_time.slice(0, 5) : "",
   };
 }
 
@@ -156,5 +181,7 @@ export function blankSubscriptionFormValues(opts: {
     endsOn: "",
     intervalWeeks: "",
     intervalDays: "",
+    earliestTime: "",
+    latestTime: "",
   };
 }

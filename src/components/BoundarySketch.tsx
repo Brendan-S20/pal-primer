@@ -35,6 +35,7 @@ export function BoundarySketch({
   areaSqm,
   height = 460,
   onDirtyChange,
+  saveLabel = "Save boundary",
 }: {
   center: { lat: number; lng: number } | null;
   initial: PolygonGeoJSON | null;
@@ -44,6 +45,8 @@ export function BoundarySketch({
   height?: number;
   /** Reports in-progress (unsaved) sketch edits so hosts can guard closes. */
   onDirtyChange?: (dirty: boolean) => void;
+  /** Button label when a polygon exists, e.g. "Attach boundary" in create mode. */
+  saveLabel?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -198,7 +201,7 @@ export function BoundarySketch({
           )}
           <Button type="button" size="sm" onClick={() => onSave(currentPolygon)} disabled={!!saving}>
             <Save className="mr-1 h-3.5 w-3.5" />
-            {saving ? "Saving…" : currentPolygon ? "Save boundary" : "Clear saved"}
+            {saving ? "Saving…" : currentPolygon ? saveLabel : "Clear saved"}
           </Button>
         </div>
       </div>
