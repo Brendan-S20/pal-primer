@@ -1261,7 +1261,8 @@ function ServiceDrawer({
                         {freqMultiplier})
                       </dt>
                       <dd>
-                        +${((zoneCents - commercialPrice.perVisitCents) / 100).toFixed(2)}
+                        {zoneCents - commercialPrice.perVisitCents >= 0 ? "+" : "−"}$
+                        {(Math.abs(zoneCents - commercialPrice.perVisitCents) / 100).toFixed(2)}
                       </dd>
                     </div>
                   )}
@@ -1308,7 +1309,10 @@ function ServiceDrawer({
                         Schedule adjustment (${(zoneParts.perVisit / 100).toFixed(2)} ×{" "}
                         {freqMultiplier})
                       </dt>
-                      <dd>+${((zoneCents - zoneParts.perVisit) / 100).toFixed(2)}</dd>
+                      <dd>
+                        {zoneCents - zoneParts.perVisit >= 0 ? "+" : "−"}$
+                        {(Math.abs(zoneCents - zoneParts.perVisit) / 100).toFixed(2)}
+                      </dd>
                     </div>
                   )}
                   <div className="flex items-center justify-between border-t pt-1">

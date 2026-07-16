@@ -97,6 +97,27 @@ export const updateDog = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => editDogSchema.parse(d))
   .handler(async ({ data, context }) => {
+    // A supplied unit must belong to the dog's property (mirrors the addDog
+    // check; wave-2 QA finding 4 — otherwise unit_id could be re-pointed at
+    // a unit on a different property).
+    if (data.unitId) {
+      const { data: dog, error: dogErr } = await context.supabase
+        .from("dogs")
+        .select("property_id")
+        .eq("id", data.id)
+        .maybeSingle();
+      if (dogErr) throw new Error(dogErr.message);
+      if (!dog) throw new Error("Dog not found");
+      const { data: unit, error: uErr } = await (context.supabase as any)
+        .from("property_units")
+        .select("id, property_id")
+        .eq("id", data.unitId)
+        .maybeSingle();
+      if (uErr) throw new Error(uErr.message);
+      if (!unit || unit.property_id !== dog.property_id)
+        throw new Error("Unit not found on this dog's property");
+    }
+
     const patch: Record<string, string | boolean | null> = {};
     if (data.name !== undefined) patch.name = data.name;
     if (data.breed !== undefined) patch.breed = data.breed || null;

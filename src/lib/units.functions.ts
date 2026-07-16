@@ -235,10 +235,11 @@ export const logUnitIncident = createServerFn({ method: "POST" })
 
     // Bill it first: if the charge fails, no incident row is left claiming
     // money that never landed on an invoice.
+    let chargeId: string | null = null;
     if (data.chargedCents && clientId) {
       const addonServiceId = await unitIncidentAddonServiceId(supabase, orgId);
       const label = INCIDENT_KIND_LABELS[data.kind].toLowerCase();
-      const { error: cErr } = await supabase.rpc("create_addon_charge", {
+      const { data: cId, error: cErr } = await supabase.rpc("create_addon_charge", {
         _client_id: clientId,
         _addon_service_id: addonServiceId,
         _quantity: 1,
@@ -248,31 +249,52 @@ export const logUnitIncident = createServerFn({ method: "POST" })
         _note: data.notes || undefined,
       });
       if (cErr) throw new Error(cErr.message);
+      chargeId = (cId as unknown as string) ?? null;
     }
 
-    const { data: row, error } = await (supabase as any)
-      .from("unit_incidents")
-      .insert({
-        organization_id: orgId,
-        property_id: unit.property_id,
-        unit_id: data.unitId,
-        dog_id: data.dogId || null,
-        incident_on: data.incidentOn ?? new Date().toISOString().slice(0, 10),
-        kind: data.kind,
-        notes: data.notes || null,
-        charged_cents: data.chargedCents ?? null,
-        created_by: userId,
-      })
-      .select("id")
-      .single();
-    if (error) throw new Error(error.message);
+    // Compensation (wave-2 QA finding 5): if the incident insert fails after
+    // the charge landed, void the charge so no money is billed for an
+    // incident that doesn't exist, then rethrow.
+    let row: { id: string };
+    try {
+      const { data: inserted, error } = await (supabase as any)
+        .from("unit_incidents")
+        .insert({
+          organization_id: orgId,
+          property_id: unit.property_id,
+          unit_id: data.unitId,
+          dog_id: data.dogId || null,
+          incident_on: data.incidentOn ?? new Date().toISOString().slice(0, 10),
+          kind: data.kind,
+          notes: data.notes || null,
+          charged_cents: data.chargedCents ?? null,
+          created_by: userId,
+        })
+        .select("id")
+        .single();
+      if (error) throw new Error(error.message);
+      row = inserted as { id: string };
+    } catch (e) {
+      if (chargeId) {
+        const { error: vErr } = await supabase.rpc("void_addon_charge", {
+          _charge_id: chargeId,
+        });
+        if (vErr)
+          console.error(
+            `failed to void orphaned addon charge ${chargeId} after incident insert failure:`,
+            vErr.message,
+          );
+      }
+      throw e;
+    }
 
     // Waste violations and DNA matches count against the unit's record.
+    // Atomic SQL increment (wave-2 QA finding 6) — the previous JS
+    // read-modify-write lost counts under concurrent incident logging.
     if (data.kind === "waste_violation" || data.kind === "dna_match") {
-      const { error: incErr } = await (supabase as any)
-        .from("property_units")
-        .update({ offending_count: (unit.offending_count ?? 0) + 1 })
-        .eq("id", data.unitId);
+      const { error: incErr } = await (supabase as any).rpc("increment_unit_offense", {
+        _unit_id: data.unitId,
+      });
       if (incErr) console.warn("offending_count update failed:", incErr.message);
     }
 

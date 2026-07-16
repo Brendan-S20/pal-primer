@@ -84,17 +84,20 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
               _org_id: org.id,
             });
             perOrg.invoices_generated = error ? `err: ${error.message}` : (n as number);
-          }
 
-          // Grace-window auto-send: open invoices whose send_after has arrived
-          // and that were never emailed get the invoice email now. Rendering
-          // lives app-side (react-email), so this must run here rather than in
-          // SQL. sent_at is the idempotency guard against double emails.
-          perOrg.invoices_auto_sent = await autoSendScheduledInvoices(
-            supabaseAdmin,
-            org.id,
-            todayStr,
-          );
+            // Grace-window auto-send: open invoices whose send_after has
+            // arrived and that were never emailed get the invoice email now.
+            // Rendering lives app-side (react-email), so this must run here
+            // rather than in SQL. sent_at is the idempotency guard against
+            // double emails. Inside the auto_invoice_enabled gate (wave-2 QA
+            // finding 7) so turning the org toggle off also stops pending
+            // auto-sends, not just generation.
+            perOrg.invoices_auto_sent = await autoSendScheduledInvoices(
+              supabaseAdmin,
+              org.id,
+              todayStr,
+            );
+          }
 
           // Overdue reminders are automated notifications → PLATFORM Twilio sender.
           const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
@@ -424,12 +427,19 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
     : [1, 3, 7];
   const pauseAfter: number = org?.dunning_pause_after_failures ?? 3;
 
+  const todayStr = new Date().toISOString().slice(0, 10);
   const { data: invoices } = await supabaseAdmin
     .from("invoices")
     .select("id, client_id, total_cents, currency, organization_id, status, clients!inner(id, stripe_customer_id, default_payment_method_id, autopay_enabled, autopay_paused, autopay_failure_count, autopay_last_attempt_at)")
     .eq("organization_id", orgId)
     .in("status", ["open", "draft"])
-    .gt("total_cents", 0);
+    .gt("total_cents", 0)
+    // Grace gates money too (wave-2 QA finding 3): an auto-generated invoice
+    // must not be charged while it is still in its review/grace window (never
+    // emailed AND send_after in the future) — owners may still edit or void
+    // it. Autopay only touches invoices that were sent, have no scheduled
+    // send (manual invoices), or whose send_after has arrived.
+    .or(`sent_at.not.is.null,send_after.is.null,send_after.lte.${todayStr}`);
   if (!invoices?.length) return 0;
 
   const stripe = await connectStripe();

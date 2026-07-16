@@ -99,8 +99,10 @@ export function computeCommercialZonePrice(
 ): CommercialPriceResult {
   const baseCents = zone.commercial_base_cents ?? 0;
   const unitCents = Math.max(0, input.unitCount) * (zone.commercial_per_unit_cents ?? 0);
-  const acreageCents = input.boundaryAreaSqm
-    ? Math.round((input.boundaryAreaSqm / SQM_PER_ACRE) * (zone.commercial_per_acre_cents ?? 0))
+  // Clamp like unitCount: a negative drawn-boundary area must never discount.
+  const areaSqm = Math.max(0, input.boundaryAreaSqm ?? 0);
+  const acreageCents = areaSqm
+    ? Math.round((areaSqm / SQM_PER_ACRE) * (zone.commercial_per_acre_cents ?? 0))
     : 0;
   const perVisitCents = baseCents + unitCents + acreageCents;
   const recurringCents = Math.round(perVisitCents * (input.multiplier ?? 1));
