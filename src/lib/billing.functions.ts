@@ -50,6 +50,8 @@ export const getBillingStatus = createServerFn({ method: "GET" })
       freeLimit: s.freeLimit,
       priceCents: s.priceCents,
       pricePerClientCents: s.pricePerClientCents,
+      includedSeats: s.includedSeats,
+      pricePerSeatCents: s.pricePerSeatCents,
       monthlyEstimateCents: s.monthlyEstimateCents,
       needsUpgrade: s.needsUpgrade,
       overBandLimit: s.overBandLimit,
@@ -126,6 +128,92 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
 
     const Stripe = (await import("stripe")).default;
     const stripe = new Stripe(secret);
+
+    // The plan bills a flat base that covers the tier's included employees,
+    // plus a per-seat overage price for each active employee beyond that.
+    // Ongoing seat changes are reconciled by syncOrgSeatQuantity (#6).
+    const overage = Math.max(0, seats - targetPlan.included_seats);
+
+    // ── In-place plan switch ────────────────────────────────────────────────
+    // An org with a LIVE subscription must never get a second one stacked on
+    // top. Swap the plan price on the existing subscription (prorated up or
+    // down) and skip the payment form entirely — the subscription already has
+    // a default payment method from the original subscribe.
+    if (s.stripeSubscriptionId) {
+      let existingSub: import("stripe").Stripe.Subscription | null = null;
+      try {
+        existingSub = await stripe.subscriptions.retrieve(s.stripeSubscriptionId);
+      } catch {
+        existingSub = null; // Gone on Stripe's side: fall through to a fresh subscribe.
+      }
+      if (existingSub && ["active", "trialing", "past_due"].includes(existingSub.status)) {
+        // Classify existing items against the FULL plan catalog (including
+        // retired plans) so an old plan's price is still recognized as "the
+        // plan item". Unknown prices (bolt-on add-ons, admin extras) are
+        // deliberately left untouched.
+        const { data: allPlanPrices } = await (supabaseAdmin as any)
+          .from("platform_plans")
+          .select("stripe_price_id, stripe_seat_price_id");
+        const planPriceIds = new Set(
+          ((allPlanPrices ?? []) as any[]).map((p) => p.stripe_price_id).filter(Boolean),
+        );
+        const seatPriceIds = new Set(
+          ((allPlanPrices ?? []) as any[]).map((p) => p.stripe_seat_price_id).filter(Boolean),
+        );
+
+        const itemUpdates: import("stripe").Stripe.SubscriptionUpdateParams.Item[] = [];
+        let keptTargetPlanItem = false;
+        let keptSeatItem = false;
+        for (const it of existingSub.items?.data ?? []) {
+          const priceId = it.price?.id;
+          if (!priceId) continue;
+          if (planPriceIds.has(priceId)) {
+            if (priceId === targetPlan.stripe_price_id) keptTargetPlanItem = true;
+            else itemUpdates.push({ id: it.id, deleted: true });
+          } else if (seatPriceIds.has(priceId)) {
+            if (priceId === targetPlan.stripe_seat_price_id && overage > 0 && !keptSeatItem) {
+              keptSeatItem = true;
+              if ((it.quantity ?? 1) !== overage) itemUpdates.push({ id: it.id, quantity: overage });
+            } else {
+              itemUpdates.push({ id: it.id, deleted: true });
+            }
+          }
+        }
+        if (!keptTargetPlanItem) itemUpdates.push({ price: targetPlan.stripe_price_id, quantity: 1 });
+        if (!keptSeatItem && targetPlan.stripe_seat_price_id && overage > 0) {
+          itemUpdates.push({ price: targetPlan.stripe_seat_price_id, quantity: overage });
+        }
+
+        const updated = await stripe.subscriptions.update(existingSub.id, {
+          ...(itemUpdates.length > 0 ? { items: itemUpdates } : {}),
+          proration_behavior: "create_prorations",
+          metadata: {
+            ...existingSub.metadata,
+            organization_id: orgId,
+            plan_id: targetPlan.id,
+            kind: "org_saas",
+          },
+        });
+
+        // Reflect the new plan identity immediately (don't wait for the
+        // webhook); status stays whatever it was (active / past_due).
+        const periodEnd = (updated as unknown as { current_period_end?: number }).current_period_end;
+        await supabaseAdmin
+          .from("organizations")
+          .update({
+            plan_id: targetPlan.id,
+            stripe_subscription_id: updated.id,
+            ...(periodEnd
+              ? { current_period_end: new Date(periodEnd * 1000).toISOString() }
+              : {}),
+          })
+          .eq("id", orgId);
+
+        return { switched: true as const, planName: targetPlan.name };
+      }
+    }
+
+    // ── First-time subscribe (no live subscription) ─────────────────────────
     const { data: userData } = await context.supabase.auth.getUser();
     const email = userData.user?.email ?? undefined;
 
@@ -143,10 +231,6 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
         .eq("id", orgId);
     }
 
-    // The plan bills a flat base that covers the tier's included employees,
-    // plus a per-seat overage price for each active employee beyond that.
-    // Ongoing seat changes are reconciled by syncOrgSeatQuantity (#6).
-    const overage = Math.max(0, seats - targetPlan.included_seats);
     const items: { price: string; quantity: number }[] = [
       { price: targetPlan.stripe_price_id, quantity: 1 },
     ];
@@ -185,6 +269,7 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       const reusableSecret = sameItems ? clientSecretOf(sub) : null;
       if (reusableSecret) {
         return {
+          switched: false as const,
           clientSecret: reusableSecret,
           publishableKey,
           planName: targetPlan.name,
@@ -217,6 +302,7 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
     // would flip the org paid prematurely. The webhook (or refreshBillingStatus
     // after payment) records it once the subscription really activates.
     return {
+      switched: false as const,
       clientSecret,
       publishableKey,
       planName: targetPlan.name,
@@ -287,7 +373,9 @@ export const listSubscriptionItems = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
     const s = await getOrgBillingState(context.supabase, orgId);
-    if (!s.stripeSubscriptionId) return { items: [], subscriptionId: null };
+    if (!s.stripeSubscriptionId) {
+      return { items: [], subscriptionId: null, cancelAtPeriodEnd: false, currentPeriodEnd: null };
+    }
     const secret = process.env.STRIPE_SECRET_KEY;
     if (!secret) throw new Error("Billing is not configured.");
     const Stripe = (await import("stripe")).default;
@@ -295,28 +383,37 @@ export const listSubscriptionItems = createServerFn({ method: "GET" })
     const sub = await stripe.subscriptions.retrieve(s.stripeSubscriptionId, {
       expand: ["items.data.price.product"],
     });
-    // Pull the org's platform plan price ids so we can label the "base" vs
-    // "seat overage" rows correctly (anything else is a bolt-on add-on).
+    // Label rows against the FULL plan catalog: any plan's base price is "the
+    // plan" line and any plan's seat price is the seat-overage line, so the
+    // labels stay right even mid-switch or on a retired plan. Anything else is
+    // a bolt-on add-on. The org's own plan row supplies the display name.
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: planRow } = await (supabaseAdmin as any)
+    const { data: planRows } = await (supabaseAdmin as any)
       .from("platform_plans")
-      .select("stripe_price_id, stripe_seat_price_id")
-      .eq("id", (await (supabaseAdmin as any)
-        .from("organizations").select("plan_id").eq("id", orgId).single()).data?.plan_id ?? "00000000-0000-0000-0000-000000000000")
-      .maybeSingle();
-    const basePriceId: string | null = planRow?.stripe_price_id ?? null;
-    const seatPriceId: string | null = planRow?.stripe_seat_price_id ?? null;
+      .select("id, name, stripe_price_id, stripe_seat_price_id");
+    const planByPriceId = new Map<string, { name: string }>();
+    const seatPriceIds = new Set<string>();
+    for (const p of (planRows ?? []) as any[]) {
+      if (p.stripe_price_id) planByPriceId.set(p.stripe_price_id, { name: p.name });
+      if (p.stripe_seat_price_id) seatPriceIds.add(p.stripe_seat_price_id);
+    }
 
     const items = (sub.items?.data ?? []).map((it: any) => {
       const price = it.price ?? {};
       const product = typeof price.product === "object" ? price.product : null;
       let kind: "base" | "seat" | "addon" = "addon";
-      if (basePriceId && price.id === basePriceId) kind = "base";
-      else if (seatPriceId && price.id === seatPriceId) kind = "seat";
+      let name: string = product?.name ?? price.nickname ?? "Subscription item";
+      const matchedPlan = price.id ? planByPriceId.get(price.id) : undefined;
+      if (matchedPlan) {
+        kind = "base";
+        name = matchedPlan.name;
+      } else if (price.id && seatPriceIds.has(price.id)) {
+        kind = "seat";
+      }
       return {
         id: it.id as string,
         kind,
-        name: product?.name ?? price.nickname ?? "Subscription item",
+        name,
         description: product?.description ?? null,
         quantity: it.quantity ?? 1,
         unitAmountCents: price.unit_amount ?? null,
@@ -325,7 +422,13 @@ export const listSubscriptionItems = createServerFn({ method: "GET" })
         intervalCount: price.recurring?.interval_count ?? 1,
       };
     });
-    return { items, subscriptionId: sub.id };
+    const periodEnd = (sub as unknown as { current_period_end?: number }).current_period_end;
+    return {
+      items,
+      subscriptionId: sub.id,
+      cancelAtPeriodEnd: !!sub.cancel_at_period_end,
+      currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
+    };
   });
 
 export const createBillingPortal = createServerFn({ method: "POST" })
@@ -368,12 +471,26 @@ export const refreshBillingStatus = createServerFn({ method: "POST" })
     if (active) {
       const status = active.status === "past_due" ? "past_due" : "active";
       const periodEnd = (active as unknown as { current_period_end?: number }).current_period_end;
-      await supabaseAdmin.from("organizations").update({
+      const update: Record<string, unknown> = {
         stripe_subscription_id: active.id,
         billing_status: status,
         plan_status: status,
         current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
-      }).eq("id", orgId);
+      };
+      // Propagate plan identity: the subscription carries plan_id in its
+      // metadata (set at create/switch). Only overwrite when it's present AND
+      // resolves to a real catalog row, so a hand-made Stripe sub can't null
+      // out or corrupt the org's plan.
+      const metaPlanId = active.metadata?.plan_id;
+      if (metaPlanId) {
+        const { data: planRow } = await (supabaseAdmin as any)
+          .from("platform_plans")
+          .select("id")
+          .eq("id", metaPlanId)
+          .maybeSingle();
+        if (planRow?.id) update.plan_id = metaPlanId;
+      }
+      await supabaseAdmin.from("organizations").update(update as any).eq("id", orgId);
       // Self-heal the seat-overage quantity while we're here, so a seat count
       // that drifted (e.g. an invite accepted since checkout) reconciles the
       // next time billing is viewed. Best-effort.

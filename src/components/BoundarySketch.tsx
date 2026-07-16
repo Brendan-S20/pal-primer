@@ -31,22 +31,27 @@ export function BoundarySketch({
   center,
   initial,
   onSave,
+  onChange,
+  hideSave,
   saving,
   areaSqm,
   height = 460,
   onDirtyChange,
-  saveLabel = "Save boundary",
 }: {
   center: { lat: number; lng: number } | null;
   initial: PolygonGeoJSON | null;
-  onSave: (polygon: PolygonGeoJSON | null) => void;
+  /** Explicit-save hosts (full-page editor). Unused when hideSave is set. */
+  onSave?: (polygon: PolygonGeoJSON | null) => void;
+  /** Fires on every sketch edit with the current polygon (null while < 3
+   * points) so hosts can save it with their own form submit. */
+  onChange?: (polygon: PolygonGeoJSON | null) => void;
+  /** Hide the internal save button; the host's form saves the polygon. */
+  hideSave?: boolean;
   saving?: boolean;
   areaSqm?: number | null;
   height?: number;
   /** Reports in-progress (unsaved) sketch edits so hosts can guard closes. */
   onDirtyChange?: (dirty: boolean) => void;
-  /** Button label when a polygon exists, e.g. "Attach boundary" in create mode. */
-  saveLabel?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -56,16 +61,20 @@ export function BoundarySketch({
   const [tick, setTick] = useState(0);
   const [liveArea, setLiveArea] = useState<number | null>(areaSqm ?? null);
 
-  // Any point interaction means unsaved sketch work until the next save.
-  useEffect(() => {
-    if (tick > 0) onDirtyChange?.(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tick]);
-
   const currentPolygon = useMemo<PolygonGeoJSON | null>(() => {
     const pts = pointsRef.current;
     if (pts.length < 3) return null;
     return { type: "Polygon", coordinates: [toRing(pts)] };
+  }, [tick]);
+
+  // Any point interaction means unsaved sketch work until the next save;
+  // hosts that save with their own form get the live polygon instead.
+  useEffect(() => {
+    if (tick > 0) {
+      onDirtyChange?.(true);
+      onChange?.(currentPolygon);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick]);
 
   // Init map
@@ -199,10 +208,12 @@ export function BoundarySketch({
               ~{formatArea(liveArea)} · {pointsRef.current.length} points
             </span>
           )}
-          <Button type="button" size="sm" onClick={() => onSave(currentPolygon)} disabled={!!saving}>
-            <Save className="mr-1 h-3.5 w-3.5" />
-            {saving ? "Saving…" : currentPolygon ? saveLabel : "Clear saved"}
-          </Button>
+          {!hideSave && (
+            <Button type="button" size="sm" onClick={() => onSave?.(currentPolygon)} disabled={!!saving}>
+              <Save className="mr-1 h-3.5 w-3.5" />
+              {saving ? "Saving…" : currentPolygon ? "Save boundary" : "Clear saved"}
+            </Button>
+          )}
         </div>
       </div>
       <div

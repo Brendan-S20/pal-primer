@@ -26,11 +26,15 @@ export function PlanPicker({
   currentSlug,
   onSelect,
   selecting,
+  switchingPlanId,
   chooseLabel = "Choose plan",
 }: {
   currentSlug?: string | null;
-  onSelect: (planId: string) => void;
+  onSelect: (planId: string, planName: string) => void;
   selecting?: boolean;
+  /** Plan currently being switched to (in-place switch in flight): its card
+   *  highlights and its button reads "Switching…" so the click visibly lands. */
+  switchingPlanId?: string | null;
   chooseLabel?: string;
 }) {
   const listFn = useServerFn(listPlatformPlans);
@@ -40,10 +44,13 @@ export function PlanPicker({
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading plans…</p>;
   if (!plans.length) return <p className="text-sm text-muted-foreground">No plans available yet.</p>;
 
+  const busy = !!selecting || !!switchingPlanId;
+
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {plans.map((p) => {
-        const isCurrent = currentSlug && p.slug === currentSlug;
+        const isCurrent = !!currentSlug && p.slug === currentSlug;
+        const isSwitching = switchingPlanId === p.id;
         const features: string[] = Array.isArray(p.features)
           ? p.features
           : typeof p.features === "object" && p.features
@@ -52,11 +59,17 @@ export function PlanPicker({
         return (
           <div
             key={p.id}
-            className={`flex flex-col rounded-xl border bg-card p-5 ${isCurrent ? "ring-2 ring-primary" : ""}`}
+            className={`relative flex flex-col rounded-xl border bg-card p-5 shadow-sm transition-shadow ${
+              isCurrent
+                ? "border-primary/50 bg-primary/5"
+                : isSwitching
+                  ? "border-primary ring-2 ring-primary"
+                  : ""
+            }`}
           >
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <h3 className="font-semibold">{p.name}</h3>
-              {isCurrent && <Badge>Current</Badge>}
+              {isCurrent && <Badge>Current plan</Badge>}
             </div>
             <div className="mt-2">
               <span className="text-3xl font-bold">{money(p.price_cents)}</span>
@@ -81,10 +94,10 @@ export function PlanPicker({
             <Button
               className="mt-4"
               variant={isCurrent ? "outline" : "default"}
-              disabled={!!isCurrent || selecting}
-              onClick={() => onSelect(p.id)}
+              disabled={isCurrent || busy}
+              onClick={() => onSelect(p.id, p.name)}
             >
-              {isCurrent ? "Your plan" : chooseLabel}
+              {isCurrent ? "Current plan" : isSwitching ? "Switching…" : chooseLabel}
             </Button>
           </div>
         );
@@ -115,12 +128,17 @@ export function EmbeddedPlanCheckout({
   planId,
   returnUrl,
   onCancel,
+  onSwitched,
 }: {
   planId: string;
   returnUrl: string;
   onCancel: () => void;
+  /** Called when the server switched an EXISTING subscription in place —
+   *  no payment form is needed (the sub already has a card on file). */
+  onSwitched?: (planName: string) => void;
 }) {
   const createFn = useServerFn(createPlanSubscription);
+  const refreshFn = useServerFn(refreshBillingStatus);
   const [session, setSession] = useState<{
     clientSecret: string;
     publishableKey: string;
@@ -130,8 +148,18 @@ export function EmbeddedPlanCheckout({
 
   const create = useMutation({
     mutationFn: () => createFn({ data: { planId } }),
-    onSuccess: (r: any) =>
-      setSession({ clientSecret: r.clientSecret, publishableKey: r.publishableKey, planName: r.planName }),
+    onSuccess: async (r: any) => {
+      if (r.switched) {
+        // In-place plan switch: already billed via proration, nothing to pay
+        // here. Sync status and hand control back to the caller.
+        await refreshFn().catch(() => {});
+        toast.success(`Plan switched to ${r.planName}`);
+        if (onSwitched) onSwitched(r.planName);
+        else onCancel();
+        return;
+      }
+      setSession({ clientSecret: r.clientSecret, publishableKey: r.publishableKey, planName: r.planName });
+    },
     onError: (e: Error) => { setError(e.message); toast.error(e.message); },
   });
 

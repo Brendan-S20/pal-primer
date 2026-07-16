@@ -102,6 +102,9 @@ function OnboardingPage() {
           planId={planId}
           returnUrl={typeof window !== "undefined" ? `${window.location.origin}/onboarding?paid=1` : "https://app.houndstack.com/onboarding?paid=1"}
           onCancel={() => setStep("plan")}
+          // Already subscribed (e.g. revisiting onboarding): the plan was
+          // switched in place, no payment form needed.
+          onSwitched={() => setStep("done")}
         />
       )}
 

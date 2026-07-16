@@ -55,6 +55,7 @@ export function PropertyDrawer({
   const qc = useQueryClient();
   const createFn = useServerFn(createProperty);
   const updateFn = useServerFn(updateProperty);
+  const boundaryFn = useServerFn(updatePropertyBoundary);
 
   const initial = useMemo(
     () => ({
@@ -88,6 +89,10 @@ export function PropertyDrawer({
     }),
     [property, client],
   );
+  const initialBoundary = useMemo(
+    () => ((property?.boundary as PolygonGeoJSON | null) ?? null),
+    [property],
+  );
   const [form, setForm] = useState(initial);
   // Reset only on closed -> open; background refetches must not wipe edits.
   const wasOpen = useRef(false);
@@ -95,35 +100,39 @@ export function PropertyDrawer({
     if (open && !wasOpen.current) {
       setForm(initial);
       setMatchedZoneName(null);
-      setBoundaryDirty(false);
       setOverridesDirty(false);
       setPendingBoundary(null);
+      setEditedBoundary(initialBoundary);
     }
     wasOpen.current = open;
-  }, [open, initial]);
+  }, [open, initial, initialBoundary]);
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
   const [matchedZoneName, setMatchedZoneName] = useState<string | null>(null);
-  // The inline boundary sketch and override inputs carry their own unsaved
-  // state; the close guard has to know about them too.
-  const [boundaryDirty, setBoundaryDirty] = useState(false);
+  // The override inputs carry their own unsaved state; the close guard has
+  // to know about it too.
   const [overridesDirty, setOverridesDirty] = useState(false);
   // Create mode: the sketched polygon rides along with the create call
   // (UX round 4: the boundary map must be available before the first save).
   const [pendingBoundary, setPendingBoundary] = useState<PolygonGeoJSON | null>(null);
+  // Edit mode: the sketch lifts its polygon here and the form's single Save
+  // persists it (UX round 6: no separate "Save boundary" button).
+  const [editedBoundary, setEditedBoundary] = useState<PolygonGeoJSON | null>(initialBoundary);
+  const boundaryDirty = property
+    ? JSON.stringify(editedBoundary) !== JSON.stringify(initialBoundary)
+    : pendingBoundary != null;
 
   // A sketched-but-unsaved boundary describes one specific location; any
   // address change makes it wrong, so it must not ride along silently.
   function discardPendingBoundary() {
     setPendingBoundary((prev) => {
       if (prev) {
-        toast.info("Attached boundary removed because the address changed. Redraw it below.");
+        toast.info("Boundary sketch removed because the address changed. Redraw it below.");
       }
       return null;
     });
-    setBoundaryDirty(false);
   }
 
   function applyResolved(r: ResolvedAddress) {
@@ -168,7 +177,7 @@ export function PropertyDrawer({
       .filter(Boolean);
 
   const saveMut = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const common = {
         street: form.street,
         unit: form.unit || undefined,
@@ -196,13 +205,32 @@ export function PropertyDrawer({
         sharpObjects: form.sharpObjects,
         slipperySurfaces: form.slipperySurfaces,
       };
-      const run = property
-        ? updateFn({ data: { propertyId: property.id, ...common } })
-        : createFn({ data: { clientId, ...common, boundary: pendingBoundary ?? undefined } });
-      return run.then(() => ({ ok: true }));
+      if (property) {
+        await updateFn({ data: { propertyId: property.id, ...common } });
+        // The sketch has no save button of its own (UX round 6): a changed
+        // boundary rides along with the form's single Save.
+        if (boundaryDirty) {
+          try {
+            await boundaryFn({ data: { propertyId: property.id, boundary: editedBoundary } });
+          } catch (e) {
+            // The property update already succeeded; closing anyway avoids
+            // inviting a duplicate save from a half-failed state.
+            return { boundaryError: (e as Error).message };
+          }
+        }
+      } else {
+        await createFn({ data: { clientId, ...common, boundary: pendingBoundary ?? undefined } });
+      }
+      return { boundaryError: null as string | null };
     },
-    onSuccess: () => {
-      toast.success(property ? "Property saved" : "Property added");
+    onSuccess: (r) => {
+      if (r.boundaryError) {
+        toast.error(
+          `Property saved, but the boundary didn't: ${r.boundaryError}. Reopen the editor to retry.`,
+        );
+      } else {
+        toast.success(property ? "Property saved" : "Property added");
+      }
       qc.invalidateQueries({ queryKey: ["properties", clientId] });
       qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
       onClose();
@@ -415,11 +443,7 @@ export function PropertyDrawer({
         </div>
 
         {property ? (
-          <BoundarySection
-            property={property}
-            clientId={clientId}
-            onDirtyChange={setBoundaryDirty}
-          />
+          <BoundarySection property={property} onBoundaryChange={setEditedBoundary} />
         ) : (
           <NewBoundarySection
             street={form.street}
@@ -431,7 +455,6 @@ export function PropertyDrawer({
             onLocate={(p) => setForm((f) => ({ ...f, latitude: p.latitude, longitude: p.longitude }))}
             pendingBoundary={pendingBoundary}
             onBoundary={setPendingBoundary}
-            onDirtyChange={setBoundaryDirty}
           />
         )}
 
@@ -470,7 +493,6 @@ function NewBoundarySection({
   onLocate,
   pendingBoundary,
   onBoundary,
-  onDirtyChange,
 }: {
   street: string;
   city: string;
@@ -481,7 +503,6 @@ function NewBoundarySection({
   onLocate: (p: { latitude: number; longitude: number }) => void;
   pendingBoundary: PolygonGeoJSON | null;
   onBoundary: (p: PolygonGeoJSON | null) => void;
-  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const geocodeFn = useServerFn(geocodePreview);
   const locateMut = useMutation({
@@ -529,23 +550,14 @@ function NewBoundarySection({
             key={`${latitude},${longitude}`}
             center={{ lat: Number(latitude), lng: Number(longitude) }}
             initial={pendingBoundary}
-            saveLabel="Attach boundary"
-            onSave={(polygon) => {
-              onBoundary(polygon);
-              onDirtyChange?.(false);
-              toast.success(
-                polygon
-                  ? "Boundary attached. It saves with the property."
-                  : "Boundary cleared",
-              );
-            }}
+            hideSave
+            onChange={onBoundary}
             areaSqm={null}
             height={340}
-            onDirtyChange={onDirtyChange}
           />
           {pendingBoundary && (
             <p className="mt-1 text-xs text-muted-foreground">
-              Boundary attached; it will be saved with the property.
+              Boundary drawn; it saves with the property.
             </p>
           )}
         </div>
@@ -555,34 +567,17 @@ function NewBoundarySection({
 }
 
 // ── Inline boundary editing (UX round 3: no page hop) ──────────────────────
-// Its own save button: redrawing a yard shouldn't be coupled to the form's
-// Save, and the DB trigger recalculates yard size + estimate on save.
+// No save button of its own (UX round 6): the sketch lifts its polygon into
+// the drawer and the form's single Save persists it. The DB trigger still
+// recalculates yard size + estimate when the boundary is saved.
 
 function BoundarySection({
   property,
-  clientId,
-  onDirtyChange,
+  onBoundaryChange,
 }: {
   property: any;
-  clientId: string;
-  onDirtyChange?: (dirty: boolean) => void;
+  onBoundaryChange: (polygon: PolygonGeoJSON | null) => void;
 }) {
-  const qc = useQueryClient();
-  const saveFn = useServerFn(updatePropertyBoundary);
-  const mut = useMutation({
-    mutationFn: (polygon: PolygonGeoJSON | null) =>
-      saveFn({ data: { propertyId: property.id, boundary: polygon } }),
-    onSuccess: (r: any) => {
-      toast.success(
-        r?.area_sqm ? "Boundary saved. Yard size and estimated time updated." : "Boundary cleared",
-      );
-      onDirtyChange?.(false);
-      qc.invalidateQueries({ queryKey: ["properties", clientId] });
-      qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
-    },
-    onError: (e) => toast.error((e as Error).message),
-  });
-
   const center =
     property.latitude != null && property.longitude != null
       ? { lat: Number(property.latitude), lng: Number(property.longitude) }
@@ -592,17 +587,17 @@ function BoundarySection({
     <div className="rounded-md border bg-muted/20 p-3">
       <SectionLabel>Service boundary</SectionLabel>
       <p className="mt-1 text-xs text-muted-foreground">
-        Outline the serviced yard. Yard size and estimated time are derived from it automatically.
+        Outline the serviced yard; it saves with your changes. Yard size and estimated time are
+        derived from it automatically.
       </p>
       <div className="mt-2">
         <BoundarySketch
           center={center}
           initial={(property.boundary as PolygonGeoJSON) ?? null}
-          onSave={(polygon) => mut.mutate(polygon)}
-          saving={mut.isPending}
+          hideSave
+          onChange={onBoundaryChange}
           areaSqm={property.boundary_area_sqm ? Number(property.boundary_area_sqm) : null}
           height={340}
-          onDirtyChange={onDirtyChange}
         />
       </div>
     </div>

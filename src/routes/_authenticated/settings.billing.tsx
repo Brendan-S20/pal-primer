@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { useEffect, useRef, useState } from "react";
 import {
   getBillingStatus,
   createBillingPortal,
@@ -9,6 +10,7 @@ import {
   cancelBillingSubscription,
   resumeBillingSubscription,
   listSubscriptionItems,
+  createPlanSubscription,
 } from "@/lib/billing.functions";
 import { PlanPicker, EmbeddedPlanCheckout } from "@/components/billing/PlanPicker";
 import {
@@ -16,9 +18,9 @@ import {
   subscribePlatformAddon,
   cancelPlatformAddon,
 } from "@/lib/platform-addons.functions";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { StatusChip, MetaChip, SectionLabel } from "@/components/client-detail/primitives";
+import { formatDay } from "@/lib/format";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 
@@ -37,23 +39,15 @@ function formatUsd(cents: number | null | undefined) {
   })}`;
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  free: "Free",
-  trialing: "Free trial",
-  active: "Active",
-  past_due: "Past due",
-  grace: "Grace period",
-  canceled: "Canceled",
-  suspended: "Suspended",
-};
-const STATUS_TONE: Record<string, "default" | "outline" | "destructive" | "secondary"> = {
-  free: "outline",
-  trialing: "secondary",
-  active: "default",
-  past_due: "destructive",
-  grace: "secondary",
-  canceled: "outline",
-  suspended: "destructive",
+// Map billing statuses onto the shared StatusChip tones.
+const STATUS_CHIP: Record<string, { status: string; label: string }> = {
+  free: { status: "inactive", label: "Free" },
+  trialing: { status: "open", label: "Free trial" },
+  active: { status: "active", label: "Active" },
+  past_due: { status: "overdue", label: "Past due" },
+  grace: { status: "warning", label: "Grace period" },
+  canceled: { status: "canceled", label: "Canceled" },
+  suspended: { status: "failed", label: "Suspended" },
 };
 
 function BillingPage() {
@@ -62,11 +56,38 @@ function BillingPage() {
   const statusFn = useServerFn(getBillingStatus);
   const portalFn = useServerFn(createBillingPortal);
   const refreshFn = useServerFn(refreshBillingStatus);
+  const itemsFn = useServerFn(listSubscriptionItems);
+  const createSubFn = useServerFn(createPlanSubscription);
 
   const { data, isLoading } = useQuery({
     queryKey: ["billing-status"],
     queryFn: () => statusFn(),
   });
+  const { data: subInfo, isLoading: subInfoLoading } = useQuery({
+    queryKey: ["billing-subscription-items"],
+    queryFn: () => itemsFn(),
+    enabled: !!data?.isPaidTier,
+  });
+
+  const invalidateBilling = () => {
+    qc.invalidateQueries({ queryKey: ["billing-status"] });
+    qc.invalidateQueries({ queryKey: ["billing-subscription-items"] });
+    qc.invalidateQueries({ queryKey: ["platform-addons"] });
+    qc.invalidateQueries({ queryKey: ["platform-invoices"] });
+  };
+
+  // Self-heal quietly on mount: pull the real subscription state (status,
+  // period end, plan identity from the sub's metadata) from Stripe once, then
+  // refetch. No spinner takeover - the cached page renders immediately.
+  const didAutoRefresh = useRef(false);
+  useEffect(() => {
+    if (didAutoRefresh.current) return;
+    didAutoRefresh.current = true;
+    refreshFn()
+      .then(() => invalidateBilling())
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null);
   const cancelFn = useServerFn(cancelBillingSubscription);
@@ -74,16 +95,21 @@ function BillingPage() {
   const cancelSub = useMutation({
     mutationFn: () => cancelFn(),
     onSuccess: (r: any) => {
-      toast.success(r.endsAt
-        ? `Subscription will end ${new Date(r.endsAt).toLocaleDateString()}. Access continues until then`
-        : "Subscription set to cancel at period end");
-      qc.invalidateQueries({ queryKey: ["billing-status"] });
+      toast.success(
+        r.endsAt
+          ? `Subscription will end ${formatDay(r.endsAt)}. Access continues until then`
+          : "Subscription set to cancel at period end",
+      );
+      invalidateBilling();
     },
     onError: (e: Error) => toast.error(e.message),
   });
   const resumeSub = useMutation({
     mutationFn: () => resumeFn(),
-    onSuccess: () => { toast.success("Subscription resumed"); qc.invalidateQueries({ queryKey: ["billing-status"] }); },
+    onSuccess: () => {
+      toast.success("Subscription resumed");
+      invalidateBilling();
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const portal = useMutation({
@@ -97,139 +123,216 @@ function BillingPage() {
   const refresh = useMutation({
     mutationFn: () => refreshFn(),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["billing-status"] });
-      toast.success("Refreshed");
+      invalidateBilling();
+      toast.success("Billing status refreshed");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // In-place plan switch for orgs that already pay: no payment form, the
+  // existing subscription is updated with proration. The selected card shows
+  // "Switching…" immediately and the Current plan marker moves on success.
+  const switchPlan = useMutation({
+    mutationFn: (vars: { planId: string; planName: string }) =>
+      createSubFn({ data: { planId: vars.planId } }),
+    onSuccess: (r: any, vars) => {
+      if (r.switched) {
+        toast.success(`Plan switched to ${r.planName}`);
+        invalidateBilling();
+      } else {
+        // No live subscription after all (e.g. it lapsed on Stripe's side):
+        // fall into the normal payment form for the chosen plan.
+        setCheckoutPlanId(vars.planId);
+      }
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const onPickPlan = async (planId: string, planName: string) => {
+    if (data?.isPaidTier) {
+      const ok = await confirm({
+        title: `Switch to ${planName}?`,
+        description:
+          "The change applies right away. The price difference is prorated on your next invoice, and no new payment details are needed.",
+        confirmLabel: "Switch plan",
+      });
+      if (ok) switchPlan.mutate({ planId, planName });
+    } else {
+      setCheckoutPlanId(planId);
+    }
+  };
+
   if (isLoading || !data) return <p className="text-muted-foreground">Loading…</p>;
 
+  const chip = STATUS_CHIP[data.billingStatus] ?? { status: "inactive", label: data.billingStatus };
+  const cancelPending = !!(subInfo as any)?.cancelAtPeriodEnd;
+  const periodEnd = (subInfo as any)?.currentPeriodEnd ?? data.currentPeriodEnd;
+
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-4xl space-y-8">
       {dialog}
-      <div>
-        <h1 className="text-2xl font-semibold">Billing</h1>
-        <p className="text-sm text-muted-foreground">Manage your subscription to the CRM.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Billing</h1>
+          <p className="text-sm text-muted-foreground">
+            Your HoundStack subscription: plan, add-ons, and invoices.
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => refresh.mutate()}
+          disabled={refresh.isPending}
+        >
+          {refresh.isPending ? "Refreshing…" : "Refresh"}
+        </Button>
       </div>
 
-      <div className="rounded-lg border bg-card p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+      {/* ── Current plan ─────────────────────────────────────────────────── */}
+      <section className="rounded-xl border bg-card p-6 shadow-sm">
+        <SectionLabel>Current plan</SectionLabel>
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-6">
           <div className="min-w-0">
-            <p className="text-sm text-muted-foreground">Current plan</p>
-            <div className="mt-1 flex items-center gap-2">
-              <p className="text-xl font-semibold">{data.planName}</p>
-              <Badge variant={STATUS_TONE[data.billingStatus] ?? "outline"}>
-                {STATUS_LABEL[data.billingStatus] ?? data.billingStatus}
-              </Badge>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-2xl font-semibold">{data.planName}</p>
+              <StatusChip status={chip.status} label={chip.label} />
+              {cancelPending && <MetaChip>Cancels at period end</MetaChip>}
             </div>
-            {data.monthlyEstimateCents != null && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              {data.monthlyEstimateCents != null
+                ? `${formatUsd(data.monthlyEstimateCents)}/month`
+                : "No charge"}
+              {data.includedSeats != null && ` · Includes ${data.includedSeats} employee${data.includedSeats === 1 ? "" : "s"}`}
+            </p>
+            {data.isPaidTier && periodEnd && (
               <p className="mt-1 text-sm text-muted-foreground">
-                {formatUsd(data.monthlyEstimateCents)}/mo · Unlimited customers
+                {cancelPending
+                  ? `Cancels ${formatDay(periodEnd)}. You keep access until then.`
+                  : `Renews ${formatDay(periodEnd)}`}
               </p>
             )}
             {data.billingStatus === "trialing" && (
               <p className="mt-2 text-sm text-amber-700">
-                You're on a free trial. Add a plan before it ends to keep full access.
+                You're on a free trial. Pick a plan below before it ends to keep full access.
               </p>
             )}
             {data.billingStatus === "past_due" && (
               <p className="mt-2 text-sm text-destructive">
-                Payment past due. Update your card in the customer portal.
-              </p>
-            )}
-            {data.currentPeriodEnd && data.isPaidTier && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Renews {new Date(data.currentPeriodEnd).toLocaleDateString()}
+                Your last payment failed. Update your payment method to keep your plan.
               </p>
             )}
           </div>
-          <div className="text-right">
-            <p className="text-sm text-muted-foreground">Active clients</p>
-            {/* Customers are unlimited on every plan — no enforced client cap
-                (finding #23; the old "16 / 3" contradicted the plan copy). */}
-            <p className="text-xl font-semibold">{data.activeClientCount}</p>
+          <div className="flex shrink-0 flex-col items-end gap-3">
+            <div className="text-right">
+              <p className="text-sm text-muted-foreground">Active clients</p>
+              <p className="text-xl font-semibold">{data.activeClientCount}</p>
+            </div>
+            {data.isPaidTier && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => portal.mutate()}
+                disabled={portal.isPending}
+              >
+                {portal.isPending ? "Opening…" : "Update payment method"}
+              </Button>
+            )}
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Embedded plan management: pick, pay, cancel — all in-app, no trip to
-          checkout.stripe.com (Brendan's re-review). */}
-      {checkoutPlanId ? (
-        <EmbeddedPlanCheckout
-          planId={checkoutPlanId}
-          returnUrl={typeof window !== "undefined" ? window.location.href.split("?")[0] : "https://app.houndstack.com/settings/billing"}
-          onCancel={() => setCheckoutPlanId(null)}
-        />
-      ) : (
-        <div className="space-y-3">
-          <div>
-            <h2 className="text-lg font-semibold">
-              {data.isPaidTier ? "Plans" : data.billingStatus === "trialing" ? "You're on a free trial: pick a plan" : "Choose a plan"}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Unlimited customers, dogs, jobs, routes, and zones on every tier. You're billed per employee.
-            </p>
-          </div>
-          <PlanPicker
-            currentSlug={data.planSlug}
-            onSelect={(planId) => setCheckoutPlanId(planId)}
-            chooseLabel={data.isPaidTier ? "Switch to this plan" : "Choose plan"}
-          />
-        </div>
-      )}
-
-      {data.isPaidTier && (
-        <div className="rounded-lg border bg-card p-6">
-          <h2 className="text-lg font-semibold">Manage subscription</h2>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={async () => {
-                if (
-                  await confirm({
-                    title: "Cancel your subscription?",
-                    description: "You keep access until the end of the paid period.",
-                    destructive: true,
-                    confirmLabel: "Cancel subscription",
-                  })
-                ) {
-                  cancelSub.mutate();
-                }
-              }}
-              disabled={cancelSub.isPending}
-            >
-              {cancelSub.isPending ? "Canceling…" : "Cancel subscription"}
-            </Button>
-            <Button variant="ghost" onClick={() => resumeSub.mutate()} disabled={resumeSub.isPending}>
-              {resumeSub.isPending ? "Resuming…" : "Resume (undo cancel)"}
-            </Button>
-          </div>
-          <p className="mt-3 text-xs text-muted-foreground">
-            Need to change the card on file?{" "}
-            <button className="underline" onClick={() => portal.mutate()} disabled={portal.isPending}>
-              {portal.isPending ? "Opening…" : "Update payment method"}
-            </button>
+      {/* ── Plans ────────────────────────────────────────────────────────── */}
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold">
+            {data.isPaidTier ? "Plans" : "Choose a plan"}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Unlimited customers, dogs, jobs, routes, and zones on every tier. You're billed per
+            employee.
+            {data.isPaidTier && " Switching is instant and prorated. No new card details needed."}
           </p>
         </div>
-      )}
+        {checkoutPlanId ? (
+          <EmbeddedPlanCheckout
+            planId={checkoutPlanId}
+            returnUrl={
+              typeof window !== "undefined"
+                ? window.location.href.split("?")[0]
+                : "https://app.houndstack.com/settings/billing"
+            }
+            onCancel={() => setCheckoutPlanId(null)}
+            onSwitched={() => {
+              setCheckoutPlanId(null);
+              invalidateBilling();
+            }}
+          />
+        ) : (
+          <PlanPicker
+            currentSlug={data.planSlug}
+            onSelect={onPickPlan}
+            switchingPlanId={switchPlan.isPending ? switchPlan.variables?.planId : null}
+            chooseLabel={data.isPaidTier ? "Switch to this plan" : "Choose plan"}
+          />
+        )}
+      </section>
 
       <PlatformAddonsSection />
 
-      {data.isPaidTier && <SubscriptionItems onOpenPortal={() => portal.mutate()} portalPending={portal.isPending} />}
+      {data.isPaidTier && (
+        <NextInvoice subInfo={subInfo as any} isLoading={subInfoLoading} />
+      )}
 
       <InvoiceHistory />
 
-      <div className="rounded-lg border bg-card p-4">
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Just paid or updated? Refresh to pull the latest status from Stripe.
-          </p>
-          <Button variant="outline" size="sm" onClick={() => refresh.mutate()} disabled={refresh.isPending}>
-            {refresh.isPending ? "Refreshing…" : "Refresh"}
-          </Button>
-        </div>
-      </div>
+      {/* ── Manage ───────────────────────────────────────────────────────── */}
+      {data.isPaidTier && (
+        <section className="rounded-xl border bg-card p-6 shadow-sm">
+          <h2 className="text-lg font-semibold">Manage subscription</h2>
+          {cancelPending ? (
+            <>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Your subscription is set to cancel
+                {periodEnd ? ` on ${formatDay(periodEnd)}` : " at the end of the paid period"}.
+                Resume it to keep your plan.
+              </p>
+              <Button
+                className="mt-3"
+                variant="outline"
+                onClick={() => resumeSub.mutate()}
+                disabled={resumeSub.isPending}
+              >
+                {resumeSub.isPending ? "Resuming…" : "Resume subscription"}
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Canceling stops future charges. You keep access until the end of the paid period.
+              </p>
+              <Button
+                className="mt-3"
+                variant="outline"
+                onClick={async () => {
+                  if (
+                    await confirm({
+                      title: "Cancel your subscription?",
+                      description: "You keep access until the end of the paid period.",
+                      destructive: true,
+                      confirmLabel: "Cancel subscription",
+                    })
+                  ) {
+                    cancelSub.mutate();
+                  }
+                }}
+                disabled={cancelSub.isPending}
+              >
+                {cancelSub.isPending ? "Canceling…" : "Cancel subscription"}
+              </Button>
+            </>
+          )}
+        </section>
+      )}
     </div>
   );
 }
@@ -268,25 +371,42 @@ function PlatformAddonsSection() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const addingId = subscribe.isPending ? (subscribe.variables as string) : null;
+  const removingId = cancel.isPending ? (cancel.variables as string) : null;
 
   const addons = data?.addons ?? [];
   if (!isLoading && !addons.length) return null;
 
   return (
-    <div className="rounded-lg border bg-card p-6">
+    <section className="space-y-3">
       {dialog}
-      <h2 className="text-lg font-semibold">Add-ons</h2>
-      <p className="text-sm text-muted-foreground">
-        Optional extras that bolt onto your plan and show up on the same invoice.
-      </p>
+      <div>
+        <h2 className="text-lg font-semibold">Add-ons</h2>
+        <p className="text-sm text-muted-foreground">
+          Optional extras that bolt onto your plan and show up on the same invoice.
+        </p>
+      </div>
       {isLoading ? (
-        <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
+        <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2">
           {addons.map((a) => (
-            <div key={a.id} className="flex flex-col rounded-lg border p-4">
+            <div
+              key={a.id}
+              className={`flex flex-col rounded-xl border bg-card p-4 shadow-sm ${
+                a.subscribed ? "border-primary/50 bg-primary/5" : ""
+              }`}
+            >
               <div className="flex items-start justify-between gap-2">
-                <p className="font-medium">{a.name}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium">{a.name}</p>
+                  {a.subscribed && (
+                    <StatusChip
+                      status={a.billing_interval === "one_time" ? "paid" : "active"}
+                      label={a.billing_interval === "one_time" ? "Purchased" : "Active"}
+                    />
+                  )}
+                </div>
                 <p className="whitespace-nowrap text-sm font-semibold">
                   {formatUsd(a.price_cents)}
                   <span className="font-normal text-muted-foreground">
@@ -298,13 +418,11 @@ function PlatformAddonsSection() {
                 <p className="mt-1 flex-1 text-sm text-muted-foreground">{a.description}</p>
               )}
               <div className="mt-3">
-                {a.subscribed && a.billing_interval === "one_time" ? (
-                  <Badge className="bg-emerald-600 text-white">Purchased</Badge>
-                ) : a.subscribed ? (
+                {a.subscribed && a.billing_interval === "one_time" ? null : a.subscribed ? (
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={cancel.isPending}
+                    disabled={removingId === a.id}
                     onClick={async () => {
                       if (
                         await confirm({
@@ -316,12 +434,12 @@ function PlatformAddonsSection() {
                         cancel.mutate(a.id);
                     }}
                   >
-                    {cancel.isPending ? "Removing…" : "Remove add-on"}
+                    {removingId === a.id ? "Removing…" : "Remove from plan"}
                   </Button>
                 ) : data?.canSubscribe ? (
                   <Button
                     size="sm"
-                    disabled={subscribe.isPending}
+                    disabled={addingId === a.id}
                     onClick={async () => {
                       if (
                         a.billing_interval !== "one_time" ||
@@ -335,7 +453,7 @@ function PlatformAddonsSection() {
                       }
                     }}
                   >
-                    {subscribe.isPending
+                    {addingId === a.id
                       ? "Adding…"
                       : a.billing_interval === "one_time"
                         ? "Purchase"
@@ -351,11 +469,105 @@ function PlatformAddonsSection() {
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
-// In-app billing history (punch list #10) — no portal round-trip needed just
+// Upcoming-invoice style breakdown of the Stripe subscription: the plan line,
+// seat overage as "Extra employees", and any bolt-on add-ons, with a monthly
+// total. No portal trip needed to see the full bill.
+function NextInvoice({
+  subInfo,
+  isLoading,
+}: {
+  subInfo:
+    | {
+        items: Array<{
+          id: string;
+          kind: "base" | "seat" | "addon";
+          name: string;
+          description: string | null;
+          quantity: number;
+          unitAmountCents: number | null;
+          currency: string;
+          interval: string | null;
+          intervalCount: number;
+        }>;
+        currentPeriodEnd: string | null;
+      }
+    | undefined;
+  isLoading: boolean;
+}) {
+  const items = subInfo?.items ?? [];
+  const ordered = [
+    ...items.filter((i) => i.kind === "base"),
+    ...items.filter((i) => i.kind === "seat"),
+    ...items.filter((i) => i.kind === "addon"),
+  ];
+  const monthlyTotal = items.reduce(
+    (sum, i) =>
+      i.unitAmountCents != null && i.interval === "month" && i.intervalCount === 1
+        ? sum + i.unitAmountCents * (i.quantity ?? 1)
+        : sum,
+    0,
+  );
+  const allMonthly = items.every((i) => i.interval === "month" && i.intervalCount === 1);
+
+  const lineLabel = (i: (typeof items)[number]) => {
+    if (i.kind === "seat") {
+      return `Extra employees (${i.quantity} × ${formatUsd(i.unitAmountCents)})`;
+    }
+    return i.name;
+  };
+  const lineAmount = (i: (typeof items)[number]) => {
+    if (i.unitAmountCents == null) return "-";
+    const total = formatUsd(i.unitAmountCents * (i.quantity ?? 1));
+    const interval = i.interval
+      ? `/${i.intervalCount > 1 ? `${i.intervalCount} ` : ""}${i.interval === "month" ? "mo" : i.interval}`
+      : "";
+    return `${total}${interval}`;
+  };
+
+  return (
+    <section className="rounded-xl border bg-card p-6 shadow-sm">
+      <h2 className="text-lg font-semibold">Your next invoice</h2>
+      {subInfo?.currentPeriodEnd && (
+        <p className="text-sm text-muted-foreground">Bills {formatDay(subInfo.currentPeriodEnd)}</p>
+      )}
+      {isLoading ? (
+        <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
+      ) : ordered.length === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">No subscription line items to show.</p>
+      ) : (
+        <>
+          <ul className="mt-3 divide-y">
+            {ordered.map((i) => (
+              <li key={i.id} className="flex flex-wrap items-start justify-between gap-3 py-2.5">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium">{lineLabel(i)}</p>
+                    {i.kind === "base" && <MetaChip>Plan</MetaChip>}
+                    {i.kind === "addon" && <MetaChip>Add-on</MetaChip>}
+                  </div>
+                  {i.kind !== "seat" && i.description && (
+                    <p className="text-xs text-muted-foreground">{i.description}</p>
+                  )}
+                </div>
+                <p className="whitespace-nowrap text-right text-sm">{lineAmount(i)}</p>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-1 flex items-center justify-between border-t pt-3">
+            <p className="text-sm font-semibold">{allMonthly ? "Monthly total" : "Monthly total (excludes yearly items)"}</p>
+            <p className="text-sm font-semibold">{formatUsd(monthlyTotal)}/mo</p>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+// In-app billing history (punch list #10) - no portal round-trip needed just
 // to see or download an invoice.
 function InvoiceHistory() {
   const listFn = useServerFn(listPlatformInvoices);
@@ -366,7 +578,7 @@ function InvoiceHistory() {
   const invoices: any[] = (data as any)?.invoices ?? [];
 
   return (
-    <div className="rounded-lg border bg-card p-6">
+    <section className="rounded-xl border bg-card p-6 shadow-sm">
       <h2 className="text-lg font-semibold">Billing history</h2>
       {isLoading ? (
         <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
@@ -390,14 +602,12 @@ function InvoiceHistory() {
               <tr key={inv.stripe_invoice_id}>
                 <td className="py-2 font-medium">{inv.number ?? inv.stripe_invoice_id.slice(0, 12)}</td>
                 <td className="py-2 text-muted-foreground">
-                  {inv.period_start ? new Date(inv.period_start).toLocaleDateString() : "-"}
-                  {inv.period_end ? ` - ${new Date(inv.period_end).toLocaleDateString()}` : ""}
+                  {inv.period_start ? formatDay(inv.period_start) : "-"}
+                  {inv.period_end ? ` to ${formatDay(inv.period_end)}` : ""}
                 </td>
                 <td className="py-2">{formatUsd(inv.amount_due_cents)}</td>
                 <td className="py-2">
-                  <Badge variant={inv.status === "paid" ? "default" : inv.status === "open" ? "secondary" : "outline"}>
-                    {inv.status}
-                  </Badge>
+                  <StatusChip status={inv.status === "open" ? "open" : inv.status} />
                 </td>
                 <td className="py-2 text-right">
                   {inv.hosted_invoice_url && (
@@ -412,80 +622,6 @@ function InvoiceHistory() {
           </tbody>
         </table>
       )}
-    </div>
-  );
-}
-
-// Line-item breakdown of the Stripe subscription: base plan + seat overage +
-// any bolt-on add-ons. Surfaces the full bill inline so owners don't need to
-// open the Stripe customer portal just to see what they're paying for.
-function SubscriptionItems({ onOpenPortal, portalPending }: { onOpenPortal: () => void; portalPending: boolean }) {
-  const listFn = useServerFn(listSubscriptionItems);
-  const { data, isLoading } = useQuery({
-    queryKey: ["billing-subscription-items"],
-    queryFn: () => listFn(),
-  });
-  const items: any[] = (data as any)?.items ?? [];
-  const addons = items.filter((i) => i.kind === "addon");
-  const base = items.filter((i) => i.kind !== "addon");
-
-  const fmtLine = (i: any) => {
-    if (i.unitAmountCents == null) return "-";
-    const per = formatUsd(i.unitAmountCents);
-    const total = formatUsd(i.unitAmountCents * (i.quantity ?? 1));
-    const interval = i.interval ? `/${i.intervalCount > 1 ? `${i.intervalCount} ` : ""}${i.interval}` : "";
-    return i.quantity > 1
-      ? `${i.quantity} × ${per}${interval} · ${total}${interval}`
-      : `${per}${interval}`;
-  };
-
-  return (
-    <div className="rounded-lg border bg-card p-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">What you're paying for</h2>
-        {addons.length > 0 && (
-          <Badge variant="secondary">{addons.length} add-on{addons.length === 1 ? "" : "s"}</Badge>
-        )}
-      </div>
-      {isLoading ? (
-        <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
-      ) : items.length === 0 ? (
-        <p className="mt-2 text-sm text-muted-foreground">
-          No active subscription line items to show.
-        </p>
-      ) : (
-        <ul className="mt-3 divide-y">
-          {[...base, ...addons].map((i) => (
-            <li key={i.id} className="flex flex-wrap items-start justify-between gap-3 py-2.5">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="font-medium">{i.name}</p>
-                  {i.kind === "base" && <Badge variant="outline">Plan</Badge>}
-                  {i.kind === "seat" && <Badge variant="outline">Seat overage</Badge>}
-                  {i.kind === "addon" && <Badge>Add-on</Badge>}
-                </div>
-                {i.description && (
-                  <p className="text-xs text-muted-foreground">{i.description}</p>
-                )}
-              </div>
-              <p className="text-sm text-right whitespace-nowrap">{fmtLine(i)}</p>
-            </li>
-          ))}
-        </ul>
-      )}
-      {items.length > 0 && addons.length === 0 && (
-        <p className="mt-3 text-xs text-muted-foreground">
-          No add-ons on your plan. Extra add-ons can be attached to your subscription from the{" "}
-          <button
-            type="button"
-            onClick={onOpenPortal}
-            disabled={portalPending}
-            className="underline"
-          >
-            {portalPending ? "Opening…" : "customer portal"}
-          </button>.
-        </p>
-      )}
-    </div>
+    </section>
   );
 }

@@ -142,15 +142,29 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
                 };
                 const currentPeriodEnd = (sub as any).current_period_end as number | undefined;
                 const mapped = statusMap[sub.status] ?? "active";
+                const orgUpdate: Record<string, unknown> = {
+                  stripe_subscription_id: sub.id,
+                  plan_status: mapped,
+                  current_period_end: currentPeriodEnd
+                    ? new Date(currentPeriodEnd * 1000).toISOString()
+                    : null,
+                };
+                // Propagate plan identity: subscriptions created/switched by
+                // the app carry plan_id in metadata. Only overwrite when the
+                // metadata names a REAL catalog plan (cheap select), and never
+                // on deletion — a canceled org keeps its last plan for display.
+                const metaPlanId = sub.metadata?.plan_id;
+                if (metaPlanId && event.type !== "customer.subscription.deleted") {
+                  const { data: planRow } = await supabaseAdmin
+                    .from("platform_plans")
+                    .select("id")
+                    .eq("id", metaPlanId)
+                    .maybeSingle();
+                  if ((planRow as any)?.id) orgUpdate.plan_id = metaPlanId;
+                }
                 await supabaseAdmin
                   .from("organizations")
-                  .update({
-                    stripe_subscription_id: sub.id,
-                    plan_status: mapped,
-                    current_period_end: currentPeriodEnd
-                      ? new Date(currentPeriodEnd * 1000).toISOString()
-                      : null,
-                  })
+                  .update(orgUpdate as any)
                   .eq("id", orgId);
                 // A dead subscription takes its bolt-on add-ons with it: mark
                 // them canceled and switch their feature flags off, so the org

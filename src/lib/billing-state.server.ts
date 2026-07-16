@@ -13,6 +13,8 @@ type PlanRow = {
   client_limit_max: number | null;
   price_cents: number | null;
   price_per_client_cents: number | null;
+  included_seats: number | null;
+  price_per_seat_cents: number | null;
   stripe_price_id: string | null;
   is_free: boolean;
   sort_order: number | null;
@@ -47,6 +49,8 @@ export type BillingState = {
   isPaidTier: boolean;
   priceCents: number | null;
   pricePerClientCents: number | null;
+  includedSeats: number | null;
+  pricePerSeatCents: number | null;
   monthlyEstimateCents: number | null; // final $ owed if per-client
   stripePriceId: string | null;
   stripeCustomerId: string | null;
@@ -110,7 +114,7 @@ export async function getOrgBillingState(
     supabase
       .from("platform_plans")
       .select(
-        "id, name, slug, client_limit_min, client_limit_max, price_cents, price_per_client_cents, stripe_price_id, is_free, sort_order",
+        "id, name, slug, client_limit_min, client_limit_max, price_cents, price_per_client_cents, included_seats, price_per_seat_cents, stripe_price_id, is_free, sort_order",
       )
       .eq("is_active", true)
       .order("sort_order", { ascending: true }),
@@ -138,7 +142,7 @@ export async function getBulkOrgBillingState(
     supabase
       .from("platform_plans")
       .select(
-        "id, name, slug, client_limit_min, client_limit_max, price_cents, price_per_client_cents, stripe_price_id, is_free, sort_order",
+        "id, name, slug, client_limit_min, client_limit_max, price_cents, price_per_client_cents, included_seats, price_per_seat_cents, stripe_price_id, is_free, sort_order",
       )
       .eq("is_active", true)
       .order("sort_order", { ascending: true }),
@@ -196,6 +200,8 @@ function buildBillingState(o: OrgRow, plans: PlanRow[]): BillingState {
     isPaidTier,
     priceCents,
     pricePerClientCents: perClientCents,
+    includedSeats: displayPlan?.included_seats ?? null,
+    pricePerSeatCents: displayPlan?.price_per_seat_cents ?? null,
     monthlyEstimateCents,
     stripePriceId: displayPlan?.stripe_price_id ?? null,
     stripeCustomerId: o.stripe_customer_id,

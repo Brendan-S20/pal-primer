@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
-import { FileText, Plus } from "lucide-react";
+import { FileText, Plus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -669,10 +669,10 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
           </div>
           <button
             type="button"
-            className="mt-3 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            className="mt-3 inline-flex items-center gap-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
             onClick={() => setShowAdd(false)}
           >
-            Cancel
+            <X className="h-3 w-3" /> Cancel
           </button>
         </div>
       )}
@@ -714,7 +714,7 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
                       variant="ghost"
                       onClick={() => statusMut.mutate({ id: s.id, status: "canceled" })}
                     >
-                      Cancel
+                      <X className="mr-1 h-3.5 w-3.5" /> Cancel
                     </Button>
                   )}
                 </div>
