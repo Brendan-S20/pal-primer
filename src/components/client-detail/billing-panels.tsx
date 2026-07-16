@@ -115,7 +115,7 @@ export function BillingPanel({ clientId }: { clientId: string }) {
     mutationFn: (id: string) => portalLinkFn({ data: { invoiceId: id } }),
     onSuccess: (r: { url: string }) => {
       navigator.clipboard.writeText(r.url).then(
-        () => toast.success("Pay link copied to clipboard"),
+        () => toast.success("Portal link copied to clipboard"),
         () => toast.error("Copy failed, opening in new tab"),
       );
       invalidate();

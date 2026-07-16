@@ -179,12 +179,24 @@ export const updateSubscription = createServerFn({ method: "POST" })
     // before -> after).
     const { data: before } = await supabase
       .from("subscriptions")
-      .select("organization_id, client_id, price_cents, frequency, started_on, ends_on")
+      .select("organization_id, client_id, price_cents, frequency, started_on, ends_on, status")
       .eq("id", data.subscriptionId)
       .single();
+    // Keep status consistent with the end date (UX round 4): setting a past
+    // end date cancels; clearing it (or moving it to the future) on a
+    // canceled service revives it — otherwise ending a service was a one-way
+    // door the Edit drawer silently couldn't undo.
+    const today = new Date().toISOString().slice(0, 10);
+    const endsInPast = !!data.endsOn && data.endsOn <= today;
+    const statusPatch = endsInPast
+      ? { status: "canceled" as const, paused_at: null }
+      : before?.status === "canceled"
+        ? { status: "active" as const, end_reason: null, end_notes: null, ended_by: null }
+        : {};
     const { error } = await supabase
       .from("subscriptions")
       .update({
+        ...statusPatch,
         property_id: data.propertyId,
         frequency: data.frequency,
         price_cents: data.priceCents,
@@ -227,8 +239,13 @@ export const updateSubscription = createServerFn({ method: "POST" })
           ? `Changed service price from $${(before.price_cents / 100).toFixed(2)} to $${(data.priceCents / 100).toFixed(2)} per visit`
           : "Updated service configuration",
         meta: {
-          before: { price_cents: before.price_cents, frequency: before.frequency, ends_on: before.ends_on },
-          after: { price_cents: data.priceCents, frequency: data.frequency, ends_on: data.endsOn ?? null },
+          before: { price_cents: before.price_cents, frequency: before.frequency, ends_on: before.ends_on, status: before.status },
+          after: {
+            price_cents: data.priceCents,
+            frequency: data.frequency,
+            ends_on: data.endsOn ?? null,
+            status: (statusPatch as any).status ?? before.status,
+          },
         },
       });
     }

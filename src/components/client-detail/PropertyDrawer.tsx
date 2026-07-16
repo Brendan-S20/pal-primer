@@ -114,6 +114,18 @@ export function PropertyDrawer({
   // (UX round 4: the boundary map must be available before the first save).
   const [pendingBoundary, setPendingBoundary] = useState<PolygonGeoJSON | null>(null);
 
+  // A sketched-but-unsaved boundary describes one specific location; any
+  // address change makes it wrong, so it must not ride along silently.
+  function discardPendingBoundary() {
+    setPendingBoundary((prev) => {
+      if (prev) {
+        toast.info("Attached boundary removed because the address changed. Redraw it below.");
+      }
+      return null;
+    });
+    setBoundaryDirty(false);
+  }
+
   function applyResolved(r: ResolvedAddress) {
     setForm((f) => ({
       ...f,
@@ -129,6 +141,7 @@ export function PropertyDrawer({
       addressSource: "matched",
     }));
     setMatchedZoneName(r.zoneName);
+    if (!property) discardPendingBoundary();
   }
 
   // Any hand edit to an address field invalidates whatever point we had:
@@ -144,6 +157,7 @@ export function PropertyDrawer({
       longitude: null,
     }));
     setMatchedZoneName(null);
+    if (!property) discardPendingBoundary();
   }
 
   const isCommercial = form.accountType === "commercial";
