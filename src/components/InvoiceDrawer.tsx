@@ -17,6 +17,7 @@ import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/p
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
 import { formatDateTime, formatDay } from "@/lib/format";
+import { formatLineItemDescription, invoiceKindLabel } from "@/lib/invoice-labels";
 import { getInvoiceDetail, voidInvoice } from "@/lib/invoices.functions";
 import { sendInvoiceEmail } from "@/lib/notifications.functions";
 
@@ -149,7 +150,7 @@ export function InvoiceDrawer({
                   Overdue
                 </span>
               )}
-              <span className="text-xs text-muted-foreground">{inv.kind}</span>
+              <span className="text-xs text-muted-foreground">{invoiceKindLabel(inv.kind)}</span>
               <span className="text-xs text-muted-foreground">
                 {inv.period_start
                   ? `${formatDay(inv.period_start)} to ${formatDay(inv.period_end)}`
@@ -246,7 +247,9 @@ export function InvoiceDrawer({
                 <ul className="mt-1.5 divide-y">
                   {lines.map((l) => (
                     <li key={l.id} className="flex items-center justify-between gap-2 py-1.5">
-                      <span className="min-w-0 truncate">{l.description}</span>
+                      <span className="min-w-0 truncate">
+                        {formatLineItemDescription(l.description)}
+                      </span>
                       <span className="shrink-0 font-medium">
                         {fmtCents(l.amount_cents, inv.currency ?? "usd")}
                       </span>

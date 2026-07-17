@@ -15,6 +15,7 @@ import {
   usePortalCtx, EmptyBox, InvoiceStatusBadge, PromoRedeemCard, TopupRow,
   fmtDayShort, money,
 } from "@/lib/portal-ui";
+import { invoiceKindLabel } from "@/lib/invoice-labels";
 
 export const Route = createFileRoute("/portal/$slug/$token/billing")({
   component: PortalBilling,
@@ -132,7 +133,7 @@ function PortalBilling() {
           <ul className="divide-y rounded-md border bg-card">
             {invoicesQ.data!.invoices.map((i, idx) => {
               const invNo = `#${String(invoicesQ.data!.invoices.length - idx).padStart(4, "0")}`;
-              const label = i.kind === "prepaid_topup" ? "Prepaid top-up"
+              const label = i.kind === "prepaid_topup" ? invoiceKindLabel(i.kind)
                 : i.period_start ? `Service ${fmtDayShort(i.period_start)} - ${fmtDayShort(i.period_end)}`
                 : "Service";
               return (

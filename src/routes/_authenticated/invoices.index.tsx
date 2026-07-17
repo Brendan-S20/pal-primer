@@ -23,15 +23,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ChevronRight, Download, FileText, MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import { Download, FileText, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { downloadCsv } from "@/lib/csv";
 import { HelpTip } from "@/components/HelpTip";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
-import { EmptyState, MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
-import { InvoiceDrawer, isInvoiceOverdue } from "@/components/InvoiceDrawer";
+import { EmptyState, SectionLabel } from "@/components/client-detail/primitives";
+import { InvoiceDrawer } from "@/components/InvoiceDrawer";
+import { InvoiceRow } from "@/components/InvoiceRow";
 import { invoiceOutstandingCents } from "@/lib/ar";
-import { formatDay } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/invoices/")({
@@ -50,12 +50,6 @@ type StatusKey = (typeof STATUSES)[number] | "all";
 
 function statusLabel(s: StatusKey) {
   return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-/** "Wed, May 28 to Wed, Jun 25" instead of raw ISO dates. */
-function periodLabel(start: string | null | undefined, end: string | null | undefined) {
-  if (start && end) return `${formatDay(start)} to ${formatDay(end)}`;
-  return formatDay(end ?? start) || "-";
 }
 
 /** P3.1 quick charge — bill a client right now, no visit required. */
@@ -648,74 +642,19 @@ function InvoicesPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((inv) => {
-                const client = Array.isArray(inv.clients) ? inv.clients[0] : inv.clients;
-                const checked = !!selected[inv.id];
-                const overdue = isInvoiceOverdue(inv.status, inv.due_on);
-                return (
-                  <tr
-                    key={inv.id}
-                    className="cursor-pointer border-b last:border-0 hover:bg-muted/30"
-                    onClick={() => setDrawerInvoiceId(inv.id)}
-                  >
-                    <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(v) =>
-                          setSelected((prev) => ({ ...prev, [inv.id]: !!v }))
-                        }
-                        aria-label={`Select invoice for ${client?.display_name ?? "client"}`}
-                      />
-                    </td>
-                    <td className="px-4 py-2.5 font-medium">{client?.display_name ?? "-"}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
-                      #{inv.id.slice(0, 8)}
-                    </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">
-                      {periodLabel(inv.period_start, inv.period_end)}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {inv.due_on && inv.status !== "paid" && inv.status !== "void" ? (
-                        <span className={overdue ? "font-medium text-destructive" : "text-muted-foreground"}>
-                          {formatDay(inv.due_on)}
-                          {overdue && (
-                            <span className="ml-1.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-xs">
-                              Overdue
-                            </span>
-                          )}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">
-                      {fmtCents(inv.total_cents ?? 0, inv.currency ?? "usd")}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span className="inline-flex flex-wrap items-center gap-1.5">
-                        <StatusChip status={inv.status} />
-                        {inv.status === "open" && !inv.sent_at && inv.send_after && (
-                          <MetaChip>Scheduled to send {formatDay(inv.send_after)}</MetaChip>
-                        )}
-                        {inv.sent_at && <MetaChip>Sent {formatDay(inv.sent_at)}</MetaChip>}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      <button
-                        type="button"
-                        aria-label={`Open invoice for ${client?.display_name ?? "client"}`}
-                        className="inline-flex rounded-md p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDrawerInvoiceId(inv.id);
-                        }}
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+              {filtered.map((inv) => (
+                <InvoiceRow
+                  key={inv.id}
+                  invoice={inv}
+                  showClient
+                  selectable
+                  selected={!!selected[inv.id]}
+                  onToggleSelect={(next) =>
+                    setSelected((prev) => ({ ...prev, [inv.id]: next }))
+                  }
+                  onOpen={setDrawerInvoiceId}
+                />
+              ))}
             </tbody>
           </table>
         </div>

@@ -10,7 +10,7 @@ export const listInvoices = createServerFn({ method: "GET" })
     await requirePermission(supabase, context.userId, "manage_client_billing");
     const { data, error } = await supabase
       .from("invoices")
-      .select("id, client_id, status, subtotal_cents, total_cents, credit_applied_cents, currency, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, clients(display_name)")
+      .select("id, client_id, status, kind, subtotal_cents, total_cents, credit_applied_cents, currency, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, clients(display_name)")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     // due_on/send_after/sent_at/public_token aren't in the generated types yet.
@@ -18,6 +18,7 @@ export const listInvoices = createServerFn({ method: "GET" })
       id: string;
       client_id: string;
       status: string;
+      kind: string | null;
       subtotal_cents: number | null;
       total_cents: number | null;
       credit_applied_cents: number | null;
@@ -811,14 +812,14 @@ export const getClientBillingSummary = createServerFn({ method: "GET" })
         .single(),
       supabase
         .from("invoices")
-        .select("id, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, public_token, checkout_url, created_at")
+        .select("id, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, created_at")
         .eq("client_id", data.clientId)
         .order("created_at", { ascending: false })
         .limit(25),
     ]);
     if (clientRes.error) throw new Error(clientRes.error.message);
 
-    // due_on/public_token aren't in the generated types yet.
+    // due_on/send_after/sent_at/public_token aren't in the generated types yet.
     const invoices = ((invoicesRes.data ?? []) as any[]) as Array<{
       id: string;
       status: string;
@@ -832,6 +833,8 @@ export const getClientBillingSummary = createServerFn({ method: "GET" })
       issued_at: string | null;
       paid_at: string | null;
       due_on: string | null;
+      send_after: string | null;
+      sent_at: string | null;
       public_token: string;
       checkout_url: string | null;
       created_at: string;

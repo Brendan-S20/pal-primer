@@ -14,6 +14,7 @@ import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
 import { getPublicInvoice, createPublicInvoicePaymentIntent } from "@/lib/invoices.functions";
 import { stripeAppearance } from "@/lib/stripe-appearance";
 import { formatDay } from "@/lib/format";
+import { formatLineItemDescription } from "@/lib/invoice-labels";
 
 export const Route = createFileRoute("/pay/i/$token")({
   head: () => ({ meta: [{ title: "Pay invoice" }] }),
@@ -191,7 +192,7 @@ function PublicPayPage() {
               ) : (
                 data.items.map((it) => (
                   <tr key={it.id}>
-                    <td className="py-2.5 pr-4">{it.description}</td>
+                    <td className="py-2.5 pr-4">{formatLineItemDescription(it.description)}</td>
                     <td className="py-2.5 text-right tabular-nums">
                       {fmtCents(it.amountCents, invoice.currency)}
                     </td>
