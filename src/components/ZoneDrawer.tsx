@@ -181,6 +181,9 @@ export function ZoneDrawer({
   const [commPerAcre, setCommPerAcre] = useState<string>(
     dollarsOrBlank(zone?.commercial_per_acre_cents),
   );
+  const [commPerStation, setCommPerStation] = useState<string>(
+    dollarsOrBlank(zone?.commercial_per_station_cents),
+  );
 
   // Coverage: required. Existing geometry seeds the map; ZIP-only legacy
   // zones start on radius mode and must place a center before saving.
@@ -273,6 +276,7 @@ export function ZoneDrawer({
         commercialBaseCents: centsOrNull(commBase),
         commercialPerUnitCents: centsOrNull(commPerUnit),
         commercialPerAcreCents: centsOrNull(commPerAcre),
+        commercialPerStationCents: centsOrNull(commPerStation),
         geoMatchMode: coverage.mode,
         boundary: coverage.mode === "polygon" ? coverage.polygon : null,
         centerLatitude: coverage.centerLat,
@@ -485,12 +489,13 @@ export function ZoneDrawer({
             <SectionLabel>Commercial pricing</SectionLabel>
             <p className="text-xs text-muted-foreground">
               For HOA and commercial properties: per-visit price = base + per-unit x units +
-              per-acre x grounds acreage, then the frequency multiplier.
+              per-acre x grounds acreage + per-station x waste stations, then the frequency
+              multiplier.
               {zoneType === "all"
                 ? " Leave blank if this zone doesn't serve commercial accounts."
                 : ""}
             </p>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-xs">Base / visit</Label>
                 <MoneyInput value={commBase} onChange={mark(setCommBase)} placeholder="100.00" />
@@ -509,6 +514,14 @@ export function ZoneDrawer({
                   value={commPerAcre}
                   onChange={mark(setCommPerAcre)}
                   placeholder="40.00"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Per waste station</Label>
+                <MoneyInput
+                  value={commPerStation}
+                  onChange={mark(setCommPerStation)}
+                  placeholder="8.00"
                 />
               </div>
             </div>

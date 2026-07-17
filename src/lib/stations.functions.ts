@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { isValidLabel } from "@/lib/dna-linkage";
 
 async function orgId(supabase: any, userId: string) {
   const { data, error } = await supabase
@@ -14,12 +15,39 @@ export const listStations = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ propertyId: z.string().uuid().optional(), clientId: z.string().uuid().optional() }).parse(d))
   .handler(async ({ data, context }) => {
-    let q = context.supabase.from("waste_stations").select("*").order("sort_order").order("label");
+    let q = context.supabase
+      .from("waste_stations")
+      .select("*")
+      .order("sort_order")
+      .order("station_number")
+      .order("label");
     if (data.propertyId) q = q.eq("property_id", data.propertyId);
     if (data.clientId) q = q.eq("client_id", data.clientId);
     const { data: rows, error } = await q;
     if (error) throw new Error(error.message);
-    return { stations: rows ?? [] };
+    const stations = rows ?? [];
+    // Last-serviced per station: newest visit date across its service logs.
+    // Populated by record_visit_station_service() on visit completion (G7).
+    const ids = stations.map((s: any) => s.id);
+    const lastServiced: Record<string, string> = {};
+    if (ids.length) {
+      const { data: logs } = await context.supabase
+        .from("station_service_logs")
+        .select("waste_station_id, serviced_at, visits(scheduled_on)")
+        .in("waste_station_id", ids);
+      for (const l of (logs ?? []) as any[]) {
+        const when = l.visits?.scheduled_on ?? (l.serviced_at ? String(l.serviced_at).slice(0, 10) : null);
+        if (!when) continue;
+        const cur = lastServiced[l.waste_station_id];
+        if (!cur || when > cur) lastServiced[l.waste_station_id] = when;
+      }
+    }
+    return {
+      stations: stations.map((s: any) => ({
+        ...s,
+        last_serviced_on: lastServiced[s.id] ?? null,
+      })),
+    };
   });
 
 export const upsertStation = createServerFn({ method: "POST" })
@@ -44,6 +72,9 @@ export const upsertStation = createServerFn({ method: "POST" })
     })
     .parse(d))
   .handler(async ({ data, context }) => {
+    if (!isValidLabel(data.label)) {
+      throw new Error("Enter a station label (not blank or a placeholder).");
+    }
     const org = await orgId(context.supabase, context.userId);
     // capacity_liners is intentionally no longer written (QA round 8).
     const payload: any = {
@@ -77,6 +108,18 @@ export const deleteStation = createServerFn({ method: "POST" })
     const { error } = await context.supabase.from("waste_stations").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+// Renumber a property's stations to a clean 1..n integer sequence (G7).
+export const renumberStations = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ propertyId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: n, error } = await context.supabase.rpc("renumber_property_stations", {
+      _property_id: data.propertyId,
+    });
+    if (error) throw new Error(error.message);
+    return { renumbered: (n as number) ?? 0 };
   });
 
 export const getVisitStations = createServerFn({ method: "GET" })

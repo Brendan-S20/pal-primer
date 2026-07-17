@@ -105,6 +105,10 @@ export function UnitsTab({
   const units: any[] = (unitsData as any)?.units ?? [];
   const incidents: any[] = (unitsData as any)?.incidents ?? [];
   const dogs: any[] = (dogsData as any)?.dogs ?? [];
+  // Orphan dogs on unit-bearing properties: they exist in /dna but were never
+  // assigned to a unit (I5). Shown here for management review so the Units tab
+  // reconciles with /dna instead of silently reading zero (I3).
+  const reviewDogs: any[] = (unitsData as any)?.reviewDogs ?? [];
 
   // "new:<propertyId>" opens the add form scoped to that property.
   const [drawerUnit, setDrawerUnit] = useState<any | string | null>(null);
@@ -134,6 +138,7 @@ export function UnitsTab({
     <div className="space-y-6">
       {commercialProps.map((p: any) => {
         const propUnits = units.filter((u) => u.property_id === p.id);
+        const propReviewDogs = reviewDogs.filter((d) => d.property_id === p.id);
         return (
           <section key={p.id} className="space-y-2">
             <div className="flex items-center justify-between">
@@ -146,6 +151,15 @@ export function UnitsTab({
                 </Button>
               )}
             </div>
+
+            {propReviewDogs.length > 0 && (
+              <ReviewDogsCard
+                dogs={propReviewDogs}
+                units={propUnits}
+                canWrite={canWrite}
+                onChanged={invalidate}
+              />
+            )}
 
             {propUnits.length === 0 ? (
               <EmptyState
@@ -198,6 +212,75 @@ export function UnitsTab({
           qc.invalidateQueries({ queryKey: ["billing-summary", clientId] });
         }}
       />
+    </div>
+  );
+}
+
+// ── Management review: orphan dogs not assigned to a unit (I5) ────────────────
+
+function ReviewDogsCard({
+  dogs,
+  units,
+  canWrite,
+  onChanged,
+}: {
+  dogs: any[];
+  units: any[];
+  canWrite: boolean;
+  onChanged: () => void;
+}) {
+  const updateFn = useServerFn(updateDog);
+  const assignMut = useMutation({
+    mutationFn: (v: { id: string; unitId: string }) =>
+      updateFn({ data: { id: v.id, unitId: v.unitId } }),
+    onSuccess: onChanged,
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  return (
+    <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+      <div className="flex items-center gap-2 text-sm font-medium text-amber-800 dark:text-amber-300">
+        <AlertTriangle className="h-4 w-4" />
+        Needs review: {dogs.length} dog{dogs.length === 1 ? "" : "s"} not assigned to a unit
+      </div>
+      <p className="mt-1 text-xs text-amber-800/80 dark:text-amber-300/80">
+        These dogs appear in DNA compliance but are not linked to a unit. Assign each to a unit so
+        incidents and DNA matches attribute correctly.
+      </p>
+      <ul className="mt-2 space-y-1.5">
+        {dogs.map((d) => (
+          <li
+            key={d.id}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-card p-2"
+          >
+            <span className="flex flex-wrap items-center gap-2">
+              <DogIcon className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="font-medium">{d.name}</span>
+              {d.breed && <span className="text-xs text-muted-foreground">{d.breed}</span>}
+              <DnaChip status={(d.dna_status ?? "not_registered") as DnaStatus} />
+            </span>
+            {canWrite &&
+              (units.length > 0 ? (
+                <select
+                  aria-label={`Assign ${d.name} to a unit`}
+                  defaultValue=""
+                  disabled={assignMut.isPending}
+                  onChange={(e) => e.target.value && assignMut.mutate({ id: d.id, unitId: e.target.value })}
+                  className="h-8 rounded-md border bg-background px-2 text-xs"
+                >
+                  <option value="">Assign to unit…</option>
+                  {units.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      Unit {u.unit_label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-xs text-muted-foreground">Add a unit first</span>
+              ))}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

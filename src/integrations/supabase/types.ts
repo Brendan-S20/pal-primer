@@ -1052,10 +1052,13 @@ export type Database = {
         Row: {
           client_id: string | null
           collected_at: string
+          collected_by_staff_id: string | null
           created_at: string
           created_by: string | null
+          dna_provider: string | null
           fine_cents: number
           id: string
+          kit_reference: string | null
           lab_reference: string | null
           location_note: string | null
           matched_at: string | null
@@ -1063,17 +1066,22 @@ export type Database = {
           notes: string | null
           organization_id: string
           property_id: string | null
+          report_reference: string | null
           sample_kind: string
           status: string
+          unit_id: string | null
           updated_at: string
         }
         Insert: {
           client_id?: string | null
           collected_at?: string
+          collected_by_staff_id?: string | null
           created_at?: string
           created_by?: string | null
+          dna_provider?: string | null
           fine_cents?: number
           id?: string
+          kit_reference?: string | null
           lab_reference?: string | null
           location_note?: string | null
           matched_at?: string | null
@@ -1081,17 +1089,22 @@ export type Database = {
           notes?: string | null
           organization_id: string
           property_id?: string | null
+          report_reference?: string | null
           sample_kind: string
           status?: string
+          unit_id?: string | null
           updated_at?: string
         }
         Update: {
           client_id?: string | null
           collected_at?: string
+          collected_by_staff_id?: string | null
           created_at?: string
           created_by?: string | null
+          dna_provider?: string | null
           fine_cents?: number
           id?: string
+          kit_reference?: string | null
           lab_reference?: string | null
           location_note?: string | null
           matched_at?: string | null
@@ -1099,8 +1112,10 @@ export type Database = {
           notes?: string | null
           organization_id?: string
           property_id?: string | null
+          report_reference?: string | null
           sample_kind?: string
           status?: string
+          unit_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1109,6 +1124,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dna_matches_collected_by_staff_id_fkey"
+            columns: ["collected_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
             referencedColumns: ["id"]
           },
           {
@@ -1132,6 +1154,13 @@ export type Database = {
             referencedRelation: "properties"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "dna_matches_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "property_units"
+            referencedColumns: ["id"]
+          },
         ]
       }
       dogs: {
@@ -1139,6 +1168,8 @@ export type Database = {
           active: boolean
           breed: string | null
           created_at: string
+          dna_kit_reference: string | null
+          dna_provider: string | null
           dna_registered: boolean
           dna_registry_id: string | null
           dna_status: string
@@ -1149,12 +1180,15 @@ export type Database = {
           property_id: string
           temperament: Database["public"]["Enums"]["dog_temperament"]
           unit_id: string | null
+          unit_review_needed: boolean
           weight_class: string | null
         }
         Insert: {
           active?: boolean
           breed?: string | null
           created_at?: string
+          dna_kit_reference?: string | null
+          dna_provider?: string | null
           dna_registered?: boolean
           dna_registry_id?: string | null
           dna_status?: string
@@ -1165,12 +1199,15 @@ export type Database = {
           property_id: string
           temperament?: Database["public"]["Enums"]["dog_temperament"]
           unit_id?: string | null
+          unit_review_needed?: boolean
           weight_class?: string | null
         }
         Update: {
           active?: boolean
           breed?: string | null
           created_at?: string
+          dna_kit_reference?: string | null
+          dna_provider?: string | null
           dna_registered?: boolean
           dna_registry_id?: string | null
           dna_status?: string
@@ -1181,6 +1218,7 @@ export type Database = {
           property_id?: string
           temperament?: Database["public"]["Enums"]["dog_temperament"]
           unit_id?: string | null
+          unit_review_needed?: boolean
           weight_class?: string | null
         }
         Relationships: [
@@ -3726,6 +3764,7 @@ export type Database = {
           est_override_by: string | null
           est_override_reason: string | null
           gate_code: string | null
+          has_units: boolean
           hazard_notes: string | null
           id: string
           invisible_fence: boolean
@@ -3743,6 +3782,7 @@ export type Database = {
           sharp_objects: boolean
           slippery_surfaces: boolean
           street: string
+          total_units: number | null
           unit: string | null
           visit_contact_email: string | null
           visit_contact_name: string | null
@@ -3776,6 +3816,7 @@ export type Database = {
           est_override_by?: string | null
           est_override_reason?: string | null
           gate_code?: string | null
+          has_units?: boolean
           hazard_notes?: string | null
           id?: string
           invisible_fence?: boolean
@@ -3793,6 +3834,7 @@ export type Database = {
           sharp_objects?: boolean
           slippery_surfaces?: boolean
           street: string
+          total_units?: number | null
           unit?: string | null
           visit_contact_email?: string | null
           visit_contact_name?: string | null
@@ -3826,6 +3868,7 @@ export type Database = {
           est_override_by?: string | null
           est_override_reason?: string | null
           gate_code?: string | null
+          has_units?: boolean
           hazard_notes?: string | null
           id?: string
           invisible_fence?: boolean
@@ -3843,6 +3886,7 @@ export type Database = {
           sharp_objects?: boolean
           slippery_surfaces?: boolean
           street?: string
+          total_units?: number | null
           unit?: string | null
           visit_contact_email?: string | null
           visit_contact_name?: string | null
@@ -4997,6 +5041,7 @@ export type Database = {
           property_id: string
           section: string | null
           sort_order: number
+          station_number: number | null
           updated_at: string
         }
         Insert: {
@@ -5014,6 +5059,7 @@ export type Database = {
           property_id: string
           section?: string | null
           sort_order?: number
+          station_number?: number | null
           updated_at?: string
         }
         Update: {
@@ -5031,6 +5077,7 @@ export type Database = {
           property_id?: string
           section?: string | null
           sort_order?: number
+          station_number?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -5097,6 +5144,7 @@ export type Database = {
           center_longitude: number | null
           commercial_base_cents: number | null
           commercial_per_acre_cents: number | null
+          commercial_per_station_cents: number | null
           commercial_per_unit_cents: number | null
           created_at: string
           drive_time_minutes: number | null
@@ -5126,6 +5174,7 @@ export type Database = {
           center_longitude?: number | null
           commercial_base_cents?: number | null
           commercial_per_acre_cents?: number | null
+          commercial_per_station_cents?: number | null
           commercial_per_unit_cents?: number | null
           created_at?: string
           drive_time_minutes?: number | null
@@ -5155,6 +5204,7 @@ export type Database = {
           center_longitude?: number | null
           commercial_base_cents?: number | null
           commercial_per_acre_cents?: number | null
+          commercial_per_station_cents?: number | null
           commercial_per_unit_cents?: number | null
           created_at?: string
           drive_time_minutes?: number | null
@@ -5395,6 +5445,8 @@ export type Database = {
         Returns: boolean
       }
       is_platform_admin: { Args: { _user_id: string }; Returns: boolean }
+      is_valid_entity_name: { Args: { _name: string }; Returns: boolean }
+      is_valid_label: { Args: { _label: string }; Returns: boolean }
       is_visit_tech: {
         Args: { _user_id: string; _visit_id: string }
         Returns: boolean
@@ -5434,6 +5486,7 @@ export type Database = {
         }
         Returns: number
       }
+      next_station_number: { Args: { _property_id: string }; Returns: number }
       next_visit_date: {
         Args: {
           _freq: Database["public"]["Enums"]["service_frequency"]
@@ -5770,6 +5823,10 @@ export type Database = {
         Args: { _staff_id: string; _visit_id: string }
         Returns: undefined
       }
+      record_visit_station_service: {
+        Args: { _visit_id: string }
+        Returns: number
+      }
       redeem_gift_card: {
         Args: {
           _amount_cents: number
@@ -5793,6 +5850,10 @@ export type Database = {
         Returns: undefined
       }
       regenerate_portal_token: { Args: { _client_id: string }; Returns: string }
+      renumber_property_stations: {
+        Args: { _property_id: string }
+        Returns: number
+      }
       reorder_route: {
         Args: { _day: string; _ordered_ids: string[]; _staff_id: string }
         Returns: number

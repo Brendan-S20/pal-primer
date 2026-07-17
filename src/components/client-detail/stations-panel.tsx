@@ -12,7 +12,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EmptyState, MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import { StationMapPicker, type StationPoint } from "@/components/StationMapPicker";
-import { listStations, upsertStation, deleteStation } from "@/lib/stations.functions";
+import { listStations, upsertStation, deleteStation, renumberStations } from "@/lib/stations.functions";
+import { stationDisplayName } from "@/lib/dna-linkage";
+import { formatDay } from "@/lib/format";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 
 export const LINER_SIZES = [
   "Small (8-10 gal)",
@@ -41,6 +44,9 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
   const upsertFn = useServerFn(upsertStation);
   const delFn = useServerFn(deleteStation);
 
+  const renumberFn = useServerFn(renumberStations);
+  const { confirm, dialog } = useConfirmDialog();
+
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(properties[0]?.id ?? ""));
   const [markerMissing, setMarkerMissing] = useState(false);
 
@@ -61,8 +67,31 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
   });
   const delMut = useMutation({
     mutationFn: (id: string) => delFn({ data: { id } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["stations", clientId] }),
+    onSuccess: () => {
+      toast.success("Station removed");
+      qc.invalidateQueries({ queryKey: ["stations", clientId] });
+      setDraft((d) => emptyDraft(d.propertyId));
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
+  const renumberMut = useMutation({
+    mutationFn: (propertyId: string) => renumberFn({ data: { propertyId } }),
+    onSuccess: () => {
+      toast.success("Stations renumbered");
+      qc.invalidateQueries({ queryKey: ["stations", clientId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const removeStation = async (s: any) => {
+    const ok = await confirm({
+      title: `Remove ${stationDisplayName(s.station_number, s.label)}?`,
+      description: "This deletes the station and its service history. This cannot be undone.",
+      confirmLabel: "Remove station",
+      destructive: true,
+    });
+    if (ok) delMut.mutate(s.id);
+  };
 
   const stations: any[] = data?.stations ?? [];
 
@@ -125,11 +154,14 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
         />
         <div className="min-w-0">
           <div className="font-medium">
-            {s.label}
+            {stationDisplayName(s.station_number, s.label)}
             {!s.active && <StatusChip status="inactive" className="ml-2" />}
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
             {s.liner_size && <MetaChip>Liner: {s.liner_size}</MetaChip>}
+            <MetaChip>
+              Last serviced: {s.last_serviced_on ? formatDay(s.last_serviced_on) : "not yet"}
+            </MetaChip>
             {s.latitude == null && (
               <span className="text-xs text-amber-600">No map marker yet</span>
             )}
@@ -152,11 +184,9 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
             </a>
           </Button>
         )}
+        {/* Remove now lives inside the edit flow (G7), not exposed on the list. */}
         <Button size="sm" variant="ghost" onClick={() => startEdit(s)} aria-label={`Edit ${s.label}`}>
           <Pencil className="h-3.5 w-3.5" />
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => delMut.mutate(s.id)}>
-          Remove
         </Button>
       </div>
     </li>
@@ -164,11 +194,24 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
 
   return (
     <section className="rounded-lg border bg-card shadow-sm p-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-medium">Waste stations</h2>
-        <span className="text-xs text-muted-foreground">
-          Common for commercial / HOA properties
-        </span>
+        <div className="flex items-center gap-2">
+          {stations.length > 1 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs"
+              disabled={renumberMut.isPending}
+              onClick={() => renumberMut.mutate(draft.propertyId)}
+            >
+              Renumber
+            </Button>
+          )}
+          <span className="text-xs text-muted-foreground">
+            Common for commercial / HOA properties
+          </span>
+        </div>
       </div>
 
       {stations.length > 0 ? (
@@ -322,8 +365,23 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
               Cancel edit
             </Button>
           )}
+          {/* Destructive remove lives inside the edit flow (G7). */}
+          {draft.id && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="ml-auto text-destructive hover:text-destructive"
+              onClick={() => {
+                const s = stations.find((x) => x.id === draft.id);
+                if (s) removeStation(s);
+              }}
+            >
+              Remove station
+            </Button>
+          )}
         </div>
       </form>
+      {dialog}
     </section>
   );
 }

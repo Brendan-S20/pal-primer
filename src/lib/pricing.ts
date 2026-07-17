@@ -63,11 +63,16 @@ export interface CommercialZonePricingFields {
   commercial_base_cents: number | null;
   commercial_per_unit_cents: number | null;
   commercial_per_acre_cents: number | null;
+  // Per-waste-station rate (C2): HOA quotes bill by dispenser count too.
+  commercial_per_station_cents?: number | null;
 }
 
 export interface CommercialPriceInput {
+  /** TOTAL units on the property, not dog-owning units (C2). */
   unitCount: number;
   boundaryAreaSqm?: number | null;
+  /** Active waste-station count on the property. */
+  stationCount?: number;
   /** Frequency multiplier (1 = weekly baseline). */
   multiplier?: number;
 }
@@ -78,6 +83,8 @@ export interface CommercialPriceResult {
   unitCents: number;
   /** per-acre rate x acres from the drawn boundary (0 when no boundary). */
   acreageCents: number;
+  /** per-station rate x active station count (0 when unconfigured/none). */
+  stationCents: number;
   /** Full per-visit price before the frequency multiplier. */
   perVisitCents: number;
   /** Per-visit price after the frequency multiplier. */
@@ -89,7 +96,8 @@ export function zoneHasCommercialPricing(zone: CommercialZonePricingFields): boo
   return (
     (zone.commercial_base_cents ?? 0) > 0 ||
     (zone.commercial_per_unit_cents ?? 0) > 0 ||
-    (zone.commercial_per_acre_cents ?? 0) > 0
+    (zone.commercial_per_acre_cents ?? 0) > 0 ||
+    (zone.commercial_per_station_cents ?? 0) > 0
   );
 }
 
@@ -104,7 +112,8 @@ export function computeCommercialZonePrice(
   const acreageCents = areaSqm
     ? Math.round((areaSqm / SQM_PER_ACRE) * (zone.commercial_per_acre_cents ?? 0))
     : 0;
-  const perVisitCents = baseCents + unitCents + acreageCents;
+  const stationCents = Math.max(0, input.stationCount ?? 0) * (zone.commercial_per_station_cents ?? 0);
+  const perVisitCents = baseCents + unitCents + acreageCents + stationCents;
   const recurringCents = Math.round(perVisitCents * (input.multiplier ?? 1));
-  return { baseCents, unitCents, acreageCents, perVisitCents, recurringCents };
+  return { baseCents, unitCents, acreageCents, stationCents, perVisitCents, recurringCents };
 }

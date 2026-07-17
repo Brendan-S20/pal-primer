@@ -39,7 +39,7 @@ export const listZones = createServerFn({ method: "GET" })
     const { data, error } = await (supabase as any)
       .from("zones")
       .select(
-        "id, name, priority, postal_prefix, zip_codes, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, commercial_base_cents, commercial_per_unit_cents, commercial_per_acre_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
+        "id, name, priority, postal_prefix, zip_codes, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, commercial_base_cents, commercial_per_unit_cents, commercial_per_acre_cents, commercial_per_station_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
       )
       .eq("organization_id", orgId)
       .order("name");
@@ -81,6 +81,7 @@ const zoneWriteSchema = z.object({
   commercialBaseCents: z.number().int().min(0).optional().nullable(),
   commercialPerUnitCents: z.number().int().min(0).optional().nullable(),
   commercialPerAcreCents: z.number().int().min(0).optional().nullable(),
+  commercialPerStationCents: z.number().int().min(0).optional().nullable(),
   // Overlap tie-breaker: higher priority wins among zones matching at the
   // same specificity level (see src/lib/zone-match.ts).
   priority: z.number().int().min(-999).max(999).optional(),
@@ -149,6 +150,7 @@ export const createZone = createServerFn({ method: "POST" })
         commercial_base_cents: data.commercialBaseCents ?? null,
         commercial_per_unit_cents: data.commercialPerUnitCents ?? null,
         commercial_per_acre_cents: data.commercialPerAcreCents ?? null,
+        commercial_per_station_cents: data.commercialPerStationCents ?? null,
         geo_match_mode: data.geoMatchMode ?? "zip",
         boundary: (data.boundary as any) ?? null,
         center_latitude: data.centerLatitude ?? null,
@@ -240,6 +242,8 @@ export const updateZone = createServerFn({ method: "POST" })
       patch.commercial_per_unit_cents = data.commercialPerUnitCents;
     if (data.commercialPerAcreCents !== undefined)
       patch.commercial_per_acre_cents = data.commercialPerAcreCents;
+    if (data.commercialPerStationCents !== undefined)
+      patch.commercial_per_station_cents = data.commercialPerStationCents;
     if (data.priority !== undefined) patch.priority = data.priority;
     if (data.geoMatchMode !== undefined) patch.geo_match_mode = data.geoMatchMode;
     if (data.boundary !== undefined) patch.boundary = data.boundary as any;

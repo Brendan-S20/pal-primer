@@ -50,6 +50,29 @@ describe("computeCommercialZonePrice", () => {
     expect(r.perVisitCents).toBe(5000);
   });
 
+  // C2 — per-waste-station rate added to the commercial pricing model.
+  it("adds a per-waste-station charge to the breakdown", () => {
+    const zone = { ...HOA_ZONE, commercial_per_station_cents: 800 };
+    const r = computeCommercialZonePrice(zone, {
+      unitCount: 40,
+      boundaryAreaSqm: 2 * SQM_PER_ACRE,
+      stationCount: 8,
+    });
+    expect(r.stationCents).toBe(8 * 800); // $64.00
+    expect(r.perVisitCents).toBe(10000 + 14000 + 8000 + 6400);
+  });
+
+  it("counts a per-station rate toward zoneHasCommercialPricing", () => {
+    expect(
+      zoneHasCommercialPricing({
+        commercial_base_cents: null,
+        commercial_per_unit_cents: null,
+        commercial_per_acre_cents: null,
+        commercial_per_station_cents: 800,
+      }),
+    ).toBe(true);
+  });
+
   it("never charges negative unit counts", () => {
     const r = computeCommercialZonePrice(HOA_ZONE, { unitCount: -5 });
     expect(r.unitCents).toBe(0);

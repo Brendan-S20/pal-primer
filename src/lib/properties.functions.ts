@@ -20,6 +20,10 @@ const createPropSchema = z.object({
   accountType: z.enum(["residential", "commercial"]).optional(),
   commercialSections: z.array(z.string().max(120)).max(100).optional(),
   buildingLabels: z.array(z.string().max(120)).max(200).optional(),
+  // C2: commercial properties can declare they have units + the total count,
+  // so zone pricing uses TOTAL units (not dog-owning units).
+  hasUnits: z.boolean().optional(),
+  totalUnits: z.number().int().min(0).max(100000).optional().nullable(),
   street: z.string().min(1).max(200),
   unit: z.string().max(40).optional(),
   city: z.string().min(1).max(120),
@@ -99,6 +103,8 @@ export const createProperty = createServerFn({ method: "POST" })
         account_type: data.accountType ?? null,
         commercial_sections: data.commercialSections?.length ? data.commercialSections : null,
         building_labels: data.buildingLabels?.length ? data.buildingLabels : null,
+        has_units: data.hasUnits ?? false,
+        total_units: data.hasUnits ? (data.totalUnits ?? null) : null,
         street: data.street,
         unit: data.unit || null,
         city: data.city,
@@ -230,6 +236,8 @@ export const updateProperty = createServerFn({ method: "POST" })
         account_type: data.accountType ?? null,
         commercial_sections: data.commercialSections?.length ? data.commercialSections : null,
         building_labels: data.buildingLabels?.length ? data.buildingLabels : null,
+        has_units: data.hasUnits ?? false,
+        total_units: data.hasUnits ? (data.totalUnits ?? null) : null,
         street: data.street,
         unit: data.unit || null,
         city: data.city,
@@ -336,7 +344,7 @@ export const listPropertiesForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("properties")
       .select(
-        "id, label, street, city, region, postal_code, gate_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email, boundary, boundary_area_sqm, archived_at, account_type, commercial_sections, building_labels, auto_zone_id, zone_id, zone_override_reason, est_override_reason, est_override_at, parking_notes, access_notes, latitude, longitude, unit, address_source",
+        "id, label, street, city, region, postal_code, gate_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email, boundary, boundary_area_sqm, archived_at, account_type, commercial_sections, building_labels, has_units, total_units, auto_zone_id, zone_id, zone_override_reason, est_override_reason, est_override_at, parking_notes, access_notes, latitude, longitude, unit, address_source",
       )
       .eq("client_id", data.clientId)
       .order("created_at");
