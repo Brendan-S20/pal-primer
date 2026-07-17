@@ -10,7 +10,7 @@ export const listInvoices = createServerFn({ method: "GET" })
     await requirePermission(supabase, context.userId, "manage_client_billing");
     const { data, error } = await supabase
       .from("invoices")
-      .select("id, client_id, status, subtotal_cents, total_cents, currency, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, clients(display_name)")
+      .select("id, client_id, status, subtotal_cents, total_cents, credit_applied_cents, currency, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, clients(display_name)")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     // due_on/send_after/sent_at/public_token aren't in the generated types yet.
@@ -20,6 +20,7 @@ export const listInvoices = createServerFn({ method: "GET" })
       status: string;
       subtotal_cents: number | null;
       total_cents: number | null;
+      credit_applied_cents: number | null;
       currency: string | null;
       period_start: string | null;
       period_end: string | null;
@@ -303,15 +304,22 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
     const { supabase } = context;
     await requirePermission(supabase, context.userId, "manage_client_billing");
     // Read invoice + verify access via RLS
-    const { data: invoice, error } = await supabase
+    // (credit_applied_cents isn't in the generated types yet.)
+    const { data: invoiceRow, error } = await supabase
       .from("invoices")
-      .select("id, organization_id, client_id, total_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id")
+      .select("id, organization_id, client_id, total_cents, credit_applied_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id")
       .eq("id", data.id)
       .single();
     if (error) throw new Error(error.message);
+    const invoice = invoiceRow as any;
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
-    if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
+    // Charge the OPEN amount: total net of applied credit (B7).
+    const dueCents = Math.max(
+      (invoice.total_cents ?? 0) - ((invoice as any).credit_applied_cents ?? 0),
+      0,
+    );
+    if (dueCents <= 0) throw new Error("Nothing due on this invoice");
     // If a previous session/intent was already paid but the status is stale
     // (webhook missed), reconcile instead of minting a second charge.
     if (invoice.stripe_checkout_session_id || invoice.stripe_payment_intent_id) {
@@ -375,7 +383,7 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
           // setup_future_usage — a portal-minted intent saves the client's
           // card by consent, but a card typed by staff must never be saved.
           const updateParams = {
-            amount: invoice.total_cents,
+            amount: dueCents,
             currency,
             metadata,
             setup_future_usage: "" as const,
@@ -405,7 +413,7 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
       // No setup_future_usage here: staff must not save the client's payment
       // method without the client's own consent (portal flow only).
       const createParams = {
-        amount: invoice.total_cents,
+        amount: dueCents,
         currency,
         customer: customerId,
         metadata,
@@ -433,7 +441,7 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
       clientSecret: pi.client_secret as string,
       publishableKey: connectPublishableKey(),
       stripeAccount: acct.accountId,
-      amountCents: invoice.total_cents as number,
+      amountCents: dueCents,
       currency,
     };
   });
@@ -459,111 +467,233 @@ export const getInvoicePayLink = createServerFn({ method: "GET" })
     return { url: `${base}/pay/i/${token}` };
   });
 
-// Staff "charge saved card": same off-session charge autopay/the portal use,
-// but on demand from the invoice drawer. Only works when the client has a
-// default payment method on file (which they consented to save).
+// Shared saved-card charge implementation (B7): the same off-session charge
+// autopay/the portal use, on demand from the invoice drawer. Used by BOTH
+// chargeInvoiceWithSavedCard and chargeAutopayForInvoice so the
+// processing-PI guard, reconcile-before-charge, idempotency key, and activity
+// log exist exactly once. Charges the invoice's OPEN amount
+// (total_cents - credit_applied_cents), never the gross total.
+async function chargeSavedCardCore(
+  supabase: any,
+  actorUserId: string,
+  invoiceId: string,
+): Promise<{ chargedCents: number; status: string }> {
+  // credit_applied_cents isn't in the generated types yet.
+  const { data: invoiceRow, error: iErr } = await supabase
+    .from("invoices")
+    .select("id, organization_id, client_id, total_cents, credit_applied_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id")
+    .eq("id", invoiceId)
+    .single();
+  if (iErr) throw new Error(iErr.message);
+  const invoice = invoiceRow as any;
+  if (invoice.status === "paid") throw new Error("Invoice already paid");
+  if (invoice.status === "void") throw new Error("Invoice is voided");
+  const dueCents = Math.max(
+    (invoice.total_cents ?? 0) - ((invoice as any).credit_applied_cents ?? 0),
+    0,
+  );
+  if (dueCents <= 0) throw new Error("Nothing due on this invoice");
+  // Stale-open guard: if a prior session/intent already paid this invoice
+  // (webhook missed), reconcile instead of charging the saved card too.
+  if (invoice.stripe_checkout_session_id || invoice.stripe_payment_intent_id) {
+    const { reconcileInvoicePayment } = await import("@/lib/invoice-reconcile.server");
+    if ((await reconcileInvoicePayment(invoice.id)) === "marked_paid") {
+      throw new Error("Invoice already paid");
+    }
+  }
+
+  const { data: c, error: cErr } = await supabase
+    .from("clients")
+    .select("id, stripe_customer_id, default_payment_method_id, default_card_brand, default_card_last4")
+    .eq("id", invoice.client_id)
+    .single();
+  // In-flight bank debit guard (same rule as the minting fns): a stored PI
+  // in "processing" means the invoice IS being paid — charging the saved
+  // card on top would collect twice when the debit clears.
+  if (invoice.stripe_payment_intent_id) {
+    const { requireOrgStripeAccount: acctFn, connectStripe: stripeFn } = await import("@/lib/stripe-connect.server");
+    const guardAcct = await acctFn(invoice.organization_id);
+    const guardStripe = await stripeFn();
+    try {
+      const existing = await guardStripe.paymentIntents.retrieve(
+        invoice.stripe_payment_intent_id, {}, { stripeAccount: guardAcct.accountId },
+      );
+      if (existing.status === "processing") {
+        throw new Error(
+          "A payment for this invoice is already processing. Bank payments can take a few days to clear.",
+        );
+      }
+    } catch (e) {
+      if ((e as Error).message?.startsWith("A payment for this invoice is already processing")) throw e;
+      // Retrieve hiccups don't block the charge; the reconcile above ran.
+    }
+  }
+  if (cErr) throw new Error(cErr.message);
+  if (!c.stripe_customer_id || !c.default_payment_method_id) {
+    throw new Error("No saved card on file for this client");
+  }
+
+  const { requireOrgStripeAccount, connectStripe, verifyClientStripeCustomer } = await import("@/lib/stripe-connect.server");
+  const acct = await requireOrgStripeAccount(invoice.organization_id);
+  const stripe = await connectStripe();
+  // Saved-card refs can be orphaned by a connected-account cutover; verify
+  // before charging so staff get "re-add the card" instead of a raw
+  // "No such customer: 'cus_…'".
+  const liveCustomerId = await verifyClientStripeCustomer(stripe, acct.accountId, c);
+  if (!liveCustomerId) {
+    throw new Error("The saved card is no longer on file. Ask the client to add a payment method again.");
+  }
+  try {
+    const pi = await stripe.paymentIntents.create({
+      amount: dueCents,
+      currency: invoice.currency ?? "usd",
+      customer: c.stripe_customer_id,
+      payment_method: c.default_payment_method_id,
+      off_session: true,
+      confirm: true,
+      metadata: {
+        invoice_id: invoice.id,
+        organization_id: invoice.organization_id,
+        source: "staff_saved_card",
+      },
+    }, {
+      // Prevent a double-click (or a retried request) from charging twice.
+      // The payment-method id is part of the key: after a decline the
+      // client may save a NEW card the same day, and replaying the old
+      // key with different params would be an idempotency_error. The amount
+      // is the OPEN amount, so applying more credit mints a fresh key.
+      idempotencyKey: `staff-saved-card-${invoice.id}-${dueCents}-${c.default_payment_method_id}`,
+      stripeAccount: acct.accountId,
+    });
+    await supabase
+      .from("invoices")
+      .update({ stripe_payment_intent_id: pi.id, status: "open" })
+      .eq("id", invoice.id);
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: invoice.organization_id,
+      clientId: invoice.client_id,
+      actorUserId,
+      kind: "invoice.charged_saved_card",
+      summary: `Charged saved card (${c.default_card_brand ?? "card"} ····${c.default_card_last4 ?? "????"}) for invoice #${invoice.id.slice(0, 8)}: $${(dueCents / 100).toFixed(2)}`,
+    });
+    return { chargedCents: dueCents, status: pi.status };
+  } catch (e) {
+    throw new Error((e as Error).message || "Card charge failed");
+  }
+}
+
+// Staff "charge saved card": thin wrapper over chargeSavedCardCore.
 export const chargeInvoiceWithSavedCard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ invoiceId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
     await requirePermission(supabase, context.userId, "manage_client_billing");
-    const { data: invoice, error: iErr } = await supabase
-      .from("invoices")
-      .select("id, organization_id, client_id, total_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id")
-      .eq("id", data.invoiceId)
-      .single();
-    if (iErr) throw new Error(iErr.message);
-    if (invoice.status === "paid") throw new Error("Invoice already paid");
-    if (invoice.status === "void") throw new Error("Invoice is voided");
-    if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
-    // Stale-open guard: if a prior session/intent already paid this invoice
-    // (webhook missed), reconcile instead of charging the saved card too.
-    if (invoice.stripe_checkout_session_id || invoice.stripe_payment_intent_id) {
-      const { reconcileInvoicePayment } = await import("@/lib/invoice-reconcile.server");
-      if ((await reconcileInvoicePayment(invoice.id)) === "marked_paid") {
-        throw new Error("Invoice already paid");
-      }
-    }
+    const res = await chargeSavedCardCore(supabase, context.userId, data.invoiceId);
+    return { ok: true, status: res.status };
+  });
 
-    const { data: c, error: cErr } = await supabase
-      .from("clients")
-      .select("id, stripe_customer_id, default_payment_method_id, default_card_brand, default_card_last4")
-      .eq("id", invoice.client_id)
-      .single();
-    // In-flight bank debit guard (same rule as the minting fns): a stored PI
-    // in "processing" means the invoice IS being paid — charging the saved
-    // card on top would collect twice when the debit clears.
-    if (invoice.stripe_payment_intent_id) {
-      const { requireOrgStripeAccount: acctFn, connectStripe: stripeFn } = await import("@/lib/stripe-connect.server");
-      const guardAcct = await acctFn(invoice.organization_id);
-      const guardStripe = await stripeFn();
-      try {
-        const existing = await guardStripe.paymentIntents.retrieve(
-          invoice.stripe_payment_intent_id, {}, { stripeAccount: guardAcct.accountId },
-        );
-        if (existing.status === "processing") {
-          throw new Error(
-            "A payment for this invoice is already processing. Bank payments can take a few days to clear.",
-          );
-        }
-      } catch (e) {
-        if ((e as Error).message?.startsWith("A payment for this invoice is already processing")) throw e;
-        // Retrieve hiccups don't block the charge; the reconcile above ran.
-      }
-    }
-    if (cErr) throw new Error(cErr.message);
-    if (!c.stripe_customer_id || !c.default_payment_method_id) {
-      throw new Error("No saved card on file for this client");
-    }
+// ── Credit application (B7) ─────────────────────────────────────────────────
+// The DB routine public.apply_credit_to_invoice is the single writer: it
+// debits the credit ledger ('invoice_application' via post_credit_entry),
+// records a succeeded payments row (raw_event.source='credit_application'),
+// bumps invoices.credit_applied_cents, and flips the invoice to paid only
+// when fully covered. It is idempotent and concurrency-safe (advisory lock +
+// row locks), so a double-click can never apply twice.
+async function applyCreditViaRpc(
+  supabase: any,
+  invoiceId: string,
+): Promise<{ appliedCents: number; remainingDueCents: number; invoiceStatus: string; reason: string }> {
+  const { data, error } = await supabase.rpc("apply_credit_to_invoice", {
+    _invoice_id: invoiceId,
+  });
+  if (error) throw new Error(error.message);
+  const r = (data ?? {}) as Record<string, unknown>;
+  return {
+    appliedCents: Number(r.applied_cents ?? 0),
+    remainingDueCents: Number(r.remaining_due_cents ?? 0),
+    invoiceStatus: String(r.invoice_status ?? "open"),
+    reason: String(r.reason ?? ""),
+  };
+}
 
-    const { requireOrgStripeAccount, connectStripe, verifyClientStripeCustomer } = await import("@/lib/stripe-connect.server");
-    const acct = await requireOrgStripeAccount(invoice.organization_id);
-    const stripe = await connectStripe();
-    // Saved-card refs can be orphaned by a connected-account cutover; verify
-    // before charging so staff get "re-add the card" instead of a raw
-    // "No such customer: 'cus_…'".
-    const liveCustomerId = await verifyClientStripeCustomer(stripe, acct.accountId, c);
-    if (!liveCustomerId) {
-      throw new Error("The saved card is no longer on file. Ask the client to add a payment method again.");
+async function logCreditApplied(
+  supabase: any,
+  actorUserId: string,
+  invoiceId: string,
+  appliedCents: number,
+) {
+  const { data: inv } = await supabase
+    .from("invoices")
+    .select("organization_id, client_id")
+    .eq("id", invoiceId)
+    .single();
+  if (!inv) return;
+  const { logActivity } = await import("@/lib/activity.server");
+  await logActivity(supabase, {
+    orgId: inv.organization_id,
+    clientId: inv.client_id,
+    actorUserId,
+    kind: "invoice.credit_applied",
+    summary: `Applied $${(appliedCents / 100).toFixed(2)} credit to invoice #${invoiceId.slice(0, 8)}`,
+    meta: { amount_cents: appliedCents, invoice_id: invoiceId },
+  });
+}
+
+/** Apply the client's available credit balance to an open invoice:
+ * min(credit balance, open amount) moves through the credit ledger; the
+ * invoice is marked paid when fully covered, else its amount due shrinks. */
+export const applyCreditToInvoice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ invoiceId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    await requirePermission(supabase, context.userId, "manage_client_billing");
+    const res = await applyCreditViaRpc(supabase, data.invoiceId);
+    if (res.reason === "prepaid_topup") {
+      throw new Error("Credit can't be applied to a prepaid top-up invoice (paying it grants credit).");
     }
-    try {
-      const pi = await stripe.paymentIntents.create({
-        amount: invoice.total_cents,
-        currency: invoice.currency ?? "usd",
-        customer: c.stripe_customer_id,
-        payment_method: c.default_payment_method_id,
-        off_session: true,
-        confirm: true,
-        metadata: {
-          invoice_id: invoice.id,
-          organization_id: invoice.organization_id,
-          source: "staff_saved_card",
-        },
-      }, {
-        // Prevent a double-click (or a retried request) from charging twice.
-        // The payment-method id is part of the key: after a decline the
-        // client may save a NEW card the same day, and replaying the old
-        // key with different params would be an idempotency_error.
-        idempotencyKey: `staff-saved-card-${invoice.id}-${invoice.total_cents}-${c.default_payment_method_id}`,
-        stripeAccount: acct.accountId,
-      });
-      await supabase
-        .from("invoices")
-        .update({ stripe_payment_intent_id: pi.id, status: "open" })
-        .eq("id", invoice.id);
-      const { logActivity } = await import("@/lib/activity.server");
-      await logActivity(supabase, {
-        orgId: invoice.organization_id,
-        clientId: invoice.client_id,
-        actorUserId: context.userId,
-        kind: "invoice.charged_saved_card",
-        summary: `Charged saved card (${c.default_card_brand ?? "card"} ····${c.default_card_last4 ?? "????"}) for invoice #${invoice.id.slice(0, 8)}: $${(invoice.total_cents / 100).toFixed(2)}`,
-      });
-      return { ok: true, status: pi.status };
-    } catch (e) {
-      throw new Error((e as Error).message || "Card charge failed");
+    if (res.appliedCents > 0) {
+      await logCreditApplied(supabase, context.userId, data.invoiceId, res.appliedCents);
     }
+    return {
+      appliedCents: res.appliedCents,
+      remainingDueCents: res.remainingDueCents,
+      invoiceStatus: res.invoiceStatus,
+    };
+  });
+
+/** "Charge autopay" for one invoice (B2/B7, I8 "credits auto-applied first"):
+ * applies available credit first, then charges only the remaining due to the
+ * client's default saved card via the same implementation as
+ * chargeInvoiceWithSavedCard (processing-PI guard, reconcile, idempotency,
+ * activity log included). */
+export const chargeAutopayForInvoice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ invoiceId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    await requirePermission(supabase, context.userId, "manage_client_billing");
+    const credit = await applyCreditViaRpc(supabase, data.invoiceId);
+    if (credit.invoiceStatus === "void") throw new Error("Invoice is voided");
+    if (credit.appliedCents > 0) {
+      await logCreditApplied(supabase, context.userId, data.invoiceId, credit.appliedCents);
+    }
+    // Fully covered by credit — nothing to charge.
+    if (credit.invoiceStatus === "paid" || credit.remainingDueCents <= 0) {
+      return {
+        appliedCreditCents: credit.appliedCents,
+        chargedCents: 0,
+        status: credit.invoiceStatus === "paid" ? "paid" : credit.invoiceStatus,
+      };
+    }
+    const charge = await chargeSavedCardCore(supabase, context.userId, data.invoiceId);
+    return {
+      appliedCreditCents: credit.appliedCents,
+      chargedCents: charge.chargedCents,
+      status: charge.status,
+    };
   });
 
 export const listUnbilledForClient = createServerFn({ method: "GET" })
@@ -632,7 +762,7 @@ export const getClientBillingSummary = createServerFn({ method: "GET" })
         .single(),
       supabase
         .from("invoices")
-        .select("id, status, kind, currency, subtotal_cents, total_cents, period_start, period_end, issued_at, paid_at, due_on, public_token, checkout_url, created_at")
+        .select("id, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, public_token, checkout_url, created_at")
         .eq("client_id", data.clientId)
         .order("created_at", { ascending: false })
         .limit(25),
@@ -647,6 +777,7 @@ export const getClientBillingSummary = createServerFn({ method: "GET" })
       currency: string | null;
       subtotal_cents: number | null;
       total_cents: number | null;
+      credit_applied_cents: number | null;
       period_start: string | null;
       period_end: string | null;
       issued_at: string | null;
@@ -667,13 +798,15 @@ export const getClientBillingSummary = createServerFn({ method: "GET" })
       : { data: [] as any[] };
 
     const openInvoices = invoices.filter((i) => i.status === "open");
+    // Shared AR math (B1/B7): open balance net of applied credit.
+    const { sumOutstandingCents } = await import("@/lib/ar");
 
     return {
       client: clientRes.data,
       invoices,
       payments: paymentsRes.data ?? [],
       openCount: openInvoices.length,
-      openTotalCents: openInvoices.reduce((s, i) => s + (i.total_cents ?? 0), 0),
+      openTotalCents: sumOutstandingCents(openInvoices),
     };
   });
 
@@ -712,7 +845,7 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
         supabase
           .from("invoices")
           .select(
-            "id, client_id, status, kind, currency, subtotal_cents, total_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, voided_at, notes, checkout_url, created_at, clients(id, display_name, primary_email, default_payment_method_id, default_card_brand, default_card_last4)",
+            "id, client_id, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, voided_at, notes, checkout_url, created_at, clients(id, display_name, primary_email, default_payment_method_id, default_card_brand, default_card_last4)",
           )
           .eq("id", data.invoiceId)
           .single(),
@@ -742,6 +875,9 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
         currency: string | null;
         subtotal_cents: number | null;
         total_cents: number | null;
+        /** Portion of total already covered by applied credit (B7); the
+         * amount due is total_cents - credit_applied_cents. */
+        credit_applied_cents: number | null;
         period_start: string | null;
         period_end: string | null;
         issued_at: string | null;
@@ -854,7 +990,7 @@ async function invoiceByPublicToken(token: string) {
   const { data, error } = await sb
     .from("invoices")
     .select(
-      "id, organization_id, client_id, status, kind, currency, subtotal_cents, total_cents, period_start, period_end, issued_at, paid_at, due_on, stripe_payment_intent_id, stripe_checkout_session_id, organizations(name), clients(display_name)",
+      "id, organization_id, client_id, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, stripe_payment_intent_id, stripe_checkout_session_id, organizations(name), clients(display_name)",
     )
     .eq("public_token" as any, token)
     .maybeSingle();
@@ -896,6 +1032,12 @@ export const getPublicInvoice = createServerFn({ method: "GET" })
         currency: (invoice.currency ?? "usd") as string,
         subtotalCents: invoice.subtotal_cents as number | null,
         totalCents: (invoice.total_cents ?? 0) as number,
+        // B7: credit already applied and the net amount actually due.
+        creditAppliedCents: (invoice.credit_applied_cents ?? 0) as number,
+        amountDueCents: Math.max(
+          (invoice.total_cents ?? 0) - (invoice.credit_applied_cents ?? 0),
+          0,
+        ),
         periodStart: invoice.period_start as string | null,
         periodEnd: invoice.period_end as string | null,
         issuedAt: invoice.issued_at as string | null,
@@ -922,7 +1064,12 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
     if (!invoice) throw new Error("Invoice not found");
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
-    if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
+    // Charge the OPEN amount: total net of applied credit (B7).
+    const dueCents = Math.max(
+      (invoice.total_cents ?? 0) - (invoice.credit_applied_cents ?? 0),
+      0,
+    );
+    if (dueCents <= 0) throw new Error("Nothing due on this invoice");
     // If the stored intent OR a legacy hosted-checkout session already
     // succeeded but the status is stale (webhook missed), reconcile instead
     // of minting a new intent and charging a second time.
@@ -987,7 +1134,7 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
           // setup_future_usage — the anonymous pay-link flow must never save
           // the card (only the client's own portal session can consent).
           const updateParams = {
-            amount: invoice.total_cents,
+            amount: dueCents,
             currency,
             metadata,
             setup_future_usage: "" as const,
@@ -1017,7 +1164,7 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
       // No setup_future_usage: an anonymous pay-link payer never has their
       // payment method saved.
       const createParams = {
-        amount: invoice.total_cents,
+        amount: dueCents,
         currency,
         customer: customerId,
         metadata,
@@ -1045,7 +1192,7 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
       clientSecret: pi.client_secret as string,
       publishableKey,
       stripeAccount: acct.accountId,
-      amountCents: invoice.total_cents as number,
+      amountCents: dueCents,
       currency,
     };
   });

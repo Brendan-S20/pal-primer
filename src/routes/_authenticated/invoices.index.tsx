@@ -30,6 +30,7 @@ import { HelpTip } from "@/components/HelpTip";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState, MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import { InvoiceDrawer, isInvoiceOverdue } from "@/components/InvoiceDrawer";
+import { invoiceOutstandingCents } from "@/lib/ar";
 import { formatDay } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -295,7 +296,9 @@ function InvoicesPage() {
     for (const inv of all) {
       if (inv.status === "open") {
         openCount += 1;
-        outstandingCents += inv.total_cents ?? 0;
+        // Shared AR math (B1): open balance net of applied credit, identical
+        // to the Dashboard "AR open" card and Reports "Outstanding".
+        outstandingCents += invoiceOutstandingCents(inv as any);
       } else if (inv.status === "paid") {
         const paidDay = (inv.paid_at ?? inv.period_end ?? "").slice(0, 7);
         if (paidDay === monthPrefix) {

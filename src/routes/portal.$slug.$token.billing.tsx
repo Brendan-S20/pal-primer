@@ -114,12 +114,24 @@ function PortalBilling() {
 
       <div>
         <p className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Invoices</p>
-        {(invoicesQ.data ?? []).length === 0 ? (
+        {/* G1: surface the real debt — open count, total, due dates, overdue. */}
+        {(invoicesQ.data?.openCount ?? 0) > 0 && (
+          <p className="mb-2 text-sm">
+            <span className="font-medium">
+              {invoicesQ.data!.openCount} open invoice{invoicesQ.data!.openCount === 1 ? "" : "s"} ·{" "}
+              {money(invoicesQ.data!.openTotalCents)}
+            </span>
+            {(invoicesQ.data!.overdueCount ?? 0) > 0 && (
+              <span className="font-medium text-destructive"> · {invoicesQ.data!.overdueCount} overdue</span>
+            )}
+          </p>
+        )}
+        {(invoicesQ.data?.invoices ?? []).length === 0 ? (
           <EmptyBox title="No invoices yet" body="Your first invoice will appear here after service." />
         ) : (
           <ul className="divide-y rounded-md border bg-card">
-            {invoicesQ.data!.map((i, idx) => {
-              const invNo = `#${String((invoicesQ.data ?? []).length - idx).padStart(4, "0")}`;
+            {invoicesQ.data!.invoices.map((i, idx) => {
+              const invNo = `#${String(invoicesQ.data!.invoices.length - idx).padStart(4, "0")}`;
               const label = i.kind === "prepaid_topup" ? "Prepaid top-up"
                 : i.period_start ? `Service ${fmtDayShort(i.period_start)} - ${fmtDayShort(i.period_end)}`
                 : "Service";
@@ -130,9 +142,26 @@ function PortalBilling() {
                       Invoice {invNo}
                       <span className="text-muted-foreground"> ({label})</span>
                     </div>
-                    <div className="mt-0.5 flex items-center gap-2">
-                      <span className="font-semibold">{money(i.total_cents)}</span>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                      <span className="font-semibold">
+                        {money(i.status === "open" ? i.amount_due_cents : i.total_cents)}
+                      </span>
+                      {i.status === "open" && (i.credit_applied_cents ?? 0) > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          after {money(i.credit_applied_cents)} credit
+                        </span>
+                      )}
                       <InvoiceStatusBadge status={i.status} />
+                      {i.overdue && (
+                        <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
+                          Overdue
+                        </span>
+                      )}
+                      {i.due_on && i.status === "open" && (
+                        <span className={`text-xs ${i.overdue ? "font-medium text-destructive" : "text-muted-foreground"}`}>
+                          Due {fmtDayShort(i.due_on)}
+                        </span>
+                      )}
                       {i.issued_at && (
                         <span className="text-xs text-muted-foreground">Issued {fmtDayShort(i.issued_at)}</span>
                       )}

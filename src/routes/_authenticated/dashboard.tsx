@@ -260,34 +260,39 @@ function Dashboard() {
             )}
           </div>
 
-          <div className="rounded-lg border bg-card p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Overdue invoices</h2>
-              <Link to="/invoices" className="text-xs text-primary hover:underline">
-                All →
-              </Link>
+          {/* Billing card: overdueInvoices is null (not empty) for roles
+              without view_financials (H4 — dispatchers must not see a billing
+              card at all, not even an empty one). */}
+          {sum?.overdueInvoices !== null && (
+            <div className="rounded-lg border bg-card p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold">Overdue invoices</h2>
+                <Link to="/invoices" className="text-xs text-primary hover:underline">
+                  All →
+                </Link>
+              </div>
+              {sum?.overdueInvoices?.length ? (
+                <ul className="space-y-2 text-sm">
+                  {sum.overdueInvoices.map((i) => (
+                    <li key={i.id} className="flex items-center justify-between gap-2">
+                      <Link
+                        to="/invoices/$invoiceId"
+                        params={{ invoiceId: i.id }}
+                        className="truncate hover:underline"
+                      >
+                        {i.clientName}
+                      </Link>
+                      <span className="tabular-nums text-muted-foreground">
+                        {fmtMoney(i.totalCents)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-muted-foreground">Nothing overdue. 🎉</p>
+              )}
             </div>
-            {sum?.overdueInvoices.length ? (
-              <ul className="space-y-2 text-sm">
-                {sum.overdueInvoices.map((i) => (
-                  <li key={i.id} className="flex items-center justify-between gap-2">
-                    <Link
-                      to="/invoices/$invoiceId"
-                      params={{ invoiceId: i.id }}
-                      className="truncate hover:underline"
-                    >
-                      {i.clientName}
-                    </Link>
-                    <span className="tabular-nums text-muted-foreground">
-                      {fmtMoney(i.totalCents)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-xs text-muted-foreground">Nothing overdue. 🎉</p>
-            )}
-          </div>
+          )}
         </div>
       </div>
 

@@ -175,7 +175,7 @@ function BottomTabs({ token, slug, isCommercial }: { token: string; slug: string
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   return (
     <nav aria-label="Portal sections"
-      className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="mx-auto max-w-3xl">
         <ul className="grid grid-cols-6">
           {TABS.map((t) => {
@@ -185,7 +185,11 @@ function BottomTabs({ token, slug, isCommercial }: { token: string; slug: string
             const label = t.label === "Property" && isCommercial ? "Property" : t.label;
             return (
               <li key={t.to}>
-                <Link to={t.to} params={{ slug, token }}
+                {/* G3: preload="render" fetches every tab's code-split chunk as
+                    soon as the tab bar mounts, so the first tap swaps content
+                    immediately instead of waiting on a chunk download (the
+                    "highlighted but didn't navigate" dead click). */}
+                <Link to={t.to} params={{ slug, token }} preload="render"
                   className={`flex flex-col items-center gap-0.5 px-1 py-2 text-[10px] font-medium transition-colors ${
                     active ? "text-primary" : "text-muted-foreground hover:text-foreground"
                   }`}>

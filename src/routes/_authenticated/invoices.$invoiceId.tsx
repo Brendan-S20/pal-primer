@@ -2,10 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
-import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
-import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
-import { getInvoice, createInvoicePaymentIntent, voidInvoice } from "@/lib/invoices.functions";
-import { stripeAppearance } from "@/lib/stripe-appearance";
+import { getInvoice, voidInvoice } from "@/lib/invoices.functions";
+import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
 import { getMyOrg } from "@/lib/org.functions";
 import { syncInvoice } from "@/lib/accounting.functions";
 import { sendInvoiceEmail, getEmailSendStatus } from "@/lib/notifications.functions";
@@ -38,19 +36,6 @@ function InvoiceChip({ status, label, className }: { status: string; label?: str
   );
 }
 
-// Connect Payment Element: stripe.js must be initialized scoped to the org's
-// connected account (the intent lives there). Cached per key+account.
-const connectStripeCache = new Map<string, Promise<StripeJs | null>>();
-function getConnectStripe(pk: string, stripeAccount: string) {
-  const key = `${pk}|${stripeAccount}`;
-  let p = connectStripeCache.get(key);
-  if (!p) {
-    p = loadStripe(pk, { stripeAccount });
-    connectStripeCache.set(key, p);
-  }
-  return p;
-}
-
 // Print stylesheet for "Download / print": only the invoice document
 // (.invoice-print-area — header, bill-to, line items, totals) prints. The
 // toolbar, payment form, and payment history live outside the print area and
@@ -79,21 +64,10 @@ function InvoiceDetail() {
   const q = useQuery({ queryKey: ["invoice", invoiceId], queryFn: () => get({ data: { id: invoiceId } }) });
   const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
 
-  // In-app payment: Payment Element right on the invoice, for taking a card
-  // or ACH payment over the phone or in person — no checkout.stripe.com tab.
-  const intentFn = useServerFn(createInvoicePaymentIntent);
-  const [intent, setIntent] = useState<{
-    clientSecret: string;
-    publishableKey: string;
-    stripeAccount: string;
-    amountCents: number;
-    currency: string;
-  } | null>(null);
-  const intentM = useMutation({
-    mutationFn: async () => intentFn({ data: { id: invoiceId } }),
-    onSuccess: (r) => setIntent(r),
-    onError: (e: Error) => toast.error(e.message),
-  });
+  // In-app payment (B2/I8): the shared three-part payment panel — saved card
+  // with exact instrument + amount, account credit, or new card entry via the
+  // Payment Element. Same component the invoice drawer embeds.
+  const [payOpen, setPayOpen] = useState(false);
 
   const voidM = useMutation({
     mutationFn: async () => voidFn({ data: { id: invoiceId } }),
@@ -275,8 +249,8 @@ function InvoiceDetail() {
       <div className="flex flex-wrap items-center gap-2">
         {invoice.status !== "paid" && invoice.status !== "void" && (
           <>
-            <Button onClick={() => (intent ? setIntent(null) : intentM.mutate())} disabled={intentM.isPending}>
-              {intentM.isPending ? "Preparing…" : intent ? "Hide payment form" : "Take payment"}
+            <Button onClick={() => setPayOpen((v) => !v)}>
+              {payOpen ? "Hide payment form" : "Take payment"}
             </Button>
             {client?.primary_email && (
               <Button variant="outline" onClick={() => emailM.mutate()} disabled={emailM.isPending}>
@@ -325,42 +299,20 @@ function InvoiceDetail() {
         )}
       </div>
 
-      {/* Integrated payment card: charge summary left, Payment Element right */}
-      {intent && invoice.status !== "paid" && (
+      {/* Integrated payment card: the shared saved-card / credit / new-card
+          panel (one implementation with the invoice drawer, I3). */}
+      {payOpen && invoice.status !== "paid" && (
         <section className="rounded-xl border bg-card p-6 shadow-sm">
           <SectionLabel>Take payment</SectionLabel>
-          <div className="mt-4 grid gap-8 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm font-medium">{client?.display_name ?? "Client"}</p>
-                <p className="font-mono text-xs text-muted-foreground">Invoice #{shortId}</p>
-              </div>
-              <div>
-                <SectionLabel>Amount due</SectionLabel>
-                <p className="mt-1 text-3xl font-semibold tabular-nums">
-                  {fmtCents(intent.amountCents, intent.currency)}
-                </p>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Card charges confirm right away. Bank debits show as pending until they clear.
-              </p>
-            </div>
-            <div>
-              <Elements
-                stripe={getConnectStripe(intent.publishableKey, intent.stripeAccount)}
-                options={{ clientSecret: intent.clientSecret, appearance: stripeAppearance() }}
-              >
-                <StaffPayForm
-                  amountCents={intent.amountCents}
-                  currency={intent.currency}
-                  onPaid={() => {
-                    setIntent(null);
-                    toast.success("Payment received. The invoice will update shortly.");
-                    qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
-                  }}
-                />
-              </Elements>
-            </div>
+          <p className="mt-1 font-mono text-xs text-muted-foreground">Invoice #{shortId}</p>
+          <div className="mt-4 max-w-lg">
+            <StaffInvoicePayForm
+              invoiceId={invoiceId}
+              onPaid={() => {
+                setPayOpen(false);
+                qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
+              }}
+            />
           </div>
         </section>
       )}
@@ -397,65 +349,6 @@ function InvoiceDetail() {
   );
 }
 
-// Inline Payment Element form: confirm on this page, no redirect for cards.
-// Bank-debit methods that need a redirect come back to this URL with ?paid=1,
-// where getInvoice reconciles against Stripe on load.
-function StaffPayForm({
-  amountCents,
-  currency,
-  onPaid,
-}: {
-  amountCents: number;
-  currency: string;
-  onPaid: () => void;
-}) {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!stripe || !elements) return;
-    setSubmitting(true);
-    setError(null);
-
-    const { error: submitError } = await elements.submit();
-    if (submitError) {
-      setError(submitError.message ?? "Please check the payment details.");
-      setSubmitting(false);
-      return;
-    }
-
-    const base = window.location.href.split("?")[0];
-    const { error: confirmError } = await stripe.confirmPayment({
-      elements,
-      confirmParams: { return_url: `${base}?paid=1` },
-      redirect: "if_required",
-    });
-
-    if (confirmError) {
-      setError(confirmError.message ?? "Payment failed. Please try another method.");
-      setSubmitting(false);
-      return;
-    }
-
-    // No redirect needed → charge succeeded (or is processing, e.g. ACH).
-    onPaid();
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <PaymentElement onReady={() => setReady(true)} />
-      {error && (
-        <div className="rounded border border-destructive/40 bg-destructive/5 p-2 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-      <Button type="submit" className="w-full" disabled={!stripe || !elements || !ready || submitting}>
-        {submitting ? "Processing…" : `Pay ${fmtCents(amountCents, currency)}`}
-      </Button>
-    </form>
-  );
-}
+// The inline Payment Element form moved to the shared StaffInvoicePayForm
+// component (src/components/StaffInvoicePayForm.tsx) so the invoice drawer
+// and this page share one payment implementation.

@@ -430,7 +430,7 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
   const todayStr = new Date().toISOString().slice(0, 10);
   const { data: invoices } = await supabaseAdmin
     .from("invoices")
-    .select("id, client_id, total_cents, currency, organization_id, status, clients!inner(id, stripe_customer_id, default_payment_method_id, autopay_enabled, autopay_paused, autopay_failure_count, autopay_last_attempt_at)")
+    .select("id, client_id, total_cents, credit_applied_cents, currency, organization_id, status, clients!inner(id, stripe_customer_id, default_payment_method_id, autopay_enabled, autopay_paused, autopay_failure_count, autopay_last_attempt_at)")
     .eq("organization_id", orgId)
     .in("status", ["open", "draft"])
     .gt("total_cents", 0)
@@ -462,6 +462,29 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
       if (daysSince < waitDays) continue;
     }
 
+    // I8 "credits auto-applied first": apply available credit through the
+    // ledger BEFORE charging the card, and charge only the remaining due.
+    // apply_credit_to_invoice is idempotent (advisory lock + row locks) and
+    // only touches 'open' postpaid invoices; if credit fully covers the
+    // invoice it is marked paid and there is nothing to charge.
+    let dueCents = Math.max((inv.total_cents ?? 0) - (inv.credit_applied_cents ?? 0), 0);
+    if (inv.status === "open") {
+      try {
+        const { data: applied, error: applyErr } = await supabaseAdmin.rpc(
+          "apply_credit_to_invoice",
+          { _invoice_id: inv.id },
+        );
+        if (!applyErr && applied) {
+          dueCents = Math.max(Number((applied as any).remaining_due_cents ?? dueCents), 0);
+          if ((applied as any).invoice_status === "paid" || dueCents <= 0) continue;
+        }
+      } catch (e) {
+        console.error("autopay credit application failed", inv.id, e);
+        // Fall through and charge the last known due amount — never more.
+      }
+    }
+    if (dueCents <= 0) continue;
+
     try {
       // Stamp the attempt BEFORE charging so a re-run in the same window (or a
       // webhook lag) is gated by the dunning wait and can't double-charge (H1).
@@ -469,7 +492,7 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
         .update({ autopay_last_attempt_at: new Date().toISOString() })
         .eq("id", c.id);
       await stripe.paymentIntents.create({
-        amount: inv.total_cents,
+        amount: dueCents,
         currency: inv.currency ?? "usd",
         customer: c.stripe_customer_id,
         payment_method: c.default_payment_method_id,
@@ -482,8 +505,10 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
         },
       }, {
         stripeAccount: acct.accountId,
-        // Idempotent per invoice+amount: a retried request never charges twice.
-        idempotencyKey: `autopay-${inv.id}-${inv.total_cents}`,
+        // Idempotent per invoice+amount: a retried request never charges
+        // twice. The amount is the OPEN amount (net of applied credit), so a
+        // later credit application mints a fresh key for the smaller charge.
+        idempotencyKey: `autopay-${inv.id}-${dueCents}`,
       });
       // Success bookkeeping happens in the webhook payment_intent.succeeded
       // branch, which also clears failure_count. Just count locally.

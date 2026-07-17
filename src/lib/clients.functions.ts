@@ -42,7 +42,7 @@ export const listClients = createServerFn({ method: "GET" })
       ids.length
         ? supabase
             .from("invoices")
-            .select("client_id, total_cents, status")
+            .select("client_id, total_cents, credit_applied_cents, status")
             .in("client_id", ids)
             .eq("status", "open")
         : Promise.resolve({ data: [] as any[] }),
