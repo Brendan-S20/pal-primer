@@ -23,6 +23,7 @@ vi.mock("@/integrations/supabase/client.server", () => {
       select: () => p,
       eq: () => p,
       in: () => p,
+      or: () => p,
       not: () => p,
       maybeSingle: () => Promise.resolve(h.results[table]),
       then: (res: any, rej: any) => Promise.resolve(h.results[table]).then(res, rej),

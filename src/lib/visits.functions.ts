@@ -512,7 +512,7 @@ export const getDispatchSettings = createServerFn({ method: "GET" })
     // max_drive_minutes was added by the finding-#10 migration; generated types
     // lag until Lovable regenerates them, so read it untyped.
     const { data, error } = await (context.supabase.from("organizations") as any)
-      .select("workday_start, workday_end, avg_speed_kmh, traffic_profile, max_drive_minutes")
+      .select("workday_start, workday_end, avg_speed_kmh, traffic_profile, max_drive_minutes, timezone")
       .eq("id", orgId)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -528,6 +528,18 @@ export const updateDispatchSettings = createServerFn({ method: "POST" })
       avg_speed_kmh: z.number().int().min(5).max(120).optional(),
       traffic_profile: z.enum(["light", "normal", "heavy"]).optional(),
       max_drive_minutes: z.number().int().min(15).max(1440).optional(),
+      // Anchors route windows/ETAs at the org's local workday start (B6).
+      timezone: z
+        .string()
+        .refine((tz) => {
+          try {
+            new Intl.DateTimeFormat("en-US", { timeZone: tz });
+            return true;
+          } catch {
+            return false;
+          }
+        }, "Enter a valid timezone")
+        .optional(),
     }).parse(d),
   )
   .handler(async ({ data, context }) => {

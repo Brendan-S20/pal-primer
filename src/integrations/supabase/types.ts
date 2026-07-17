@@ -2545,6 +2545,7 @@ export type Database = {
           stripe_subscription_id: string | null
           suspended_at: string | null
           suspended_reason: string | null
+          timezone: string
           traffic_profile: string
           trial_ends_at: string | null
           updated_at: string
@@ -2643,6 +2644,7 @@ export type Database = {
           stripe_subscription_id?: string | null
           suspended_at?: string | null
           suspended_reason?: string | null
+          timezone?: string
           traffic_profile?: string
           trial_ends_at?: string | null
           updated_at?: string
@@ -2741,6 +2743,7 @@ export type Database = {
           stripe_subscription_id?: string | null
           suspended_at?: string | null
           suspended_reason?: string | null
+          timezone?: string
           traffic_profile?: string
           trial_ends_at?: string | null
           updated_at?: string
@@ -5204,6 +5207,10 @@ export type Database = {
         Args: { _org_id: string; _through: string }
         Returns: number
       }
+      admin_transition_missed_visits: {
+        Args: { _org_id: string }
+        Returns: number
+      }
       apply_credit_to_invoice: { Args: { _invoice_id: string }; Returns: Json }
       apply_referral_code: {
         Args: { _code: string; _new_client_id: string }
@@ -5930,6 +5937,7 @@ export type Database = {
         | "completed"
         | "skipped"
         | "canceled"
+        | "missed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -6139,6 +6147,7 @@ export const Constants = {
         "completed",
         "skipped",
         "canceled",
+        "missed",
       ],
     },
   },

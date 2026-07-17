@@ -75,6 +75,22 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             perOrg.visits_generated = error ? `err: ${error.message}` : (n as number);
           }
 
+          // Missed-visit lifecycle (B6): move genuinely past, never-serviced
+          // scheduled visits to 'missed' so they stop showing "Scheduled"
+          // forever (the platform Health "stuck visits" metric). Idempotent and
+          // safe to retry — only touches pre-service 'scheduled' rows strictly
+          // before today with no partial start; ambiguous rows are left for
+          // review (I5). Runs unconditionally (not gated on auto_generate) so
+          // manually-scheduled orgs still get the cleanup. Missed visits never
+          // bill (I6).
+          {
+            const { data: n, error } = await (supabaseAdmin as any).rpc(
+              "admin_transition_missed_visits",
+              { _org_id: org.id },
+            );
+            perOrg.visits_missed = error ? `err: ${error.message}` : (n as number);
+          }
+
           if (org.auto_invoice_enabled) {
             // Full auto billing with grace: run_billing_cycles respects each
             // client's billing_frequency and stamps send_after (grace window),

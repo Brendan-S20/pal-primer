@@ -21,6 +21,7 @@ const STATUS_TONES: Record<string, string> = {
   overdue: "bg-destructive/15 text-destructive",
   canceled: "bg-destructive/15 text-destructive",
   failed: "bg-destructive/15 text-destructive",
+  missed: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
   ended: "bg-muted text-muted-foreground",
   skipped: "bg-muted text-muted-foreground",
   inactive: "bg-muted text-muted-foreground",
