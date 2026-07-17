@@ -701,12 +701,21 @@ export const commitImport = createServerFn({ method: "POST" })
                   postal_code: m.postal_code,
                 });
                 const { detectZoneId } = await import("@/lib/properties.functions");
+                // Type-appropriate zone matching (B3): the imported property
+                // inherits the client's account type, so a commercial client
+                // lands in a commercial zone even when a residential zone
+                // covers the same ZIP.
+                const importAccountType =
+                  m.account_type === "commercial" || m.account_type === "residential"
+                    ? m.account_type
+                    : null;
                 const importZoneId = await detectZoneId(supabase, orgId, {
                   postalCode: m.postal_code,
                   point:
                     geo?.latitude != null && geo?.longitude != null
                       ? { lat: geo.latitude, lng: geo.longitude }
                       : null,
+                  accountType: importAccountType,
                 });
                 await supabase.from("properties").insert({
                   organization_id: orgId,
@@ -716,6 +725,7 @@ export const commitImport = createServerFn({ method: "POST" })
                   region: m.region || null,
                   postal_code: m.postal_code || null,
                   gate_code: m.gate_code || null,
+                  account_type: importAccountType,
                   address_source: "manual",
                   auto_zone_id: importZoneId,
                   zone_id: importZoneId,
@@ -743,9 +753,22 @@ export const commitImport = createServerFn({ method: "POST" })
         } else if (entity === "properties") {
           if (row.action === "create" && row.target_id) {
             const { detectZoneId } = await import("@/lib/properties.functions");
+            // Type-appropriate zone matching (B3): fall back to the owning
+            // client's account type so the property lands in a zone typed for
+            // its account (commercial client to commercial zone).
+            const { data: ownerClient } = await supabase
+              .from("clients")
+              .select("account_type")
+              .eq("id", row.target_id)
+              .maybeSingle();
+            const propAccountType =
+              ownerClient?.account_type === "commercial" || ownerClient?.account_type === "residential"
+                ? ownerClient.account_type
+                : null;
             const propZoneId = await detectZoneId(supabase, orgId, {
               postalCode: m.postal_code,
               point: null,
+              accountType: propAccountType,
             });
             const { data: ins, error: cErr } = await supabase
               .from("properties")
@@ -759,6 +782,7 @@ export const commitImport = createServerFn({ method: "POST" })
                 postal_code: m.postal_code,
                 gate_code: m.gate_code,
                 access_notes: m.notes,
+                account_type: propAccountType,
                 address_source: "manual",
                 auto_zone_id: propZoneId,
                 zone_id: propZoneId,

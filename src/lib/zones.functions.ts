@@ -11,10 +11,10 @@ async function resolveOrgId(supabase: any, userId: string): Promise<string> {
 // detection across the org's properties so pre-existing clients pick up the
 // new boundaries without someone re-saving each address. Best effort — a
 // redetect failure must never fail the zone save itself.
-async function redetectBestEffort(supabase: any, orgId: string): Promise<number> {
+async function redetectBestEffort(supabase: any, orgId: string, actorUserId?: string | null): Promise<number> {
   try {
     const { redetectZonesForOrg } = await import("@/lib/zones-redetect.server");
-    const updated = await redetectZonesForOrg(supabase, orgId);
+    const updated = await redetectZonesForOrg(supabase, orgId, actorUserId);
     console.info(`[zones] redetect for org ${orgId}: ${updated} properties re-assigned`);
     return updated;
   } catch (e) {
@@ -161,7 +161,7 @@ export const createZone = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
 
     // A new zone can capture existing properties immediately.
-    const propertiesUpdated = await redetectBestEffort(supabase, orgId);
+    const propertiesUpdated = await redetectBestEffort(supabase, orgId, userId);
     return { id: row.id as string, propertiesUpdated };
   });
 
@@ -256,7 +256,7 @@ export const updateZone = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
 
     // Changed coverage/priority can re-assign existing properties.
-    const propertiesUpdated = await redetectBestEffort(supabase, orgId);
+    const propertiesUpdated = await redetectBestEffort(supabase, orgId, userId);
     return { ok: true, propertiesUpdated };
   });
 
@@ -285,6 +285,6 @@ export const deleteZone = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
 
     // Properties in the deleted zone can fall to another zone (or none).
-    const propertiesUpdated = await redetectBestEffort(supabase, orgId);
+    const propertiesUpdated = await redetectBestEffort(supabase, orgId, userId);
     return { ok: true, propertiesUpdated };
   });

@@ -198,3 +198,58 @@ describe("matchZone type-appropriateness (B3/I4)", () => {
     expect(m?.id).toBe("comm"); // falls through to deterministic id order
   });
 });
+
+describe("matchZone proximity level: radius and drive_time (finding 5)", () => {
+  // A drive-time zone centered downtown, ~15 min ≈ 12 km at the matcher's
+  // 800 m/min, so it contains Congress Ave.
+  const driveZone = zone({
+    id: "drive",
+    geo_match_mode: "drive_time",
+    center_latitude: 30.267,
+    center_longitude: -97.743,
+    drive_time_minutes: 15,
+  });
+  const radiusZone = zone({
+    id: "radius",
+    geo_match_mode: "radius",
+    center_latitude: 30.267,
+    center_longitude: -97.743,
+    radius_meters: 12000,
+  });
+
+  it("a drive_time zone matches when the point is within reach", () => {
+    expect(matchZone([driveZone], { point: CONGRESS_AVE })?.id).toBe("drive");
+  });
+
+  it("drive_time and radius rank at the SAME (proximity) level", () => {
+    // Equal level → the tie falls to priority; give radius the edge and it
+    // must win over drive_time despite drive_time being listed first.
+    const boostedRadius = { ...radiusZone, priority: 3 };
+    const m = matchZone([driveZone, boostedRadius], { point: CONGRESS_AVE });
+    expect(m?.id).toBe("radius");
+  });
+
+  it("a prefix match still outranks both drive_time and radius", () => {
+    const prefix = zone({ id: "prefix", postal_prefix: "78701", priority: -5 });
+    const m = matchZone([driveZone, radiusZone, prefix], {
+      postalCode: "78701",
+      point: CONGRESS_AVE,
+    });
+    expect(m?.id).toBe("prefix");
+  });
+
+  it("radius-vs-radius tie is resolved by priority (pinned winner)", () => {
+    const a = { ...radiusZone, id: "ra", priority: 1 };
+    const b = { ...radiusZone, id: "rb", priority: 7 };
+    expect(matchZone([a, b], { point: CONGRESS_AVE })?.id).toBe("rb");
+    expect(matchZone([b, a], { point: CONGRESS_AVE })?.id).toBe("rb");
+  });
+
+  it("radius-vs-radius equal priority is resolved by type-appropriateness", () => {
+    const res = { ...radiusZone, id: "rr", account_type: "residential" as const };
+    const comm = { ...radiusZone, id: "rc", account_type: "commercial" as const };
+    expect(
+      matchZone([res, comm], { point: CONGRESS_AVE, accountType: "commercial" })?.id,
+    ).toBe("rc");
+  });
+});
