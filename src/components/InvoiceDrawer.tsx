@@ -110,6 +110,21 @@ export function InvoiceDrawer({
   // Grace window (full auto billing): auto-generated invoice, not yet emailed.
   const inGrace = open && !inv?.sent_at && !!inv?.send_after;
 
+  // Emailing a held invoice force-sends it — it bypasses the remaining grace
+  // and takes the invoice out of the nightly auto-send loop. Confirm that
+  // grace-bypass so it's a deliberate action, not an accidental early send.
+  const sendToClient = async () => {
+    if (inGrace && inv?.send_after) {
+      const ok = await confirm({
+        title: "Send this invoice now?",
+        description: `This emails the invoice to ${client?.display_name ?? "the client"} right away, ahead of its scheduled send date (${formatDay(inv.send_after)}). It won't be sent again automatically.`,
+        confirmLabel: "Send now",
+      });
+      if (!ok) return;
+    }
+    emailMut.mutate(false);
+  };
+
   return (
     <>
       {dialog}
@@ -193,7 +208,7 @@ export function InvoiceDrawer({
                   size="sm"
                   variant="outline"
                   disabled={emailMut.isPending}
-                  onClick={() => emailMut.mutate(false)}
+                  onClick={sendToClient}
                 >
                   <Mail className="mr-1 h-3.5 w-3.5" />
                   {inGrace ? "Send now" : "Send to client"}

@@ -51,6 +51,9 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/onboarding": ["owner"],
   // Must precede the "/settings" prefix entry — canAccess takes the first match.
   "/settings/billing": ["owner"],
+  // Client-invoicing config (net terms, grace, auto-send) — office-level money
+  // settings, same audience as the Invoices page.
+  "/settings/invoicing": ["owner", "office_manager"],
   // Referral rewards are real money to the business — keep it office-level.
   "/settings/referrals": ["owner", "office_manager"],
   "/reports": ["owner", "office_manager"],
