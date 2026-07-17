@@ -78,6 +78,8 @@ export function PropertyDrawer({
       vcEmail: property?.visit_contact_email ?? "",
       sections: ((property?.commercial_sections ?? []) as string[]).join(", "),
       buildings: ((property?.building_labels ?? []) as string[]).join(", "),
+      hasUnits: !!property?.has_units,
+      totalUnits: property?.total_units != null ? String(property.total_units) : "",
       doNotEnterIfDogOut: !!property?.do_not_enter_if_dog_out,
       aggressiveDog: !!property?.aggressive_dog,
       escapeRisk: !!property?.escape_risk,
@@ -196,6 +198,11 @@ export function PropertyDrawer({
         visitContactEmail: form.vcEmail || undefined,
         commercialSections: isCommercial ? splitList(form.sections) : [],
         buildingLabels: isCommercial ? splitList(form.buildings) : [],
+        hasUnits: isCommercial ? form.hasUnits : false,
+        totalUnits:
+          isCommercial && form.hasUnits && form.totalUnits.trim() !== ""
+            ? Math.max(0, parseInt(form.totalUnits, 10) || 0)
+            : null,
         doNotEnterIfDogOut: form.doNotEnterIfDogOut,
         aggressiveDog: form.aggressiveDog,
         escapeRisk: form.escapeRisk,
@@ -372,6 +379,34 @@ export function PropertyDrawer({
             <p className="mt-1 text-xs text-muted-foreground">
               Separate entries with commas. Waste stations are managed in the Services tab.
             </p>
+            <div className="mt-3 border-t pt-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.hasUnits}
+                  onChange={(e) => set("hasUnits", e.target.checked as never)}
+                />
+                <span>This property has units (HOA / multi-unit)</span>
+              </label>
+              {form.hasUnits && (
+                <div className="mt-2 max-w-[12rem]">
+                  <Label htmlFor="pd-total-units" className="text-xs">
+                    Total units
+                  </Label>
+                  <Input
+                    id="pd-total-units"
+                    type="number"
+                    min="0"
+                    value={form.totalUnits}
+                    onChange={(e) => set("totalUnits", e.target.value)}
+                    placeholder="e.g. 48"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Commercial zone pricing bills by total units, not just dog-owning units.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

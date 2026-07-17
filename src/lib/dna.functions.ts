@@ -21,6 +21,13 @@ export type DnaMatch = {
   property_street: string | null;
   client_id: string | null;
   client_name: string | null;
+  unit_id: string | null;
+  unit_label: string | null;
+  collected_by_staff_id: string | null;
+  collected_by_name: string | null;
+  kit_reference: string | null;
+  dna_provider: string | null;
+  report_reference: string | null;
   created_at: string;
 };
 
@@ -32,9 +39,10 @@ export const listDnaMatches = createServerFn({ method: "GET" })
     const { data, error } = await context.supabase
       .from("dna_matches")
       .select(
-        "id, sample_kind, collected_at, location_note, lab_reference, status, matched_dog_id, matched_at, fine_cents, notes, property_id, client_id, " +
+        "id, sample_kind, collected_at, location_note, lab_reference, status, matched_dog_id, matched_at, fine_cents, notes, property_id, client_id, unit_id, collected_by_staff_id, kit_reference, dna_provider, report_reference, " +
           "matched_dog:matched_dog_id(name, properties:property_id(clients:client_id(display_name))), " +
-          "properties:property_id(street), clients:client_id(display_name)",
+          "properties:property_id(street), clients:client_id(display_name), " +
+          "property_units:unit_id(unit_label), staff:collected_by_staff_id(display_name)",
       )
       .eq("organization_id", orgId)
       .order("collected_at", { ascending: false })
@@ -59,6 +67,13 @@ export const listDnaMatches = createServerFn({ method: "GET" })
       property_street: canSeeDirectory ? (r.properties?.street ?? null) : null,
       client_id: r.client_id,
       client_name: canSeeDirectory ? (r.clients?.display_name ?? null) : null,
+      unit_id: r.unit_id,
+      unit_label: r.property_units?.unit_label ?? null,
+      collected_by_staff_id: r.collected_by_staff_id,
+      collected_by_name: r.staff?.display_name ?? null,
+      kit_reference: r.kit_reference,
+      dna_provider: r.dna_provider,
+      report_reference: r.report_reference,
       created_at: r.collected_at,
     }));
     const summary = rows.reduce(
@@ -79,6 +94,14 @@ const createSchema = z.object({
   labReference: z.string().max(120).optional().nullable(),
   propertyId: z.string().uuid().optional().nullable(),
   clientId: z.string().uuid().optional().nullable(),
+  // Chain of custody (B8): where the property has units, key the sample to
+  // one; who collected it; the kit tracking + provider references. No raw
+  // genetic markers — references/statuses/reports only (I9).
+  unitId: z.string().uuid().optional().nullable(),
+  collectedByStaffId: z.string().uuid().optional().nullable(),
+  kitReference: z.string().max(120).optional().nullable(),
+  dnaProvider: z.string().max(120).optional().nullable(),
+  reportReference: z.string().max(200).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
 });
 
@@ -87,6 +110,19 @@ export const createDnaMatch = createServerFn({ method: "POST" })
   .inputValidator((d) => createSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { orgId } = await resolveCaller(context.supabase, context.userId);
+    // A supplied unit must belong to the supplied property (chain integrity;
+    // the DB trigger also enforces this cross-tenant).
+    if (data.unitId) {
+      if (!data.propertyId) throw new Error("Pick a property before choosing a unit");
+      const { data: unit, error: uErr } = await (context.supabase as any)
+        .from("property_units")
+        .select("id, property_id")
+        .eq("id", data.unitId)
+        .maybeSingle();
+      if (uErr) throw new Error(uErr.message);
+      if (!unit || unit.property_id !== data.propertyId)
+        throw new Error("Unit not found on this property");
+    }
     const { data: row, error } = await context.supabase
       .from("dna_matches")
       .insert({
@@ -96,9 +132,14 @@ export const createDnaMatch = createServerFn({ method: "POST" })
         lab_reference: data.labReference ?? null,
         property_id: data.propertyId ?? null,
         client_id: data.clientId ?? null,
+        unit_id: data.unitId ?? null,
+        collected_by_staff_id: data.collectedByStaffId ?? null,
+        kit_reference: data.kitReference ?? null,
+        dna_provider: data.dnaProvider ?? null,
+        report_reference: data.reportReference ?? null,
         notes: data.notes ?? null,
         created_by: context.userId,
-      })
+      } as any)
       .select("id")
       .single();
     if (error) throw new Error(error.message);
@@ -168,7 +209,11 @@ export const listRegisteredDogs = createServerFn({ method: "GET" })
     const canSeeDirectory = hasPermission(role, "view_client_directory");
     const { data, error } = await context.supabase
       .from("dogs")
-      .select("id, name, breed, dna_registry_id, properties:property_id(street, clients:client_id(display_name))")
+      .select(
+        "id, name, breed, dna_registry_id, unit_id, property_id, " +
+          "property_units:unit_id(unit_label), " +
+          "properties:property_id(street, clients:client_id(display_name))",
+      )
       .eq("organization_id", orgId)
       .eq("dna_registered", true)
       .order("name");
@@ -178,6 +223,8 @@ export const listRegisteredDogs = createServerFn({ method: "GET" })
       name: d.name,
       breed: d.breed,
       registry_id: d.dna_registry_id,
+      unit_id: d.unit_id,
+      unit_label: d.property_units?.unit_label ?? null,
       client_name: canSeeDirectory ? (d.properties?.clients?.display_name ?? null) : null,
       street: canSeeDirectory ? (d.properties?.street ?? null) : null,
     }));
@@ -190,7 +237,12 @@ export const listAllDogsForDna = createServerFn({ method: "GET" })
     const canSeeDirectory = hasPermission(role, "view_client_directory");
     const { data, error } = await context.supabase
       .from("dogs")
-      .select("id, name, breed, dna_registered, dna_registry_id, property_id, properties:property_id(street, clients:client_id(display_name))")
+      .select(
+        "id, name, breed, dna_registered, dna_registry_id, dna_status, dna_provider, dna_kit_reference, " +
+          "unit_id, property_id, unit_review_needed, " +
+          "property_units:unit_id(unit_label), " +
+          "properties:property_id(street, account_type, clients:client_id(display_name))",
+      )
       .eq("organization_id", orgId)
       .order("name");
     if (error) throw new Error(error.message);
@@ -200,9 +252,63 @@ export const listAllDogsForDna = createServerFn({ method: "GET" })
       breed: d.breed,
       dna_registered: !!d.dna_registered,
       registry_id: d.dna_registry_id,
+      dna_status: d.dna_status ?? "not_registered",
+      dna_provider: d.dna_provider ?? null,
+      kit_reference: d.dna_kit_reference ?? null,
+      unit_id: d.unit_id,
+      unit_label: d.property_units?.unit_label ?? null,
+      // Orphan dog on a unit-bearing property (I5): shown as review-needed so
+      // /dna and the Units tab reconcile against the same record (I3).
+      review_needed: !!d.unit_review_needed,
       client_name: canSeeDirectory ? (d.properties?.clients?.display_name ?? null) : null,
       street: canSeeDirectory ? (d.properties?.street ?? null) : null,
     }));
+  });
+
+// Options for the DNA sample form (B8): properties (with their client + units)
+// and the field techs who can collect a sample. Cross-property, org-scoped.
+export const listDnaFormOptions = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { orgId } = await resolveCaller(context.supabase, context.userId);
+    const [props, units, staff] = await Promise.all([
+      context.supabase
+        .from("properties")
+        .select("id, street, city, account_type, has_units, client_id, clients:client_id(display_name)")
+        .eq("organization_id", orgId)
+        .is("archived_at", null)
+        .order("street"),
+      (context.supabase as any)
+        .from("property_units")
+        .select("id, property_id, unit_label")
+        .eq("organization_id", orgId)
+        .order("unit_label"),
+      context.supabase
+        .from("staff")
+        .select("id, display_name, is_field_tech")
+        .eq("organization_id", orgId)
+        .eq("active", true)
+        .order("display_name"),
+    ]);
+    if (props.error) throw new Error(props.error.message);
+    if (units.error) throw new Error(units.error.message);
+    if (staff.error) throw new Error(staff.error.message);
+    return {
+      properties: (props.data ?? []).map((p: any) => ({
+        id: p.id,
+        street: p.street,
+        city: p.city,
+        account_type: p.account_type,
+        has_units: !!p.has_units,
+        client_id: p.client_id,
+        client_name: (p.clients as any)?.display_name ?? null,
+      })),
+      units: units.data ?? [],
+      // Field techs first, but keep everyone selectable as a fallback collector.
+      staff: (staff.data ?? []).sort(
+        (a: any, b: any) => Number(b.is_field_tech) - Number(a.is_field_tech),
+      ),
+    };
   });
 
 export const billDnaViolation = createServerFn({ method: "POST" })

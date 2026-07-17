@@ -10,6 +10,7 @@ import {
   deleteDnaMatch,
   listRegisteredDogs,
   listAllDogsForDna,
+  listDnaFormOptions,
   billDnaViolation,
   getViolationNotice,
   type DnaMatch,
@@ -71,6 +72,7 @@ function DnaPage() {
   const listFn = useServerFn(listDnaMatches);
   const dogsFn = useServerFn(listRegisteredDogs);
   const allDogsFn = useServerFn(listAllDogsForDna);
+  const optionsFn = useServerFn(listDnaFormOptions);
   const createFn = useServerFn(createDnaMatch);
   const updateFn = useServerFn(updateDnaMatch);
   const deleteFn = useServerFn(deleteDnaMatch);
@@ -84,12 +86,22 @@ function DnaPage() {
   });
   const dogsQ = useQuery({ queryKey: ["dna-dogs"], queryFn: () => dogsFn() });
   const allDogsQ = useQuery({ queryKey: ["dna-all-dogs"], queryFn: () => allDogsFn() });
+  const optionsQ = useQuery({ queryKey: ["dna-form-options"], queryFn: () => optionsFn() });
 
   const [sampleKind, setSampleKind] = useState<"cheek_swab" | "pile_sample">("pile_sample");
   const [locationNote, setLocationNote] = useState("");
   const [labReference, setLabReference] = useState("");
   const [notes, setNotes] = useState("");
+  const [propertyId, setPropertyId] = useState("");
+  const [unitId, setUnitId] = useState("");
+  const [collectedByStaffId, setCollectedByStaffId] = useState("");
+  const [kitReference, setKitReference] = useState("");
+  const [dnaProvider, setDnaProvider] = useState("");
   const [noticeMatchId, setNoticeMatchId] = useState<string | null>(null);
+
+  const opts = optionsQ.data;
+  const selectedProp = (opts?.properties ?? []).find((p: any) => p.id === propertyId);
+  const propUnits = (opts?.units ?? []).filter((u: any) => u.property_id === propertyId);
 
   const create = useMutation({
     mutationFn: () =>
@@ -99,6 +111,12 @@ function DnaPage() {
           locationNote: locationNote || undefined,
           labReference: labReference || undefined,
           notes: notes || undefined,
+          propertyId: propertyId || undefined,
+          clientId: selectedProp?.client_id || undefined,
+          unitId: unitId || undefined,
+          collectedByStaffId: collectedByStaffId || undefined,
+          kitReference: kitReference || undefined,
+          dnaProvider: dnaProvider || undefined,
         },
       }),
     onSuccess: () => {
@@ -106,6 +124,8 @@ function DnaPage() {
       setLocationNote("");
       setLabReference("");
       setNotes("");
+      setUnitId("");
+      setKitReference("");
       refetch();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -185,6 +205,80 @@ function DnaPage() {
                 </select>
               </div>
               <div>
+                <Label>Property</Label>
+                <select
+                  value={propertyId}
+                  onChange={(e) => {
+                    setPropertyId(e.target.value);
+                    setUnitId("");
+                  }}
+                  className="mt-1 block w-full rounded border bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Select property…</option>
+                  {(opts?.properties ?? []).map((p: any) => (
+                    <option key={p.id} value={p.id}>
+                      {p.street}
+                      {p.client_name ? ` — ${p.client_name}` : ""}
+                    </option>
+                  ))}
+                </select>
+                {selectedProp?.client_name && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Client: {selectedProp.client_name}
+                  </p>
+                )}
+              </div>
+              <div>
+                <Label>Unit</Label>
+                <select
+                  value={unitId}
+                  onChange={(e) => setUnitId(e.target.value)}
+                  disabled={!propertyId || propUnits.length === 0}
+                  className="mt-1 block w-full rounded border bg-background px-3 py-2 text-sm disabled:opacity-60"
+                >
+                  <option value="">
+                    {propUnits.length === 0 ? "No units on this property" : "Select unit…"}
+                  </option>
+                  {propUnits.map((u: any) => (
+                    <option key={u.id} value={u.id}>
+                      Unit {u.unit_label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label>Collected by (tech)</Label>
+                <select
+                  value={collectedByStaffId}
+                  onChange={(e) => setCollectedByStaffId(e.target.value)}
+                  className="mt-1 block w-full rounded border bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Unassigned…</option>
+                  {(opts?.staff ?? []).map((s: any) => (
+                    <option key={s.id} value={s.id}>
+                      {s.display_name}
+                      {s.is_field_tech ? "" : " (office)"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label>Kit reference</Label>
+                <Input
+                  value={kitReference}
+                  onChange={(e) => setKitReference(e.target.value)}
+                  placeholder="KIT-00123 (chain of custody)"
+                />
+              </div>
+              <div>
+                <Label>DNA provider</Label>
+                <Input
+                  value={dnaProvider}
+                  onChange={(e) => setDnaProvider(e.target.value)}
+                  placeholder="e.g. PooPrints"
+                />
+              </div>
+              <div>
                 <Label>Location note</Label>
                 <Input
                   value={locationNote}
@@ -203,6 +297,9 @@ function DnaPage() {
               <div className="md:col-span-4">
                 <Label>Notes</Label>
                 <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Provider references, statuses, and reports only — no raw genetic markers are stored.
+                </p>
               </div>
               <div className="md:col-span-4">
                 <Button disabled={create.isPending} onClick={() => create.mutate()}>
@@ -223,6 +320,7 @@ function DnaPage() {
                     <tr>
                       <th className="px-3 py-2">Collected</th>
                       <th className="px-3 py-2">Kind</th>
+                      <th className="px-3 py-2">Unit</th>
                       <th className="px-3 py-2">Location</th>
                       <th className="px-3 py-2">Lab #</th>
                       <th className="px-3 py-2">Status</th>
@@ -234,13 +332,13 @@ function DnaPage() {
                   <tbody>
                     {isLoading ? (
                       <tr>
-                        <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">
+                        <td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">
                           Loading…
                         </td>
                       </tr>
                     ) : rows.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">
+                        <td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">
                           No samples logged. Add your first pile sample above.
                         </td>
                       </tr>
@@ -255,7 +353,28 @@ function DnaPage() {
                               {r.sample_kind === "cheek_swab" ? "Cheek swab" : "Pile"}
                             </Badge>
                           </td>
-                          <td className="px-3 py-2 text-xs">{r.location_note ?? "-"}</td>
+                          <td className="px-3 py-2 text-xs">
+                            {r.unit_label ? (
+                              <span>Unit {r.unit_label}</span>
+                            ) : r.property_street ? (
+                              <span className="text-muted-foreground">{r.property_street}</span>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                            {r.collected_by_name && (
+                              <div className="text-[11px] text-muted-foreground">
+                                by {r.collected_by_name}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-xs">
+                            {r.location_note ?? "-"}
+                            {r.kit_reference && (
+                              <div className="text-[11px] text-muted-foreground font-mono">
+                                kit {r.kit_reference}
+                              </div>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-xs font-mono">{r.lab_reference ?? "-"}</td>
                           <td className="px-3 py-2">
                             <select
@@ -393,6 +512,7 @@ function DnaPage() {
                     <tr>
                       <th className="px-3 py-2">Dog</th>
                       <th className="px-3 py-2">Owner</th>
+                      <th className="px-3 py-2">Unit</th>
                       <th className="px-3 py-2">Address</th>
                       <th className="px-3 py-2">Registered</th>
                       <th className="px-3 py-2">Registry ID</th>
@@ -401,13 +521,13 @@ function DnaPage() {
                   <tbody>
                     {allDogsQ.isLoading ? (
                       <tr>
-                        <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                        <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
                           Loading…
                         </td>
                       </tr>
                     ) : (allDogsQ.data ?? []).length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                        <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
                           No dogs on file yet.
                         </td>
                       </tr>
@@ -458,6 +578,8 @@ function RegistryRow({
     registry_id: string | null;
     client_name: string | null;
     street: string | null;
+    unit_label?: string | null;
+    review_needed?: boolean;
   };
   onSave: (registered: boolean, registryId: string | null) => void | Promise<void>;
 }) {
@@ -471,6 +593,15 @@ function RegistryRow({
         {dog.breed && <div className="text-[11px] text-muted-foreground">{dog.breed}</div>}
       </td>
       <td className="px-3 py-2 text-xs">{dog.client_name ?? "-"}</td>
+      <td className="px-3 py-2 text-xs">
+        {dog.unit_label ? (
+          <span>Unit {dog.unit_label}</span>
+        ) : dog.review_needed ? (
+          <Badge variant="destructive">Needs unit</Badge>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        )}
+      </td>
       <td className="px-3 py-2 text-xs">{dog.street ?? "-"}</td>
       <td className="px-3 py-2">
         <label className="inline-flex items-center gap-2 text-xs">

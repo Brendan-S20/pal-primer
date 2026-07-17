@@ -65,6 +65,7 @@ import {
 } from "@/lib/addons.functions";
 import { generatePrepaidInvoice } from "@/lib/invoices.functions";
 import { generateVisits } from "@/lib/visits.functions";
+import { listStations } from "@/lib/stations.functions";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -745,6 +746,7 @@ function ServiceDrawer({
 }) {
   const createFn = useServerFn(createSubscription);
   const updateFn = useServerFn(updateSubscription);
+  const stationsFn = useServerFn(listStations);
   const { confirm: confirmPrice, dialog: priceDialog } = useConfirmDialog();
 
   // Property dogs are the source of truth for the billed count (UX round 3):
@@ -893,14 +895,33 @@ function ServiceDrawer({
       }
     : null;
   // Commercial zone pricing (HOA model): base + per-unit x units + per-acre x
-  // acres from the property's drawn boundary, then the schedule multiplier.
+  // acres + per-station x waste stations, then the schedule multiplier.
+  // C2: units for pricing come from the property's TOTAL unit count (not
+  // dog-owning units); the subscription's unit field is the fallback.
+  const propTotalUnits =
+    selectedProperty?.has_units && selectedProperty?.total_units != null
+      ? Number(selectedProperty.total_units)
+      : null;
   const unitsForPricing =
-    accountType === "commercial" ? Math.max(1, parseInt(form.unitCount, 10) || 1) : 0;
+    accountType === "commercial"
+      ? Math.max(1, propTotalUnits ?? (parseInt(form.unitCount, 10) || 1))
+      : 0;
+  // Active waste stations on the property feed the per-station rate + breakdown.
+  const { data: stationsData } = useQuery({
+    queryKey: ["service-stations", selectedProperty?.id],
+    queryFn: () => stationsFn({ data: { propertyId: selectedProperty!.id } }),
+    enabled: open && accountType === "commercial" && !!selectedProperty?.id,
+  });
+  const stationCount =
+    accountType === "commercial"
+      ? ((stationsData as any)?.stations ?? []).filter((s: any) => s.active !== false).length
+      : 0;
   const commercialFields = pricingZone
     ? {
         commercial_base_cents: pricingZone.commercial_base_cents ?? null,
         commercial_per_unit_cents: pricingZone.commercial_per_unit_cents ?? null,
         commercial_per_acre_cents: pricingZone.commercial_per_acre_cents ?? null,
+        commercial_per_station_cents: pricingZone.commercial_per_station_cents ?? null,
       }
     : null;
   const commercialConfigured =
@@ -914,6 +935,7 @@ function ServiceDrawer({
           boundaryAreaSqm: selectedProperty?.boundary_area_sqm
             ? Number(selectedProperty.boundary_area_sqm)
             : null,
+          stationCount,
           multiplier: freqMultiplier,
         })
       : null;
@@ -1252,6 +1274,15 @@ function ServiceDrawer({
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <dt>Acreage charge</dt>
                       <dd>+${(commercialPrice.acreageCents / 100).toFixed(2)}</dd>
+                    </div>
+                  )}
+                  {commercialPrice.stationCents > 0 && (
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <dt>
+                        Waste stations ({stationCount} × $
+                        {((pricingZone?.commercial_per_station_cents ?? 0) / 100).toFixed(2)})
+                      </dt>
+                      <dd>+${(commercialPrice.stationCents / 100).toFixed(2)}</dd>
                     </div>
                   )}
                   {freqMultiplier !== 1 && (

@@ -9,6 +9,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller, type CallerContext } from "@/lib/authz.server";
+import { assertValidUnitLabel } from "@/lib/dna-linkage";
 
 /** Server-side twin of the can_write_org() SQL helper (everyone but techs). */
 async function requireCanWriteOrg(supabase: any, userId: string): Promise<CallerContext> {
@@ -43,9 +44,9 @@ export const listUnitsForClient = createServerFn({ method: "GET" })
       .eq("client_id", data.clientId);
     if (pErr) throw new Error(pErr.message);
     const ids = (props ?? []).map((p: any) => p.id);
-    if (!ids.length) return { units: [], incidents: [] };
+    if (!ids.length) return { units: [], incidents: [], reviewDogs: [] };
 
-    const [units, incidents] = await Promise.all([
+    const [units, incidents, reviewDogs] = await Promise.all([
       (supabase as any)
         .from("property_units")
         .select(
@@ -59,10 +60,24 @@ export const listUnitsForClient = createServerFn({ method: "GET" })
         .in("property_id", ids)
         .order("incident_on", { ascending: false })
         .order("created_at", { ascending: false }),
+      // Orphan dogs (I5): on a unit-bearing property but assigned to no unit.
+      // Surfaced here so /dna and the Units tab reconcile against the SAME
+      // dog records (I3) instead of the Units tab silently showing zero.
+      (supabase as any)
+        .from("dogs")
+        .select("id, name, breed, property_id, unit_id, dna_status, active, unit_review_needed")
+        .in("property_id", ids)
+        .eq("unit_review_needed", true)
+        .order("name"),
     ]);
     if (units.error) throw new Error(units.error.message);
     if (incidents.error) throw new Error(incidents.error.message);
-    return { units: units.data ?? [], incidents: incidents.data ?? [] };
+    if (reviewDogs.error) throw new Error(reviewDogs.error.message);
+    return {
+      units: units.data ?? [],
+      incidents: incidents.data ?? [],
+      reviewDogs: (reviewDogs.data ?? []).filter((d: any) => d.active !== false),
+    };
   });
 
 // ── Unit create / edit ───────────────────────────────────────────────────────
@@ -81,6 +96,7 @@ export const createUnit = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { orgId } = await requireCanWriteOrg(supabase, userId);
+    const unitLabel = assertValidUnitLabel(data.unitLabel);
     const { data: prop, error: pErr } = await supabase
       .from("properties")
       .select("id, organization_id, client_id, street")
@@ -95,7 +111,7 @@ export const createUnit = createServerFn({ method: "POST" })
       .insert({
         organization_id: orgId,
         property_id: data.propertyId,
-        unit_label: data.unitLabel.trim(),
+        unit_label: unitLabel,
         resident_name: data.residentName || null,
         resident_phone: data.residentPhone || null,
         resident_email: data.residentEmail || null,
@@ -135,7 +151,7 @@ export const updateUnit = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { orgId } = await requireCanWriteOrg(supabase, userId);
     const patch: Record<string, string | null> = {};
-    if (data.unitLabel !== undefined) patch.unit_label = data.unitLabel.trim();
+    if (data.unitLabel !== undefined) patch.unit_label = assertValidUnitLabel(data.unitLabel);
     if (data.residentName !== undefined) patch.resident_name = data.residentName || null;
     if (data.residentPhone !== undefined) patch.resident_phone = data.residentPhone || null;
     if (data.residentEmail !== undefined) patch.resident_email = data.residentEmail || null;

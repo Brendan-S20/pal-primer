@@ -256,12 +256,15 @@ function ZoneCard({ zone, canEdit, onEdit }: { zone: any; canEdit: boolean; onEd
           )}
           {(zone.commercial_base_cents ?? 0) +
             (zone.commercial_per_unit_cents ?? 0) +
-            (zone.commercial_per_acre_cents ?? 0) >
+            (zone.commercial_per_acre_cents ?? 0) +
+            (zone.commercial_per_station_cents ?? 0) >
             0 && (
             <div className="mt-1 text-xs text-muted-foreground">
               Commercial: {money(zone.commercial_base_cents ?? 0)} base +{" "}
               {money(zone.commercial_per_unit_cents ?? 0)}/unit +{" "}
               {money(zone.commercial_per_acre_cents ?? 0)}/acre
+              {(zone.commercial_per_station_cents ?? 0) > 0 &&
+                ` + ${money(zone.commercial_per_station_cents ?? 0)}/station`}
             </div>
           )}
         </div>
