@@ -5,10 +5,11 @@
 // ── Name / label validation (I11, mirrors the SQL is_valid_* functions) ──────
 
 // Placeholders that slip past a plain length check. Kept in sync with
-// is_valid_entity_name() / is_valid_label() in
-// 20260717200000_dna-unit-linkage-and-validation.sql.
+// is_valid_entity_name() / is_valid_label() (SQL) — the latest is the
+// blacklist in 20260717210000_phase6-qa-fixes.sql ("na" was dropped: it's a
+// plausible real short name, not junk).
 const NAME_PLACEHOLDERS = new Set([
-  "ew", "na", "n/a", "tbd", "test", "asdf", "qwerty", "none", "null", "xxx",
+  "ew", "n/a", "tbd", "test", "asdf", "qwerty", "none", "null", "xxx",
   "xx", "unknown", "placeholder", ".", "-", "--", "...",
 ]);
 const LABEL_PLACEHOLDERS = new Set([

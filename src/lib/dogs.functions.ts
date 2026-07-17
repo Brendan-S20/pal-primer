@@ -116,20 +116,31 @@ export const updateDog = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => editDogSchema.parse(d))
   .handler(async ({ data, context }) => {
-    if (data.name !== undefined) assertValidDogName(data.name);
-    // A supplied unit must belong to the dog's property (mirrors the addDog
-    // check; wave-2 QA finding 4 — otherwise unit_id could be re-pointed at
-    // a unit on a different property).
+    // Fetch the current row once when we need the name or the property (for the
+    // name-change check and/or the unit-belongs-to-property check).
     let dogPropertyId: string | null = null;
-    if (data.unitId !== undefined) {
+    let currentName: string | null = null;
+    if (data.name !== undefined || data.unitId !== undefined) {
       const { data: dog, error: dogErr } = await context.supabase
         .from("dogs")
-        .select("property_id")
+        .select("name, property_id")
         .eq("id", data.id)
         .maybeSingle();
       if (dogErr) throw new Error(dogErr.message);
       if (!dog) throw new Error("Dog not found");
       dogPropertyId = dog.property_id;
+      currentName = (dog as { name: string | null }).name;
+    }
+    // Only validate the name when it actually CHANGES — matches the DB trigger,
+    // so a legacy dog with a placeholder name (I6) can still be edited for other
+    // fields, and the two validation layers agree. A rename to junk is rejected.
+    if (data.name !== undefined && data.name.trim() !== (currentName ?? "").trim()) {
+      assertValidDogName(data.name);
+    }
+    // A supplied unit must belong to the dog's property (mirrors the addDog
+    // check; wave-2 QA finding 4 — otherwise unit_id could be re-pointed at
+    // a unit on a different property).
+    if (data.unitId !== undefined) {
       if (data.unitId) {
         const { data: unit, error: uErr } = await (context.supabase as any)
           .from("property_units")
@@ -137,7 +148,7 @@ export const updateDog = createServerFn({ method: "POST" })
           .eq("id", data.unitId)
           .maybeSingle();
         if (uErr) throw new Error(uErr.message);
-        if (!unit || unit.property_id !== dog.property_id)
+        if (!unit || unit.property_id !== dogPropertyId)
           throw new Error("Unit not found on this dog's property");
       }
     }

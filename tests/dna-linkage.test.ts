@@ -17,7 +17,9 @@ describe("dog name validation (B8)", () => {
   });
 
   it("allows legitimate short and normal dog names", () => {
-    for (const good of ["Bo", "Al", "Ax", "Rex", "Luna", "Mr. Peanutbutter"]) {
+    // "Na" was a false positive of the original blacklist (QA phase-6 F2) — a
+    // plausible real short name that must pass alongside the other short names.
+    for (const good of ["Bo", "Al", "Ax", "Na", "CJ", "Jo", "Ty", "Ed", "Rex", "Luna", "Mr. Peanutbutter"]) {
       expect(isValidEntityName(good)).toBe(true);
     }
   });
