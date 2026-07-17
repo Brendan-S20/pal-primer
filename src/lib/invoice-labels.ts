@@ -27,5 +27,7 @@ export function invoiceKindLabel(kind: string | null | undefined): string {
  *  description shape (prepaid, service, skipped, add-on) and legacy rows. */
 export function formatLineItemDescription(desc: string | null | undefined): string {
   if (!desc) return "";
-  return desc.replace(/\d{4}-\d{2}-\d{2}/g, (m) => formatDay(m) || m);
+  // Digit boundaries (?<!\d) / (?!\d) so a date embedded in a longer number
+  // (an id like "Order 12026-07-16") isn't partially matched and mangled.
+  return desc.replace(/(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)/g, (m) => formatDay(m) || m);
 }

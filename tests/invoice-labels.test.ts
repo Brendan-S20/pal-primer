@@ -57,6 +57,24 @@ describe("formatLineItemDescription", () => {
     expect(formatLineItemDescription("One-time cleanup")).toBe("One-time cleanup");
   });
 
+  it("humanizes multiple dates in one description", () => {
+    expect(formatLineItemDescription("Service 2026-07-16 and 2026-07-23")).toBe(
+      `Service ${formatDay("2026-07-16")} and ${formatDay("2026-07-23")}`,
+    );
+  });
+
+  it("does not mangle a date embedded in a longer digit run", () => {
+    // (?<!\d)/(?!\d) boundaries: an id that happens to contain a date-like
+    // substring must be left alone rather than partially rewritten.
+    expect(formatLineItemDescription("Order 12026-07-16")).toBe("Order 12026-07-16");
+    expect(formatLineItemDescription("ref 2026-07-1600")).toBe("ref 2026-07-1600");
+  });
+
+  it("passes a malformed date through unchanged", () => {
+    // formatDay can't parse it, so the original text is preserved.
+    expect(formatLineItemDescription("Service on 2026-13-45")).toBe("Service on 2026-13-45");
+  });
+
   it("returns an empty string for null/undefined", () => {
     expect(formatLineItemDescription(null)).toBe("");
     expect(formatLineItemDescription(undefined)).toBe("");
