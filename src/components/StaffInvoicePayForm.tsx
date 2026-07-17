@@ -88,11 +88,15 @@ export function StaffInvoicePayForm({
   });
   const creditCents = creditQ.data?.balanceCents ?? 0;
 
-  // Remaining due: total minus already-succeeded payments (partial ACH etc.).
+  // Remaining due: total minus applied credit (tracked on the invoice — credit
+  // applications write no payments row, payments is the cash ledger) minus
+  // already-succeeded cash payments (partial ACH etc.).
+  const creditAppliedCents =
+    ((inv as { credit_applied_cents?: number | null } | undefined)?.credit_applied_cents ?? 0);
   const paidCents = (detailQ.data?.payments ?? [])
     .filter((p) => p.status === "succeeded" || p.status === "paid")
     .reduce((s, p) => s + (p.amount_cents ?? 0), 0);
-  const dueCents = Math.max(0, (inv?.total_cents ?? 0) - paidCents);
+  const dueCents = Math.max(0, (inv?.total_cents ?? 0) - creditAppliedCents - paidCents);
 
   const hasSavedCard = !!client?.default_payment_method_id;
   const cardLabel = `${client?.default_card_brand ?? "card"} ····${client?.default_card_last4 ?? ""}`;

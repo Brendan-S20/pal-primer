@@ -596,6 +596,33 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
     }
 
     const { stripe, stripeAccount } = await loadStripe(invoice.organization_id);
+    // In-flight bank debit guard (same rule as the staff charge path): a
+    // stored PI in "processing" means the invoice IS being paid — charging
+    // the saved card on top would collect twice when the debit clears. A
+    // still-confirmable stale intent (e.g. an abandoned Payment Element at
+    // the old amount) is canceled so it can't be confirmed after this charge.
+    if (invoice.stripe_payment_intent_id) {
+      try {
+        const existing = await stripe.paymentIntents.retrieve(
+          invoice.stripe_payment_intent_id, {}, { stripeAccount },
+        );
+        if (existing.status === "processing") {
+          throw new Error(
+            "A payment for this invoice is already processing. Bank payments can take a few days to clear.",
+          );
+        }
+        if (
+          existing.status === "requires_payment_method" ||
+          existing.status === "requires_confirmation" ||
+          existing.status === "requires_action"
+        ) {
+          await stripe.paymentIntents.cancel(existing.id, {}, { stripeAccount });
+        }
+      } catch (e) {
+        if ((e as Error).message?.startsWith("A payment for this invoice is already processing")) throw e;
+        // Retrieve/cancel hiccups don't block the charge; the reconcile above ran.
+      }
+    }
     // Saved-card refs can be orphaned by a connected-account cutover; verify
     // before charging so the client gets "re-add your card" instead of a raw
     // "No such customer: 'cus_…'".
@@ -618,9 +645,12 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
           source: "portal_saved_card",
         },
       }, {
-        // Prevent a double-tap (or a retried request) from charging twice;
-        // amount in the key so a changed balance (credit applied) mints fresh.
-        idempotencyKey: `portal-saved-card-${invoice.id}-${dueCents}`,
+        // Prevent a double-tap (or a retried request) from charging twice.
+        // The amount is in the key so a changed balance (credit applied)
+        // mints fresh; the payment-method id is in the key because after a
+        // decline the client may save a NEW card the same day, and replaying
+        // the old key with different params would be an idempotency_error.
+        idempotencyKey: `portal-saved-card-${invoice.id}-${dueCents}-${c.default_payment_method_id}`,
         stripeAccount,
       });
       await supabaseAdmin.from("invoices").update({

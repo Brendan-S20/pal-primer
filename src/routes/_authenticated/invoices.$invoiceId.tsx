@@ -234,6 +234,33 @@ function InvoiceDetail() {
                   {fmtCents(invoice.total_cents, invoice.currency)}
                 </span>
               </div>
+              {/* Credit applications live on the invoice (credit_applied_cents
+                  + the credit ledger), not in the payments cash list. */}
+              {((invoice as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0) > 0 && (
+                <>
+                  <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <span>Credit applied</span>
+                    <span className="tabular-nums">
+                      -{fmtCents((invoice as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0, invoice.currency)}
+                    </span>
+                  </div>
+                  {invoice.status === "open" && (
+                    <div className="flex items-center justify-between text-sm font-medium">
+                      <span>Amount due</span>
+                      <span className="tabular-nums">
+                        {fmtCents(
+                          Math.max(
+                            (invoice.total_cents ?? 0) -
+                              ((invoice as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0),
+                            0,
+                          ),
+                          invoice.currency,
+                        )}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
               {invoice.status === "paid" && invoice.paid_at && (
                 <p className="text-right text-xs text-muted-foreground">Paid {formatDay(String(invoice.paid_at))}</p>
               )}

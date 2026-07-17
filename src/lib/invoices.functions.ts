@@ -257,7 +257,7 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
     for (const id of data.ids) {
       const { data: inv, error: rErr } = await supabase
         .from("invoices")
-        .select("id, status, total_cents, currency, client_id, organization_id")
+        .select("id, status, total_cents, credit_applied_cents, currency, client_id, organization_id")
         .eq("id", id)
         .single();
       if (rErr || !inv) { failed++; continue; }
@@ -267,10 +267,16 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
         .update({ status: "paid", paid_at: nowIso })
         .eq("id", id);
       if (uErr) { failed++; continue; }
+      // Record only the cash actually collected out-of-band: the open amount
+      // net of applied credit. The credit portion is already in the credit
+      // ledger; recording the gross total would double-count revenue.
       await supabase.from("payments").insert({
         invoice_id: id,
         organization_id: inv.organization_id,
-        amount_cents: inv.total_cents,
+        amount_cents: Math.max(
+          (inv.total_cents ?? 0) - ((inv as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0),
+          0,
+        ),
         currency: inv.currency ?? "usd",
         status: "succeeded",
         paid_at: nowIso,
@@ -488,6 +494,10 @@ async function chargeSavedCardCore(
   const invoice = invoiceRow as any;
   if (invoice.status === "paid") throw new Error("Invoice already paid");
   if (invoice.status === "void") throw new Error("Invoice is voided");
+  // Drafts are unfinalized: send (or finalize) the invoice before collecting.
+  // Charging a draft would also skip the credit-first ordering, since
+  // apply_credit_to_invoice only touches open invoices.
+  if (invoice.status !== "open") throw new Error("Only open invoices can be charged");
   const dueCents = Math.max(
     (invoice.total_cents ?? 0) - ((invoice as any).credit_applied_cents ?? 0),
     0,
@@ -523,9 +533,21 @@ async function chargeSavedCardCore(
           "A payment for this invoice is already processing. Bank payments can take a few days to clear.",
         );
       }
+      // A still-confirmable intent may be sitting in a client's open pay page
+      // (portal or public link) at the OLD amount. Cancel it before charging
+      // here, or the client could confirm it after this charge and pay twice.
+      if (
+        existing.status === "requires_payment_method" ||
+        existing.status === "requires_confirmation" ||
+        existing.status === "requires_action"
+      ) {
+        await guardStripe.paymentIntents.cancel(
+          existing.id, {}, { stripeAccount: guardAcct.accountId },
+        );
+      }
     } catch (e) {
       if ((e as Error).message?.startsWith("A payment for this invoice is already processing")) throw e;
-      // Retrieve hiccups don't block the charge; the reconcile above ran.
+      // Retrieve/cancel hiccups don't block the charge; the reconcile above ran.
     }
   }
   if (cErr) throw new Error(cErr.message);
@@ -597,10 +619,12 @@ export const chargeInvoiceWithSavedCard = createServerFn({ method: "POST" })
 // ── Credit application (B7) ─────────────────────────────────────────────────
 // The DB routine public.apply_credit_to_invoice is the single writer: it
 // debits the credit ledger ('invoice_application' via post_credit_entry),
-// records a succeeded payments row (raw_event.source='credit_application'),
 // bumps invoices.credit_applied_cents, and flips the invoice to paid only
-// when fully covered. It is idempotent and concurrency-safe (advisory lock +
-// row locks), so a double-click can never apply twice.
+// when fully covered. It deliberately writes NO payments row — payments is
+// the cash ledger (royalties, digests, and platform metrics sum it as
+// collected revenue) and a credit application moves no new cash. It is
+// idempotent and concurrency-safe (advisory lock + row locks), so a
+// double-click can never apply twice.
 async function applyCreditViaRpc(
   supabase: any,
   invoiceId: string,
@@ -650,12 +674,25 @@ export const applyCreditToInvoice = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase } = context;
     await requirePermission(supabase, context.userId, "manage_client_billing");
+    const { invoiceHasProcessingIntent, syncInvoicePaymentIntentAmount } =
+      await import("@/lib/invoice-reconcile.server");
+    // An in-flight bank debit is already paying this invoice — applying credit
+    // now would collect twice when the debit clears.
+    if (await invoiceHasProcessingIntent(data.invoiceId)) {
+      throw new Error(
+        "A bank payment for this invoice is already processing. Wait for it to clear before applying credit.",
+      );
+    }
     const res = await applyCreditViaRpc(supabase, data.invoiceId);
     if (res.reason === "prepaid_topup") {
       throw new Error("Credit can't be applied to a prepaid top-up invoice (paying it grants credit).");
     }
     if (res.appliedCents > 0) {
       await logCreditApplied(supabase, context.userId, data.invoiceId, res.appliedCents);
+      // A pay page may already hold an intent minted at the pre-credit amount;
+      // shrink it (or cancel it when nothing is left due) so the client can't
+      // confirm the stale gross charge.
+      await syncInvoicePaymentIntentAmount(data.invoiceId);
     }
     return {
       appliedCents: res.appliedCents,
@@ -675,13 +712,25 @@ export const chargeAutopayForInvoice = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase } = context;
     await requirePermission(supabase, context.userId, "manage_client_billing");
+    // Check for an in-flight bank debit BEFORE applying credit — the core
+    // charge fn guards its own step, but by then the credit would already be
+    // consumed on an invoice that is being paid.
+    const { invoiceHasProcessingIntent } = await import("@/lib/invoice-reconcile.server");
+    if (await invoiceHasProcessingIntent(data.invoiceId)) {
+      throw new Error(
+        "A payment for this invoice is already processing. Bank payments can take a few days to clear.",
+      );
+    }
     const credit = await applyCreditViaRpc(supabase, data.invoiceId);
     if (credit.invoiceStatus === "void") throw new Error("Invoice is voided");
     if (credit.appliedCents > 0) {
       await logCreditApplied(supabase, context.userId, data.invoiceId, credit.appliedCents);
     }
-    // Fully covered by credit — nothing to charge.
+    // Fully covered by credit — nothing to charge. Cancel any stale
+    // confirmable intent (a pay page could still confirm the old amount).
     if (credit.invoiceStatus === "paid" || credit.remainingDueCents <= 0) {
+      const { syncInvoicePaymentIntentAmount } = await import("@/lib/invoice-reconcile.server");
+      await syncInvoicePaymentIntentAmount(data.invoiceId);
       return {
         appliedCreditCents: credit.appliedCents,
         chargedCents: 0,

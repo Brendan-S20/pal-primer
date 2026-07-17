@@ -169,6 +169,85 @@ export async function reconcileInvoicePayment(invoiceId: string): Promise<Reconc
   }
 }
 
+export type PiSyncOutcome =
+  | "none"        // no stored payment intent
+  | "processing"  // an in-flight bank debit — the invoice IS being paid
+  | "synced"      // confirmable intent updated to the current open amount
+  | "canceled"    // nothing due (or invoice no longer open) — intent canceled
+  | "other";      // succeeded/canceled/etc. — reconcile handles those
+
+/** Keep a stored, still-confirmable PaymentIntent in step with the invoice's
+ *  CURRENT open amount. Credit application shrinks the open amount after an
+ *  intent may already be sitting in a client's open pay page; without this the
+ *  client confirms the stale gross amount AND the credit is consumed. Called
+ *  after every credit application. Never throws. */
+export async function syncInvoicePaymentIntentAmount(invoiceId: string): Promise<PiSyncOutcome> {
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: inv } = await supabaseAdmin
+      .from("invoices")
+      .select("id, organization_id, status, total_cents, credit_applied_cents, currency, stripe_payment_intent_id")
+      .eq("id", invoiceId)
+      .maybeSingle();
+    if (!inv?.stripe_payment_intent_id) return "none";
+
+    const { resolveOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
+    const acct = await resolveOrgStripeAccount(inv.organization_id);
+    if (!acct) return "other";
+    const stripe = await connectStripe();
+    const acctOpts = { stripeAccount: acct.accountId };
+
+    const pi = await stripe.paymentIntents.retrieve(inv.stripe_payment_intent_id, undefined, acctOpts);
+    if (pi.status === "processing") return "processing";
+    const confirmable =
+      pi.status === "requires_payment_method" ||
+      pi.status === "requires_confirmation" ||
+      pi.status === "requires_action";
+    if (!confirmable) return "other";
+
+    const dueCents = Math.max(
+      (inv.total_cents ?? 0) - ((inv as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0),
+      0,
+    );
+    if (inv.status !== "open" || dueCents <= 0) {
+      await stripe.paymentIntents.cancel(pi.id, {}, acctOpts);
+      return "canceled";
+    }
+    if (pi.amount !== dueCents) {
+      await stripe.paymentIntents.update(pi.id, { amount: dueCents }, acctOpts);
+    }
+    return "synced";
+  } catch (e) {
+    console.error("invoice PI amount sync failed", invoiceId, e);
+    return "other";
+  }
+}
+
+/** True when the invoice's stored PaymentIntent is an in-flight bank debit.
+ *  Money paths must not apply credit or charge on top of a processing debit —
+ *  both would collect twice when it clears. Never throws (unknown → false,
+ *  the atomic paid-claim remains the last line of defense). */
+export async function invoiceHasProcessingIntent(invoiceId: string): Promise<boolean> {
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: inv } = await supabaseAdmin
+      .from("invoices")
+      .select("id, organization_id, stripe_payment_intent_id")
+      .eq("id", invoiceId)
+      .maybeSingle();
+    if (!inv?.stripe_payment_intent_id) return false;
+    const { resolveOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
+    const acct = await resolveOrgStripeAccount(inv.organization_id);
+    if (!acct) return false;
+    const stripe = await connectStripe();
+    const pi = await stripe.paymentIntents.retrieve(
+      inv.stripe_payment_intent_id, undefined, { stripeAccount: acct.accountId });
+    return pi.status === "processing";
+  } catch {
+    return false;
+  }
+}
+
 /** Sweep an org's open invoices that have a checkout session or payment
  *  intent attached. Returns how many were flipped to paid. */
 export async function reconcileOpenInvoicesForOrg(orgId: string, limit = 25): Promise<number> {

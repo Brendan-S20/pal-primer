@@ -264,6 +264,31 @@ export function InvoiceDrawer({
                 <span>Total</span>
                 <span>{fmtCents(inv.total_cents, inv.currency ?? "usd")}</span>
               </div>
+              {/* Credit applications live on the invoice (credit_applied_cents
+                  + the credit ledger), not in the payments cash list. */}
+              {((inv as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0) > 0 && (
+                <>
+                  <div className="mt-2 flex items-center justify-between text-muted-foreground">
+                    <span>Credit applied</span>
+                    <span>
+                      -{fmtCents((inv as { credit_applied_cents?: number | null }).credit_applied_cents, inv.currency ?? "usd")}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between border-t pt-2 font-medium">
+                    <span>Amount due</span>
+                    <span>
+                      {fmtCents(
+                        Math.max(
+                          (inv.total_cents ?? 0) -
+                            ((inv as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0),
+                          0,
+                        ),
+                        inv.currency ?? "usd",
+                      )}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Payments */}
