@@ -17,14 +17,16 @@ export async function redetectZonesForOrg(supabase: any, orgId: string): Promise
   const { data: zones, error: zErr } = await supabase
     .from("zones")
     .select(
-      "id, priority, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
+      "id, priority, account_type, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
     )
     .eq("organization_id", orgId);
   if (zErr) throw new Error(zErr.message);
 
   const { data: props, error: pErr } = await supabase
     .from("properties")
-    .select("id, postal_code, latitude, longitude, auto_zone_id, zone_id, zone_override_reason")
+    .select(
+      "id, postal_code, latitude, longitude, account_type, auto_zone_id, zone_id, zone_override_reason, clients(account_type)",
+    )
     .eq("organization_id", orgId)
     .is("archived_at", null);
   if (pErr) throw new Error(pErr.message);
@@ -37,6 +39,9 @@ export async function redetectZonesForOrg(supabase: any, orgId: string): Promise
         p.latitude != null && p.longitude != null
           ? { lat: Number(p.latitude), lng: Number(p.longitude) }
           : null,
+      // Type-appropriateness tie-break: property type, falling back to the
+      // client's account type when the property doesn't set one.
+      accountType: (p.account_type ?? (p.clients as any)?.account_type ?? null) as any,
     });
     const autoZoneId = match ? (match.id as string) : null;
     const hasOverride = !!p.zone_override_reason;

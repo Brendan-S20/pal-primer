@@ -12,7 +12,8 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { useMyRole } from "@/hooks/useMyRole";
+import { useMyRole, usePermissions } from "@/hooks/useMyRole";
+import { StandardPricingCard } from "@/components/StandardPricingCard";
 import { reseedDemoData } from "@/lib/demo.functions";
 import { getOrgBranding, updateOrgBranding, getMyOrg, setPortalSlug, suggestPortalSlug } from "@/lib/org.functions";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -129,11 +130,20 @@ function PreferencesPage() {
         </CardContent>
       </Card>
 
+      <PricingBaselineCard />
       <PortalAddressCard />
       <BrandingCard />
       <DemoDataCard />
     </div>
   );
+}
+
+// Standard pricing moved here from the top of the Zones page (QA round 3,
+// C5): it is workspace-wide configuration, not a zone.
+function PricingBaselineCard() {
+  const { can } = usePermissions();
+  if (!can("manage_pricing")) return null;
+  return <StandardPricingCard />;
 }
 
 function PortalAddressCard() {

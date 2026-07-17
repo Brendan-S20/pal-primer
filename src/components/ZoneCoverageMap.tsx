@@ -39,13 +39,22 @@ export const DRIVE_M_PER_MIN = 800;
 export function ZoneCoverageMap({
   initial,
   onSave,
+  onChange,
   saving,
   height = 420,
+  focusPoint,
 }: {
   initial: CoverageValue;
-  onSave: (v: CoverageValue) => void;
+  /** Standalone mode: renders a Save button that emits the drawn coverage. */
+  onSave?: (v: CoverageValue) => void;
+  /** Controlled mode (zone drawer): emits the coverage on every edit; pass
+   * this and omit onSave so the parent form owns the submit. */
+  onChange?: (v: CoverageValue) => void;
   saving?: boolean;
   height?: number;
+  /** Pans the map here (e.g. a typed ZIP's centroid) and seeds the center
+   * point for radius/drive-time modes when none is placed yet. */
+  focusPoint?: { lat: number; lng: number } | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -159,21 +168,45 @@ export function ZoneCoverageMap({
   // mode gets one fit; individual drags/edits do not refit.
   useEffect(() => { fittedRef.current = false; }, [mode]);
 
-  const save = () => {
+  const currentValue = (): CoverageValue => {
     let polygon: PolygonGeoJSON | null = null;
     if (mode === "polygon" && pointsRef.current.length >= 3) {
       polygon = { type: "Polygon", coordinates: [toRing(pointsRef.current)] };
     }
     const c = centerRef.current;
-    onSave({
+    return {
       mode,
       polygon,
       centerLat: mode !== "polygon" && c ? c.lat : null,
       centerLng: mode !== "polygon" && c ? c.lng : null,
       radiusMeters: mode === "radius" ? Math.round(radius) : null,
       driveTimeMinutes: mode === "drive_time" ? Math.round(minutes) : null,
-    });
+    };
   };
+
+  // Controlled mode: report the coverage after every edit. The ref keeps the
+  // redraw effect's dependency list unchanged when callers pass inline fns.
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; });
+  useEffect(() => {
+    onChangeRef.current?.(currentValue());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick, mode, radius, minutes]);
+
+  // Pan to an externally supplied point (typed ZIP centroid) and seed the
+  // center for circle modes so "ZIP + radius" works without a map click.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !focusPoint) return;
+    map.setView([focusPoint.lat, focusPoint.lng], 12);
+    if (modeRef.current !== "polygon" && !centerRef.current) {
+      centerRef.current = L.latLng(focusPoint.lat, focusPoint.lng);
+      setTick((t) => t + 1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusPoint?.lat, focusPoint?.lng]);
+
+  const save = () => onSave?.(currentValue());
 
   return (
     <div className="space-y-2">
@@ -199,9 +232,11 @@ export function ZoneCoverageMap({
             </>
           )}
         </div>
-        <Button size="sm" onClick={save} disabled={!!saving}>
-          <Save className="mr-1 h-3.5 w-3.5" /> {saving ? "Saving…" : "Save coverage"}
-        </Button>
+        {onSave && (
+          <Button size="sm" onClick={save} disabled={!!saving}>
+            <Save className="mr-1 h-3.5 w-3.5" /> {saving ? "Saving…" : "Save coverage"}
+          </Button>
+        )}
       </div>
 
       {mode === "radius" && (

@@ -113,6 +113,7 @@ export const resolveAddress = createServerFn({ method: "POST" })
       .object({
         placeId: z.string().min(3).max(300),
         sessionToken: z.string().min(8).max(64).optional(),
+        accountType: z.enum(["residential", "commercial"]).optional(),
       })
       .parse(d),
   )
@@ -130,7 +131,7 @@ export const resolveAddress = createServerFn({ method: "POST" })
     const { data: zones } = await context.supabase
       .from("zones")
       .select(
-        "id, name, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
+        "id, name, priority, account_type, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
       )
       .eq("organization_id", orgId);
     const { matchZone } = await import("@/lib/zone-match");
@@ -140,6 +141,7 @@ export const resolveAddress = createServerFn({ method: "POST" })
         details.latitude != null && details.longitude != null
           ? { lat: details.latitude, lng: details.longitude }
           : null,
+      accountType: data.accountType ?? null,
     });
 
     return {

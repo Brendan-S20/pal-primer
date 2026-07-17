@@ -472,6 +472,7 @@ export const readPortalVerificationCode = createServerFn({ method: "POST" })
 
 const internalQuoteSchema = z.object({
   postalCode: z.string().trim().min(3).max(12),
+  accountType: z.enum(["residential", "commercial"]).optional(),
   dogCount: z.coerce.number().int().min(1).max(20),
   frequency: z.enum(["weekly", "biweekly", "twice_weekly", "monthly"]),
   boundaryAreaSqm: z.number().positive().max(1_000_000).optional(),
@@ -495,7 +496,7 @@ export const getInternalQuote = createServerFn({ method: "POST" })
     const { data: zones, error: zErr } = await supabase
       .from("zones")
       .select(
-        "id, name, priority, postal_prefix, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
+        "id, name, priority, account_type, postal_prefix, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
       )
       .eq("organization_id", orgId);
     if (zErr) throw new Error(zErr.message);
@@ -507,6 +508,7 @@ export const getInternalQuote = createServerFn({ method: "POST" })
         data.latitude != null && data.longitude != null
           ? { lat: data.latitude, lng: data.longitude }
           : null,
+      accountType: data.accountType ?? null,
     });
 
     if (!z) return { available: false as const };
@@ -650,6 +652,7 @@ export const onboardClient = createServerFn({ method: "POST" })
     const autoZoneId = await detectZoneId(supabase, orgId, {
       postalCode: data.postalCode,
       point: latitude != null && longitude != null ? { lat: latitude, lng: longitude } : null,
+      accountType: data.accountType,
     });
 
     const hz = data.hazards ?? {};
