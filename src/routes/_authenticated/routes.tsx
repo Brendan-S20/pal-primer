@@ -19,6 +19,7 @@ import {
   updateDispatchSettings,
 } from "@/lib/visits.functions";
 import { backfillPropertyGeocodes } from "@/lib/properties.functions";
+import { US_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/route-window";
 import { completeVisit } from "@/lib/my-day.functions";
 import { RouteMap, buildTechGroups } from "@/components/RouteMap";
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
@@ -574,6 +575,23 @@ function RoutesPage() {
             />
             <p className="mt-1 text-[11px] text-muted-foreground">
               Assignments implying a longer drive are flagged as implausible.
+            </p>
+          </div>
+          <div className="col-span-2">
+            <Label className="text-xs">Timezone</Label>
+            <select
+              defaultValue={(settings as any).timezone ?? DEFAULT_TIMEZONE}
+              onChange={(e) => settingsMut.mutate({ timezone: e.target.value })}
+              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            >
+              {US_TIMEZONES.map((tz) => (
+                <option key={tz.value} value={tz.value}>
+                  {tz.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Route windows and arrival times are anchored to the workday start in this timezone.
             </p>
           </div>
         </div>

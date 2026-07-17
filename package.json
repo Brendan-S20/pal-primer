@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "vitest run tests/permissions.test.ts tests/authz.server.test.ts tests/ai.server.test.ts tests/pricing.test.ts tests/commercial-pricing.test.ts tests/zone-match.test.ts tests/impersonation.test.ts tests/ar.test.ts tests/subscription-form.test.ts tests/route-plausibility.test.ts tests/weather.test.ts tests/estimated-time.test.ts tests/overdue.test.ts tests/credit-application.test.ts",
+    "test": "vitest run tests/permissions.test.ts tests/authz.server.test.ts tests/ai.server.test.ts tests/pricing.test.ts tests/commercial-pricing.test.ts tests/zone-match.test.ts tests/impersonation.test.ts tests/ar.test.ts tests/subscription-form.test.ts tests/route-plausibility.test.ts tests/weather.test.ts tests/estimated-time.test.ts tests/overdue.test.ts tests/credit-application.test.ts tests/visit-lifecycle.test.ts tests/route-window.test.ts",
     "test:db": "tests/run-db-tests.sh"
   },
   "dependencies": {

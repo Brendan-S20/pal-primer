@@ -22,6 +22,7 @@ import {
 } from "@/lib/visits.functions";
 import { listClientHolds } from "@/lib/clients.functions";
 import { formatDay, formatTime, formatClock } from "@/lib/format";
+import { formatVisitDuration } from "@/lib/visit-lifecycle";
 import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
@@ -38,13 +39,6 @@ function fmtWindow(v: any): string {
   if (early) return `After ${formatClock(early)}`;
   if (late) return `Before ${formatClock(late)}`;
   return "Anytime";
-}
-
-function durationMin(v: any): number | null {
-  if (!v.started_at || !v.completed_at) return null;
-  const ms = new Date(v.completed_at).getTime() - new Date(v.started_at).getTime();
-  if (ms <= 0) return null;
-  return Math.round(ms / 60000);
 }
 
 function todayISO(): string {
@@ -156,6 +150,7 @@ export function VisitsTab({
                   <option value="scheduled">Scheduled</option>
                   <option value="in_progress">In progress</option>
                   <option value="completed">Completed</option>
+                  <option value="missed">Missed</option>
                   <option value="skipped">Skipped</option>
                   <option value="canceled">Canceled</option>
                 </select>
@@ -279,7 +274,7 @@ function VisitTable({
           {visits.map((v: any) => {
             const done = v.status === "completed";
             const inProgress = v.status === "in_progress";
-            const dur = durationMin(v);
+            const durText = formatVisitDuration(v.started_at, v.completed_at);
             const service = v.subscription_id ? serviceById.get(v.subscription_id) : null;
             return (
               <tr
@@ -317,7 +312,11 @@ function VisitTable({
                   )}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2.5">
-                  {dur != null ? `${dur} min` : <span className="text-muted-foreground">Not recorded</span>}
+                  {durText === "Not recorded" ? (
+                    <span className="text-muted-foreground">Not recorded</span>
+                  ) : (
+                    durText
+                  )}
                 </td>
                 <td className="px-4 py-2.5">
                   <StatusChip status={v.status} />
@@ -356,6 +355,7 @@ const CHIP_TONES: Record<string, string> = {
   scheduled: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
   in_progress: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
   completed: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+  missed: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
   skipped: "bg-muted text-muted-foreground",
   canceled: "bg-destructive/15 text-destructive",
 };
@@ -577,6 +577,9 @@ function VisitDetailDrawer({
   const listStaffFn = useServerFn(listStaff);
 
   const scheduled = v?.status === "scheduled";
+  // A missed visit is recoverable (B6 finding 2): it can be retroactively
+  // completed if it was actually serviced, or rescheduled for a make-up.
+  const missed = v?.status === "missed";
   const { data: staffData } = useQuery({
     queryKey: ["org-staff"],
     queryFn: () => listStaffFn(),
@@ -644,8 +647,11 @@ function VisitDetailDrawer({
 
   if (!v) return null;
   const service = v.subscription_id ? serviceById.get(v.subscription_id) : null;
-  const dur = durationMin(v);
-  const canComplete = v.status === "scheduled" || v.status === "in_progress";
+  const durText = formatVisitDuration(v.started_at, v.completed_at);
+  // Missed visits can be retroactively completed (it was serviced) or
+  // rescheduled (make-up) — the only recovery from the terminal state.
+  const canComplete = v.status === "scheduled" || v.status === "in_progress" || v.status === "missed";
+  const canReschedule = scheduled || missed;
 
   return (
     <EditDrawer
@@ -677,7 +683,7 @@ function VisitDetailDrawer({
           </div>
           <div className="flex items-center justify-between">
             <dt className="text-muted-foreground">Duration</dt>
-            <dd>{dur != null ? `${dur} min` : "Not recorded"}</dd>
+            <dd>{durText}</dd>
           </div>
           <div className="flex items-center justify-between">
             <dt className="text-muted-foreground">Technician</dt>
@@ -703,8 +709,13 @@ function VisitDetailDrawer({
 
         {confirmDialog}
 
-        {canCorrect && (canComplete || scheduled) && (
+        {canCorrect && (canComplete || canReschedule) && (
           <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+            {missed && (
+              <p className="text-xs text-muted-foreground">
+                This visit was marked missed. If it was serviced, mark it completed; otherwise reschedule a make-up.
+              </p>
+            )}
             <div className="flex flex-wrap items-center gap-1.5">
               {canComplete && (
                 <Button
@@ -725,15 +736,17 @@ function VisitDetailDrawer({
                   {completeMut.isPending ? "Completing…" : "Mark completed"}
                 </Button>
               )}
+              {canReschedule && (
+                <Button
+                  size="sm"
+                  variant={action === "reschedule" ? "default" : "outline"}
+                  onClick={() => setAction(action === "reschedule" ? null : "reschedule")}
+                >
+                  Reschedule…
+                </Button>
+              )}
               {scheduled && (
                 <>
-                  <Button
-                    size="sm"
-                    variant={action === "reschedule" ? "default" : "outline"}
-                    onClick={() => setAction(action === "reschedule" ? null : "reschedule")}
-                  >
-                    Reschedule…
-                  </Button>
                   <Button
                     size="sm"
                     variant={action === "reassign" ? "default" : "outline"}
@@ -753,7 +766,7 @@ function VisitDetailDrawer({
               )}
             </div>
 
-            {action === "reschedule" && scheduled && (
+            {action === "reschedule" && canReschedule && (
               <form
                 className="space-y-2"
                 onSubmit={(e) => {
