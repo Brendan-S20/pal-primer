@@ -11,10 +11,10 @@ async function resolveOrgId(supabase: any, userId: string): Promise<string> {
 // detection across the org's properties so pre-existing clients pick up the
 // new boundaries without someone re-saving each address. Best effort — a
 // redetect failure must never fail the zone save itself.
-async function redetectBestEffort(supabase: any, orgId: string): Promise<number> {
+async function redetectBestEffort(supabase: any, orgId: string, actorUserId?: string | null): Promise<number> {
   try {
     const { redetectZonesForOrg } = await import("@/lib/zones-redetect.server");
-    const updated = await redetectZonesForOrg(supabase, orgId);
+    const updated = await redetectZonesForOrg(supabase, orgId, actorUserId);
     console.info(`[zones] redetect for org ${orgId}: ${updated} properties re-assigned`);
     return updated;
   } catch (e) {
@@ -54,8 +54,16 @@ const polygonSchema = z
   })
   .nullable();
 
+// Real names only ("12" was accepted as a zone name — QA round 3, C5/I11).
+const zoneNameSchema = z
+  .string()
+  .trim()
+  .min(2, "Zone name needs at least 2 characters")
+  .max(120)
+  .regex(/[A-Za-z]/, "Zone name must include letters, not just numbers");
+
 const zoneWriteSchema = z.object({
-  name: z.string().min(1).max(120),
+  name: zoneNameSchema,
   zipCodes: z.array(z.string()).optional(),
   postalPrefix: z.string().max(20).optional().nullable(),
   accountType: z.enum(["residential", "commercial"]).optional().nullable(),
@@ -84,9 +92,38 @@ const zoneWriteSchema = z.object({
   driveTimeMinutes: z.number().int().min(1).max(180).nullable().optional(),
 });
 
+// Map coverage is required at creation (QA round 3, C5): ZIP-only zones can't
+// be drawn on the overview map, break point-based detection for addresses
+// with missing/misfiled ZIPs, and were the root of the "zone with no
+// coordinates" weather and map bugs. ZIPs stay as exact-match signals on top.
+function hasGeometry(d: {
+  geoMatchMode?: string;
+  boundary?: { coordinates?: number[][][] } | null;
+  centerLatitude?: number | null;
+  centerLongitude?: number | null;
+  radiusMeters?: number | null;
+  driveTimeMinutes?: number | null;
+}): boolean {
+  const centered = d.centerLatitude != null && d.centerLongitude != null;
+  if (d.geoMatchMode === "polygon") return !!d.boundary?.coordinates?.[0]?.length;
+  if (d.geoMatchMode === "radius") return centered && !!d.radiusMeters;
+  if (d.geoMatchMode === "drive_time") return centered && !!d.driveTimeMinutes;
+  return false;
+}
+
+const zoneCreateSchema = zoneWriteSchema.superRefine((d, ctx) => {
+  if (!hasGeometry(d)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "Map coverage is required. Draw a polygon or set a center point with a radius or drive time.",
+    });
+  }
+});
+
 export const createZone = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => zoneWriteSchema.parse(d))
+  .inputValidator((d) => zoneCreateSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
@@ -124,7 +161,7 @@ export const createZone = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
 
     // A new zone can capture existing properties immediately.
-    const propertiesUpdated = await redetectBestEffort(supabase, orgId);
+    const propertiesUpdated = await redetectBestEffort(supabase, orgId, userId);
     return { id: row.id as string, propertiesUpdated };
   });
 
@@ -136,6 +173,52 @@ export const updateZone = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
+
+    // A zone that has map coverage must keep it (C5: ZIP-only coverage is no
+    // longer allowed). Merge the patch over the current row and reject
+    // transitions from covered to uncovered. Legacy zones that never had
+    // coverage can still update pricing while they wait for a map.
+    const { data: existing, error: exErr } = await (supabase as any)
+      .from("zones")
+      .select("geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes")
+      .eq("id", data.id)
+      .eq("organization_id", orgId)
+      .single();
+    if (exErr) throw new Error(exErr.message);
+    const touchesGeometry =
+      data.geoMatchMode !== undefined ||
+      data.boundary !== undefined ||
+      data.centerLatitude !== undefined ||
+      data.centerLongitude !== undefined ||
+      data.radiusMeters !== undefined ||
+      data.driveTimeMinutes !== undefined;
+    if (touchesGeometry) {
+      const merged = {
+        geoMatchMode: data.geoMatchMode ?? existing.geo_match_mode ?? "zip",
+        boundary: data.boundary !== undefined ? data.boundary : existing.boundary,
+        centerLatitude:
+          data.centerLatitude !== undefined
+            ? data.centerLatitude
+            : existing.center_latitude != null
+              ? Number(existing.center_latitude)
+              : null,
+        centerLongitude:
+          data.centerLongitude !== undefined
+            ? data.centerLongitude
+            : existing.center_longitude != null
+              ? Number(existing.center_longitude)
+              : null,
+        radiusMeters: data.radiusMeters !== undefined ? data.radiusMeters : existing.radius_meters,
+        driveTimeMinutes:
+          data.driveTimeMinutes !== undefined ? data.driveTimeMinutes : existing.drive_time_minutes,
+      };
+      if (!hasGeometry(merged)) {
+        throw new Error(
+          "Map coverage is required. Draw a polygon or set a center point with a radius or drive time.",
+        );
+      }
+    }
+
     const patch: Record<string, any> = {};
     if (data.name !== undefined) patch.name = data.name;
     if (data.zipCodes !== undefined) patch.zip_codes = normalizeZips(data.zipCodes);
@@ -173,8 +256,19 @@ export const updateZone = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
 
     // Changed coverage/priority can re-assign existing properties.
-    const propertiesUpdated = await redetectBestEffort(supabase, orgId);
+    const propertiesUpdated = await redetectBestEffort(supabase, orgId, userId);
     return { ok: true, propertiesUpdated };
+  });
+
+// Center the coverage map on a typed ZIP (G5: "map centering on ZIP entry")
+// so drawing coverage starts near the zone instead of a continent view.
+export const geocodePostal = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ postalCode: z.string().trim().min(3).max(20) }).parse(d))
+  .handler(async ({ data }) => {
+    const { geocodeAddress } = await import("@/lib/geocode.server");
+    const geo = await geocodeAddress({ postal_code: data.postalCode });
+    return { point: geo ? { latitude: geo.latitude, longitude: geo.longitude } : null };
   });
 
 export const deleteZone = createServerFn({ method: "POST" })
@@ -191,6 +285,6 @@ export const deleteZone = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
 
     // Properties in the deleted zone can fall to another zone (or none).
-    const propertiesUpdated = await redetectBestEffort(supabase, orgId);
+    const propertiesUpdated = await redetectBestEffort(supabase, orgId, userId);
     return { ok: true, propertiesUpdated };
   });

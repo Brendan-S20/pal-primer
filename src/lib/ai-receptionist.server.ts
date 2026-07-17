@@ -50,7 +50,7 @@ export async function runAiReceptionist(
       description:
         "Get an instant per-visit price quote for this business. Use this whenever the caller asks about price, cost, or how much it is.",
       inputSchema: z.object({
-        postal_code: z.string().describe("5-digit US ZIP code"),
+        postal_code: z.string().trim().describe("5-digit US ZIP code"),
         dogs: z.number().int().min(1).max(10),
         frequency: z.enum(["weekly", "biweekly", "twice_weekly", "monthly", "one_time"]),
       }),

@@ -59,7 +59,7 @@ export const createProperty = createServerFn({ method: "POST" })
     const { supabase } = context;
     const { data: client, error: cErr } = await supabase
       .from("clients")
-      .select("organization_id")
+      .select("organization_id, account_type")
       .eq("id", data.clientId)
       .single();
     if (cErr) throw new Error(cErr.message);
@@ -87,6 +87,7 @@ export const createProperty = createServerFn({ method: "POST" })
       point: geo?.latitude != null && geo?.longitude != null
         ? { lat: geo.latitude, lng: geo.longitude }
         : null,
+      accountType: data.accountType ?? (client.account_type as any) ?? null,
     });
 
     const { data: row, error } = await supabase
@@ -149,12 +150,16 @@ export const createProperty = createServerFn({ method: "POST" })
 export async function detectZoneId(
   supabase: any,
   orgId: string,
-  input: { postalCode?: string | null; point?: { lat: number; lng: number } | null },
+  input: {
+    postalCode?: string | null;
+    point?: { lat: number; lng: number } | null;
+    accountType?: "residential" | "commercial" | null;
+  },
 ): Promise<string | null> {
   const { data: zones, error } = await supabase
     .from("zones")
     .select(
-      "id, priority, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
+      "id, priority, account_type, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
     )
     .eq("organization_id", orgId);
   if (error) return null;
@@ -174,7 +179,9 @@ export const updateProperty = createServerFn({ method: "POST" })
     const { supabase } = context;
     const { data: current, error: curErr } = await supabase
       .from("properties")
-      .select("organization_id, client_id, zone_override_reason, street, city, postal_code, auto_zone_id")
+      .select(
+        "organization_id, client_id, zone_override_reason, street, city, postal_code, auto_zone_id, clients(account_type)",
+      )
       .eq("id", data.propertyId)
       .single();
     if (curErr) throw new Error(curErr.message);
@@ -210,6 +217,7 @@ export const updateProperty = createServerFn({ method: "POST" })
         geo?.latitude != null && geo?.longitude != null
           ? { lat: geo.latitude, lng: geo.longitude }
           : null,
+      accountType: data.accountType ?? ((current as any).clients?.account_type as any) ?? null,
     });
     const zonePatch = current.zone_override_reason
       ? { auto_zone_id: autoZoneId }

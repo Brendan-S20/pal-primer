@@ -1,20 +1,32 @@
-// Zone matching shared by quoting (New Client wizard) and property
-// auto-assignment (client detail refactor). Pure math: callers load the
-// org's zones and pass them in.
+// Zone matching shared by quoting (New Client wizard), address resolution,
+// property auto-assignment, and org-wide redetection. Pure math: callers load
+// the org's zones and pass them in.
 //
-// Precedence (QA round 8 — overlap priority):
-//   1. Specificity level: polygon containment beats radius/drive-time
-//      proximity, which beats an exact ZIP match, which beats a
-//      postal-prefix match.
-//   2. `priority` (higher wins) is the FIRST tie-breaker among zones that
-//      match at the SAME specificity level — it never lets, say, a prefix
-//      match beat an exact ZIP match.
-//   3. Longest postal prefix wins among equal-priority prefix matches.
-// Mirrored in the public_quote RPC (ZIP levels only).
+// Precedence (QA round 3, finding B3 — a huge radius on one zone must never
+// swallow another zone's home ZIP):
+//   1. Specificity level:
+//        polygon containment (a drawn boundary is an exact claim on the area)
+//      > exact ZIP match
+//      > postal-prefix match
+//      > radius / drive-time containment (proximity only)
+//      Address-derived signals (ZIP, prefix) always beat proximity-only
+//      matches. This is the B3 fix: 78701 belongs to the zone that names
+//      78701, not to whichever zone drew the biggest circle.
+//   2. `priority` (higher wins) breaks ties among zones matching at the
+//      SAME specificity level.
+//   3. Type-appropriateness: when the property's account type is known, a
+//      zone typed for it beats an untyped zone, which beats a mismatched
+//      one. A commercial property prefers the commercial zone; the manual
+//      per-property zone override (zone_override_reason) remains the
+//      escape hatch when the business wants something else.
+//   4. Longest postal prefix among equal candidates, then id so the result
+//      is deterministic regardless of caller sort order.
+// Mirrored in the public_quote RPC (ZIP levels only — signups have no point).
 
 export interface ZoneMatchFields {
   id: string;
   priority?: number | null;
+  account_type?: string | null;
   postal_prefix?: string | null;
   zip_codes?: string[] | null;
   geo_match_mode?: string | null;
@@ -23,6 +35,13 @@ export interface ZoneMatchFields {
   center_longitude?: number | string | null;
   radius_meters?: number | null;
   drive_time_minutes?: number | null;
+}
+
+export interface ZoneMatchInput {
+  postalCode?: string | null;
+  point?: { lat: number; lng: number } | null;
+  /** Property/client account type, when known. Used as a late tie-breaker. */
+  accountType?: "residential" | "commercial" | null;
 }
 
 export function haversineMeters(
@@ -54,21 +73,32 @@ export function pointInPolygon(point: { lat: number; lng: number }, ring: number
 /** Rough urban driving speed used to turn drive-time into a radius. */
 const DRIVE_M_PER_MIN = 800;
 
-export function matchZone<Z extends ZoneMatchFields>(
-  zones: Z[],
-  input: { postalCode?: string | null; point?: { lat: number; lng: number } | null },
-): Z | null {
+/** Specificity levels — lower is more specific. */
+const LEVEL_POLYGON = 0;
+const LEVEL_EXACT_ZIP = 1;
+const LEVEL_PREFIX = 2;
+const LEVEL_PROXIMITY = 3;
+
+export function matchZone<Z extends ZoneMatchFields>(zones: Z[], input: ZoneMatchInput): Z | null {
   const pc = (input.postalCode ?? "").trim();
   const pt = input.point ?? null;
+  const acct = input.accountType ?? null;
 
   const best = zones
     .map((z) => {
       const mode = (z.geo_match_mode ?? "zip") as string;
-      // Geo match takes precedence when configured and we have a point
+      // A zone can match on several criteria at once (e.g. a radius zone
+      // that also lists the exact ZIP). Score it at its BEST level so the
+      // ZIP listing counts even when the geometry also contains the point.
+      let level: number | null = null;
+      const consider = (l: number) => {
+        if (level === null || l < level) level = l;
+      };
+
       if (pt) {
         if (mode === "polygon" && z.boundary?.coordinates?.[0]) {
           const ring = z.boundary.coordinates[0] as number[][];
-          if (pointInPolygon(pt, ring)) return { z, rank: -2, prefLen: 0 };
+          if (pointInPolygon(pt, ring)) consider(LEVEL_POLYGON);
         }
         if (
           mode === "radius" &&
@@ -82,7 +112,7 @@ export function matchZone<Z extends ZoneMatchFields>(
               lng: Number(z.center_longitude),
             }) <= z.radius_meters
           )
-            return { z, rank: -1, prefLen: 0 };
+            consider(LEVEL_PROXIMITY);
         }
         if (
           mode === "drive_time" &&
@@ -97,23 +127,29 @@ export function matchZone<Z extends ZoneMatchFields>(
             }) <=
             z.drive_time_minutes * DRIVE_M_PER_MIN
           )
-            return { z, rank: -1, prefLen: 0 };
+            consider(LEVEL_PROXIMITY);
         }
       }
-      if (!pc) return null;
-      const exact = Array.isArray(z.zip_codes) && z.zip_codes.includes(pc);
-      const prefix = z.postal_prefix && pc.startsWith(z.postal_prefix);
-      if (!exact && !prefix) return null;
-      return { z, rank: exact ? 0 : 1, prefLen: (z.postal_prefix ?? "").length };
+      if (pc) {
+        if (Array.isArray(z.zip_codes) && z.zip_codes.includes(pc)) consider(LEVEL_EXACT_ZIP);
+        else if (z.postal_prefix && pc.startsWith(z.postal_prefix)) consider(LEVEL_PREFIX);
+      }
+      if (level === null) return null;
+
+      // 0 = typed for this property, 1 = untyped (serves both), 2 = typed
+      // for the other kind. Neutral when the property's type is unknown.
+      const typeScore = acct == null ? 0 : !z.account_type ? 1 : z.account_type === acct ? 0 : 2;
+
+      return { z, level: level as number, typeScore, prefLen: (z.postal_prefix ?? "").length };
     })
-    .filter((m): m is { z: Z; rank: number; prefLen: number } => m !== null)
-    // Specificity rank first, then priority (higher wins) within a rank,
-    // then longest prefix. See the precedence comment at the top.
+    .filter((m): m is { z: Z; level: number; typeScore: number; prefLen: number } => m !== null)
     .sort(
       (a, b) =>
-        a.rank - b.rank ||
+        a.level - b.level ||
         (b.z.priority ?? 0) - (a.z.priority ?? 0) ||
-        b.prefLen - a.prefLen,
+        a.typeScore - b.typeScore ||
+        b.prefLen - a.prefLen ||
+        String(a.z.id).localeCompare(String(b.z.id)),
     )[0];
 
   return best ? best.z : null;

@@ -161,11 +161,12 @@ function NewClientWizard() {
   const quoteKey = useMemo(
     () => ({
       postalCode: postalCode.trim(),
+      accountType,
       dogCount: Math.max(1, validDogs.length),
       frequency: frequency === "one_time" ? "weekly" : frequency,
       boundaryAreaSqm: boundaryAreaSqm ?? undefined,
     }),
-    [postalCode, validDogs.length, frequency, boundaryAreaSqm],
+    [postalCode, accountType, validDogs.length, frequency, boundaryAreaSqm],
   );
 
   const quoteQ = useQuery({
