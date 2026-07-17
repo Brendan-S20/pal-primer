@@ -6,11 +6,19 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
-import { FileText, Plus, X } from "lucide-react";
+import { FileText, MoreHorizontal, Plus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   EmptyState,
   MetaChip,
@@ -21,10 +29,10 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
   getClientBillingSummary,
   generateInvoiceForClient,
-  voidInvoice,
   resumeAutopay,
 } from "@/lib/invoices.functions";
-import { InvoiceDrawer, isInvoiceOverdue } from "@/components/InvoiceDrawer";
+import { InvoiceDrawer } from "@/components/InvoiceDrawer";
+import { InvoiceRow } from "@/components/InvoiceRow";
 import { formatDay } from "@/lib/format";
 import {
   listAddonServices,
@@ -78,10 +86,9 @@ export function PrepayInline({
 // path replies use, so the conversation appears on both this page and Messages.
 export function BillingPanel({ clientId }: { clientId: string }) {
   const qc = useQueryClient();
-  const { confirm, dialog } = useConfirmDialog();
   const summaryFn = useServerFn(getClientBillingSummary);
   const genFn = useServerFn(generateInvoiceForClient);
-  const voidFn = useServerFn(voidInvoice);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const { data } = useQuery({
     queryKey: ["billing-summary", clientId],
@@ -96,35 +103,15 @@ export function BillingPanel({ clientId }: { clientId: string }) {
       return genFn({ data: { clientId, through } });
     },
     onSuccess: (r: any) => {
-      if (r?.id) {
+      if (r?.invoiceId) {
         toast.success("Invoice generated");
         invalidate();
       } else {
-        toast.info("Nothing to invoice yet");
+        toast.info(
+          "Nothing to invoice yet. Invoices generate automatically on this client's cadence.",
+        );
       }
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  // Public pay link (QA round 8): staff copy the no-login /pay/i/{token}
-  // link — the client pays right on the invoice, no portal OTP needed.
-  const copyPayLink = (inv: any) => {
-    if (!inv.public_token) {
-      toast.error("This invoice has no pay link yet");
-      return;
-    }
-    const url = `${window.location.origin}/pay/i/${inv.public_token}`;
-    navigator.clipboard.writeText(url).then(
-      () => toast.success("Pay link copied to clipboard"),
-      () => toast.error("Copy failed"),
-    );
-  };
-
-  const voidMut = useMutation({
-    mutationFn: (id: string) => voidFn({ data: { id } }),
-    onSuccess: () => {
-      toast.success("Invoice voided");
-      invalidate();
+      setAdvancedOpen(false);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -135,7 +122,6 @@ export function BillingPanel({ clientId }: { clientId: string }) {
 
   return (
     <>
-      {dialog}
       <section className="rounded-lg border bg-card shadow-sm p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -146,14 +132,35 @@ export function BillingPanel({ clientId }: { clientId: string }) {
               </p>
             )}
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={genMut.isPending}
-            onClick={() => genMut.mutate()}
-          >
-            {genMut.isPending ? "Generating…" : "Generate invoice from unbilled visits"}
-          </Button>
+          {/* Full auto billing: invoices generate nightly on the client's
+              cadence, so manual generate-from-visits is a demoted fallback in
+              an overflow dialog (mirrors the Invoices page). */}
+          <Dialog open={advancedOpen} onOpenChange={setAdvancedOpen}>
+            <DialogTrigger asChild>
+              <Button variant="ghost" size="sm" aria-label="Advanced invoicing actions">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Generate from visits (manual fallback)</DialogTitle>
+                <DialogDescription>
+                  Invoices generate automatically on this client's cadence, so you normally never
+                  need this. Use it to bill all unbilled completed visits through today right now,
+                  for example before changing their cadence.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  variant="secondary"
+                  onClick={() => genMut.mutate()}
+                  disabled={genMut.isPending}
+                >
+                  {genMut.isPending ? "Generating…" : "Generate from visits"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {invoices.length === 0 ? (
@@ -162,74 +169,32 @@ export function BillingPanel({ clientId }: { clientId: string }) {
               compact
               icon={FileText}
               title="No invoices yet"
-              description="Generate one from unbilled visits or prepay a service."
+              description="Invoices generate automatically when this client's billing cycle ends."
             />
           </div>
         ) : (
-          <ul className="mt-3 divide-y text-sm">
-            {invoices.map((inv: any) => {
-              const overdue = isInvoiceOverdue(inv.status, inv.due_on);
-              return (
-                <li key={inv.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                  <div
-                    className="cursor-pointer"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setDetailInvoiceId(inv.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        setDetailInvoiceId(inv.id);
-                      }
-                    }}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-primary">#{inv.id.slice(0, 8)}</span>
-                      <InvoiceStatusBadge status={inv.status} />
-                      <span className="text-xs text-muted-foreground">{inv.kind}</span>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {inv.period_start
-                        ? `${formatDay(inv.period_start)} to ${formatDay(inv.period_end)}`
-                        : formatDay(inv.created_at)}
-                      {inv.due_on && inv.status !== "paid" && inv.status !== "void" && (
-                        <span className={overdue ? "ml-2 font-medium text-destructive" : "ml-2"}>
-                          {overdue ? "Overdue" : "Due"} {formatDay(inv.due_on)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">${(inv.total_cents / 100).toFixed(2)}</span>
-                    {inv.status === "open" && (
-                      <>
-                        <Button size="sm" variant="outline" onClick={() => copyPayLink(inv)}>
-                          Copy pay link
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={voidMut.isPending}
-                          onClick={async () => {
-                            if (
-                              await confirm({
-                                title: "Void this invoice?",
-                                destructive: true,
-                                confirmLabel: "Void invoice",
-                              })
-                            )
-                              voidMut.mutate(inv.id);
-                          }}
-                        >
-                          Void
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="mt-3 overflow-x-auto">
+            {/* Same invoice row + preview drawer as the Invoices page (B4/I3):
+                click a row to open the shared drawer, which holds every action
+                (take payment, send, copy pay link, void). No inline actions. */}
+            <table className="w-full text-sm">
+              <thead className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2 font-semibold">Invoice</th>
+                  <th className="px-4 py-2 font-semibold">Period</th>
+                  <th className="px-4 py-2 font-semibold">Due</th>
+                  <th className="px-4 py-2 text-right font-semibold">Total</th>
+                  <th className="px-4 py-2 font-semibold">Status</th>
+                  <th className="w-10 px-4 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {invoices.map((inv: any) => (
+                  <InvoiceRow key={inv.id} invoice={inv} onOpen={setDetailInvoiceId} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 

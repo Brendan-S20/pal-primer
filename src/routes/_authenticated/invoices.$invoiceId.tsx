@@ -8,6 +8,7 @@ import { getMyOrg } from "@/lib/org.functions";
 import { syncInvoice } from "@/lib/accounting.functions";
 import { sendInvoiceEmail, getEmailSendStatus } from "@/lib/notifications.functions";
 import { formatDay, formatDateTime } from "@/lib/format";
+import { formatLineItemDescription } from "@/lib/invoice-labels";
 import { Button } from "@/components/ui/button";
 import { StatusChip, SectionLabel } from "@/components/client-detail/primitives";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -208,7 +209,7 @@ function InvoiceDetail() {
               ) : (
                 items.map((it) => (
                   <tr key={it.id}>
-                    <td className="py-2.5 pr-4">{it.description}</td>
+                    <td className="py-2.5 pr-4">{formatLineItemDescription(it.description)}</td>
                     <td className="py-2.5 text-right tabular-nums">{fmtCents(it.amount_cents, invoice.currency)}</td>
                   </tr>
                 ))
