@@ -32,7 +32,7 @@ export const getReports = createServerFn({ method: "POST" })
       .lte("scheduled_on", to);
     if (vErr) throw new Error(vErr.message);
 
-    const visitCounts = { completed: 0, skipped: 0, scheduled: 0, in_progress: 0, cancelled: 0 } as Record<string, number>;
+    const visitCounts = { completed: 0, skipped: 0, missed: 0, scheduled: 0, in_progress: 0, cancelled: 0 } as Record<string, number>;
     const perTech: Record<string, { completed: number; skipped: number; total: number }> = {};
     const perZone: Record<string, { completed: number; skipped: number; total: number }> = {};
     const skipReasons: Record<string, number> = {};
@@ -137,9 +137,13 @@ export const getReports = createServerFn({ method: "POST" })
       outstandingCents,
       aging,
       visitCounts,
+      // A missed visit is a terminal service failure and counts against the
+      // completion rate alongside skips (B6 finding 5) — otherwise a month of
+      // missed visits would still read 100% complete.
       completionRate:
-        (visitCounts.completed + visitCounts.skipped) > 0
-          ? visitCounts.completed / (visitCounts.completed + visitCounts.skipped)
+        (visitCounts.completed + visitCounts.skipped + visitCounts.missed) > 0
+          ? visitCounts.completed /
+            (visitCounts.completed + visitCounts.skipped + visitCounts.missed)
           : null,
       perTech: Object.entries(perTech)
         .map(([id, s]) => ({

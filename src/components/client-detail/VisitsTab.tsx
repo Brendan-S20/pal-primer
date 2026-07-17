@@ -577,6 +577,9 @@ function VisitDetailDrawer({
   const listStaffFn = useServerFn(listStaff);
 
   const scheduled = v?.status === "scheduled";
+  // A missed visit is recoverable (B6 finding 2): it can be retroactively
+  // completed if it was actually serviced, or rescheduled for a make-up.
+  const missed = v?.status === "missed";
   const { data: staffData } = useQuery({
     queryKey: ["org-staff"],
     queryFn: () => listStaffFn(),
@@ -645,7 +648,10 @@ function VisitDetailDrawer({
   if (!v) return null;
   const service = v.subscription_id ? serviceById.get(v.subscription_id) : null;
   const durText = formatVisitDuration(v.started_at, v.completed_at);
-  const canComplete = v.status === "scheduled" || v.status === "in_progress";
+  // Missed visits can be retroactively completed (it was serviced) or
+  // rescheduled (make-up) — the only recovery from the terminal state.
+  const canComplete = v.status === "scheduled" || v.status === "in_progress" || v.status === "missed";
+  const canReschedule = scheduled || missed;
 
   return (
     <EditDrawer
@@ -703,8 +709,13 @@ function VisitDetailDrawer({
 
         {confirmDialog}
 
-        {canCorrect && (canComplete || scheduled) && (
+        {canCorrect && (canComplete || canReschedule) && (
           <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+            {missed && (
+              <p className="text-xs text-muted-foreground">
+                This visit was marked missed. If it was serviced, mark it completed; otherwise reschedule a make-up.
+              </p>
+            )}
             <div className="flex flex-wrap items-center gap-1.5">
               {canComplete && (
                 <Button
@@ -725,15 +736,17 @@ function VisitDetailDrawer({
                   {completeMut.isPending ? "Completing…" : "Mark completed"}
                 </Button>
               )}
+              {canReschedule && (
+                <Button
+                  size="sm"
+                  variant={action === "reschedule" ? "default" : "outline"}
+                  onClick={() => setAction(action === "reschedule" ? null : "reschedule")}
+                >
+                  Reschedule…
+                </Button>
+              )}
               {scheduled && (
                 <>
-                  <Button
-                    size="sm"
-                    variant={action === "reschedule" ? "default" : "outline"}
-                    onClick={() => setAction(action === "reschedule" ? null : "reschedule")}
-                  >
-                    Reschedule…
-                  </Button>
                   <Button
                     size="sm"
                     variant={action === "reassign" ? "default" : "outline"}
@@ -753,7 +766,7 @@ function VisitDetailDrawer({
               )}
             </div>
 
-            {action === "reschedule" && scheduled && (
+            {action === "reschedule" && canReschedule && (
               <form
                 className="space-y-2"
                 onSubmit={(e) => {

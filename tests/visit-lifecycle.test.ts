@@ -15,12 +15,21 @@ describe("visitDurationMinutes / formatVisitDuration (I13 #10)", () => {
     expect(formatVisitDuration(started, completed)).toBe("42 min");
   });
 
-  it("shows a computed duration for the identical 6:05/6:05 repro, not 'Not recorded'", () => {
-    // The B6 backfill artifact: start == completion to the millisecond. This
-    // used to blank to "Not recorded"; now it reads as a computed 0.
+  it("treats the identical 6:05/6:05 repro as not recorded (fabricated start)", () => {
+    // The B6 backfill artifact: start == completion to the millisecond. An
+    // equal start and completion is the fabrication signature (office-complete
+    // stamped started_at = now() = completed_at), never a real service, so it
+    // reads "Not recorded" rather than a misleading "Under a minute" (finding 4).
     const t = "2026-07-16T06:05:00.000Z";
-    expect(visitDurationMinutes(t, t)).toBe(0);
-    expect(formatVisitDuration(t, t)).toBe("Under a minute");
+    expect(visitDurationMinutes(t, t)).toBeNull();
+    expect(formatVisitDuration(t, t)).toBe("Not recorded");
+  });
+
+  it("reads a genuine positive sub-minute gap as 'Under a minute'", () => {
+    // Distinct from the identical-timestamp fabrication above: a real 20-second
+    // visit rounds to 0 minutes but is a genuine service.
+    expect(visitDurationMinutes("2026-07-16T06:05:00Z", "2026-07-16T06:05:20Z")).toBe(0);
+    expect(formatVisitDuration("2026-07-16T06:05:00Z", "2026-07-16T06:05:20Z")).toBe("Under a minute");
   });
 
   it("returns null / 'Not recorded' when a timestamp is missing", () => {
