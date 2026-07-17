@@ -93,6 +93,7 @@ import { Route as AuthenticatedSettingsPromotionsRouteImport } from './routes/_a
 import { Route as AuthenticatedSettingsPreferencesRouteImport } from './routes/_authenticated/settings.preferences'
 import { Route as AuthenticatedSettingsPaymentsRouteImport } from './routes/_authenticated/settings.payments'
 import { Route as AuthenticatedSettingsLeadFormRouteImport } from './routes/_authenticated/settings.lead-form'
+import { Route as AuthenticatedSettingsInvoicingRouteImport } from './routes/_authenticated/settings.invoicing'
 import { Route as AuthenticatedSettingsEmailsRouteImport } from './routes/_authenticated/settings.emails'
 import { Route as AuthenticatedSettingsDeepCleanRouteImport } from './routes/_authenticated/settings.deep-clean'
 import { Route as AuthenticatedSettingsBlackoutsRouteImport } from './routes/_authenticated/settings.blackouts'
@@ -560,6 +561,12 @@ const AuthenticatedSettingsLeadFormRoute =
     path: '/lead-form',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedSettingsInvoicingRoute =
+  AuthenticatedSettingsInvoicingRouteImport.update({
+    id: '/invoicing',
+    path: '/invoicing',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedSettingsEmailsRoute =
   AuthenticatedSettingsEmailsRouteImport.update({
     id: '/emails',
@@ -807,6 +814,7 @@ export interface FileRoutesByFullPath {
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
+  '/settings/invoicing': typeof AuthenticatedSettingsInvoicingRoute
   '/settings/lead-form': typeof AuthenticatedSettingsLeadFormRoute
   '/settings/payments': typeof AuthenticatedSettingsPaymentsRoute
   '/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute
@@ -917,6 +925,7 @@ export interface FileRoutesByTo {
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
+  '/settings/invoicing': typeof AuthenticatedSettingsInvoicingRoute
   '/settings/lead-form': typeof AuthenticatedSettingsLeadFormRoute
   '/settings/payments': typeof AuthenticatedSettingsPaymentsRoute
   '/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute
@@ -1034,6 +1043,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/_authenticated/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/_authenticated/settings/emails': typeof AuthenticatedSettingsEmailsRoute
+  '/_authenticated/settings/invoicing': typeof AuthenticatedSettingsInvoicingRoute
   '/_authenticated/settings/lead-form': typeof AuthenticatedSettingsLeadFormRoute
   '/_authenticated/settings/payments': typeof AuthenticatedSettingsPaymentsRoute
   '/_authenticated/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute
@@ -1152,6 +1162,7 @@ export interface FileRouteTypes {
     | '/settings/blackouts'
     | '/settings/deep-clean'
     | '/settings/emails'
+    | '/settings/invoicing'
     | '/settings/lead-form'
     | '/settings/payments'
     | '/settings/preferences'
@@ -1262,6 +1273,7 @@ export interface FileRouteTypes {
     | '/settings/blackouts'
     | '/settings/deep-clean'
     | '/settings/emails'
+    | '/settings/invoicing'
     | '/settings/lead-form'
     | '/settings/payments'
     | '/settings/preferences'
@@ -1378,6 +1390,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/blackouts'
     | '/_authenticated/settings/deep-clean'
     | '/_authenticated/settings/emails'
+    | '/_authenticated/settings/invoicing'
     | '/_authenticated/settings/lead-form'
     | '/_authenticated/settings/payments'
     | '/_authenticated/settings/preferences'
@@ -2055,6 +2068,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsLeadFormRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/settings/invoicing': {
+      id: '/_authenticated/settings/invoicing'
+      path: '/invoicing'
+      fullPath: '/settings/invoicing'
+      preLoaderRoute: typeof AuthenticatedSettingsInvoicingRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/settings/emails': {
       id: '/_authenticated/settings/emails'
       path: '/emails'
@@ -2330,6 +2350,7 @@ interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsBlackoutsRoute: typeof AuthenticatedSettingsBlackoutsRoute
   AuthenticatedSettingsDeepCleanRoute: typeof AuthenticatedSettingsDeepCleanRoute
   AuthenticatedSettingsEmailsRoute: typeof AuthenticatedSettingsEmailsRoute
+  AuthenticatedSettingsInvoicingRoute: typeof AuthenticatedSettingsInvoicingRoute
   AuthenticatedSettingsLeadFormRoute: typeof AuthenticatedSettingsLeadFormRoute
   AuthenticatedSettingsPaymentsRoute: typeof AuthenticatedSettingsPaymentsRoute
   AuthenticatedSettingsPreferencesRoute: typeof AuthenticatedSettingsPreferencesRoute
@@ -2353,6 +2374,7 @@ const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsBlackoutsRoute: AuthenticatedSettingsBlackoutsRoute,
   AuthenticatedSettingsDeepCleanRoute: AuthenticatedSettingsDeepCleanRoute,
   AuthenticatedSettingsEmailsRoute: AuthenticatedSettingsEmailsRoute,
+  AuthenticatedSettingsInvoicingRoute: AuthenticatedSettingsInvoicingRoute,
   AuthenticatedSettingsLeadFormRoute: AuthenticatedSettingsLeadFormRoute,
   AuthenticatedSettingsPaymentsRoute: AuthenticatedSettingsPaymentsRoute,
   AuthenticatedSettingsPreferencesRoute: AuthenticatedSettingsPreferencesRoute,
