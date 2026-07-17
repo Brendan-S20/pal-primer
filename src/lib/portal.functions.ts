@@ -186,7 +186,56 @@ export const portalListInvoices = createServerFn({ method: "GET" })
     }
     const { data: rows, error } = await sb.rpc("portal_list_invoices", { _token: data.token });
     if (error) throw new Error(error.message);
-    return rows ?? [];
+
+    // G1: the portal must show the client's real debt — due dates, overdue
+    // state, and open count/total. The RPC predates due_on; merge it from the
+    // invoices table (scoped to this session's client) and compute the
+    // summary with the same shared helper the staff surfaces use.
+    const { isInvoiceOverdue, summarizeOpenInvoices } = await import("@/lib/overdue");
+    const { invoiceOutstandingCents } = await import("@/lib/ar");
+    const { data: dueRows, error: dueErr } = await sb
+      .from("invoices")
+      .select("id, due_on, credit_applied_cents")
+      .eq("client_id", session.clientId);
+    if (dueErr) throw new Error(dueErr.message);
+    const dueById = new Map(
+      ((dueRows ?? []) as Array<{ id: string; due_on: string | null; credit_applied_cents: number | null }>).map(
+        (r) => [r.id, r],
+      ),
+    );
+    const invoices = ((rows ?? []) as Array<{
+      invoice_id: string;
+      status: string;
+      kind: string;
+      total_cents: number | null;
+      issued_at: string | null;
+      period_start: string | null;
+      period_end: string | null;
+    }>).map((r) => {
+      const extra = dueById.get(r.invoice_id);
+      const due_on = extra?.due_on ?? null;
+      const credit_applied_cents = extra?.credit_applied_cents ?? 0;
+      return {
+        ...r,
+        due_on,
+        credit_applied_cents,
+        // What the client still owes on this invoice, net of applied credit (B7).
+        amount_due_cents: invoiceOutstandingCents({
+          status: r.status,
+          total_cents: r.total_cents,
+          credit_applied_cents,
+        }),
+        overdue: isInvoiceOverdue(r.status, due_on),
+      };
+    });
+    const summary = summarizeOpenInvoices(invoices);
+    return {
+      invoices,
+      openCount: summary.openCount,
+      openTotalCents: summary.openTotalCents,
+      overdueCount: summary.overdueCount,
+      nextDueOn: summary.nextDueOn,
+    };
   });
 
 export const portalListPrepaidSubs = createServerFn({ method: "GET" })
@@ -527,13 +576,16 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
 
     const { data: invoice, error: iErr } = await supabaseAdmin
       .from("invoices")
-      .select("id, organization_id, client_id, total_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id")
+      .select("id, organization_id, client_id, total_cents, credit_applied_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id")
       .eq("id", data.invoiceId).single();
     if (iErr) throw new Error(iErr.message);
     if (invoice.client_id !== c.id) throw new Error("Invoice not found");
     if (invoice.status === "paid") throw new Error("Already paid");
     if (invoice.status === "void") throw new Error("Voided");
-    if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Zero total");
+    // Charge what's still owed, net of applied credit (B7) — never the gross total.
+    const { invoiceOutstandingCents } = await import("@/lib/ar");
+    const dueCents = invoiceOutstandingCents(invoice);
+    if (dueCents <= 0) throw new Error("Nothing due on this invoice");
     // Stale-open guard: if a prior session/intent already paid this invoice
     // (webhook missed), reconcile instead of charging the saved card too.
     if (invoice.stripe_checkout_session_id || invoice.stripe_payment_intent_id) {
@@ -544,6 +596,33 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
     }
 
     const { stripe, stripeAccount } = await loadStripe(invoice.organization_id);
+    // In-flight bank debit guard (same rule as the staff charge path): a
+    // stored PI in "processing" means the invoice IS being paid — charging
+    // the saved card on top would collect twice when the debit clears. A
+    // still-confirmable stale intent (e.g. an abandoned Payment Element at
+    // the old amount) is canceled so it can't be confirmed after this charge.
+    if (invoice.stripe_payment_intent_id) {
+      try {
+        const existing = await stripe.paymentIntents.retrieve(
+          invoice.stripe_payment_intent_id, {}, { stripeAccount },
+        );
+        if (existing.status === "processing") {
+          throw new Error(
+            "A payment for this invoice is already processing. Bank payments can take a few days to clear.",
+          );
+        }
+        if (
+          existing.status === "requires_payment_method" ||
+          existing.status === "requires_confirmation" ||
+          existing.status === "requires_action"
+        ) {
+          await stripe.paymentIntents.cancel(existing.id, {}, { stripeAccount });
+        }
+      } catch (e) {
+        if ((e as Error).message?.startsWith("A payment for this invoice is already processing")) throw e;
+        // Retrieve/cancel hiccups don't block the charge; the reconcile above ran.
+      }
+    }
     // Saved-card refs can be orphaned by a connected-account cutover; verify
     // before charging so the client gets "re-add your card" instead of a raw
     // "No such customer: 'cus_…'".
@@ -554,7 +633,7 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
     }
     try {
       const pi = await stripe.paymentIntents.create({
-        amount: invoice.total_cents,
+        amount: dueCents,
         currency: invoice.currency ?? "usd",
         customer: c.stripe_customer_id,
         payment_method: c.default_payment_method_id,
@@ -567,7 +646,11 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
         },
       }, {
         // Prevent a double-tap (or a retried request) from charging twice.
-        idempotencyKey: `portal-saved-card-${invoice.id}-${invoice.total_cents}`,
+        // The amount is in the key so a changed balance (credit applied)
+        // mints fresh; the payment-method id is in the key because after a
+        // decline the client may save a NEW card the same day, and replaying
+        // the old key with different params would be an idempotency_error.
+        idempotencyKey: `portal-saved-card-${invoice.id}-${dueCents}-${c.default_payment_method_id}`,
         stripeAccount,
       });
       await supabaseAdmin.from("invoices").update({
@@ -867,14 +950,17 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     const supabaseAdmin = await admin();
     const { data: invoice, error: iErr } = await supabaseAdmin
       .from("invoices")
-      .select("id, organization_id, client_id, total_cents, currency, status, stripe_payment_intent_id, stripe_checkout_session_id")
+      .select("id, organization_id, client_id, total_cents, credit_applied_cents, currency, status, stripe_payment_intent_id, stripe_checkout_session_id")
       .eq("id", data.invoiceId)
       .single();
     if (iErr) throw new Error(iErr.message);
     if (invoice.client_id !== session.clientId) throw new Error("Invoice not found");
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
-    if (!invoice.total_cents || invoice.total_cents <= 0) throw new Error("Invoice total is zero");
+    // Charge what's still owed, net of applied credit (B7) — never the gross total.
+    const { invoiceOutstandingCents } = await import("@/lib/ar");
+    const dueCents = invoiceOutstandingCents(invoice);
+    if (dueCents <= 0) throw new Error("Nothing due on this invoice");
     // If the stored intent OR a legacy hosted-checkout session already
     // succeeded but the status is stale (webhook missed), reconcile instead
     // of minting a new intent and charging the client a second time.
@@ -938,7 +1024,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
           // setup_future_usage — a staff-minted intent doesn't save the card,
           // but the client paying it themselves consents to saving theirs.
           const updateParams = {
-            amount: invoice.total_cents,
+            amount: dueCents,
             currency,
             metadata,
             setup_future_usage: "off_session" as const,
@@ -966,7 +1052,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
 
     if (!pi) {
       const createParams = {
-        amount: invoice.total_cents,
+        amount: dueCents,
         currency,
         customer: customerId,
         setup_future_usage: "off_session" as const,
@@ -997,7 +1083,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
       clientSecret: pi.client_secret as string,
       publishableKey,
       stripeAccount: acct.accountId,
-      amountCents: invoice.total_cents,
+      amountCents: dueCents,
       currency,
       invoiceId: invoice.id,
       businessName: client?.display_name as string,

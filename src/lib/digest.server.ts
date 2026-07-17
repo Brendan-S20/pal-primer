@@ -122,19 +122,17 @@ export async function computeDigestMetrics(orgId: string): Promise<DigestMetrics
     .eq("organization_id", orgId)
     .gte("created_at", weekStartIso);
 
-  // Open AR
+  // Open AR — same shared math as Dashboard/Reports/Invoices (B1): balances
+  // net of applied credit, overdue by due_on.
   const { data: openInvoices } = await supabaseAdmin
     .from("invoices")
-    .select("total_cents, issued_at, status")
+    .select("total_cents, credit_applied_cents, due_on, issued_at, status")
     .eq("organization_id", orgId)
     .eq("status", "open");
-  const openArCents = (openInvoices ?? []).reduce(
-    (s: number, i: any) => s + (i.total_cents ?? 0),
-    0,
-  );
-  const overdueInvoices = (openInvoices ?? []).filter(
-    (i: any) => i.issued_at && new Date(i.issued_at).getTime() < now - 7 * DAY,
-  ).length;
+  const { summarizeAr } = await import("@/lib/ar");
+  const arSummary = summarizeAr((openInvoices ?? []) as any[]);
+  const openArCents = arSummary.arOpenCents;
+  const overdueInvoices = arSummary.overdueCount;
 
   // At-risk (churn score >= 60)
   const { count: atRiskCount } = await supabaseAdmin

@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveCaller } from "@/lib/authz.server";
 import { hasPermission } from "@/lib/permissions";
+import { invoiceOutstandingCents, isInvoiceOverdue, summarizeAr } from "@/lib/ar";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -51,10 +52,14 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
         canViewFinancials
           ? supabase
               .from("invoices")
-              .select("id, total_cents, issued_at, client_id, clients(display_name)")
+              // `status` MUST be selected (B1): the shared AR math keys on it,
+              // and dropping it from this select made every row sum to $0
+              // while Reports (which selects status) showed the real figure.
+              // due_on + credit_applied_cents feed the shared overdue/net math.
+              .select("id, status, total_cents, credit_applied_cents, due_on, issued_at, client_id, clients(display_name)")
               .eq("organization_id", orgId)
               .eq("status", "open")
-              .order("issued_at", { ascending: true })
+              .order("due_on", { ascending: true, nullsFirst: false })
           : Promise.resolve(emptyRes),
         supabase
           .from("staff")
@@ -90,18 +95,19 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
       0,
     );
 
-    const openInvoices = openInvoicesRes.data ?? [];
-    // Shared AR math (finding #7) so this matches Clients + Reports exactly.
-    const { sumOutstandingCents } = await import("@/lib/ar");
-    const arOpenCents = sumOutstandingCents(openInvoices as any[]);
-    const now = Date.now();
+    const openInvoices = (openInvoicesRes.data ?? []) as any[];
+    // Shared AR math (B1/finding #7): one authoritative rollup, identical to
+    // Reports "Outstanding" and the Invoices index — open balances net of
+    // applied credit, overdue = open AND past due_on (not issued_at + 30d).
+    const ar = summarizeAr(openInvoices, today);
     const overdueInvoices = openInvoices
-      .filter((r: any) => r.issued_at && (now - new Date(r.issued_at).getTime()) / 86400000 > 30)
+      .filter((r: any) => isInvoiceOverdue(r, today))
       .slice(0, 5)
       .map((r: any) => ({
         id: r.id,
         clientName: r.clients?.display_name ?? "-",
-        totalCents: r.total_cents ?? 0,
+        totalCents: invoiceOutstandingCents(r),
+        dueOn: r.due_on ?? null,
         issuedAt: r.issued_at,
       }));
 
@@ -111,18 +117,17 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
       // null (not 0) when the caller can't view financials, so the UI can
       // distinguish "hidden for this role" from a real zero.
       mtdRevenueCents: canViewFinancials ? mtdRevenueCents : null,
-      arOpenCents: canViewFinancials ? arOpenCents : null,
-      overdueCount: canViewFinancials
-        ? openInvoices.filter(
-            (r: any) => r.issued_at && (now - new Date(r.issued_at).getTime()) / 86400000 > 30,
-          ).length
-        : null,
+      arOpenCents: canViewFinancials ? ar.arOpenCents : null,
+      overdueCount: canViewFinancials ? ar.overdueCount : null,
       visitCounts,
       unassignedToday: unassigned,
       weatherFlaggedToday: weatherFlagged,
       todayVisits: visits,
       staff: staffRes.data ?? [],
-      overdueInvoices: canViewFinancials ? overdueInvoices : [],
+      // null (not []) for roles without billing visibility (H4): the UI keys
+      // the whole "Overdue invoices" card off null so dispatchers don't see
+      // an (empty) billing card at all.
+      overdueInvoices: canViewFinancials ? overdueInvoices : null,
       openConcerns: (openTicketsRes.data ?? []).map((r: any) => ({
         id: r.id,
         category: r.category,

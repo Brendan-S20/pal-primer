@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
-import { invoiceOutstandingCents } from "@/lib/ar";
+import { invoiceOutstandingCents, isOutstanding } from "@/lib/ar";
 
 const rangeSchema = z.object({
   from: z.string(), // YYYY-MM-DD
@@ -71,7 +71,7 @@ export const getReports = createServerFn({ method: "POST" })
     // Invoices in range (by issued_at)
     const { data: invoices, error: iErr } = await supabase
       .from("invoices")
-      .select("id, client_id, status, total_cents, issued_at, paid_at, kind")
+      .select("id, client_id, status, total_cents, credit_applied_cents, due_on, issued_at, paid_at, kind")
       .eq("organization_id", orgId);
     if (iErr) throw new Error(iErr.message);
 
@@ -81,25 +81,28 @@ export const getReports = createServerFn({ method: "POST" })
     const aging = { current: 0, d30: 0, d60: 0, d90: 0 };
     const today = new Date();
 
-    for (const inv of invoices ?? []) {
+    // credit_applied_cents/due_on aren't in the generated types yet.
+    for (const inv of (invoices ?? []) as any[]) {
       const issued = inv.issued_at ? inv.issued_at.slice(0, 10) : null;
       const inRange = issued && issued >= from && issued <= to;
       if (inv.status === "paid" && inRange) {
         revenuePaidCents += inv.total_cents ?? 0;
         perClient[inv.client_id] = (perClient[inv.client_id] ?? 0) + (inv.total_cents ?? 0);
       }
-      if (inv.status === "open") {
-        // Shared AR math (finding #7) so this matches Clients + Dashboard.
-        outstandingCents += invoiceOutstandingCents(inv);
+      if (isOutstanding(inv as any)) {
+        // Shared AR math (finding #7/B1) so this matches Clients + Dashboard
+        // + Invoices exactly: open balance net of applied credit (B7).
+        const owed = invoiceOutstandingCents(inv as any);
+        outstandingCents += owed;
         const ref = inv.issued_at;
         if (ref) {
           const days = Math.floor((today.getTime() - new Date(ref).getTime()) / 86400000);
-          if (days <= 0) aging.current += inv.total_cents ?? 0;
-          else if (days <= 30) aging.d30 += inv.total_cents ?? 0;
-          else if (days <= 60) aging.d60 += inv.total_cents ?? 0;
-          else aging.d90 += inv.total_cents ?? 0;
+          if (days <= 0) aging.current += owed;
+          else if (days <= 30) aging.d30 += owed;
+          else if (days <= 60) aging.d60 += owed;
+          else aging.d90 += owed;
         } else {
-          aging.current += inv.total_cents ?? 0;
+          aging.current += owed;
         }
       }
     }

@@ -430,9 +430,12 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
   const todayStr = new Date().toISOString().slice(0, 10);
   const { data: invoices } = await supabaseAdmin
     .from("invoices")
-    .select("id, client_id, total_cents, currency, organization_id, status, clients!inner(id, stripe_customer_id, default_payment_method_id, autopay_enabled, autopay_paused, autopay_failure_count, autopay_last_attempt_at)")
+    .select("id, client_id, total_cents, credit_applied_cents, currency, organization_id, status, stripe_payment_intent_id, stripe_checkout_session_id, clients!inner(id, stripe_customer_id, default_payment_method_id, autopay_enabled, autopay_paused, autopay_failure_count, autopay_last_attempt_at)")
     .eq("organization_id", orgId)
-    .in("status", ["open", "draft"])
+    // Only open invoices: drafts are unfinalized staff WIP and must never be
+    // auto-charged (charging one would also skip credit-first ordering, since
+    // apply_credit_to_invoice only touches open invoices).
+    .eq("status", "open")
     .gt("total_cents", 0)
     // Grace gates money too (wave-2 QA finding 3): an auto-generated invoice
     // must not be charged while it is still in its review/grace window (never
@@ -462,14 +465,67 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
       if (daysSince < waitDays) continue;
     }
 
+    // Stored payment activity guard: a previous night's autopay PI, or a
+    // client-initiated payment, may already cover this invoice. Reconcile
+    // first (rescues a missed webhook instead of charging again); then treat
+    // an in-flight bank debit as "being paid" and skip; cancel a stale
+    // still-confirmable intent so an abandoned pay page at the old amount
+    // can't be confirmed after tonight's charge.
+    if (inv.stripe_payment_intent_id || inv.stripe_checkout_session_id) {
+      const { reconcileInvoicePayment } = await import("@/lib/invoice-reconcile.server");
+      const outcome = await reconcileInvoicePayment(inv.id);
+      if (outcome === "marked_paid" || outcome === "already_paid") continue;
+      if (inv.stripe_payment_intent_id) {
+        try {
+          const existing = await stripe.paymentIntents.retrieve(
+            inv.stripe_payment_intent_id, {}, { stripeAccount: acct.accountId },
+          );
+          if (existing.status === "processing") continue;
+          if (
+            existing.status === "requires_payment_method" ||
+            existing.status === "requires_confirmation" ||
+            existing.status === "requires_action"
+          ) {
+            await stripe.paymentIntents.cancel(existing.id, {}, { stripeAccount: acct.accountId });
+          }
+        } catch (e) {
+          console.error("autopay stored-PI check failed", inv.id, e);
+          // Unknown intent state: skip this invoice tonight rather than risk
+          // charging on top of a payment we can't see.
+          continue;
+        }
+      }
+    }
+
+    // I8 "credits auto-applied first": apply available credit through the
+    // ledger BEFORE charging the card, and charge only the remaining due.
+    // apply_credit_to_invoice is idempotent (advisory lock + row locks) and
+    // only touches 'open' postpaid invoices; if credit fully covers the
+    // invoice it is marked paid and there is nothing to charge.
+    let dueCents = Math.max((inv.total_cents ?? 0) - (inv.credit_applied_cents ?? 0), 0);
+    try {
+      const { data: applied, error: applyErr } = await supabaseAdmin.rpc(
+        "apply_credit_to_invoice",
+        { _invoice_id: inv.id },
+      );
+      if (!applyErr && applied) {
+        dueCents = Math.max(Number((applied as any).remaining_due_cents ?? dueCents), 0);
+        if ((applied as any).invoice_status === "paid" || dueCents <= 0) continue;
+      }
+    } catch (e) {
+      console.error("autopay credit application failed", inv.id, e);
+      // Fall through and charge the last known due amount — never more.
+    }
+    if (dueCents <= 0) continue;
+
     try {
       // Stamp the attempt BEFORE charging so a re-run in the same window (or a
       // webhook lag) is gated by the dunning wait and can't double-charge (H1).
       await supabaseAdmin.from("clients")
         .update({ autopay_last_attempt_at: new Date().toISOString() })
         .eq("id", c.id);
-      await stripe.paymentIntents.create({
-        amount: inv.total_cents,
+      const pi = await stripe.paymentIntents.create({
+        amount: dueCents,
         currency: inv.currency ?? "usd",
         customer: c.stripe_customer_id,
         payment_method: c.default_payment_method_id,
@@ -482,11 +538,18 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
         },
       }, {
         stripeAccount: acct.accountId,
-        // Idempotent per invoice+amount: a retried request never charges twice.
-        idempotencyKey: `autopay-${inv.id}-${inv.total_cents}`,
+        // Idempotent per invoice+amount: a retried request never charges
+        // twice. The amount is the OPEN amount (net of applied credit), so a
+        // later credit application mints a fresh key for the smaller charge.
+        idempotencyKey: `autopay-${inv.id}-${dueCents}`,
       });
-      // Success bookkeeping happens in the webhook payment_intent.succeeded
-      // branch, which also clears failure_count. Just count locally.
+      // Store the PI on the invoice so a missed success webhook is rescued by
+      // reconcile (above, next run) instead of re-charging the card. Success
+      // bookkeeping (paid flip, payments row, failure_count reset) stays in
+      // the webhook payment_intent.succeeded branch.
+      await supabaseAdmin.from("invoices")
+        .update({ stripe_payment_intent_id: pi.id })
+        .eq("id", inv.id);
       charged++;
     } catch (e) {
       const msg = (e as Error).message || "autopay failed";

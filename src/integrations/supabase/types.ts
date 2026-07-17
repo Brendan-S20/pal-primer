@@ -1904,6 +1904,7 @@ export type Database = {
           checkout_url: string | null
           client_id: string
           created_at: string
+          credit_applied_cents: number
           currency: string
           due_on: string | null
           id: string
@@ -1932,6 +1933,7 @@ export type Database = {
           checkout_url?: string | null
           client_id: string
           created_at?: string
+          credit_applied_cents?: number
           currency?: string
           due_on?: string | null
           id?: string
@@ -1960,6 +1962,7 @@ export type Database = {
           checkout_url?: string | null
           client_id?: string
           created_at?: string
+          credit_applied_cents?: number
           currency?: string
           due_on?: string | null
           id?: string
@@ -5201,6 +5204,7 @@ export type Database = {
         Args: { _org_id: string; _through: string }
         Returns: number
       }
+      apply_credit_to_invoice: { Args: { _invoice_id: string }; Returns: Json }
       apply_referral_code: {
         Args: { _code: string; _new_client_id: string }
         Returns: Json
@@ -5378,6 +5382,7 @@ export type Database = {
         Args: { lat1: number; lat2: number; lon1: number; lon2: number }
         Returns: number
       }
+      increment_unit_offense: { Args: { _unit_id: string }; Returns: undefined }
       is_org_member: {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean

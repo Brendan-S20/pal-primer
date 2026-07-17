@@ -23,7 +23,10 @@ function PortalHome() {
   const nextAddr = nextVisit
     ? [nextVisit.street, nextVisit.city, nextVisit.postal_code].filter(Boolean).join(", ")
     : "";
-  const openInvoice = (invoicesQ.data ?? []).find((i) => i.status !== "paid" && i.status !== "void");
+  // G1: show the client's full debt picture, not just the first open invoice.
+  const billing = invoicesQ.data;
+  const openCount = billing?.openCount ?? 0;
+  const overdueCount = billing?.overdueCount ?? 0;
   const recent = (historyQ.data ?? []).slice(0, 2);
 
   return (
@@ -58,18 +61,29 @@ function PortalHome() {
         )}
       </section>
 
-      {/* Balance / open invoice */}
-      {openInvoice ? (
+      {/* Balance / open invoices (G1: count + total + overdue, never hidden) */}
+      {openCount > 0 ? (
         <section>
           <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
-            <Sparkles className="h-4 w-4" /> Open invoice
+            <Sparkles className="h-4 w-4" /> {openCount === 1 ? "Open invoice" : "Open invoices"}
           </h2>
           <div className="rounded-lg border bg-card p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="font-medium">{money(openInvoice.total_cents)}</div>
+                <div className="font-medium">
+                  {openCount} open invoice{openCount === 1 ? "" : "s"} · {money(billing!.openTotalCents)}
+                  {overdueCount > 0 && (
+                    <span className="ml-1 text-destructive">
+                      · {overdueCount} overdue
+                    </span>
+                  )}
+                </div>
                 <div className="text-xs text-muted-foreground">
-                  {openInvoice.issued_at ? `Issued ${fmtDayShort(openInvoice.issued_at)}` : "Ready to pay"}
+                  {overdueCount > 0
+                    ? "Please pay the overdue balance to keep service on schedule."
+                    : billing?.nextDueOn
+                      ? `Next due ${fmtDayShort(billing.nextDueOn)}`
+                      : "Ready to pay"}
                 </div>
               </div>
               <Link to="/portal/$slug/$token/billing" params={{ slug, token }}>

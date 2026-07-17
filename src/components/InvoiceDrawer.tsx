@@ -4,34 +4,32 @@
 // totals, due date, payments history, and every invoice action: charge the
 // saved card, send/remind by email, take payment, copy the public pay link,
 // void, open the full page.
-import { useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { CreditCard, Link2, Mail, BellRing, ExternalLink, Ban } from "lucide-react";
+import { ArrowLeft, CreditCard, Link2, Mail, BellRing, ExternalLink, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
 import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
 import { formatDateTime, formatDay } from "@/lib/format";
-import {
-  getInvoiceDetail,
-  chargeInvoiceWithSavedCard,
-  voidInvoice,
-} from "@/lib/invoices.functions";
+import { getInvoiceDetail, voidInvoice } from "@/lib/invoices.functions";
 import { sendInvoiceEmail } from "@/lib/notifications.functions";
+
+// Re-exported so existing imports (invoices index, client billing tab) keep
+// working; the implementation now lives in the shared domain lib (I3).
+export { isInvoiceOverdue } from "@/lib/overdue";
+import { isInvoiceOverdue } from "@/lib/overdue";
 
 function fmtCents(c: number | null | undefined, currency = "usd") {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: (currency || "usd").toUpperCase(),
   }).format((c ?? 0) / 100);
-}
-
-export function isInvoiceOverdue(status: string, dueOn: string | null | undefined) {
-  return status === "open" && !!dueOn && dueOn < new Date().toISOString().slice(0, 10);
 }
 
 export function InvoiceDrawer({
@@ -45,13 +43,15 @@ export function InvoiceDrawer({
   onChanged?: () => void;
 }) {
   const qc = useQueryClient();
-  const navigate = useNavigate();
   const { confirm, dialog } = useConfirmDialog();
   const detailFn = useServerFn(getInvoiceDetail);
-  const chargeFn = useServerFn(chargeInvoiceWithSavedCard);
   const voidFn = useServerFn(voidInvoice);
   const emailFn = useServerFn(sendInvoiceEmail);
   const [copied, setCopied] = useState(false);
+  // B2: "Take payment" swaps the drawer body to the embedded payment view
+  // instead of navigating to the full invoice page.
+  const [view, setView] = useState<"detail" | "pay">("detail");
+  useEffect(() => setView("detail"), [invoiceId]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["invoice-detail", invoiceId],
@@ -68,19 +68,6 @@ export function InvoiceDrawer({
     qc.invalidateQueries({ queryKey: ["invoice-detail", invoiceId] });
     onChanged?.();
   };
-
-  const chargeMut = useMutation({
-    mutationFn: () => chargeFn({ data: { invoiceId: invoiceId! } }),
-    onSuccess: (r: any) => {
-      toast.success(
-        r.status === "processing"
-          ? "Charge started. Bank payments can take a few days to clear."
-          : "Card charged. The invoice will update shortly.",
-      );
-      refresh();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
 
   const voidMut = useMutation({
     mutationFn: () => voidFn({ data: { id: invoiceId! } }),
@@ -119,7 +106,6 @@ export function InvoiceDrawer({
 
   const open = inv?.status === "open";
   const overdue = inv ? isInvoiceOverdue(inv.status, inv.due_on) : false;
-  const hasSavedCard = !!client?.default_payment_method_id;
   // Grace window (full auto billing): auto-generated invoice, not yet emailed.
   const inGrace = open && !inv?.sent_at && !!inv?.send_after;
 
@@ -134,6 +120,25 @@ export function InvoiceDrawer({
       >
         {isLoading || !inv ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : view === "pay" ? (
+          /* Embedded payment view (B2): saved card / credit / new card, all
+           * inside the popup. Back arrow returns to the invoice detail. */
+          <div className="space-y-4">
+            <button
+              type="button"
+              onClick={() => setView("detail")}
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" /> Back to invoice
+            </button>
+            <StaffInvoicePayForm
+              invoiceId={inv.id}
+              onPaid={() => {
+                refresh();
+                setView("detail");
+              }}
+            />
+          </div>
         ) : (
           <div className="space-y-5 text-sm">
             {/* Status line */}
@@ -176,34 +181,9 @@ export function InvoiceDrawer({
 
             {/* Actions */}
             <div className="flex flex-wrap gap-2">
-              {open && hasSavedCard && (
-                <Button
-                  size="sm"
-                  disabled={chargeMut.isPending}
-                  onClick={async () => {
-                    if (
-                      await confirm({
-                        title: `Charge ${client?.default_card_brand ?? "card"} ····${client?.default_card_last4 ?? ""}?`,
-                        description: `The client's saved card will be charged ${fmtCents(inv.total_cents, inv.currency ?? "usd")} now.`,
-                        confirmLabel: "Charge card",
-                      })
-                    )
-                      chargeMut.mutate();
-                  }}
-                >
-                  <CreditCard className="mr-1 h-3.5 w-3.5" />
-                  {chargeMut.isPending ? "Charging…" : "Charge saved card"}
-                </Button>
-              )}
               {open && (
-                <Button
-                  size="sm"
-                  variant={hasSavedCard ? "outline" : "default"}
-                  onClick={() => {
-                    onClose();
-                    navigate({ to: "/invoices/$invoiceId", params: { invoiceId: inv.id } });
-                  }}
-                >
+                <Button size="sm" onClick={() => setView("pay")}>
+                  <CreditCard className="mr-1 h-3.5 w-3.5" />
                   Take payment
                 </Button>
               )}
@@ -284,6 +264,31 @@ export function InvoiceDrawer({
                 <span>Total</span>
                 <span>{fmtCents(inv.total_cents, inv.currency ?? "usd")}</span>
               </div>
+              {/* Credit applications live on the invoice (credit_applied_cents
+                  + the credit ledger), not in the payments cash list. */}
+              {((inv as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0) > 0 && (
+                <>
+                  <div className="mt-2 flex items-center justify-between text-muted-foreground">
+                    <span>Credit applied</span>
+                    <span>
+                      -{fmtCents((inv as { credit_applied_cents?: number | null }).credit_applied_cents, inv.currency ?? "usd")}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between border-t pt-2 font-medium">
+                    <span>Amount due</span>
+                    <span>
+                      {fmtCents(
+                        Math.max(
+                          (inv.total_cents ?? 0) -
+                            ((inv as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0),
+                          0,
+                        ),
+                        inv.currency ?? "usd",
+                      )}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Payments */}
