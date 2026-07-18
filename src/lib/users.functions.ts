@@ -269,7 +269,10 @@ export const setStaffAddresses = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    // Editing a staff member's start/end routing addresses is a user-management
+    // action, matching sibling setStaffRouting — not dispatcher-reachable (I7).
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
     const patch: Record<string, any> = {};
     if (data.startAddress !== undefined) patch.start_address = data.startAddress || null;
     if (data.startLatitude !== undefined) patch.start_latitude = data.startLatitude;

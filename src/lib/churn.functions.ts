@@ -1,16 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission } from "@/lib/authz.server";
 import { z } from "zod";
 
+// Churn scoring, the at-risk roster, and win-back campaigns (which mint promo
+// codes and email clients) are retention/financial operations — gate on
+// view_financials so a tech/dispatcher token is rejected by the API, not just
+// the route (I7). Matches analytics.functions.ts.
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("organization_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("No organization for user");
-  return data.organization_id as string;
+  return (await requirePermission(supabase, userId, "view_financials")).orgId;
 }
 
 const DAY = 86_400_000;

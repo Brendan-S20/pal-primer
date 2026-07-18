@@ -4,6 +4,7 @@ import {
   isValidLabel,
   assertValidDogName,
   assertValidUnitLabel,
+  assertValidPromoCode,
   dogNeedsUnitReview,
   resolveResponsibleParty,
 } from "@/lib/dna-linkage";
@@ -51,6 +52,23 @@ describe("unit label validation", () => {
 });
 
 // I5 — orphan dogs go to management review, never a silent guess.
+describe("promo code validation (G8 / I11)", () => {
+  it('rejects a bare number like "10"', () => {
+    expect(() => assertValidPromoCode("10")).toThrow(/promo code/i);
+  });
+
+  it("rejects placeholders and too-short codes", () => {
+    for (const bad of ["", " ", "a", "test", "n/a"]) {
+      expect(() => assertValidPromoCode(bad)).toThrow();
+    }
+  });
+
+  it("accepts real codes and trims", () => {
+    expect(assertValidPromoCode(" SUMMER10 ")).toBe("SUMMER10");
+    expect(assertValidPromoCode("SAVE5")).toBe("SAVE5");
+  });
+});
+
 describe("dog → property → unit reconciliation", () => {
   it("flags a dog on a unit-bearing property with no unit", () => {
     expect(dogNeedsUnitReview({ unitId: null, propertyHasUnits: true })).toBe(true);

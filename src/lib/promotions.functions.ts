@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission } from "@/lib/authz.server";
+import { assertValidPromoCode } from "@/lib/dna-linkage";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   const { data, error } = await supabase
@@ -11,6 +13,14 @@ async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   if (error) throw new Error(error.message);
   if (!data) throw new Error("No organization for user");
   return data.organization_id as string;
+}
+
+// Promo codes and gift cards are marketing/discount configuration living under
+// Settings; creating/deleting/voiding them is an office action, not something a
+// technician or dispatcher token may do (I7). RLS alone only tenant-scopes the
+// write — it does not check role — so gate every write on manage_settings.
+async function resolveManagerOrgId(supabase: any, userId: string): Promise<string> {
+  return (await requirePermission(supabase, userId, "manage_settings")).orgId;
 }
 
 // ---------- Promo codes ----------
@@ -45,10 +55,12 @@ export const upsertPromoCode = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => promoSchema.extend({ id: z.string().uuid().optional() }).parse(d))
   .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const orgId = await resolveManagerOrgId(context.supabase, context.userId);
+    // Reject bare-number / placeholder codes like "10" (G8, I11).
+    const validCode = assertValidPromoCode(data.code);
     const row = {
       organization_id: orgId,
-      code: data.code.trim().toUpperCase(),
+      code: validCode.toUpperCase(),
       description: data.description ?? null,
       discount_type: data.discountType,
       discount_value_cents:
@@ -83,7 +95,7 @@ export const deletePromoCode = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const orgId = await resolveManagerOrgId(context.supabase, context.userId);
     const { error } = await context.supabase
       .from("promo_codes")
       .delete()
@@ -130,7 +142,7 @@ export const createGiftCard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => giftSchema.parse(d))
   .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const orgId = await resolveManagerOrgId(context.supabase, context.userId);
     const code = (data.code ?? randomGiftCode()).trim().toUpperCase();
     const { data: ins, error } = await context.supabase
       .from("gift_cards")
@@ -156,7 +168,7 @@ export const voidGiftCard = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const orgId = await resolveManagerOrgId(context.supabase, context.userId);
     const { error } = await context.supabase
       .from("gift_cards")
       .update({ status: "void", remaining_balance_cents: 0 })

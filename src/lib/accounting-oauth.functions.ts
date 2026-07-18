@@ -1,18 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission } from "@/lib/authz.server";
 
 const providerSchema = z.enum(["quickbooks", "xero"]);
-
-async function getOrgId(supabase: any, userId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from("staff")
-    .select("org_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error || !data) throw new Error("No org membership");
-  return data.org_id;
-}
 
 /**
  * Start an OAuth connect flow for QuickBooks Online or Xero.
@@ -29,7 +20,11 @@ export const startAccountingOAuth = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const orgId = await getOrgId(supabase, userId);
+    // Connecting the org's accounting provider is a settings action, matching
+    // the manage_settings gate on every fn in accounting.functions.ts. Without
+    // this, any authenticated member (tech/dispatcher) could initiate the
+    // QuickBooks/Xero OAuth flow (I7).
+    const orgId = (await requirePermission(supabase, userId, "manage_settings")).orgId;
 
     const clientId =
       data.provider === "quickbooks" ? process.env.QBO_CLIENT_ID : process.env.XERO_CLIENT_ID;

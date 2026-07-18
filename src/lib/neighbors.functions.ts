@@ -1,11 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { resolveCaller } from "@/lib/authz.server";
+import { resolveCaller, requirePermission } from "@/lib/authz.server";
 import { hasPermission } from "@/lib/permissions";
 
-async function resolveOrgId(supabase: any, userId: string): Promise<string> {
-  return (await resolveCaller(supabase, userId)).orgId;
+// Neighbor canvassing is an office prospecting tool. The neighbor_leads write
+// RLS is plain org-membership (unlike can_write_org tables), so without an
+// app-level check a technician token could add/seed/update/delete prospect
+// rows — and seeding reads a client's property address. Gate writes on
+// view_client_directory (dispatcher/office/owner), which excludes techs (I7).
+async function resolveWriterOrgId(supabase: any, userId: string): Promise<string> {
+  return (await requirePermission(supabase, userId, "view_client_directory")).orgId;
 }
 
 export type NeighborLead = {
@@ -68,7 +73,7 @@ export const addNeighborLead = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => addSchema.parse(d))
   .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const orgId = await resolveWriterOrgId(context.supabase, context.userId);
     const { data: row, error } = await context.supabase
       .from("neighbor_leads")
       .insert({
@@ -100,7 +105,7 @@ export const seedNeighborsForClient = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => seedSchema.parse(d))
   .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const orgId = await resolveWriterOrgId(context.supabase, context.userId);
     const { data: prop } = await context.supabase
       .from("properties")
       .select("street, city, region, postal_code, latitude, longitude")
@@ -149,13 +154,18 @@ export const updateNeighborLead = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => updateSchema.parse(d))
   .handler(async ({ data, context }) => {
+    const orgId = await resolveWriterOrgId(context.supabase, context.userId);
     const patch: any = {};
     if (data.status) {
       patch.status = data.status;
       if (data.status === "contacted") patch.contacted_at = new Date().toISOString();
     }
     if (data.notes !== undefined) patch.notes = data.notes;
-    const { error } = await context.supabase.from("neighbor_leads").update(patch).eq("id", data.id);
+    const { error } = await context.supabase
+      .from("neighbor_leads")
+      .update(patch)
+      .eq("id", data.id)
+      .eq("organization_id", orgId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -164,7 +174,12 @@ export const deleteNeighborLead = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase.from("neighbor_leads").delete().eq("id", data.id);
+    const orgId = await resolveWriterOrgId(context.supabase, context.userId);
+    const { error } = await context.supabase
+      .from("neighbor_leads")
+      .delete()
+      .eq("id", data.id)
+      .eq("organization_id", orgId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

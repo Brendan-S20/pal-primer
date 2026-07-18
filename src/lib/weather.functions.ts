@@ -410,9 +410,28 @@ export const updateZoneCoords = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
+    // The weather pin writes latitude/longitude, but the zone matcher's radius
+    // containment reads center_latitude/center_longitude. If a zone has no
+    // radius center yet, seed it from the pin so fixing the map pin here also
+    // makes the zone matchable — without ever overwriting an existing center
+    // (which carries a deliberately-placed radius the matcher depends on).
+    const { data: existing } = await supabase
+      .from("zones")
+      .select("center_latitude, center_longitude")
+      .eq("id", data.id)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    const update: Record<string, number> = {
+      latitude: data.latitude,
+      longitude: data.longitude,
+    };
+    if (existing && existing.center_latitude == null && existing.center_longitude == null) {
+      update.center_latitude = data.latitude;
+      update.center_longitude = data.longitude;
+    }
     const { error } = await supabase
       .from("zones")
-      .update({ latitude: data.latitude, longitude: data.longitude })
+      .update(update as any)
       .eq("id", data.id)
       .eq("organization_id", orgId);
     if (error) throw new Error(error.message);
@@ -593,9 +612,12 @@ export const getStaffWorkload = createServerFn({ method: "GET" })
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
 
+    // Only field workers belong on a workload/route board — a dispatcher,
+    // manager, or owner is not a route runner (G6/C3). is_field_tech is the
+    // shared routing-eligibility flag used by My Day, Routes, and Reports.
     const { data: staff } = await supabase
       .from("staff")
-      .select("id, display_name, active")
+      .select("id, display_name, active, is_field_tech")
       .eq("organization_id", orgId)
       .eq("active", true)
       .order("display_name");

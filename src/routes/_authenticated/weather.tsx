@@ -112,9 +112,14 @@ function WeatherPage() {
                 No coordinates on this zone yet. Set them below to load its forecast.
               </div>
             ) : (z as any).status === "error" ? (
-              <div className="text-xs text-destructive">
-                {(z as any).error ??
-                  "Couldn't load the forecast (weather service error). Try Refresh in a moment."}
+              <div className="space-y-2">
+                <div className="text-xs text-destructive">
+                  {(z as any).error ??
+                    "Forecast unavailable right now (weather service error)."}
+                </div>
+                <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+                  {isFetching ? "Retrying…" : "Try again"}
+                </Button>
               </div>
             ) : z.days.length === 0 ? (
               <div className="text-xs text-muted-foreground">

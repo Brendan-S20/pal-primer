@@ -18,7 +18,6 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { MapPin, UserPlus, Trash2, Footprints, ArrowRight, ArrowLeft, Navigation2, Map as MapIcon, List } from "lucide-react";
 import { NeighborMap, type NeighborPin } from "@/components/NeighborMap";
 import { usePermissions } from "@/hooks/useMyRole";
@@ -40,14 +39,6 @@ const STATUS_LABEL: Record<NeighborLead["status"], string> = {
   interested: "Interested",
   converted: "Signed up",
   not_interested: "Passed",
-};
-
-const STATUS_TONE: Record<NeighborLead["status"], "default" | "secondary" | "outline" | "destructive"> = {
-  new: "secondary",
-  contacted: "outline",
-  interested: "default",
-  converted: "default",
-  not_interested: "destructive",
 };
 
 function NeighborsPage() {
@@ -315,7 +306,6 @@ function NeighborsPage() {
                           <option key={k} value={k}>{v}</option>
                         ))}
                       </select>
-                      <Badge variant={STATUS_TONE[r.status]} className="ml-2">{STATUS_LABEL[r.status]}</Badge>
                     </td>
                     <td className="px-3 py-2 max-w-[300px] text-xs text-muted-foreground">{r.notes ?? "-"}</td>
                     <td className="px-3 py-2 text-right">

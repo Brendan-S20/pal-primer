@@ -170,7 +170,9 @@ export function RouteMap({
       if (g.endLat != null && g.endLng != null) all.push([g.endLat, g.endLng]);
     }
     if (all.length > 0) {
-      map.fitBounds(L.latLngBounds(all), { padding: [30, 30] });
+      // Cap the zoom so a day with a single geocoded visit fits to
+      // neighborhood level instead of snapping to one street (C8).
+      map.fitBounds(L.latLngBounds(all), { padding: [30, 30], maxZoom: 14 });
     }
   }, [points, groups, onVisitClick]);
 
