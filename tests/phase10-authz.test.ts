@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { requirePermission } from "@/lib/authz.server";
+import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import type { AppRole } from "@/hooks/useMyRole";
 
 /**
@@ -19,8 +19,13 @@ import type { AppRole } from "@/hooks/useMyRole";
  *  - users.setStaffAddresses → manage_users
  *  - churn.scoreChurnHeuristic / listAtRiskClients / sendWinBack → view_financials
  *  - messages.listMessageThreads / listClientMessages / sendSmsToClient,
- *    reviews.getReferralStats, neighbors.add/seed/update/deleteNeighborLead
- *    → view_client_directory (dispatcher/office/owner; techs rejected)
+ *    reviews.getReferralStats → view_client_directory (dispatcher/office/owner;
+ *    techs rejected)
+ *  - neighbors.seedNeighborsForClient → view_client_directory (reads a client's
+ *    property address to canvass around it), but the individual-lead writes
+ *    (add/update/deleteNeighborLead) require only org membership: door-to-door
+ *    canvassing is a FIELD activity techs perform in Walk mode, so those pass
+ *    for tech and reject only a caller with no org.
  */
 function stubSupabase(row: { organization_id: string; role: AppRole } | null) {
   return {
@@ -71,11 +76,31 @@ describe("churn fns are financial (view_financials)", () => {
   });
 });
 
-describe("client-directory reads/writes reject techs but keep dispatcher (view_client_directory)", () => {
+describe("client-directory reads reject techs but keep dispatcher (view_client_directory)", () => {
   it("rejects tech; still allows dispatcher/office_manager/owner", async () => {
     await rejects("tech", "view_client_directory");
     await allows("dispatcher", "view_client_directory");
     await allows("office_manager", "view_client_directory");
     await allows("owner", "view_client_directory");
+  });
+});
+
+describe("neighbor leads: seed is directory-gated, individual writes are field work", () => {
+  // seedNeighborsForClient reads a client's property address, so it stays on
+  // view_client_directory and rejects techs.
+  it("seed rejects tech, allows dispatcher and up", async () => {
+    await rejects("tech", "view_client_directory");
+    await allows("dispatcher", "view_client_directory");
+  });
+
+  // add/update/deleteNeighborLead only resolveCaller() — org membership. A tech
+  // in Walk mode CAN log/update/remove a door; the only rejection is a caller
+  // with no organization at all.
+  it("individual-lead writes resolve for a tech (org membership only)", async () => {
+    await expect(resolveCaller(sbFor("tech"), "u")).resolves.toEqual({ orgId: ORG, role: "tech" });
+  });
+
+  it("individual-lead writes reject a caller with no org", async () => {
+    await expect(resolveCaller(stubSupabase(null), "u")).rejects.toThrow("No organization for user");
   });
 });
