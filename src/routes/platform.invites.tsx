@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
+import { humanizeRole } from "@/lib/humanize";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   listPlatformInvites, createPlatformInvite, revokePlatformInvite, resendPlatformInvite,
@@ -90,7 +91,7 @@ function InvitesPage() {
                     <TableRow key={r.id}>
                       <TableCell className="font-medium">{r.email}</TableCell>
                       <TableCell>{r.organization_name ?? <span className="text-muted-foreground italic">new org</span>}</TableCell>
-                      <TableCell><Badge variant="outline">{r.role}</Badge></TableCell>
+                      <TableCell><Badge variant="outline">{humanizeRole(r.role)}</Badge></TableCell>
                       <TableCell><Badge variant={STATUS_TONE[r.status]}>{r.status}</Badge></TableCell>
                       <TableCell className="text-sm text-muted-foreground">{new Date(r.expires_at).toLocaleDateString()}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{r.invited_by_email ?? "-"}</TableCell>

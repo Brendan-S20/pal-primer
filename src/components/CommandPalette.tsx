@@ -33,14 +33,14 @@ const NAV: NavEntry[] = [
   // AI tools no longer have a standalone destination — surface the two
   // owner-facing ones (marketing + weekly digest) here as quick actions that
   // deep-link to the dashboard where they render, and point the workflow-bound
-  // ones (review replies, churn, dispatch, zone pricing) at their in-context
-  // page so people can jump straight to the work.
+  // ones (review replies, churn, dispatch) at their in-context page so people
+  // can jump straight to the work. AI zone pricing is intentionally hidden
+  // (QA round 3 C5) — no entry for it here.
   { label: "AI: marketing content", to: "/dashboard", group: "AI" },
   { label: "AI: weekly digest", to: "/dashboard", group: "AI" },
   { label: "AI: review replies", to: "/settings/reviews", group: "AI" },
   { label: "AI: churn risk", to: "/clients", group: "AI" },
   { label: "AI: dispatch", to: "/routes", group: "AI" },
-  { label: "AI: zone pricing", to: "/zones", group: "AI" },
   { label: "Import", to: "/imports", group: "Setup" },
   { label: "Skip rules", to: "/settings/skip-rules", group: "Settings" },
   { label: "Blackouts", to: "/settings/blackouts", group: "Settings" },

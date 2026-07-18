@@ -264,7 +264,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: "Where the AI tools live",
     section: "Communications",
     body: [
-      "AI tools are embedded where they're useful, not on a separate page: review-reply suggestions on [Reviews](/settings/reviews), [churn risk](article:churn-score) on Clients, dispatch suggestions on [Routes](/routes), zone pricing on [Zones](/zones), and the weekly digest + marketing content on the [Dashboard](/dashboard).",
+      "AI tools are embedded where they're useful, not on a separate page: review-reply suggestions on [Reviews](/settings/reviews), [churn risk](article:churn-score) on Clients, dispatch suggestions on [Routes](/routes), and the weekly digest + marketing content on the [Dashboard](/dashboard).",
       "They're bring-your-own-key: add your Anthropic or OpenAI API key once in [AI Tools settings](/settings/ai) and every panel uses it.",
       "The [AI Receptionist](article:platform-addons) is separate: a paid add-on that answers client texts for you around the clock.",
     ],

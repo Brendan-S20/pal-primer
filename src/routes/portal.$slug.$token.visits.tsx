@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { CalendarDays } from "lucide-react";
 import {
   usePortalCtx, UpcomingVisitsList, PlanRow, VacationHoldCard, EmptyBox,
+  ServiceHistorySection,
 } from "@/lib/portal-ui";
 
 export const Route = createFileRoute("/portal/$slug/$token/visits")({
@@ -10,7 +11,7 @@ export const Route = createFileRoute("/portal/$slug/$token/visits")({
 
 function PortalVisits() {
   const {
-    clientQ, visitsQ, subsQ,
+    clientQ, visitsQ, subsQ, token, historyQ, signPhotosFn, concernMut,
     skipMut, rescheduleMut, freqMut, vacationMut,
   } = usePortalCtx();
   const c = clientQ.data as any;
@@ -58,6 +59,17 @@ function PortalVisits() {
           )}
         </section>
       )}
+
+      {/* Past visits belong with visits, not under Requests (G4). */}
+      <ServiceHistorySection
+        rows={historyQ.data ?? []}
+        signPhotos={signPhotosFn}
+        token={token}
+        onReport={(visitId, category, message) =>
+          concernMut.mutate({ visitId, category: category as any, message })
+        }
+        reporting={concernMut.isPending}
+      />
     </div>
   );
 }

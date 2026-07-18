@@ -263,8 +263,6 @@ function InvitePanel() {
     onError: (e) => toast.error((e as Error).message),
   });
 
-  const roleLabel: Record<string, string> = { office_manager: "Office manager", dispatcher: "Dispatcher", tech: "Technician" };
-
   return (
     <Card>
       <CardHeader>
@@ -301,7 +299,7 @@ function InvitePanel() {
             <ul className="divide-y">
               {invites.filter((i) => i.status === "pending").map((i) => (
                 <li key={i.id} className="flex items-center justify-between py-2 text-sm">
-                  <span>{i.email} <span className="text-muted-foreground">· {roleLabel[i.role] ?? i.role}</span></span>
+                  <span>{i.email} <span className="text-muted-foreground">· {humanizeRole(i.role)}</span></span>
                   <span className="flex items-center gap-3">
                     <button className="text-xs underline disabled:opacity-50" onClick={() => resendMut.mutate(i.id)} disabled={resendMut.isPending}>Resend</button>
                     <button className="text-xs text-destructive underline" onClick={() => revokeMut.mutate(i.id)}>Revoke</button>

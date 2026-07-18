@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { humanizeRole } from "@/lib/humanize";
 import { AiSection, DispatchPanel } from "@/components/ai/AiPanels";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -650,7 +651,7 @@ function RoutesPage() {
                 key={s.id}
                 id={s.id}
                 title={s.display_name}
-                subtitle={s.role}
+                subtitle={s.role ? humanizeRole(s.role) : undefined}
                 offRoutes={offRoutes}
                 items={columns[s.id] ?? []}
                 layout={boardLayout}
