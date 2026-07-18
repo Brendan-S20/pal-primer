@@ -34,15 +34,15 @@ function RevenuePage() {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard icon={TrendingUp} label="ARR estimate" value={money(d.arrEstimateCents)} sub="(avg last 3 mo × 12)" />
-        <StatCard icon={DollarSign} label="Avg monthly rev" value={money(d.avgMonthlyCents)} sub="last 3 months" />
-        <StatCard icon={Building2} label="Paying orgs" value={`${d.payingOrgs} / ${d.totalOrgs}`} sub="active, past_due, or grace" />
+        <StatCard icon={DollarSign} label="MRR" value={money(d.mrrCents)} sub="active tenant subscriptions" />
+        <StatCard icon={TrendingUp} label="ARR" value={money(d.arrEstimateCents)} sub="MRR × 12" />
+        <StatCard icon={Building2} label="Paying orgs" value={`${d.payingOrgs} / ${d.totalOrgs}`} sub="active, past due, or grace" />
         <StatCard icon={AlertCircle} label="Platform AR" value={money(d.arOpenCents)} sub="unpaid SaaS invoices" />
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Revenue · trailing 12 months</CardTitle>
+          <CardTitle>SaaS revenue collected · trailing 12 months</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="h-64 w-full">
@@ -85,10 +85,10 @@ function RevenuePage() {
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
-          <CardHeader><CardTitle>Top orgs · MTD</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Top orgs · MRR</CardTitle></CardHeader>
           <CardContent>
             {d.topOrgs.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No revenue this month yet.</p>
+              <p className="text-sm text-muted-foreground">No paying tenants yet.</p>
             ) : (
               <ul className="divide-y">
                 {d.topOrgs.map((o, i) => (
@@ -111,10 +111,10 @@ function RevenuePage() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>MTD revenue by tier</CardTitle></CardHeader>
+          <CardHeader><CardTitle>MRR by tier</CardTitle></CardHeader>
           <CardContent>
             {d.byTier.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No revenue this month yet.</p>
+              <p className="text-sm text-muted-foreground">No paying tenants yet.</p>
             ) : (
               <ul className="divide-y">
                 {d.byTier.map((t) => (

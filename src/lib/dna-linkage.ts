@@ -31,6 +31,32 @@ export function isValidEntityName(name: string | null | undefined): boolean {
 }
 
 /**
+ * A real ORGANIZATION name (signup validation, I11 / H5 #4). Stricter than the
+ * base entity check: also rejects names whose every word is a placeholder junk
+ * token, which is how "Test Test" slipped past — each single word is "test"
+ * (blocklisted) but the two-word name isn't an exact blocklist match.
+ */
+export function isValidOrgName(name: string | null | undefined): boolean {
+  if (!isValidEntityName(name)) return false;
+  const words = (name as string)
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => /[a-z]/.test(w));
+  if (words.length > 0 && words.every((w) => NAME_PLACEHOLDERS.has(w))) return false;
+  return true;
+}
+
+export function assertValidOrgName(name: string | null | undefined): string {
+  if (!isValidOrgName(name)) {
+    throw new Error(
+      "Enter your real business name (not blank or a placeholder like \"Test\").",
+    );
+  }
+  return (name as string).trim();
+}
+
+/**
  * A real LABEL (unit / station descriptor): pure numbers are allowed ("101",
  * "B-12") but whitespace-only and placeholder junk are rejected.
  */

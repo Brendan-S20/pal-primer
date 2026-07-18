@@ -27,8 +27,12 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { ArrowLeft, ExternalLink, Trash2, UserCog } from "lucide-react";
+import { ArrowLeft, ExternalLink, MoreHorizontal, Trash2, UserCog } from "lucide-react";
 import { TenantStatusBadge } from "@/components/TenantStatusBadge";
 
 export const Route = createFileRoute("/platform/tenants/$id")({
@@ -95,6 +99,7 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
   const [reason, setReason] = useState("");
   const [confirmName, setConfirmName] = useState("");
   const [graceDays, setGraceDays] = useState("14");
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const suspendM = useMutation({
     mutationFn: () => suspendFn({ data: { organization_id: t.id, reason } }),
@@ -113,7 +118,7 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
   });
   const deleteM = useMutation({
     mutationFn: () => deleteFn({ data: { organization_id: t.id, confirm_name: confirmName } }),
-    onSuccess: () => { toast.success("Tenant deleted"); setConfirmName(""); onChange(); },
+    onSuccess: () => { toast.success("Tenant deleted"); setConfirmName(""); setDeleteOpen(false); onChange(); },
     onError: (e) => toast.error((e as Error).message),
   });
   const [impersonateUser, setImpersonateUser] = useState<string>("");
@@ -281,12 +286,27 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
               </AlertDialogContent>
             </AlertDialog>
           )}
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="outline" size="sm" className="text-destructive" disabled={!!t.deleted_at}>
-                <Trash2 className="mr-1 h-4 w-4" /> Delete
+          {/* Destructive Delete lives behind an overflow menu, one deliberate
+              step away from the primary Impersonate/Suspend row (H5 #5). */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="More actions" disabled={!!t.deleted_at}>
+                <MoreHorizontal className="h-4 w-4" />
               </Button>
-            </AlertDialogTrigger>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>More actions</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                disabled={!!t.deleted_at}
+                onSelect={(e) => { e.preventDefault(); setDeleteOpen(true); }}
+              >
+                <Trash2 className="mr-2 h-4 w-4" /> Delete tenant
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <AlertDialog open={deleteOpen} onOpenChange={(o) => { setDeleteOpen(o); if (!o) setConfirmName(""); }}>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Soft-delete {t.name}?</AlertDialogTitle>

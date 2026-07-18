@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { fetchPlatformSaasMetrics } from "@/lib/platform-metrics.server";
 
 async function assertPlatformAdmin(supabase: any, userId: string) {
   const { data, error } = await supabase.rpc("is_platform_admin", { _user_id: userId });
@@ -52,10 +53,11 @@ export const getPlatformOverview = createServerFn({ method: "GET" })
     if (orgsRes.error) throw new Error(orgsRes.error.message);
 
     const orgs = orgsRes.data ?? [];
-    // Rough MRR: sum of plan.price_cents for orgs with active/grace/past_due status.
-    // Real MRR wires in step 6 once subscription snapshots are stored. For now we
-    // return 0 and the UI shows "—" until subscriptions exist.
-    const mrr_cents = 0;
+    // MRR is derived from what tenants PAY HOUNDSTACK — the monthly-equivalent
+    // price of each paying tenant's platform subscription plan (H5 / I13 #19).
+    // It must never be sourced from tenant→client collections (GMV). Shared with
+    // the Revenue page via the same computation so the two agree.
+    const { mrrCents: mrr_cents } = await fetchPlatformSaasMetrics(supabaseAdmin);
 
     const byStatus = new Map<string, number>();
     for (const o of orgs) byStatus.set(o.billing_status, (byStatus.get(o.billing_status) ?? 0) + 1);

@@ -1,9 +1,10 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AiSection, DigestPanel, MarketingPanel } from "@/components/ai/AiPanels";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getMyOrg } from "@/lib/org.functions";
+import { getPlatformContext } from "@/lib/platform.functions";
 import { getDashboardSummary } from "@/lib/dashboard.functions";
 import { getBillingStatus } from "@/lib/billing.functions";
 import { hasPermission } from "@/lib/permissions";
@@ -55,10 +56,31 @@ function Dashboard() {
     enabled: hasPermission(role ?? null, "manage_org_billing"),
   });
 
+  // Platform admins have no tenant org by design. If one lands here (bookmark,
+  // "Back to app", a stale session) send them to the platform console instead
+  // of the broken "No organization yet" screen (H5 #3).
+  const orgMissing = !orgLoading && !orgData?.organization;
+  const platformFn = useServerFn(getPlatformContext);
+  const { data: platformCtx, isLoading: platformLoading } = useQuery({
+    queryKey: ["platform", "ctx"],
+    queryFn: () => platformFn(),
+    staleTime: 60_000,
+    enabled: orgMissing,
+  });
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (orgMissing && platformCtx?.isPlatformAdmin) {
+      navigate({ to: "/platform" });
+    }
+  }, [orgMissing, platformCtx, navigate]);
+
   if (orgLoading) return <p className="text-muted-foreground">Loading…</p>;
 
   const org = orgData?.organization;
   if (!org) {
+    if (platformLoading || platformCtx?.isPlatformAdmin) {
+      return <p className="text-muted-foreground">Loading…</p>;
+    }
     return (
       <div className="rounded-lg border bg-card p-6">
         <h1 className="text-xl font-semibold">No organization yet</h1>

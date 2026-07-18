@@ -3,8 +3,12 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 
-// Tenant Stripe Connect (Express) management. Connecting a Stripe account to
-// charge the org's own clients is an admin/settings action → manage_settings.
+// Tenant Stripe Connect (Express) management. Connecting the org's own Stripe
+// account (bank/payout/identity onboarding) is an owner-level financial action,
+// gated by manage_org_billing — owner-only, matching the /payments route ACL and
+// sidebar nav (H5 #6). Previously gated on manage_settings, which let techs and
+// office managers reach these; that was both an authz hole (I7) and the reason
+// the nav/route audience diverged.
 
 
 // Frictionless-signup gate: Stripe Express stays locked until the owner
@@ -25,7 +29,7 @@ async function requireVerifiedEmail(orgId: string): Promise<void> {
 export const getStripeConnectStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_org_billing");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data } = await (supabaseAdmin as any)
       .from("organizations")
@@ -51,7 +55,7 @@ export const startStripeConnect = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ origin: z.string().url() }).parse(d))
   .handler(async ({ data, context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_org_billing");
     await requireVerifiedEmail(orgId);
     const { data: userData } = await context.supabase.auth.getUser();
     const email = userData.user?.email ?? undefined;
@@ -73,7 +77,7 @@ export const startStripeConnect = createServerFn({ method: "POST" })
 export const ensureStripeConnectAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_org_billing");
     await requireVerifiedEmail(orgId);
     const { data: userData } = await context.supabase.auth.getUser();
     const { ensureExpressAccount, resolveOrgStripeAccount } = await import("@/lib/stripe-connect.server");
@@ -91,7 +95,7 @@ export const ensureStripeConnectAccount = createServerFn({ method: "POST" })
 export const createStripeAccountSession = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_org_billing");
     await requireVerifiedEmail(orgId);
     const { resolveOrgStripeAccount, connectStripe, connectPublishableKey } = await import("@/lib/stripe-connect.server");
     const acct = await resolveOrgStripeAccount(orgId);
@@ -115,7 +119,7 @@ export const createStripeAccountSession = createServerFn({ method: "POST" })
 export const refreshStripeConnect = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_org_billing");
     const { resolveOrgStripeAccount, fetchConnectAccountState } = await import("@/lib/stripe-connect.server");
     const acct = await resolveOrgStripeAccount(orgId);
     if (!acct) return { connected: false, chargesEnabled: false, status: null as string | null };
@@ -138,7 +142,7 @@ export const refreshStripeConnect = createServerFn({ method: "POST" })
 export const auditClientCardRefs = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_org_billing");
     const { requireOrgStripeAccount, connectStripe, verifyClientStripeCustomer } = await import("@/lib/stripe-connect.server");
     const acct = await requireOrgStripeAccount(orgId);
     const stripe = await connectStripe();
@@ -164,7 +168,7 @@ export const auditClientCardRefs = createServerFn({ method: "POST" })
 export const disconnectStripeConnect = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_org_billing");
     const { resolveOrgStripeAccount, connectStripe, clearOrgClientStripeRefs } = await import("@/lib/stripe-connect.server");
     const acct = await resolveOrgStripeAccount(orgId);
     if (acct) {
