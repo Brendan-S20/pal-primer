@@ -651,7 +651,7 @@ function RoutesPage() {
                 key={s.id}
                 id={s.id}
                 title={s.display_name}
-                subtitle={humanizeRole(s.role)}
+                subtitle={s.role ? humanizeRole(s.role) : undefined}
                 offRoutes={offRoutes}
                 items={columns[s.id] ?? []}
                 layout={boardLayout}

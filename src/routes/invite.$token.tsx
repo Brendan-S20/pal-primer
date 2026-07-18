@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { lookupInviteByToken, acceptPlatformInvite } from "@/lib/platform-onboarding.functions";
 import { supabase } from "@/integrations/supabase/client";
+import { humanizeRole } from "@/lib/humanize";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -81,7 +82,7 @@ function InvitePage() {
                   {q.data.organization_name ?? "a new organization"}
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
-                  as <Badge variant="outline">{q.data.role}</Badge> · for <span className="font-mono">{q.data.email}</span>
+                  as <Badge variant="outline">{humanizeRole(q.data.role)}</Badge> · for <span className="font-mono">{q.data.email}</span>
                 </div>
               </div>
 

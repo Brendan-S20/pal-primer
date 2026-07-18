@@ -2,7 +2,7 @@
  * All sibling routes under /portal/$token/* pull data from usePortal(token).
  * React Query caches by key so switching tabs is instant. */
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -1447,9 +1447,16 @@ export function ServiceHistorySection({
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [lightbox, setLightbox] = useState<string | null>(null);
 
+  // Key the signing round-trip on the actual photo paths, not the rows array
+  // identity — the query result is a fresh array each settle, and this section
+  // now lives on the busy Visits tab where sibling queries re-render it.
+  const pathsKey = useMemo(
+    () => rows.flatMap((r) => r.photo_paths ?? []).join("\n"),
+    [rows],
+  );
   useEffect(() => {
-    const paths = rows.flatMap((r) => r.photo_paths ?? []);
-    if (paths.length === 0) return;
+    if (!pathsKey) return;
+    const paths = pathsKey.split("\n");
     let cancelled = false;
     signPhotos({ data: { token, paths } })
       .then((r) => {
@@ -1459,7 +1466,7 @@ export function ServiceHistorySection({
     return () => {
       cancelled = true;
     };
-  }, [rows, signPhotos, token]);
+  }, [pathsKey, signPhotos, token]);
 
   return (
     <section>
