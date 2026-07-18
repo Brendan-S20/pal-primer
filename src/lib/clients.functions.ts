@@ -441,9 +441,15 @@ export const regeneratePortalLink = createServerFn({ method: "POST" })
   });
 
 /**
- * Read the most recent unconsumed verification code for a client, so the
- * office can read it aloud when a client can't receive SMS/email. Returns null
- * if none is active. Gated + never exposed to the portal itself.
+ * Read (mint) a one-time verification code for a client, so the office can
+ * read it aloud when a client can't receive SMS/email. This is a sensitive
+ * account-takeover-adjacent action (it hands out a valid sign-in code), so it
+ * is (G2/I7):
+ *   - permission-gated SERVER-SIDE to owner/office_manager (reveal_signin_code)
+ *     — a dispatcher or tech token is rejected by the API, not just hidden;
+ *   - the UI additionally requires an explicit click-through confirmation;
+ *   - every reveal is written to the client's Activity with the actor.
+ * Never exposed to the portal itself.
  */
 export const readPortalVerificationCode = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -452,12 +458,12 @@ export const readPortalVerificationCode = createServerFn({ method: "POST" })
     const { orgId } = await requirePermission(
       context.supabase,
       context.userId,
-      "view_client_directory",
+      "reveal_signin_code",
     );
     // Confirm the client is in the caller's org before touching it via admin.
     const { data: client } = await context.supabase
       .from("clients")
-      .select("id")
+      .select("id, display_name")
       .eq("id", data.clientId)
       .eq("organization_id", orgId)
       .maybeSingle();
@@ -465,7 +471,58 @@ export const readPortalVerificationCode = createServerFn({ method: "POST" })
     // Stored codes are hashed, so we can't reveal an existing one — mint a
     // fresh single-use code the office reads aloud and the client enters.
     const { issueOfficeReadCode } = await import("@/lib/portal-auth.server");
-    return issueOfficeReadCode(data.clientId);
+    const result = await issueOfficeReadCode(data.clientId);
+    // G2/I7: EVERY reveal must be auditable. Unlike ordinary best-effort
+    // activity, this is a security event — if the audit row can't be written we
+    // do NOT return the code (the minted code goes unused and expires). Write
+    // the row directly so an insert failure surfaces instead of being swallowed.
+    const { data: staffRow } = await context.supabase
+      .from("staff")
+      .select("display_name")
+      .eq("user_id", context.userId)
+      .maybeSingle();
+    const { error: auditErr } = await context.supabase.from("activity_log").insert({
+      organization_id: orgId,
+      client_id: data.clientId,
+      actor_user_id: context.userId,
+      actor_label: (staffRow as { display_name?: string } | null)?.display_name ?? null,
+      kind: "portal.signin_code_revealed",
+      summary: `Read a one-time portal sign-in code aloud for ${(client as any).display_name ?? "the client"}`,
+      meta: {},
+    });
+    if (auditErr) {
+      throw new Error("Couldn't record the sign-in code reveal to the activity log. Try again.");
+    }
+    return result;
+  });
+
+/**
+ * The portal sign-in channels we can actually deliver a code to for this
+ * client, so staff copy ("code texted to …") matches what the portal really
+ * offers (G2 channel mismatch: SMS is only offered when Twilio is configured).
+ * Directory-gated (same visibility as the client record).
+ */
+export const getClientPortalChannels = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => getClientSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "view_client_directory",
+    );
+    const { data: client } = await context.supabase
+      .from("clients")
+      .select("portal_token")
+      .eq("id", data.clientId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (!client) throw new Error("Client not found");
+    const token = (client as any).portal_token as string | null;
+    if (!token) return { channels: [] as Array<"sms" | "email"> };
+    const { portalContactChannels } = await import("@/lib/portal-auth.server");
+    const contact = await portalContactChannels(token);
+    return { channels: (contact?.channels ?? []).map((c) => c.channel) };
   });
 
 // ---------- Internal quote (for authenticated onboarding wizard) ----------

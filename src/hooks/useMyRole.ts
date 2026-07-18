@@ -63,7 +63,10 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/imports": ["owner", "office_manager"],
   "/settings": ["owner", "office_manager", "tech"],
   "/neighbors": ["owner", "office_manager", "dispatcher", "tech"],
-  "/dna": ["owner", "office_manager", "dispatcher", "tech"],
+  // H1: the DNA compliance workspace (cross-client registry, fines, violation
+  // notices) is office/dispatch only. Techs are scoped to sample logging and
+  // are redirected to /my-day; the DNA read server fns also reject them (I7).
+  "/dna": ["owner", "office_manager", "dispatcher"],
   "/help": ["owner", "office_manager", "dispatcher", "tech"],
 };
 

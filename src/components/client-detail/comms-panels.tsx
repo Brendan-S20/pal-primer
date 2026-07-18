@@ -307,7 +307,19 @@ export function PortalLinkPanel({ clientId, portalToken }: { clientId: string; p
           size="sm"
           variant="ghost"
           disabled={codeMut.isPending}
-          onClick={() => codeMut.mutate()}
+          onClick={async () => {
+            // G2: revealing a working sign-in code needs an explicit
+            // confirmation, and every reveal is logged to Activity server-side.
+            if (
+              await confirm({
+                title: "Read a sign-in code to this client?",
+                description:
+                  "Only do this when the client is on the phone and has asked us to read them a code. It signs them into their portal, and the reveal is recorded in their Activity with your name.",
+                confirmLabel: "Read code aloud",
+              })
+            )
+              codeMut.mutate();
+          }}
         >
           {codeMut.isPending ? "…" : "Read verification code"}
         </Button>

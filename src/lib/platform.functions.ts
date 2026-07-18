@@ -250,7 +250,70 @@ export const consumeImpersonation = createServerFn({ method: "POST" })
       refreshToken: session.refresh_token,
       targetEmail: email,
       orgName: org?.name ?? "this tenant",
+      // The tab keeps this so its "Exit impersonation" control can close the
+      // audit loop with a stop event + duration (H2).
+      grantId: grant.id as string,
+      startedAt: nowIso,
     };
+  });
+
+/**
+ * Called FROM the impersonation tab when the admin clicks "Exit impersonation"
+ * (H2). Records a stop event with the session duration into
+ * platform_admin_audit, carrying the PLATFORM-ADMIN identity from the grant —
+ * not the impersonated user (I7). Authorized by the calling session: the tab is
+ * running as the impersonated user, so only that user can end their own grant
+ * (target_user_id must match the caller). Idempotent via ended_at so a
+ * double-click logs exactly one stop event.
+ */
+export const endImpersonationSession = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ grantId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const nowIso = new Date().toISOString();
+
+    // Atomically mark the grant ended (only if consumed, not already ended, and
+    // owned by the calling impersonated session), so a stranger can't end
+    // someone else's grant or forge a stop event, and concurrent/duplicate
+    // exits produce a single stop event.
+    const { data: grant, error } = await (supabaseAdmin as any)
+      .from("impersonation_grants")
+      .update({ ended_at: nowIso })
+      .eq("id", data.grantId)
+      .eq("target_user_id", context.userId)
+      .not("consumed_at", "is", null)
+      .is("ended_at", null)
+      .select("organization_id, target_user_id, actor_user_id, consumed_at")
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!grant) return { ok: true, alreadyEnded: true };
+
+    let targetEmail: string | null = null;
+    try {
+      const { data: userRes } = await supabaseAdmin.auth.admin.getUserById(grant.target_user_id);
+      targetEmail = userRes?.user?.email ?? null;
+    } catch { /* ignore */ }
+
+    const durationSeconds = grant.consumed_at
+      ? Math.max(0, Math.round((Date.now() - new Date(grant.consumed_at).getTime()) / 1000))
+      : null;
+
+    try {
+      await supabaseAdmin.from("platform_admin_audit").insert({
+        actor_user_id: grant.actor_user_id,
+        organization_id: grant.organization_id,
+        action: "stop_impersonation",
+        before_json: null,
+        after_json: {
+          target_user_id: grant.target_user_id,
+          target_email: targetEmail,
+          duration_seconds: durationSeconds,
+        },
+      });
+    } catch { /* audit best-effort */ }
+
+    return { ok: true, alreadyEnded: false };
   });
 
 

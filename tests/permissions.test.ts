@@ -47,6 +47,15 @@ describe("ROLE_PERMISSIONS matrix", () => {
     expect(hasPermission("tech", "record_field_addons")).toBe(true);
   });
 
+  // G2 — "Read sign-in code" hands out a working portal sign-in code, so it is
+  // owner/office_manager only. A dispatcher or tech must be denied.
+  it("reveal_signin_code is owner + office_manager only", () => {
+    expect(hasPermission("owner", "reveal_signin_code")).toBe(true);
+    expect(hasPermission("office_manager", "reveal_signin_code")).toBe(true);
+    expect(hasPermission("dispatcher", "reveal_signin_code")).toBe(false);
+    expect(hasPermission("tech", "reveal_signin_code")).toBe(false);
+  });
+
   it("grants owner every permission", () => {
     for (const p of ROLE_PERMISSIONS.owner) {
       expect(hasPermission("owner", p)).toBe(true);

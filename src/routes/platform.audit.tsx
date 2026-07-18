@@ -7,6 +7,24 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Search } from "lucide-react";
 import { getPlatformAudit, type PlatformAuditRow } from "@/lib/platform.functions";
+import { humanizeAuditAction } from "@/lib/humanize";
+
+/** For impersonation events, the impersonated user + any duration live in the
+ *  after_json — surface them inline so the log answers "who was impersonated,
+ *  and for how long" without expanding Details (H2). */
+function impersonationDetail(row: PlatformAuditRow): string | null {
+  if (!row.action.includes("impersonation")) return null;
+  const a = (row.after_json ?? {}) as Record<string, any>;
+  const target = a.target_email ?? a.target_user_id ?? null;
+  const parts: string[] = [];
+  if (target) parts.push(`as ${target}`);
+  if (typeof a.duration_seconds === "number") {
+    const mins = Math.floor(a.duration_seconds / 60);
+    const secs = a.duration_seconds % 60;
+    parts.push(`for ${mins > 0 ? `${mins}m ` : ""}${secs}s`);
+  }
+  return parts.length ? parts.join(" · ") : null;
+}
 
 export const Route = createFileRoute("/platform/audit")({
   head: () => ({ meta: [{ title: "Audit · Platform admin" }, { name: "robots", content: "noindex" }] }),
@@ -90,10 +108,15 @@ function AuditItem({ row }: { row: PlatformAuditRow }) {
     <li className="py-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={actionTone(row.action)}>{row.action}</Badge>
+          <Badge variant={actionTone(row.action)}>{humanizeAuditAction(row.action)}</Badge>
           <span className="font-medium">
             {row.organization_name ?? <span className="text-muted-foreground">(no org)</span>}
           </span>
+          {impersonationDetail(row) && (
+            <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
+              {impersonationDetail(row)}
+            </span>
+          )}
           <span className="text-xs text-muted-foreground">
             by {row.actor_email ?? row.actor_user_id.slice(0, 8)}
           </span>
