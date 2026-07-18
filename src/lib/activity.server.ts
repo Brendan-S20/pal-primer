@@ -4,6 +4,12 @@
 // are swallowed with a console warning: the audit trail must never break
 // the operation it is describing.
 
+import {
+  impersonationMetaFor,
+  sessionIdFromAuthHeader,
+  type ImpersonationGrantRef,
+} from "@/lib/impersonation-marker";
+
 export interface ActivityEntry {
   orgId: string;
   clientId?: string | null;
@@ -35,8 +41,56 @@ async function actorLabelFor(supabase: any, userId: string | null | undefined): 
   }
 }
 
+// Impersonation-marker lookup (H2): map the current request's auth session id
+// to an active impersonation grant. Exact session-id match — no heuristics —
+// cached briefly so a burst of writes in one impersonated session costs one
+// indexed query. Failure-open: a lookup error just logs without the marker.
+const GRANT_CACHE_TTL_MS = 60_000;
+const grantCache = new Map<string, { grant: ImpersonationGrantRef | null; at: number }>();
+
+async function activeGrantForSession(sessionId: string): Promise<ImpersonationGrantRef | null> {
+  const cached = grantCache.get(sessionId);
+  if (cached && Date.now() - cached.at < GRANT_CACHE_TTL_MS) return cached.grant;
+  let grant: ImpersonationGrantRef | null = null;
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data } = await (supabaseAdmin as any)
+      .from("impersonation_grants")
+      .select("id, actor_user_id, target_user_id")
+      .eq("auth_session_id", sessionId)
+      .is("ended_at", null)
+      .maybeSingle();
+    grant = data ?? null;
+  } catch {
+    grant = null;
+  }
+  if (grantCache.size > 500) {
+    for (const [k, v] of grantCache) if (Date.now() - v.at >= GRANT_CACHE_TTL_MS) grantCache.delete(k);
+  }
+  grantCache.set(sessionId, { grant, at: Date.now() });
+  return grant;
+}
+
+async function impersonationMetaForRequest(
+  actorUserId: string | null | undefined,
+): Promise<{ grant_id: string; admin_user_id: string } | null> {
+  if (!actorUserId) return null;
+  try {
+    const { getRequest } = await import("@tanstack/react-start/server");
+    const sessionId = sessionIdFromAuthHeader(getRequest()?.headers?.get("authorization"));
+    if (!sessionId) return null;
+    const grant = await activeGrantForSession(sessionId);
+    return impersonationMetaFor(actorUserId, grant);
+  } catch {
+    // System writers (webhooks, nightly jobs) run outside a request — no marker.
+    return null;
+  }
+}
+
 export async function logActivity(supabase: any, entry: ActivityEntry): Promise<void> {
   const label = entry.actorLabel ?? (await actorLabelFor(supabase, entry.actorUserId));
+  const impersonation = await impersonationMetaForRequest(entry.actorUserId);
+  const meta = impersonation ? { ...(entry.meta ?? {}), impersonation } : (entry.meta ?? {});
   const { error } = await supabase.from("activity_log").insert({
     organization_id: entry.orgId,
     client_id: entry.clientId ?? null,
@@ -46,7 +100,7 @@ export async function logActivity(supabase: any, entry: ActivityEntry): Promise<
     actor_label: label,
     kind: entry.kind,
     summary: entry.summary.slice(0, 500),
-    meta: entry.meta ?? {},
+    meta,
   });
   if (error) console.warn("activity_log insert failed:", error.message);
 }

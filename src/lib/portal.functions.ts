@@ -371,11 +371,14 @@ export const portalChangeFrequency = createServerFn({ method: "POST" })
     const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
-    const { error } = await sb.rpc("portal_change_frequency", {
+    const { data: result, error } = await sb.rpc("portal_change_frequency", {
       _token: data.token, _subscription_id: data.subscriptionId, _new_frequency: data.frequency,
     });
     if (error) throw new Error(error.message);
-    return { ok: true };
+    // 'applied' | 'requested' | 'unchanged' — 'requested' means auto-apply is
+    // off and the office got a structured review ticket instead (C4/G4). The
+    // generated RPC types lag the void -> text migration, hence the cast.
+    return { ok: true, status: (result as unknown as string) ?? "applied" };
   });
 
 export const portalListAddonCatalog = createServerFn({ method: "GET" })

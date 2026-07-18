@@ -229,6 +229,21 @@ export const consumeImpersonation = createServerFn({ method: "POST" })
     const session = verified.session;
     if (!session) throw new Error("Failed to establish impersonation session.");
 
+    // Record the minted session's id on the grant so tenant activity written
+    // under this session can carry an impersonation marker (H2). Session ids
+    // are stable across token refreshes, so this stays valid for the tab's
+    // lifetime. Best-effort: a failed write just means unmarked activity.
+    try {
+      const { sessionIdFromAuthHeader } = await import("@/lib/impersonation-marker");
+      const authSessionId = sessionIdFromAuthHeader(`Bearer ${session.access_token}`);
+      if (authSessionId) {
+        await (supabaseAdmin as any)
+          .from("impersonation_grants")
+          .update({ auth_session_id: authSessionId })
+          .eq("id", grant.id);
+      }
+    } catch { /* ignore */ }
+
     // Fetch org name for the banner.
     const { data: org } = await supabaseAdmin
       .from("organizations")

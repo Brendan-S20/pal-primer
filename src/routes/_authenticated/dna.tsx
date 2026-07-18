@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   listDnaMatches,
@@ -30,8 +30,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { FlaskConical, Trash2, Dna, Receipt, FileText, Printer } from "lucide-react";
-import { usePermissions } from "@/hooks/useMyRole";
+import { FlaskConical, Trash2, Dna, Receipt, FileText, Printer, Camera } from "lucide-react";
+import { usePermissions, useMyRole } from "@/hooks/useMyRole";
+import { supabase } from "@/integrations/supabase/client";
 import { HelpTip } from "@/components/HelpTip";
 
 export const Route = createFileRoute("/_authenticated/dna")({
@@ -66,8 +67,39 @@ const STATUS_TONE: Record<DnaMatch["status"], "default" | "secondary" | "outline
     closed: "outline",
   };
 
+/** Signed-URL link to a sample's collection photo (private dna-samples
+ * bucket). Quietly renders nothing if the URL can't be signed. */
+function SamplePhotoLink({ path }: { path: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.storage
+      .from("dna-samples")
+      .createSignedUrl(path, 300)
+      .then(({ data }) => {
+        if (!cancelled) setUrl(data?.signedUrl ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+  if (!url) return null;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="mt-1 inline-flex items-center gap-1 text-[11px] text-primary underline"
+    >
+      <Camera className="h-3 w-3" /> Collection photo
+    </a>
+  );
+}
+
 function DnaPage() {
   const { can } = usePermissions();
+  const { orgId } = useMyRole();
   const canBillDna = can("manage_dna_billing");
   const listFn = useServerFn(listDnaMatches);
   const dogsFn = useServerFn(listRegisteredDogs);
@@ -97,6 +129,7 @@ function DnaPage() {
   const [collectedByStaffId, setCollectedByStaffId] = useState("");
   const [kitReference, setKitReference] = useState("");
   const [dnaProvider, setDnaProvider] = useState("");
+  const [samplePhoto, setSamplePhoto] = useState<File | null>(null);
   const [noticeMatchId, setNoticeMatchId] = useState<string | null>(null);
 
   const opts = optionsQ.data;
@@ -104,8 +137,22 @@ function DnaPage() {
   const propUnits = (opts?.units ?? []).filter((u: any) => u.property_id === propertyId);
 
   const create = useMutation({
-    mutationFn: () =>
-      createFn({
+    mutationFn: async () => {
+      // Collection-evidence photo (deferred B8): upload to the private
+      // org-scoped dna-samples bucket, then record the path on the sample.
+      let samplePhotoPath: string | undefined;
+      if (samplePhoto) {
+        if (!orgId) throw new Error("Still loading your organization. Try again in a second.");
+        const { compressImage } = await import("@/lib/offline/compressImage");
+        const { file, contentType, ext } = await compressImage(samplePhoto);
+        const path = `${orgId}/${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from("dna-samples")
+          .upload(path, file, { contentType, upsert: false });
+        if (upErr) throw new Error(upErr.message);
+        samplePhotoPath = path;
+      }
+      return createFn({
         data: {
           sampleKind,
           locationNote: locationNote || undefined,
@@ -117,8 +164,10 @@ function DnaPage() {
           collectedByStaffId: collectedByStaffId || undefined,
           kitReference: kitReference || undefined,
           dnaProvider: dnaProvider || undefined,
+          samplePhotoPath,
         },
-      }),
+      });
+    },
     onSuccess: () => {
       toast.success("Sample logged");
       setLocationNote("");
@@ -126,6 +175,7 @@ function DnaPage() {
       setNotes("");
       setUnitId("");
       setKitReference("");
+      setSamplePhoto(null);
       refetch();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -294,6 +344,30 @@ function DnaPage() {
                   placeholder="PW-2026-0001"
                 />
               </div>
+              <div>
+                <Label>Collection photo (optional)</Label>
+                <div className="mt-1 flex items-center gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground transition hover:border-primary hover:bg-accent">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={(e) => setSamplePhoto(e.target.files?.[0] ?? null)}
+                    />
+                    <Camera className="h-4 w-4" />
+                    {samplePhoto ? "Change photo" : "Add photo"}
+                  </label>
+                  {samplePhoto && (
+                    <span className="max-w-[10rem] truncate text-xs text-muted-foreground">
+                      {samplePhoto.name}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Evidence of the collection (bagged sample / kit at the site).
+                </p>
+              </div>
               <div className="md:col-span-4">
                 <Label>Notes</Label>
                 <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
@@ -374,6 +448,7 @@ function DnaPage() {
                                 kit {r.kit_reference}
                               </div>
                             )}
+                            {r.sample_photo_path && <SamplePhotoLink path={r.sample_photo_path} />}
                           </td>
                           <td className="px-3 py-2 text-xs font-mono">{r.lab_reference ?? "-"}</td>
                           <td className="px-3 py-2">

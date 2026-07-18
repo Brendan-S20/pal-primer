@@ -320,8 +320,12 @@ export function usePortal(token: string, slug?: string) {
       subscriptionId: string;
       frequency: "weekly" | "biweekly" | "twice_weekly" | "monthly";
     }) => changeFreqFn({ data: { token, ...v } }),
-    onSuccess: () => {
-      toast.success("Plan change submitted");
+    onSuccess: (r: any) => {
+      toast.success(
+        r?.status === "requested"
+          ? "Change request sent — the office will review it."
+          : "Plan updated",
+      );
       invalidatePortal();
     },
     onError: (e) => toast.error((e as Error).message),

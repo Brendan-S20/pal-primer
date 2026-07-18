@@ -98,7 +98,14 @@ function SelfServeSection({ token }: { token: string }) {
   });
   const freqMut = useMutation({
     mutationFn: () => freqFn({ data: { token, subscriptionId: opts.subscription.id, frequency: freq as any } }),
-    onSuccess: () => { toast.success("Service frequency updated."); optsQ.refetch(); },
+    onSuccess: (r: any) => {
+      toast.success(
+        r?.status === "requested"
+          ? "Change request sent — the office will review it."
+          : "Service frequency updated.",
+      );
+      optsQ.refetch();
+    },
     onError: (e) => toast.error((e as Error).message),
   });
 

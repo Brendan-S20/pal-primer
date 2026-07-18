@@ -252,6 +252,70 @@ export const updateSubscription = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// One-click apply for a portal frequency-change request surfaced on the
+// Concerns page (C4/G4). Narrow on purpose: only the frequency moves, with the
+// same side effects the full editor has (interval reconciliation, estimate
+// recompute, horizon top-up, activity log with before/after).
+export const applyFrequencyChangeRequest = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        subscriptionId: z.string().uuid(),
+        frequency: z.enum(["weekly", "biweekly", "twice_weekly", "monthly"]),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
+
+    const { data: before, error: loadErr } = await supabase
+      .from("subscriptions")
+      .select("organization_id, client_id, property_id, frequency, status")
+      .eq("id", data.subscriptionId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (loadErr) throw new Error(loadErr.message);
+    if (!before) throw new Error("Subscription not found");
+    if (before.frequency === data.frequency) {
+      return { ok: true, changed: false, fromFrequency: before.frequency };
+    }
+
+    const { error } = await supabase
+      .from("subscriptions")
+      .update({
+        frequency: data.frequency,
+        // Same reconciliation as updateSubscription: interval fields only
+        // apply to their own frequency modes.
+        interval_weeks: null,
+        interval_days: null,
+      })
+      .eq("id", data.subscriptionId);
+    if (error) throw new Error(error.message);
+
+    const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
+    if (before.property_id) await recomputePropertyEstimate(supabase, before.property_id);
+    const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
+    await generateVisitHorizon(supabase, before.organization_id);
+
+    const { logActivity } = await import("@/lib/activity.server");
+    await logActivity(supabase, {
+      orgId: before.organization_id,
+      clientId: before.client_id,
+      subscriptionId: data.subscriptionId,
+      actorUserId: userId,
+      kind: "service.updated",
+      summary: `Applied client-requested frequency change: ${before.frequency} → ${data.frequency}`,
+      meta: {
+        source: "portal_frequency_request",
+        before: { frequency: before.frequency },
+        after: { frequency: data.frequency },
+      },
+    });
+    return { ok: true, changed: true, fromFrequency: before.frequency };
+  });
+
 export const listSubscriptionsForClient = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
