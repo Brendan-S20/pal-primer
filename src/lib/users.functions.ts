@@ -248,7 +248,7 @@ export const listStaffAddresses = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const orgId = await resolveOrgId(context.supabase, context.userId);
     const { data, error } = await (context.supabase.from("staff") as any)
-      .select("id, display_name, role, active, is_field_tech, routing_available, daily_capacity_minutes, start_address, start_latitude, start_longitude, end_address, end_latitude, end_longitude")
+      .select("id, display_name, role, active, is_field_tech, is_field_tech_overridden, routing_available, daily_capacity_minutes, start_address, start_latitude, start_longitude, end_address, end_latitude, end_longitude")
       .eq("organization_id", orgId)
       .order("display_name");
     if (error) throw new Error(error.message);

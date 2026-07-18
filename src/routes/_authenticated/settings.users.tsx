@@ -126,10 +126,12 @@ function UsersPage() {
                     const isOpen = u.staff_id && expanded.has(u.staff_id);
                     const staff = u.staff_id ? staffById.get(u.staff_id) : null;
                     // An override flags a non-tech in (owner who runs a route) or a
-                    // tech out. Surface non-default routing states so they're
-                    // visible without opening the expander.
-                    const fieldOverrideIn = staff && u.role !== "tech" && staff.is_field_tech;
-                    const notRoutable = staff && u.role === "tech" && !staff.is_field_tech;
+                    // tech out. Surface only DELIBERATE overrides (is_field_tech_
+                    // overridden) so a role default never shows a routing badge.
+                    const fieldOverrideIn =
+                      staff && staff.is_field_tech_overridden && u.role !== "tech" && staff.is_field_tech;
+                    const notRoutable =
+                      staff && staff.is_field_tech_overridden && u.role === "tech" && !staff.is_field_tech;
                     return (
                       <>
                         <tr key={u.user_id}>
