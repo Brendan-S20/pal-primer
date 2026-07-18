@@ -87,6 +87,20 @@ export function assertValidUnitLabel(label: string | null | undefined): string {
   return (label as string).trim();
 }
 
+/**
+ * A promo code is an entity name (I11): at least two characters INCLUDING a
+ * letter, so a bare number like "10" is rejected (G8), but real codes such as
+ * "SUMMER10" pass. Normalized to uppercase by the caller.
+ */
+export function assertValidPromoCode(code: string | null | undefined): string {
+  if (!isValidEntityName(code)) {
+    throw new Error(
+      'Enter a real promo code with at least two characters including a letter (e.g. "SUMMER10"), not "10".',
+    );
+  }
+  return (code as string).trim();
+}
+
 // ── Dog → property → unit linkage / reconciliation (I5, I9) ──────────────────
 
 export type DogLinkageInput = {

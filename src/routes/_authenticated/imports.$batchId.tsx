@@ -31,6 +31,18 @@ function BatchDetail() {
   const stats = (batch.stats ?? {}) as Record<string, number>;
   const shown = filter === "all" ? rows : rows.filter((r: any) => r.action === filter);
 
+  // Group the per-row failure reasons so a batch that failed every row (the
+  // Jobber 281/281 case, G8) tells the user WHY at a glance instead of making
+  // them scroll a 281-row table. The reasons are already computed at
+  // preview/commit and stored on each row.
+  const errorReasons = new Map<string, number>();
+  for (const r of rows as any[]) {
+    if (r.action === "error" && r.error) {
+      errorReasons.set(r.error, (errorReasons.get(r.error) ?? 0) + 1);
+    }
+  }
+  const errorSummary = Array.from(errorReasons.entries()).sort((a, b) => b[1] - a[1]);
+
   const doCommit = async () => {
     setBusy(true);
     try {
@@ -99,6 +111,32 @@ function BatchDetail() {
         </div>
       )}
 
+      {errorSummary.length > 0 && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-medium text-destructive">
+              Why {errorSummary.reduce((n, [, c]) => n + c, 0)} row
+              {errorSummary.reduce((n, [, c]) => n + c, 0) === 1 ? "" : "s"} couldn't import
+            </h2>
+            {filter !== "error" && (
+              <Button variant="outline" size="sm" onClick={() => setFilter("error")}>
+                Show only errors
+              </Button>
+            )}
+          </div>
+          <ul className="space-y-1 text-sm">
+            {errorSummary.map(([reason, count]) => (
+              <li key={reason} className="flex items-start justify-between gap-3">
+                <span className="text-foreground">{reason}</span>
+                <span className="shrink-0 font-medium text-destructive">
+                  {count} row{count === 1 ? "" : "s"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <section>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-medium">Rows</h2>
@@ -126,7 +164,7 @@ function BatchDetail() {
                 <th className="px-3 py-2">Phone</th>
                 <th className="px-3 py-2">Service address</th>
                 <th className="px-3 py-2">External ID</th>
-                <th className="px-3 py-2">Note</th>
+                <th className="px-3 py-2">Note / issue</th>
               </tr>
             </thead>
             <tbody>
@@ -146,7 +184,13 @@ function BatchDetail() {
                       {[m.street, m.city, m.region, m.postal_code].filter(Boolean).join(", ") || "-"}
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">{m.external_id ?? "-"}</td>
-                    <td className="px-3 py-2 text-xs text-red-600">{r.error ?? ""}</td>
+                    <td className="px-3 py-2 text-xs">
+                      {r.error ? (
+                        <span className="text-red-600">{r.error}</span>
+                      ) : (
+                        <span className="text-muted-foreground">{m.notes ?? ""}</span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}

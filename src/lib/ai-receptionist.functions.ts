@@ -1,15 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission } from "@/lib/authz.server";
 import { z } from "zod";
 
+// The AI receptionist config (persona, FAQ, voice, enable) is a customer-facing
+// org setting written via supabaseAdmin (the columns are platform-protected, so
+// the write bypasses the owner-only RLS). That makes the app-layer permission
+// check the ONLY gate — enforce manage_settings (owner + office_manager) on
+// read and write, matching the sibling settings fns (I7). Without it any member
+// (tech/dispatcher) could rewrite or disable the receptionist script via the API.
 async function orgIdFor(supabase: any, userId: string) {
-  const { data } = await supabase
-    .from("user_roles")
-    .select("organization_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (!data) throw new Error("No organization");
-  return data.organization_id as string;
+  return (await requirePermission(supabase, userId, "manage_settings")).orgId;
 }
 
 export const getAiReceptionistSettings = createServerFn({ method: "GET" })

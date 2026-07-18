@@ -1,11 +1,21 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { resolveCaller } from "@/lib/authz.server";
+import { resolveCaller, requirePermission } from "@/lib/authz.server";
 import { hasPermission } from "@/lib/permissions";
 
-async function resolveOrgId(supabase: any, userId: string): Promise<string> {
+// Door-to-door canvassing is a FIELD activity: the /neighbors route admits
+// techs, and Walk mode lets them log individual doors (add / status update /
+// remove a prospect). Those individual-lead writes need only org membership,
+// scoped to the caller's org (the neighbor_leads write RLS is plain
+// membership). SEEDING, however, reads a CLIENT's property address to generate
+// the surrounding doors, so it is gated on view_client_directory
+// (dispatcher/office/owner, not techs) per I7.
+async function resolveMemberOrgId(supabase: any, userId: string): Promise<string> {
   return (await resolveCaller(supabase, userId)).orgId;
+}
+async function resolveSeederOrgId(supabase: any, userId: string): Promise<string> {
+  return (await requirePermission(supabase, userId, "view_client_directory")).orgId;
 }
 
 export type NeighborLead = {
@@ -68,7 +78,7 @@ export const addNeighborLead = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => addSchema.parse(d))
   .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const orgId = await resolveMemberOrgId(context.supabase, context.userId);
     const { data: row, error } = await context.supabase
       .from("neighbor_leads")
       .insert({
@@ -100,7 +110,7 @@ export const seedNeighborsForClient = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => seedSchema.parse(d))
   .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const orgId = await resolveSeederOrgId(context.supabase, context.userId);
     const { data: prop } = await context.supabase
       .from("properties")
       .select("street, city, region, postal_code, latitude, longitude")
@@ -149,13 +159,18 @@ export const updateNeighborLead = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => updateSchema.parse(d))
   .handler(async ({ data, context }) => {
+    const orgId = await resolveMemberOrgId(context.supabase, context.userId);
     const patch: any = {};
     if (data.status) {
       patch.status = data.status;
       if (data.status === "contacted") patch.contacted_at = new Date().toISOString();
     }
     if (data.notes !== undefined) patch.notes = data.notes;
-    const { error } = await context.supabase.from("neighbor_leads").update(patch).eq("id", data.id);
+    const { error } = await context.supabase
+      .from("neighbor_leads")
+      .update(patch)
+      .eq("id", data.id)
+      .eq("organization_id", orgId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -164,7 +179,12 @@ export const deleteNeighborLead = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase.from("neighbor_leads").delete().eq("id", data.id);
+    const orgId = await resolveMemberOrgId(context.supabase, context.userId);
+    const { error } = await context.supabase
+      .from("neighbor_leads")
+      .delete()
+      .eq("id", data.id)
+      .eq("organization_id", orgId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

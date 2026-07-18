@@ -1,23 +1,22 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission } from "@/lib/authz.server";
 
 export const listMessageThreads = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const { data: role } = await supabase
-      .from("user_roles")
-      .select("organization_id")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (!role) return { threads: [] as any[] };
+    // The message inbox exposes every client's name, phone, and SMS history —
+    // a client-directory read (dispatcher/office/owner), not a technician one
+    // (I7). RLS only tenant-scopes messages, it does not check role.
+    const { orgId } = await requirePermission(supabase, userId, "view_client_directory");
 
     // Get latest 500 messages, group in JS by client.
     const { data, error } = await supabase
       .from("messages")
       .select("id, client_id, direction, body, created_at, status, clients(display_name, primary_phone, sms_opt_out)")
-      .eq("organization_id", role.organization_id)
+      .eq("organization_id", orgId)
       .not("client_id", "is", null)
       .order("created_at", { ascending: false })
       .limit(500);
@@ -35,7 +34,9 @@ export const listClientMessages = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
+    // Reading a client's full message thread is a client-directory action (I7).
+    await requirePermission(supabase, userId, "view_client_directory");
     const { data: client, error: cErr } = await supabase
       .from("clients")
       .select("id, display_name, primary_phone, sms_opt_out, organization_id")
@@ -66,6 +67,11 @@ export const sendSmsToClient = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    // Sending a free-form SMS to a client (which reads their phone number and
+    // dispatches Twilio) is a client-directory/messaging action — reject a
+    // technician token BEFORE any provider side-effect (I7). Lifecycle "on my
+    // way" texts have their own tech-appropriate path (sendVisitStatusSms).
+    await requirePermission(supabase, userId, "view_client_directory");
 
     const { data: client, error: cErr } = await supabase
       .from("clients")

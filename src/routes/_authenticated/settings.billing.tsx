@@ -50,6 +50,17 @@ function formatUsd(cents: number | null | undefined) {
   })}`;
 }
 
+// A subscription invoice whose period_start and period_end land on the same day
+// rendered a nonsense "Thu, Jul 16 to Thu, Jul 16" range (C9). Show a single
+// date when the two coincide (or one is missing), and the true range otherwise.
+function formatBillingPeriod(start: string | null | undefined, end: string | null | undefined) {
+  if (!start && !end) return "-";
+  if (!end) return formatDay(start!);
+  if (!start) return formatDay(end);
+  const sameDay = new Date(start).toDateString() === new Date(end).toDateString();
+  return sameDay ? formatDay(start) : `${formatDay(start)} to ${formatDay(end)}`;
+}
+
 // Map billing statuses onto the shared StatusChip tones.
 const STATUS_CHIP: Record<string, { status: string; label: string }> = {
   free: { status: "inactive", label: "Free" },
@@ -857,8 +868,7 @@ function InvoiceHistory() {
               <tr key={inv.stripe_invoice_id}>
                 <td className="py-2 font-medium">{inv.number ?? inv.stripe_invoice_id.slice(0, 12)}</td>
                 <td className="py-2 text-muted-foreground">
-                  {inv.period_start ? formatDay(inv.period_start) : "-"}
-                  {inv.period_end ? ` to ${formatDay(inv.period_end)}` : ""}
+                  {formatBillingPeriod(inv.period_start, inv.period_end)}
                 </td>
                 <td className="py-2">{formatUsd(inv.amount_due_cents)}</td>
                 <td className="py-2">

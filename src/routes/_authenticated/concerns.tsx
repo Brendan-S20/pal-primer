@@ -43,6 +43,16 @@ function ConcernsPage() {
   const [filter, setFilter] = useState<"all" | ConcernStatus>("open");
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [replies, setReplies] = useState<Record<string, string>>({});
+  // The reply / resolution textareas are collapsed behind an action by default
+  // (D polish) — a card shows buttons, and the box appears when you act.
+  const [openReply, setOpenReply] = useState<Set<string>>(new Set());
+  const [openResolve, setOpenResolve] = useState<Set<string>>(new Set());
+  const toggle = (setter: typeof setOpenReply, id: string) =>
+    setter((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
   // The concern we're placing a hold for (C4/G4): opens the shared hold drawer
   // prefilled from the parsed request, then resolves the concern on success.
   const [holdFor, setHoldFor] = useState<{
@@ -187,24 +197,44 @@ function ConcernsPage() {
                   </p>
                 )}
 
-                {client?.primary_email && (
-                  <div className="mt-3 space-y-2">
-                    <Textarea
-                      rows={2}
-                      placeholder={`Reply to ${client.display_name ?? "the client"} by email…`}
-                      value={replies[c.id] ?? ""}
-                      onChange={(e) => setReplies((s) => ({ ...s, [c.id]: e.target.value }))}
-                    />
+                {client?.primary_email &&
+                  (openReply.has(c.id) ? (
+                    <div className="mt-3 space-y-2">
+                      <Textarea
+                        rows={2}
+                        autoFocus
+                        placeholder={`Reply to ${client.display_name ?? "the client"} by email…`}
+                        value={replies[c.id] ?? ""}
+                        onChange={(e) => setReplies((s) => ({ ...s, [c.id]: e.target.value }))}
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={replyMut.isPending || !(replies[c.id] ?? "").trim()}
+                          onClick={() => replyMut.mutate({ ticketId: c.id, message: replies[c.id] })}
+                        >
+                          {replyMut.isPending ? "Sending…" : "Send reply"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => toggle(setOpenReply, c.id)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={replyMut.isPending || !(replies[c.id] ?? "").trim()}
-                      onClick={() => replyMut.mutate({ ticketId: c.id, message: replies[c.id] })}
+                      className="mt-3"
+                      onClick={() => toggle(setOpenReply, c.id)}
                     >
-                      {replyMut.isPending ? "Sending…" : "Send reply"}
+                      Reply by email
                     </Button>
-                  </div>
-                )}
+                  ))}
 
                 {status === "resolved" ? (
                   <div className="mt-3 text-xs text-muted-foreground">
@@ -219,12 +249,15 @@ function ConcernsPage() {
                   </div>
                 ) : (
                   <div className="mt-3 space-y-2">
-                    <Textarea
-                      rows={2}
-                      placeholder="Resolution note (optional): what was done"
-                      value={notes[c.id] ?? ""}
-                      onChange={(e) => setNotes((n) => ({ ...n, [c.id]: e.target.value }))}
-                    />
+                    {openResolve.has(c.id) && (
+                      <Textarea
+                        rows={2}
+                        autoFocus
+                        placeholder="Resolution note (optional): what was done"
+                        value={notes[c.id] ?? ""}
+                        onChange={(e) => setNotes((n) => ({ ...n, [c.id]: e.target.value }))}
+                      />
+                    )}
                     <div className="flex flex-wrap gap-2">
                       {status === "open" && (
                         <Button
@@ -245,6 +278,15 @@ function ConcernsPage() {
                       >
                         Mark resolved
                       </Button>
+                      {!openResolve.has(c.id) && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => toggle(setOpenResolve, c.id)}
+                        >
+                          Add resolution note
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )}

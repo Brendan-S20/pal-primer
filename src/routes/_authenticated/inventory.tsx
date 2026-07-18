@@ -40,6 +40,15 @@ function fmtMoney(c: number) {
   return `$${((c ?? 0) / 100).toFixed(2)}`;
 }
 
+// Unit-counted items ("10 each") shouldn't render decimals; measured units
+// (2.5 gallon) keep them. Show a whole number when the value is whole, else
+// trim to at most two decimals (D polish).
+function fmtQty(n: number | null | undefined): string {
+  const v = Number(n ?? 0);
+  if (Number.isInteger(v)) return String(v);
+  return String(Number(v.toFixed(2)));
+}
+
 function InventoryPage() {
   const itemsFn = useServerFn(listItems);
   const assignsFn = useServerFn(listAssignments);
@@ -116,9 +125,9 @@ function InventoryPage() {
                         </td>
                         <td className="px-4 py-2 text-muted-foreground">{i.sku ?? "-"}</td>
                         <td className={`px-4 py-2 ${low ? "text-amber-600 font-medium" : ""}`}>
-                          {Number(i.on_hand).toFixed(2)} {i.unit}
+                          {fmtQty(i.on_hand)} {i.unit}
                         </td>
-                        <td className="px-4 py-2 text-muted-foreground">{Number(i.reorder_threshold).toFixed(2)}</td>
+                        <td className="px-4 py-2 text-muted-foreground">{fmtQty(i.reorder_threshold)}</td>
                         <td className="px-4 py-2">{fmtMoney(i.unit_cost_cents)}</td>
                         <td className="px-4 py-2 text-right">
                           <MovementDialog item={i} staffList={staff.data ?? []} />
@@ -156,7 +165,7 @@ function InventoryPage() {
                       <tr key={a.id} className="border-b last:border-0">
                         <td className="px-4 py-2">{st?.display_name ?? "-"}</td>
                         <td className="px-4 py-2">{item?.name ?? "-"}</td>
-                        <td className="px-4 py-2">{Number(a.quantity).toFixed(2)} {item?.unit ?? ""}</td>
+                        <td className="px-4 py-2">{fmtQty(a.quantity)} {item?.unit ?? ""}</td>
                       </tr>
                     );
                   })
@@ -191,7 +200,7 @@ function InventoryPage() {
                         <td className="px-4 py-2 text-muted-foreground">{new Date(m.created_at).toLocaleString()}</td>
                         <td className="px-4 py-2"><Badge variant="outline">{m.kind}</Badge></td>
                         <td className="px-4 py-2">{item?.name ?? "-"}</td>
-                        <td className="px-4 py-2">{Number(m.quantity).toFixed(2)} {item?.unit ?? ""}</td>
+                        <td className="px-4 py-2">{fmtQty(m.quantity)} {item?.unit ?? ""}</td>
                         <td className="px-4 py-2">{st?.display_name ?? "-"}</td>
                         <td className="px-4 py-2 text-muted-foreground">{m.note ?? ""}</td>
                       </tr>
@@ -388,7 +397,7 @@ function AssignDialog({ items, staffList }: { items: Item[]; staffList: Array<{ 
             <Select value={itemId} onValueChange={setItemId}>
               <SelectTrigger><SelectValue placeholder="Select item" /></SelectTrigger>
               <SelectContent>
-                {items.map((i) => <SelectItem key={i.id} value={i.id}>{i.name} ({Number(i.on_hand).toFixed(2)} {i.unit} on hand)</SelectItem>)}
+                {items.map((i) => <SelectItem key={i.id} value={i.id}>{i.name} ({fmtQty(i.on_hand)} {i.unit} on hand)</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

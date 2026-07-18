@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission } from "@/lib/authz.server";
 
 export const SKIP_REASON_CODES = [
   "client_cancelled_late",
@@ -80,7 +81,9 @@ export const upsertSkipRule = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const orgId = await getOrgId(supabase, userId);
+    // Skip-billing rules set how much a skipped visit still bills — a billing
+    // settings action (owner/office_manager), not dispatcher-reachable (I7).
+    const orgId = (await requirePermission(supabase, userId, "manage_settings")).orgId;
     const { error } = await supabase
       .from("skip_billing_rules")
       .upsert(

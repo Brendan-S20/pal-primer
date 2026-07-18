@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { HelpTip } from "@/components/HelpTip";
+import { Camera, Plus, X } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/waste-log")({
   head: () => ({ meta: [{ title: "Waste disposal log" }] }),
@@ -46,6 +47,9 @@ function WasteLogPage() {
   });
   const [receipt, setReceipt] = useState<File | null>(null);
   const [newFacility, setNewFacility] = useState({ name: "", address: "" });
+  // The log form is collapsed by default (D polish) — matches the rest of the
+  // app, where entry forms open on demand rather than always occupying the page.
+  const [showForm, setShowForm] = useState(false);
 
   const createMut = useMutation({
     // Receipt photo (punch list #16): compress + upload to the org-scoped
@@ -116,7 +120,25 @@ function WasteLogPage() {
       </div>
 
       <section className="rounded-lg border bg-card p-5">
-        <h2 className="text-sm font-medium">Log a dump</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium">Log a dump</h2>
+          <Button
+            size="sm"
+            variant={showForm ? "ghost" : "outline"}
+            onClick={() => setShowForm((v) => !v)}
+          >
+            {showForm ? (
+              <>
+                <X className="mr-1.5 h-4 w-4" /> Close
+              </>
+            ) : (
+              <>
+                <Plus className="mr-1.5 h-4 w-4" /> Log a dump
+              </>
+            )}
+          </Button>
+        </div>
+        {showForm && (
         <form
           className="mt-3 grid gap-3 sm:grid-cols-6"
           onSubmit={(e) => {
@@ -138,7 +160,7 @@ function WasteLogPage() {
               value={draft.facilityId}
               onChange={(e) => setDraft({ ...draft, facilityId: e.target.value })}
             >
-              <option value="">(none)</option>
+              <option value="">Select a facility…</option>
               {facilities
                 .filter((f) => f.active)
                 .map((f) => (
@@ -192,13 +214,32 @@ function WasteLogPage() {
           </div>
           <div className="sm:col-span-6">
             <Label>Receipt photo (optional)</Label>
-            <Input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={(e) => setReceipt(e.target.files?.[0] ?? null)}
-            />
-            {receipt && <p className="mt-1 text-xs text-muted-foreground">{receipt.name}</p>}
+            <div className="mt-1 flex items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground transition hover:border-primary hover:bg-accent">
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => setReceipt(e.target.files?.[0] ?? null)}
+                />
+                <Camera className="h-4 w-4" />
+                {receipt ? "Change photo" : "Add receipt photo"}
+              </label>
+              {receipt && (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  {receipt.name}
+                  <button
+                    type="button"
+                    className="rounded p-0.5 hover:bg-muted"
+                    onClick={() => setReceipt(null)}
+                    aria-label="Remove receipt"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              )}
+            </div>
           </div>
           <div className="sm:col-span-6">
             <Button type="submit" disabled={createMut.isPending}>
@@ -206,6 +247,7 @@ function WasteLogPage() {
             </Button>
           </div>
         </form>
+        )}
       </section>
 
       <section className="rounded-lg border bg-card p-5">

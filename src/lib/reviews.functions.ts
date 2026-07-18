@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requirePermission } from "@/lib/authz.server";
 
 /** Send an SMS asking the client to leave a Google review. Idempotent (90-day window). */
 export const sendReviewRequest = createServerFn({ method: "POST" })
@@ -209,17 +210,18 @@ export const getReviewSettings = createServerFn({ method: "GET" })
 export const getReferralStats = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { data: staff } = await context.supabase
-      .from("staff")
-      .select("organization_id")
-      .eq("user_id", context.userId)
-      .maybeSingle();
-    if (!staff) return { top: [] as Array<{ id: string; display_name: string; count: number }> };
+    // The referral leaderboard lists client names org-wide — a client-directory
+    // read, not a technician one (I7).
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "view_client_directory",
+    );
 
     const { data, error } = await context.supabase
       .from("clients")
       .select("id, display_name, referred_by_client_id")
-      .eq("organization_id", staff.organization_id)
+      .eq("organization_id", orgId)
       .not("referred_by_client_id", "is", null);
     if (error) throw new Error(error.message);
 

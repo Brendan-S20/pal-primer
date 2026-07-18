@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   ConnectComponentsProvider,
   ConnectAccountOnboarding,
@@ -137,7 +137,9 @@ function PaymentsSettings() {
                   Finish the steps below to enable charges
                 </span>
               )}
-              <span className="ml-2 font-mono text-xs text-muted-foreground">{cfg.accountId}</span>
+              <span className="ml-2 text-xs text-muted-foreground" title={cfg.accountId}>
+                Stripe account {maskAccountId(cfg.accountId)}
+              </span>
             </span>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={() => refresh.mutate()} disabled={refresh.isPending}>Refresh</Button>
@@ -185,9 +187,12 @@ function ConnectDashboard({ chargesEnabled, onOnboardingExit }: { chargesEnabled
   const sessionFn = useServerFn(createStripeAccountSession);
   const [instance, setInstance] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setErr(null);
+    setInstance(null);
     (async () => {
       try {
         const first = await sessionFn();
@@ -206,9 +211,17 @@ function ConnectDashboard({ chargesEnabled, onOnboardingExit }: { chargesEnabled
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [reloadKey]);
 
-  if (err) return <p className="text-sm text-destructive">Couldn't load the payment dashboard: {err}</p>;
+  if (err)
+    return (
+      <div className="rounded-lg border bg-card p-4">
+        <p className="text-sm text-destructive">Couldn't load the payment dashboard: {err}</p>
+        <Button variant="outline" size="sm" className="mt-3" onClick={() => setReloadKey((k) => k + 1)}>
+          Try again
+        </Button>
+      </div>
+    );
   if (!instance) return <p className="text-sm text-muted-foreground">Loading payment dashboard…</p>;
 
   return (
@@ -216,18 +229,84 @@ function ConnectDashboard({ chargesEnabled, onOnboardingExit }: { chargesEnabled
       <ConnectComponentsProvider connectInstance={instance}>
         <ConnectNotificationBanner />
         {!chargesEnabled ? (
-          <div className="rounded-lg border bg-card p-4">
-            <ConnectAccountOnboarding onExit={onOnboardingExit} />
-          </div>
+          <ConnectCard title="Account setup">
+            {(h) => <ConnectAccountOnboarding onExit={onOnboardingExit} {...h} />}
+          </ConnectCard>
         ) : (
           <>
-            <div className="rounded-lg border bg-card p-4"><ConnectBalances /></div>
-            <div className="rounded-lg border bg-card p-4"><ConnectPayments /></div>
-            <div className="rounded-lg border bg-card p-4"><ConnectPayouts /></div>
-            <div className="rounded-lg border bg-card p-4"><ConnectAccountManagement /></div>
+            <ConnectCard title="Balances">{(h) => <ConnectBalances {...h} />}</ConnectCard>
+            <ConnectCard title="Payments">{(h) => <ConnectPayments {...h} />}</ConnectCard>
+            <ConnectCard title="Payouts">{(h) => <ConnectPayouts {...h} />}</ConnectCard>
+            <ConnectCard title="Account management">
+              {(h) => <ConnectAccountManagement {...h} />}
+            </ConnectCard>
           </>
         )}
       </ConnectComponentsProvider>
+    </div>
+  );
+}
+
+// Show only a friendly, masked form of the Stripe account id (acct_…1234) so
+// the raw connected-account id never sits bare in the UI (B5). Full id is kept
+// in the title attribute for support.
+function maskAccountId(id: string | null | undefined): string {
+  if (!id) return "connected";
+  const tail = id.slice(-4);
+  return `acct_…${tail}`;
+}
+
+// Each embedded Stripe Connect component can silently fail to load (four empty
+// boxes, B5/I10). Wrap every one in loading/error/retry chrome. The Connect
+// components emit onLoaderStart when they begin rendering and onLoadError when
+// they fail; we drive the card state off those and remount on retry.
+function ConnectCard({
+  title,
+  children,
+}: {
+  title: string;
+  children: (handlers: { onLoaderStart: () => void; onLoadError: (e: any) => void }) => ReactNode;
+}) {
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [message, setMessage] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const handlers = {
+    onLoaderStart: () => setState("ready"),
+    onLoadError: (e: any) => {
+      setState("error");
+      setMessage(e?.error?.message ?? null);
+    },
+  };
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <div className="mb-2 text-sm font-medium">{title}</div>
+      {state === "error" ? (
+        <div className="space-y-2 text-sm">
+          <p className="text-destructive">
+            Couldn't load {title.toLowerCase()}.{message ? ` ${message}` : ""}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setState("loading");
+              setMessage(null);
+              setAttempt((a) => a + 1);
+            }}
+          >
+            Retry
+          </Button>
+        </div>
+      ) : (
+        <>
+          {state === "loading" && (
+            <p className="text-sm text-muted-foreground">Loading {title.toLowerCase()}…</p>
+          )}
+          <div key={attempt} className={state === "loading" ? "hidden" : ""}>
+            {children(handlers)}
+          </div>
+        </>
+      )}
     </div>
   );
 }

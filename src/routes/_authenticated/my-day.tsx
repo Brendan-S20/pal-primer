@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
@@ -296,9 +296,14 @@ function MyDay() {
 
         {staff && visits.length === 0 && (
           <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
-            {previewing
-              ? `${staff.display_name} has nothing scheduled on ${day}.`
-              : t("myDay.nothingScheduled")}
+            <p>
+              {previewing
+                ? `${staff.display_name} has nothing scheduled on ${day}.`
+                : t("myDay.nothingScheduled")}
+            </p>
+            <Button asChild variant="outline" size="sm" className="mt-4">
+              <Link to="/routes">View routes</Link>
+            </Button>
           </div>
         )}
 
