@@ -25,7 +25,9 @@ export function isValidEntityName(name: string | null | undefined): boolean {
   if (name == null) return false;
   const t = name.trim();
   if (t.length < 2) return false;
-  if (!/[A-Za-z]/.test(t)) return false;
+  // At least one letter in ANY script (rejects "1"/"01"/"12", allows CJK,
+  // Cyrillic, accented Latin) — mirrors the SQL [[:alpha:]] check.
+  if (!/\p{L}/u.test(t)) return false;
   if (NAME_PLACEHOLDERS.has(t.toLowerCase())) return false;
   return true;
 }
@@ -42,7 +44,7 @@ export function isValidOrgName(name: string | null | undefined): boolean {
     .trim()
     .toLowerCase()
     .split(/\s+/)
-    .filter((w) => /[a-z]/.test(w));
+    .filter((w) => /\p{L}/u.test(w));
   if (words.length > 0 && words.every((w) => NAME_PLACEHOLDERS.has(w))) return false;
   return true;
 }
