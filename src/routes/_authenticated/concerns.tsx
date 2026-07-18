@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { CalendarOff, Inbox } from "lucide-react";
+import { CalendarOff, Inbox, Repeat } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -11,6 +11,10 @@ import {
   type ConcernStatus,
 } from "@/lib/concerns.functions";
 import { parseHoldRequest } from "@/lib/hold-request";
+import { parseFrequencyRequest, frequencyLabel } from "@/lib/frequency-request";
+import { applyFrequencyChangeRequest } from "@/lib/subscriptions.functions";
+import { usePermissions } from "@/hooks/useMyRole";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { VacationHoldDrawer } from "@/components/client-detail/VacationHoldDrawer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,6 +44,10 @@ function fmt(d: string) {
 }
 
 function ConcernsPage() {
+  // The one-click frequency apply is a manage_pricing action — hide it for
+  // roles (dispatcher) that can reach Concerns but would be server-rejected.
+  const { can } = usePermissions();
+  const canManagePricing = can("manage_pricing");
   const [filter, setFilter] = useState<"all" | ConcernStatus>("open");
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [replies, setReplies] = useState<Record<string, string>>({});
@@ -66,10 +74,15 @@ function ConcernsPage() {
   // second hold if the follow-up resolve fails (the hold is committed, but the
   // concern may stay open) — the "Create hold" action is hidden regardless.
   const [heldTicketIds, setHeldTicketIds] = useState<Set<string>>(new Set());
+  // Same session-local dedupe for applied frequency changes (C4/G4): once a
+  // request is applied, the action is hidden even if the follow-up resolve
+  // fails, so a double-click can't re-apply.
+  const [appliedFreqTicketIds, setAppliedFreqTicketIds] = useState<Set<string>>(new Set());
   const qc = useQueryClient();
   const listFn = useServerFn(listConcerns);
   const updateFn = useServerFn(updateConcernStatus);
   const replyFn = useServerFn(replyToConcern);
+  const applyFreqFn = useServerFn(applyFrequencyChangeRequest);
   const replyMut = useMutation({
     mutationFn: (v: { ticketId: string; message: string }) => replyFn({ data: v }),
     onSuccess: (r: any, v) => {
@@ -90,6 +103,26 @@ function ConcernsPage() {
       updateFn({ data: v }),
     onSuccess: () => {
       toast.success("Concern updated");
+      qc.invalidateQueries({ queryKey: ["concerns"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const applyFreqMut = useMutation({
+    // Apply + resolve happen in ONE server call so a lost follow-up can't
+    // strand an open ticket that blocks the client's next request.
+    mutationFn: (v: { ticketId: string; subscriptionId: string; frequency: string }) =>
+      applyFreqFn({
+        data: { subscriptionId: v.subscriptionId, frequency: v.frequency as any, ticketId: v.ticketId },
+      }),
+    onSuccess: (r: any, v) => {
+      setAppliedFreqTicketIds((s) => new Set(s).add(v.ticketId));
+      toast.success(
+        r?.changed
+          ? `Frequency changed to ${frequencyLabel(v.frequency)}`
+          : "Service already at the requested frequency",
+      );
       qc.invalidateQueries({ queryKey: ["concerns"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
@@ -147,6 +180,7 @@ function ConcernsPage() {
             const status = c.status as ConcernStatus;
             const client = Array.isArray(c.clients) ? c.clients[0] : c.clients;
             const holdRequest = c.client_id ? parseHoldRequest(c.message) : null;
+            const freqRequest = c.client_id ? parseFrequencyRequest(c.message) : null;
             return (
               <li key={c.id} className="rounded-lg border bg-card p-4">
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -188,6 +222,33 @@ function ConcernsPage() {
                     >
                       Create hold from request
                     </Button>
+                  </div>
+                )}
+
+                {freqRequest && status !== "resolved" && canManagePricing && !appliedFreqTicketIds.has(c.id) && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
+                    <Repeat className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
+                    <span className="text-amber-800 dark:text-amber-300">
+                      Frequency change requested: {frequencyLabel(freqRequest.fromFrequency)} →{" "}
+                      {frequencyLabel(freqRequest.toFrequency)}.
+                    </span>
+                    <ConfirmButton
+                      title="Apply frequency change?"
+                      description={`Change ${client?.display_name ?? "this client"}'s service from ${frequencyLabel(freqRequest.fromFrequency)} to ${frequencyLabel(freqRequest.toFrequency)}. Upcoming visits are rescheduled to the new cadence and the concern is resolved.`}
+                      confirmLabel="Apply change"
+                      onConfirm={() =>
+                        applyFreqMut.mutate({
+                          ticketId: c.id,
+                          subscriptionId: freqRequest.subscriptionId,
+                          frequency: freqRequest.toFrequency,
+                        })
+                      }
+                      trigger={
+                        <Button size="sm" className="ml-auto" disabled={applyFreqMut.isPending}>
+                          Apply frequency change
+                        </Button>
+                      }
+                    />
                   </div>
                 )}
 

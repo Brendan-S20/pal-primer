@@ -168,24 +168,43 @@ dispatcher/tech confirmed API-rejected for billing/DNA-registry/code-reveal.
   API (put behind a graceful error/retry state); DNA provider sync (no API
   exists — references only).
 
-## 10. Incomplete / deferred requirements (with reason)
+## 10. Incomplete / deferred requirements — all since delivered
 
-- **Frequency-change-from-concern** (C4/G4): `portal_change_frequency` applies
-  immediately and leaves no structured request to action — no machine-readable
-  target to build from without guessing (I1/I5). Office applies it via the
-  subscription editor.
-- **DNA sample-photo storage** (B8): a product decision on genetic-sample media;
-  chain-of-custody uses kit/provider/tech references for v1.
-- **Impersonation marker on individual tenant-Activity entries** (H2): would add
-  a grant lookup to the hot `logActivity` path with false-positive risk against
-  the protected multi-tab isolation; the authoritative record lives in the
-  platform audit with actor + target + duration.
-- **center_\* backfill for existing zones** with a null radius center: the
-  update action was fixed; a bulk backfill touches B3 matching, left for a
-  deliberate reconciliation pass.
-- **Non-field on dashboard "Techs today"**: the weather workload board was
-  filtered here; the dashboard tech list uses the same `is_field_tech` flag
-  (shipped phase 7).
+Every item below was originally deferred with the stated reason, then built in
+the deferred-items follow-up PR:
+
+- **Frequency-change-from-concern** (C4/G4) — DONE. `portal_change_frequency`
+  now branches on `portal_auto_apply_changes`: when off, it files a structured
+  qc_ticket ("Frequency change requested: weekly → monthly (subscription
+  <id>).", duplicate-guarded) instead of applying, and enforces
+  `portal_allow_frequency_change` server-side. The Concerns page parses the
+  request (`frequency-request.ts`, mirroring `hold-request.ts`) and offers a
+  confirmed one-click "Apply frequency change" (`applyFrequencyChangeRequest`,
+  `manage_pricing`-gated, with estimate recompute + horizon top-up + activity
+  log), then resolves the concern. Portal toasts distinguish
+  applied/requested.
+- **DNA sample-photo storage** (B8) — DONE as collection evidence (photo of the
+  bagged sample/kit at the site), which stays inside the I9 rule: no genetic
+  media. Private org-scoped `dna-samples` bucket (waste-receipts policy
+  pattern), `dna_matches.sample_photo_path`, compressed upload on the sample
+  form, signed-URL link in the chain-of-custody table, server-side path-prefix
+  check against the caller's org.
+- **Impersonation marker on tenant-Activity entries** (H2) — DONE without the
+  feared heuristics: `consumeImpersonation` stores the minted session's JWT
+  `session_id` on the grant; `logActivity` resolves the current request's
+  session id (from the already-verified bearer token) against unended grants
+  via a unique partial index, 60s-cached. Exact session keying cannot
+  false-positive against multi-tab isolation. Marked entries render a
+  "Platform-admin impersonation" badge on the client Activity tab; the
+  admin's identity stays in the platform audit.
+- **center_\* backfill for zones** — DONE as the deliberate reconciliation
+  pass: derive missing centers (pin → property centroid), preserve configured
+  radius/drive-time extents, re-rank property assignments, leave underivable
+  zones in the manual-review queue. Verified against live data first: zero
+  zones currently qualify, so the pass is a safeguard for imported/regressed
+  rows.
+- **Non-field on dashboard "Techs today"**: was already resolved — the
+  dashboard tech list uses the same `is_field_tech` flag (shipped phase 7).
 
 ## 11. Remaining limitations
 

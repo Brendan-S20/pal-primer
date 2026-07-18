@@ -3,6 +3,7 @@
  * React Query caches by key so switching tabs is instant. */
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { frequencyLabel } from "@/lib/frequency-request";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -120,16 +121,10 @@ export function relativeFromToday(s: string | null | undefined): string {
   return "";
 }
 
+// Delegates to the canonical shared label map (I3).
 export function friendlyFrequency(f: string | null | undefined) {
   if (!f) return "";
-  return (
-    {
-      weekly: "Weekly",
-      biweekly: "Every 2 weeks",
-      twice_weekly: "Twice weekly",
-      monthly: "Monthly",
-    }[f] ?? f
-  );
+  return frequencyLabel(f);
 }
 
 export function friendlyCategory(c: string | null | undefined) {
@@ -320,8 +315,12 @@ export function usePortal(token: string, slug?: string) {
       subscriptionId: string;
       frequency: "weekly" | "biweekly" | "twice_weekly" | "monthly";
     }) => changeFreqFn({ data: { token, ...v } }),
-    onSuccess: () => {
-      toast.success("Plan change submitted");
+    onSuccess: (r: any) => {
+      toast.success(
+        r?.status === "requested"
+          ? "Change request sent — the office will review it."
+          : "Plan updated",
+      );
       invalidatePortal();
     },
     onError: (e) => toast.error((e as Error).message),

@@ -48,6 +48,7 @@ import { PushToggle } from "@/components/PushToggle";
 import { useTranslation } from "react-i18next";
 import { haptic } from "@/lib/haptics";
 import { useMyRole } from "@/hooks/useMyRole";
+import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
@@ -449,31 +450,11 @@ function ElapsedTimer({ startedAt }: { startedAt: string }) {
 }
 
 function PhotoThumb({ path }: { path: string }) {
-  const [url, setUrl] = useState<string | null>(null);
   // Distinguish "still loading" from "can't be shown" so a broken photo shows a
   // clear placeholder instead of the browser's broken-image icon (finding #35).
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-  useEffect(() => {
-    let cancelled = false;
-    setState("loading");
-    supabase.storage
-      .from("visit-photos")
-      .createSignedUrl(path, 300)
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error || !data?.signedUrl) {
-          setState("error"); // object missing / signing failed
-        } else {
-          setUrl(data.signedUrl);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setState("error");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [path]);
+  const { url, status } = useSignedUrl("visit-photos", path);
+  const [imgFailed, setImgFailed] = useState(false);
+  const state = imgFailed ? "error" : status;
 
   if (state === "error") {
     return (
@@ -494,7 +475,7 @@ function PhotoThumb({ path }: { path: string }) {
         src={url}
         alt="Visit"
         className="h-14 w-14 rounded border object-cover"
-        onError={() => setState("error")}
+        onError={() => setImgFailed(true)}
       />
     </a>
   );

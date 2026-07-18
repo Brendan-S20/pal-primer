@@ -59,9 +59,19 @@ export function ActivityTab({ clientId }: { clientId: string }) {
                 <Icon className="h-2.5 w-2.5 text-muted-foreground" />
               </span>
               <div className="text-sm">{e.summary}</div>
-              <div className="mt-0.5 text-xs text-muted-foreground">
-                {formatDateTime(e.created_at)}
-                {e.actor_label ? ` · ${e.actor_label}` : ""}
+              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                <span>
+                  {formatDateTime(e.created_at)}
+                  {e.actor_label ? ` · ${e.actor_label}` : ""}
+                </span>
+                {e.meta?.impersonation ? (
+                  <span
+                    className="rounded border border-amber-300 bg-amber-50 px-1.5 py-px text-[10px] font-medium text-amber-700"
+                    title="This action was taken by a platform admin impersonating the user. Details are in the platform audit log."
+                  >
+                    Platform-admin impersonation
+                  </span>
+                ) : null}
               </div>
             </li>
           );

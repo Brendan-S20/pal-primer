@@ -28,6 +28,7 @@ export type DnaMatch = {
   kit_reference: string | null;
   dna_provider: string | null;
   report_reference: string | null;
+  sample_photo_path: string | null;
   created_at: string;
 };
 
@@ -48,7 +49,7 @@ export const listDnaMatches = createServerFn({ method: "GET" })
     const { data, error } = await context.supabase
       .from("dna_matches")
       .select(
-        "id, sample_kind, collected_at, location_note, lab_reference, status, matched_dog_id, matched_at, fine_cents, notes, property_id, client_id, unit_id, collected_by_staff_id, kit_reference, dna_provider, report_reference, " +
+        "id, sample_kind, collected_at, location_note, lab_reference, status, matched_dog_id, matched_at, fine_cents, notes, property_id, client_id, unit_id, collected_by_staff_id, kit_reference, dna_provider, report_reference, sample_photo_path, " +
           "matched_dog:matched_dog_id(name, properties:property_id(clients:client_id(display_name))), " +
           "properties:property_id(street), clients:client_id(display_name), " +
           "property_units:unit_id(unit_label), staff:collected_by_staff_id(display_name)",
@@ -83,6 +84,7 @@ export const listDnaMatches = createServerFn({ method: "GET" })
       kit_reference: r.kit_reference,
       dna_provider: r.dna_provider,
       report_reference: r.report_reference,
+      sample_photo_path: r.sample_photo_path ?? null,
       created_at: r.collected_at,
     }));
     const summary = rows.reduce(
@@ -112,6 +114,9 @@ const createSchema = z.object({
   dnaProvider: z.string().max(120).optional().nullable(),
   reportReference: z.string().max(200).optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
+  // Collection-evidence photo in the private dna-samples bucket (deferred B8
+  // item). A storage path, not genetic data — I9 still holds.
+  samplePhotoPath: z.string().max(300).optional().nullable(),
 });
 
 export const createDnaMatch = createServerFn({ method: "POST" })
@@ -132,6 +137,11 @@ export const createDnaMatch = createServerFn({ method: "POST" })
       if (!unit || unit.property_id !== data.propertyId)
         throw new Error("Unit not found on this property");
     }
+    // A photo path must live inside the caller's org folder — otherwise a
+    // crafted path could point signed-URL generation at another tenant's file.
+    if (data.samplePhotoPath && !data.samplePhotoPath.startsWith(`${orgId}/`)) {
+      throw new Error("Invalid sample photo path");
+    }
     const { data: row, error } = await context.supabase
       .from("dna_matches")
       .insert({
@@ -147,6 +157,7 @@ export const createDnaMatch = createServerFn({ method: "POST" })
         dna_provider: data.dnaProvider ?? null,
         report_reference: data.reportReference ?? null,
         notes: data.notes ?? null,
+        sample_photo_path: data.samplePhotoPath ?? null,
         created_by: context.userId,
       } as any)
       .select("id")

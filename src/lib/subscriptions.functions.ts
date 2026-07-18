@@ -252,6 +252,110 @@ export const updateSubscription = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// One-click apply for a portal frequency-change request surfaced on the
+// Concerns page (C4/G4). Narrow on purpose: only the frequency moves, with the
+// same effects as the portal auto-apply RPC — including clearing future
+// uninvoiced scheduled visits so the new cadence actually materializes — plus
+// estimate recompute, horizon top-up, and an activity log with before/after.
+// Resolving the source concern happens HERE, in the same call, so a lost
+// follow-up request can't leave a stale open ticket blocking the client's
+// next request (the RPC's duplicate guard keys on unresolved tickets).
+export const applyFrequencyChangeRequest = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        subscriptionId: z.string().uuid(),
+        frequency: z.enum(["weekly", "biweekly", "twice_weekly", "monthly"]),
+        ticketId: z.string().uuid().optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
+
+    const { data: before, error: loadErr } = await supabase
+      .from("subscriptions")
+      .select("organization_id, client_id, property_id, frequency, status")
+      .eq("id", data.subscriptionId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (loadErr) throw new Error(loadErr.message);
+    if (!before) throw new Error("Subscription not found");
+
+    const changed = before.frequency !== data.frequency;
+    if (changed) {
+      const { error } = await supabase
+        .from("subscriptions")
+        .update({
+          frequency: data.frequency,
+          // Same reconciliation as updateSubscription: interval fields only
+          // apply to their own frequency modes.
+          interval_weeks: null,
+          interval_days: null,
+        })
+        .eq("id", data.subscriptionId);
+      if (error) throw new Error(error.message);
+
+      // Mirror the RPC's apply branch: clear future uninvoiced scheduled
+      // visits at the old cadence, then regenerate. The horizon generator only
+      // ADDS visits, so without this the old weekly schedule would survive a
+      // weekly -> monthly change.
+      const { data: future } = await supabase
+        .from("visits")
+        .select("id, invoice_line_items(id)")
+        .eq("subscription_id", data.subscriptionId)
+        .eq("status", "scheduled")
+        .gt("scheduled_on", new Date().toISOString().slice(0, 10));
+      const removable = (future ?? [])
+        .filter((v: any) => !(v.invoice_line_items ?? []).length)
+        .map((v: any) => v.id);
+      if (removable.length) {
+        const { error: delErr } = await supabase.from("visits").delete().in("id", removable);
+        if (delErr) throw new Error(delErr.message);
+      }
+
+      const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
+      if (before.property_id) await recomputePropertyEstimate(supabase, before.property_id);
+      const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
+      await generateVisitHorizon(supabase, before.organization_id);
+
+      const { logActivity } = await import("@/lib/activity.server");
+      await logActivity(supabase, {
+        orgId: before.organization_id,
+        clientId: before.client_id,
+        subscriptionId: data.subscriptionId,
+        actorUserId: userId,
+        kind: "service.updated",
+        summary: `Applied client-requested frequency change: ${before.frequency} → ${data.frequency}`,
+        meta: {
+          source: "portal_frequency_request",
+          before: { frequency: before.frequency },
+          after: { frequency: data.frequency },
+        },
+      });
+    }
+
+    if (data.ticketId) {
+      const { error: tErr } = await supabase
+        .from("qc_tickets")
+        .update({
+          status: "resolved",
+          resolved_at: new Date().toISOString(),
+          resolved_by: userId,
+          resolution_note: changed
+            ? `Frequency change applied: ${before.frequency} → ${data.frequency}`
+            : `Frequency change request closed — service already ${data.frequency}`,
+        })
+        .eq("id", data.ticketId)
+        .eq("organization_id", orgId);
+      if (tErr) throw new Error(tErr.message);
+    }
+
+    return { ok: true, changed, fromFrequency: before.frequency };
+  });
+
 export const listSubscriptionsForClient = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))

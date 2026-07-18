@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
+import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Sheet,
@@ -66,19 +67,7 @@ function hazardList(p: any): string[] {
 }
 
 function PhotoThumb({ path }: { path: string }) {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    supabase.storage
-      .from("visit-photos")
-      .createSignedUrl(path, 300)
-      .then(({ data }) => {
-        if (!cancelled && data) setUrl(data.signedUrl);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [path]);
+  const { url } = useSignedUrl("visit-photos", path);
   if (!url) return <div className="h-16 w-16 animate-pulse rounded bg-muted" />;
   return (
     <a href={url} target="_blank" rel="noreferrer">

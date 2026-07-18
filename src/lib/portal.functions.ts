@@ -340,7 +340,7 @@ export const portalSelfServeOptions = createServerFn({ method: "GET" })
     const [{ data: org }, { data: subs }] = await Promise.all([
       sb
         .from("organizations")
-        .select("portal_allow_vacation_hold, portal_allow_frequency_change")
+        .select("portal_allow_vacation_hold, portal_allow_frequency_change, portal_auto_apply_changes")
         .eq("id", session.organizationId)
         .maybeSingle(),
       sb
@@ -355,6 +355,9 @@ export const portalSelfServeOptions = createServerFn({ method: "GET" })
     return {
       allowVacationHold: !!org?.portal_allow_vacation_hold,
       allowFrequencyChange: !!org?.portal_allow_frequency_change,
+      // Drives the Account tab's request-vs-update affordance (the plan row
+      // gets the same flag via the client payload).
+      autoApply: !!(org as any)?.portal_auto_apply_changes,
       subscription: sub ? { id: sub.id as string, frequency: sub.frequency as string } : null,
     };
   });
@@ -371,11 +374,14 @@ export const portalChangeFrequency = createServerFn({ method: "POST" })
     const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
-    const { error } = await sb.rpc("portal_change_frequency", {
+    const { data: result, error } = await sb.rpc("portal_change_frequency", {
       _token: data.token, _subscription_id: data.subscriptionId, _new_frequency: data.frequency,
     });
     if (error) throw new Error(error.message);
-    return { ok: true };
+    // 'applied' | 'requested' | 'unchanged' — 'requested' means auto-apply is
+    // off and the office got a structured review ticket instead (C4/G4). The
+    // generated RPC types lag the void -> text migration, hence the cast.
+    return { ok: true, status: (result as unknown as string) ?? "applied" };
   });
 
 export const portalListAddonCatalog = createServerFn({ method: "GET" })
