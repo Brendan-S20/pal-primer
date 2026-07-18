@@ -8,6 +8,7 @@ import { getPlatformContext } from "@/lib/platform.functions";
 import { getDashboardSummary } from "@/lib/dashboard.functions";
 import { getBillingStatus } from "@/lib/billing.functions";
 import { hasPermission } from "@/lib/permissions";
+import { humanizeRole } from "@/lib/humanize";
 import type { AppRole } from "@/hooks/useMyRole";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -141,7 +142,7 @@ function Dashboard() {
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold">{org.name}</h1>
-          <p className="text-sm text-muted-foreground">Signed in as {org.role}</p>
+          <p className="text-sm text-muted-foreground">Signed in as {humanizeRole(org.role)}</p>
         </div>
         <div className="flex gap-2">
           <Link to="/routes"><Button variant="outline" size="sm">Today's routes</Button></Link>

@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { humanizeRole } from "@/lib/humanize";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
@@ -198,7 +199,7 @@ function MyDay() {
             <div className="min-w-0">
               <h1 className="truncate text-xl font-semibold">{t("myDay.title")}</h1>
               <p className="truncate text-xs text-muted-foreground">
-                {staff ? `${staff.display_name} · ${staff.role}` : t("myDay.notOnStaff")}
+                {staff ? `${staff.display_name} · ${humanizeRole(staff.role)}` : t("myDay.notOnStaff")}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -265,7 +266,7 @@ function MyDay() {
                 {fieldStaff.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.display_name}
-                    {s.role ? ` · ${s.role}` : ""}
+                    {s.role ? ` · ${humanizeRole(s.role)}` : ""}
                   </option>
                 ))}
               </select>

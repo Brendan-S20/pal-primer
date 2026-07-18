@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, isImpersonationTab } from "@/integrations/supabase/client";
 import { useMyRole, canAccess } from "@/hooks/useMyRole";
 import { APP_NAME } from "@/lib/scoop";
 
@@ -95,9 +95,15 @@ export function OnboardingTour() {
     [role],
   );
 
-  // Decide once per session whether this user has seen the tour.
+  // Decide once per session whether this user has seen the tour. Never
+  // auto-fire in an impersonation tab (H3): the admin doesn't need the tour,
+  // and dismissing it would consume the impersonated user's tour state.
   useEffect(() => {
     if (loading || phase !== "unknown") return;
+    if (isImpersonationTab()) {
+      setPhase("hidden");
+      return;
+    }
     let cancelled = false;
     supabase.auth.getUser().then(({ data }) => {
       if (cancelled) return;
@@ -132,6 +138,9 @@ export function OnboardingTour() {
 
   const finish = useCallback(async () => {
     setPhase("hidden");
+    // An impersonating admin restarting the tour manually must not stamp the
+    // impersonated user's tour_seen_at.
+    if (isImpersonationTab()) return;
     try {
       await supabase.auth.updateUser({
         data: { tour_seen_at: new Date().toISOString() },

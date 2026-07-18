@@ -196,6 +196,30 @@ dispatcher/tech confirmed API-rejected for billing/DNA-registry/code-reveal.
   (no per-org billing-interval column yet; the ÷12 branch is ready).
 - Enterprise/off-catalog plans with no listed price contribute 0 to derived MRR.
 
+## Verification pass (post-merge audit of this report against the code)
+
+A full audit of every findings-sheet item against the merged code confirmed the
+sections above and caught five residual gaps, fixed in a follow-up PR:
+
+- Stale "AI: zone pricing" pointers in the command palette and help article
+  (the panel itself was correctly hidden — C5).
+- Dashboard header, My Day header/tech picker, and Routes board columns still
+  rendered raw role enums ("office_manager") — routed through `humanizeRole` (H3).
+- The onboarding tour auto-fired inside impersonation tabs and stamped the
+  impersonated user's `tour_seen_at` — now guarded by `isImpersonationTab()` (H3).
+- Portal header chip labeled the subscription's unit count as "stations" (G4).
+- Portal service history rendered only under Requests — moved to the Visits tab,
+  Home's "View full history" link retargeted (G4).
+
+Known acceptable deviations (verified, deliberately left): the dashboard
+concerns alert links to `/concerns`, whose default filter is the to-review
+("Received") view rather than a param-driven deep link; org signup rejects
+junk names and dedupes per-user/per-email but does not enforce global org-name
+uniqueness (distinct businesses may legitimately share a name); the new-zone
+form is a drawer rather than a multi-step wizard; humanized line-item dates
+read "Prepaid service on Thu, Jul 16" (the "—" separator in the finding was
+an example, not a requirement).
+
 ## Standing user-side configuration (unchanged, outside code)
 
 Publish from Lovable (auto-syncs from `main`); production env keys

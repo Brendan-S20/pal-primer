@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { MessageCircleWarning } from "lucide-react";
 import {
-  usePortalCtx, ServiceHistorySection, RequestsList, ReportGeneralConcern,
+  usePortalCtx, RequestsList, ReportGeneralConcern,
 } from "@/lib/portal-ui";
 
 export const Route = createFileRoute("/portal/$slug/$token/requests")({
@@ -9,22 +9,10 @@ export const Route = createFileRoute("/portal/$slug/$token/requests")({
 });
 
 function PortalRequests() {
-  const {
-    token, historyQ, requestsQ, signPhotosFn, concernMut,
-  } = usePortalCtx();
+  const { requestsQ, concernMut } = usePortalCtx();
 
   return (
     <div className="space-y-6">
-      <ServiceHistorySection
-        rows={historyQ.data ?? []}
-        signPhotos={signPhotosFn}
-        token={token}
-        onReport={(visitId, category, message) =>
-          concernMut.mutate({ visitId, category: category as any, message })
-        }
-        reporting={concernMut.isPending}
-      />
-
       <section>
         <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
           <MessageCircleWarning className="h-4 w-4" /> Your requests

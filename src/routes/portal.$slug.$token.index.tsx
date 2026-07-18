@@ -119,7 +119,7 @@ function PortalHome() {
           </ul>
         )}
         <div className="mt-3">
-          <Link to="/portal/$slug/$token/requests" params={{ slug, token }}>
+          <Link to="/portal/$slug/$token/visits" params={{ slug, token }}>
             <Button size="sm" variant="outline" className="gap-1">
               View full history <ArrowRight className="h-3.5 w-3.5" />
             </Button>

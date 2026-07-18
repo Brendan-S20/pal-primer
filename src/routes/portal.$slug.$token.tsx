@@ -69,8 +69,10 @@ function PortalShell() {
   const nextVisitEtaStart = c.next_visit_eta_start as string | null;
   const nextVisitEtaEnd = c.next_visit_eta_end as string | null;
 
+  // primary_unit_count is the subscription's billable UNITS, not waste
+  // stations (G4 mislabel: "24 stations" for a 24-unit service).
   const planChip = isCommercial
-    ? `${friendlyFrequency(c.primary_frequency)} · ${c.primary_unit_count ?? 0} station${c.primary_unit_count === 1 ? "" : "s"} · ${money(c.primary_price_cents)}/visit`
+    ? `${friendlyFrequency(c.primary_frequency)} · ${c.primary_unit_count ?? 0} unit${c.primary_unit_count === 1 ? "" : "s"} · ${money(c.primary_price_cents)}/visit`
     : `${friendlyFrequency(c.primary_frequency)} · ${c.primary_dog_count ?? 0} dog${c.primary_dog_count === 1 ? "" : "s"} · ${money(c.primary_price_cents)}/visit`;
 
   return (
