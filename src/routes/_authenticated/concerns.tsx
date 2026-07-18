@@ -13,6 +13,7 @@ import {
 import { parseHoldRequest } from "@/lib/hold-request";
 import { parseFrequencyRequest, frequencyLabel } from "@/lib/frequency-request";
 import { applyFrequencyChangeRequest } from "@/lib/subscriptions.functions";
+import { usePermissions } from "@/hooks/useMyRole";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { VacationHoldDrawer } from "@/components/client-detail/VacationHoldDrawer";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +44,10 @@ function fmt(d: string) {
 }
 
 function ConcernsPage() {
+  // The one-click frequency apply is a manage_pricing action — hide it for
+  // roles (dispatcher) that can reach Concerns but would be server-rejected.
+  const { can } = usePermissions();
+  const canManagePricing = can("manage_pricing");
   const [filter, setFilter] = useState<"all" | ConcernStatus>("open");
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [replies, setReplies] = useState<Record<string, string>>({});
@@ -105,8 +110,12 @@ function ConcernsPage() {
   });
 
   const applyFreqMut = useMutation({
+    // Apply + resolve happen in ONE server call so a lost follow-up can't
+    // strand an open ticket that blocks the client's next request.
     mutationFn: (v: { ticketId: string; subscriptionId: string; frequency: string }) =>
-      applyFreqFn({ data: { subscriptionId: v.subscriptionId, frequency: v.frequency as any } }),
+      applyFreqFn({
+        data: { subscriptionId: v.subscriptionId, frequency: v.frequency as any, ticketId: v.ticketId },
+      }),
     onSuccess: (r: any, v) => {
       setAppliedFreqTicketIds((s) => new Set(s).add(v.ticketId));
       toast.success(
@@ -114,15 +123,8 @@ function ConcernsPage() {
           ? `Frequency changed to ${frequencyLabel(v.frequency)}`
           : "Service already at the requested frequency",
       );
-      // Close the loop on the concern; if this fails the applied-set above
-      // still hides the action so the change can't be applied twice.
-      mut.mutate({
-        ticketId: v.ticketId,
-        status: "resolved",
-        resolutionNote: r?.changed
-          ? `Frequency change applied: ${frequencyLabel(r.fromFrequency)} → ${frequencyLabel(v.frequency)}`
-          : `Frequency change request closed — service already ${frequencyLabel(v.frequency)}`,
-      });
+      qc.invalidateQueries({ queryKey: ["concerns"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -223,7 +225,7 @@ function ConcernsPage() {
                   </div>
                 )}
 
-                {freqRequest && status !== "resolved" && !appliedFreqTicketIds.has(c.id) && (
+                {freqRequest && status !== "resolved" && canManagePricing && !appliedFreqTicketIds.has(c.id) && (
                   <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
                     <Repeat className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
                     <span className="text-amber-800 dark:text-amber-300">
@@ -231,12 +233,9 @@ function ConcernsPage() {
                       {frequencyLabel(freqRequest.toFrequency)}.
                     </span>
                     <ConfirmButton
-                      variant="default"
-                      size="sm"
                       title="Apply frequency change?"
                       description={`Change ${client?.display_name ?? "this client"}'s service from ${frequencyLabel(freqRequest.fromFrequency)} to ${frequencyLabel(freqRequest.toFrequency)}. Upcoming visits are rescheduled to the new cadence and the concern is resolved.`}
                       confirmLabel="Apply change"
-                      disabled={applyFreqMut.isPending}
                       onConfirm={() =>
                         applyFreqMut.mutate({
                           ticketId: c.id,

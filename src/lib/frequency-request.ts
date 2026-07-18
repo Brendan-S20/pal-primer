@@ -10,12 +10,17 @@ export interface ParsedFrequencyRequest {
   toFrequency: string;
 }
 
-const PORTAL_FREQUENCIES = new Set(["weekly", "biweekly", "twice_weekly", "monthly"]);
+/** The four cadences a client can self-serve request from the portal. */
+export const PORTAL_FREQUENCY_VALUES = ["weekly", "biweekly", "twice_weekly", "monthly"] as const;
+const PORTAL_FREQUENCIES = new Set<string>(PORTAL_FREQUENCY_VALUES);
 
+/** Canonical frequency labels (I3: one label map — the portal plan row, the
+ * portal account tab, public signup, and the office Concerns page all read
+ * from here instead of carrying drifting local copies). */
 export const FREQUENCY_LABELS: Record<string, string> = {
   weekly: "Weekly",
   biweekly: "Every 2 weeks",
-  twice_weekly: "Twice a week",
+  twice_weekly: "Twice weekly",
   monthly: "Monthly",
   one_time: "One time",
   every_n_days: "Every few days",

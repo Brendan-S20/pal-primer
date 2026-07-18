@@ -6,6 +6,7 @@ import { Gift, Bell, CalendarClock, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { PushToggle } from "@/components/PushToggle";
 import { usePortalCtx, ReferralCard, EmptyBox } from "@/lib/portal-ui";
+import { PORTAL_FREQUENCY_VALUES, frequencyLabel } from "@/lib/frequency-request";
 import {
   portalSelfServeOptions,
   portalRequestVacationHold,
@@ -16,12 +17,10 @@ export const Route = createFileRoute("/portal/$slug/$token/account")({
   component: PortalAccount,
 });
 
-const FREQ_LABELS: Record<string, string> = {
-  weekly: "Weekly",
-  biweekly: "Every 2 weeks",
-  twice_weekly: "Twice a week",
-  monthly: "Monthly",
-};
+// Canonical labels + the portal-selectable cadences (I3 shared map).
+const FREQ_LABELS: Record<string, string> = Object.fromEntries(
+  PORTAL_FREQUENCY_VALUES.map((v) => [v, frequencyLabel(v)]),
+);
 
 function PortalAccount() {
   const { token, clientQ, referralQ } = usePortalCtx();
@@ -165,9 +164,18 @@ function SelfServeSection({ token }: { token: string }) {
                 disabled={freqMut.isPending || (freq || opts.subscription.frequency) === opts.subscription.frequency}
                 className="rounded bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
               >
-                {freqMut.isPending ? "Updating…" : "Update"}
+                {freqMut.isPending
+                  ? "Sending…"
+                  : opts.autoApply
+                    ? "Update"
+                    : "Request change"}
               </button>
             </div>
+            {!opts.autoApply && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Frequency changes are reviewed by the office before they take effect.
+              </p>
+            )}
           </div>
         </section>
       )}

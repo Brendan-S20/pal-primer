@@ -52,7 +52,7 @@ describe("parseFrequencyRequest", () => {
 
 describe("frequencyLabel", () => {
   it("labels known frequencies and humanizes unknown ones", () => {
-    expect(frequencyLabel("twice_weekly")).toBe("Twice a week");
+    expect(frequencyLabel("twice_weekly")).toBe("Twice weekly");
     expect(frequencyLabel("biweekly")).toBe("Every 2 weeks");
     expect(frequencyLabel("some_new_mode")).toBe("some new mode");
   });

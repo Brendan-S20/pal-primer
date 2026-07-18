@@ -64,8 +64,18 @@ async function activeGrantForSession(sessionId: string): Promise<ImpersonationGr
   } catch {
     grant = null;
   }
-  if (grantCache.size > 500) {
-    for (const [k, v] of grantCache) if (Date.now() - v.at >= GRANT_CACHE_TTL_MS) grantCache.delete(k);
+  // The cache holds one entry per active session (nulls included, so ordinary
+  // sessions cost one probe per minute, not per write). Cap it hard: evict
+  // expired entries first, then oldest-first if a busy org still exceeds the
+  // cap — Map iteration order is insertion order, so the front is the oldest.
+  if (grantCache.size >= 500) {
+    for (const [k, v] of grantCache) {
+      if (Date.now() - v.at >= GRANT_CACHE_TTL_MS) grantCache.delete(k);
+    }
+    for (const k of grantCache.keys()) {
+      if (grantCache.size < 500) break;
+      grantCache.delete(k);
+    }
   }
   grantCache.set(sessionId, { grant, at: Date.now() });
   return grant;

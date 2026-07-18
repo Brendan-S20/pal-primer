@@ -34,14 +34,17 @@ WITH candidates AS (
 UPDATE public.zones z
    SET center_latitude  = c.lat,
        center_longitude = c.lng,
-       -- Keep a configured extent; default to radius + 1 mile only when the
-       -- zone has neither a radius nor a drive-time.
+       -- Keep a configured extent AND mode: a zone deliberately in drive-time
+       -- mode stays drive-time; anything else becomes radius (the C5 rule —
+       -- ZIP-only coverage migrates to ZIP + 1 mile; ZIP matching itself is
+       -- mode-independent and still outranks the radius). The 1-mile default
+       -- applies only when the zone has neither a radius nor a drive-time.
        geo_match_mode = CASE
-         WHEN z.drive_time_minutes IS NOT NULL THEN 'drive_time'
+         WHEN z.geo_match_mode = 'drive_time' AND z.drive_time_minutes IS NOT NULL THEN 'drive_time'
          ELSE 'radius'
        END,
        radius_meters = CASE
-         WHEN z.drive_time_minutes IS NOT NULL THEN z.radius_meters
+         WHEN z.geo_match_mode = 'drive_time' AND z.drive_time_minutes IS NOT NULL THEN z.radius_meters
          ELSE COALESCE(z.radius_meters, 1609)
        END
   FROM candidates c

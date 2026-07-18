@@ -1,4 +1,5 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
+import { PORTAL_FREQUENCY_VALUES, frequencyLabel } from "@/lib/frequency-request";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -50,12 +51,11 @@ export const Route = createFileRoute("/signup/$slug")({
   component: SignupPage,
 });
 
-const FREQ_LABELS: Record<string, string> = {
-  weekly: "Weekly",
-  biweekly: "Every other week",
-  twice_weekly: "Twice per week",
-  monthly: "Once per month",
-};
+// Canonical labels for the portal-selectable cadences (I3 shared map) — the
+// public signup page uses the same wording as the portal and office.
+const FREQ_LABELS: Record<string, string> = Object.fromEntries(
+  PORTAL_FREQUENCY_VALUES.map((v) => [v, frequencyLabel(v)]),
+);
 
 function money(cents: number, currency = "usd") {
   return new Intl.NumberFormat("en-US", {

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import {
   listDnaMatches,
@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { FlaskConical, Trash2, Dna, Receipt, FileText, Printer, Camera } from "lucide-react";
 import { usePermissions, useMyRole } from "@/hooks/useMyRole";
+import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { supabase } from "@/integrations/supabase/client";
 import { HelpTip } from "@/components/HelpTip";
 
@@ -70,20 +71,7 @@ const STATUS_TONE: Record<DnaMatch["status"], "default" | "secondary" | "outline
 /** Signed-URL link to a sample's collection photo (private dna-samples
  * bucket). Quietly renders nothing if the URL can't be signed. */
 function SamplePhotoLink({ path }: { path: string }) {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    supabase.storage
-      .from("dna-samples")
-      .createSignedUrl(path, 300)
-      .then(({ data }) => {
-        if (!cancelled) setUrl(data?.signedUrl ?? null);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [path]);
+  const { url } = useSignedUrl("dna-samples", path);
   if (!url) return null;
   return (
     <a

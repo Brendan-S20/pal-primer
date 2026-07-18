@@ -340,7 +340,7 @@ export const portalSelfServeOptions = createServerFn({ method: "GET" })
     const [{ data: org }, { data: subs }] = await Promise.all([
       sb
         .from("organizations")
-        .select("portal_allow_vacation_hold, portal_allow_frequency_change")
+        .select("portal_allow_vacation_hold, portal_allow_frequency_change, portal_auto_apply_changes")
         .eq("id", session.organizationId)
         .maybeSingle(),
       sb
@@ -355,6 +355,9 @@ export const portalSelfServeOptions = createServerFn({ method: "GET" })
     return {
       allowVacationHold: !!org?.portal_allow_vacation_hold,
       allowFrequencyChange: !!org?.portal_allow_frequency_change,
+      // Drives the Account tab's request-vs-update affordance (the plan row
+      // gets the same flag via the client payload).
+      autoApply: !!(org as any)?.portal_auto_apply_changes,
       subscription: sub ? { id: sub.id as string, frequency: sub.frequency as string } : null,
     };
   });
