@@ -78,7 +78,7 @@ function OverviewPage() {
             icon={DollarSign}
             label="MRR"
             value={k ? money(k.mrr_cents) : "-"}
-            hint="Wires up once Stripe is connected"
+            hint="From active tenant subscriptions"
           />
           <Kpi
             icon={Building2}

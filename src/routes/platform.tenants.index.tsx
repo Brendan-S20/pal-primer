@@ -13,10 +13,12 @@ import {
 } from "@/components/ui/table";
 import { Search } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import {
   TenantStatusBadge,
   TENANT_STATUS_LABEL as STATUS_LABEL,
 } from "@/components/TenantStatusBadge";
+import { isValidOrgName } from "@/lib/dna-linkage";
 
 export const Route = createFileRoute("/platform/tenants/")({
   component: TenantsPage,
@@ -98,7 +100,12 @@ function TenantsPage() {
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{r.name}</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate font-medium">{r.name}</span>
+                      {!isValidOrgName(r.name) && (
+                        <Badge variant="outline" className="shrink-0 text-amber-600">Review name</Badge>
+                      )}
+                    </div>
                     <div className="mt-0.5 truncate text-xs text-muted-foreground">
                       {r.plan_name ?? "No plan"} · {r.active_client_count.toLocaleString()} clients · {r.users_count.toLocaleString()} users
                     </div>
@@ -146,13 +153,18 @@ function TenantsPage() {
                 {filtered.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell className="font-medium">
-                      <Link
-                        to="/platform/tenants/$id"
-                        params={{ id: r.id }}
-                        className="hover:underline"
-                      >
-                        {r.name}
-                      </Link>
+                      <span className="flex items-center gap-1.5">
+                        <Link
+                          to="/platform/tenants/$id"
+                          params={{ id: r.id }}
+                          className="hover:underline"
+                        >
+                          {r.name}
+                        </Link>
+                        {!isValidOrgName(r.name) && (
+                          <Badge variant="outline" className="text-amber-600">Review name</Badge>
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell>
                       {r.plan_name ?? <span className="text-muted-foreground">-</span>}

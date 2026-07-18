@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PublicShell } from "@/components/PublicShell";
 import { APP_NAME } from "@/lib/scoop";
+import { isValidOrgName } from "@/lib/dna-linkage";
 
 // The Get-started walkthrough (Brendan's re-review): account creation is a
 // guided path, not a tab on the sign-in card. Steps: account → business →
@@ -72,7 +73,7 @@ function GetStartedPage() {
   const [smsConsent, setSmsConsent] = useState(false);
 
   const step0Valid = /.+@.+\..+/.test(email) && password.length >= 8;
-  const step1Valid = orgName.trim().length > 0 && displayName.trim().length > 0;
+  const step1Valid = isValidOrgName(orgName) && displayName.trim().length > 0;
 
   const finish = async () => {
     setError(null);
@@ -217,6 +218,11 @@ function GetStartedPage() {
                   onChange={(e) => setOrgName(e.target.value)}
                   placeholder="Acme Pet Waste Removal"
                 />
+                {orgName.trim().length > 0 && !isValidOrgName(orgName) && (
+                  <p className="text-xs text-destructive">
+                    Enter your real business name (not blank or a placeholder like "Test").
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="gs-name">Your name</Label>

@@ -25,9 +25,37 @@ export function isValidEntityName(name: string | null | undefined): boolean {
   if (name == null) return false;
   const t = name.trim();
   if (t.length < 2) return false;
-  if (!/[A-Za-z]/.test(t)) return false;
+  // At least one letter in ANY script (rejects "1"/"01"/"12", allows CJK,
+  // Cyrillic, accented Latin) — mirrors the SQL [[:alpha:]] check.
+  if (!/\p{L}/u.test(t)) return false;
   if (NAME_PLACEHOLDERS.has(t.toLowerCase())) return false;
   return true;
+}
+
+/**
+ * A real ORGANIZATION name (signup validation, I11 / H5 #4). Stricter than the
+ * base entity check: also rejects names whose every word is a placeholder junk
+ * token, which is how "Test Test" slipped past — each single word is "test"
+ * (blocklisted) but the two-word name isn't an exact blocklist match.
+ */
+export function isValidOrgName(name: string | null | undefined): boolean {
+  if (!isValidEntityName(name)) return false;
+  const words = (name as string)
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => /\p{L}/u.test(w));
+  if (words.length > 0 && words.every((w) => NAME_PLACEHOLDERS.has(w))) return false;
+  return true;
+}
+
+export function assertValidOrgName(name: string | null | undefined): string {
+  if (!isValidOrgName(name)) {
+    throw new Error(
+      "Enter your real business name (not blank or a placeholder like \"Test\").",
+    );
+  }
+  return (name as string).trim();
 }
 
 /**

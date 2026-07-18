@@ -24,6 +24,15 @@ describe("dog name validation (B8)", () => {
     }
   });
 
+  it("accepts non-Latin names (Unicode letters), still rejects number-only (QA phase-9)", () => {
+    for (const good of ["北京宠物", "Мухтар", "Müller", "Café", "O'Brien"]) {
+      expect(isValidEntityName(good)).toBe(true);
+    }
+    for (const bad of ["12", "01", "123", " 45 "]) {
+      expect(isValidEntityName(bad)).toBe(false);
+    }
+  });
+
   it("assertValidDogName trims and throws a human-readable message", () => {
     expect(assertValidDogName("  Rex ")).toBe("Rex");
     expect(() => assertValidDogName("1")).toThrow(/real dog name/i);

@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { fetchPlatformSaasMetrics } from "@/lib/platform-metrics.server";
 
 export type PlatformOrgRow = {
   organization_id: string;
@@ -331,47 +332,52 @@ export const getPlatformRevenueTrend = createServerFn({ method: "GET" })
     const now = new Date();
     const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1));
     const startIso = start.toISOString();
+    const monthStartIso = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+    ).toISOString();
 
-    const [paymentsRes, orgsRes, arRes, mtdRes, topRes] = await Promise.all([
+    // Platform revenue is SaaS revenue. The trailing-12-month trend + platform
+    // AR come from platform_invoices (what HoundStack bills tenants), NOT from
+    // the `payments` table (tenant→client collections = GMV). MRR/ARR + the tier
+    // breakdown come from the shared subscription-based computation (H5/I13 #19).
+    const [saas, invoicesRes, orgsRes, arRes, allOrgsRes] = await Promise.all([
+      fetchPlatformSaasMetrics(supabaseAdmin),
       supabaseAdmin
-        .from("payments")
-        .select("amount_cents, paid_at, status")
-        .eq("status", "succeeded")
-        .gte("paid_at", startIso),
+        .from("platform_invoices")
+        .select("amount_paid_cents, created_at, status")
+        .gte("created_at", startIso),
       supabaseAdmin
         .from("organizations")
-        .select("id, name, created_at, billing_tier")
+        .select("id, created_at")
+        .is("deleted_at", null)
         .gte("created_at", startIso),
       supabaseAdmin
         .from("platform_invoices")
         .select("amount_due_cents, amount_paid_cents")
         .in("status", ["open", "uncollectible"]),
       supabaseAdmin
-        .from("payments")
-        .select("amount_cents, organization_id, paid_at, status")
-        .eq("status", "succeeded")
-        .gte("paid_at", new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString()),
-      supabaseAdmin
         .from("organizations")
-        .select("id, name, billing_tier, billing_status, plan_status"),
+        .select("id, billing_status")
+        .is("deleted_at", null),
     ]);
 
-    if (paymentsRes.error) throw new Error(paymentsRes.error.message);
+    if (invoicesRes.error) throw new Error(invoicesRes.error.message);
     if (orgsRes.error) throw new Error(orgsRes.error.message);
 
-    // Build 12 monthly buckets
+    // Build 12 monthly buckets of collected SaaS revenue.
     const buckets = new Map<string, RevenueBucket>();
     for (let i = 0; i < 12; i++) {
       const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11 + i, 1));
       const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
       buckets.set(key, { month: key, revenue_cents: 0, payment_count: 0, new_orgs: 0 });
     }
-    for (const p of paymentsRes.data ?? []) {
-      if (!p.paid_at) continue;
-      const d = new Date(p.paid_at);
+    for (const inv of invoicesRes.data ?? []) {
+      const paid = inv.amount_paid_cents ?? 0;
+      if (!inv.created_at || paid <= 0) continue;
+      const d = new Date(inv.created_at);
       const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
       const b = buckets.get(key);
-      if (b) { b.revenue_cents += p.amount_cents; b.payment_count += 1; }
+      if (b) { b.revenue_cents += paid; b.payment_count += 1; }
     }
     for (const o of orgsRes.data ?? []) {
       const d = new Date(o.created_at);
@@ -380,52 +386,35 @@ export const getPlatformRevenueTrend = createServerFn({ method: "GET" })
       if (b) b.new_orgs += 1;
     }
 
-    // MTD revenue by org → top 5
-    const byOrg = new Map<string, number>();
-    for (const p of mtdRes.data ?? []) {
-      byOrg.set(p.organization_id, (byOrg.get(p.organization_id) ?? 0) + p.amount_cents);
-    }
-    const orgNames = new Map((topRes.data ?? []).map((o) => [o.id, o.name] as const));
-    const topOrgs = Array.from(byOrg.entries())
-      .map(([id, cents]) => ({ id, name: orgNames.get(id) ?? "-", revenue_cents: cents }))
-      .sort((a, b) => b.revenue_cents - a.revenue_cents)
-      .slice(0, 5);
-
     const trailingMonths = Array.from(buckets.values());
-    const last3 = trailingMonths.slice(-3);
-    const avgMonthlyCents = last3.length
-      ? Math.round(last3.reduce((s, m) => s + m.revenue_cents, 0) / last3.length)
-      : 0;
+
+    // SaaS collected this month (platform_invoices), separate from recurring MRR.
+    const collectedMtdCents = (invoicesRes.data ?? [])
+      .filter((inv) => inv.created_at && inv.created_at >= monthStartIso)
+      .reduce((s, inv) => s + (inv.amount_paid_cents ?? 0), 0);
 
     const ar_open_cents = (arRes.data ?? []).reduce(
       (s, r) => s + Math.max(0, (r.amount_due_cents ?? 0) - (r.amount_paid_cents ?? 0)),
       0,
     );
-    const total_orgs = (topRes.data ?? []).length;
-    const paying_orgs = (topRes.data ?? []).filter(
+    const allOrgs = allOrgsRes.data ?? [];
+    const total_orgs = allOrgs.length;
+    const paying_orgs = allOrgs.filter(
       (o) => o.billing_status === "active" || o.billing_status === "past_due" || o.billing_status === "grace",
     ).length;
 
-    // Revenue-by-tier (MTD)
-    const tierRev = new Map<string, number>();
-    for (const [orgId, cents] of byOrg.entries()) {
-      const org = (topRes.data ?? []).find((o) => o.id === orgId);
-      const tier = org?.billing_tier ?? "unassigned";
-      tierRev.set(tier, (tierRev.get(tier) ?? 0) + cents);
-    }
-    const byTier = Array.from(tierRev.entries())
-      .map(([tier, cents]) => ({ tier, revenue_cents: cents }))
-      .sort((a, b) => b.revenue_cents - a.revenue_cents);
-
     return {
       months: trailingMonths,
-      topOrgs,
-      avgMonthlyCents,
-      arrEstimateCents: avgMonthlyCents * 12,
+      // Top orgs by recurring SaaS contribution (their monthly plan price), NOT
+      // by how much they collect from their own clients.
+      topOrgs: saas.perOrg.slice(0, 5).map((o) => ({ id: o.id, name: o.name, revenue_cents: o.mrr_cents })),
+      mrrCents: saas.mrrCents,
+      arrEstimateCents: saas.arrCents,
+      collectedMtdCents,
       arOpenCents: ar_open_cents,
       totalOrgs: total_orgs,
       payingOrgs: paying_orgs,
-      byTier,
+      byTier: saas.byTier.map((t) => ({ tier: t.tier_name, revenue_cents: t.mrr_cents })),
     };
   });
 
