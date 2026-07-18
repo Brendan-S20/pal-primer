@@ -63,9 +63,13 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
           : Promise.resolve(emptyRes),
         supabase
           .from("staff")
+          // "Techs today" is a FIELD-worker view (C3/I4): non-field roles that
+          // own a stray visit are excluded by the capability flag, not a
+          // role-name check, matching Routes tech-load and Reports perTech.
           .select("id, display_name")
           .eq("organization_id", orgId)
-          .eq("active", true),
+          .eq("active", true)
+          .eq("is_field_tech", true),
         supabase
           .from("qc_tickets")
           .select("id, category, message, created_at, client_id, visit_id, clients(display_name)")

@@ -4279,6 +4279,7 @@ export type Database = {
           end_longitude: number | null
           id: string
           is_field_tech: boolean
+          is_field_tech_overridden: boolean
           location_id: string | null
           organization_id: string
           phone: string | null
@@ -4300,6 +4301,7 @@ export type Database = {
           end_longitude?: number | null
           id?: string
           is_field_tech?: boolean
+          is_field_tech_overridden?: boolean
           location_id?: string | null
           organization_id: string
           phone?: string | null
@@ -4321,6 +4323,7 @@ export type Database = {
           end_longitude?: number | null
           id?: string
           is_field_tech?: boolean
+          is_field_tech_overridden?: boolean
           location_id?: string | null
           organization_id?: string
           phone?: string | null

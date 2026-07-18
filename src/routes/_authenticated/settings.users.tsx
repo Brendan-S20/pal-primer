@@ -96,7 +96,8 @@ function UsersPage() {
       <div>
         <h1 className="text-2xl font-semibold">Users & roles</h1>
         <p className="text-sm text-muted-foreground">
-          Owners can change roles, deactivate staff, and set each technician's route start &amp; end addresses.
+          Owners can change roles, deactivate staff, flag who appears on routes, and set each field
+          worker's route start &amp; end addresses. Only field workers show up in routing and tech reports.
         </p>
       </div>
 
@@ -122,14 +123,20 @@ function UsersPage() {
                 </thead>
                 <tbody className="divide-y">
                   {(data?.users ?? []).map((u: any) => {
-                    const isTech = u.role === "tech";
                     const isOpen = u.staff_id && expanded.has(u.staff_id);
                     const staff = u.staff_id ? staffById.get(u.staff_id) : null;
+                    // An override flags a non-tech in (owner who runs a route) or a
+                    // tech out. Surface only DELIBERATE overrides (is_field_tech_
+                    // overridden) so a role default never shows a routing badge.
+                    const fieldOverrideIn =
+                      staff && staff.is_field_tech_overridden && u.role !== "tech" && staff.is_field_tech;
+                    const notRoutable =
+                      staff && staff.is_field_tech_overridden && u.role === "tech" && !staff.is_field_tech;
                     return (
                       <>
                         <tr key={u.user_id}>
                           <td className="py-3">
-                            {isTech && u.staff_id ? (
+                            {u.staff_id ? (
                               <button onClick={() => toggleExpand(u.staff_id)} className="text-muted-foreground hover:text-foreground">
                                 {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                               </button>
@@ -157,23 +164,33 @@ function UsersPage() {
                           <td className="py-3">
                             {u.active ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}
                             {/* Surface routing eligibility in the row (punch
-                                list #12) — the controls live in the expander,
+                                list #12 / G8) — the controls live in the expander,
                                 but their state shouldn't hide there. */}
                             {u.active && staff && staff.is_field_tech && !staff.routing_available && (
                               <Badge variant="outline" className="ml-1.5 border-amber-400 text-amber-700">
                                 Off routes
                               </Badge>
                             )}
+                            {u.active && fieldOverrideIn && (
+                              <Badge variant="outline" className="ml-1.5 border-emerald-400 text-emerald-700">
+                                On routes
+                              </Badge>
+                            )}
+                            {u.active && notRoutable && (
+                              <Badge variant="outline" className="ml-1.5 text-muted-foreground">
+                                Not on routes
+                              </Badge>
+                            )}
                           </td>
                           <td className="py-3 text-right">
-                            {isTech && u.staff_id && (
+                            {u.staff_id && (
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 className="mr-1 text-xs"
                                 onClick={() => toggleExpand(u.staff_id)}
                               >
-                                Routing & addresses
+                                Routing &amp; addresses
                               </Button>
                             )}
                             {canEdit && u.staff_id && (

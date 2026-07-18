@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Inbox } from "lucide-react";
+import { CalendarOff, Inbox } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -10,9 +10,12 @@ import {
   CONCERN_CATEGORY_LABELS,
   type ConcernStatus,
 } from "@/lib/concerns.functions";
+import { parseHoldRequest } from "@/lib/hold-request";
+import { VacationHoldDrawer } from "@/components/client-detail/VacationHoldDrawer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { formatDay } from "@/lib/format";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/concerns")({
@@ -40,6 +43,19 @@ function ConcernsPage() {
   const [filter, setFilter] = useState<"all" | ConcernStatus>("open");
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [replies, setReplies] = useState<Record<string, string>>({});
+  // The concern we're placing a hold for (C4/G4): opens the shared hold drawer
+  // prefilled from the parsed request, then resolves the concern on success.
+  const [holdFor, setHoldFor] = useState<{
+    ticketId: string;
+    clientId: string;
+    startsOn: string;
+    endsOn: string;
+    reason: string;
+  } | null>(null);
+  // Concerns that have already had a hold placed this session. Guards against a
+  // second hold if the follow-up resolve fails (the hold is committed, but the
+  // concern may stay open) — the "Create hold" action is hidden regardless.
+  const [heldTicketIds, setHeldTicketIds] = useState<Set<string>>(new Set());
   const qc = useQueryClient();
   const listFn = useServerFn(listConcerns);
   const updateFn = useServerFn(updateConcernStatus);
@@ -120,6 +136,7 @@ function ConcernsPage() {
           {concerns.map((c) => {
             const status = c.status as ConcernStatus;
             const client = Array.isArray(c.clients) ? c.clients[0] : c.clients;
+            const holdRequest = c.client_id ? parseHoldRequest(c.message) : null;
             return (
               <li key={c.id} className="rounded-lg border bg-card p-4">
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -139,6 +156,30 @@ function ConcernsPage() {
                   </div>
                 </div>
                 {c.message && <p className="mt-2 whitespace-pre-wrap text-sm">{c.message}</p>}
+
+                {holdRequest && status !== "resolved" && !heldTicketIds.has(c.id) && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
+                    <CalendarOff className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
+                    <span className="text-amber-800 dark:text-amber-300">
+                      Hold requested {formatDay(holdRequest.startsOn)} to {formatDay(holdRequest.endsOn)}.
+                    </span>
+                    <Button
+                      size="sm"
+                      className="ml-auto"
+                      onClick={() =>
+                        setHoldFor({
+                          ticketId: c.id,
+                          clientId: c.client_id,
+                          startsOn: holdRequest.startsOn,
+                          endsOn: holdRequest.endsOn,
+                          reason: holdRequest.reason || "Vacation hold",
+                        })
+                      }
+                    >
+                      Create hold from request
+                    </Button>
+                  </div>
+                )}
 
                 {c.last_reply_at && (
                   <p className="mt-2 rounded bg-muted/50 p-2 text-xs text-muted-foreground">
@@ -211,6 +252,43 @@ function ConcernsPage() {
             );
           })}
         </ul>
+      )}
+
+      {holdFor && (
+        <VacationHoldDrawer
+          open={!!holdFor}
+          onClose={() => setHoldFor(null)}
+          clientId={holdFor.clientId}
+          initialStartsOn={holdFor.startsOn}
+          initialEndsOn={holdFor.endsOn}
+          initialReason={holdFor.reason}
+          onCreated={(info) => {
+            // The hold is committed. Retire the "Create hold" action for this
+            // concern immediately so a resolve failure can't leave it available
+            // and let a second hold be placed for the same request.
+            const ticketId = holdFor.ticketId;
+            setHeldTicketIds((s) => new Set(s).add(ticketId));
+            // Link + resolve the originating concern once the hold is placed.
+            mut.mutate(
+              {
+                ticketId,
+                status: "resolved",
+                resolutionNote: `Vacation hold placed ${info.startsOn} to ${info.endsOn}${
+                  info.removedVisits
+                    ? ` (${info.removedVisits} scheduled visit${info.removedVisits === 1 ? "" : "s"} removed)`
+                    : ""
+                }.`,
+              },
+              {
+                onError: () =>
+                  toast.error(
+                    "Hold placed, but the concern couldn't be auto-resolved. Resolve it manually.",
+                  ),
+              },
+            );
+            setHoldFor(null);
+          }}
+        />
       )}
     </div>
   );
