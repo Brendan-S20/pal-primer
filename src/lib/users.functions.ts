@@ -225,7 +225,13 @@ export const setStaffRouting = createServerFn({ method: "POST" })
     const { requirePermission } = await import("@/lib/authz.server");
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
     const patch: Record<string, boolean | number | null> = {};
-    if (data.isFieldTech !== undefined) patch.is_field_tech = data.isFieldTech;
+    // Flipping the field-worker flag is a deliberate override: mark it so the
+    // idempotent role-based reconciliation (migration 20260717220000) never
+    // clobbers a working owner flagged in, or a tech flagged out.
+    if (data.isFieldTech !== undefined) {
+      patch.is_field_tech = data.isFieldTech;
+      patch.is_field_tech_overridden = true;
+    }
     if (data.routingAvailable !== undefined) patch.routing_available = data.routingAvailable;
     if (data.dailyCapacityMinutes !== undefined) patch.daily_capacity_minutes = data.dailyCapacityMinutes || null;
     if (Object.keys(patch).length === 0) return { ok: true };

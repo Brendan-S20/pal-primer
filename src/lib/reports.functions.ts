@@ -54,12 +54,19 @@ export const getReports = createServerFn({ method: "POST" })
       }
     }
 
-    // Staff names
+    // Staff names + field-worker flag. Tech productivity is a FIELD-worker
+    // report (C3/I4): non-field roles (owner/office_manager/dispatcher) that
+    // happen to own visits are excluded by the capability flag, not by
+    // role-name checks. "Unassigned" is not a tech and is dropped too — the
+    // overall completion picture stays in visitCounts.
     const staffIds = Object.keys(perTech).filter((x) => x !== "unassigned");
     const { data: staffRows } = staffIds.length
-      ? await supabase.from("staff").select("id, display_name").in("id", staffIds)
-      : { data: [] as { id: string; display_name: string }[] };
+      ? await supabase.from("staff").select("id, display_name, is_field_tech").in("id", staffIds)
+      : { data: [] as { id: string; display_name: string; is_field_tech: boolean }[] };
     const staffName = new Map((staffRows ?? []).map((s) => [s.id, s.display_name]));
+    const fieldStaffIds = new Set(
+      (staffRows ?? []).filter((s: any) => s.is_field_tech).map((s) => s.id),
+    );
 
     // Zone names
     const zoneIds = Object.keys(perZone).filter((x) => x !== "no_zone");
@@ -146,9 +153,10 @@ export const getReports = createServerFn({ method: "POST" })
             (visitCounts.completed + visitCounts.skipped + visitCounts.missed)
           : null,
       perTech: Object.entries(perTech)
+        .filter(([id]) => fieldStaffIds.has(id))
         .map(([id, s]) => ({
           id,
-          name: id === "unassigned" ? "Unassigned" : (staffName.get(id) ?? "-"),
+          name: staffName.get(id) ?? "-",
           ...s,
         }))
         .sort((a, b) => b.completed - a.completed),

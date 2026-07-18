@@ -866,6 +866,11 @@ export const createClientHold = createServerFn({ method: "POST" })
         reason: z.string().max(500).optional(),
       })
       .refine((v) => v.endsOn >= v.startsOn, { message: "The hold must end on or after it starts" })
+      // A vacation hold longer than a year is a data-entry error (the sheet saw
+      // a 2026 -> 2028 range accepted). Mirrors tg_client_holds_validate (I11).
+      .refine((v) => (Date.parse(v.endsOn) - Date.parse(v.startsOn)) / 86400000 <= 366, {
+        message: "A hold cannot be longer than a year",
+      })
       .parse(d),
   )
   .handler(async ({ data, context }) => {

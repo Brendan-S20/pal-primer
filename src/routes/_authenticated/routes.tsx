@@ -616,7 +616,11 @@ function RoutesPage() {
             onGeocode={() => geocodeMut.mutate()}
             geocoding={geocodeMut.isPending}
           />
-          <HeatmapPanel visits={visits} staff={staff} />
+          {/* Tech load is a FIELD-worker report (C3/I4): only capability-flagged
+              field workers are route runners. Non-field roles stay on the board
+              above (so a mis-assigned visit can be dragged off them) but never
+              appear in the load analytics. */}
+          <HeatmapPanel visits={visits} staff={staff.filter((s: any) => s.is_field_tech)} />
         </>
       )}
 
