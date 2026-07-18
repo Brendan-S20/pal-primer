@@ -472,19 +472,26 @@ export const readPortalVerificationCode = createServerFn({ method: "POST" })
     // fresh single-use code the office reads aloud and the client enters.
     const { issueOfficeReadCode } = await import("@/lib/portal-auth.server");
     const result = await issueOfficeReadCode(data.clientId);
-    // Log EVERY reveal to the client timeline with the acting staff member, so
-    // a support agent handing out a sign-in code is always attributable.
-    try {
-      const { logActivity } = await import("@/lib/activity.server");
-      await logActivity(context.supabase, {
-        orgId,
-        clientId: data.clientId,
-        actorUserId: context.userId,
-        kind: "portal.signin_code_revealed",
-        summary: `Read a one-time portal sign-in code aloud for ${(client as any).display_name ?? "the client"}`,
-      });
-    } catch {
-      /* audit is best-effort — never block the support flow */
+    // G2/I7: EVERY reveal must be auditable. Unlike ordinary best-effort
+    // activity, this is a security event — if the audit row can't be written we
+    // do NOT return the code (the minted code goes unused and expires). Write
+    // the row directly so an insert failure surfaces instead of being swallowed.
+    const { data: staffRow } = await context.supabase
+      .from("staff")
+      .select("display_name")
+      .eq("user_id", context.userId)
+      .maybeSingle();
+    const { error: auditErr } = await context.supabase.from("activity_log").insert({
+      organization_id: orgId,
+      client_id: data.clientId,
+      actor_user_id: context.userId,
+      actor_label: (staffRow as { display_name?: string } | null)?.display_name ?? null,
+      kind: "portal.signin_code_revealed",
+      summary: `Read a one-time portal sign-in code aloud for ${(client as any).display_name ?? "the client"}`,
+      meta: {},
+    });
+    if (auditErr) {
+      throw new Error("Couldn't record the sign-in code reveal to the activity log. Try again.");
     }
     return result;
   });

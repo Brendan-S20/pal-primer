@@ -261,22 +261,27 @@ export const consumeImpersonation = createServerFn({ method: "POST" })
  * Called FROM the impersonation tab when the admin clicks "Exit impersonation"
  * (H2). Records a stop event with the session duration into
  * platform_admin_audit, carrying the PLATFORM-ADMIN identity from the grant —
- * not the impersonated user (I7). Authorized purely by possession of the
- * already-consumed single-use grant id (the tab that redeemed it), and made
- * idempotent by ended_at so a double-click logs exactly one stop event.
+ * not the impersonated user (I7). Authorized by the calling session: the tab is
+ * running as the impersonated user, so only that user can end their own grant
+ * (target_user_id must match the caller). Idempotent via ended_at so a
+ * double-click logs exactly one stop event.
  */
 export const endImpersonationSession = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ grantId: z.string().uuid() }).parse(d))
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const nowIso = new Date().toISOString();
 
-    // Atomically mark the grant ended (only if consumed and not already ended),
-    // so concurrent/duplicate exits produce a single stop event.
+    // Atomically mark the grant ended (only if consumed, not already ended, and
+    // owned by the calling impersonated session), so a stranger can't end
+    // someone else's grant or forge a stop event, and concurrent/duplicate
+    // exits produce a single stop event.
     const { data: grant, error } = await (supabaseAdmin as any)
       .from("impersonation_grants")
       .update({ ended_at: nowIso })
       .eq("id", data.grantId)
+      .eq("target_user_id", context.userId)
       .not("consumed_at", "is", null)
       .is("ended_at", null)
       .select("organization_id, target_user_id, actor_user_id, consumed_at")
