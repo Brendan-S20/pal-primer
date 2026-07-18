@@ -105,10 +105,16 @@ function maskPhone(p: string): string {
   return digits.length >= 4 ? `•••• •••• ${digits.slice(-4)}` : "your phone";
 }
 function maskEmail(e: string): string {
+  // Reduce leakage (G2): reveal only the FIRST character of the local part and
+  // the top-level domain — never the full local part or the provider/domain
+  // (e.g. "jane.doe@gmail.com" → "j•••@•••.com"). Enough for the client to
+  // recognize "yes, that's my email" without disclosing it to a shoulder-surfer.
   const [user, domain] = e.split("@");
   if (!domain) return "your email";
-  const head = user.slice(0, Math.min(2, user.length));
-  return `${head}${"•".repeat(Math.max(1, user.length - 2))}@${domain}`;
+  const head = user.slice(0, 1);
+  const dot = domain.lastIndexOf(".");
+  const tld = dot >= 0 ? domain.slice(dot) : "";
+  return `${head}${"•".repeat(Math.max(2, user.length - 1))}@•••${tld}`;
 }
 
 export type PortalChannel = "sms" | "email";

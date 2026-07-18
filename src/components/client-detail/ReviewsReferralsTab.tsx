@@ -9,7 +9,11 @@ import { ExternalLink, KeyRound, Link2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/client-detail/primitives";
 import { getMyOrg } from "@/lib/org.functions";
-import { regeneratePortalLink, readPortalVerificationCode } from "@/lib/clients.functions";
+import {
+  regeneratePortalLink,
+  readPortalVerificationCode,
+  getClientPortalChannels,
+} from "@/lib/clients.functions";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { ReviewsReferralPanel } from "@/components/client-detail/comms-panels";
 import { formatPhone } from "@/lib/format";
@@ -43,10 +47,19 @@ function PortalStatusPanel({ client, clientId }: { client: any; clientId: string
   const [code, setCode] = useState<string | null>(null);
   const regenFn = useServerFn(regeneratePortalLink);
   const readCodeFn = useServerFn(readPortalVerificationCode);
+  const channelsFn = useServerFn(getClientPortalChannels);
   const orgFn = useServerFn(getMyOrg);
   const { data: orgData } = useQuery({
     queryKey: ["my-org"],
     queryFn: () => orgFn(),
+    staleTime: 60_000,
+  });
+  // What the portal can ACTUALLY deliver a code to (SMS only when Twilio is
+  // configured), so the copy never promises a texted code the portal won't
+  // send (G2 channel mismatch).
+  const { data: channelData } = useQuery({
+    queryKey: ["portal-channels", clientId],
+    queryFn: () => channelsFn({ data: { clientId } }),
     staleTime: 60_000,
   });
   const slug = (orgData?.organization as any)?.portal_slug as string | undefined;
@@ -69,10 +82,24 @@ function PortalStatusPanel({ client, clientId }: { client: any; clientId: string
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const verifyDest = client.primary_phone
-    ? `code texted to ${formatPhone(client.primary_phone)}`
+  // Describe only the channels the portal will really use. Falls back to the
+  // contact-on-file wording until the deliverability check resolves.
+  const channels = channelData?.channels;
+  const verifyDest = channels
+    ? channels.length === 0
+      ? "office-read code (no deliverable phone or email on file)"
+      : [
+          channels.includes("sms") && client.primary_phone
+            ? `texted to ${formatPhone(client.primary_phone)}`
+            : null,
+          channels.includes("email") && client.primary_email
+            ? `emailed to ${client.primary_email}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" or ")
     : client.primary_email
-      ? `code emailed to ${client.primary_email}`
+      ? `emailed to ${client.primary_email}`
       : "office-read code";
 
   return (
@@ -83,7 +110,7 @@ function PortalStatusPanel({ client, clientId }: { client: any; clientId: string
           <h2 className="text-sm font-medium">Client portal</h2>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm">
             <StatusChip status="enabled" />
-            <span className="text-xs text-muted-foreground">Sign-in verification: {verifyDest}</span>
+            <span className="text-xs text-muted-foreground">Sign-in code {verifyDest}</span>
           </div>
           {code && (
             <p className="mt-2 text-sm">
@@ -113,7 +140,20 @@ function PortalStatusPanel({ client, clientId }: { client: any; clientId: string
           <Button
             size="sm"
             variant="outline"
-            onClick={() => codeMut.mutate()}
+            onClick={async () => {
+              // Sensitive: this hands out a working sign-in code. Require an
+              // explicit confirmation that the client asked for it, and note
+              // that the reveal is logged to Activity (G2).
+              if (
+                await confirm({
+                  title: "Read a sign-in code to this client?",
+                  description:
+                    "Only do this when the client is on the phone and has asked us to read them a code. It's a one-time code that signs them into their portal. This reveal is recorded in the client's Activity with your name.",
+                  confirmLabel: "Read code aloud",
+                })
+              )
+                codeMut.mutate();
+            }}
             disabled={codeMut.isPending}
           >
             <KeyRound className="mr-1 h-3.5 w-3.5" />

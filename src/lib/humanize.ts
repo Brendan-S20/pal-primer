@@ -24,3 +24,21 @@ export function humanizeEnum(value: string | null | undefined): string {
   const spaced = value.replace(/_/g, " ").trim();
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
+
+/** Platform-admin audit-log action names. The audit UI rendered raw enums like
+ *  "start_impersonation" (H2 finding); route them through here so the log reads
+ *  as product copy. Unmapped actions fall back to humanizeEnum. */
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  start_impersonation: "Started impersonation",
+  enter_impersonation: "Entered impersonation session",
+  stop_impersonation: "Ended impersonation",
+  update_org_plan: "Updated plan",
+  suspend_org: "Suspended organization",
+  unsuspend_org: "Restored organization",
+  delete_org: "Deleted organization",
+};
+
+export function humanizeAuditAction(action: string | null | undefined): string {
+  if (!action) return "-";
+  return AUDIT_ACTION_LABELS[action] ?? humanizeEnum(action);
+}

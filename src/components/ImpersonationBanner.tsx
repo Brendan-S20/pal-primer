@@ -1,12 +1,19 @@
 import { useEffect, useState } from "react";
 import { supabase, isImpersonationTab } from "@/integrations/supabase/client";
+import { endImpersonationSession } from "@/lib/platform.functions";
 import { ShieldAlert } from "lucide-react";
 
 // Persistent, page-independent banner shown on EVERY page of an impersonation
-// tab (QA finding #5), with a one-click exit that ends only this tab's
-// sessionStorage-scoped session — never the admin's own.
+// tab (QA finding #5 / H2), with a one-click exit that ends only this tab's
+// sessionStorage-scoped session — never the admin's own — and closes the audit
+// loop with a stop event + duration.
 export function ImpersonationBanner() {
-  const [info, setInfo] = useState<{ email: string; orgName: string } | null>(null);
+  const [info, setInfo] = useState<{
+    email: string;
+    orgName: string;
+    grantId?: string;
+    startedAt?: string;
+  } | null>(null);
   const [exiting, setExiting] = useState(false);
 
   useEffect(() => {
@@ -21,6 +28,14 @@ export function ImpersonationBanner() {
 
   const exit = async () => {
     setExiting(true);
+    // Record the stop event + duration BEFORE we sign out, while the grant id
+    // is still to hand. Authorized by grant-id possession (server-side), so it
+    // works even though this tab holds only the impersonated user's session.
+    if (info.grantId) {
+      try {
+        await endImpersonationSession({ data: { grantId: info.grantId } });
+      } catch { /* audit is best-effort — never block the exit */ }
+    }
     try {
       await supabase.auth.signOut();
       window.sessionStorage.removeItem("hs_impersonation");

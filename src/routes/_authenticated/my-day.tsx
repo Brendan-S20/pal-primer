@@ -47,6 +47,7 @@ import { PushToggle } from "@/components/PushToggle";
 import { useTranslation } from "react-i18next";
 import { haptic } from "@/lib/haptics";
 import { useMyRole } from "@/hooks/useMyRole";
+import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   // Honor ?date=YYYY-MM-DD deep-links (notifications, bookmarks) instead of
@@ -142,9 +143,13 @@ function MyDay() {
   const visits = data?.visits ?? [];
   const staff = data?.staff;
 
-  const done = visits.filter((v: any) => v.status === "completed" || v.status === "skipped").length;
+  // "Done" means COMPLETED (H1): a skipped visit is not a finished job, so it
+  // must not inflate the progress bar (the "2 of 7 done · 29%" with 0 completed
+  // bug). Skipped visits are surfaced separately.
+  const completedCount = visits.filter((v: any) => v.status === "completed").length;
+  const skippedCount = visits.filter((v: any) => v.status === "skipped").length;
   const total = visits.length;
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const pct = total > 0 ? Math.round((completedCount / total) * 100) : 0;
   const nextUp = visits.find((v: any) => v.status === "scheduled" || v.status === "in_progress");
 
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
@@ -219,7 +224,12 @@ function MyDay() {
             <div>
               <div className="flex items-center justify-between text-xs">
                 <div className="font-medium">
-                  {done} {t("common.of")} {total} {t("common.done")}
+                  {completedCount} {t("common.of")} {total} {t("common.done")}
+                  {skippedCount > 0 && (
+                    <span className="ml-1 font-normal text-muted-foreground">
+                      · {skippedCount} skipped
+                    </span>
+                  )}
                 </div>
                 <div className="text-muted-foreground">{pct}%</div>
               </div>
@@ -487,6 +497,75 @@ function mapsUrl(p: any): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
 }
 
+function fmtClock(ts: string): string {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+/** "HH:MM[:SS]" wall-clock (property service window) → "8:00 AM". */
+function fmtWindowTime(hhmm: string): string {
+  const m = /^(\d{1,2}):(\d{2})/.exec(hhmm);
+  if (!m) return "";
+  let h = Number(m[1]);
+  const min = m[2];
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  return `${h}:${min} ${ampm}`;
+}
+
+/** The best per-card time label: a computed ETA if the route was optimized,
+ *  else the property's configured service window, else nothing. */
+function visitWindowLabel(visit: any): string | null {
+  if (visit?.eta_start) {
+    const start = fmtClock(visit.eta_start);
+    const end = visit?.eta_end ? fmtClock(visit.eta_end) : "";
+    if (start) return end ? `ETA ${start}–${end}` : `ETA ${start}`;
+  }
+  const p = visit?.properties;
+  const early = p?.earliest_service_time ? fmtWindowTime(p.earliest_service_time) : "";
+  const late = p?.latest_service_time ? fmtWindowTime(p.latest_service_time) : "";
+  if (early && late) return `Window ${early}–${late}`;
+  if (early) return `After ${early}`;
+  if (late) return `By ${late}`;
+  return null;
+}
+
+const DOG_TEMPERAMENT_LABELS: Record<string, string> = {
+  friendly: "friendly",
+  nervous: "nervous",
+  aggressive: "aggressive",
+  unknown: "temperament unknown",
+};
+
+function DogsRow({ dogs }: { dogs: any }) {
+  const list: any[] = Array.isArray(dogs) ? dogs : dogs ? [dogs] : [];
+  if (list.length === 0) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {list.map((d: any, i: number) => {
+        const aggressive = d?.temperament === "aggressive";
+        return (
+          <span
+            key={d?.id ?? d?.name ?? i}
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${
+              aggressive
+                ? "border-destructive/50 bg-destructive/10 font-medium text-destructive"
+                : "border-border bg-muted/40 text-muted-foreground"
+            }`}
+            title="Dog on site"
+          >
+            🐕 {d?.name ?? "Dog"}
+            {d?.temperament && (
+              <span className="opacity-80">· {DOG_TEMPERAMENT_LABELS[d.temperament] ?? d.temperament}</span>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function VisitCard({
   visit,
   index,
@@ -684,8 +763,20 @@ function VisitCard({
             {p?.postal_code ? ` ${p.postal_code}` : ""}
           </div>
 
+          {/* Per-card ETA / service window (H1): techs need to know WHEN this
+              stop is expected, on the card itself. */}
+          {visitWindowLabel(visit) && (
+            <div className="mt-0.5 text-xs font-medium text-foreground">
+              🕒 {visitWindowLabel(visit)}
+            </div>
+          )}
+
           {!collapsed && (
             <>
+              {/* Dogs on site (H1 safety gap): name + temperament belongs next
+                  to hazards, on residential cards too, so the tech knows what
+                  they're walking into. */}
+              <DogsRow dogs={p?.dogs} />
               <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                 {p?.gate_code && (
                   <div>
@@ -706,7 +797,8 @@ function VisitCard({
                 )}
                 {p?.yard_size && (
                   <div>
-                    <span className="text-muted-foreground">Yard:</span> {p.yard_size}
+                    <span className="text-muted-foreground">Yard:</span>{" "}
+                    {YARD_SIZE_LABELS[p.yard_size as YardSizeCategory] ?? p.yard_size}
                   </div>
                 )}
               </div>
@@ -895,14 +987,19 @@ function VisitCard({
             >
               + Add-on
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-11 px-4 sm:h-8 sm:px-3"
-              onClick={() => setShowStations((s) => !s)}
-            >
-              Stations
-            </Button>
+            {/* Waste stations only exist on commercial / multi-unit properties
+                — the button was showing on residential cards where there are
+                never any (H1). */}
+            {(p?.account_type === "commercial" || p?.has_units) && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-11 px-4 sm:h-8 sm:px-3"
+                onClick={() => setShowStations((s) => !s)}
+              >
+                Stations
+              </Button>
+            )}
             {visit.clients?.primary_phone && (
               <>
                 <Button

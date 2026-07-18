@@ -133,8 +133,16 @@ function ClientDetail() {
   const hasCommercialProperty =
     isCommercial ||
     activeProperties.some((p: any) => (p.account_type ?? client.account_type) === "commercial");
-  // A deep link to ?tab=units on a residential client falls back to Summary.
-  const effectiveTab: TabValue = tab === "units" && !hasCommercialProperty ? "summary" : tab;
+  // Deep links to a tab the caller can't see fall back to Summary instead of
+  // rendering an empty content area (H4): ?tab=units on a residential client,
+  // and ?tab=billing for a role without billing visibility (e.g. dispatcher).
+  // The Billing DATA fns are independently permission-gated server-side
+  // (getClientBillingSummary → manage_client_billing), so this redirect is a
+  // usability layer, not the security boundary (I7).
+  const effectiveTab: TabValue =
+    (tab === "units" && !hasCommercialProperty) || (tab === "billing" && !canBill)
+      ? "summary"
+      : tab;
 
   return (
     <div className="space-y-5">

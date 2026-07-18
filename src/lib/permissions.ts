@@ -13,6 +13,7 @@ export type Permission =
   | "view_financials" // dashboard revenue/AR KPIs, reports, analytics
   | "view_client_directory" // client names/addresses beyond the caller's own assigned work
   | "manage_dna_billing" // set DNA fine amounts, mark billed, generate violation invoices
+  | "reveal_signin_code" // read a client's active portal sign-in code aloud (G2 — owner/office_manager only, confirmed + logged)
   | "record_field_addons" // capped, confirmed add-on charge from a visit (source=field)
   | "manage_org_billing" // the org's own SaaS plan / Stripe
   | "manage_leads"
@@ -29,6 +30,7 @@ const ALL_PERMISSIONS: Permission[] = [
   "view_financials",
   "view_client_directory",
   "manage_dna_billing",
+  "reveal_signin_code",
   "record_field_addons",
   "manage_org_billing",
   "manage_leads",

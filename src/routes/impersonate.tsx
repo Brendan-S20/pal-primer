@@ -55,11 +55,18 @@ function ImpersonateConsume() {
           refresh_token: res.refreshToken,
         });
         if (sessErr) throw new Error(sessErr.message);
-        // Remember who we're viewing as, for the persistent banner.
+        // Remember who we're viewing as, for the persistent banner, plus the
+        // grant id + start time so "Exit impersonation" can log a stop event
+        // with the session duration (H2).
         try {
           window.sessionStorage.setItem(
             "hs_impersonation",
-            JSON.stringify({ email: res.targetEmail, orgName: res.orgName }),
+            JSON.stringify({
+              email: res.targetEmail,
+              orgName: res.orgName,
+              grantId: res.grantId,
+              startedAt: res.startedAt,
+            }),
           );
         } catch { /* non-fatal */ }
         navigate({ to: "/dashboard" });

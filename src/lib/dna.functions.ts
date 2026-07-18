@@ -34,7 +34,16 @@ export type DnaMatch = {
 export const listDnaMatches = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId, role } = await resolveCaller(context.supabase, context.userId);
+    // H1/I7: the cross-client compliance registry (samples, matches, fines
+    // billed, other clients' dogs) is NOT a technician surface. Techs are
+    // scoped to sample LOGGING (createDnaMatch / status moves) only — reading
+    // the registry requires the client-directory capability, which techs lack.
+    // Enforced here in the server fn, not just by hiding the /dna route.
+    const { orgId, role } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "view_client_directory",
+    );
     const canSeeDirectory = hasPermission(role, "view_client_directory");
     const { data, error } = await context.supabase
       .from("dna_matches")
@@ -205,7 +214,13 @@ export const deleteDnaMatch = createServerFn({ method: "POST" })
 export const listRegisteredDogs = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId, role } = await resolveCaller(context.supabase, context.userId);
+    // H1/I7: cross-client registered-dog list is registry data, not a tech
+    // surface — gate the read on the directory capability (techs are rejected).
+    const { orgId, role } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "view_client_directory",
+    );
     const canSeeDirectory = hasPermission(role, "view_client_directory");
     const { data, error } = await context.supabase
       .from("dogs")
@@ -233,7 +248,13 @@ export const listRegisteredDogs = createServerFn({ method: "GET" })
 export const listAllDogsForDna = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId, role } = await resolveCaller(context.supabase, context.userId);
+    // H1/I7: the full cross-client dog roster (registry tab) is not a tech
+    // surface — gate on the directory capability (techs are rejected).
+    const { orgId, role } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "view_client_directory",
+    );
     const canSeeDirectory = hasPermission(role, "view_client_directory");
     const { data, error } = await context.supabase
       .from("dogs")
@@ -270,7 +291,13 @@ export const listAllDogsForDna = createServerFn({ method: "GET" })
 export const listDnaFormOptions = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId } = await resolveCaller(context.supabase, context.userId);
+    // H1/I7: the sample-logging form lists every property + its client across
+    // the org — that cross-client directory is office-only. Techs are rejected.
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "view_client_directory",
+    );
     const [props, units, staff] = await Promise.all([
       context.supabase
         .from("properties")
