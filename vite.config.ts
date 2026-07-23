@@ -40,7 +40,7 @@ export default defineConfig({
         devOptions: { enabled: false },
         // Only reference assets that actually exist in public/ — a missing
         // apple-touch-icon.png/favicon.ico would 404 from the precache.
-        includeAssets: ["favicon.svg"],
+        includeAssets: ["favicon.svg", "favicon.ico", "apple-touch-icon.png"],
         manifest: {
           // Keep in sync with the head <title> (src/routes/__root.tsx) and
           // capacitor.config.ts appName.
