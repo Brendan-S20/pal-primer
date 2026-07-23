@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EmptyState, MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
-import { StationMapPicker, type StationPoint } from "@/components/StationMapPicker";
+import { StationMapPicker, StationsOverviewMap, type StationPoint } from "@/components/StationMapPicker";
 import { listStations, upsertStation, deleteStation, renumberStations } from "@/lib/stations.functions";
 import { stationDisplayName } from "@/lib/dna-linkage";
 import { formatDay } from "@/lib/format";
@@ -49,6 +49,9 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
 
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(properties[0]?.id ?? ""));
   const [markerMissing, setMarkerMissing] = useState(false);
+  // The add/edit form is collapsed until asked for — the panel's default view
+  // is the overview map + list of what already exists, not a blank add form.
+  const [formOpen, setFormOpen] = useState(false);
 
   const { data } = useQuery({
     queryKey: ["stations", clientId],
@@ -62,6 +65,7 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
       qc.invalidateQueries({ queryKey: ["stations", clientId] });
       setDraft((d) => emptyDraft(d.propertyId));
       setMarkerMissing(false);
+      setFormOpen(false);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -71,6 +75,7 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
       toast.success("Station removed");
       qc.invalidateQueries({ queryKey: ["stations", clientId] });
       setDraft((d) => emptyDraft(d.propertyId));
+      setFormOpen(false);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -131,6 +136,7 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
 
   const startEdit = (s: any) => {
     setMarkerMissing(false);
+    setFormOpen(true);
     setDraft({
       id: s.id,
       label: s.label ?? "",
@@ -197,22 +203,56 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-medium">Waste stations</h2>
         <div className="flex items-center gap-2">
-          {stations.length > 1 && (
+          {/* With several properties the header button's target is ambiguous —
+              renumbering then lives inside the form, scoped to the property
+              picked there. */}
+          {stations.length > 1 && properties.length === 1 && (
             <Button
               size="sm"
               variant="ghost"
               className="h-7 text-xs"
               disabled={renumberMut.isPending}
-              onClick={() => renumberMut.mutate(draft.propertyId)}
+              onClick={() => renumberMut.mutate(properties[0].id)}
             >
               Renumber
             </Button>
           )}
-          <span className="text-xs text-muted-foreground">
-            Common for commercial / HOA properties
-          </span>
+          {!formOpen && (
+            <Button
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => {
+                setMarkerMissing(false);
+                setDraft((d) => emptyDraft(d.propertyId));
+                setFormOpen(true);
+              }}
+            >
+              Add station
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Overview: every placed station on one satellite map (click a marker
+          to edit it). Shown whenever stations exist — the map is no longer
+          only the add-form picker. */}
+      {stations.length > 0 && (
+        <div className="mt-3">
+          <StationsOverviewMap
+            stations={stations}
+            center={mapCenter}
+            onSelect={(id) => {
+              const s = stations.find((x) => x.id === id);
+              if (s) startEdit(s);
+            }}
+          />
+          {stations.some((s) => s.latitude == null) && (
+            <p className="mt-1 text-xs text-amber-600">
+              Stations without a map marker don't appear on the map — open them and drop a marker.
+            </p>
+          )}
+        </div>
+      )}
 
       {stations.length > 0 ? (
         groups ? (
@@ -238,6 +278,7 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
         </div>
       )}
 
+      {formOpen && (
       <form
         className="mt-4 grid gap-3 sm:grid-cols-6"
         onSubmit={(e) => {
@@ -353,16 +394,26 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
           <Button type="submit" disabled={upsertMut.isPending}>
             {draft.id ? "Save station" : "Add station"}
           </Button>
-          {draft.id && (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              setMarkerMissing(false);
+              setDraft((d) => emptyDraft(d.propertyId));
+              setFormOpen(false);
+            }}
+          >
+            Cancel
+          </Button>
+          {properties.length > 1 && stations.some((s) => s.property_id === draft.propertyId) && (
             <Button
               type="button"
               variant="ghost"
-              onClick={() => {
-                setMarkerMissing(false);
-                setDraft((d) => emptyDraft(d.propertyId));
-              }}
+              className="text-xs"
+              disabled={renumberMut.isPending}
+              onClick={() => renumberMut.mutate(draft.propertyId)}
             >
-              Cancel edit
+              Renumber this property's stations
             </Button>
           )}
           {/* Destructive remove lives inside the edit flow (G7). */}
@@ -381,6 +432,7 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
           )}
         </div>
       </form>
+      )}
       {dialog}
     </section>
   );

@@ -588,10 +588,36 @@ async function chargeSavedCardCore(
       idempotencyKey: `staff-saved-card-${invoice.id}-${dueCents}-${c.default_payment_method_id}`,
       stripeAccount: acct.accountId,
     });
-    await supabase
-      .from("invoices")
-      .update({ stripe_payment_intent_id: pi.id, status: "open" })
-      .eq("id", invoice.id);
+    if (pi.status === "succeeded") {
+      // Card settled synchronously: flip to paid NOW instead of leaving the
+      // row open until the webhook lands — the UI refetches immediately after
+      // this call and must see the payment (QA: "didn't reflect paid until I
+      // refreshed the session"). markInvoicePaidFromStripe is an atomic claim,
+      // so the webhook's later attempt becomes a harmless no-op. The flip is
+      // best-effort: the CHARGE succeeded, so a transient DB error here must
+      // not surface as "Card charge failed" — the webhook rescues the state.
+      try {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { markInvoicePaidFromStripe } = await import("@/lib/invoice-reconcile.server");
+        await markInvoicePaidFromStripe(supabaseAdmin, {
+          invoiceId: invoice.id,
+          organizationId: invoice.organization_id,
+          amountCents: dueCents,
+          currency: invoice.currency ?? "usd",
+          paymentIntentId: pi.id,
+          raw: { source: "staff_saved_card_sync", payment_intent: pi.id },
+        });
+      } catch (flipErr) {
+        console.warn("post-charge paid flip failed (webhook will rescue):", (flipErr as Error).message);
+      }
+    } else {
+      // Async settlement (e.g. ACH "processing"): stays open until the
+      // webhook / reconcile confirms.
+      await supabase
+        .from("invoices")
+        .update({ stripe_payment_intent_id: pi.id, status: "open" })
+        .eq("id", invoice.id);
+    }
     const { logActivity } = await import("@/lib/activity.server");
     await logActivity(supabase, {
       orgId: invoice.organization_id,
@@ -615,6 +641,30 @@ export const chargeInvoiceWithSavedCard = createServerFn({ method: "POST" })
     await requirePermission(supabase, context.userId, "manage_client_billing");
     const res = await chargeSavedCardCore(supabase, context.userId, data.invoiceId);
     return { ok: true, status: res.status };
+  });
+
+// Immediately reconcile an invoice against Stripe after a client-side
+// PaymentElement confirmation. The webhook is the real-time path, but the UI
+// refetches right away — without this, a just-paid invoice reads back "open"
+// until the webhook lands (the "didn't reflect until refresh" bug).
+export const reconcileInvoiceNow = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ invoiceId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { orgId } = await requirePermission(supabase, context.userId, "manage_client_billing");
+    const { data: inv, error } = await supabase
+      .from("invoices")
+      .select("id, organization_id, status")
+      .eq("id", data.invoiceId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!inv) throw new Error("Invoice not found");
+    if (inv.status !== "open") return { ok: true, status: inv.status };
+    const { reconcileInvoicePayment } = await import("@/lib/invoice-reconcile.server");
+    const status = await reconcileInvoicePayment(data.invoiceId);
+    return { ok: true, status };
   });
 
 // ── Credit application (B7) ─────────────────────────────────────────────────

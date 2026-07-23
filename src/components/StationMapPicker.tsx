@@ -29,6 +29,107 @@ function stationIcon() {
   });
 }
 
+function numberedStationIcon(label: string) {
+  const html = `
+    <div style="
+      min-width: 22px;
+      height: 22px;
+      padding: 0 4px;
+      border-radius: 11px;
+      background: #16a34a;
+      border: 2px solid white;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.45);
+      color: white;
+      font: 700 11px/18px system-ui, sans-serif;
+      text-align: center;
+    ">${label}</div>`;
+  return L.divIcon({
+    html,
+    className: "station-pin",
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+  });
+}
+
+export type OverviewStation = {
+  id: string;
+  station_number: number | null;
+  label: string | null;
+  latitude: number | null;
+  longitude: number | null;
+};
+
+/**
+ * Read-only satellite overview of every waste station on a client's
+ * properties — numbered markers, view fitted to the stations (G7 follow-up:
+ * the panel previously only had the add/edit picker, never a map of what
+ * already exists). Clicking a marker hands the station back to the caller
+ * (e.g. to open it for editing).
+ */
+export function StationsOverviewMap({
+  stations,
+  center,
+  onSelect,
+  height = 260,
+}: {
+  stations: OverviewStation[];
+  /** Fallback view (property location) when no station has coordinates. */
+  center?: StationPoint | null;
+  onSelect?: (stationId: string) => void;
+  height?: number;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const layerRef = useRef<L.LayerGroup | null>(null);
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+    const map = L.map(containerRef.current, { zoomControl: true });
+    addBaseTiles(map, "satellite");
+    map.setView(US_CENTER, US_ZOOM);
+    layerRef.current = L.layerGroup().addTo(map);
+    requestAnimationFrame(() => map.invalidateSize());
+    mapRef.current = map;
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      layerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = layerRef.current;
+    if (!map || !layer) return;
+    layer.clearLayers();
+    const placed = stations.filter((s) => s.latitude != null && s.longitude != null);
+    for (const s of placed) {
+      const title = s.station_number != null ? String(s.station_number) : "•";
+      const m = L.marker([Number(s.latitude), Number(s.longitude)], {
+        icon: numberedStationIcon(title),
+        title: s.label ?? `Station ${title}`,
+      }).addTo(layer);
+      m.on("click", () => onSelectRef.current?.(s.id));
+    }
+    if (placed.length > 0) {
+      const bounds = L.latLngBounds(placed.map((s) => [Number(s.latitude), Number(s.longitude)] as [number, number]));
+      map.fitBounds(bounds, { padding: [30, 30], maxZoom: 19 });
+    } else if (center) {
+      map.setView([center.lat, center.lng], 18);
+    }
+  }, [stations, center?.lat, center?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div
+      ref={containerRef}
+      style={{ height }}
+      className="isolate z-0 w-full overflow-hidden rounded-md border"
+    />
+  );
+}
+
 /**
  * Satellite map for marking exactly where a waste station sits. Click (or
  * tap) places the marker; dragging it fine-tunes the spot. The marker is the

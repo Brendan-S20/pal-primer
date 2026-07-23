@@ -196,17 +196,24 @@ export const updateStaffStart = createServerFn({ method: "POST" })
 
 export const listVisitsForDay = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ day: z.string() }).parse(d))
+  // throughDay (optional, inclusive) widens the window so the Routes map can
+  // show a week/month of visits — omitted, it's the classic single-day query.
+  .inputValidator((d) => z.object({ day: z.string(), throughDay: z.string().optional() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
-    const { data: rows, error } = await supabase
+    let q = supabase
       .from("visits")
       .select(
         "id, scheduled_on, status, sequence, assigned_staff_id, zone_id, property_id, client_id, subscription_id, eta_start, eta_end, travel_km, travel_min, window_violated, weather_flagged, weather_note, clients(display_name), properties(street, city, postal_code, latitude, longitude, earliest_service_time, latest_service_time, service_duration_min), zones(name, postal_prefix), staff(display_name), subscriptions(price_cents, frequency, preferred_time_of_day, earliest_time, latest_time)",
       )
-      .eq("organization_id", orgId)
-      .eq("scheduled_on", data.day)
+      .eq("organization_id", orgId);
+    q =
+      data.throughDay && data.throughDay > data.day
+        ? q.gte("scheduled_on", data.day).lte("scheduled_on", data.throughDay)
+        : q.eq("scheduled_on", data.day);
+    const { data: rows, error } = await q
+      .order("scheduled_on", { ascending: true })
       .order("assigned_staff_id", { ascending: true, nullsFirst: true })
       .order("sequence", { ascending: true, nullsFirst: false });
     if (error) throw new Error(error.message);

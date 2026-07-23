@@ -11,6 +11,7 @@ import {
   IMPORT_ENTITIES,
   TARGET_FIELDS_BY_ENTITY,
   autoMap,
+  detectImportSource,
   type ImportEntity,
 } from "@/lib/imports.functions";
 import { Button } from "@/components/ui/button";
@@ -218,7 +219,16 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
         const hs = res.meta.fields ?? [];
         setHeaders(hs);
         setRows(res.data);
-        setMapping(autoMap(source, hs, entity));
+        // Recognize which CRM the export came from and auto-map its fields —
+        // switching systems shouldn't require knowing your old CRM's column
+        // names. A weak/ambiguous signal keeps the user's manual selection.
+        const detected = detectImportSource(hs);
+        const effSource = detected ?? source;
+        if (detected && detected !== source) {
+          setSource(detected);
+          toast.success(`Recognized a ${SOURCE_LABELS[detected] ?? detected} export — fields auto-mapped.`);
+        }
+        setMapping(autoMap(effSource, hs, entity));
       },
       error: (err) => toast.error(`CSV parse error: ${err.message}`),
     });

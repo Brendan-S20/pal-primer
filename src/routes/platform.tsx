@@ -9,7 +9,6 @@ import {
   LayoutDashboard,
   Building2,
   UserPlus,
-  Mailbox,
   Package,
   Ticket,
   FileText,
@@ -37,7 +36,6 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarTrigger,
-  SidebarFooter,
 } from "@/components/ui/sidebar";
 
 export const Route = createFileRoute("/platform")({
@@ -51,7 +49,6 @@ const NAV = [
     items: [
       { to: "/platform/overview" as const, label: "Overview", icon: LayoutDashboard },
       { to: "/platform/tenants" as const, label: "Tenants", icon: Building2 },
-      { to: "/platform/signup-requests" as const, label: "Signup requests", icon: Mailbox },
       { to: "/platform/invites" as const, label: "Invites", icon: UserPlus },
       { to: "/platform/users" as const, label: "Users", icon: Users },
     ],
@@ -170,18 +167,6 @@ function PlatformSidebar() {
           </SidebarGroup>
         ))}
       </SidebarContent>
-      <SidebarFooter className="border-t">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild>
-              <Link to="/dashboard" className="flex items-center gap-2">
-                <ArrowLeft className="h-4 w-4 shrink-0" />
-                <span className="truncate">Back to app</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
     </Sidebar>
   );
 }
@@ -207,11 +192,8 @@ function PlatformHeader() {
         <Shield className="h-4 w-4 shrink-0 text-primary sm:hidden" />
         <div className="truncate text-sm font-semibold sm:text-base">{label}</div>
       </div>
-      <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
-        <Link to="/dashboard">
-          <ArrowLeft className="mr-1 h-4 w-4" /> Back to app
-        </Link>
-      </Button>
+      {/* Platform admins live in the console — the only exit is Sign out
+          (the tenant app has no meaning for a platform-only account). */}
       <Button
         variant="ghost"
         size="icon"

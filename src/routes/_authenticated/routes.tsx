@@ -152,9 +152,18 @@ function RoutesPage() {
     traffic_profile: "normal",
   };
 
+  // Map view is available at every range (only the Board is day-scoped): for
+  // week/month the visit window widens so the map shows the whole period.
+  const rangeEnd = useMemo(() => {
+    if (range === "today") return day;
+    const d = new Date(`${day}T00:00:00`);
+    d.setDate(d.getDate() + (range === "week" ? 6 : 29));
+    return d.toISOString().slice(0, 10);
+  }, [range, day]);
   const { data: visitsData } = useQuery({
-    queryKey: ["visits", day],
-    queryFn: () => listV({ data: { day } }),
+    queryKey: ["visits", day, rangeEnd],
+    queryFn: () =>
+      listV({ data: { day, ...(rangeEnd !== day ? { throughDay: rangeEnd } : {}) } }),
   });
   const { data: staffData } = useQuery({ queryKey: ["staff"], queryFn: () => listS() });
 
@@ -599,16 +608,10 @@ function RoutesPage() {
       </div>
       )}
 
-      {range !== "today" && (
-        <WeekOverview
-          day={day}
-          initialSpan={range === "month" ? "month" : 7}
-          hideWeekends={hideWeekends}
-          onPickDay={(d) => { setLocalColumns(null); setDay(d); setRangePersist("today"); }}
-        />
-      )}
-
-      {range === "today" && viewMode === "map" && (
+      {/* The map follows the Map/Board toggle at EVERY range — only Board is
+          day-scoped. For week/month the map plots the whole period's visits
+          (QA: switching to week/month used to hide the map entirely). */}
+      {viewMode === "map" && (
         <>
           <MapPanel
             visits={visits}
@@ -616,13 +619,27 @@ function RoutesPage() {
             onOpenVisit={setDetailVisitId}
             onGeocode={() => geocodeMut.mutate()}
             geocoding={geocodeMut.isPending}
+            // Week/month is a coverage view: per-day sequences repeat, so
+            // ordered polylines/numbers only draw for a single day.
+            drawRoutes={range === "today"}
           />
           {/* Tech load is a FIELD-worker report (C3/I4): only capability-flagged
               field workers are route runners. Non-field roles stay on the board
               above (so a mis-assigned visit can be dragged off them) but never
               appear in the load analytics. */}
-          <HeatmapPanel visits={visits} staff={staff.filter((s: any) => s.is_field_tech)} />
+          {range === "today" && (
+            <HeatmapPanel visits={visits} staff={staff.filter((s: any) => s.is_field_tech)} />
+          )}
         </>
+      )}
+
+      {range !== "today" && (
+        <WeekOverview
+          day={day}
+          initialSpan={range === "month" ? "month" : 7}
+          hideWeekends={hideWeekends}
+          onPickDay={(d) => { setLocalColumns(null); setDay(d); setRangePersist("today"); }}
+        />
       )}
 
       {range === "today" && (
@@ -674,12 +691,13 @@ function RoutesPage() {
 }
 
 function MapPanel({
-  visits, staff, onOpenVisit, onGeocode, geocoding,
+  visits, staff, onOpenVisit, onGeocode, geocoding, drawRoutes = true,
 }: {
   visits: any[]; staff: any[];
   onOpenVisit?: (id: string) => void;
   onGeocode?: () => void;
   geocoding?: boolean;
+  drawRoutes?: boolean;
 }) {
   const groups = useMemo(() => buildTechGroups(visits as any, staff as any), [visits, staff]);
   const mappable = visits.filter((v: any) => v.properties?.latitude != null && v.properties?.longitude != null).length;
@@ -709,7 +727,7 @@ function MapPanel({
         </div>
       </div>
       <div className="relative">
-        <RouteMap groups={groups} height={420} onVisitClick={onOpenVisit} />
+        <RouteMap groups={groups} height={420} onVisitClick={onOpenVisit} drawRoutes={drawRoutes} />
         {mappable === 0 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-md bg-background/70 text-xs text-muted-foreground">
             <span>No coordinates yet. Geocode your properties to plot them.</span>

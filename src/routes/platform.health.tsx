@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertTriangle, MailWarning, CalendarClock, PhoneOff, UserPlus, Activity, DollarSign, Clock } from "lucide-react";
+import { AlertTriangle, MailWarning, CalendarClock, PhoneOff, Activity, DollarSign, Clock } from "lucide-react";
 import { getPlatformHealth } from "@/lib/platform.functions";
 
 export const Route = createFileRoute("/platform/health")({
@@ -59,13 +59,6 @@ function HealthPage() {
       sub: "errors / total calls",
       icon: PhoneOff,
       tone: h.ai_errors_24h > 0 ? "warn" : "ok",
-    },
-    {
-      label: "Pending signups",
-      value: String(h.pending_signups),
-      sub: "awaiting approval",
-      icon: UserPlus,
-      tone: h.pending_signups > 0 ? "warn" : "ok",
     },
     {
       label: "Suppressed emails",

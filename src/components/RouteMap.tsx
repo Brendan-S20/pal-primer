@@ -54,10 +54,15 @@ export function RouteMap({
   groups,
   height = 380,
   onVisitClick,
+  drawRoutes = true,
 }: {
   groups: TechGroup[];
   height?: number;
   onVisitClick?: (visitId: string) => void;
+  /** Ordered polylines + sequence numbers only make sense for a single day's
+   * route. Multi-day views (Routes week/month) pass false to plot plain
+   * per-tech pins — a volume view, not a driving order. */
+  drawRoutes?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -105,14 +110,14 @@ export function RouteMap({
       const latlngs = pts.map(
         (v) => [v.properties!.latitude!, v.properties!.longitude!] as [number, number],
       );
-      if (latlngs.length > 1) {
+      if (drawRoutes && latlngs.length > 1) {
         L.polyline(latlngs, { color: g.color, weight: 3, opacity: 0.7 }).addTo(layer);
       }
 
       // Start / end anchors — dashed lines from home base to first stop and
       // from last stop to end location.
-      const hasStart = g.startLat != null && g.startLng != null;
-      const hasEnd = g.endLat != null && g.endLng != null;
+      const hasStart = drawRoutes && g.startLat != null && g.startLng != null;
+      const hasEnd = drawRoutes && g.endLat != null && g.endLng != null;
       if (hasStart && latlngs.length > 0) {
         L.polyline([[g.startLat!, g.startLng!], latlngs[0]], {
           color: g.color, weight: 2, opacity: 0.5, dashArray: "6 6",
@@ -147,16 +152,22 @@ export function RouteMap({
       pts.forEach((v, idx) => {
         const label = String(v.sequence ?? idx + 1);
         const done = v.status === "completed" || v.status === "skipped";
+        // In multi-day mode per-day sequences repeat (1,2,3 every day), so
+        // pins drop the number and popups lead with the date instead.
+        const pinText = drawRoutes ? statusEmoji(v.status) || label : statusEmoji(v.status) || "•";
         const icon = L.divIcon({
           className: "route-marker",
-          html: `<div style="background:${done ? "#94a3b8" : g.color};color:white;border:2px solid white;border-radius:9999px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.3);">${statusEmoji(v.status) || label}</div>`,
+          html: `<div style="background:${done ? "#94a3b8" : g.color};color:white;border:2px solid white;border-radius:9999px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.3);">${pinText}</div>`,
           iconSize: [26, 26],
           iconAnchor: [13, 13],
         });
         const m = L.marker(latlngs[idx], { icon }).addTo(layer);
         const addr = [v.properties?.street, v.properties?.city].filter(Boolean).join(", ");
+        const title = drawRoutes
+          ? `#${label} · ${escapeHtml(v.clients?.display_name ?? "-")}`
+          : `${escapeHtml((v as any).scheduled_on ?? "")} · ${escapeHtml(v.clients?.display_name ?? "-")}`;
         m.bindPopup(
-          `<div style="min-width:160px"><div style="font-weight:600">#${label} · ${escapeHtml(v.clients?.display_name ?? "-")}</div><div style="font-size:11px;color:#555">${escapeHtml(addr)}</div><div style="font-size:11px;color:#888;margin-top:2px">${escapeHtml(g.name)}</div></div>`,
+          `<div style="min-width:160px"><div style="font-weight:600">${title}</div><div style="font-size:11px;color:#555">${escapeHtml(addr)}</div><div style="font-size:11px;color:#888;margin-top:2px">${escapeHtml(g.name)}</div></div>`,
         );
         if (onVisitClick) m.on("click", () => onVisitClick(v.id));
       });
@@ -174,7 +185,7 @@ export function RouteMap({
       // neighborhood level instead of snapping to one street (C8).
       map.fitBounds(L.latLngBounds(all), { padding: [30, 30], maxZoom: 14 });
     }
-  }, [points, groups, onVisitClick]);
+  }, [points, groups, onVisitClick, drawRoutes]);
 
   useEffect(() => {
     return () => {
