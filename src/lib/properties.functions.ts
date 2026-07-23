@@ -186,7 +186,7 @@ export const updateProperty = createServerFn({ method: "POST" })
     const { data: current, error: curErr } = await supabase
       .from("properties")
       .select(
-        "organization_id, client_id, zone_override_reason, street, city, postal_code, auto_zone_id, clients(account_type)",
+        "organization_id, client_id, zone_override_reason, street, city, postal_code, auto_zone_id, has_units, total_units, clients(account_type)",
       )
       .eq("id", data.propertyId)
       .single();
@@ -262,6 +262,21 @@ export const updateProperty = createServerFn({ method: "POST" })
       })
       .eq("id", data.propertyId);
     if (error) throw new Error(error.message);
+
+    // The property's total_units is the single source of truth for commercial
+    // unit counts (no double entry): when it changes, active subscriptions on
+    // this property follow it so pricing, invoices, and the portal chip all
+    // reflect the new count without a second manual edit.
+    const newTotalUnits = data.hasUnits ? (data.totalUnits ?? null) : null;
+    if (newTotalUnits != null && newTotalUnits !== (current as any).total_units) {
+      const { error: subErr } = await supabase
+        .from("subscriptions")
+        .update({ unit_count: newTotalUnits })
+        .eq("property_id", data.propertyId)
+        .eq("status", "active")
+        .not("unit_count", "is", null);
+      if (subErr) console.warn("unit_count sync failed:", subErr.message);
+    }
 
     const { logActivity } = await import("@/lib/activity.server");
     const addressChanged =

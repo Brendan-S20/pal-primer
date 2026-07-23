@@ -152,9 +152,18 @@ function RoutesPage() {
     traffic_profile: "normal",
   };
 
+  // Map view is available at every range (only the Board is day-scoped): for
+  // week/month the visit window widens so the map shows the whole period.
+  const rangeEnd = useMemo(() => {
+    if (range === "today") return day;
+    const d = new Date(`${day}T00:00:00`);
+    d.setDate(d.getDate() + (range === "week" ? 6 : 29));
+    return d.toISOString().slice(0, 10);
+  }, [range, day]);
   const { data: visitsData } = useQuery({
-    queryKey: ["visits", day],
-    queryFn: () => listV({ data: { day } }),
+    queryKey: ["visits", day, rangeEnd],
+    queryFn: () =>
+      listV({ data: { day, ...(rangeEnd !== day ? { throughDay: rangeEnd } : {}) } }),
   });
   const { data: staffData } = useQuery({ queryKey: ["staff"], queryFn: () => listS() });
 
@@ -599,16 +608,10 @@ function RoutesPage() {
       </div>
       )}
 
-      {range !== "today" && (
-        <WeekOverview
-          day={day}
-          initialSpan={range === "month" ? "month" : 7}
-          hideWeekends={hideWeekends}
-          onPickDay={(d) => { setLocalColumns(null); setDay(d); setRangePersist("today"); }}
-        />
-      )}
-
-      {range === "today" && viewMode === "map" && (
+      {/* The map follows the Map/Board toggle at EVERY range — only Board is
+          day-scoped. For week/month the map plots the whole period's visits
+          (QA: switching to week/month used to hide the map entirely). */}
+      {viewMode === "map" && (
         <>
           <MapPanel
             visits={visits}
@@ -621,8 +624,19 @@ function RoutesPage() {
               field workers are route runners. Non-field roles stay on the board
               above (so a mis-assigned visit can be dragged off them) but never
               appear in the load analytics. */}
-          <HeatmapPanel visits={visits} staff={staff.filter((s: any) => s.is_field_tech)} />
+          {range === "today" && (
+            <HeatmapPanel visits={visits} staff={staff.filter((s: any) => s.is_field_tech)} />
+          )}
         </>
+      )}
+
+      {range !== "today" && (
+        <WeekOverview
+          day={day}
+          initialSpan={range === "month" ? "month" : 7}
+          hideWeekends={hideWeekends}
+          onPickDay={(d) => { setLocalColumns(null); setDay(d); setRangePersist("today"); }}
+        />
       )}
 
       {range === "today" && (

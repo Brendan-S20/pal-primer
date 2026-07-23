@@ -443,7 +443,7 @@ export const getPlatformHealth = createServerFn({ method: "GET" })
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    const [openInvRes, overdueRes, stuckVisitsRes, suppressedRes, aiErrRes, aiTotalRes, signupRes, recentAuditRes] =
+    const [openInvRes, overdueRes, stuckVisitsRes, suppressedRes, aiErrRes, aiTotalRes, recentAuditRes] =
       await Promise.all([
         // Platform SaaS AR — invoices HoundStack billed to tenants, not tenant client invoices.
         supabaseAdmin.from("platform_invoices").select("amount_due_cents, amount_paid_cents", { count: "exact" }).in("status", ["open", "uncollectible"]),
@@ -467,11 +467,6 @@ export const getPlatformHealth = createServerFn({ method: "GET" })
           .from("ai_receptionist_logs")
           .select("id", { count: "exact", head: true })
           .gte("created_at", yesterday),
-        // Same table as /platform/signup-requests so counts always agree.
-        supabaseAdmin
-          .from("platform_signup_requests")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "pending"),
         supabaseAdmin
           .from("platform_admin_audit")
           .select("id", { count: "exact", head: true })
@@ -488,7 +483,6 @@ export const getPlatformHealth = createServerFn({ method: "GET" })
     const suppressed_emails = suppressedRes.count ?? 0;
     const ai_errors_24h = aiErrRes.count ?? 0;
     const ai_calls_24h = aiTotalRes.count ?? 0;
-    const pending_signups = signupRes.count ?? 0;
     const admin_actions_24h = recentAuditRes.count ?? 0;
 
     return {
@@ -500,7 +494,6 @@ export const getPlatformHealth = createServerFn({ method: "GET" })
       suppressed_emails,
       ai_errors_24h,
       ai_calls_24h,
-      pending_signups,
       admin_actions_24h,
     };
   });

@@ -26,6 +26,7 @@ import {
   getClientCredit,
   applyCreditToInvoice,
   chargeAutopayForInvoice,
+  reconcileInvoiceNow,
 } from "@/lib/invoices.functions";
 
 // Contracts for the credit/autopay server fns (owned by invoices.functions.ts).
@@ -70,6 +71,7 @@ export function StaffInvoicePayForm({
   const intentFn = useServerFn(createInvoicePaymentIntent);
   const chargeAutopayFn = useServerFn(chargeAutopayForInvoice);
   const applyCreditFn = useServerFn(applyCreditToInvoice);
+  const reconcileFn = useServerFn(reconcileInvoiceNow);
 
   // Same query key the invoice drawer uses — opening the pay view inside the
   // drawer reuses the already-fetched detail instead of refetching.
@@ -102,8 +104,14 @@ export function StaffInvoicePayForm({
   const cardLabel = `${client?.default_card_brand ?? "card"} ····${client?.default_card_last4 ?? ""}`;
 
   const refresh = () => {
+    // A payment changes every money surface at once — refresh them all so the
+    // result reflects everywhere without a manual reload (QA: "did not
+    // reflect paid until I refreshed the session").
     qc.invalidateQueries({ queryKey: ["invoice-detail", invoiceId] });
     if (client?.id) qc.invalidateQueries({ queryKey: ["client-credit", client.id] });
+    qc.invalidateQueries({ queryKey: ["invoices"] });
+    qc.invalidateQueries({ queryKey: ["billing-summary"] });
+    qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
     onPaid();
   };
 
@@ -269,9 +277,17 @@ export function StaffInvoicePayForm({
               <PayElementForm
                 amountCents={intent.amountCents}
                 currency={intent.currency}
-                onPaid={() => {
+                onPaid={async () => {
                   setIntent(null);
-                  toast.success("Payment received. The invoice will update shortly.");
+                  // The Element confirmed client-side; pull the paid state
+                  // from Stripe NOW instead of waiting for the webhook, so
+                  // the refetch below actually sees "paid".
+                  try {
+                    await reconcileFn({ data: { invoiceId } });
+                    toast.success("Payment received.");
+                  } catch {
+                    toast.success("Payment received. The invoice will update shortly.");
+                  }
                   refresh();
                 }}
               />

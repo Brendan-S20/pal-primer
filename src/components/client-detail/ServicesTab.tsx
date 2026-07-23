@@ -978,8 +978,13 @@ function ServiceDrawer({
         priceCents: finalCents ?? 0,
         dogCount:
           accountType === "residential" ? Math.max(1, parseInt(form.dogCount, 10) || 1) : undefined,
+        // Units come from the PROPERTY record when it carries a total (single
+        // source of truth — no double entry); the manual field only exists as
+        // a fallback for properties that haven't recorded total_units yet.
         unitCount:
-          accountType === "commercial" ? Math.max(1, parseInt(form.unitCount, 10) || 1) : undefined,
+          accountType === "commercial"
+            ? Math.max(1, propTotalUnits ?? (parseInt(form.unitCount, 10) || 1))
+            : undefined,
         zoneId: form.zoneId || undefined,
         billingCadence: form.billingCadence,
         startedOn: form.startedOn || undefined,
@@ -1149,6 +1154,16 @@ function ServiceDrawer({
                 <p className="mt-1 text-xs text-destructive">{fieldError("dogCount")}</p>
               )}
             </div>
+          ) : propTotalUnits != null ? (
+            <div>
+              <Label>Units</Label>
+              <div className="mt-1 flex h-10 items-center rounded-md border bg-muted/40 px-3 text-sm">
+                {propTotalUnits} unit{propTotalUnits === 1 ? "" : "s"}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Pulled from the property record — edit Total units on the property to change it.
+              </p>
+            </div>
           ) : (
             <div>
               <Label htmlFor="sd-units">Units</Label>
@@ -1163,6 +1178,9 @@ function ServiceDrawer({
               {fieldError("unitCount") && (
                 <p className="mt-1 text-xs text-destructive">{fieldError("unitCount")}</p>
               )}
+              <p className="mt-1 text-xs text-muted-foreground">
+                Tip: set Total units on the property so it's entered once and reused everywhere.
+              </p>
             </div>
           )}
           <div>

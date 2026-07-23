@@ -146,6 +146,39 @@ for (const key of Object.keys(CLIENT_PRESETS)) {
   CLIENT_PRESETS[key] = { ...CLIENT_ADDRESS_ALIASES, ...CLIENT_PRESETS[key] };
 }
 
+/** Guess which CRM a CSV came from by scoring its headers against every
+ * source's preset synonyms. Distinctive, CRM-specific headers ("Company/Client
+ * name", "Mobile phone number") weigh more than generic ones every export
+ * shares ("Email"). Returns null unless one source clearly wins — a wrong
+ * guess is worse than asking, so ties and weak signals fall back to the
+ * user's manual selection. */
+export function detectImportSource(headers: string[]): (typeof IMPORT_SOURCES)[number] | null {
+  const hset = new Set(headers.map((h) => h.trim().toLowerCase()));
+  const scores: Array<{ source: (typeof IMPORT_SOURCES)[number]; score: number }> = [];
+  for (const source of IMPORT_SOURCES) {
+    if (source === "generic_csv") continue;
+    let score = 0;
+    for (const presets of [CLIENT_PRESETS, PROPERTY_PRESETS, DOG_PRESETS]) {
+      const preset = presets[source];
+      if (!preset) continue;
+      for (const synonyms of Object.values(preset)) {
+        for (const syn of synonyms) {
+          if (hset.has(syn.toLowerCase())) {
+            score += syn.length > 10 || /[/#]/.test(syn) ? 3 : syn.includes(" ") ? 2 : 1;
+            break;
+          }
+        }
+      }
+    }
+    scores.push({ source, score });
+  }
+  scores.sort((a, b) => b.score - a.score);
+  const [top, second] = scores;
+  if (!top || top.score < 6) return null;
+  if (second && top.score - second.score < 2) return null;
+  return top.source;
+}
+
 const PROPERTY_PRESETS: Record<string, PresetMap> = {
   generic_csv: {
     client_external_id: ["client_id", "customer_id", "client external id", "external_id"],
