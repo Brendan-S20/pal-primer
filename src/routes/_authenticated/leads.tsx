@@ -9,7 +9,10 @@ import {
 } from "@/lib/leads.functions";
 import { Eye, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { RowActions } from "@/components/RowActions";
+import { useRowSelection } from "@/hooks/useRowSelection";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
   Select,
   SelectContent,
@@ -19,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 export const Route = createFileRoute("/_authenticated/leads")({
   component: LeadsPage,
@@ -62,8 +65,33 @@ function LeadsPage() {
 
   const leads = (data ?? []).filter((l) => filter === "all" || l.status === filter);
 
+  // Multi-select + bulk status changes: loops the same updateLeadStatus fn the
+  // per-row select uses. Selection clears when the status filter changes.
+  const visibleIds = useMemo(() => leads.map((l) => l.id), [leads]);
+  const sel = useRowSelection(visibleIds, filter);
+  const { confirm, dialog } = useConfirmDialog();
+
+  const bulkStatusM = useMutation({
+    mutationFn: async (v: { ids: string[]; status: (typeof STATUSES)[number] }) => {
+      const results = await Promise.allSettled(
+        v.ids.map((id) => upd({ data: { id, status: v.status } })),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      return { ok, failed: results.length - ok, status: v.status };
+    },
+    onSuccess: (r) => {
+      const verb = r.status === "archived" ? "Archived" : `Marked ${r.status}`;
+      if (r.failed) toast.error(`${verb}: ${r.ok} of ${r.ok + r.failed} leads — ${r.failed} failed`);
+      else toast.success(`${verb}: ${r.ok} lead${r.ok === 1 ? "" : "s"}`);
+      sel.clear();
+      qc.invalidateQueries({ queryKey: ["leads"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   return (
     <div className="space-y-6">
+      {dialog}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Leads</h1>
@@ -112,10 +140,79 @@ function LeadsPage() {
         </div>
       ) : (
         <div className="space-y-3">
+          <div className="flex items-center gap-2 px-1">
+            <Checkbox
+              checked={sel.allSelected}
+              onCheckedChange={sel.toggleAll}
+              aria-label="Select all leads"
+            />
+            <span className="text-xs text-muted-foreground">Select all ({leads.length})</span>
+          </div>
+
+          {/* Bulk action bar */}
+          {sel.count > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-accent/40 px-4 py-2 text-sm shadow-sm">
+              <span className="font-medium">{sel.count} selected</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="w-44">
+                  <Select
+                    value=""
+                    onValueChange={(v) =>
+                      bulkStatusM.mutate({
+                        ids: sel.selectedIds,
+                        status: v as (typeof STATUSES)[number],
+                      })
+                    }
+                    disabled={bulkStatusM.isPending}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Mark as…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STATUSES.filter((s) => s !== "archived").map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={bulkStatusM.isPending}
+                  onClick={async () => {
+                    if (
+                      await confirm({
+                        title: `Archive ${sel.count} lead${sel.count === 1 ? "" : "s"}?`,
+                        description:
+                          "Archived leads drop out of the working list but stay available under the Archived filter.",
+                        destructive: true,
+                        confirmLabel: "Archive",
+                      })
+                    )
+                      bulkStatusM.mutate({ ids: sel.selectedIds, status: "archived" });
+                  }}
+                >
+                  Archive
+                </Button>
+                <Button size="sm" variant="ghost" onClick={sel.clear}>
+                  Clear
+                </Button>
+              </div>
+            </div>
+          )}
+
           {leads.map((l) => (
             <div key={l.id} className="rounded-lg border bg-card p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
+                <Checkbox
+                  className="mt-1"
+                  checked={sel.isSelected(l.id)}
+                  onCheckedChange={(next) => sel.toggle(l.id, !!next)}
+                  aria-label={`Select lead ${l.name}`}
+                />
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <div className="font-medium">{l.name}</div>
                     <Badge variant="outline">{l.status}</Badge>

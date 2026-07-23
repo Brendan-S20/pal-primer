@@ -58,7 +58,42 @@ async function fetchForecast(
   url.searchParams.set("timezone", "auto");
   url.searchParams.set("start_date", from);
   url.searchParams.set("end_date", to);
-  const resp = await fetch(url.toString());
+
+  // The app server's egress cannot always reach open-meteo directly (the
+  // forecast cache had NEVER been populated in production — every zone card
+  // errored). Try direct first, then fall through to the weather-forecast
+  // Supabase Edge Function, which has unrestricted egress and mirrors this
+  // exact request.
+  let resp: Response | null = null;
+  try {
+    resp = await fetch(url.toString(), { signal: AbortSignal.timeout(8_000) });
+  } catch {
+    resp = null;
+  }
+  if (!resp || !resp.ok) {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    // Same precedence as client.server.ts (SUPABASE_* prefix is reserved in
+    // Lovable secrets, so the user-managed name comes first).
+    const serviceKey = process.env.SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (supabaseUrl && serviceKey) {
+      try {
+        const relay = await fetch(`${supabaseUrl}/functions/v1/weather-forecast`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${serviceKey}`,
+          },
+          body: JSON.stringify({ latitude: lat, longitude: lon, fromDate: from, toDate: to }),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (relay.ok) resp = relay;
+        else if (!resp) resp = relay;
+      } catch {
+        // keep the direct-fetch failure below
+      }
+    }
+  }
+  if (!resp) throw new Error("Weather API unreachable");
   if (!resp.ok) {
     const body = await resp.text().catch(() => "");
     throw new Error(`Weather API ${resp.status}${body ? `: ${body.slice(0, 200)}` : ""}`);
@@ -176,12 +211,20 @@ export const getWeatherForZones = createServerFn({ method: "GET" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
-    const { data: zones, error } = await supabase
+    const { data: zonesRaw, error } = await supabase
       .from("zones")
-      .select("id, name, postal_prefix, latitude, longitude")
+      .select("id, name, postal_prefix, latitude, longitude, center_latitude, center_longitude")
       .eq("organization_id", orgId)
       .order("name");
     if (error) throw new Error(error.message);
+    // Zone pin first, else the coverage center — a radius zone drawn on the
+    // map has a center but often no pin, and was wrongly reported as
+    // "missing coordinates".
+    const zones = (zonesRaw ?? []).map((z: any) => ({
+      ...z,
+      latitude: z.latitude ?? (z.center_latitude != null ? Number(z.center_latitude) : null),
+      longitude: z.longitude ?? (z.center_longitude != null ? Number(z.center_longitude) : null),
+    }));
 
     // visit counts per zone per day
     const { data: subs } = await supabase
@@ -468,10 +511,16 @@ export const autoRebalanceForecast = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
 
-    const { data: zones } = await supabase
+    const { data: zonesRaw2 } = await supabase
       .from("zones")
-      .select("id, name, latitude, longitude")
+      .select("id, name, latitude, longitude, center_latitude, center_longitude")
       .eq("organization_id", orgId);
+    // Pin first, else coverage center — same fallback as getWeatherForZones.
+    const zones = (zonesRaw2 ?? []).map((z: any) => ({
+      ...z,
+      latitude: z.latitude ?? (z.center_latitude != null ? Number(z.center_latitude) : null),
+      longitude: z.longitude ?? (z.center_longitude != null ? Number(z.center_longitude) : null),
+    }));
 
     // Load subscriptions -> zone map (org-scoped)
     const { data: subs } = await supabase

@@ -1,12 +1,16 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { RowActions } from "@/components/RowActions";
 import { AiSection, ChurnPanel } from "@/components/ai/AiPanels";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
-import { listClients } from "@/lib/clients.functions";
+import { toast } from "sonner";
+import { listClients, updateClient } from "@/lib/clients.functions";
+import { useRowSelection } from "@/hooks/useRowSelection";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -34,9 +38,42 @@ function money(cents: number) {
   }).format(cents / 100);
 }
 
+/** CSV of the visible client columns — used by both the page-level export
+ * (filtered rows) and the bulk bar (selected rows). */
+function exportClientsCsv(rows: any[]) {
+  downloadCsv(
+    `clients-${new Date().toISOString().slice(0, 10)}.csv`,
+    [
+      "Name",
+      "Type",
+      "Status",
+      "Email",
+      "Phone",
+      "Frequency",
+      "Outstanding",
+      "Credit",
+      "Churn score",
+    ],
+    rows.map((c: any) => [
+      c.display_name,
+      c.account_type,
+      c.active ? "active" : "inactive",
+      c.primary_email,
+      c.primary_phone,
+      (c.frequencies ?? []).map((f: string) => f.replace("_", "-")).join("; "),
+      ((c.outstanding_cents ?? 0) / 100).toFixed(2),
+      ((c.credit_balance_cents ?? 0) / 100).toFixed(2),
+      c.churn_score ?? "",
+    ]),
+  );
+}
+
 function ClientsList() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const fn = useServerFn(listClients);
+  const updateFn = useServerFn(updateClient);
+  const { confirm, dialog } = useConfirmDialog();
   const { data, isLoading } = useQuery({
     queryKey: ["clients"],
     queryFn: () => fn(),
@@ -73,8 +110,37 @@ function ClientsList() {
     });
   }, [clients, q, status, type]);
 
+  // Multi-select over the currently filtered rows (desktop table). Selection
+  // clears whenever a filter changes so a bulk action never hits hidden rows.
+  const visibleIds = useMemo(() => filtered.map((c: any) => c.id as string), [filtered]);
+  const sel = useRowSelection(visibleIds, `${q}|${status}|${type}`);
+  const selectedRows = useMemo(
+    () => filtered.filter((c: any) => sel.isSelected(c.id)),
+    [filtered, sel],
+  );
+
+  // Bulk archive loops the existing per-client updateClient fn (same
+  // permission gate + per-client activity log as the edit drawer).
+  const archiveM = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map((id) => updateFn({ data: { clientId: id, active: false } })),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      return { ok, failed: results.length - ok };
+    },
+    onSuccess: (r) => {
+      if (r.failed) toast.error(`Archived ${r.ok} of ${r.ok + r.failed} clients — ${r.failed} failed`);
+      else toast.success(`Archived ${r.ok} client${r.ok === 1 ? "" : "s"}`);
+      sel.clear();
+      qc.invalidateQueries({ queryKey: ["clients"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   return (
     <div className="space-y-6">
+      {dialog}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Clients</h1>
@@ -86,33 +152,7 @@ function ClientsList() {
           <Button
             variant="outline"
             disabled={!filtered.length}
-            onClick={() =>
-              downloadCsv(
-                `clients-${new Date().toISOString().slice(0, 10)}.csv`,
-                [
-                  "Name",
-                  "Type",
-                  "Status",
-                  "Email",
-                  "Phone",
-                  "Frequency",
-                  "Outstanding",
-                  "Credit",
-                  "Churn score",
-                ],
-                filtered.map((c: any) => [
-                  c.display_name,
-                  c.account_type,
-                  c.active ? "active" : "inactive",
-                  c.primary_email,
-                  c.primary_phone,
-                  (c.frequencies ?? []).map((f: string) => f.replace("_", "-")).join("; "),
-                  ((c.outstanding_cents ?? 0) / 100).toFixed(2),
-                  ((c.credit_balance_cents ?? 0) / 100).toFixed(2),
-                  c.churn_score ?? "",
-                ]),
-              )
-            }
+            onClick={() => exportClientsCsv(filtered)}
           >
             <Download className="mr-1 h-4 w-4" /> Export CSV
           </Button>
@@ -179,6 +219,40 @@ function ClientsList() {
           </SelectContent>
         </Select>
       </div>
+
+      {/* Bulk action bar — appears once rows are checked in the table */}
+      {sel.count > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-accent/40 px-4 py-2 text-sm shadow-sm">
+          <span className="font-medium">{sel.count} selected</span>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => exportClientsCsv(selectedRows)}>
+              <Download className="mr-1 h-4 w-4" /> Export CSV
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={archiveM.isPending}
+              onClick={async () => {
+                if (
+                  await confirm({
+                    title: `Archive ${sel.count} client${sel.count === 1 ? "" : "s"}?`,
+                    description:
+                      "They are marked inactive. You can reactivate a client anytime from their page.",
+                    destructive: true,
+                    confirmLabel: "Archive",
+                  })
+                )
+                  archiveM.mutate(sel.selectedIds);
+              }}
+            >
+              {archiveM.isPending ? "Archiving…" : "Archive"}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={sel.clear}>
+              Clear
+            </Button>
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <p className="text-muted-foreground">Loading…</p>
@@ -270,6 +344,13 @@ function ClientsList() {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
                 <tr>
+                  <th className="w-10 px-4 py-2">
+                    <Checkbox
+                      checked={sel.allSelected}
+                      onCheckedChange={sel.toggleAll}
+                      aria-label="Select all clients"
+                    />
+                  </th>
                   <th className="px-4 py-2 font-medium">Name</th>
                   <th className="px-4 py-2 font-medium">Type</th>
                   <th className="px-4 py-2 font-medium">Dogs</th>
@@ -286,6 +367,13 @@ function ClientsList() {
               <tbody>
                 {filtered.map((c: any) => (
                   <tr key={c.id} className="border-t hover:bg-muted/30">
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={sel.isSelected(c.id)}
+                        onCheckedChange={(next) => sel.toggle(c.id, !!next)}
+                        aria-label={`Select ${c.display_name}`}
+                      />
+                    </td>
                     <td className="px-4 py-3">
                       <Link
                         to="/clients/$clientId"

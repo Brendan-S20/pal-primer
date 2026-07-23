@@ -36,6 +36,7 @@ import { InvoiceDrawer } from "@/components/InvoiceDrawer";
 import { InvoiceRow } from "@/components/InvoiceRow";
 import type { RowAction } from "@/components/RowActions";
 import { invoiceOutstandingCents } from "@/lib/ar";
+import { useRowSelection } from "@/hooks/useRowSelection";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/invoices/")({
@@ -253,7 +254,6 @@ function InvoicesPage() {
   const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [selected, setSelected] = useState<Record<string, boolean>>({});
   // Row click opens the shared invoice drawer (QA round 8) instead of
   // navigating away; "Open full invoice" inside goes to the page.
   const [drawerInvoiceId, setDrawerInvoiceId] = useState<string | null>(null);
@@ -337,35 +337,20 @@ function InvoicesPage() {
     setStatus("all");
   };
 
-  const selectedIds = useMemo(
-    () =>
-      Object.entries(selected)
-        .filter(([, v]) => v)
-        .map(([k]) => k),
-    [selected],
-  );
-  const allVisibleSelected = filtered.length > 0 && filtered.every((i) => selected[i.id]);
+  // Shared multi-select hook (same plumbing as Clients / Leads / Visits). No
+  // clearKey: this page intentionally keeps a selection across filter tweaks.
+  const visibleIds = useMemo(() => filtered.map((i) => i.id), [filtered]);
+  const sel = useRowSelection(visibleIds);
+  const { selectedIds, allSelected: allVisibleSelected, toggleAll } = sel;
   const totalSelected = filtered
-    .filter((i) => selected[i.id])
+    .filter((i) => sel.isSelected(i.id))
     .reduce((sum, i) => sum + (i.total_cents ?? 0), 0);
-
-  const toggleAll = () => {
-    if (allVisibleSelected) {
-      setSelected({});
-    } else {
-      const next: Record<string, boolean> = {};
-      filtered.forEach((i) => {
-        next[i.id] = true;
-      });
-      setSelected(next);
-    }
-  };
 
   const voidM = useMutation({
     mutationFn: () => voidBulk({ data: { ids: selectedIds } }),
     onSuccess: (r) => {
       toast.success(`Voided ${r.ok}${r.failed ? ` (${r.failed} skipped)` : ""}`);
-      setSelected({});
+      sel.clear();
       qc.invalidateQueries({ queryKey: ["invoices"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -375,7 +360,7 @@ function InvoicesPage() {
     mutationFn: () => paidBulk({ data: { ids: selectedIds } }),
     onSuccess: (r) => {
       toast.success(`Marked ${r.ok} paid${r.failed ? ` (${r.failed} skipped)` : ""}`);
-      setSelected({});
+      sel.clear();
       qc.invalidateQueries({ queryKey: ["invoices"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -697,7 +682,7 @@ function InvoicesPage() {
             >
               Void
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setSelected({})}>
+            <Button size="sm" variant="ghost" onClick={sel.clear}>
               Clear
             </Button>
           </div>
@@ -750,10 +735,8 @@ function InvoicesPage() {
                   invoice={inv}
                   showClient
                   selectable
-                  selected={!!selected[inv.id]}
-                  onToggleSelect={(next) =>
-                    setSelected((prev) => ({ ...prev, [inv.id]: next }))
-                  }
+                  selected={sel.isSelected(inv.id)}
+                  onToggleSelect={(next) => sel.toggle(inv.id, next)}
                   onOpen={setDrawerInvoiceId}
                   actions={rowActions(inv)}
                 />

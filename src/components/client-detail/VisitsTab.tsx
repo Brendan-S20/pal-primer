@@ -10,8 +10,10 @@ import { toast } from "sonner";
 import { CalendarOff, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useRowSelection } from "@/hooks/useRowSelection";
 import {
   correctVisitTimestamps,
   completeVisitFromOffice,
@@ -106,6 +108,86 @@ export function VisitsTab({
     .sort((a: any, b: any) => (a.scheduled_on < b.scheduled_on ? -1 : 1));
   const past = filtered.filter((v: any) => !(v.scheduled_on >= today && v.status === "scheduled"));
 
+  // ── Bulk actions over upcoming scheduled visits ──────────────────────────
+  // Cancel and reassign loop the SAME office server fns the detail drawer
+  // uses (cancelVisitFromOffice / reassignVisit) — no new visit semantics.
+  // Selection is offered only when the caller can perform office actions.
+  const qc = useQueryClient();
+  const { confirm, dialog: bulkConfirmDialog } = useConfirmDialog();
+  const bulkCancelFn = useServerFn(cancelVisitFromOffice);
+  const bulkReassignFn = useServerFn(reassignVisit);
+  const bulkStaffFn = useServerFn(listStaff);
+
+  const upcomingIds = upcoming.map((v: any) => v.id as string);
+  const sel = useRowSelection(upcomingIds, `${statusFilter}|${propertyFilter}`);
+
+  const [bulkAction, setBulkAction] = useState<"cancel" | "reassign" | null>(null);
+  const [bulkCancelCode, setBulkCancelCode] = useState("other");
+  const [bulkCancelReason, setBulkCancelReason] = useState("");
+  const [bulkStaffId, setBulkStaffId] = useState("");
+
+  const bulkStaffQ = useQuery({
+    queryKey: ["org-staff"],
+    queryFn: () => bulkStaffFn(),
+    enabled: canCorrect && bulkAction === "reassign",
+    staleTime: 60_000,
+  });
+  const bulkStaff = (((bulkStaffQ.data as any)?.staff ?? []) as any[]).filter(
+    (s: any) => s.is_field_tech !== false,
+  );
+
+  const afterBulk = (r: { ok: number; failed: number }, verb: string) => {
+    if (r.failed) toast.error(`${verb} ${r.ok} of ${r.ok + r.failed} visits — ${r.failed} failed`);
+    else toast.success(`${verb} ${r.ok} visit${r.ok === 1 ? "" : "s"}`);
+    sel.clear();
+    setBulkAction(null);
+    setBulkCancelReason("");
+    setBulkStaffId("");
+    qc.invalidateQueries({ queryKey: ["client-visit-history", clientId] });
+    qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
+  };
+
+  const bulkCancelM = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map((visitId) =>
+          bulkCancelFn({
+            data: { visitId, reason: bulkCancelReason.trim(), code: bulkCancelCode as any },
+          }),
+        ),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      return { ok, failed: results.length - ok };
+    },
+    onSuccess: (r) => afterBulk(r, "Canceled"),
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const bulkReassignM = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map((visitId) =>
+          bulkReassignFn({ data: { visitId, staffId: bulkStaffId || null } }),
+        ),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      return { ok, failed: results.length - ok };
+    },
+    onSuccess: (r) => afterBulk(r, bulkStaffId ? "Reassigned" : "Unassigned"),
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const selection: TableSelection | undefined =
+    canCorrect && upcomingIds.length > 0
+      ? {
+          canSelect: (v: any) => v.status === "scheduled" && v.scheduled_on >= today,
+          isSelected: sel.isSelected,
+          onToggle: sel.toggle,
+          allSelected: sel.allSelected,
+          onToggleAll: sel.toggleAll,
+        }
+      : undefined;
+
   const holdBanner = activeHold ? (
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
       <CalendarOff className="h-4 w-4 shrink-0" />
@@ -199,15 +281,151 @@ export function VisitsTab({
         </div>
       </div>
 
+      {bulkConfirmDialog}
+
+      {/* Bulk action bar — appears once upcoming visits are checked */}
+      {canCorrect && sel.count > 0 && view !== "calendar" && (
+        <div className="space-y-3 rounded-xl border bg-accent/40 px-4 py-2 text-sm shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-medium">
+              {sel.count} visit{sel.count === 1 ? "" : "s"} selected
+            </span>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant={bulkAction === "reassign" ? "default" : "outline"}
+                onClick={() => setBulkAction(bulkAction === "reassign" ? null : "reassign")}
+              >
+                Reassign to tech…
+              </Button>
+              <Button
+                size="sm"
+                variant={bulkAction === "cancel" ? "destructive" : "outline"}
+                className={bulkAction === "cancel" ? undefined : "text-destructive"}
+                onClick={() => setBulkAction(bulkAction === "cancel" ? null : "cancel")}
+              >
+                Cancel visits…
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  sel.clear();
+                  setBulkAction(null);
+                }}
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+
+          {bulkAction === "reassign" && (
+            <form
+              className="flex flex-wrap items-end gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                bulkReassignM.mutate(sel.selectedIds);
+              }}
+            >
+              <div>
+                <Label htmlFor="bulk-staff" className="text-xs">
+                  Technician
+                </Label>
+                <select
+                  id="bulk-staff"
+                  value={bulkStaffId}
+                  onChange={(e) => setBulkStaffId(e.target.value)}
+                  className="block h-9 w-56 rounded-md border bg-background px-2 text-sm"
+                >
+                  <option value="">Unassigned</option>
+                  {bulkStaff.map((s: any) => (
+                    <option key={s.id} value={s.id}>
+                      {s.display_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button type="submit" size="sm" disabled={bulkReassignM.isPending}>
+                {bulkReassignM.isPending
+                  ? "Reassigning…"
+                  : `Reassign ${sel.count} visit${sel.count === 1 ? "" : "s"}`}
+              </Button>
+            </form>
+          )}
+
+          {bulkAction === "cancel" && (
+            <form
+              className="space-y-2"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!bulkCancelReason.trim()) return;
+                if (
+                  await confirm({
+                    title: `Cancel ${sel.count} visit${sel.count === 1 ? "" : "s"}?`,
+                    description:
+                      "Each visit is recorded as skipped with this reason; the org's skip-billing rules decide whether any charge applies.",
+                    destructive: true,
+                    confirmLabel: `Cancel ${sel.count} visit${sel.count === 1 ? "" : "s"}`,
+                  })
+                )
+                  bulkCancelM.mutate(sel.selectedIds);
+              }}
+            >
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="bulk-cancel-code" className="text-xs">
+                    Reason code
+                  </Label>
+                  <select
+                    id="bulk-cancel-code"
+                    value={bulkCancelCode}
+                    onChange={(e) => setBulkCancelCode(e.target.value)}
+                    className="block h-9 w-full rounded-md border bg-background px-2 text-sm"
+                  >
+                    {SKIP_CODES.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label htmlFor="bulk-cancel-reason" className="text-xs">
+                    Reason
+                  </Label>
+                  <Input
+                    id="bulk-cancel-reason"
+                    value={bulkCancelReason}
+                    onChange={(e) => setBulkCancelReason(e.target.value)}
+                    placeholder="Required"
+                    required
+                  />
+                </div>
+              </div>
+              <Button
+                type="submit"
+                size="sm"
+                variant="destructive"
+                disabled={bulkCancelM.isPending || !bulkCancelReason.trim()}
+              >
+                {bulkCancelM.isPending
+                  ? "Canceling…"
+                  : `Cancel ${sel.count} visit${sel.count === 1 ? "" : "s"}`}
+              </Button>
+            </form>
+          )}
+        </div>
+      )}
+
       {view === "calendar" ? (
         <VisitCalendar visits={filtered} onOpen={setDetailVisit} />
       ) : grouped ? (
         <>
-          <VisitGroup title={`Upcoming (${upcoming.length})`} visits={upcoming} onOpen={setDetailVisit} serviceById={serviceById} />
+          <VisitGroup title={`Upcoming (${upcoming.length})`} visits={upcoming} onOpen={setDetailVisit} serviceById={serviceById} selection={selection} />
           <VisitGroup title={`Past (${past.length})`} visits={past} onOpen={setDetailVisit} serviceById={serviceById} />
         </>
       ) : (
-        <VisitTable visits={filtered} onOpen={setDetailVisit} serviceById={serviceById} />
+        <VisitTable visits={filtered} onOpen={setDetailVisit} serviceById={serviceById} selection={selection} />
       )}
 
       <VisitDetailDrawer
@@ -221,16 +439,28 @@ export function VisitsTab({
   );
 }
 
+/** Selection wiring passed down to a VisitTable (bulk actions on upcoming
+ * scheduled visits). Rows failing canSelect render an empty checkbox cell. */
+type TableSelection = {
+  canSelect: (v: any) => boolean;
+  isSelected: (id: string) => boolean;
+  onToggle: (id: string, next: boolean) => void;
+  allSelected: boolean;
+  onToggleAll: () => void;
+};
+
 function VisitGroup({
   title,
   visits,
   onOpen,
   serviceById,
+  selection,
 }: {
   title: string;
   visits: any[];
   onOpen: (v: any) => void;
   serviceById: Map<string, any>;
+  selection?: TableSelection;
 }) {
   return (
     <section>
@@ -240,7 +470,7 @@ function VisitGroup({
           Nothing here with the current filters.
         </p>
       ) : (
-        <VisitTable visits={visits} onOpen={onOpen} serviceById={serviceById} />
+        <VisitTable visits={visits} onOpen={onOpen} serviceById={serviceById} selection={selection} />
       )}
     </section>
   );
@@ -250,16 +480,27 @@ function VisitTable({
   visits,
   onOpen,
   serviceById,
+  selection,
 }: {
   visits: any[];
   onOpen: (v: any) => void;
   serviceById: Map<string, any>;
+  selection?: TableSelection;
 }) {
   return (
     <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+            {selection && (
+              <th className="w-10 px-4 py-2.5">
+                <Checkbox
+                  checked={selection.allSelected}
+                  onCheckedChange={selection.onToggleAll}
+                  aria-label="Select all upcoming visits"
+                />
+              </th>
+            )}
             <th className="px-4 py-2.5 font-medium">Date</th>
             <th className="px-4 py-2.5 font-medium">Scheduled window</th>
             <th className="px-4 py-2.5 font-medium">Actual start</th>
@@ -286,6 +527,17 @@ function VisitTable({
                 onClick={() => onOpen(v)}
                 className="cursor-pointer border-b last:border-0 hover:bg-muted/40"
               >
+                {selection && (
+                  <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                    {selection.canSelect(v) ? (
+                      <Checkbox
+                        checked={selection.isSelected(v.id)}
+                        onCheckedChange={(next) => selection.onToggle(v.id, !!next)}
+                        aria-label={`Select visit on ${formatDay(v.scheduled_on)}`}
+                      />
+                    ) : null}
+                  </td>
+                )}
                 <td className="whitespace-nowrap px-4 py-2.5">
                   {formatDay(v.scheduled_on)}
                   {v.rescheduled_from && (
