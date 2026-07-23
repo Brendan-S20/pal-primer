@@ -44,7 +44,7 @@ import {
   ArrowDown,
 } from "lucide-react";
 import { PushToggle } from "@/components/PushToggle";
-import { OPEN_MY_DAY_DATE_PICKER_EVENT } from "@/components/MobileTabBar";
+import { FOCUS_MY_DAY_SCHEDULE_EVENT } from "@/components/MobileTabBar";
 // LanguageToggle moved to Settings → Preferences
 import { useTranslation } from "react-i18next";
 import { haptic } from "@/lib/haptics";
@@ -76,6 +76,13 @@ function todayISO() {
   return local.toISOString().slice(0, 10);
 }
 
+function addDaysISO(iso: string, days: number) {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  const off = d.getTimezoneOffset();
+  return new Date(d.getTime() - off * 60_000).toISOString().slice(0, 10);
+}
+
 function MyDay() {
   const { date: dateParam, staff: staffParam } = Route.useSearch();
   const navigate = Route.useNavigate();
@@ -85,22 +92,46 @@ function MyDay() {
   useEffect(() => {
     if (dateParam) setDay(dateParam);
   }, [dateParam]);
-  // The mobile tab bar's "Schedule" tab asks us to pop the date picker.
-  const dateInputRef = useRef<HTMLInputElement>(null);
+  // The mobile tab bar's "Schedule" tab asks us to focus the 7-day strip.
+  const stripRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const openPicker = () => {
-      const el = dateInputRef.current;
+    const focusStrip = () => {
+      const el = stripRef.current;
       if (!el) return;
-      el.focus();
-      try {
-        el.showPicker?.();
-      } catch {
-        /* showPicker needs user activation on some browsers; focus is enough */
-      }
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      const target =
+        el.querySelector<HTMLButtonElement>("button[data-selected='true']") ??
+        el.querySelector<HTMLButtonElement>("button");
+      target?.focus({ preventScroll: true });
     };
-    window.addEventListener(OPEN_MY_DAY_DATE_PICKER_EVENT, openPicker);
-    return () => window.removeEventListener(OPEN_MY_DAY_DATE_PICKER_EVENT, openPicker);
+    window.addEventListener(FOCUS_MY_DAY_SCHEDULE_EVENT, focusStrip);
+    return () => window.removeEventListener(FOCUS_MY_DAY_SCHEDULE_EVENT, focusStrip);
   }, []);
+
+  // Shared day setter: state + ?date= mirror (deep links / tab truthfulness).
+  const applyDay = useCallback(
+    (next: string) => {
+      setDay(next);
+      navigate({
+        search: (prev: Record<string, unknown>) => ({
+          ...prev,
+          date: next === todayISO() ? undefined : next,
+        }),
+        replace: true,
+      } as any);
+    },
+    [navigate],
+  );
+
+  // Seven-day strip (mobile): today-first window. If a deep link lands on a
+  // day outside that window, anchor the window at the selected day so the
+  // strip always reflects the selection.
+  const stripDays = useMemo(() => {
+    const today = todayISO();
+    const inWindow = day >= today && day <= addDaysISO(today, 6);
+    const anchor = inWindow ? today : day;
+    return Array.from({ length: 7 }, (_, i) => addDaysISO(anchor, i));
+  }, [day]);
   const fn = useServerFn(getMyDay);
   const qc = useQueryClient();
   const online = useOnline();
@@ -222,8 +253,9 @@ function MyDay() {
             <div className="flex shrink-0 items-center gap-2">
               <PushToggle />
 
+              {/* Desktop keeps the raw date input; below `md` the 7-day strip
+                  (below) is the date control (Mobile Phase 2). */}
               <input
-                ref={dateInputRef}
                 type="date"
                 value={day}
                 onChange={(e) => {
@@ -233,20 +265,51 @@ function MyDay() {
                   // genuinely unlinked account and alarmed techs (finding #18).
                   const v = e.target.value;
                   const next = v && !Number.isNaN(new Date(v).getTime()) ? v : todayISO();
-                  setDay(next);
                   // Mirror the day into ?date= (like ?staff= below) so deep
                   // links and the mobile Today/Schedule tabs stay truthful.
-                  navigate({
-                    search: (prev: Record<string, unknown>) => ({
-                      ...prev,
-                      date: next === todayISO() ? undefined : next,
-                    }),
-                    replace: true,
-                  } as any);
+                  applyDay(next);
                 }}
-                className="h-10 rounded-md border bg-background px-2 text-sm"
+                className="h-10 rounded-md border bg-background px-2 text-sm max-md:hidden"
               />
             </div>
+          </div>
+
+          {/* Mobile Phase 2: horizontal 7-day strip driving ?date=. Today-first;
+              the selected day is filled, today is outlined when not selected. */}
+          <div
+            ref={stripRef}
+            aria-label="Pick a day"
+            className="no-scrollbar -mx-1 flex gap-1 overflow-x-auto px-1 md:hidden"
+          >
+            {stripDays.map((d) => {
+              const selected = d === day;
+              const isToday = d === todayISO();
+              const dt = new Date(`${d}T00:00:00`);
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  data-selected={selected ? "true" : undefined}
+                  aria-pressed={selected}
+                  onClick={() => {
+                    haptic("tap");
+                    applyDay(d);
+                  }}
+                  className={`flex min-h-12 min-w-11 flex-1 shrink-0 flex-col items-center justify-center rounded-lg border px-1 py-1.5 text-center transition-colors ${
+                    selected
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : isToday
+                        ? "border-primary/50 text-primary"
+                        : "border-transparent text-muted-foreground hover:bg-muted active:bg-muted"
+                  }`}
+                >
+                  <span className="text-[10px] font-medium uppercase leading-none">
+                    {dt.toLocaleDateString(undefined, { weekday: "narrow" })}
+                  </span>
+                  <span className="mt-0.5 text-sm font-semibold leading-tight">{dt.getDate()}</span>
+                </button>
+              );
+            })}
           </div>
 
           {total > 0 && (

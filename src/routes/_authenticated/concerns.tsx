@@ -145,7 +145,7 @@ function ConcernsPage() {
           <button
             key={f.key}
             onClick={() => setFilter(f.key)}
-            className={`rounded-full border px-3 py-1 text-sm ${filter === f.key ? "border-primary bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted"}`}
+            className={`rounded-full border px-3 py-1 text-sm max-md:px-4 max-md:py-2 ${filter === f.key ? "border-primary bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted"}`}
           >
             {f.label}
           </button>
@@ -185,7 +185,7 @@ function ConcernsPage() {
               <li key={c.id} className="rounded-lg border bg-card p-4">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 max-md:flex-wrap">
                       <span className="font-medium">{client?.display_name ?? "Client"}</span>
                       <Badge variant="outline">{CONCERN_CATEGORY_LABELS[c.category] ?? c.category}</Badge>
                       <Badge variant={status === "resolved" ? "secondary" : status === "in_progress" ? "default" : "destructive"}>
@@ -302,7 +302,7 @@ function ConcernsPage() {
                     Resolved {c.resolved_at ? fmt(c.resolved_at) : ""}
                     {c.resolution_note ? `: ${c.resolution_note}` : ""}
                     <button
-                      className="ml-2 text-primary underline underline-offset-2"
+                      className="ml-2 text-primary underline underline-offset-2 max-md:inline-block max-md:py-2"
                       onClick={() => mut.mutate({ ticketId: c.id, status: "in_progress" })}
                     >
                       Reopen

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState, useEffect, useRef } from "react";
 import { listClientMessages, sendSmsToClient } from "@/lib/messages.functions";
+import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
@@ -48,7 +49,17 @@ function Thread() {
   return (
     <div className="flex h-[70vh] flex-col rounded-lg border bg-card">
       <div className="flex items-center justify-between border-b px-4 py-3">
-        <div>
+        <div className="flex min-w-0 items-center gap-1">
+          {/* Mobile Phase 2: the conversation list is hidden below `md`, so
+              give the thread a way back to it. */}
+          <Link
+            to="/messages"
+            aria-label="Back to conversations"
+            className="-ml-2 grid h-10 w-10 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted active:bg-muted md:hidden"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Link>
+          <div className="min-w-0">
           <div className="text-sm font-semibold">
             {client?.display_name}
             {client?.sms_opt_out && (
@@ -58,8 +69,9 @@ function Thread() {
             )}
           </div>
           <div className="text-xs text-muted-foreground">{client?.primary_phone ?? "no phone"}</div>
+          </div>
         </div>
-        <Link to="/clients/$clientId" params={{ clientId }} className="text-xs text-primary underline">
+        <Link to="/clients/$clientId" params={{ clientId }} className="shrink-0 text-xs text-primary underline">
           Open client
         </Link>
       </div>

@@ -1,4 +1,4 @@
-import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -78,9 +78,16 @@ function MessagesLayout() {
     queryFn: () => fn({}),
   });
 
+  // Mobile Phase 2: below `md` this is a master→detail flow, not a stacked
+  // two-pane. On /messages the conversation list IS the screen (the desktop
+  // "select a conversation" placeholder is hidden); on a thread the list is
+  // hidden and the thread header carries a back link. Desktop keeps both panes.
+  const pathname = useRouterState({ select: (r) => r.location.pathname });
+  const onThread = pathname !== "/messages" && pathname !== "/messages/";
+
   return (
     <div className="grid grid-cols-1 gap-6 md:grid-cols-[280px_1fr]">
-      <aside className="rounded-lg border bg-card">
+      <aside className={`rounded-lg border bg-card ${onThread ? "max-md:hidden" : ""}`}>
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h2 className="text-sm font-semibold">Conversations</h2>
           <Button
@@ -130,7 +137,7 @@ function MessagesLayout() {
           </ul>
         </div>
       </aside>
-      <section>
+      <section className={onThread ? "" : "max-md:hidden"}>
         <Outlet />
       </section>
     </div>

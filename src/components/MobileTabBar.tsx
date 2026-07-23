@@ -18,10 +18,11 @@ import { CreateSheet } from "@/components/CreateSheet";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 /**
- * Fired by the tech "Schedule" tab so My Day pops its native date picker —
- * Phase 1 stand-in for the Phase 2 seven-day strip. My Day listens for this.
+ * Fired by the tech "Schedule" tab so My Day scrolls to / focuses its
+ * seven-day strip (Phase 2 — replaces the Phase 1 date-picker stand-in).
+ * My Day listens for this.
  */
-export const OPEN_MY_DAY_DATE_PICKER_EVENT = "houndstack:open-my-day-date-picker";
+export const FOCUS_MY_DAY_SCHEDULE_EVENT = "houndstack:focus-my-day-schedule";
 
 function todayISO() {
   const d = new Date();
@@ -71,13 +72,13 @@ export function MobileTabBar() {
     window.location.href = "/auth";
   };
 
-  const openMyDayDatePicker = () => {
-    const fire = () => window.dispatchEvent(new Event(OPEN_MY_DAY_DATE_PICKER_EVENT));
+  const focusMyDaySchedule = () => {
+    const fire = () => window.dispatchEvent(new Event(FOCUS_MY_DAY_SCHEDULE_EVENT));
     if (pathname.startsWith("/my-day")) {
       fire();
     } else {
       navigate({ to: "/my-day" });
-      // Let the route mount before asking it to open the picker.
+      // Let the route mount before asking it to focus the day strip.
       setTimeout(fire, 250);
     }
   };
@@ -109,7 +110,7 @@ export function MobileTabBar() {
             <li>
               <button
                 type="button"
-                onClick={openMyDayDatePicker}
+                onClick={focusMyDaySchedule}
                 className={tabClass(onMyDay && viewingOtherDay)}
               >
                 <CalendarDays className="h-5 w-5" />
