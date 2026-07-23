@@ -13,7 +13,7 @@ async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   return data.organization_id as string;
 }
 
-type DayForecast = {
+export type DayForecast = {
   date: string;
   precip_mm: number;
   precip_prob: number;
@@ -140,7 +140,12 @@ function validForecast(payload: unknown): DayForecast[] | null {
     : null;
 }
 
-async function cachedForecast(
+// Exported for reuse by analyzeDayWeather (weather-day.functions.ts): the
+// single-day analysis used to fetch Open-Meteo directly with no cache and no
+// edge-function relay, so it silently reported "forecast unavailable" in
+// exactly the environments the cache/relay were added for. Server-only —
+// always reach it via a dynamic import inside a server-fn handler.
+export async function cachedForecast(
   supabase: any,
   lat: number,
   lon: number,
@@ -329,6 +334,60 @@ export const getZoneVisitsOnDay = createServerFn({ method: "GET" })
     };
   });
 
+// ── Org work-days awareness for reschedule targets ──────────────────────────
+// Mirrors generate_visits_core (20260719110000_org-work-days.sql): a target
+// date on a blackout always shifts forward; a target off an org working day
+// shifts forward too, UNLESS the visit's subscription carries explicit
+// preferred_weekdays (a client-agreed Saturday stays a Saturday).
+
+function isoDow(iso: string): number {
+  return new Date(iso + "T00:00:00Z").getUTCDay();
+}
+
+async function loadWorkDays(supabase: any, orgId: string): Promise<number[]> {
+  const { data } = await (supabase.from("organizations") as any)
+    .select("work_days")
+    .eq("id", orgId)
+    .maybeSingle();
+  const wd = data?.work_days as number[] | null | undefined;
+  return Array.isArray(wd) && wd.length > 0 ? wd : [0, 1, 2, 3, 4, 5, 6];
+}
+
+async function loadBlackouts(
+  supabase: any,
+  orgId: string,
+  from: string,
+  to: string,
+): Promise<Set<string>> {
+  const { data } = await supabase
+    .from("blackout_dates")
+    .select("blackout_on")
+    .eq("organization_id", orgId)
+    .gte("blackout_on", from)
+    .lte("blackout_on", to);
+  return new Set((data ?? []).map((b: any) => b.blackout_on as string));
+}
+
+/** Shift `date` forward off blackouts and (when the subscription has no
+ * explicit preferred weekdays) off non-working days. Same 14-day guard as the
+ * SQL shift loop. */
+function shiftToAllowedDay(
+  date: string,
+  opts: { workDays: number[]; blackouts: Set<string>; hasPrefs: boolean },
+): string {
+  let cand = date;
+  let guard = 0;
+  while (
+    (opts.blackouts.has(cand) ||
+      (!opts.hasPrefs && !opts.workDays.includes(isoDow(cand)))) &&
+    guard < 14
+  ) {
+    cand = addDays(cand, 1);
+    guard += 1;
+  }
+  return cand;
+}
+
 export const rescheduleVisits = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
@@ -347,48 +406,67 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
     const errors: string[] = [];
     const moves: { visitId: string; from: string; to: string }[] = [];
 
-    // Snapshot pre-move dates + client refs for email
+    // Snapshot pre-move dates + client refs for email, plus each visit's
+    // subscription weekday preferences (those exempt the visit from the org
+    // work-day shift, mirroring generate_visits_core).
     const { data: preRows } = await supabase
       .from("visits")
-      .select("id, scheduled_on, client_id, properties(visit_contact_email)")
+      .select(
+        "id, scheduled_on, client_id, properties(visit_contact_email), subscriptions(preferred_weekdays)",
+      )
       .in("id", data.visitIds);
     const preMap = new Map<
       string,
-      { scheduled_on: string; client_id: string; contact_email: string | null }
+      { scheduled_on: string; client_id: string; contact_email: string | null; hasPrefs: boolean }
     >();
     (preRows ?? []).forEach((r: any) => {
       const prop = Array.isArray(r.properties) ? r.properties[0] : r.properties;
+      const sub = Array.isArray(r.subscriptions) ? r.subscriptions[0] : r.subscriptions;
       preMap.set(r.id, {
         scheduled_on: r.scheduled_on,
         client_id: r.client_id,
         contact_email: prop?.visit_contact_email ?? null,
+        hasPrefs: Array.isArray(sub?.preferred_weekdays) && sub.preferred_weekdays.length > 0,
       });
     });
 
+    // Respect org work days when picking the actual target date: the same
+    // shift rule visit generation uses, so a weather reschedule can't dump a
+    // route onto a day the business doesn't operate. preferred_weekdays win.
+    const workDays = await loadWorkDays(supabase, orgId);
+    const blackouts = await loadBlackouts(supabase, orgId, data.newDate, addDays(data.newDate, 14));
+
     for (const id of data.visitIds) {
+      const pre = preMap.get(id);
+      const target = shiftToAllowedDay(data.newDate, {
+        workDays,
+        blackouts,
+        hasPrefs: pre?.hasPrefs ?? false,
+      });
       const { error } = await supabase.rpc("reschedule_visit", {
         _visit_id: id,
-        _new_date: data.newDate,
+        _new_date: target,
         _note: data.note ?? undefined,
       });
       if (error) errors.push(error.message);
       else {
         moved++;
-        const pre = preMap.get(id);
-        if (pre) moves.push({ visitId: id, from: pre.scheduled_on, to: data.newDate });
+        if (pre) moves.push({ visitId: id, from: pre.scheduled_on, to: target });
       }
     }
 
-    // Fire weather-reschedule emails (best-effort)
+    // Fire weather-reschedule emails (best-effort) — only for visits that
+    // actually moved, and with each visit's REAL target date (which may have
+    // been shifted off a non-working day).
     try {
       const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
       const seen = new Set<string>();
-      for (const id of data.visitIds) {
-        const pre = preMap.get(id);
+      for (const m of moves) {
+        const pre = preMap.get(m.visitId);
         if (!pre) continue;
-        // Dedupe per destination+newDate — a property contact (P3.5) and the
-        // account contact are distinct recipients.
-        const key = `${pre.contact_email ?? pre.client_id}|${data.newDate}`;
+        // Dedupe per destination+target date — a property contact (P3.5) and
+        // the account contact are distinct recipients.
+        const key = `${pre.contact_email ?? pre.client_id}|${m.to}`;
         if (seen.has(key)) continue;
         seen.add(key);
         await enqueueAppEmail({
@@ -396,11 +474,11 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
           clientId: pre.client_id,
           templateName: "weather-reschedule",
           notifyKey: "notify_email_weather_reschedule",
-          idempotencyKey: `weather-${id}-${data.newDate}`,
+          idempotencyKey: `weather-${m.visitId}-${m.to}`,
           toOverride: pre.contact_email || undefined,
           templateData: {
             originalDate: pre.scheduled_on,
-            newDate: data.newDate,
+            newDate: m.to,
             reason: data.note,
           },
         });
@@ -522,13 +600,26 @@ export const autoRebalanceForecast = createServerFn({ method: "POST" })
       longitude: z.longitude ?? (z.center_longitude != null ? Number(z.center_longitude) : null),
     }));
 
-    // Load subscriptions -> zone map (org-scoped)
+    // Load subscriptions -> zone map (org-scoped), plus weekday preferences:
+    // rebalance targets follow the same rule as visit generation — org
+    // work_days bound the candidates unless the subscription pins explicit
+    // preferred_weekdays (then those weekdays win).
     const { data: subs } = await supabase
       .from("subscriptions")
-      .select("id, zone_id")
+      .select("id, zone_id, preferred_weekdays")
       .eq("organization_id", orgId);
     const subZone = new Map<string, string | null>();
-    (subs ?? []).forEach((s: any) => subZone.set(s.id, s.zone_id));
+    const subPrefs = new Map<string, number[] | null>();
+    (subs ?? []).forEach((s: any) => {
+      subZone.set(s.id, s.zone_id);
+      subPrefs.set(
+        s.id,
+        Array.isArray(s.preferred_weekdays) && s.preferred_weekdays.length > 0
+          ? s.preferred_weekdays
+          : null,
+      );
+    });
+    const workDays = await loadWorkDays(supabase, orgId);
 
     // Load visits in a wider window (window + 14 days lookahead)
     const searchTo = addDays(data.toDate, 14);
@@ -592,11 +683,16 @@ export const autoRebalanceForecast = createServerFn({ method: "POST" })
 
       for (const v of zoneVisits) {
         // Find nearest safe day within 14 days after original
+        const prefs = subPrefs.get(v.subscription_id) ?? null;
         let target: string | null = null;
         for (let i = 1; i <= 14; i++) {
           const cand = addDays(v.scheduled_on, i);
           if (riskyByDate.get(cand) === true) continue; // still risky
           if (riskyByDate.get(cand) === undefined) continue; // outside forecast
+          // Same day rule as generation: explicit preferred weekdays win;
+          // otherwise stay inside the org's working days.
+          const dow = isoDow(cand);
+          if (prefs ? !prefs.includes(dow) : !workDays.includes(dow)) continue;
           const cnt = dayCounts.get(`${z.id}|${cand}`) ?? 0;
           if (cnt >= data.dailyCap) continue;
           target = cand;

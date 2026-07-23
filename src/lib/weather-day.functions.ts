@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { DayForecast } from "@/lib/weather.functions";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   const { data, error } = await supabase
@@ -13,55 +14,6 @@ async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   return data.organization_id as string;
 }
 
-type DayRisk = {
-  risky: boolean;
-  reasons: string[];
-  precip_mm: number;
-  precip_prob: number;
-  wind_max: number;
-  temp_max: number;
-  temp_min: number;
-  weathercode: number;
-};
-
-async function fetchDayRisk(lat: number, lon: number, date: string): Promise<DayRisk | null> {
-  const url = new URL("https://api.open-meteo.com/v1/forecast");
-  url.searchParams.set("latitude", String(lat));
-  url.searchParams.set("longitude", String(lon));
-  // Current Open-Meteo daily variable names (finding #15).
-  url.searchParams.set(
-    "daily",
-    "precipitation_sum,precipitation_probability_max,wind_speed_10m_max,temperature_2m_max,temperature_2m_min,weather_code",
-  );
-  url.searchParams.set("timezone", "auto");
-  url.searchParams.set("start_date", date);
-  url.searchParams.set("end_date", date);
-  try {
-    const r = await fetch(url.toString());
-    if (!r.ok) return null;
-    const j: any = await r.json();
-    const d = j.daily;
-    if (!d?.time?.length) return null;
-    const base = {
-      precip_mm: Number(d.precipitation_sum?.[0] ?? 0),
-      precip_prob: Number(d.precipitation_probability_max?.[0] ?? 0),
-      wind_max: Number(d.wind_speed_10m_max?.[0] ?? 0),
-      temp_max: Number(d.temperature_2m_max?.[0] ?? 0),
-      temp_min: Number(d.temperature_2m_min?.[0] ?? 0),
-      weathercode: Number(d.weather_code?.[0] ?? 0),
-    };
-    const reasons: string[] = [];
-    if (base.precip_mm >= 5) reasons.push(`${base.precip_mm.toFixed(1)}mm rain`);
-    if (base.precip_prob >= 70) reasons.push(`${base.precip_prob}% chance`);
-    if (base.wind_max >= 40) reasons.push(`wind ${Math.round(base.wind_max)}km/h`);
-    if (base.weathercode >= 95) reasons.push("thunderstorm");
-    if (base.temp_max <= -5) reasons.push("hard freeze");
-    return { ...base, risky: reasons.length > 0, reasons };
-  } catch {
-    return null;
-  }
-}
-
 export const analyzeDayWeather = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ day: z.string() }).parse(d))
@@ -72,7 +24,7 @@ export const analyzeDayWeather = createServerFn({ method: "POST" })
     const [zonesRes, subsRes, visitsRes] = await Promise.all([
       supabase
         .from("zones")
-        .select("id, name, latitude, longitude")
+        .select("id, name, latitude, longitude, center_latitude, center_longitude")
         .eq("organization_id", orgId),
       supabase.from("subscriptions").select("id, zone_id").eq("organization_id", orgId),
       supabase
@@ -84,6 +36,16 @@ export const analyzeDayWeather = createServerFn({ method: "POST" })
     ]);
     if (zonesRes.error) throw new Error(zonesRes.error.message);
 
+    // Zone pin first, else the coverage center — same fallback as
+    // getWeatherForZones, so a radius zone drawn on the map (center, no pin)
+    // isn't wrongly reported as "no coordinates" here while the weather
+    // popover happily forecasts it.
+    const zones = (zonesRes.data ?? []).map((z: any) => ({
+      ...z,
+      latitude: z.latitude ?? (z.center_latitude != null ? Number(z.center_latitude) : null),
+      longitude: z.longitude ?? (z.center_longitude != null ? Number(z.center_longitude) : null),
+    }));
+
     const subZone = new Map<string, string | null>();
     (subsRes.data ?? []).forEach((s: any) => subZone.set(s.id, s.zone_id));
 
@@ -94,6 +56,12 @@ export const analyzeDayWeather = createServerFn({ method: "POST" })
       if (!visitsByZone.has(zid)) visitsByZone.set(zid, []);
       visitsByZone.get(zid)!.push(v.id);
     }
+
+    // Shared cached forecast (dynamic import: server-only helper). The old
+    // direct Open-Meteo fetch here bypassed both the shared cache (429s) and
+    // the edge-function egress relay, so this analysis reported "forecast
+    // unavailable" in exactly the environments those were added for.
+    const { cachedForecast } = await import("@/lib/weather.functions");
 
     const zoneReports: Array<{
       zone_id: string;
@@ -109,7 +77,7 @@ export const analyzeDayWeather = createServerFn({ method: "POST" })
     const flaggedIds = new Set<string>();
 
     await Promise.all(
-      (zonesRes.data ?? []).map(async (z: any) => {
+      zones.map(async (z: any) => {
         const ids = visitsByZone.get(z.id) ?? [];
         if (ids.length === 0) return;
         if (z.latitude == null || z.longitude == null) {
@@ -123,7 +91,19 @@ export const analyzeDayWeather = createServerFn({ method: "POST" })
           });
           return;
         }
-        const risk = await fetchDayRisk(z.latitude, z.longitude, data.day);
+        let risk: DayForecast | null = null;
+        try {
+          const { forecast } = await cachedForecast(
+            supabase,
+            z.latitude,
+            z.longitude,
+            data.day,
+            data.day,
+          );
+          risk = forecast.find((f) => f.date === data.day) ?? forecast[0] ?? null;
+        } catch {
+          risk = null;
+        }
         if (!risk) {
           zoneReports.push({
             zone_id: z.id,

@@ -64,6 +64,7 @@ type EditForm = {
   price: string; // dollars, raw string while typing
   includedSeats: string;
   pricePerSeat: string; // dollars
+  interval: "month" | "year";
   isActive: boolean;
   sortOrder: string;
 };
@@ -102,6 +103,7 @@ function PlansPage() {
       includedSeats: p.included_seats === null ? "" : String(p.included_seats),
       pricePerSeat:
         p.price_per_seat_cents === null ? "" : (p.price_per_seat_cents / 100).toFixed(2),
+      interval: p.interval === "year" ? "year" : "month",
       isActive: p.is_active,
       sortOrder: String(p.sort_order),
     });
@@ -115,6 +117,7 @@ function PlansPage() {
       priceCents?: number;
       includedSeats?: number | null;
       pricePerSeatCents?: number | null;
+      interval?: "month" | "year";
       isActive?: boolean;
       sortOrder?: number;
     }) => updateFn({ data: v }),
@@ -158,6 +161,7 @@ function PlansPage() {
       // omitting them would silently keep the old values.
       pricePerSeatCents: perSeat === undefined ? null : perSeat,
       includedSeats: seats,
+      interval: form.interval,
       ...(sort !== undefined && Number.isFinite(sort) ? { sortOrder: sort } : {}),
       isActive: form.isActive,
     });
@@ -259,7 +263,7 @@ function PlansPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label>Base price ($/{editing.interval})</Label>
+                  <Label>Base price ($/{form.interval})</Label>
                   <Input
                     type="number" step="0.01" min="0"
                     value={form.price}
@@ -268,7 +272,7 @@ function PlansPage() {
                   />
                 </div>
                 <div>
-                  <Label>Per extra employee ($/{editing.interval})</Label>
+                  <Label>Per extra employee ($/{form.interval})</Label>
                   <Input
                     type="number" step="0.01" min="0"
                     value={form.pricePerSeat}
@@ -276,6 +280,24 @@ function PlansPage() {
                     disabled={editing.is_enterprise}
                   />
                 </div>
+              </div>
+              <div>
+                <Label htmlFor="plan-billing-interval">Billing interval</Label>
+                <select
+                  id="plan-billing-interval"
+                  value={form.interval}
+                  onChange={(e) =>
+                    setForm({ ...form, interval: e.target.value as "month" | "year" })
+                  }
+                  disabled={editing.is_enterprise}
+                  className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm disabled:opacity-60"
+                >
+                  <option value="month">Monthly</option>
+                  <option value="year">Annual</option>
+                </select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Annual base prices are divided by 12 in platform MRR/ARR.
+                </p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

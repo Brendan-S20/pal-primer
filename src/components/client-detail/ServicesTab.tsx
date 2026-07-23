@@ -4,6 +4,7 @@
 // creation form stays hidden until "Add Service".
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
@@ -85,6 +86,8 @@ export function ServicesTab({
   dogs,
   canBill,
   canManagePricing,
+  editServiceId,
+  onEditServiceConsumed,
 }: {
   clientId: string;
   client: any;
@@ -95,12 +98,38 @@ export function ServicesTab({
   dogs: any[];
   canBill: boolean;
   canManagePricing: boolean;
+  /** Deep-linked ?editService=<subscriptionId> (already stripped from the URL
+   * by the route): opens the edit drawer once the subscription is loaded. */
+  editServiceId?: string | null;
+  onEditServiceConsumed?: () => void;
 }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [drawerSub, setDrawerSub] = useState<any | null | "new">(null);
   const [endingSub, setEndingSub] = useState<any | null>(null);
   const [detailSub, setDetailSub] = useState<any | null>(null);
+
+  // Consume the ?editService deep link once the subscription list contains
+  // the id (the drawer needs the full row). An unknown id is never consumed.
+  useEffect(() => {
+    if (!editServiceId) return;
+    const sub = subscriptions.find((s: any) => s.id === editServiceId);
+    if (sub) {
+      setDrawerSub(sub);
+      onEditServiceConsumed?.();
+    }
+  }, [editServiceId, subscriptions]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The list's Edit button goes through the URL (?editService=<id>, the
+  // ?edit=true pattern) so an edit is deep-linkable/shareable; the route
+  // strips the param and hands it back via editServiceId.
+  const openEditViaUrl = (subscriptionId: string) =>
+    navigate({
+      to: "/clients/$clientId",
+      params: { clientId },
+      search: { tab: "services", editService: subscriptionId } as any,
+    });
 
   const pauseFn = useServerFn(pauseSubscription);
   const resumeFn = useServerFn(resumeSubscription);
@@ -363,7 +392,7 @@ export function ServicesTab({
                       />
                     )}
                     {canManagePricing && (
-                      <Button size="sm" variant="outline" onClick={() => setDrawerSub(s)}>
+                      <Button size="sm" variant="outline" onClick={() => openEditViaUrl(s.id)}>
                         Edit
                       </Button>
                     )}

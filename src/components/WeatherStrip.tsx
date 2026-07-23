@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
 import { analyzeDayWeather } from "@/lib/weather-day.functions";
-import { rescheduleVisits } from "@/lib/weather.functions";
+import { rescheduleVisits, undoReschedule } from "@/lib/weather.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +40,7 @@ export function WeatherStrip({ day }: { day: string }) {
 
   const analyzeFn = useServerFn(analyzeDayWeather);
   const rescheduleFn = useServerFn(rescheduleVisits);
+  const undoFn = useServerFn(undoReschedule);
 
   const analyze = useMutation({
     mutationFn: () => analyzeFn({ data: { day } }),
@@ -58,48 +59,51 @@ export function WeatherStrip({ day }: { day: string }) {
   });
 
   const reschedule = useMutation({
-    mutationFn: async () => {
-      const visitIds = analysis?.flagged_visit_ids ?? [];
-      // Snapshot originals so we can undo
-      const originals: Array<{ id: string; date: string }> = [];
-      if (visitIds.length) {
-        const { data: pre } = await (await import("@/integrations/supabase/client")).supabase
-          .from("visits")
-          .select("id, scheduled_on")
-          .in("id", visitIds);
-        (pre ?? []).forEach((r: any) => originals.push({ id: r.id, date: r.scheduled_on }));
+    // The server returns the authoritative per-visit moves (from → to), so no
+    // browser-side snapshot query is needed; undo goes through the dedicated
+    // undoReschedule fn with those exact moves. Targets may differ from the
+    // picked date: the server shifts them off blackouts/non-working days
+    // (preferred weekdays win), same as visit generation.
+    mutationFn: () =>
+      rescheduleFn({
+        data: {
+          visitIds: analysis?.flagged_visit_ids ?? [],
+          newDate: rescheduleDate,
+          note: "Weather-flagged auto-reschedule",
+        },
+      }),
+    onSuccess: (r) => {
+      const moves = r.moves ?? [];
+      if (r.errors?.length) {
+        toast.error(
+          `${r.errors.length} visit${r.errors.length === 1 ? "" : "s"} couldn't be moved: ${r.errors[0]}`,
+        );
       }
-      const r = await rescheduleFn({
-        data: { visitIds, newDate: rescheduleDate, note: "Weather-flagged auto-reschedule" },
-      });
-      return { ...r, originals };
-    },
-    onSuccess: (r: any) => {
-      const originals = r.originals ?? [];
-      toast.success(`Moved ${r.moved} visit${r.moved === 1 ? "" : "s"} to ${rescheduleDate}`, {
+      const targets = [...new Set(moves.map((m) => m.to))];
+      const where =
+        targets.length === 1
+          ? targets[0] === rescheduleDate
+            ? targets[0]
+            : `${targets[0]} (shifted to a working day)`
+          : `${targets.length} working days`;
+      toast.success(`Moved ${r.moved} visit${r.moved === 1 ? "" : "s"} to ${where}`, {
         duration: 8000,
-        action: originals.length ? {
-          label: "Undo",
-          onClick: async () => {
-            const byDate = new Map<string, string[]>();
-            for (const o of originals) {
-              if (!byDate.has(o.date)) byDate.set(o.date, []);
-              byDate.get(o.date)!.push(o.id);
+        action: moves.length
+          ? {
+              label: "Undo",
+              onClick: async () => {
+                try {
+                  const back = await undoFn({ data: { moves } });
+                  if (back.errors?.length) toast.error(back.errors[0]);
+                  toast.success(`Restored ${back.restored} visit${back.restored === 1 ? "" : "s"}`);
+                } catch (e: any) {
+                  toast.error(e.message);
+                }
+                qc.invalidateQueries({ queryKey: ["visits"] });
+                qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
+              },
             }
-            let restored = 0;
-            for (const [date, ids] of byDate) {
-              try {
-                const back = await rescheduleFn({ data: { visitIds: ids, newDate: date, note: "Weather reschedule undone" } });
-                restored += back.moved;
-              } catch (e: any) {
-                toast.error(e.message);
-              }
-            }
-            toast.success(`Restored ${restored} visit${restored === 1 ? "" : "s"}`);
-            qc.invalidateQueries({ queryKey: ["visits"] });
-            qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
-          },
-        } : undefined,
+          : undefined,
       });
       setAnalysis(null);
       qc.invalidateQueries({ queryKey: ["visits"] });
@@ -153,6 +157,19 @@ export function WeatherStrip({ day }: { day: string }) {
           </Button>
         </div>
       </div>
+
+      {analyze.isError && !analyze.isPending && (
+        <p className="mt-2 text-xs text-destructive">
+          Couldn't check the weather ({(analyze.error as Error)?.message ?? "service error"}).{" "}
+          <button
+            type="button"
+            className="underline underline-offset-2"
+            onClick={() => analyze.mutate()}
+          >
+            Retry
+          </button>
+        </p>
+      )}
 
       {analysis && analysis.zones.length > 0 && (
         <ul className="mt-3 grid gap-1.5 text-xs sm:grid-cols-2 lg:grid-cols-3">

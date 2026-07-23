@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { CalendarOff, Inbox, Repeat } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   listConcerns,
   updateConcernStatus,
@@ -18,7 +18,9 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { VacationHoldDrawer } from "@/components/client-detail/VacationHoldDrawer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { useRowSelection } from "@/hooks/useRowSelection";
 import { formatDay } from "@/lib/format";
 import { toast } from "sonner";
 
@@ -131,6 +133,36 @@ function ConcernsPage() {
 
   const concerns: any[] = (q.data as any)?.concerns ?? [];
 
+  // Multi-select for bulk resolve (Invoices-page pattern). Only unresolved
+  // concerns are selectable; the clearKey drops the selection on filter
+  // changes so a bulk action never hits hidden rows.
+  const selectableIds = useMemo(
+    () => concerns.filter((c) => c.status !== "resolved").map((c) => c.id as string),
+    [concerns],
+  );
+  const sel = useRowSelection(selectableIds, filter);
+
+  // Bulk resolve loops the existing per-ticket updateConcernStatus fn (same
+  // permission gate + side effects as the card's "Mark resolved" button).
+  const bulkResolveM = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map((ticketId) => updateFn({ data: { ticketId, status: "resolved" as const } })),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      return { ok, failed: results.length - ok };
+    },
+    onSuccess: (r) => {
+      if (r.failed)
+        toast.error(`Resolved ${r.ok} of ${r.ok + r.failed} concerns — ${r.failed} failed`);
+      else toast.success(`Resolved ${r.ok} concern${r.ok === 1 ? "" : "s"}`);
+      sel.clear();
+      qc.invalidateQueries({ queryKey: ["concerns"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
   return (
     <div className="space-y-6">
       <div>
@@ -151,6 +183,40 @@ function ConcernsPage() {
           </button>
         ))}
       </div>
+
+      {selectableIds.length > 0 && (
+        <label className="flex min-h-8 w-fit items-center gap-2 px-1 text-xs text-muted-foreground">
+          <Checkbox
+            checked={sel.allSelected}
+            onCheckedChange={sel.toggleAll}
+            aria-label="Select all unresolved concerns"
+          />
+          Select all unresolved
+        </label>
+      )}
+
+      {/* Bulk action bar */}
+      {sel.count > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-accent/40 px-4 py-2 text-sm shadow-sm">
+          <span className="font-medium">{sel.count} selected</span>
+          <div className="flex gap-2">
+            <ConfirmButton
+              title={`Resolve ${sel.count} concern${sel.count === 1 ? "" : "s"}?`}
+              description="Marks each selected concern resolved (no resolution note). Reopen any of them from its card if needed."
+              confirmLabel="Mark resolved"
+              onConfirm={() => bulkResolveM.mutate(sel.selectedIds)}
+              trigger={
+                <Button size="sm" disabled={bulkResolveM.isPending}>
+                  {bulkResolveM.isPending ? "Resolving…" : "Mark resolved"}
+                </Button>
+              }
+            />
+            <Button size="sm" variant="ghost" onClick={sel.clear}>
+              Clear
+            </Button>
+          </div>
+        </div>
+      )}
 
       {q.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
@@ -184,7 +250,16 @@ function ConcernsPage() {
             return (
               <li key={c.id} className="rounded-lg border bg-card p-4">
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
+                  <div className="flex items-start gap-2.5">
+                    {status !== "resolved" && (
+                      <Checkbox
+                        className="mt-0.5"
+                        checked={sel.isSelected(c.id)}
+                        onCheckedChange={(v) => sel.toggle(c.id, v === true)}
+                        aria-label={`Select concern from ${client?.display_name ?? "client"}`}
+                      />
+                    )}
+                    <div>
                     <div className="flex items-center gap-2 max-md:flex-wrap">
                       <span className="font-medium">{client?.display_name ?? "Client"}</span>
                       <Badge variant="outline">{CONCERN_CATEGORY_LABELS[c.category] ?? c.category}</Badge>
@@ -196,6 +271,7 @@ function ConcernsPage() {
                       Submitted {fmt(c.created_at)}
                       {client?.primary_phone ? ` · ${client.primary_phone}` : ""}
                       {client?.primary_email ? ` · ${client.primary_email}` : ""}
+                    </div>
                     </div>
                   </div>
                 </div>

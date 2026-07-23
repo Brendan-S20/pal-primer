@@ -92,6 +92,9 @@ const updatePlatformPlanSchema = z.object({
   priceCents: z.number().int().min(0, "Price must be >= 0").optional(),
   includedSeats: z.number().int().min(0).nullable().optional(),
   pricePerSeatCents: z.number().int().min(0, "Price must be >= 0").nullable().optional(),
+  // Billing interval of the base price ('month' | 'year'). Annual plans are
+  // divided by 12 in the MRR math (platform-metrics.ts monthlyEquivalentCents).
+  interval: z.enum(["month", "year"]).optional(),
   isActive: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
 });
@@ -105,7 +108,7 @@ export const updatePlatformPlan = createServerFn({ method: "POST" })
 
     const { data: before, error: beforeErr } = await supabaseAdmin
       .from("platform_plans")
-      .select("id, name, description, price_cents, included_seats, price_per_seat_cents, is_active, sort_order")
+      .select("id, name, description, price_cents, included_seats, price_per_seat_cents, interval, is_active, sort_order")
       .eq("id", data.planId)
       .maybeSingle();
     if (beforeErr) throw new Error(beforeErr.message);
@@ -117,6 +120,7 @@ export const updatePlatformPlan = createServerFn({ method: "POST" })
     if (data.priceCents !== undefined) patch.price_cents = data.priceCents;
     if (data.includedSeats !== undefined) patch.included_seats = data.includedSeats;
     if (data.pricePerSeatCents !== undefined) patch.price_per_seat_cents = data.pricePerSeatCents;
+    if (data.interval !== undefined) patch.interval = data.interval;
     if (data.isActive !== undefined) patch.is_active = data.isActive;
     if (data.sortOrder !== undefined) patch.sort_order = data.sortOrder;
     if (Object.keys(patch).length === 0) return { ok: true, unchanged: true };
