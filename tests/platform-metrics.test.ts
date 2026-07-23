@@ -75,6 +75,28 @@ describe("platform SaaS MRR is derived from subscriptions, not tenant collection
     // $4,490/yr → $374.17/mo (rounded), no seat overage.
     expect(monthlyEquivalentCents(org)).toBe(Math.round(449000 / 12));
   });
+
+  it("annual→monthly conversion feeds MRR/ARR and still adds seat overage", () => {
+    const annualScale: PlanForMrr = { ...SCALE, interval: "year" };
+    // Seat overage stays on top of the monthly-equivalent base: 34 seats on
+    // Scale (30 included) → 4 × $10.
+    expect(
+      monthlyEquivalentCents({ ...DEMO, plan: annualScale, active_seat_count: 34 }),
+    ).toBe(Math.round(449000 / 12) + 4 * 1000);
+
+    // The rollup uses the same conversion, so ARR of a single annual tenant is
+    // 12 × its monthly equivalent (i.e. the annual price, up to rounding).
+    const m = computePlatformSaasMetrics([{ ...DEMO, plan: annualScale }, ...FREE_ORGS]);
+    expect(m.mrrCents).toBe(Math.round(449000 / 12));
+    expect(m.arrCents).toBe(Math.round(449000 / 12) * 12);
+  });
+
+  it("an annual plan with no annual price falls back to price_cents / 12", () => {
+    // Catalog rows mirroring a plan flipped to interval='year' before its
+    // annual_price_cents was set: the base must not be double-counted.
+    const partial: PlanForMrr = { ...SCALE, interval: "year", annual_price_cents: null };
+    expect(monthlyEquivalentCents({ ...DEMO, plan: partial })).toBe(Math.round(44900 / 12));
+  });
 });
 
 describe("tier is keyed off the subscribed plan, not the stale billing_tier text (H5 #2)", () => {

@@ -40,19 +40,33 @@ const TABS = [
 ] as const;
 type TabValue = (typeof TABS)[number];
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type ClientDetailSearch = {
+  tab?: TabValue;
+  edit?: boolean;
+  editProperty?: string;
+  editService?: string;
+};
+
 export const Route = createFileRoute("/_authenticated/clients/$clientId")({
   component: ClientDetail,
   // QA follow-up 2.2: tabs are URL-addressable so refresh, back/forward, and
   // deep links land on the right tab instead of resetting to Summary.
   // ?edit=true (row actions on the Clients list) opens the Edit Client drawer
   // on arrival, then is stripped from the URL so refresh doesn't re-open it.
-  validateSearch: (
-    search: Record<string, unknown>,
-  ): { tab?: TabValue; edit?: boolean } => {
+  // ?editProperty=<propertyId> / ?editService=<subscriptionId> extend the same
+  // pattern: they open the matching Properties / Services edit drawer once,
+  // then are stripped (replace nav) exactly like ?edit=true.
+  validateSearch: (search: Record<string, unknown>): ClientDetailSearch => {
     const tab = search.tab as string | undefined;
-    const out: { tab?: TabValue; edit?: boolean } =
+    const out: ClientDetailSearch =
       TABS.includes(tab as TabValue) && tab !== "summary" ? { tab: tab as TabValue } : {};
     if (search.edit === true || search.edit === "true" || search.edit === "1") out.edit = true;
+    if (typeof search.editProperty === "string" && UUID_RE.test(search.editProperty))
+      out.editProperty = search.editProperty;
+    if (typeof search.editService === "string" && UUID_RE.test(search.editService))
+      out.editService = search.editService;
     return out;
   },
 });
@@ -117,18 +131,31 @@ function ClientDetail() {
       replace: false,
     });
   const [editClientOpen, setEditClientOpen] = useState(false);
+  // Deep-linked property / service edits (?editProperty / ?editService): held
+  // in state until the owning tab's data has loaded, then consumed by the tab.
+  const [pendingEditPropertyId, setPendingEditPropertyId] = useState<string | null>(null);
+  const [pendingEditServiceId, setPendingEditServiceId] = useState<string | null>(null);
 
-  // Deep-linked edit affordance (?edit=true from the Clients list row
-  // actions): open the drawer once, then clean the URL.
+  // Deep-linked edit affordances (?edit=true from the Clients list row
+  // actions; ?editProperty / ?editService from the Properties / Services
+  // lists' Edit buttons): open the drawer once, then clean the URL (replace
+  // nav) so refresh doesn't re-open it. editProperty / editService force the
+  // owning tab, since drawers inside an unmounted tab can't render.
   useEffect(() => {
-    if (search.edit) {
-      setEditClientOpen(true);
-      navigate({
-        search: search.tab ? { tab: search.tab } : {},
-        replace: true,
-      });
-    }
-  }, [search.edit]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!search.edit && !search.editProperty && !search.editService) return;
+    if (search.edit) setEditClientOpen(true);
+    if (search.editProperty) setPendingEditPropertyId(search.editProperty);
+    if (search.editService) setPendingEditServiceId(search.editService);
+    const nextTab: TabValue | undefined = search.editProperty
+      ? "properties"
+      : search.editService
+        ? "services"
+        : search.tab;
+    navigate({
+      search: nextTab && nextTab !== "summary" ? { tab: nextTab } : {},
+      replace: true,
+    });
+  }, [search.edit, search.editProperty, search.editService]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
   if (error) return <p className="text-destructive">{(error as Error).message}</p>;
@@ -273,6 +300,8 @@ function ClientDetail() {
             visits={visits}
             canManagePricing={canManagePricing}
             onGoToTab={setTab}
+            editPropertyId={pendingEditPropertyId}
+            onEditPropertyConsumed={() => setPendingEditPropertyId(null)}
           />
         </TabsContent>
 
@@ -299,6 +328,8 @@ function ClientDetail() {
             dogs={dogs}
             canBill={canBill}
             canManagePricing={canManagePricing}
+            editServiceId={pendingEditServiceId}
+            onEditServiceConsumed={() => setPendingEditServiceId(null)}
           />
           {canBill && <AddonsPanel clientId={clientId} />}
           {isCommercial && <StationsPanel clientId={clientId} properties={activeProperties} />}

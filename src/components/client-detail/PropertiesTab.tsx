@@ -3,8 +3,9 @@
 // boundary, auto-calculated estimated time with override indicator, zone
 // with detected/override badges, dogs per property (deactivate, don't
 // delete), commercial-only fields, and Archive / Delete-when-allowed.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
@@ -108,6 +109,8 @@ export function PropertiesTab({
   visits,
   canManagePricing,
   onGoToTab,
+  editPropertyId,
+  onEditPropertyConsumed,
 }: {
   clientId: string;
   client: any;
@@ -117,8 +120,13 @@ export function PropertiesTab({
   canManagePricing: boolean;
   /** Tab navigation for cross-tab pointers (commercial dogs live on Units). */
   onGoToTab?: (tab: string) => void;
+  /** Deep-linked ?editProperty=<id> (already stripped from the URL by the
+   * route): opens the PropertyDrawer for that property once its data is in. */
+  editPropertyId?: string | null;
+  onEditPropertyConsumed?: () => void;
 }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const listPropsFn = useServerFn(listPropertiesForClient);
   const listDogsFn = useServerFn(listDogsForClient);
   const { data: propsData, isLoading } = useQuery({
@@ -143,6 +151,27 @@ export function PropertiesTab({
     drawerProp && drawerProp !== "new"
       ? (properties.find((x: any) => x.id === drawerProp) ?? null)
       : null;
+
+  // Consume the ?editProperty deep link once the property list actually
+  // contains the id (opening earlier would render the drawer in "new" mode
+  // against a null property). An unknown id is simply never consumed.
+  useEffect(() => {
+    if (!editPropertyId) return;
+    if (properties.some((p: any) => p.id === editPropertyId)) {
+      setDrawerProp(editPropertyId);
+      onEditPropertyConsumed?.();
+    }
+  }, [editPropertyId, properties]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The list's Edit affordances go through the URL (?editProperty=<id>, the
+  // ?edit=true pattern) so an edit is deep-linkable/shareable; the route
+  // strips the param and hands it back via editPropertyId.
+  const openEditViaUrl = (propertyId: string) =>
+    navigate({
+      to: "/clients/$clientId",
+      params: { clientId },
+      search: { tab: "properties", editProperty: propertyId } as any,
+    });
   // Small portfolios start fully expanded (boundaries visible immediately);
   // bigger ones start with just the first property open so a 12-property
   // HOA doesn't mount a dozen maps at once.
@@ -197,7 +226,7 @@ export function PropertiesTab({
               zones={zones}
               open={expanded.has(p.id)}
               onToggle={() => toggle(p.id)}
-              onEdit={() => setDrawerProp(p.id)}
+              onEdit={() => openEditViaUrl(p.id)}
               canManagePricing={canManagePricing}
               onGoToTab={onGoToTab}
             />

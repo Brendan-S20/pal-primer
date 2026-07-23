@@ -1,11 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { listZones, deleteZone } from "@/lib/zones.functions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useRowSelection } from "@/hooks/useRowSelection";
 import {
   Dialog,
   DialogContent,
@@ -47,6 +49,9 @@ const reassignedToastMsg = (verb: string, n: number | undefined) =>
 
 function ZonesPage() {
   const list = useServerFn(listZones);
+  const del = useServerFn(deleteZone);
+  const qc = useQueryClient();
+  const { confirm, dialog: bulkDialog } = useConfirmDialog();
   const { data } = useQuery({ queryKey: ["zones"], queryFn: () => list() });
   const { can } = usePermissions();
   const canEdit = can("manage_pricing");
@@ -56,6 +61,29 @@ function ZonesPage() {
 
   const zones = data?.zones ?? [];
   const noGeoZones = zones.filter((z: any) => !zoneHasGeo(z as OverviewZone));
+
+  // Multi-select for bulk delete (Invoices-page pattern). Only offered to
+  // roles that can edit zones — deleteZone is manage_pricing-gated anyway.
+  const visibleIds = useMemo(() => zones.map((z: any) => z.id as string), [zones]);
+  const sel = useRowSelection(visibleIds);
+
+  // Bulk delete loops the existing per-zone deleteZone fn (same permission
+  // gate + property re-detection as the card's Delete action).
+  const bulkDeleteM = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(ids.map((id) => del({ data: { id } })));
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      return { ok, failed: results.length - ok };
+    },
+    onSuccess: (r) => {
+      if (r.failed)
+        toast.error(`Deleted ${r.ok} of ${r.ok + r.failed} zones — ${r.failed} failed`);
+      else toast.success(`Deleted ${r.ok} zone${r.ok === 1 ? "" : "s"}`);
+      sel.clear();
+      qc.invalidateQueries({ queryKey: ["zones"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   return (
     <div className="space-y-6">
@@ -114,9 +142,58 @@ function ZonesPage() {
         </p>
       )}
 
+      {canEdit && zones.length > 0 && (
+        <label className="flex min-h-8 w-fit items-center gap-2 px-1 text-xs text-muted-foreground">
+          <Checkbox
+            checked={sel.allSelected}
+            onCheckedChange={sel.toggleAll}
+            aria-label="Select all zones"
+          />
+          Select all
+        </label>
+      )}
+
+      {/* Bulk action bar */}
+      {canEdit && sel.count > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-accent/40 px-4 py-2 text-sm shadow-sm">
+          <span className="font-medium">{sel.count} selected</span>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={bulkDeleteM.isPending}
+              onClick={async () => {
+                if (
+                  await confirm({
+                    title: `Delete ${sel.count} zone${sel.count === 1 ? "" : "s"}?`,
+                    description:
+                      "This removes the zones and their pricing. Clients and properties are not deleted; their zone is re-detected and any that only matched these zones become unassigned. This can't be undone.",
+                    destructive: true,
+                    confirmLabel: "Delete zones",
+                  })
+                )
+                  bulkDeleteM.mutate(sel.selectedIds);
+              }}
+            >
+              {bulkDeleteM.isPending ? "Deleting…" : "Delete"}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={sel.clear}>
+              Clear
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-3">
         {zones.map((z: any) => (
-          <ZoneCard key={z.id} zone={z} canEdit={canEdit} onEdit={() => setDrawer(z)} />
+          <ZoneCard
+            key={z.id}
+            zone={z}
+            canEdit={canEdit}
+            onEdit={() => setDrawer(z)}
+            selected={sel.isSelected(z.id)}
+            onToggleSelect={canEdit ? (next) => sel.toggle(z.id, next) : undefined}
+          />
         ))}
         {data && zones.length === 0 && (
           <Card className="p-10 text-center text-muted-foreground">
@@ -126,6 +203,7 @@ function ZonesPage() {
         )}
       </div>
 
+      {bulkDialog}
       {drawer !== null && (
         <ZoneDrawer
           key={drawer === "new" ? "new" : drawer.id}
@@ -148,7 +226,19 @@ function coverageSummary(zone: any): string {
   return "No map coverage yet";
 }
 
-function ZoneCard({ zone, canEdit, onEdit }: { zone: any; canEdit: boolean; onEdit: () => void }) {
+function ZoneCard({
+  zone,
+  canEdit,
+  onEdit,
+  selected = false,
+  onToggleSelect,
+}: {
+  zone: any;
+  canEdit: boolean;
+  onEdit: () => void;
+  selected?: boolean;
+  onToggleSelect?: (next: boolean) => void;
+}) {
   const del = useServerFn(deleteZone);
   const qc = useQueryClient();
   const { confirm, dialog } = useConfirmDialog();
@@ -181,6 +271,14 @@ function ZoneCard({ zone, canEdit, onEdit }: { zone: any; canEdit: boolean; onEd
   return (
     <Card className="p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
+        {onToggleSelect && (
+          <Checkbox
+            className="mt-1"
+            checked={selected}
+            onCheckedChange={(v) => onToggleSelect(v === true)}
+            aria-label={`Select zone ${zone.name}`}
+          />
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-semibold">{zone.name}</h3>

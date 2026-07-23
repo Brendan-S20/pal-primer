@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -27,7 +27,9 @@ import {
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { useRowSelection } from "@/hooks/useRowSelection";
 import { humanizeRole } from "@/lib/humanize";
 import { Copy, KeyRound, Loader2, ShieldOff, Users } from "lucide-react";
 
@@ -53,6 +55,51 @@ function UsersPage() {
           r.organizations.some((o) => o.name.toLowerCase().includes(s));
       })
     : rows;
+
+  // Multi-select for bulk password resets (Invoices-page pattern). Only rows
+  // with an email are selectable — sendPasswordReset requires one. The
+  // clearKey drops the selection when the search/role filter changes.
+  const qc = useQueryClient();
+  const { confirm, dialog: bulkDialog } = useConfirmDialog();
+  const resetFn = useServerFn(sendPasswordReset);
+  const selectableIds = useMemo(
+    () => filtered.filter((r) => !!r.email).map((r) => r.user_id),
+    [filtered],
+  );
+  const sel = useRowSelection(selectableIds, `${search}|${role}`);
+
+  const bulkResetM = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map((userId) => resetFn({ data: { userId } })),
+      );
+      let sent = 0;
+      let linkOnly = 0;
+      for (const r of results) {
+        if (r.status !== "fulfilled") continue;
+        if ((r.value as any)?.sent) sent += 1;
+        else linkOnly += 1;
+      }
+      const ok = sent + linkOnly;
+      return { ok, sent, linkOnly, failed: results.length - ok };
+    },
+    onSuccess: (r) => {
+      if (r.failed)
+        toast.error(`Sent ${r.ok} of ${r.ok + r.failed} password resets — ${r.failed} failed`);
+      else toast.success(`Sent ${r.ok} password reset${r.ok === 1 ? "" : "s"}`);
+      if (r.linkOnly) {
+        // Bulk deliberately never surfaces raw recovery links; without email
+        // configured the reset must go through the per-user dialog.
+        toast.info(
+          `Email isn't configured for ${r.linkOnly} reset${r.linkOnly === 1 ? "" : "s"} — open the user's detail dialog to copy the link securely.`,
+          { duration: 8000 },
+        );
+      }
+      sel.clear();
+      qc.invalidateQueries({ queryKey: ["platform", "users"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   return (
     <div className="space-y-6">
@@ -88,10 +135,47 @@ function UsersPage() {
           </div>
         </CardHeader>
         <CardContent>
+          {/* Bulk action bar */}
+          {sel.count > 0 && (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-accent/40 px-4 py-2 text-sm shadow-sm">
+              <span className="font-medium">{sel.count} selected</span>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={bulkResetM.isPending}
+                  onClick={async () => {
+                    if (
+                      await confirm({
+                        title: `Send ${sel.count} password reset${sel.count === 1 ? "" : "s"}?`,
+                        description:
+                          "Each selected user gets a password-reset email with a single-use recovery link. Their current password stays valid until they use it.",
+                        confirmLabel: "Send resets",
+                      })
+                    )
+                      bulkResetM.mutate(sel.selectedIds);
+                  }}
+                >
+                  <KeyRound className="mr-1 h-4 w-4" />
+                  {bulkResetM.isPending ? "Sending…" : "Send password reset"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={sel.clear}>
+                  Clear
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={sel.allSelected}
+                      onCheckedChange={sel.toggleAll}
+                      aria-label="Select all users with an email"
+                    />
+                  </TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Organizations & role</TableHead>
                   <TableHead>Last sign-in</TableHead>
@@ -105,6 +189,15 @@ function UsersPage() {
                     className="cursor-pointer"
                     onClick={() => setSelectedUserId(u.user_id)}
                   >
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      {u.email ? (
+                        <Checkbox
+                          checked={sel.isSelected(u.user_id)}
+                          onCheckedChange={(v) => sel.toggle(u.user_id, v === true)}
+                          aria-label={`Select ${u.email}`}
+                        />
+                      ) : null}
+                    </TableCell>
                     <TableCell className="font-medium">
                       {u.email ?? <code className="text-xs">{u.user_id.slice(0, 12)}</code>}
                     </TableCell>
@@ -133,9 +226,9 @@ function UsersPage() {
                   </TableRow>
                 ))}
                 {q.isLoading ? (
-                  <TableRow><TableCell colSpan={4}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={5}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
                 ) : filtered.length === 0 ? (
-                  <TableRow><TableCell colSpan={4} className="py-6">
+                  <TableRow><TableCell colSpan={5} className="py-6">
                     <EmptyState
                       icon={<Users className="h-5 w-5" />}
                       title="No users match"
@@ -149,6 +242,7 @@ function UsersPage() {
         </CardContent>
       </Card>
 
+      {bulkDialog}
       <UserDetailDialog userId={selectedUserId} onClose={() => setSelectedUserId(null)} />
     </div>
   );

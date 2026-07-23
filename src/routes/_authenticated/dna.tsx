@@ -7,7 +7,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   listDnaMatches,
@@ -52,6 +52,9 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { usePermissions, useMyRole } from "@/hooks/useMyRole";
+import { useRowSelection } from "@/hooks/useRowSelection";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { supabase } from "@/integrations/supabase/client";
 import { HelpTip } from "@/components/HelpTip";
@@ -421,6 +424,49 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
   const rows = data?.rows ?? [];
   const s = data?.summary ?? { total: 0, fine_cents: 0 };
 
+  // Multi-select over the samples table (Invoices-page pattern): bulk status
+  // change + bulk delete loop the existing per-sample fns.
+  const { confirm, dialog: bulkDialog } = useConfirmDialog();
+  const sampleIds = useMemo(() => rows.map((r) => r.id), [rows]);
+  const sel = useRowSelection(sampleIds, clientId);
+  const [bulkStatus, setBulkStatus] = useState<DnaMatch["status"]>("sent_to_lab");
+
+  const bulkStatusM = useMutation({
+    mutationFn: async (v: { ids: string[]; status: DnaMatch["status"] }) => {
+      const results = await Promise.allSettled(
+        v.ids.map((id) => updateFn({ data: { id, status: v.status } })),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      return { ok, failed: results.length - ok };
+    },
+    onSuccess: (r, v) => {
+      if (r.failed)
+        toast.error(
+          `Updated ${r.ok} of ${r.ok + r.failed} samples to "${STATUS_LABEL[v.status]}" — ${r.failed} failed`,
+        );
+      else toast.success(`Updated ${r.ok} sample${r.ok === 1 ? "" : "s"} to "${STATUS_LABEL[v.status]}"`);
+      sel.clear();
+      refetch();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const bulkDeleteM = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(ids.map((id) => deleteFn({ data: { id } })));
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      return { ok, failed: results.length - ok };
+    },
+    onSuccess: (r) => {
+      if (r.failed)
+        toast.error(`Deleted ${r.ok} of ${r.ok + r.failed} samples — ${r.failed} failed`);
+      else toast.success(`Deleted ${r.ok} sample${r.ok === 1 ? "" : "s"}`);
+      sel.clear();
+      refetch();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   return (
     <div className="space-y-6">
       <div>
@@ -610,11 +656,71 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
             <CardHeader>
               <CardTitle className="text-base">Chain of custody</CardTitle>
             </CardHeader>
+            {/* Bulk action bar */}
+            {sel.count > 0 && (
+              <div className="mx-3 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-accent/40 px-4 py-2 text-sm shadow-sm">
+                <span className="font-medium">{sel.count} selected</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={bulkStatus}
+                    onChange={(e) => setBulkStatus(e.target.value as DnaMatch["status"])}
+                    className="rounded border bg-background px-2 py-1 text-xs"
+                    aria-label="Bulk status"
+                  >
+                    {Object.entries(STATUS_LABEL)
+                      // Same gate as the per-row select: billing status is office-only.
+                      .filter(([k]) => canBillDna || k !== "billed")
+                      .map(([k, v]) => (
+                        <option key={k} value={k}>
+                          {v}
+                        </option>
+                      ))}
+                  </select>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={bulkStatusM.isPending}
+                    onClick={() => bulkStatusM.mutate({ ids: sel.selectedIds, status: bulkStatus })}
+                  >
+                    {bulkStatusM.isPending ? "Updating…" : "Set status"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={bulkDeleteM.isPending}
+                    onClick={async () => {
+                      if (
+                        await confirm({
+                          title: `Delete ${sel.count} sample${sel.count === 1 ? "" : "s"}?`,
+                          description:
+                            "This permanently removes the selected samples and their chain-of-custody records. This can't be undone.",
+                          destructive: true,
+                          confirmLabel: "Delete samples",
+                        })
+                      )
+                        bulkDeleteM.mutate(sel.selectedIds);
+                    }}
+                  >
+                    {bulkDeleteM.isPending ? "Deleting…" : "Delete"}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={sel.clear}>
+                    Clear
+                  </Button>
+                </div>
+              </div>
+            )}
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                     <tr>
+                      <th className="w-10 px-3 py-2">
+                        <Checkbox
+                          checked={sel.allSelected}
+                          onCheckedChange={sel.toggleAll}
+                          aria-label="Select all samples"
+                        />
+                      </th>
                       <th className="px-3 py-2">Collected</th>
                       <th className="px-3 py-2">Kind</th>
                       <th className="px-3 py-2">Unit</th>
@@ -629,19 +735,26 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
                   <tbody>
                     {isLoading ? (
                       <tr>
-                        <td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">
+                        <td colSpan={10} className="px-3 py-6 text-center text-muted-foreground">
                           Loading…
                         </td>
                       </tr>
                     ) : rows.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">
+                        <td colSpan={10} className="px-3 py-6 text-center text-muted-foreground">
                           No samples logged for this client. Add your first pile sample above.
                         </td>
                       </tr>
                     ) : (
                       rows.map((r) => (
                         <tr key={r.id} className="border-t align-top">
+                          <td className="px-3 py-2">
+                            <Checkbox
+                              checked={sel.isSelected(r.id)}
+                              onCheckedChange={(v) => sel.toggle(r.id, v === true)}
+                              aria-label="Select sample"
+                            />
+                          </td>
                           <td className="px-3 py-2 text-xs text-muted-foreground">
                             {new Date(r.collected_at).toLocaleString()}
                           </td>
@@ -855,6 +968,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
         </TabsContent>
       </Tabs>
 
+      {bulkDialog}
       <NoticeDialog
         matchId={noticeMatchId}
         onClose={() => setNoticeMatchId(null)}

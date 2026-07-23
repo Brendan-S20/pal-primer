@@ -13,7 +13,10 @@ import { listStaff } from "@/lib/inventory.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { useRowSelection } from "@/hooks/useRowSelection";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
@@ -54,6 +57,9 @@ function InventoryPage() {
   const assignsFn = useServerFn(listAssignments);
   const movesFn = useServerFn(listRecentMovements);
   const staffFn = useServerFn(listStaff);
+  const saveFn = useServerFn(upsertItem);
+  const qc = useQueryClient();
+  const { confirm, dialog: bulkDialog } = useConfirmDialog();
 
   const items = useQuery({ queryKey: ["inv-items"], queryFn: () => itemsFn() });
   const assigns = useQuery({ queryKey: ["inv-assigns"], queryFn: () => assignsFn() });
@@ -65,8 +71,54 @@ function InventoryPage() {
     [items.data],
   );
 
+  // Multi-select on the Items tab (Invoices-page pattern). Bulk archive loops
+  // the existing upsertItem fn with active:false — there is no delete server
+  // fn for inventory items, so bulk delete is intentionally not offered.
+  const activeItems = useMemo(
+    () => ((items.data ?? []) as Item[]).filter((i) => i.active),
+    [items.data],
+  );
+  const activeItemIds = useMemo(() => activeItems.map((i) => i.id), [activeItems]);
+  const sel = useRowSelection(activeItemIds);
+
+  const bulkArchiveM = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const byId = new Map(((items.data ?? []) as Item[]).map((i) => [i.id, i]));
+      const results = await Promise.allSettled(
+        ids.map((id) => {
+          const i = byId.get(id);
+          if (!i) return Promise.reject(new Error("Item not found"));
+          return saveFn({
+            data: {
+              id: i.id,
+              name: i.name,
+              sku: i.sku,
+              unit: i.unit,
+              unit_cost_cents: Number(i.unit_cost_cents ?? 0),
+              reorder_threshold: Number(i.reorder_threshold ?? 0),
+              category: i.category,
+              notes: i.notes,
+              active: false,
+            },
+          });
+        }),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      return { ok, failed: results.length - ok };
+    },
+    onSuccess: (r) => {
+      if (r.failed)
+        toast.error(`Archived ${r.ok} of ${r.ok + r.failed} items — ${r.failed} failed`);
+      else toast.success(`Archived ${r.ok} item${r.ok === 1 ? "" : "s"}`);
+      sel.clear();
+      qc.invalidateQueries({ queryKey: ["inv-items"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   return (
     <div className="space-y-6">
+      {bulkDialog}
       <div className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold flex items-center gap-2"><Package className="h-6 w-6"/> Inventory</h1>
@@ -95,11 +147,47 @@ function InventoryPage() {
           <TabsTrigger value="movements">Activity</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="items" className="mt-4">
+        <TabsContent value="items" className="mt-4 space-y-3">
+          {/* Bulk action bar */}
+          {sel.count > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-accent/40 px-4 py-2 text-sm shadow-sm">
+              <span className="font-medium">{sel.count} selected</span>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={bulkArchiveM.isPending}
+                  onClick={async () => {
+                    if (
+                      await confirm({
+                        title: `Archive ${sel.count} item${sel.count === 1 ? "" : "s"}?`,
+                        description:
+                          "Archived items are marked inactive and drop out of low-stock alerts and assignment pickers. Their movement history is kept.",
+                        confirmLabel: "Archive items",
+                      })
+                    )
+                      bulkArchiveM.mutate(sel.selectedIds);
+                  }}
+                >
+                  {bulkArchiveM.isPending ? "Archiving…" : "Archive"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={sel.clear}>
+                  Clear
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="rounded-lg border bg-card">
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
                 <tr>
+                  <th className="w-10 px-4 py-2">
+                    <Checkbox
+                      checked={sel.allSelected}
+                      onCheckedChange={sel.toggleAll}
+                      aria-label="Select all active items"
+                    />
+                  </th>
                   <th className="px-4 py-2">Item</th>
                   <th className="px-4 py-2">SKU</th>
                   <th className="px-4 py-2">On hand</th>
@@ -110,14 +198,23 @@ function InventoryPage() {
               </thead>
               <tbody>
                 {items.isLoading ? (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">Loading…</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">Loading…</td></tr>
                 ) : (items.data ?? []).length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">No items yet. Add one to get started.</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">No items yet. Add one to get started.</td></tr>
                 ) : (
                   (items.data as Item[]).map((i) => {
                     const low = Number(i.on_hand) <= Number(i.reorder_threshold);
                     return (
                       <tr key={i.id} className="border-b last:border-0">
+                        <td className="px-4 py-2">
+                          {i.active && (
+                            <Checkbox
+                              checked={sel.isSelected(i.id)}
+                              onCheckedChange={(v) => sel.toggle(i.id, v === true)}
+                              aria-label={`Select ${i.name}`}
+                            />
+                          )}
+                        </td>
                         <td className="px-4 py-2 font-medium">
                           {i.name}
                           {!i.active && <Badge variant="secondary" className="ml-2">inactive</Badge>}

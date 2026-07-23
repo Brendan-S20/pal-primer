@@ -342,9 +342,12 @@ function InvoicesPage() {
   const visibleIds = useMemo(() => filtered.map((i) => i.id), [filtered]);
   const sel = useRowSelection(visibleIds);
   const { selectedIds, allSelected: allVisibleSelected, toggleAll } = sel;
-  const totalSelected = filtered
-    .filter((i) => sel.isSelected(i.id))
-    .reduce((sum, i) => sum + (i.total_cents ?? 0), 0);
+  const selectedRows = useMemo(
+    () => filtered.filter((i) => sel.isSelected(i.id)),
+    [filtered, sel],
+  );
+  const totalSelected = selectedRows.reduce((sum, i) => sum + (i.total_cents ?? 0), 0);
+  const selectedOpen = selectedRows.filter((i) => i.status === "open");
 
   const voidM = useMutation({
     mutationFn: () => voidBulk({ data: { ids: selectedIds } }),
@@ -365,6 +368,57 @@ function InvoicesPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  // Bulk send: loops the existing single-invoice sendInvoiceEmail over the
+  // selected OPEN invoices (draft/paid/void rows are skipped) — same server
+  // fn + permission gate as the per-row "Send to client" action.
+  const sendM = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map((invoiceId) => emailFn({ data: { invoiceId, reminder: false } })),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      return { ok, failed: results.length - ok };
+    },
+    onSuccess: (r) => {
+      if (r.failed)
+        toast.error(`Sent ${r.ok} of ${r.ok + r.failed} invoice emails — ${r.failed} failed`);
+      else toast.success(`Queued ${r.ok} invoice email${r.ok === 1 ? "" : "s"}`);
+      sel.clear();
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const exportSelectedCsv = () =>
+    downloadCsv(
+      `invoices-selected-${new Date().toISOString().slice(0, 10)}.csv`,
+      [
+        "Invoice ID",
+        "Client",
+        "Status",
+        "Period start",
+        "Period end",
+        "Total",
+        "Issued",
+        "Due",
+        "Paid",
+      ],
+      selectedRows.map((inv) => {
+        const client = Array.isArray(inv.clients) ? inv.clients[0] : inv.clients;
+        return [
+          inv.id,
+          client?.display_name ?? "",
+          inv.status,
+          inv.period_start ?? "",
+          inv.period_end ?? "",
+          ((inv.total_cents ?? 0) / 100).toFixed(2),
+          (inv.issued_at ?? "").slice(0, 10),
+          inv.due_on ?? "",
+          (inv.paid_at ?? "").slice(0, 10),
+        ];
+      }),
+    );
 
   // ── Per-row ••• actions (Salesforce-style row actions) ────────────────────
   // These reuse the exact server fns the drawer / bulk bar already use:
@@ -656,7 +710,33 @@ function InvoicesPage() {
               Total {fmtCents(totalSelected)}
             </span>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={exportSelectedCsv}>
+              <Download className="mr-1 h-4 w-4" /> Export CSV
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={sendM.isPending || selectedOpen.length === 0}
+              title={
+                selectedOpen.length === 0 ? "Only open invoices can be emailed" : undefined
+              }
+              onClick={async () => {
+                const skipped = selectedIds.length - selectedOpen.length;
+                if (
+                  await confirm({
+                    title: `Send ${selectedOpen.length} invoice${selectedOpen.length === 1 ? "" : "s"}?`,
+                    description: `Emails each open invoice to its client now${
+                      skipped ? `. ${skipped} non-open selected invoice${skipped === 1 ? " is" : "s are"} skipped` : ""
+                    }.`,
+                    confirmLabel: "Send invoices",
+                  })
+                )
+                  sendM.mutate(selectedOpen.map((i) => i.id));
+              }}
+            >
+              {sendM.isPending ? "Sending…" : "Send invoices"}
+            </Button>
             <Button
               size="sm"
               variant="outline"
