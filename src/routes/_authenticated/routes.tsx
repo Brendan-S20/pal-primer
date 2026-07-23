@@ -619,6 +619,9 @@ function RoutesPage() {
             onOpenVisit={setDetailVisitId}
             onGeocode={() => geocodeMut.mutate()}
             geocoding={geocodeMut.isPending}
+            // Week/month is a coverage view: per-day sequences repeat, so
+            // ordered polylines/numbers only draw for a single day.
+            drawRoutes={range === "today"}
           />
           {/* Tech load is a FIELD-worker report (C3/I4): only capability-flagged
               field workers are route runners. Non-field roles stay on the board
@@ -688,12 +691,13 @@ function RoutesPage() {
 }
 
 function MapPanel({
-  visits, staff, onOpenVisit, onGeocode, geocoding,
+  visits, staff, onOpenVisit, onGeocode, geocoding, drawRoutes = true,
 }: {
   visits: any[]; staff: any[];
   onOpenVisit?: (id: string) => void;
   onGeocode?: () => void;
   geocoding?: boolean;
+  drawRoutes?: boolean;
 }) {
   const groups = useMemo(() => buildTechGroups(visits as any, staff as any), [visits, staff]);
   const mappable = visits.filter((v: any) => v.properties?.latitude != null && v.properties?.longitude != null).length;
@@ -723,7 +727,7 @@ function MapPanel({
         </div>
       </div>
       <div className="relative">
-        <RouteMap groups={groups} height={420} onVisitClick={onOpenVisit} />
+        <RouteMap groups={groups} height={420} onVisitClick={onOpenVisit} drawRoutes={drawRoutes} />
         {mappable === 0 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-md bg-background/70 text-xs text-muted-foreground">
             <span>No coordinates yet. Geocode your properties to plot them.</span>

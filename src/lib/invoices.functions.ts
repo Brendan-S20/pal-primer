@@ -593,17 +593,23 @@ async function chargeSavedCardCore(
       // row open until the webhook lands — the UI refetches immediately after
       // this call and must see the payment (QA: "didn't reflect paid until I
       // refreshed the session"). markInvoicePaidFromStripe is an atomic claim,
-      // so the webhook's later attempt becomes a harmless no-op.
-      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      const { markInvoicePaidFromStripe } = await import("@/lib/invoice-reconcile.server");
-      await markInvoicePaidFromStripe(supabaseAdmin, {
-        invoiceId: invoice.id,
-        organizationId: invoice.organization_id,
-        amountCents: dueCents,
-        currency: invoice.currency ?? "usd",
-        paymentIntentId: pi.id,
-        raw: { source: "staff_saved_card_sync", payment_intent: pi.id },
-      });
+      // so the webhook's later attempt becomes a harmless no-op. The flip is
+      // best-effort: the CHARGE succeeded, so a transient DB error here must
+      // not surface as "Card charge failed" — the webhook rescues the state.
+      try {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { markInvoicePaidFromStripe } = await import("@/lib/invoice-reconcile.server");
+        await markInvoicePaidFromStripe(supabaseAdmin, {
+          invoiceId: invoice.id,
+          organizationId: invoice.organization_id,
+          amountCents: dueCents,
+          currency: invoice.currency ?? "usd",
+          paymentIntentId: pi.id,
+          raw: { source: "staff_saved_card_sync", payment_intent: pi.id },
+        });
+      } catch (flipErr) {
+        console.warn("post-charge paid flip failed (webhook will rescue):", (flipErr as Error).message);
+      }
     } else {
       // Async settlement (e.g. ACH "processing"): stays open until the
       // webhook / reconcile confirms.

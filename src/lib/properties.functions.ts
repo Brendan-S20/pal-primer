@@ -186,7 +186,7 @@ export const updateProperty = createServerFn({ method: "POST" })
     const { data: current, error: curErr } = await supabase
       .from("properties")
       .select(
-        "organization_id, client_id, zone_override_reason, street, city, postal_code, auto_zone_id, has_units, total_units, clients(account_type)",
+        "organization_id, client_id, zone_override_reason, street, city, postal_code, auto_zone_id, has_units, total_units, boundary_area_sqm, clients(account_type)",
       )
       .eq("id", data.propertyId)
       .single();
@@ -265,17 +265,85 @@ export const updateProperty = createServerFn({ method: "POST" })
 
     // The property's total_units is the single source of truth for commercial
     // unit counts (no double entry): when it changes, active subscriptions on
-    // this property follow it so pricing, invoices, and the portal chip all
-    // reflect the new count without a second manual edit.
+    // this property follow it — unit_count always, and price_cents too when
+    // the service's zone carries commercial rates (unit-priced HOAs must not
+    // keep billing the old count). Manual/no-zone prices are left alone and
+    // every price change is activity-logged with before/after (I6).
     const newTotalUnits = data.hasUnits ? (data.totalUnits ?? null) : null;
     if (newTotalUnits != null && newTotalUnits !== (current as any).total_units) {
-      const { error: subErr } = await supabase
-        .from("subscriptions")
-        .update({ unit_count: newTotalUnits })
-        .eq("property_id", data.propertyId)
-        .eq("status", "active")
-        .not("unit_count", "is", null);
-      if (subErr) console.warn("unit_count sync failed:", subErr.message);
+      try {
+        const [subsRes, stationsRes, orgRes] = await Promise.all([
+          supabase
+            .from("subscriptions")
+            .select("id, unit_count, price_cents, frequency, zone_id")
+            .eq("property_id", data.propertyId)
+            .eq("status", "active"),
+          (supabase as any)
+            .from("waste_stations")
+            .select("id")
+            .eq("property_id", data.propertyId)
+            .neq("active", false),
+          supabase
+            .from("organizations")
+            .select("frequency_multipliers")
+            .eq("id", current.organization_id)
+            .maybeSingle(),
+        ]);
+        const stationCount = (stationsRes.data ?? []).length;
+        const multipliers = ((orgRes.data as any)?.frequency_multipliers ?? {}) as Record<string, number>;
+        const { computeCommercialZonePrice, zoneHasCommercialPricing } = await import("@/lib/pricing");
+        const { logActivity } = await import("@/lib/activity.server");
+        for (const sub of subsRes.data ?? []) {
+          let pricePatch: Record<string, number> = {};
+          if (sub.zone_id) {
+            const { data: zone } = await (supabase as any)
+              .from("zones")
+              .select(
+                "commercial_base_cents, commercial_per_unit_cents, commercial_per_acre_cents, commercial_per_station_cents",
+              )
+              .eq("id", sub.zone_id)
+              .maybeSingle();
+            if (zone && zoneHasCommercialPricing(zone)) {
+              const mult = Number(multipliers[sub.frequency] ?? 1) || 1;
+              const price = computeCommercialZonePrice(zone, {
+                unitCount: newTotalUnits,
+                boundaryAreaSqm: (current as any).boundary_area_sqm,
+                stationCount,
+                multiplier: mult,
+              });
+              if (price.recurringCents !== sub.price_cents) {
+                pricePatch = { price_cents: price.recurringCents };
+              }
+            }
+          }
+          const { error: subErr } = await supabase
+            .from("subscriptions")
+            .update({ unit_count: newTotalUnits, ...pricePatch })
+            .eq("id", sub.id);
+          if (subErr) {
+            console.warn("unit_count sync failed:", subErr.message);
+            continue;
+          }
+          if (pricePatch.price_cents != null) {
+            await logActivity(supabase, {
+              orgId: current.organization_id,
+              clientId: current.client_id,
+              propertyId: data.propertyId,
+              subscriptionId: sub.id,
+              actorUserId: context.userId,
+              kind: "service.price_changed",
+              summary: `Changed service price from $${((sub.price_cents ?? 0) / 100).toFixed(2)} to $${(pricePatch.price_cents / 100).toFixed(2)} per visit (property units ${(current as any).total_units ?? "unset"} → ${newTotalUnits})`,
+              meta: {
+                source: "property_total_units_change",
+                before: { unit_count: sub.unit_count, price_cents: sub.price_cents },
+                after: { unit_count: newTotalUnits, price_cents: pricePatch.price_cents },
+              },
+            });
+          }
+        }
+      } catch (syncErr) {
+        console.warn("total_units propagation failed:", (syncErr as Error).message);
+      }
     }
 
     const { logActivity } = await import("@/lib/activity.server");

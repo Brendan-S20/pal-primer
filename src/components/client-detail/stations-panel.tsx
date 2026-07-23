@@ -203,13 +203,16 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-medium">Waste stations</h2>
         <div className="flex items-center gap-2">
-          {stations.length > 1 && (
+          {/* With several properties the header button's target is ambiguous —
+              renumbering then lives inside the form, scoped to the property
+              picked there. */}
+          {stations.length > 1 && properties.length === 1 && (
             <Button
               size="sm"
               variant="ghost"
               className="h-7 text-xs"
               disabled={renumberMut.isPending}
-              onClick={() => renumberMut.mutate(draft.propertyId)}
+              onClick={() => renumberMut.mutate(properties[0].id)}
             >
               Renumber
             </Button>
@@ -402,6 +405,17 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
           >
             Cancel
           </Button>
+          {properties.length > 1 && stations.some((s) => s.property_id === draft.propertyId) && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-xs"
+              disabled={renumberMut.isPending}
+              onClick={() => renumberMut.mutate(draft.propertyId)}
+            >
+              Renumber this property's stations
+            </Button>
+          )}
           {/* Destructive remove lives inside the edit flow (G7). */}
           {draft.id && (
             <Button
