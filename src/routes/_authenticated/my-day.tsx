@@ -44,6 +44,7 @@ import {
   ArrowDown,
 } from "lucide-react";
 import { PushToggle } from "@/components/PushToggle";
+import { OPEN_MY_DAY_DATE_PICKER_EVENT } from "@/components/MobileTabBar";
 // LanguageToggle moved to Settings → Preferences
 import { useTranslation } from "react-i18next";
 import { haptic } from "@/lib/haptics";
@@ -84,6 +85,22 @@ function MyDay() {
   useEffect(() => {
     if (dateParam) setDay(dateParam);
   }, [dateParam]);
+  // The mobile tab bar's "Schedule" tab asks us to pop the date picker.
+  const dateInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const openPicker = () => {
+      const el = dateInputRef.current;
+      if (!el) return;
+      el.focus();
+      try {
+        el.showPicker?.();
+      } catch {
+        /* showPicker needs user activation on some browsers; focus is enough */
+      }
+    };
+    window.addEventListener(OPEN_MY_DAY_DATE_PICKER_EVENT, openPicker);
+    return () => window.removeEventListener(OPEN_MY_DAY_DATE_PICKER_EVENT, openPicker);
+  }, []);
   const fn = useServerFn(getMyDay);
   const qc = useQueryClient();
   const online = useOnline();
@@ -157,10 +174,7 @@ function MyDay() {
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
 
   return (
-    <div
-      className="-mx-4 -my-6 pb-28"
-      style={{ paddingBottom: "calc(7rem + env(safe-area-inset-bottom))" }}
-    >
+    <div className="-mx-4 -my-6 pb-[calc(7rem+env(safe-area-inset-bottom))] max-md:pb-[calc(10.5rem+env(safe-area-inset-bottom))]">
       {/* Sticky, blurred top bar — feels like a native nav */}
       <div
         className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60"
@@ -209,6 +223,7 @@ function MyDay() {
               <PushToggle />
 
               <input
+                ref={dateInputRef}
                 type="date"
                 value={day}
                 onChange={(e) => {
@@ -217,7 +232,17 @@ function MyDay() {
                   // rendered the same "not linked to a staff record" screen as a
                   // genuinely unlinked account and alarmed techs (finding #18).
                   const v = e.target.value;
-                  setDay(v && !Number.isNaN(new Date(v).getTime()) ? v : todayISO());
+                  const next = v && !Number.isNaN(new Date(v).getTime()) ? v : todayISO();
+                  setDay(next);
+                  // Mirror the day into ?date= (like ?staff= below) so deep
+                  // links and the mobile Today/Schedule tabs stay truthful.
+                  navigate({
+                    search: (prev: Record<string, unknown>) => ({
+                      ...prev,
+                      date: next === todayISO() ? undefined : next,
+                    }),
+                    replace: true,
+                  } as any);
                 }}
                 className="h-10 rounded-md border bg-background px-2 text-sm"
               />
@@ -318,12 +343,11 @@ function MyDay() {
         </ol>
       </div>
 
-      {/* Sticky bottom "Next up" action bar */}
+      {/* Sticky bottom "Next up" action bar. Below `md` it sits directly on
+          top of the MobileTabBar (whose height is 3.5rem + safe-area inset);
+          the tab bar already absorbs the safe-area, so no extra inset here. */}
       {nextUp && (
-        <div
-          className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/70 animate-fade-in"
-          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-        >
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70 animate-fade-in max-md:bottom-[calc(3.5rem+env(safe-area-inset-bottom))] max-md:pb-0">
           <a
             href={`#visit-${nextUp.id}`}
             onClick={() => haptic("select")}

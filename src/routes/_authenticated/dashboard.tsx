@@ -139,8 +139,11 @@ function Dashboard() {
   const total = sum?.visitCounts.total ?? 0;
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
 
+  // Mobile (below `md`): today's operational glance (alerts → map/techs
+  // progress) leads, KPI money tiles follow, AI panels last — pure CSS
+  // ordering; desktop keeps the original DOM order via md:order-none.
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold">{org.name}</h1>
@@ -179,7 +182,7 @@ function Dashboard() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 max-md:order-2 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
           icon={Users}
           label="Active clients"
@@ -221,8 +224,8 @@ function Dashboard() {
         )}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="rounded-lg border bg-card p-4 lg:col-span-2">
+      <div className="grid gap-4 max-md:order-1 lg:grid-cols-3">
+        <div className="rounded-lg border bg-card p-4 max-md:order-2 lg:col-span-2">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold">Today's map</h2>
             <Link to="/routes" className="text-xs text-primary hover:underline">
@@ -246,7 +249,7 @@ function Dashboard() {
           )}
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-4 max-md:order-1">
           <div className="rounded-lg border bg-card p-4">
             <h2 className="mb-3 text-sm font-semibold">Techs today</h2>
             {groups.length === 0 ? (
@@ -322,12 +325,14 @@ function Dashboard() {
       </div>
 
       {/* Owner-facing AI summaries live on the dashboard (punch list #11). */}
-      <AiSection title="AI: weekly digest" description="Owner-focused summary of the last 7 days.">
-        <DigestPanel />
-      </AiSection>
-      <AiSection title="AI: marketing content" description="Draft posts, captions, and email blasts.">
-        <MarketingPanel />
-      </AiSection>
+      <div className="flex flex-col gap-6 max-md:order-3">
+        <AiSection title="AI: weekly digest" description="Owner-focused summary of the last 7 days.">
+          <DigestPanel />
+        </AiSection>
+        <AiSection title="AI: marketing content" description="Draft posts, captions, and email blasts.">
+          <MarketingPanel />
+        </AiSection>
+      </div>
 
       <VisitDetailDrawer
         visitId={detailVisitId}

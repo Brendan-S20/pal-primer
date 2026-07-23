@@ -40,9 +40,11 @@ import {
 import { APP_NAME } from "@/lib/scoop";
 import { Logo } from "@/components/Logo";
 
-type NavItem = { title: string; url: string; icon: React.ComponentType<{ className?: string }> };
+export type NavItem = { title: string; url: string; icon: React.ComponentType<{ className?: string }> };
 
-const GROUPS: Array<{ label: string; items: NavItem[] }> = [
+// Single source of nav truth — also consumed by MobileTabBar's "More" sheet so
+// the phone nav can never drift from (or exceed) what the sidebar offers.
+export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
   {
     label: "Overview",
     items: [
@@ -118,7 +120,7 @@ export function AppSidebar() {
   });
   const isPlatformAdmin = !!platform.data?.isPlatformAdmin;
 
-  const visibleGroups = GROUPS.map((g) => ({
+  const visibleGroups = NAV_GROUPS.map((g) => ({
     ...g,
     items: g.items.filter((it) => canAccess(role, it.url)),
   })).filter((g) => g.items.length > 0);
