@@ -7,9 +7,9 @@ self.addEventListener("push", (event) => {
   try {
     payload = event.data ? event.data.json() : {};
   } catch (_e) {
-    payload = { title: "Scoop", body: event.data ? event.data.text() : "" };
+    payload = { title: "HoundStack", body: event.data ? event.data.text() : "" };
   }
-  const title = payload.title || "Scoop";
+  const title = payload.title || "HoundStack";
   const options = {
     body: payload.body || "",
     icon: payload.icon || "/pwa-192.png",

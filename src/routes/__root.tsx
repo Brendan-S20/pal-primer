@@ -131,6 +131,25 @@ function RootComponent() {
     import("../pwa/register").then((m) => m.registerPwa());
   }, []);
 
+  // Android hardware back button (native shell only — web no-op): pop in-app
+  // history, minimize the app at the root. Lives on the root route so it also
+  // covers the client portal, not just the authenticated shell.
+  useEffect(() => {
+    let removed = false;
+    let remove: (() => void) | undefined;
+    import("../lib/native")
+      .then((m) => m.initBackButton())
+      .then((r) => {
+        if (removed) r();
+        else remove = r;
+      })
+      .catch(() => {});
+    return () => {
+      removed = true;
+      remove?.();
+    };
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <ImpersonationBanner />

@@ -33,6 +33,7 @@ import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
 import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { syncQueue } from "@/lib/offline/sync";
 import { countPendingForVisit } from "@/lib/offline/queue";
+import { saveMyDaySnapshot, loadMyDaySnapshot } from "@/lib/offline/myDayCache";
 import { toast } from "sonner";
 import {
   Navigation,
@@ -140,10 +141,30 @@ function MyDay() {
   const { role } = useMyRole();
   const isOfficeRole = role === "owner" || role === "office_manager" || role === "dispatcher";
 
-  const { data, isLoading } = useQuery({
+  const {
+    data: liveData,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ["my-day", day, staffParam ?? ""],
     queryFn: () => fn({ data: staffParam ? { day, staffId: staffParam } : { day } }),
   });
+
+  // Mobile Phase 3 offline hardening: persist the last good getMyDay response
+  // per (day, staff) and serve it read-only when the fetch fails (dead zone).
+  // Visit actions still queue through the existing IndexedDB path; money
+  // actions remain online-only.
+  useEffect(() => {
+    if (liveData) saveMyDaySnapshot(day, staffParam ?? null, liveData);
+  }, [liveData, day, staffParam]);
+  const snapshot = useMemo(
+    () =>
+      isError && !liveData ? loadMyDaySnapshot<typeof liveData>(day, staffParam ?? null) : null,
+    [isError, liveData, day, staffParam],
+  );
+  const data = liveData ?? snapshot?.data;
+  const servingSnapshot = !liveData && !!snapshot?.data;
   const previewing = !!data?.previewing;
 
   // Office/dispatch users: fetch the field-staff list so we can show a picker.
@@ -204,6 +225,22 @@ function MyDay() {
 
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
 
+  // Fetch failed and nothing is cached for this day — say so plainly instead
+  // of falling through to the misleading "not linked to a staff record" state.
+  if (isError && !data)
+    return (
+      <div className="space-y-3 py-10 text-center">
+        <WifiOff className="mx-auto h-6 w-6 text-muted-foreground" />
+        <p className="text-sm text-muted-foreground">
+          Couldn't load this day{online ? "" : " — you're offline"}, and no synced copy is saved on
+          this device.
+        </p>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>
+          <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Retry
+        </Button>
+      </div>
+    );
+
   return (
     <div className="-mx-4 -my-6 pb-[calc(7rem+env(safe-area-inset-bottom))] max-md:pb-[calc(10.5rem+env(safe-area-inset-bottom))]">
       {/* Sticky, blurred top bar — feels like a native nav */}
@@ -238,6 +275,34 @@ function MyDay() {
                   <RefreshCw className="h-3 w-3" /> {t("common.sync")}
                 </button>
               )}
+            </div>
+          )}
+
+          {/* Read-only offline fallback (Phase 3): the fetch failed but a prior
+              successful response for this day is cached on-device. */}
+          {servingSnapshot && snapshot && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-2.5 text-sm text-amber-700 dark:text-amber-400 animate-fade-in">
+              <div className="flex items-center gap-2">
+                <WifiOff className="h-4 w-4 shrink-0" />
+                <span className="font-medium">
+                  Offline — showing last synced{" "}
+                  {new Date(snapshot.ts).toLocaleString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  haptic("tap");
+                  refetch();
+                }}
+                className="inline-flex min-h-9 items-center gap-1 rounded-md border border-current px-3 py-1 text-xs font-medium active:scale-95 transition-transform"
+              >
+                <RefreshCw className="h-3 w-3" /> Retry
+              </button>
             </div>
           )}
 

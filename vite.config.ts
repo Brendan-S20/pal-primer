@@ -38,10 +38,14 @@ export default defineConfig({
         injectRegister: null,
         filename: "sw.js",
         devOptions: { enabled: false },
-        includeAssets: ["favicon.ico", "apple-touch-icon.png"],
+        // Only reference assets that actually exist in public/ — a missing
+        // apple-touch-icon.png/favicon.ico would 404 from the precache.
+        includeAssets: ["favicon.svg"],
         manifest: {
-          name: "Scoop CRM",
-          short_name: "Scoop",
+          // Keep in sync with the head <title> (src/routes/__root.tsx) and
+          // capacitor.config.ts appName.
+          name: "HoundStack",
+          short_name: "HoundStack",
           description: "Field service CRM for pet waste removal companies",
           theme_color: "#0f172a",
           background_color: "#0f172a",
