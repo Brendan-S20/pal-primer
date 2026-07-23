@@ -50,9 +50,9 @@ export function NotificationBell() {
         type="button"
         aria-label="Notifications"
         onClick={() => setOpen((o) => !o)}
-        className="relative rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+        className="relative rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground max-md:p-2.5"
       >
-        <Bell className="h-4 w-4" />
+        <Bell className="h-4 w-4 max-md:h-5 max-md:w-5" />
         {unread > 0 && (
           <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-none text-white">
             {unread > 9 ? "9+" : unread}
@@ -63,7 +63,9 @@ export function NotificationBell() {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-50 mt-2 w-80 overflow-hidden rounded-md border bg-card shadow-lg">
+          {/* Below `md` the panel pins to the viewport edges (the absolute w-80
+              box overflows ≤360px screens); md+ keeps the header popover. */}
+          <div className="absolute right-0 z-50 mt-2 w-80 overflow-hidden rounded-md border bg-card shadow-lg max-md:fixed max-md:inset-x-3 max-md:top-16 max-md:mt-0 max-md:w-auto">
             <div className="flex items-center justify-between border-b px-3 py-2">
               <span className="text-sm font-medium">{showPrefs ? "Notification settings" : "Notifications"}</span>
               <div className="flex items-center gap-3">
@@ -112,7 +114,10 @@ export function NotificationBell() {
                           title="Delete"
                           onClick={(e) => { e.stopPropagation(); deleteOne.mutate(n.id); }}
                           disabled={deleteOne.isPending}
-                          className="absolute right-2 top-2 hidden rounded p-0.5 text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground group-hover:block"
+                          // Hover-only visibility is unreachable on touch: below
+                          // `md` the delete stays visible at reduced opacity
+                          // (and on focus for keyboard users).
+                          className="absolute right-2 top-2 hidden rounded p-0.5 text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground group-hover:block group-focus-within:block max-md:block max-md:p-1.5 max-md:opacity-60"
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>

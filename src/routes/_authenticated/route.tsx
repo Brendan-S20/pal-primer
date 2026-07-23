@@ -1,10 +1,11 @@
-import { createFileRoute, Link, Outlet, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, redirect, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { OnboardingTour } from "@/components/OnboardingTour";
 import { InstallBanner } from "@/components/InstallBanner";
 import { AppSidebar } from "@/components/AppSidebar";
+import { MobileTabBar } from "@/components/MobileTabBar";
 import { RoleGuard } from "@/components/RoleGuard";
 import { CommandPalette } from "@/components/CommandPalette";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -71,6 +72,12 @@ function AppShell() {
 
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
+  // My Day carries its own sticky header; below `md` the shell header would
+  // stack a second bar on top of it (the audit's "double header"), so hide the
+  // shell header there. Desktop (`md`+) is unchanged.
+  const pathname = useRouterState({ select: (r) => r.location.pathname });
+  const isMyDay = pathname === "/my-day" || pathname.startsWith("/my-day/");
+
   const brand = useBrandAccent();
   // Scope the tenant brand color to the internal staff app only. Platform-admin
   // routes and the sign-in page live outside this shell and stay HoundStack-branded.
@@ -93,7 +100,11 @@ function AppShell() {
       <div className="flex min-h-screen w-full bg-background" style={brandStyle}>
         <AppSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-card/80 px-4 backdrop-blur">
+          <header
+            className={`sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-card/80 px-4 backdrop-blur ${
+              isMyDay ? "max-md:hidden" : ""
+            }`}
+          >
             <SidebarTrigger />
             <button
               type="button"
@@ -110,24 +121,29 @@ function AppShell() {
               to="/help"
               search={{ article: undefined }}
               aria-label="Knowledge Center"
-              className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground max-md:p-2.5"
             >
-              <HelpCircle className="h-4 w-4" />
+              <HelpCircle className="h-4 w-4 max-md:h-5 max-md:w-5" />
             </Link>
             <WeatherPopover />
             <NotificationBell />
-            <Button variant="ghost" size="sm" onClick={handleSignOut}>
+            {/* Below `md` Sign out lives in the tab bar's More sheet — the most
+                dangerous action doesn't belong in a phone header. */}
+            <Button variant="ghost" size="sm" onClick={handleSignOut} className="max-md:hidden">
               Sign out
             </Button>
           </header>
           <SuspensionBanner />
           <AnnouncementBanner />
-          <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 sm:py-8">
+          {/* Below `md` the bottom padding keeps content clear of the fixed tab
+              bar; md:pb-8 restores the original desktop padding. */}
+          <main className="min-w-0 flex-1 px-4 pt-6 pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:px-6 sm:pt-8 md:pb-8">
             <div className="mx-auto w-full max-w-[1200px]">
               <Outlet />
             </div>
           </main>
         </div>
+        <MobileTabBar />
         <CommandPalette />
         <KeyboardShortcuts />
         <OnboardingTour />
