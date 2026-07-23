@@ -26,6 +26,9 @@ export type PlatformAddonRow = {
   description: string | null;
   price_cents: number;
   billing_interval: string;
+  /** 'active' = buyable; 'coming_soon' = shown with a badge, not buyable.
+   *  ('disabled' add-ons never reach the tenant catalog.) */
+  status: "active" | "coming_soon";
   subscribed: boolean;
 };
 
@@ -35,10 +38,12 @@ export const listPlatformAddons = createServerFn({ method: "GET" })
     const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
 
     const [{ data: catalog, error }, { data: mine }, { data: org }] = await Promise.all([
-      context.supabase
+      // Untyped: `status` postdates the generated Supabase types. Tenants see
+      // active + coming-soon add-ons; disabled ones are hidden entirely.
+      (context.supabase as any)
         .from("platform_addons")
-        .select("id, slug, name, description, price_cents, billing_interval, is_active, sort_order")
-        .eq("is_active", true)
+        .select("id, slug, name, description, price_cents, billing_interval, status, is_active, sort_order")
+        .in("status", ["active", "coming_soon"])
         .order("sort_order"),
       context.supabase
         .from("org_platform_addons")
@@ -62,6 +67,7 @@ export const listPlatformAddons = createServerFn({ method: "GET" })
         description: a.description,
         price_cents: a.price_cents,
         billing_interval: a.billing_interval,
+        status: (a.status === "coming_soon" ? "coming_soon" : "active") as "active" | "coming_soon",
         subscribed: subscribed.has(a.id),
       })),
       canSubscribe: !!org?.stripe_subscription_id && org.plan_status === "active",
@@ -95,10 +101,15 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const [{ data: addon }, { data: org }] = await Promise.all([
-      (supabaseAdmin as any).from("platform_addons").select("*").eq("id", data.addonId).eq("is_active", true).maybeSingle(),
+      (supabaseAdmin as any).from("platform_addons").select("*").eq("id", data.addonId).maybeSingle(),
       (supabaseAdmin as any).from("organizations").select("stripe_subscription_id, plan_status").eq("id", orgId).single(),
     ]);
     if (!addon) throw new Error("Add-on not found.");
+    // Only 'active' add-ons are purchasable — 'coming_soon' is display-only and
+    // 'disabled' is hidden. Server-side gate so a crafted request can't buy them.
+    const addonStatus = addon.status ?? (addon.is_active ? "active" : "disabled");
+    if (addonStatus === "coming_soon") throw new Error("This add-on isn't available yet.");
+    if (addonStatus !== "active") throw new Error("Add-on not found.");
     if (!org?.stripe_subscription_id || org.plan_status !== "active") {
       throw new Error("Add-ons attach to an active subscription. Pick a plan first.");
     }

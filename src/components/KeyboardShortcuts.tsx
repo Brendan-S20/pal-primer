@@ -6,7 +6,6 @@ const SHORTCUTS: Array<{ keys: string; label: string; to: string }> = [
   { keys: "g c", label: "Clients", to: "/clients" },
   { keys: "g m", label: "My day", to: "/my-day" },
   { keys: "g r", label: "Routes", to: "/routes" },
-  { keys: "g w", label: "Weather", to: "/weather" },
   { keys: "g i", label: "Invoices", to: "/invoices" },
   { keys: "g l", label: "Leads", to: "/leads" },
 ];

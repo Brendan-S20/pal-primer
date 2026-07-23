@@ -604,6 +604,18 @@ function RoutesPage() {
               Route windows and arrival times are anchored to the workday start in this timezone.
             </p>
           </div>
+          <div className="col-span-2">
+            <Label className="text-xs">Work days</Label>
+            <WorkDaysPicker
+              value={((settings as any).work_days as number[] | null) ?? [0, 1, 2, 3, 4, 5, 6]}
+              onChange={(days) => settingsMut.mutate({ work_days: days })}
+              disabled={settingsMut.isPending}
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              New visits are only scheduled on these days. A client's explicit preferred weekdays
+              still win — an agreed Saturday stays a Saturday.
+            </p>
+          </div>
         </div>
       </div>
       )}
@@ -687,6 +699,50 @@ function RoutesPage() {
       <VisitDetailDrawer visitId={detailVisitId} onOpenChange={(o) => !o && setDetailVisitId(null)} />
     </div>
 
+  );
+}
+
+const WORK_DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** Toggleable weekday chips for the org's operating days (0=Sun..6=Sat). */
+function WorkDaysPicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: number[];
+  onChange: (days: number[]) => void;
+  disabled?: boolean;
+}) {
+  const selected = new Set(value);
+  const toggle = (d: number) => {
+    const next = new Set(selected);
+    next.has(d) ? next.delete(d) : next.add(d);
+    if (next.size === 0) {
+      toast.error("Keep at least one working day");
+      return;
+    }
+    onChange([...next].sort((a, b) => a - b));
+  };
+  return (
+    <div className="mt-1 flex flex-wrap gap-1.5">
+      {WORK_DAY_LABELS.map((label, d) => (
+        <button
+          key={d}
+          type="button"
+          disabled={disabled}
+          onClick={() => toggle(d)}
+          aria-pressed={selected.has(d)}
+          className={`rounded-full border px-2.5 py-1 text-xs transition disabled:opacity-50 ${
+            selected.has(d)
+              ? "border-primary bg-primary/10 font-medium text-primary"
+              : "text-muted-foreground hover:bg-muted"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
   );
 }
 

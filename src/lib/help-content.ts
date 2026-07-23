@@ -109,7 +109,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     section: "Business setup",
     body: [
       "A zone is a service area: a neighborhood, a ZIP-code prefix, a side of town. Every client property belongs to a zone.",
-      "Zones drive almost everything geographic: [routes](article:routes-planning) are planned per zone, the [weather](article:weather) page forecasts per zone, and reports can break revenue down by zone. Give each zone coordinates (or a postal prefix) so maps and forecasts work.",
+      "Zones drive almost everything geographic: [routes](article:routes-planning) are planned per zone, the [weather forecast](article:weather) in the header covers each zone, and reports can break revenue down by zone. Give each zone coordinates (or a postal prefix) so maps and forecasts work.",
       "Rule of thumb: one zone per area a tech can comfortably cover in a day.",
     ],
     appLink: { to: "/zones", label: "Open Zones" },
@@ -126,7 +126,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Open [Routes](/routes) and pick the day (Today, Week, or Month view).",
       "Unassigned visits appear grouped by zone. Drag them onto a tech, or use auto-assign to balance by capacity.",
       "Drag within a tech's column to set the drive order. Directions links use the property's address or coordinates.",
-      "Check [Weather](/weather) for risky days; auto-rebalance can move visits off a storm day in one click.",
+      "Check the [weather forecast](article:weather) (the cloud icon in the header) for risky days; the weather check on Routes can move flagged visits off a storm day in one click.",
       "Techs see the final order on [My Day](article:my-day) the moment you're done.",
     ],
     appLink: { to: "/routes", label: "Open Routes" },
@@ -137,11 +137,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: "Weather and rescheduling",
     section: "Business setup",
     body: [
-      "The [Weather](/weather) page forecasts each [zone](article:zones) for the days ahead and flags risky days (heavy rain, high wind, storms, hard freezes) along with how many visits are scheduled on them.",
-      "**Preview auto-rebalance** proposes moving at-risk visits to the nearest safe day with capacity; nothing moves until you apply it. Clients can get an automatic weather-reschedule email when their visit moves.",
+      "The cloud icon in the top bar opens this week's forecast for your main service areas. Nearby [zones](article:zones) are grouped into one card, and risky days (heavy rain, high wind, storms, hard freezes) are highlighted so you can spot trouble at a glance.",
+      "To act on a risky day, open [Routes](/routes): the weather check there flags at-risk visits and can move them to a safe day. Clients can get an automatic weather-reschedule email when their visit moves.",
       "Forecasts are cached, so if the weather service is briefly unavailable you'll see the last saved forecast instead of an error.",
     ],
-    appLink: { to: "/weather", label: "Open Weather" },
+    appLink: { to: "/routes", label: "Open Routes" },
     related: ["zones", "routes-planning", "blackouts"],
   },
   {

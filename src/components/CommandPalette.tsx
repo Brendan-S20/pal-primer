@@ -20,7 +20,6 @@ const NAV: NavEntry[] = [
   { label: "Clients", to: "/clients", group: "Operations" },
   { label: "Zones", to: "/zones", group: "Operations" },
   { label: "Routes", to: "/routes", group: "Operations" },
-  { label: "Weather", to: "/weather", group: "Operations" },
   { label: "My day", to: "/my-day", group: "Field" },
   { label: "Waste log", to: "/waste-log", group: "Field" },
   { label: "Messages", to: "/messages", group: "Field" },
