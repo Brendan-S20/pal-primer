@@ -23,6 +23,7 @@ import { backfillPropertyGeocodes } from "@/lib/properties.functions";
 import { US_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/route-window";
 import { completeVisit } from "@/lib/my-day.functions";
 import { RouteMap, buildTechGroups } from "@/components/RouteMap";
+import { MobileDayList } from "@/components/schedule/MobileDayList";
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
 import { WeatherStrip } from "@/components/WeatherStrip";
 import { Navigation, CheckCircle2, MapPin, CloudRain, Settings2 } from "lucide-react";
@@ -385,7 +386,7 @@ function RoutesPage() {
               <button
                 key={m}
                 onClick={() => setViewModePersist(m)}
-                className={`px-3 py-1.5 rounded ${viewMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                className={`px-3 py-1.5 max-md:py-2.5 rounded ${viewMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 {m === "map" ? "Map" : "Board"}
               </button>
@@ -396,7 +397,7 @@ function RoutesPage() {
               <button
                 key={r}
                 onClick={() => setRangePersist(r)}
-                className={`px-3 py-1.5 rounded ${range === r ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                className={`px-3 py-1.5 max-md:py-2.5 rounded ${range === r ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 {r === "today" ? "Today" : r === "week" ? "Week" : "Month"}
               </button>
@@ -654,7 +655,17 @@ function RoutesPage() {
         />
       )}
 
+      {/* Mobile Phase 2: below `md` the dnd board is replaced by a tap-through
+          day list (per-tech rows → VisitDetailDrawer). Reassignment/reschedule
+          happen via the drawer's existing controls — no drag on touch. */}
       {range === "today" && (
+        <div className="md:hidden">
+          <MobileDayList visits={visits} staff={staff} onOpen={setDetailVisitId} />
+        </div>
+      )}
+
+      {range === "today" && (
+      <div className="max-md:hidden">
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -695,6 +706,7 @@ function RoutesPage() {
           {activeVisit ? <VisitCardView visit={activeVisit} dragging /> : null}
         </DragOverlay>
       </DndContext>
+      </div>
       )}
       <VisitDetailDrawer visitId={detailVisitId} onOpenChange={(o) => !o && setDetailVisitId(null)} />
     </div>

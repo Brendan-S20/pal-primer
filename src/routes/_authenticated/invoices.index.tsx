@@ -33,7 +33,7 @@ import { HelpTip } from "@/components/HelpTip";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState, SectionLabel } from "@/components/client-detail/primitives";
 import { InvoiceDrawer } from "@/components/InvoiceDrawer";
-import { InvoiceRow } from "@/components/InvoiceRow";
+import { InvoiceCard, InvoiceRow } from "@/components/InvoiceRow";
 import type { RowAction } from "@/components/RowActions";
 import { invoiceOutstandingCents } from "@/lib/ar";
 import { useRowSelection } from "@/hooks/useRowSelection";
@@ -706,7 +706,32 @@ function InvoicesPage() {
           onAction={filtersActive ? resetFilters : undefined}
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
+        <>
+          {/* Mobile Phase 2: below `md` invoices render as tap-through cards
+              (shared InvoiceCard — same data, ••• actions, and drawer as the
+              table rows). Bulk-select stays via the card checkbox. */}
+          <div className="space-y-3 md:hidden">
+            <label className="flex min-h-10 items-center gap-2 px-1 text-xs text-muted-foreground">
+              <Checkbox
+                checked={allVisibleSelected}
+                onCheckedChange={toggleAll}
+                aria-label="Select all invoices"
+              />
+              Select all
+            </label>
+            {filtered.map((inv) => (
+              <InvoiceCard
+                key={inv.id}
+                invoice={inv}
+                selectable
+                selected={sel.isSelected(inv.id)}
+                onToggleSelect={(next) => sel.toggle(inv.id, next)}
+                onOpen={setDrawerInvoiceId}
+                actions={rowActions(inv)}
+              />
+            ))}
+          </div>
+          <div className="overflow-x-auto rounded-xl border bg-card shadow-sm max-md:hidden">
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
@@ -743,7 +768,8 @@ function InvoicesPage() {
               ))}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       )}
 
       <InvoiceDrawer

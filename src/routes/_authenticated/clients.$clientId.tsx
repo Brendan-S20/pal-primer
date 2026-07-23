@@ -182,7 +182,10 @@ function ClientDetail() {
       />
 
       <Tabs value={effectiveTab} onValueChange={setTab} className="space-y-5">
-        <TabsList className="inline-flex h-auto w-auto flex-wrap justify-start">
+        {/* Mobile Phase 2: below `md` the 9 pills scroll horizontally on one
+            line (no wrap, hidden scrollbar) instead of wrapping into pill
+            soup. Desktop keeps the wrapping layout. ?tab= behavior unchanged. */}
+        <TabsList className="no-scrollbar inline-flex h-auto w-auto flex-wrap justify-start max-md:flex max-md:w-full max-md:flex-nowrap max-md:overflow-x-auto">
           <TabsTrigger
             value="summary"
             className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md px-3 py-1.5"

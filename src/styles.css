@@ -167,6 +167,16 @@
   }
 }
 
+/* Hide the scrollbar on horizontally-scrollable mobile strips (tab pills,
+   day strips) while keeping touch/wheel scrolling functional. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 .marketing-hero-gradient {
   background:
     radial-gradient(1200px 500px at 85% -10%, color-mix(in oklab, var(--brand) 18%, transparent), transparent 60%),
