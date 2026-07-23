@@ -32,9 +32,32 @@ export type DnaMatch = {
   created_at: string;
 };
 
+/** Optional client scoping for the DNA list fns (IA rework): omitted or
+ * `{}` keeps the org-wide behavior; a clientId narrows to that client. */
+const clientFilterSchema = z
+  .object({ clientId: z.string().uuid().optional() })
+  .optional();
+
+/** Ids of a client's properties (org-scoped). Used to filter DNA records to
+ * one client — samples/dogs may be keyed to a property without a client_id. */
+async function clientPropertyIds(
+  supabase: any,
+  orgId: string,
+  clientId: string,
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("properties")
+    .select("id")
+    .eq("organization_id", orgId)
+    .eq("client_id", clientId);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((p: any) => p.id as string);
+}
+
 export const listDnaMatches = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .inputValidator((d: unknown) => clientFilterSchema.parse(d ?? undefined))
+  .handler(async ({ data: filter, context }) => {
     // H1/I7: the cross-client compliance registry (samples, matches, fines
     // billed, other clients' dogs) is NOT a technician surface. Techs are
     // scoped to sample LOGGING (createDnaMatch / status moves) only — reading
@@ -46,7 +69,7 @@ export const listDnaMatches = createServerFn({ method: "GET" })
       "view_client_directory",
     );
     const canSeeDirectory = hasPermission(role, "view_client_directory");
-    const { data, error } = await context.supabase
+    let query = context.supabase
       .from("dna_matches")
       .select(
         "id, sample_kind, collected_at, location_note, lab_reference, status, matched_dog_id, matched_at, fine_cents, notes, property_id, client_id, unit_id, collected_by_staff_id, kit_reference, dna_provider, report_reference, sample_photo_path, " +
@@ -54,7 +77,16 @@ export const listDnaMatches = createServerFn({ method: "GET" })
           "properties:property_id(street), clients:client_id(display_name), " +
           "property_units:unit_id(unit_label), staff:collected_by_staff_id(display_name)",
       )
-      .eq("organization_id", orgId)
+      .eq("organization_id", orgId);
+    if (filter?.clientId) {
+      // Client-scoped view: samples keyed to the client directly OR to one of
+      // its properties (older samples may carry only property_id).
+      const propIds = await clientPropertyIds(context.supabase, orgId, filter.clientId);
+      query = propIds.length
+        ? query.or(`client_id.eq.${filter.clientId},property_id.in.(${propIds.join(",")})`)
+        : query.eq("client_id", filter.clientId);
+    }
+    const { data, error } = await query
       .order("collected_at", { ascending: false })
       .limit(500);
     if (error) throw new Error(error.message);
@@ -224,7 +256,8 @@ export const deleteDnaMatch = createServerFn({ method: "POST" })
 
 export const listRegisteredDogs = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .inputValidator((d: unknown) => clientFilterSchema.parse(d ?? undefined))
+  .handler(async ({ data: filter, context }) => {
     // H1/I7: cross-client registered-dog list is registry data, not a tech
     // surface — gate the read on the directory capability (techs are rejected).
     const { orgId, role } = await requirePermission(
@@ -233,7 +266,7 @@ export const listRegisteredDogs = createServerFn({ method: "GET" })
       "view_client_directory",
     );
     const canSeeDirectory = hasPermission(role, "view_client_directory");
-    const { data, error } = await context.supabase
+    let query = context.supabase
       .from("dogs")
       .select(
         "id, name, breed, dna_registry_id, unit_id, property_id, " +
@@ -241,8 +274,14 @@ export const listRegisteredDogs = createServerFn({ method: "GET" })
           "properties:property_id(street, clients:client_id(display_name))",
       )
       .eq("organization_id", orgId)
-      .eq("dna_registered", true)
-      .order("name");
+      .eq("dna_registered", true);
+    if (filter?.clientId) {
+      // Dogs link to a client via their property.
+      const propIds = await clientPropertyIds(context.supabase, orgId, filter.clientId);
+      if (!propIds.length) return [];
+      query = query.in("property_id", propIds);
+    }
+    const { data, error } = await query.order("name");
     if (error) throw new Error(error.message);
     return (data ?? []).map((d: any) => ({
       id: d.id,
@@ -258,7 +297,8 @@ export const listRegisteredDogs = createServerFn({ method: "GET" })
 
 export const listAllDogsForDna = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .inputValidator((d: unknown) => clientFilterSchema.parse(d ?? undefined))
+  .handler(async ({ data: filter, context }) => {
     // H1/I7: the full cross-client dog roster (registry tab) is not a tech
     // surface — gate on the directory capability (techs are rejected).
     const { orgId, role } = await requirePermission(
@@ -267,7 +307,7 @@ export const listAllDogsForDna = createServerFn({ method: "GET" })
       "view_client_directory",
     );
     const canSeeDirectory = hasPermission(role, "view_client_directory");
-    const { data, error } = await context.supabase
+    let query = context.supabase
       .from("dogs")
       .select(
         "id, name, breed, dna_registered, dna_registry_id, dna_status, dna_provider, dna_kit_reference, " +
@@ -275,8 +315,13 @@ export const listAllDogsForDna = createServerFn({ method: "GET" })
           "property_units:unit_id(unit_label), " +
           "properties:property_id(street, account_type, clients:client_id(display_name))",
       )
-      .eq("organization_id", orgId)
-      .order("name");
+      .eq("organization_id", orgId);
+    if (filter?.clientId) {
+      const propIds = await clientPropertyIds(context.supabase, orgId, filter.clientId);
+      if (!propIds.length) return [];
+      query = query.in("property_id", propIds);
+    }
+    const { data, error } = await query.order("name");
     if (error) throw new Error(error.message);
     return (data ?? []).map((d: any) => ({
       id: d.id,
@@ -466,6 +511,162 @@ export const getViolationNotice = createServerFn({ method: "GET" })
       locationNote: row.location_note,
       fineCents: row.fine_cents ?? 0,
       notes: row.notes,
+    };
+  });
+
+// ── DNA compliance opt-in per client (IA rework) ─────────────────────────────
+
+/** Enable/disable the DNA compliance program for a commercial client. Same
+ * write posture as the Units-tab mutations (createUnit / logUnitIncident):
+ * can_write_org — owner / office_manager / dispatcher; techs are rejected. */
+export const setClientDnaCompliance = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ clientId: z.string().uuid(), enabled: z.boolean() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const caller = await resolveCaller(supabase, userId);
+    if (!["owner", "office_manager", "dispatcher"].includes(caller.role)) {
+      throw new Error("Not authorized");
+    }
+    const orgId = caller.orgId;
+    const { data: client, error: cErr } = await supabase
+      .from("clients")
+      .select("id, display_name, account_type")
+      .eq("id", data.clientId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (cErr) throw new Error(cErr.message);
+    if (!client) throw new Error("Client not found");
+    if ((client as any).account_type !== "commercial") {
+      throw new Error("DNA compliance is only available for commercial/HOA clients");
+    }
+    const { error } = await (supabase as any)
+      .from("clients")
+      .update({ dna_compliance_enabled: data.enabled })
+      .eq("id", data.clientId)
+      .eq("organization_id", orgId);
+    if (error) throw new Error(error.message);
+    try {
+      const { logActivity } = await import("@/lib/activity.server");
+      await logActivity(supabase, {
+        orgId,
+        clientId: data.clientId,
+        actorUserId: userId,
+        kind: "client.updated",
+        summary: `${data.enabled ? "Enabled" : "Disabled"} DNA compliance`,
+      });
+    } catch {}
+    return { ok: true };
+  });
+
+export type DnaComplianceClient = {
+  id: string;
+  display_name: string;
+  property_count: number;
+  total_dogs: number;
+  registered_dogs: number;
+  sample_count: number;
+  /** Matched-but-unresolved plus billed violations (status matched/billed). */
+  open_violations: number;
+};
+
+/** Landing list for /dna (IA rework): the commercial clients enrolled in DNA
+ * compliance with per-client rollups, plus the commercial clients NOT yet
+ * enrolled (for the enable affordance). Gated like listDnaMatches. */
+export const listDnaComplianceClients = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    // H1/I7: cross-client roster — office only, same gate as the registry.
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "view_client_directory",
+    );
+    const { data: clients, error } = await (context.supabase as any)
+      .from("clients")
+      .select("id, display_name, account_type, active, dna_compliance_enabled")
+      .eq("organization_id", orgId)
+      .eq("account_type", "commercial")
+      .order("display_name");
+    if (error) throw new Error(error.message);
+    const commercial = (clients ?? []).filter((c: any) => c.active !== false);
+    const enabled = commercial.filter((c: any) => !!c.dna_compliance_enabled);
+    const notEnabled = commercial.filter((c: any) => !c.dna_compliance_enabled);
+
+    const rollup = new Map<string, DnaComplianceClient>(
+      enabled.map((c: any) => [
+        c.id as string,
+        {
+          id: c.id,
+          display_name: c.display_name,
+          property_count: 0,
+          total_dogs: 0,
+          registered_dogs: 0,
+          sample_count: 0,
+          open_violations: 0,
+        },
+      ]),
+    );
+
+    if (enabled.length) {
+      const clientIds = [...rollup.keys()];
+      const [propsRes, matchesRes] = await Promise.all([
+        context.supabase
+          .from("properties")
+          .select("id, client_id")
+          .eq("organization_id", orgId)
+          .in("client_id", clientIds)
+          .is("archived_at", null),
+        context.supabase
+          .from("dna_matches")
+          .select("id, client_id, property_id, status")
+          .eq("organization_id", orgId),
+      ]);
+      if (propsRes.error) throw new Error(propsRes.error.message);
+      if (matchesRes.error) throw new Error(matchesRes.error.message);
+
+      // property → client map (dogs and some samples key only to a property)
+      const propClient = new Map<string, string>();
+      for (const p of (propsRes.data ?? []) as any[]) {
+        propClient.set(p.id, p.client_id);
+        const r = rollup.get(p.client_id);
+        if (r) r.property_count++;
+      }
+
+      const propIds = [...propClient.keys()];
+      if (propIds.length) {
+        const dogsRes = await context.supabase
+          .from("dogs")
+          .select("id, property_id, dna_registered, dna_status, active")
+          .in("property_id", propIds);
+        if (dogsRes.error) throw new Error(dogsRes.error.message);
+        for (const d of (dogsRes.data ?? []) as any[]) {
+          if (d.active === false) continue;
+          const r = rollup.get(propClient.get(d.property_id) ?? "");
+          if (!r) continue;
+          r.total_dogs++;
+          if (d.dna_registered || d.dna_status === "registered") r.registered_dogs++;
+        }
+      }
+
+      for (const m of (matchesRes.data ?? []) as any[]) {
+        const cid = m.client_id ?? propClient.get(m.property_id) ?? null;
+        const r = cid ? rollup.get(cid) : undefined;
+        if (!r) continue;
+        r.sample_count++;
+        if (m.status === "matched" || m.status === "billed") r.open_violations++;
+      }
+    }
+
+    return {
+      rows: [...rollup.values()],
+      notEnabled: notEnabled.map((c: any) => ({
+        id: c.id as string,
+        display_name: c.display_name as string,
+      })),
+      notEnabledCount: notEnabled.length,
     };
   });
 

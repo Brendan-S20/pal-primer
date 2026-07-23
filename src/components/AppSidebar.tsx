@@ -8,7 +8,6 @@ import {
   Users,
   MapPin,
   Route as RouteIcon,
-  CloudSun,
   Truck,
   Trash2,
   MessageSquare,
@@ -57,7 +56,6 @@ const GROUPS: Array<{ label: string; items: NavItem[] }> = [
       { title: "Clients", url: "/clients", icon: Users },
       { title: "Zones", url: "/zones", icon: MapPin },
       { title: "Routes", url: "/routes", icon: RouteIcon },
-      { title: "Weather", url: "/weather", icon: CloudSun },
     ],
   },
   {

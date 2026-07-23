@@ -4,7 +4,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getClient, listClientVisitHistory, listDogsForClient } from "@/lib/clients.functions";
 import { listPropertiesForClient } from "@/lib/properties.functions";
 import { listSubscriptionsForClient } from "@/lib/subscriptions.functions";
@@ -44,9 +44,16 @@ export const Route = createFileRoute("/_authenticated/clients/$clientId")({
   component: ClientDetail,
   // QA follow-up 2.2: tabs are URL-addressable so refresh, back/forward, and
   // deep links land on the right tab instead of resetting to Summary.
-  validateSearch: (search: Record<string, unknown>): { tab?: TabValue } => {
+  // ?edit=true (row actions on the Clients list) opens the Edit Client drawer
+  // on arrival, then is stripped from the URL so refresh doesn't re-open it.
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { tab?: TabValue; edit?: boolean } => {
     const tab = search.tab as string | undefined;
-    return TABS.includes(tab as TabValue) && tab !== "summary" ? { tab: tab as TabValue } : {};
+    const out: { tab?: TabValue; edit?: boolean } =
+      TABS.includes(tab as TabValue) && tab !== "summary" ? { tab: tab as TabValue } : {};
+    if (search.edit === true || search.edit === "true" || search.edit === "1") out.edit = true;
+    return out;
   },
 });
 
@@ -110,6 +117,18 @@ function ClientDetail() {
       replace: false,
     });
   const [editClientOpen, setEditClientOpen] = useState(false);
+
+  // Deep-linked edit affordance (?edit=true from the Clients list row
+  // actions): open the drawer once, then clean the URL.
+  useEffect(() => {
+    if (search.edit) {
+      setEditClientOpen(true);
+      navigate({
+        search: search.tab ? { tab: search.tab } : {},
+        replace: true,
+      });
+    }
+  }, [search.edit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
   if (error) return <p className="text-destructive">{(error as Error).message}</p>;

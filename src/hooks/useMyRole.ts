@@ -38,7 +38,6 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/clients": ["owner", "office_manager", "dispatcher"],
   "/zones": ["owner", "office_manager", "dispatcher"],
   "/routes": ["owner", "office_manager", "dispatcher"],
-  "/weather": ["owner", "office_manager", "dispatcher"],
   "/my-day": ["owner", "office_manager", "dispatcher", "tech"],
   "/waste-log": ["owner", "office_manager", "dispatcher", "tech"],
   "/messages": ["owner", "office_manager", "dispatcher"],

@@ -1,10 +1,15 @@
 // ONE invoice list row (QA round 3, B4 + I3). The Invoices page and the client
 // Billing tab both render this — same columns, same status/kind chips, same
 // click-to-open-drawer behavior — so there is a single invoice-row + preview
-// implementation instead of two divergent ones. Actions (take payment, send,
-// copy pay link, void) live in the InvoiceDrawer the row opens, never inline.
-import { ChevronRight } from "lucide-react";
+// implementation instead of two divergent ones. The trailing cell is a
+// Salesforce-style RowActions trio: View opens the drawer, and ••• carries
+// "Open full invoice" + "Copy pay link" plus any caller-supplied actions
+// (the Invoices page lifts send/remind/mark-paid/void in). Take payment
+// stays drawer-only — it is an embedded payment view, not a one-shot action.
+import { useNavigate } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RowActions, type RowAction } from "@/components/RowActions";
 import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
 import { isInvoiceOverdue } from "@/lib/overdue";
 import { formatDay } from "@/lib/format";
@@ -21,6 +26,7 @@ export type InvoiceRowData = {
   due_on: string | null;
   send_after?: string | null;
   sent_at?: string | null;
+  public_token?: string | null;
   clients?:
     | { display_name: string | null }
     | Array<{ display_name: string | null }>
@@ -50,6 +56,7 @@ export function InvoiceRow({
   selected = false,
   onToggleSelect,
   onOpen,
+  actions = [],
 }: {
   invoice: InvoiceRowData;
   /** Invoices page: shows the client column. Client tab: hidden (one client). */
@@ -59,12 +66,42 @@ export function InvoiceRow({
   selected?: boolean;
   onToggleSelect?: (next: boolean) => void;
   onOpen: (invoiceId: string) => void;
+  /** Extra ••• items appended after the built-in ones (Invoices page lifts
+   * the drawer's send / remind / mark paid / void here). */
+  actions?: RowAction[];
 }) {
+  const navigate = useNavigate();
   const client = Array.isArray(invoice.clients) ? invoice.clients[0] : invoice.clients;
   const overdue = isInvoiceOverdue(invoice.status, invoice.due_on);
   // Only the non-default kind (a prepaid top-up) is worth a chip; a plain
   // "Service" invoice needs no label. Either way the enum is never shown raw.
   const showKind = invoice.kind === "prepaid_topup";
+
+  // Built-in ••• actions available anywhere the row renders; callers append
+  // page-specific ones via `actions`. Copy pay link mirrors the drawer's
+  // gating: open invoices only, and only when the token is in the row data.
+  const menuActions: RowAction[] = [
+    {
+      label: "Open full invoice",
+      onSelect: () =>
+        navigate({ to: "/invoices/$invoiceId", params: { invoiceId: invoice.id } }),
+    },
+    ...(invoice.status === "open" && invoice.public_token
+      ? [
+          {
+            label: "Copy pay link",
+            onSelect: () => {
+              const url = `${window.location.origin}/pay/i/${invoice.public_token}`;
+              navigator.clipboard.writeText(url).then(
+                () => toast.success("Pay link copied to clipboard"),
+                () => toast.error("Copy failed"),
+              );
+            },
+          },
+        ]
+      : []),
+    ...actions,
+  ];
 
   return (
     <tr
@@ -117,17 +154,13 @@ export function InvoiceRow({
         </span>
       </td>
       <td className="px-4 py-2.5 text-right">
-        <button
-          type="button"
-          aria-label={`Open invoice for ${client?.display_name ?? "client"}`}
-          className="inline-flex rounded-md p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpen(invoice.id);
+        <RowActions
+          view={{
+            label: `View invoice for ${client?.display_name ?? "client"}`,
+            onSelect: () => onOpen(invoice.id),
           }}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
+          actions={menuActions}
+        />
       </td>
     </tr>
   );

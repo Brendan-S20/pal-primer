@@ -8,7 +8,10 @@ import {
   createManualInvoice,
   bulkVoidInvoices,
   bulkMarkInvoicesPaid,
+  voidInvoice,
 } from "@/lib/invoices.functions";
+import { sendInvoiceEmail } from "@/lib/notifications.functions";
+import { formatDay } from "@/lib/format";
 import { listClients } from "@/lib/clients.functions";
 import { getMyOrg } from "@/lib/org.functions";
 import { Button } from "@/components/ui/button";
@@ -31,6 +34,7 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState, SectionLabel } from "@/components/client-detail/primitives";
 import { InvoiceDrawer } from "@/components/InvoiceDrawer";
 import { InvoiceRow } from "@/components/InvoiceRow";
+import type { RowAction } from "@/components/RowActions";
 import { invoiceOutstandingCents } from "@/lib/ar";
 import { cn } from "@/lib/utils";
 
@@ -240,6 +244,8 @@ function InvoicesPage() {
   const gen = useServerFn(generateInvoicesForOrg);
   const voidBulk = useServerFn(bulkVoidInvoices);
   const paidBulk = useServerFn(bulkMarkInvoicesPaid);
+  const voidOne = useServerFn(voidInvoice);
+  const emailFn = useServerFn(sendInvoiceEmail);
   const qc = useQueryClient();
 
   const [through, setThrough] = useState(() => new Date().toISOString().slice(0, 10));
@@ -374,6 +380,100 @@ function InvoicesPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  // ── Per-row ••• actions (Salesforce-style row actions) ────────────────────
+  // These reuse the exact server fns the drawer / bulk bar already use:
+  // sendInvoiceEmail, bulkMarkInvoicesPaid (with one id), voidInvoice.
+  const rowEmailM = useMutation({
+    mutationFn: (v: { invoiceId: string; reminder: boolean }) => emailFn({ data: v }),
+    onSuccess: (r: any, v) => {
+      toast.success(`${v.reminder ? "Reminder" : "Invoice"} queued for ${r.recipient ?? "the client"}`);
+      // A first send stamps sent_at — refresh so the row chips update.
+      if (!v.reminder) qc.invalidateQueries({ queryKey: ["invoices"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const rowPaidM = useMutation({
+    mutationFn: (id: string) => paidBulk({ data: { ids: [id] } }),
+    onSuccess: (r) => {
+      if (r.ok) toast.success("Invoice marked paid");
+      else toast.error("Invoice could not be marked paid");
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const rowVoidM = useMutation({
+    mutationFn: (id: string) => voidOne({ data: { id } }),
+    onSuccess: () => {
+      toast.success("Invoice voided");
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  /** ••• items for one row; open invoices only (mirrors the drawer's gating).
+   *  "Open full invoice" + "Copy pay link" are built into InvoiceRow itself. */
+  const rowActions = (inv: (typeof filtered)[number]): RowAction[] => {
+    if (inv.status !== "open") return [];
+    const client = Array.isArray(inv.clients) ? inv.clients[0] : inv.clients;
+    const busy = rowEmailM.isPending || rowPaidM.isPending || rowVoidM.isPending;
+    return [
+      {
+        label: inv.sent_at ? "Send to client" : inv.send_after ? "Send now" : "Send to client",
+        disabled: busy,
+        onSelect: async () => {
+          // Same grace-window bypass confirm as the drawer: emailing a held
+          // invoice force-sends it ahead of its scheduled date.
+          if (!inv.sent_at && inv.send_after) {
+            const ok = await confirm({
+              title: "Send this invoice now?",
+              description: `This emails the invoice to ${client?.display_name ?? "the client"} right away, ahead of its scheduled send date (${formatDay(inv.send_after)}). It won't be sent again automatically.`,
+              confirmLabel: "Send now",
+            });
+            if (!ok) return;
+          }
+          rowEmailM.mutate({ invoiceId: inv.id, reminder: false });
+        },
+      },
+      {
+        label: "Send reminder",
+        disabled: busy,
+        onSelect: () => rowEmailM.mutate({ invoiceId: inv.id, reminder: true }),
+      },
+      {
+        label: "Mark paid",
+        disabled: busy,
+        onSelect: async () => {
+          if (
+            await confirm({
+              title: "Mark this invoice paid?",
+              description:
+                "Records an out-of-band payment for the open balance (cash, check, etc.). This can't be undone here.",
+              confirmLabel: "Mark paid",
+            })
+          )
+            rowPaidM.mutate(inv.id);
+        },
+      },
+      {
+        label: "Void",
+        destructive: true,
+        disabled: busy,
+        onSelect: async () => {
+          if (
+            await confirm({
+              title: "Void this invoice?",
+              description:
+                "Voiding removes this invoice from the client's balance and can't be undone.",
+              destructive: true,
+              confirmLabel: "Void invoice",
+            })
+          )
+            rowVoidM.mutate(inv.id);
+        },
+      },
+    ];
+  };
 
   return (
     <div className="space-y-6">
@@ -638,7 +738,9 @@ function InvoicesPage() {
                 <th className="px-4 py-2 font-semibold">Due</th>
                 <th className="px-4 py-2 text-right font-semibold">Total</th>
                 <th className="px-4 py-2 font-semibold">Status</th>
-                <th className="w-10 px-4 py-2" />
+                <th className="w-28 px-4 py-2 text-right font-semibold">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -653,6 +755,7 @@ function InvoicesPage() {
                     setSelected((prev) => ({ ...prev, [inv.id]: next }))
                   }
                   onOpen={setDrawerInvoiceId}
+                  actions={rowActions(inv)}
                 />
               ))}
             </tbody>

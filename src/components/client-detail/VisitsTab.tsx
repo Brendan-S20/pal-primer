@@ -24,6 +24,7 @@ import { listClientHolds } from "@/lib/clients.functions";
 import { formatDay, formatTime, formatClock } from "@/lib/format";
 import { formatVisitDuration } from "@/lib/visit-lifecycle";
 import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
+import { RowActions } from "@/components/RowActions";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 
@@ -268,6 +269,9 @@ function VisitTable({
             <th className="px-4 py-2.5 font-medium">Service</th>
             <th className="px-4 py-2.5 font-medium">Property</th>
             <th className="px-4 py-2.5 font-medium">Tech</th>
+            <th className="w-24 px-4 py-2.5 text-right font-medium">
+              <span className="sr-only">Actions</span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -335,6 +339,19 @@ function VisitTable({
                 </td>
                 <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
                   {v.staff?.display_name ?? "Unassigned"}
+                </td>
+                <td className="px-4 py-2.5 text-right">
+                  {/* Visit actions (complete / reschedule / reassign / cancel)
+                      are permission-gated inside the detail drawer, so the
+                      row offers View plus an explicit Open item — same
+                      destination as the row click. */}
+                  <RowActions
+                    view={{
+                      label: `View visit on ${formatDay(v.scheduled_on)}`,
+                      onSelect: () => onOpen(v),
+                    }}
+                    actions={[{ label: "Open visit", onSelect: () => onOpen(v) }]}
+                  />
                 </td>
               </tr>
             );

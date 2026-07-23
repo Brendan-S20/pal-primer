@@ -9,6 +9,7 @@ import {
 } from "@/lib/leads.functions";
 import { Eye, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { RowActions } from "@/components/RowActions";
 import {
   Select,
   SelectContent,
@@ -145,6 +146,33 @@ function LeadsPage() {
                   </div>
                 </div>
                 <div className="flex w-40 flex-col gap-2">
+                  {/* Salesforce-style ••• row actions. Leads have no detail
+                      page or edit drawer, so only the existing actions are
+                      wired: convert (convertLeadToClient) and archive
+                      (updateLeadStatus — same fn the status select uses). */}
+                  <RowActions
+                    actions={[
+                      ...(l.status !== "converted"
+                        ? [
+                            {
+                              label: "Convert to client",
+                              disabled: convertMut.isPending,
+                              onSelect: () => convertMut.mutate(l.id),
+                            },
+                          ]
+                        : []),
+                      ...(l.status !== "archived"
+                        ? [
+                            {
+                              label: "Archive",
+                              destructive: true,
+                              disabled: mut.isPending,
+                              onSelect: () => mut.mutate({ id: l.id, status: "archived" }),
+                            },
+                          ]
+                        : []),
+                    ]}
+                  />
                   {l.status !== "converted" && (
                     <Button
                       size="sm"

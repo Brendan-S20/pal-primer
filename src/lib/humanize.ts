@@ -36,6 +36,12 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   suspend_org: "Suspended organization",
   unsuspend_org: "Restored organization",
   delete_org: "Deleted organization",
+  update_plan: "Edited plan catalog entry",
+  update_addon_status: "Changed add-on availability",
+  send_password_reset: "Sent password reset",
+  update_user_email: "Changed user email",
+  update_user_phone: "Changed user phone",
+  remove_user_mfa: "Removed user MFA",
 };
 
 export function humanizeAuditAction(action: string | null | undefined): string {

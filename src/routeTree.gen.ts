@@ -34,6 +34,7 @@ import { Route as PlatformHealthRouteImport } from './routes/platform.health'
 import { Route as PlatformCouponsRouteImport } from './routes/platform.coupons'
 import { Route as PlatformAuditRouteImport } from './routes/platform.audit'
 import { Route as PlatformAnnouncementsRouteImport } from './routes/platform.announcements'
+import { Route as PlatformAddonsRouteImport } from './routes/platform.addons'
 import { Route as LegalTermsRouteImport } from './routes/legal.terms'
 import { Route as LegalSmsRouteImport } from './routes/legal.sms'
 import { Route as LegalPrivacyRouteImport } from './routes/legal.privacy'
@@ -42,7 +43,6 @@ import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as EmailSuppressionRouteImport } from './routes/email/suppression'
 import { Route as AuthenticatedZonesRouteImport } from './routes/_authenticated/zones'
-import { Route as AuthenticatedWeatherRouteImport } from './routes/_authenticated/weather'
 import { Route as AuthenticatedWasteLogRouteImport } from './routes/_authenticated/waste-log'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedRoutesRouteImport } from './routes/_authenticated/routes'
@@ -248,6 +248,11 @@ const PlatformAnnouncementsRoute = PlatformAnnouncementsRouteImport.update({
   path: '/announcements',
   getParentRoute: () => PlatformRoute,
 } as any)
+const PlatformAddonsRoute = PlatformAddonsRouteImport.update({
+  id: '/addons',
+  path: '/addons',
+  getParentRoute: () => PlatformRoute,
+} as any)
 const LegalTermsRoute = LegalTermsRouteImport.update({
   id: '/legal/terms',
   path: '/legal/terms',
@@ -286,11 +291,6 @@ const EmailSuppressionRoute = EmailSuppressionRouteImport.update({
 const AuthenticatedZonesRoute = AuthenticatedZonesRouteImport.update({
   id: '/zones',
   path: '/zones',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedWeatherRoute = AuthenticatedWeatherRouteImport.update({
-  id: '/weather',
-  path: '/weather',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedWasteLogRoute = AuthenticatedWasteLogRouteImport.update({
@@ -763,7 +763,6 @@ export interface FileRoutesByFullPath {
   '/routes': typeof AuthenticatedRoutesRoute
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/waste-log': typeof AuthenticatedWasteLogRoute
-  '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/suppression': typeof EmailSuppressionRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
@@ -772,6 +771,7 @@ export interface FileRoutesByFullPath {
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/sms': typeof LegalSmsRoute
   '/legal/terms': typeof LegalTermsRoute
+  '/platform/addons': typeof PlatformAddonsRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
@@ -873,7 +873,6 @@ export interface FileRoutesByTo {
   '/reports': typeof AuthenticatedReportsRoute
   '/routes': typeof AuthenticatedRoutesRoute
   '/waste-log': typeof AuthenticatedWasteLogRoute
-  '/weather': typeof AuthenticatedWeatherRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/suppression': typeof EmailSuppressionRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
@@ -882,6 +881,7 @@ export interface FileRoutesByTo {
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/sms': typeof LegalSmsRoute
   '/legal/terms': typeof LegalTermsRoute
+  '/platform/addons': typeof PlatformAddonsRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
@@ -988,7 +988,6 @@ export interface FileRoutesById {
   '/_authenticated/routes': typeof AuthenticatedRoutesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/_authenticated/waste-log': typeof AuthenticatedWasteLogRoute
-  '/_authenticated/weather': typeof AuthenticatedWeatherRoute
   '/_authenticated/zones': typeof AuthenticatedZonesRoute
   '/email/suppression': typeof EmailSuppressionRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
@@ -997,6 +996,7 @@ export interface FileRoutesById {
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/sms': typeof LegalSmsRoute
   '/legal/terms': typeof LegalTermsRoute
+  '/platform/addons': typeof PlatformAddonsRoute
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
@@ -1105,7 +1105,6 @@ export interface FileRouteTypes {
     | '/routes'
     | '/settings'
     | '/waste-log'
-    | '/weather'
     | '/zones'
     | '/email/suppression'
     | '/email/unsubscribe'
@@ -1114,6 +1113,7 @@ export interface FileRouteTypes {
     | '/legal/privacy'
     | '/legal/sms'
     | '/legal/terms'
+    | '/platform/addons'
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
@@ -1215,7 +1215,6 @@ export interface FileRouteTypes {
     | '/reports'
     | '/routes'
     | '/waste-log'
-    | '/weather'
     | '/zones'
     | '/email/suppression'
     | '/email/unsubscribe'
@@ -1224,6 +1223,7 @@ export interface FileRouteTypes {
     | '/legal/privacy'
     | '/legal/sms'
     | '/legal/terms'
+    | '/platform/addons'
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
@@ -1329,7 +1329,6 @@ export interface FileRouteTypes {
     | '/_authenticated/routes'
     | '/_authenticated/settings'
     | '/_authenticated/waste-log'
-    | '/_authenticated/weather'
     | '/_authenticated/zones'
     | '/email/suppression'
     | '/email/unsubscribe'
@@ -1338,6 +1337,7 @@ export interface FileRouteTypes {
     | '/legal/privacy'
     | '/legal/sms'
     | '/legal/terms'
+    | '/platform/addons'
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
@@ -1630,6 +1630,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlatformAnnouncementsRouteImport
       parentRoute: typeof PlatformRoute
     }
+    '/platform/addons': {
+      id: '/platform/addons'
+      path: '/addons'
+      fullPath: '/platform/addons'
+      preLoaderRoute: typeof PlatformAddonsRouteImport
+      parentRoute: typeof PlatformRoute
+    }
     '/legal/terms': {
       id: '/legal/terms'
       path: '/legal/terms'
@@ -1684,13 +1691,6 @@ declare module '@tanstack/react-router' {
       path: '/zones'
       fullPath: '/zones'
       preLoaderRoute: typeof AuthenticatedZonesRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/weather': {
-      id: '/_authenticated/weather'
-      path: '/weather'
-      fullPath: '/weather'
-      preLoaderRoute: typeof AuthenticatedWeatherRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/waste-log': {
@@ -2376,7 +2376,6 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedRoutesRoute: typeof AuthenticatedRoutesRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRouteWithChildren
   AuthenticatedWasteLogRoute: typeof AuthenticatedWasteLogRoute
-  AuthenticatedWeatherRoute: typeof AuthenticatedWeatherRoute
   AuthenticatedZonesRoute: typeof AuthenticatedZonesRoute
   AuthenticatedImportsBatchIdRoute: typeof AuthenticatedImportsBatchIdRoute
   AuthenticatedImportsIndexRoute: typeof AuthenticatedImportsIndexRoute
@@ -2406,7 +2405,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedRoutesRoute: AuthenticatedRoutesRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRouteWithChildren,
   AuthenticatedWasteLogRoute: AuthenticatedWasteLogRoute,
-  AuthenticatedWeatherRoute: AuthenticatedWeatherRoute,
   AuthenticatedZonesRoute: AuthenticatedZonesRoute,
   AuthenticatedImportsBatchIdRoute: AuthenticatedImportsBatchIdRoute,
   AuthenticatedImportsIndexRoute: AuthenticatedImportsIndexRoute,
@@ -2418,6 +2416,7 @@ const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
 interface PlatformRouteChildren {
+  PlatformAddonsRoute: typeof PlatformAddonsRoute
   PlatformAnnouncementsRoute: typeof PlatformAnnouncementsRoute
   PlatformAuditRoute: typeof PlatformAuditRoute
   PlatformCouponsRoute: typeof PlatformCouponsRoute
@@ -2435,6 +2434,7 @@ interface PlatformRouteChildren {
 }
 
 const PlatformRouteChildren: PlatformRouteChildren = {
+  PlatformAddonsRoute: PlatformAddonsRoute,
   PlatformAnnouncementsRoute: PlatformAnnouncementsRoute,
   PlatformAuditRoute: PlatformAuditRoute,
   PlatformCouponsRoute: PlatformCouponsRoute,

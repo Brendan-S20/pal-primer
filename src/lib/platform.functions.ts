@@ -83,6 +83,64 @@ export const updateOrgPlan = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// ---------- Plan catalog editing (platform admin → Plans page) ----------
+
+const updatePlatformPlanSchema = z.object({
+  planId: z.string().uuid(),
+  name: z.string().trim().min(1, "Name can't be empty").max(100).optional(),
+  description: z.string().max(1000).nullable().optional(),
+  priceCents: z.number().int().min(0, "Price must be >= 0").optional(),
+  includedSeats: z.number().int().min(0).nullable().optional(),
+  pricePerSeatCents: z.number().int().min(0, "Price must be >= 0").nullable().optional(),
+  isActive: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
+});
+
+export const updatePlatformPlan = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => updatePlatformPlanSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    await assertPlatformAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: before, error: beforeErr } = await supabaseAdmin
+      .from("platform_plans")
+      .select("id, name, description, price_cents, included_seats, price_per_seat_cents, is_active, sort_order")
+      .eq("id", data.planId)
+      .maybeSingle();
+    if (beforeErr) throw new Error(beforeErr.message);
+    if (!before) throw new Error("Plan not found");
+
+    const patch: Record<string, unknown> = {};
+    if (data.name !== undefined) patch.name = data.name;
+    if (data.description !== undefined) patch.description = data.description;
+    if (data.priceCents !== undefined) patch.price_cents = data.priceCents;
+    if (data.includedSeats !== undefined) patch.included_seats = data.includedSeats;
+    if (data.pricePerSeatCents !== undefined) patch.price_per_seat_cents = data.pricePerSeatCents;
+    if (data.isActive !== undefined) patch.is_active = data.isActive;
+    if (data.sortOrder !== undefined) patch.sort_order = data.sortOrder;
+    if (Object.keys(patch).length === 0) return { ok: true, unchanged: true };
+    patch.updated_at = new Date().toISOString();
+
+    const { error } = await supabaseAdmin
+      .from("platform_plans")
+      .update(patch as any)
+      .eq("id", data.planId);
+    if (error) throw new Error(error.message);
+
+    try {
+      await supabaseAdmin.from("platform_admin_audit").insert({
+        actor_user_id: context.userId,
+        organization_id: null,
+        action: "update_plan",
+        before_json: before,
+        after_json: { id: data.planId, ...patch },
+      });
+    } catch { /* audit best-effort */ }
+
+    return { ok: true };
+  });
+
 export const listPlatformAudit = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {

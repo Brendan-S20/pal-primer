@@ -110,7 +110,9 @@ function Dashboard() {
       alerts.push({
         icon: CloudRain,
         text: `${sum.weatherFlaggedToday} weather-flagged visit${sum.weatherFlaggedToday === 1 ? "" : "s"}`,
-        to: "/weather",
+        // The Weather page was replaced by the header forecast popover; Routes
+        // hosts the day-level weather check + reschedule tools.
+        to: "/routes",
         tone: "warn",
       });
     }

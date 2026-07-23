@@ -10,6 +10,7 @@ import {
   Building2,
   UserPlus,
   Package,
+  Puzzle,
   Ticket,
   FileText,
   Users,
@@ -57,6 +58,7 @@ const NAV = [
     section: "Billing",
     items: [
       { to: "/platform/plans" as const, label: "Plans", icon: Package },
+      { to: "/platform/addons" as const, label: "Add-ons", icon: Puzzle },
       { to: "/platform/coupons" as const, label: "Coupons", icon: Ticket },
       { to: "/platform/invoices" as const, label: "Invoices", icon: FileText },
       { to: "/platform/revenue" as const, label: "Revenue", icon: TrendingUp },

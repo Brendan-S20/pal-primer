@@ -29,6 +29,7 @@ import {
   cancelPlatformAddon,
 } from "@/lib/platform-addons.functions";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { StatusChip, MetaChip, SectionLabel } from "@/components/client-detail/primitives";
 import { formatDay } from "@/lib/format";
 import { stripeAppearance } from "@/lib/stripe-appearance";
@@ -646,6 +647,9 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
                       label={a.billing_interval === "one_time" ? "Purchased" : "Active"}
                     />
                   )}
+                  {a.status === "coming_soon" && !a.subscribed && (
+                    <Badge variant="outline">Coming soon</Badge>
+                  )}
                 </div>
                 {/* Annual orgs pay recurring add-ons yearly at 12x the monthly
                     amount (no discount), so show the amount they'll actually
@@ -688,6 +692,10 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
                     }}
                   >
                     {removingId === a.id ? "Removing…" : "Remove from plan"}
+                  </Button>
+                ) : a.status === "coming_soon" ? (
+                  <Button size="sm" disabled title="This add-on isn't available yet">
+                    Coming soon
                   </Button>
                 ) : data?.canSubscribe ? (
                   <Button
