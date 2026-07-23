@@ -41,6 +41,7 @@ DECLARE
   _dow int;
   _guard int;
   _work_days int[];
+  _base date;
 BEGIN
   SELECT COALESCE(work_days, '{0,1,2,3,4,5,6}') INTO _work_days
     FROM public.organizations WHERE id = _org_id;
@@ -61,9 +62,12 @@ BEGIN
     IF _sub.frequency = 'one_time' THEN
       _candidate := _sub.started_on;
       _guard := 0;
+      -- Same rule as recurring: an explicit client-agreed weekday wins over
+      -- org work days; only blackouts always shift.
       WHILE (EXISTS (SELECT 1 FROM public.blackout_dates
                       WHERE organization_id = _org_id AND blackout_on = _candidate)
-             OR NOT (EXTRACT(DOW FROM _candidate)::int = ANY(_work_days)))
+             OR (_prefs IS NULL
+                 AND NOT (EXTRACT(DOW FROM _candidate)::int = ANY(_work_days))))
         AND _guard < 14 LOOP
         _candidate := _candidate + 1;
         _guard := _guard + 1;
@@ -135,6 +139,10 @@ BEGIN
     END IF;
 
     WHILE _candidate <= _stop LOOP
+      -- Monthly cadence must step from the UNSHIFTED anchor: a 15th that
+      -- shifts off a weekend stays "the 15th" next month instead of drifting
+      -- later each time.
+      _base := _candidate;
       _guard := 0;
       WHILE (EXISTS (SELECT 1 FROM public.blackout_dates
                       WHERE organization_id = _org_id AND blackout_on = _candidate)
@@ -159,7 +167,7 @@ BEGIN
       END IF;
 
       IF _sub.frequency = 'monthly' THEN
-        _candidate := (_candidate + INTERVAL '1 month')::date;
+        _candidate := (_base + INTERVAL '1 month')::date;
       ELSE
         _candidate := _candidate + _step;
       END IF;

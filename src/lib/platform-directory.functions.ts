@@ -421,12 +421,18 @@ export const removePlatformUserMfa = createServerFn({ method: "POST" })
     if (listErr) throw new Error(listErr.message);
     const factors = factorsData?.factors ?? [];
 
+    // Attempt every factor even if one fails, then audit what ACTUALLY
+    // happened — throwing mid-loop would leave MFA half-removed with no
+    // audit record at all.
+    let removed = 0;
+    const failures: string[] = [];
     for (const f of factors) {
       const { error } = await supabaseAdmin.auth.admin.mfa.deleteFactor({
         id: f.id,
         userId: data.userId,
       });
-      if (error) throw new Error(error.message);
+      if (error) failures.push(error.message);
+      else removed++;
     }
 
     await audit(
@@ -435,7 +441,12 @@ export const removePlatformUserMfa = createServerFn({ method: "POST" })
       null,
       "remove_user_mfa",
       { target_user_id: data.userId, factor_count: factors.length },
-      { target_user_id: data.userId, factor_count: 0 },
+      { target_user_id: data.userId, factor_count: factors.length - removed, removed, failures },
     );
-    return { ok: true, removed: factors.length };
+    if (failures.length) {
+      throw new Error(
+        `Removed ${removed} of ${factors.length} factors; ${failures.length} failed: ${failures[0]}`,
+      );
+    }
+    return { ok: true, removed };
   });

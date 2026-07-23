@@ -39,11 +39,12 @@ export const listPlatformAddons = createServerFn({ method: "GET" })
 
     const [{ data: catalog, error }, { data: mine }, { data: org }] = await Promise.all([
       // Untyped: `status` postdates the generated Supabase types. Tenants see
-      // active + coming-soon add-ons; disabled ones are hidden entirely.
+      // active + coming-soon add-ons; disabled ones are hidden UNLESS the org
+      // is actively subscribed — a subscribed add-on must stay visible so the
+      // cancel action remains reachable (and billing explainable).
       (context.supabase as any)
         .from("platform_addons")
         .select("id, slug, name, description, price_cents, billing_interval, status, is_active, sort_order")
-        .in("status", ["active", "coming_soon"])
         .order("sort_order"),
       context.supabase
         .from("org_platform_addons")
@@ -60,16 +61,20 @@ export const listPlatformAddons = createServerFn({ method: "GET" })
 
     const subscribed = new Set((mine ?? []).map((m: any) => m.addon_id));
     return {
-      addons: (catalog ?? []).map((a: any) => ({
-        id: a.id,
-        slug: a.slug,
-        name: a.name,
-        description: a.description,
-        price_cents: a.price_cents,
-        billing_interval: a.billing_interval,
-        status: (a.status === "coming_soon" ? "coming_soon" : "active") as "active" | "coming_soon",
-        subscribed: subscribed.has(a.id),
-      })),
+      addons: (catalog ?? [])
+        // Disabled add-ons are hidden from the catalog EXCEPT when the org is
+        // subscribed — those rows stay so the tenant can still cancel.
+        .filter((a: any) => a.status !== "disabled" || subscribed.has(a.id))
+        .map((a: any) => ({
+          id: a.id,
+          slug: a.slug,
+          name: a.name,
+          description: a.description,
+          price_cents: a.price_cents,
+          billing_interval: a.billing_interval,
+          status: (a.status === "coming_soon" ? "coming_soon" : "active") as "active" | "coming_soon",
+          subscribed: subscribed.has(a.id),
+        })),
       canSubscribe: !!org?.stripe_subscription_id && org.plan_status === "active",
     };
   });

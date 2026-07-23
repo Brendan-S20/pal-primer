@@ -143,15 +143,21 @@ function PlansPage() {
       toast.error("Prices must be zero or more");
       return;
     }
-    const seats = form.includedSeats.trim() === "" ? undefined : parseInt(form.includedSeats, 10);
+    const seats = form.includedSeats.trim() === "" ? null : parseInt(form.includedSeats, 10);
     const sort = form.sortOrder.trim() === "" ? undefined : parseInt(form.sortOrder, 10);
+    if (seats !== null && !Number.isFinite(seats)) {
+      toast.error("Included employees must be a number");
+      return;
+    }
     save.mutate({
       planId: editing.id,
       name: form.name.trim(),
       description: form.description.trim() === "" ? null : form.description.trim(),
       ...(price !== undefined ? { priceCents: price } : {}),
-      ...(perSeat !== undefined ? { pricePerSeatCents: perSeat } : {}),
-      ...(seats !== undefined && Number.isFinite(seats) ? { includedSeats: seats } : {}),
+      // Blank clears the nullable per-seat fields (matching description) —
+      // omitting them would silently keep the old values.
+      pricePerSeatCents: perSeat === undefined ? null : perSeat,
+      includedSeats: seats,
       ...(sort !== undefined && Number.isFinite(sort) ? { sortOrder: sort } : {}),
       isActive: form.isActive,
     });

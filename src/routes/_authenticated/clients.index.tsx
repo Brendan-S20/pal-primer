@@ -1,4 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { RowActions } from "@/components/RowActions";
 import { AiSection, ChurnPanel } from "@/components/ai/AiPanels";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -34,6 +35,7 @@ function money(cents: number) {
 }
 
 function ClientsList() {
+  const navigate = useNavigate();
   const fn = useServerFn(listClients);
   const { data, isLoading } = useQuery({
     queryKey: ["clients"],
@@ -276,6 +278,9 @@ function ClientsList() {
                   <th className="px-4 py-2 font-medium">Balance</th>
                   <th className="px-4 py-2 font-medium">Contact</th>
                   <th className="px-4 py-2 font-medium">Status</th>
+                  <th className="w-28 px-4 py-2 text-right font-medium">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -330,6 +335,34 @@ function ClientsList() {
                       ) : (
                         <span className="text-muted-foreground">Inactive</span>
                       )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <RowActions
+                        view={{
+                          label: `View ${c.display_name}`,
+                          onSelect: () =>
+                            navigate({ to: "/clients/$clientId", params: { clientId: c.id } }),
+                        }}
+                        edit={{
+                          label: `Edit ${c.display_name}`,
+                          // Deep link that opens the Edit Client drawer on the
+                          // detail page (?edit=true, handled by that route).
+                          onSelect: () =>
+                            navigate({
+                              to: "/clients/$clientId",
+                              params: { clientId: c.id },
+                              search: { edit: true },
+                            }),
+                        }}
+                        actions={[
+                          {
+                            // Existing messaging surface — /messages/$clientId.
+                            label: "Message",
+                            onSelect: () =>
+                              navigate({ to: "/messages/$clientId", params: { clientId: c.id } }),
+                          },
+                        ]}
+                      />
                     </td>
                   </tr>
                 ))}

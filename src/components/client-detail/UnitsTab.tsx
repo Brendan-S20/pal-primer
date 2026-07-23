@@ -5,8 +5,9 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { AlertTriangle, Building2, ChevronDown, Dog as DogIcon, Plus, X } from "lucide-react";
+import { AlertTriangle, Building2, ChevronDown, Dna, Dog as DogIcon, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,8 +17,10 @@ import { EmptyState, MetaChip, SectionLabel } from "@/components/client-detail/p
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { formatDay } from "@/lib/format";
 import { usePermissions } from "@/hooks/useMyRole";
+import { Switch } from "@/components/ui/switch";
 import { listDogsForClient } from "@/lib/clients.functions";
 import { addDog, updateDog } from "@/lib/dogs.functions";
+import { setClientDnaCompliance } from "@/lib/dna.functions";
 import {
   listUnitsForClient,
   createUnit,
@@ -122,20 +125,41 @@ export function UnitsTab({
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
 
+  // DNA compliance reflection (IA rework): commercial clients only. Same flag
+  // the /dna landing list is built from — enabling here surfaces the client in
+  // the DNA workspace.
+  const dnaCard =
+    client?.account_type === "commercial" ? (
+      <DnaComplianceCard
+        clientId={clientId}
+        enabled={!!client?.dna_compliance_enabled}
+        canWrite={canWrite}
+        onChanged={() => {
+          qc.invalidateQueries({ queryKey: ["client", clientId] });
+          qc.invalidateQueries({ queryKey: ["dna-compliance-clients"] });
+          qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
+        }}
+      />
+    ) : null;
+
   if (commercialProps.length === 0) {
     return (
-      <EmptyState
-        icon={Building2}
-        title="No commercial properties"
-        description="Units live on commercial properties. Mark a property as commercial to manage its units here."
-        actionLabel={onGoToTab ? "Go to Properties" : undefined}
-        onAction={onGoToTab ? () => onGoToTab("properties") : undefined}
-      />
+      <div className="space-y-6">
+        {dnaCard}
+        <EmptyState
+          icon={Building2}
+          title="No commercial properties"
+          description="Units live on commercial properties. Mark a property as commercial to manage its units here."
+          actionLabel={onGoToTab ? "Go to Properties" : undefined}
+          onAction={onGoToTab ? () => onGoToTab("properties") : undefined}
+        />
+      </div>
     );
   }
 
   return (
     <div className="space-y-6">
+      {dnaCard}
       {commercialProps.map((p: any) => {
         const propUnits = units.filter((u) => u.property_id === p.id);
         const propReviewDogs = reviewDogs.filter((d) => d.property_id === p.id);
@@ -212,6 +236,68 @@ export function UnitsTab({
           qc.invalidateQueries({ queryKey: ["billing-summary", clientId] });
         }}
       />
+    </div>
+  );
+}
+
+// ── DNA compliance chip / toggle (IA rework) ─────────────────────────────────
+
+function DnaComplianceCard({
+  clientId,
+  enabled,
+  canWrite,
+  onChanged,
+}: {
+  clientId: string;
+  enabled: boolean;
+  canWrite: boolean;
+  onChanged: () => void;
+}) {
+  const setFn = useServerFn(setClientDnaCompliance);
+  const mut = useMutation({
+    mutationFn: (next: boolean) => setFn({ data: { clientId, enabled: next } }),
+    onSuccess: (_r, next) => {
+      toast.success(next ? "DNA compliance enabled" : "DNA compliance disabled");
+      onChanged();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-3 shadow-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <Dna className="h-4 w-4 text-muted-foreground" />
+        <span className="text-sm font-medium">DNA compliance</span>
+        <span
+          className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${
+            enabled
+              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+              : "bg-muted text-muted-foreground"
+          }`}
+        >
+          {enabled ? "Enabled" : "Not enabled"}
+        </span>
+        {enabled && (
+          <Link
+            to="/dna"
+            search={{ client: clientId }}
+            className="text-xs text-primary underline underline-offset-2"
+          >
+            Open DNA workspace
+          </Link>
+        )}
+      </div>
+      {canWrite && (
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          {enabled ? "On" : "Off"}
+          <Switch
+            checked={enabled}
+            disabled={mut.isPending}
+            onCheckedChange={(next) => mut.mutate(next)}
+            aria-label="Toggle DNA compliance"
+          />
+        </label>
+      )}
     </div>
   );
 }

@@ -1,6 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
+// DNA compliance workspace (IA rework): the landing view lists the
+// commercial/HOA clients enrolled in DNA compliance; drilling into a client
+// (?client=<id>) shows that client's samples & matches and registered dogs.
+// The underlying records are the SAME ones the client-detail Units tab reads
+// (I3) — only the entry point changed. Techs never reach this page; every
+// server fn keeps its own permission gate (H1/I7).
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -13,7 +19,10 @@ import {
   listDnaFormOptions,
   billDnaViolation,
   getViolationNotice,
+  listDnaComplianceClients,
+  setClientDnaCompliance,
   type DnaMatch,
+  type DnaComplianceClient,
 } from "@/lib/dna.functions";
 import { setDogDna } from "@/lib/dogs.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,13 +39,32 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { FlaskConical, Trash2, Dna, Receipt, FileText, Printer, Camera } from "lucide-react";
+import {
+  FlaskConical,
+  Trash2,
+  Dna,
+  Receipt,
+  FileText,
+  Printer,
+  Camera,
+  Building2,
+  ChevronRight,
+  ArrowLeft,
+} from "lucide-react";
 import { usePermissions, useMyRole } from "@/hooks/useMyRole";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { supabase } from "@/integrations/supabase/client";
 import { HelpTip } from "@/components/HelpTip";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const Route = createFileRoute("/_authenticated/dna")({
+  // ?client=<uuid> scopes the workspace to one enrolled client; anything else
+  // falls back to the landing list.
+  validateSearch: (search: Record<string, unknown>): { client?: string } => {
+    const c = search.client;
+    return typeof c === "string" && UUID_RE.test(c) ? { client: c } : {};
+  },
   head: () => ({
     meta: [
       { title: "DNA compliance · HoundStack" },
@@ -86,6 +114,181 @@ function SamplePhotoLink({ path }: { path: string }) {
 }
 
 function DnaPage() {
+  const { client } = Route.useSearch();
+  return client ? <ClientDnaWorkspace clientId={client} /> : <DnaLanding />;
+}
+
+// ── Landing: enrolled commercial/HOA clients ─────────────────────────────────
+
+function DnaLanding() {
+  const { role } = usePermissions();
+  const canWrite = role != null && role !== "tech";
+  const qc = useQueryClient();
+  const listFn = useServerFn(listDnaMatches);
+  const complianceFn = useServerFn(listDnaComplianceClients);
+  const enableFn = useServerFn(setClientDnaCompliance);
+
+  // Org-wide stats row (kept from the old IA — one existing query).
+  const statsQ = useQuery({ queryKey: ["dna-matches"], queryFn: () => listFn({}) });
+  const complianceQ = useQuery({
+    queryKey: ["dna-compliance-clients"],
+    queryFn: () => complianceFn(),
+  });
+
+  const [enableClientId, setEnableClientId] = useState("");
+  const enable = useMutation({
+    mutationFn: (clientId: string) => enableFn({ data: { clientId, enabled: true } }),
+    onSuccess: () => {
+      toast.success("DNA compliance enabled");
+      setEnableClientId("");
+      qc.invalidateQueries({ queryKey: ["dna-compliance-clients"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const s = statsQ.data?.summary ?? { total: 0, fine_cents: 0 };
+  const rows: DnaComplianceClient[] = complianceQ.data?.rows ?? [];
+  const notEnabled = complianceQ.data?.notEnabled ?? [];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold flex items-center gap-2">
+          <Dna className="h-6 w-6" /> DNA compliance <HelpTip article="dna" />
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          The commercial and HOA communities enrolled in DNA compliance. Open a client to manage
+          its samples, matches, and registered dogs.
+        </p>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-5">
+        <Stat label="Total samples" value={s.total} />
+        <Stat label="At lab" value={s.sent_to_lab ?? 0} />
+        <Stat label="Matched" value={s.matched ?? 0} tone="good" />
+        <Stat label="No match" value={s.unmatched ?? 0} />
+        <Stat label="Fines billed" value={`$${((s.fine_cents ?? 0) / 100).toFixed(0)}`} />
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Building2 className="h-4 w-4" /> Enrolled clients
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2">Client</th>
+                  <th className="px-3 py-2">Properties</th>
+                  <th className="px-3 py-2">Registered dogs</th>
+                  <th className="px-3 py-2">Samples</th>
+                  <th className="px-3 py-2">Open matches</th>
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {complianceQ.isLoading ? (
+                  <tr>
+                    <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                      Loading…
+                    </td>
+                  </tr>
+                ) : rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+                      No clients enrolled in DNA compliance yet. Enable it for a commercial client
+                      below.
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((c) => (
+                    <tr key={c.id} className="border-t hover:bg-accent/50">
+                      <td className="px-3 py-2">
+                        <Link
+                          to="/dna"
+                          search={{ client: c.id }}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {c.display_name}
+                        </Link>
+                      </td>
+                      <td className="px-3 py-2">{c.property_count}</td>
+                      <td className="px-3 py-2">
+                        {c.registered_dogs} / {c.total_dogs}
+                      </td>
+                      <td className="px-3 py-2">{c.sample_count}</td>
+                      <td className="px-3 py-2">
+                        {c.open_violations > 0 ? (
+                          <Badge variant="destructive">{c.open_violations}</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">0</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Link
+                          to="/dna"
+                          search={{ client: c.id }}
+                          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                        >
+                          Open <ChevronRight className="h-3.5 w-3.5" />
+                        </Link>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {canWrite && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Enable DNA compliance</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {notEnabled.length === 0
+                ? "Every commercial client is already enrolled."
+                : `${notEnabled.length} commercial client${notEnabled.length === 1 ? " is" : "s are"} not enrolled yet.`}
+            </p>
+          </CardHeader>
+          {notEnabled.length > 0 && (
+            <CardContent className="flex flex-wrap items-end gap-3">
+              <div>
+                <Label>Commercial client</Label>
+                <select
+                  value={enableClientId}
+                  onChange={(e) => setEnableClientId(e.target.value)}
+                  className="mt-1 block w-64 rounded border bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Select client…</option>
+                  {notEnabled.map((c: { id: string; display_name: string }) => (
+                    <option key={c.id} value={c.id}>
+                      {c.display_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button
+                disabled={!enableClientId || enable.isPending}
+                onClick={() => enable.mutate(enableClientId)}
+              >
+                {enable.isPending ? "Enabling…" : "Enable"}
+              </Button>
+            </CardContent>
+          )}
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ── Client-scoped workspace: samples & matches / registered dogs ─────────────
+
+function ClientDnaWorkspace({ clientId }: { clientId: string }) {
   const { can } = usePermissions();
   const { orgId } = useMyRole();
   const canBillDna = can("manage_dna_billing");
@@ -99,14 +302,30 @@ function DnaPage() {
   const billFn = useServerFn(billDnaViolation);
   const noticeFn = useServerFn(getViolationNotice);
   const dnaFn = useServerFn(setDogDna);
+  const complianceFn = useServerFn(listDnaComplianceClients);
 
   const { data, refetch, isLoading } = useQuery({
-    queryKey: ["dna-matches"],
-    queryFn: () => listFn(),
+    queryKey: ["dna-matches", clientId],
+    queryFn: () => listFn({ data: { clientId } }),
   });
-  const dogsQ = useQuery({ queryKey: ["dna-dogs"], queryFn: () => dogsFn() });
-  const allDogsQ = useQuery({ queryKey: ["dna-all-dogs"], queryFn: () => allDogsFn() });
+  const dogsQ = useQuery({
+    queryKey: ["dna-dogs", clientId],
+    queryFn: () => dogsFn({ data: { clientId } }),
+  });
+  const allDogsQ = useQuery({
+    queryKey: ["dna-all-dogs", clientId],
+    queryFn: () => allDogsFn({ data: { clientId } }),
+  });
   const optionsQ = useQuery({ queryKey: ["dna-form-options"], queryFn: () => optionsFn() });
+  const complianceQ = useQuery({
+    queryKey: ["dna-compliance-clients"],
+    queryFn: () => complianceFn(),
+  });
+
+  const clientName =
+    complianceQ.data?.rows.find((r: DnaComplianceClient) => r.id === clientId)?.display_name ??
+    complianceQ.data?.notEnabled.find((r: { id: string }) => r.id === clientId)?.display_name ??
+    null;
 
   const [sampleKind, setSampleKind] = useState<"cheek_swab" | "pile_sample">("pile_sample");
   const [locationNote, setLocationNote] = useState("");
@@ -121,7 +340,11 @@ function DnaPage() {
   const [noticeMatchId, setNoticeMatchId] = useState<string | null>(null);
 
   const opts = optionsQ.data;
-  const selectedProp = (opts?.properties ?? []).find((p: any) => p.id === propertyId);
+  // Prefilter the sample form's property dropdown to this client's properties.
+  const clientProperties = (opts?.properties ?? []).filter(
+    (p: any) => p.client_id === clientId,
+  );
+  const selectedProp = clientProperties.find((p: any) => p.id === propertyId);
   const propUnits = (opts?.units ?? []).filter((u: any) => u.property_id === propertyId);
 
   const create = useMutation({
@@ -147,7 +370,7 @@ function DnaPage() {
           labReference: labReference || undefined,
           notes: notes || undefined,
           propertyId: propertyId || undefined,
-          clientId: selectedProp?.client_id || undefined,
+          clientId: selectedProp?.client_id || clientId,
           unitId: unitId || undefined,
           collectedByStaffId: collectedByStaffId || undefined,
           kitReference: kitReference || undefined,
@@ -201,11 +424,20 @@ function DnaPage() {
   return (
     <div className="space-y-6">
       <div>
+        <nav className="mb-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Link to="/dna" search={{}} className="inline-flex items-center gap-1 hover:text-foreground">
+            <ArrowLeft className="h-3.5 w-3.5" /> All clients
+          </Link>
+          <ChevronRight className="h-3.5 w-3.5" />
+          <span className="text-foreground">{clientName ?? "Client"}</span>
+        </nav>
         <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <Dna className="h-6 w-6" /> DNA compliance <HelpTip article="dna" />
+          <Dna className="h-6 w-6" /> {clientName ?? "DNA compliance"}{" "}
+          <HelpTip article="dna" />
         </h1>
         <p className="text-sm text-muted-foreground">
-          Register dogs, log evidence, match pile samples, and issue violation notices.
+          Register dogs, log evidence, match pile samples, and issue violation notices for this
+          client.
         </p>
       </div>
 
@@ -252,11 +484,14 @@ function DnaPage() {
                   }}
                   className="mt-1 block w-full rounded border bg-background px-3 py-2 text-sm"
                 >
-                  <option value="">Select property…</option>
-                  {(opts?.properties ?? []).map((p: any) => (
+                  <option value="">
+                    {clientProperties.length === 0
+                      ? "No properties for this client"
+                      : "Select property…"}
+                  </option>
+                  {clientProperties.map((p: any) => (
                     <option key={p.id} value={p.id}>
                       {p.street}
-                      {p.client_name ? ` — ${p.client_name}` : ""}
                     </option>
                   ))}
                 </select>
@@ -401,7 +636,7 @@ function DnaPage() {
                     ) : rows.length === 0 ? (
                       <tr>
                         <td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">
-                          No samples logged. Add your first pile sample above.
+                          No samples logged for this client. Add your first pile sample above.
                         </td>
                       </tr>
                     ) : (
@@ -591,7 +826,7 @@ function DnaPage() {
                     ) : (allDogsQ.data ?? []).length === 0 ? (
                       <tr>
                         <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
-                          No dogs on file yet.
+                          No dogs on file for this client yet.
                         </td>
                       </tr>
                     ) : (

@@ -175,8 +175,10 @@ export function BillingPanel({ clientId }: { clientId: string }) {
         ) : (
           <div className="mt-3 overflow-x-auto">
             {/* Same invoice row + preview drawer as the Invoices page (B4/I3):
-                click a row to open the shared drawer, which holds every action
-                (take payment, send, copy pay link, void). No inline actions. */}
+                click a row (or its View button) to open the shared drawer;
+                the trailing ••• offers open-full-invoice / copy pay link,
+                while stateful actions (take payment, send, void) stay in the
+                drawer. */}
             <table className="w-full text-sm">
               <thead className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
@@ -185,7 +187,9 @@ export function BillingPanel({ clientId }: { clientId: string }) {
                   <th className="px-4 py-2 font-semibold">Due</th>
                   <th className="px-4 py-2 text-right font-semibold">Total</th>
                   <th className="px-4 py-2 font-semibold">Status</th>
-                  <th className="w-10 px-4 py-2" />
+                  <th className="w-24 px-4 py-2 text-right font-semibold">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
