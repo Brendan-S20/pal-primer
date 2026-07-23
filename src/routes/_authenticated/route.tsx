@@ -1,4 +1,11 @@
-import { createFileRoute, Link, Outlet, redirect, useRouterState } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  Outlet,
+  redirect,
+  useRouter,
+  useRouterState,
+} from "@tanstack/react-router";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
@@ -32,15 +39,22 @@ function openPalette() {
 }
 
 function AppShell() {
-  // Native Capacitor bootstrap — matches brand status bar; no-ops on web.
-  // Also registers APNs/FCM device tokens with our backend on native platforms.
+  const router = useRouter();
+
+  // Native Capacitor bootstrap — theme-coherent status bar; no-ops on web.
+  // Also registers APNs/FCM device tokens with our backend and routes push
+  // notification taps to the deep link in the payload (e.g. /my-day?date=…).
   useEffect(() => {
     let cancelled = false;
+    let removeDeepLinks: (() => void) | undefined;
     (async () => {
       try {
         const native = await import("@/lib/native");
         await native.initStatusBar();
         if (!native.isNative()) return;
+        removeDeepLinks = await native.initPushDeepLinks((path) => {
+          if (!cancelled) router.history.push(path);
+        });
         const { subscribeStaffNativePush } = await import("@/lib/push.functions");
         await native.registerPushNotifications(async (token) => {
           if (cancelled) return;
@@ -62,8 +76,9 @@ function AppShell() {
     })();
     return () => {
       cancelled = true;
+      removeDeepLinks?.();
     };
-  }, []);
+  }, [router]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
