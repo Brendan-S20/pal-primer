@@ -4,9 +4,10 @@ import {
   clearSignupAttribution,
   readSignupAttribution,
   stashSignupAttribution,
+  stashSignupPromoCode,
 } from "@/lib/signup-attribution";
 import { supabase } from "@/integrations/supabase/client";
-import { bootstrapOrganization, recordSmsConsent } from "@/lib/org.functions";
+import { bootstrapOrganization, recordSmsConsent, validateSignupCode } from "@/lib/org.functions";
 import { registerAccount, sendEmailVerification } from "@/lib/auth-entry.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,12 +56,6 @@ function GetStartedPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
   const { email: emailFromAuth } = search;
-  // Persist any ref/utm params so they survive the multi-step flow (and the
-  // OAuth round-trip) until org creation.
-  useEffect(() => {
-    stashSignupAttribution(search as Record<string, unknown>);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +66,45 @@ function GetStartedPage() {
   const [displayName, setDisplayName] = useState("");
   const [phone, setPhone] = useState("");
   const [smsConsent, setSmsConsent] = useState(false);
+
+  // "Promo or referral code" (optional). Validated server-side for a friendly
+  // hint, but an invalid code NEVER blocks signup — the server drops bad codes
+  // at org creation anyway.
+  const [promoCode, setPromoCode] = useState("");
+  const [promoStatus, setPromoStatus] = useState<{ valid: boolean; message: string } | null>(null);
+  const [promoChecking, setPromoChecking] = useState(false);
+
+  const checkPromo = async (value: string) => {
+    const code = value.trim();
+    stashSignupPromoCode(code); // survives the OAuth bounce (auth.tsx bootstrap)
+    if (!code) {
+      setPromoStatus(null);
+      return;
+    }
+    setPromoChecking(true);
+    try {
+      const r = await validateSignupCode({ data: { code } });
+      setPromoStatus(r);
+    } catch {
+      setPromoStatus(null); // validation hiccups must not scare anyone off signup
+    } finally {
+      setPromoChecking(false);
+    }
+  };
+
+  // Persist any ref/utm params so they survive the multi-step flow (and the
+  // OAuth round-trip) until org creation; a referral link's code pre-fills the
+  // promo box so the new owner can SEE their referral is attached.
+  useEffect(() => {
+    stashSignupAttribution(search as Record<string, unknown>);
+    const stashed = readSignupAttribution();
+    const prefill = stashed.promo ?? stashed.ref;
+    if (prefill) {
+      setPromoCode(prefill);
+      checkPromo(prefill);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const step0Valid = /.+@.+\..+/.test(email) && password.length >= 8;
   const step1Valid = isValidOrgName(orgName) && displayName.trim().length > 0;
@@ -100,7 +134,13 @@ function GetStartedPage() {
 
       const attribution = readSignupAttribution();
       await bootstrapOrganization({
-        data: { orgName, displayName, refCode: attribution.ref, utm: attribution.utm },
+        data: {
+          orgName,
+          displayName,
+          refCode: attribution.ref,
+          utm: attribution.utm,
+          promoCode: promoCode.trim() || undefined,
+        },
       });
       clearSignupAttribution();
       if (smsConsent && phone.trim()) {
@@ -233,6 +273,34 @@ function GetStartedPage() {
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="Jane Doe"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="gs-promo">
+                  Promo or referral code{" "}
+                  <span className="font-normal text-muted-foreground">(optional)</span>
+                </Label>
+                <Input
+                  id="gs-promo"
+                  value={promoCode}
+                  onChange={(e) => {
+                    setPromoCode(e.target.value);
+                    setPromoStatus(null);
+                  }}
+                  onBlur={() => checkPromo(promoCode)}
+                  placeholder="e.g. LAUNCH20"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+                {promoChecking ? (
+                  <p className="text-xs text-muted-foreground">Checking code…</p>
+                ) : promoStatus && promoCode.trim() ? (
+                  promoStatus.valid ? (
+                    <p className="text-xs text-emerald-600">✓ {promoStatus.message}</p>
+                  ) : (
+                    <p className="text-xs text-amber-600">{promoStatus.message}</p>
+                  )
+                ) : null}
               </div>
               <div className="flex gap-2">
                 <Button type="button" variant="outline" onClick={() => setStep(0)}>

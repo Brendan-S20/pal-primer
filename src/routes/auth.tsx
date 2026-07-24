@@ -76,7 +76,13 @@ async function ensureBootstrapped(user: {
     await import("@/lib/signup-attribution");
   const attribution = readSignupAttribution();
   await bootstrapOrganization({
-    data: { orgName, displayName, refCode: attribution.ref, utm: attribution.utm },
+    data: {
+      orgName,
+      displayName,
+      refCode: attribution.ref,
+      utm: attribution.utm,
+      promoCode: attribution.promo,
+    },
   });
   clearSignupAttribution();
   // Get-started walkthrough stashes texting consent in user metadata when the

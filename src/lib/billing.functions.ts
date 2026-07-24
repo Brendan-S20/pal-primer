@@ -418,6 +418,39 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       items.push({ price: targetSeatPriceId, quantity: overage });
     }
 
+    // Signup promo: a coupon code captured on Get-started (stored on the org)
+    // is applied to the FIRST subscription as the mirrored Stripe coupon —
+    // Stripe then enforces once/repeating/forever on its own. Re-validated
+    // here: a code deactivated/expired/maxed since signup, or one restricted
+    // to other plans, silently applies nothing rather than blocking checkout.
+    let promoCoupon: { id: string; code: string; stripe_coupon_id: string } | null = null;
+    try {
+      const { data: orgPromoRow } = await (supabaseAdmin as any)
+        .from("organizations")
+        .select("signup_promo_code")
+        .eq("id", orgId)
+        .maybeSingle();
+      const storedCode = orgPromoRow?.signup_promo_code as string | null | undefined;
+      if (storedCode) {
+        const { lookupSignupCode } = await import("@/lib/signup-codes.server");
+        const hit = await lookupSignupCode(supabaseAdmin, storedCode);
+        if (hit.kind === "coupon" && hit.coupon.stripe_coupon_id) {
+          const planOk =
+            !hit.coupon.applies_to_plan_ids?.length ||
+            hit.coupon.applies_to_plan_ids.includes(targetPlan.id);
+          if (planOk) {
+            promoCoupon = {
+              id: hit.coupon.id,
+              code: hit.coupon.code,
+              stripe_coupon_id: hit.coupon.stripe_coupon_id,
+            };
+          }
+        }
+      }
+    } catch (e) {
+      console.error("signup promo lookup failed (subscribing without it)", (e as Error).message);
+    }
+
     // Stripe v22 / 2025+ API: the invoice's client secret lives in
     // latest_invoice.confirmation_secret (invoice.payment_intent is gone).
     const clientSecretOf = (sub: import("stripe").Stripe.Subscription): string | null => {
@@ -463,7 +496,7 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       });
     }
 
-    const sub = await stripe.subscriptions.create({
+    const createParams: import("stripe").Stripe.SubscriptionCreateParams = {
       customer: customerId!,
       items,
       payment_behavior: "default_incomplete",
@@ -476,9 +509,54 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
         plan_id: targetPlan.id,
         kind: "org_saas",
         interval: targetInterval,
+        ...(promoCoupon ? { promo_code: promoCoupon.code } : {}),
       },
       expand: ["latest_invoice.confirmation_secret"],
-    });
+    };
+    let sub: import("stripe").Stripe.Subscription;
+    try {
+      sub = await stripe.subscriptions.create({
+        ...createParams,
+        ...(promoCoupon ? { discounts: [{ coupon: promoCoupon.stripe_coupon_id }] } : {}),
+      });
+    } catch (e) {
+      // A coupon Stripe rejects (e.g. its own max_redemptions hit) must not
+      // block the subscribe — retry once without the discount.
+      if (!promoCoupon) throw e;
+      console.error("signup promo coupon rejected by Stripe; subscribing without it", (e as Error).message);
+      promoCoupon = null;
+      sub = await stripe.subscriptions.create(createParams);
+    }
+
+    // Redemption bookkeeping + attribution audit, best-effort. Counted at
+    // subscription creation; the incomplete-sub REUSE path above returns
+    // before re-creating, so a retried checkout isn't double-counted.
+    if (promoCoupon) {
+      try {
+        const { data: c } = await supabaseAdmin
+          .from("platform_coupons")
+          .select("times_redeemed")
+          .eq("id", promoCoupon.id)
+          .maybeSingle();
+        await supabaseAdmin
+          .from("platform_coupons")
+          .update({ times_redeemed: (c?.times_redeemed ?? 0) + 1 })
+          .eq("id", promoCoupon.id);
+        await supabaseAdmin.from("platform_admin_audit").insert({
+          actor_user_id: context.userId,
+          organization_id: orgId,
+          action: "signup_promo_applied",
+          after_json: {
+            code: promoCoupon.code,
+            subscription_id: sub.id,
+            plan_id: targetPlan.id,
+          },
+        });
+      } catch (e) {
+        console.error("signup promo bookkeeping failed", (e as Error).message);
+      }
+    }
+
     const clientSecret = clientSecretOf(sub);
     if (!clientSecret) throw new Error("Couldn't start the payment. Please try again.");
 

@@ -2566,6 +2566,7 @@ export type Database = {
           seasonal_deepclean_charge_cents: number
           seasonal_deepclean_enabled: boolean
           seasonal_deepclean_months: number[]
+          signup_promo_code: string | null
           signup_ref_code: string | null
           signup_utm: Json | null
           slug: string | null
@@ -2665,6 +2666,7 @@ export type Database = {
           seasonal_deepclean_charge_cents?: number
           seasonal_deepclean_enabled?: boolean
           seasonal_deepclean_months?: number[]
+          signup_promo_code?: string | null
           signup_ref_code?: string | null
           signup_utm?: Json | null
           slug?: string | null
@@ -2764,6 +2766,7 @@ export type Database = {
           seasonal_deepclean_charge_cents?: number
           seasonal_deepclean_enabled?: boolean
           seasonal_deepclean_months?: number[]
+          signup_promo_code?: string | null
           signup_ref_code?: string | null
           signup_utm?: Json | null
           slug?: string | null

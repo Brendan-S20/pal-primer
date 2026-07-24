@@ -10,6 +10,9 @@ const KEY = "hs_signup_attribution";
 export type SignupAttribution = {
   ref?: string;
   utm?: Record<string, string>;
+  /** "Promo or referral code" typed on Get-started (coupon OR referral code —
+   *  classified server-side). Stashed so it survives the OAuth bounce. */
+  promo?: string;
   /** Epoch ms when the attribution was captured. */
   at?: number;
 };
@@ -34,8 +37,23 @@ export function stashSignupAttribution(search: Record<string, unknown>) {
   const next: SignupAttribution = {
     ref: ref ?? existing.ref,
     utm: { ...existing.utm, ...utm },
+    promo: existing.promo,
     at: Date.now(),
   };
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify(next));
+  } catch {
+    // Private-mode storage failures shouldn't break signup.
+  }
+}
+
+/** Stash (or clear, with "") the promo box's contents so a signup that
+ *  detours through OAuth still hands the code to bootstrap_organization. */
+export function stashSignupPromoCode(code: string) {
+  if (typeof window === "undefined") return;
+  const existing = readSignupAttribution();
+  const promo = code.trim().slice(0, 40) || undefined;
+  const next: SignupAttribution = { ...existing, promo, at: Date.now() };
   try {
     window.localStorage.setItem(KEY, JSON.stringify(next));
   } catch {
