@@ -10,20 +10,81 @@ const bootstrapSchema = z.object({
   // org creation, the one moment attribution is reliable.
   refCode: z.string().trim().max(40).optional(),
   utm: z.record(z.string(), z.string().max(200)).optional(),
+  // The "Promo or referral code" box on Get-started. May hold a platform
+  // coupon code OR a tenant referral code — classified server-side below.
+  promoCode: z.string().trim().max(40).optional(),
 });
+
+// Pre-signup validation for the "Promo or referral code" box: public (the
+// account doesn't exist yet), advisory only — an invalid code warns in the UI
+// but NEVER blocks signup, and bootstrapOrganization re-classifies
+// authoritatively anyway.
+export const validateSignupCode = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({ code: z.string().trim().min(1).max(40) }).parse(d))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { lookupSignupCode } = await import("@/lib/signup-codes.server");
+    const hit = await lookupSignupCode(supabaseAdmin, data.code);
+    if (hit.kind === "invalid") return { valid: false as const, message: hit.reason };
+    return { valid: true as const, kind: hit.kind, message: hit.description };
+  });
 
 export const bootstrapOrganization = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) => bootstrapSchema.parse(data))
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { lookupSignupCode } = await import("@/lib/signup-codes.server");
+
+    // Classify the typed promo box BEFORE the RPC: a referral code entered
+    // there rides the existing attribution path inside bootstrap_organization
+    // (tenant_referrals ledger + fraud flags), while a coupon code is stored
+    // on the org after creation for the first Stripe subscribe. Invalid codes
+    // are dropped silently — a bad code must never block signup.
+    let refCode = data.refCode || undefined;
+    let couponCode: string | null = null;
+    if (data.promoCode?.trim()) {
+      try {
+        const hit = await lookupSignupCode(supabaseAdmin, data.promoCode);
+        if (hit.kind === "coupon") couponCode = hit.coupon.code;
+        else if (hit.kind === "referral" && !refCode) refCode = data.promoCode.trim();
+      } catch (e) {
+        console.error("signup code classification failed (continuing without it)", e);
+      }
+    }
+
     const { data: orgId, error } = await supabase.rpc("bootstrap_organization", {
       _org_name: data.orgName,
       _display_name: data.displayName,
-      _ref_code: data.refCode || undefined,
+      _ref_code: refCode,
       _utm: data.utm && Object.keys(data.utm).length ? data.utm : undefined,
     });
     if (error) throw new Error(error.message);
+
+    // Coupon capture: written once (only while null, so an idempotent re-run
+    // for an existing org can't overwrite), audited best-effort. Application
+    // happens later, at the first subscribe (createPlanSubscription).
+    if (orgId && couponCode) {
+      try {
+        const { data: updated } = await (supabaseAdmin as any)
+          .from("organizations")
+          .update({ signup_promo_code: couponCode })
+          .eq("id", orgId)
+          .is("signup_promo_code", null)
+          .select("id");
+        if (updated?.length) {
+          await supabaseAdmin.from("platform_admin_audit").insert({
+            actor_user_id: userId,
+            organization_id: orgId as string,
+            action: "signup_promo_captured",
+            after_json: { code: couponCode },
+          });
+        }
+      } catch (e) {
+        console.error("signup promo capture failed (signup continues)", e);
+      }
+    }
     return { organizationId: orgId as string };
   });
 
