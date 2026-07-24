@@ -47,8 +47,10 @@ export default defineConfig({
           name: "HoundStack",
           short_name: "HoundStack",
           description: "Field service CRM for pet waste removal companies",
-          theme_color: "#0f172a",
-          background_color: "#0f172a",
+          // Brand cream (--cream oklch(0.985 0.012 90)) — matches the icon
+          // backgrounds and the marketing hero, not the old slate navy.
+          theme_color: "#fdfaf1",
+          background_color: "#fdfaf1",
           display: "standalone",
           start_url: "/my-day",
           scope: "/",
