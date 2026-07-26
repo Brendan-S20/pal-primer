@@ -32,6 +32,12 @@ interface EnqueueParams {
   idempotencyKey?: string;
   /** Override the client email lookup (rarely needed). */
   toOverride?: string | null;
+  /** Explicit user-initiated send (e.g. the "Send invoice" button, an
+   * explicit review request or win-back). Manual sends bypass the imported
+   * comms hold AND clear it on success — the org has now initiated contact.
+   * Automated/system sends (cron, webhooks, lifecycle hooks) omit this and
+   * are skipped for clients with comms_paused = true. */
+  manual?: boolean;
 }
 
 interface EnqueueResult {
@@ -39,6 +45,7 @@ interface EnqueueResult {
   reason?:
     | "org_toggle_off"
     | "client_opted_out"
+    | "comms_paused"
     | "no_recipient"
     | "suppressed"
     | "unknown_template"
@@ -73,11 +80,14 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
   // Client + opt-out
   const { data: client } = await supabaseAdmin
     .from("clients")
-    .select("id, display_name, primary_email, email_opt_out")
+    .select("id, display_name, primary_email, email_opt_out, comms_paused")
     .eq("id", params.clientId)
     .maybeSingle();
   if (!client) return { ok: false, reason: "no_recipient" };
   if (client.email_opt_out) return { ok: false, reason: "client_opted_out" };
+  // Imported comms hold: automated sends are skipped until the org initiates
+  // contact. Manual sends proceed (and clear the hold below on success).
+  if (client.comms_paused && !params.manual) return { ok: false, reason: "comms_paused" };
 
   const recipient = (params.toOverride ?? client.primary_email ?? "").trim().toLowerCase();
   if (!recipient) return { ok: false, reason: "no_recipient" };
@@ -152,6 +162,14 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
       error_message: enqueueError.message,
     });
     return { ok: false, reason: "enqueue_failed", messageId };
+  }
+  // A successful explicit manual send lifts the imported comms hold —
+  // contact has now been initiated by the org.
+  if (params.manual && client.comms_paused) {
+    await supabaseAdmin
+      .from("clients")
+      .update({ comms_paused: false })
+      .eq("id", client.id);
   }
   return { ok: true, messageId };
 }

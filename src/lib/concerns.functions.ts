@@ -61,7 +61,7 @@ export const replyToConcern = createServerFn({ method: "POST" })
     const { orgId } = await requirePermission(context.supabase, context.userId, "view_client_directory");
     const { data: ticket, error: tErr } = await context.supabase
       .from("qc_tickets")
-      .select("id, status, clients(display_name, primary_email)")
+      .select("id, status, client_id, clients(display_name, primary_email, comms_paused)")
       .eq("id", data.ticketId)
       .eq("organization_id", orgId)
       .single();
@@ -97,6 +97,14 @@ export const replyToConcern = createServerFn({ method: "POST" })
     // Answering an untouched concern moves it into progress.
     if ((ticket as any).status === "open") patch.status = "in_progress";
     await context.supabase.from("qc_tickets").update(patch as any).eq("id", data.ticketId).eq("organization_id", orgId);
+    // Replying to a concern is an explicit manual send — lift the imported
+    // comms hold now that the org has initiated contact.
+    if (client?.comms_paused && (ticket as any).client_id) {
+      await context.supabase
+        .from("clients")
+        .update({ comms_paused: false })
+        .eq("id", (ticket as any).client_id);
+    }
     return { ok: true, recipient: email };
   });
 

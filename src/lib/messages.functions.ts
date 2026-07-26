@@ -75,7 +75,7 @@ export const sendSmsToClient = createServerFn({ method: "POST" })
 
     const { data: client, error: cErr } = await supabase
       .from("clients")
-      .select("id, organization_id, primary_phone, sms_opt_out, display_name")
+      .select("id, organization_id, primary_phone, sms_opt_out, display_name, comms_paused")
       .eq("id", data.clientId)
       .single();
     if (cErr) throw new Error(cErr.message);
@@ -144,6 +144,11 @@ export const sendSmsToClient = createServerFn({ method: "POST" })
       .single();
     if (insErr) throw new Error(insErr.message);
     if (errorText) throw new Error(errorText);
+    // A successful direct (user-initiated) message lifts the imported comms
+    // hold — the org has now initiated contact.
+    if (client.comms_paused) {
+      await supabase.from("clients").update({ comms_paused: false }).eq("id", client.id);
+    }
     try {
       const { logActivity } = await import("@/lib/activity.server");
       await logActivity(supabase, {
@@ -228,7 +233,7 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
     // Reuse sendSmsToClient path by inlining its logic isn't trivial; call directly.
     const { data: client, error: cErr } = await supabase
       .from("clients")
-      .select("id, organization_id, primary_phone, sms_opt_out")
+      .select("id, organization_id, primary_phone, sms_opt_out, comms_paused")
       .eq("id", v.client_id!)
       .single();
     if (cErr) throw new Error(cErr.message);
@@ -237,6 +242,12 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
     // Account-level opt-out covers the property contact too — conservative on
     // consent until per-contact opt-out exists.
     if (client.sms_opt_out) throw new Error("Client has opted out of SMS.");
+    // Imported comms hold: templated lifecycle texts (reminder / on my way /
+    // completed) count as automated notifications, not personal outreach.
+    if (client.comms_paused)
+      throw new Error(
+        "Communications are paused for this imported client. Send them a direct message or lift the hold on their client page first.",
+      );
     const { data: org } = await supabase
       .from("organizations")
       .select("sms_from_number, notify_sms_visit_reminder, notify_sms_on_my_way, notify_sms_visit_completed")

@@ -193,7 +193,7 @@ export const completeVisit = createServerFn({ method: "POST" })
     try {
       const { data: v } = await context.supabase
         .from("visits")
-        .select("organization_id, client_id, clients(id, display_name, sms_opt_out, primary_phone, review_asked_at), organizations!inner(name, review_ask_enabled, google_review_url, sms_from_number, review_ask_template)")
+        .select("organization_id, client_id, clients(id, display_name, sms_opt_out, comms_paused, primary_phone, review_asked_at), organizations!inner(name, review_ask_enabled, google_review_url, sms_from_number, review_ask_template)")
         .eq("id", data.visitId)
         .single();
       const c: any = v && (Array.isArray((v as any).clients) ? (v as any).clients[0] : (v as any).clients);
@@ -203,6 +203,9 @@ export const completeVisit = createServerFn({ method: "POST" })
         o?.review_ask_enabled &&
         o?.google_review_url &&
         c?.id &&
+        // Imported comms hold: no automated review asks (SMS or email) until
+        // the org initiates contact with this client.
+        !c?.comms_paused &&
         (!c?.review_asked_at || new Date(c.review_asked_at).getTime() < ninetyDaysAgo);
       if (eligible) {
         const orgId = (v as any).organization_id;

@@ -381,9 +381,11 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                   if (org?.notify_sms_payment_failed && dunningFrom) {
                     const { data: c } = await supabaseAdmin
                       .from("clients")
-                      .select("display_name, primary_phone, sms_opt_out, portal_token")
+                      .select("display_name, primary_phone, sms_opt_out, portal_token, comms_paused")
                       .eq("id", inv.client_id).single();
-                    if (c && !c.sms_opt_out && c.primary_phone) {
+                    // comms_paused: imported clients get no automated dunning
+                    // SMS until the org initiates contact.
+                    if (c && !c.sms_opt_out && !c.comms_paused && c.primary_phone) {
                       const { sendTwilioSms } = await import("@/lib/twilio.server");
                       const { buildPortalLink } = await import("@/lib/portal-links.server");
                       const url = await buildPortalLink(inv.organization_id, c.portal_token as string | null);
