@@ -96,7 +96,8 @@ function RevenuePage() {
                     <span className="flex items-center gap-2">
                       <span className="w-5 text-right tabular-nums text-muted-foreground">{i + 1}.</span>
                       <Link
-                        to="/platform"
+                        to="/platform/tenants/$id"
+                        params={{ id: o.id }}
                         className="font-medium hover:underline"
                       >
                         {o.name}

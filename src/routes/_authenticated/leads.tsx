@@ -23,6 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useMemo, useState } from "react";
+import { humanizeEnum } from "@/lib/humanize";
 
 export const Route = createFileRoute("/_authenticated/leads")({
   component: LeadsPage,
@@ -123,7 +124,7 @@ function LeadsPage() {
                 <SelectItem value="all">All</SelectItem>
                 {STATUSES.map((s) => (
                   <SelectItem key={s} value={s}>
-                    {s}
+                    {humanizeEnum(s)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -171,7 +172,7 @@ function LeadsPage() {
                     <SelectContent>
                       {STATUSES.filter((s) => s !== "archived").map((s) => (
                         <SelectItem key={s} value={s}>
-                          {s}
+                          {humanizeEnum(s)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -215,7 +216,7 @@ function LeadsPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <div className="font-medium">{l.name}</div>
-                    <Badge variant="outline">{l.status}</Badge>
+                    <Badge variant="outline">{humanizeEnum(l.status)}</Badge>
                     {l.company ? (
                       <span className="text-sm text-muted-foreground">· {l.company}</span>
                     ) : null}
@@ -233,13 +234,18 @@ function LeadsPage() {
                       </>
                     ) : null}
                     {l.location ? <> · {l.location}</> : null}
-                    {l.dog_count != null ? <> · {l.dog_count} clients</> : null}
+                    {l.dog_count != null ? (
+                      <>
+                        {" "}
+                        · {l.dog_count} dog{l.dog_count === 1 ? "" : "s"}
+                      </>
+                    ) : null}
                   </div>
                   {l.message ? (
                     <p className="mt-2 max-w-2xl whitespace-pre-wrap text-sm">{l.message}</p>
                   ) : null}
                   <div className="mt-2 text-xs text-muted-foreground">
-                    {new Date(l.created_at).toLocaleString()} · source: {l.source}
+                    {new Date(l.created_at).toLocaleString()} · source: {humanizeEnum(l.source)}
                   </div>
                 </div>
                 <div className="flex w-40 flex-col gap-2">
@@ -254,7 +260,17 @@ function LeadsPage() {
                             {
                               label: "Convert to client",
                               disabled: convertMut.isPending,
-                              onSelect: () => convertMut.mutate(l.id),
+                              onSelect: async () => {
+                                if (
+                                  await confirm({
+                                    title: `Convert ${l.name} to a client?`,
+                                    description:
+                                      "Creates a client record from this lead and marks the lead converted.",
+                                    confirmLabel: "Convert",
+                                  })
+                                )
+                                  convertMut.mutate(l.id);
+                              },
                             },
                           ]
                         : []),
@@ -264,7 +280,18 @@ function LeadsPage() {
                               label: "Archive",
                               destructive: true,
                               disabled: mut.isPending,
-                              onSelect: () => mut.mutate({ id: l.id, status: "archived" }),
+                              onSelect: async () => {
+                                if (
+                                  await confirm({
+                                    title: `Archive lead ${l.name}?`,
+                                    description:
+                                      "Archived leads drop out of the working list but stay available under the Archived filter.",
+                                    destructive: true,
+                                    confirmLabel: "Archive",
+                                  })
+                                )
+                                  mut.mutate({ id: l.id, status: "archived" });
+                              },
                             },
                           ]
                         : []),
@@ -273,7 +300,17 @@ function LeadsPage() {
                   {l.status !== "converted" && (
                     <Button
                       size="sm"
-                      onClick={() => convertMut.mutate(l.id)}
+                      onClick={async () => {
+                        if (
+                          await confirm({
+                            title: `Convert ${l.name} to a client?`,
+                            description:
+                              "Creates a client record from this lead and marks the lead converted.",
+                            confirmLabel: "Convert",
+                          })
+                        )
+                          convertMut.mutate(l.id);
+                      }}
                       disabled={convertMut.isPending}
                     >
                       Convert to client
@@ -291,7 +328,7 @@ function LeadsPage() {
                     <SelectContent>
                       {STATUSES.map((s) => (
                         <SelectItem key={s} value={s}>
-                          {s}
+                          {humanizeEnum(s)}
                         </SelectItem>
                       ))}
                     </SelectContent>

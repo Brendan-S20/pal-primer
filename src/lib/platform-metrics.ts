@@ -58,7 +58,11 @@ export function monthlyEquivalentCents(org: OrgForMrr): number {
   const seats = org.active_seat_count ?? 0;
   const included = p.included_seats ?? 0;
   const perSeat = p.price_per_seat_cents ?? 0;
-  const overage = Math.max(0, seats - included) * perSeat;
+  // price_per_seat_cents is denominated in the plan's billing interval, so an
+  // annual plan's seat overage is a YEARLY charge — divide by 12 for MRR just
+  // like the base price.
+  const overageRaw = Math.max(0, seats - included) * perSeat;
+  const overage = p.interval === "year" ? Math.round(overageRaw / 12) : overageRaw;
 
   return base + overage;
 }

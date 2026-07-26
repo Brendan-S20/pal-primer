@@ -42,6 +42,12 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   update_user_email: "Changed user email",
   update_user_phone: "Changed user phone",
   remove_user_mfa: "Removed user MFA",
+  suspend_tenant: "Suspended tenant",
+  reactivate_tenant: "Reactivated tenant",
+  grant_grace_period: "Granted grace period",
+  soft_delete_tenant: "Deleted tenant (soft)",
+  signup_promo_captured: "Captured signup promo code",
+  signup_promo_applied: "Applied signup promo code",
 };
 
 export function humanizeAuditAction(action: string | null | undefined): string {

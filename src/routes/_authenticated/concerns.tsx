@@ -11,6 +11,7 @@ import {
   type ConcernStatus,
 } from "@/lib/concerns.functions";
 import { parseHoldRequest } from "@/lib/hold-request";
+import { humanizeEnum } from "@/lib/humanize";
 import { parseFrequencyRequest, frequencyLabel } from "@/lib/frequency-request";
 import { applyFrequencyChangeRequest } from "@/lib/subscriptions.functions";
 import { usePermissions } from "@/hooks/useMyRole";
@@ -262,7 +263,7 @@ function ConcernsPage() {
                     <div>
                     <div className="flex items-center gap-2 max-md:flex-wrap">
                       <span className="font-medium">{client?.display_name ?? "Client"}</span>
-                      <Badge variant="outline">{CONCERN_CATEGORY_LABELS[c.category] ?? c.category}</Badge>
+                      <Badge variant="outline">{CONCERN_CATEGORY_LABELS[c.category] ?? humanizeEnum(c.category)}</Badge>
                       <Badge variant={status === "resolved" ? "secondary" : status === "in_progress" ? "default" : "destructive"}>
                         {STATUS_LABEL[status]}
                       </Badge>

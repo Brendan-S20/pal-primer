@@ -30,6 +30,7 @@ type Plan = {
   slug: string;
   description: string | null;
   price_cents: number | null;
+  annual_price_cents: number | null;
   included_seats: number | null;
   price_per_seat_cents: number | null;
   is_enterprise: boolean;
@@ -42,7 +43,12 @@ type Plan = {
 
 function formatBase(p: Plan): string {
   if (p.is_enterprise) return "Custom";
-  if (p.price_cents !== null) return `$${(p.price_cents / 100).toFixed(0)}/${p.interval}`;
+  // price_cents is ALWAYS the monthly base; annual plans additionally carry
+  // their yearly base in annual_price_cents.
+  if (p.interval === "year" && p.annual_price_cents !== null) {
+    return `$${(p.annual_price_cents / 100).toFixed(0)}/year`;
+  }
+  if (p.price_cents !== null) return `$${(p.price_cents / 100).toFixed(0)}/month`;
   return "-";
 }
 
@@ -61,9 +67,10 @@ function formatOverage(p: Plan): string {
 type EditForm = {
   name: string;
   description: string;
-  price: string; // dollars, raw string while typing
+  price: string; // MONTHLY base dollars, raw string while typing
+  annualPrice: string; // ANNUAL base dollars ($/year) — only used when interval=year
   includedSeats: string;
-  pricePerSeat: string; // dollars
+  pricePerSeat: string; // dollars per interval
   interval: "month" | "year";
   isActive: boolean;
   sortOrder: string;
@@ -83,7 +90,7 @@ function PlansPage() {
       const { data, error } = await (supabase as any)
         .from("platform_plans")
         .select(
-          "id, name, slug, description, price_cents, included_seats, price_per_seat_cents, is_enterprise, currency, interval, is_active, sort_order, stripe_price_id",
+          "id, name, slug, description, price_cents, annual_price_cents, included_seats, price_per_seat_cents, is_enterprise, currency, interval, is_active, sort_order, stripe_price_id",
         )
         .order("sort_order", { ascending: true });
       if (error) throw new Error(error.message);
@@ -100,6 +107,7 @@ function PlansPage() {
       name: p.name,
       description: p.description ?? "",
       price: p.price_cents === null ? "" : (p.price_cents / 100).toFixed(2),
+      annualPrice: p.annual_price_cents === null ? "" : (p.annual_price_cents / 100).toFixed(2),
       includedSeats: p.included_seats === null ? "" : String(p.included_seats),
       pricePerSeat:
         p.price_per_seat_cents === null ? "" : (p.price_per_seat_cents / 100).toFixed(2),
@@ -115,6 +123,7 @@ function PlansPage() {
       name?: string;
       description?: string | null;
       priceCents?: number;
+      annualPriceCents?: number | null;
       includedSeats?: number | null;
       pricePerSeatCents?: number | null;
       interval?: "month" | "year";
@@ -141,9 +150,18 @@ function PlansPage() {
       return Number.isFinite(n) ? n : undefined;
     };
     const price = dollars(form.price);
+    const annualPrice = dollars(form.annualPrice);
     const perSeat = dollars(form.pricePerSeat);
-    if ((price !== undefined && price < 0) || (perSeat !== undefined && perSeat < 0)) {
+    if (
+      (price !== undefined && price < 0) ||
+      (annualPrice !== undefined && annualPrice < 0) ||
+      (perSeat !== undefined && perSeat < 0)
+    ) {
       toast.error("Prices must be zero or more");
+      return;
+    }
+    if (form.interval === "year" && annualPrice === undefined) {
+      toast.error("Annual plans need an annual price ($/year)");
       return;
     }
     const seats = form.includedSeats.trim() === "" ? null : parseInt(form.includedSeats, 10);
@@ -156,7 +174,11 @@ function PlansPage() {
       planId: editing.id,
       name: form.name.trim(),
       description: form.description.trim() === "" ? null : form.description.trim(),
+      // price_cents is ALWAYS monthly dollars; the annual base lives in
+      // annual_price_cents. Annual dollars are never written into
+      // price_cents/price_per_seat_cents (that corrupted MRR by 12x).
       ...(price !== undefined ? { priceCents: price } : {}),
+      annualPriceCents: annualPrice ?? null,
       // Blank clears the nullable per-seat fields (matching description) —
       // omitting them would silently keep the old values.
       pricePerSeatCents: perSeat === undefined ? null : perSeat,
@@ -263,7 +285,7 @@ function PlansPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label>Base price ($/{form.interval})</Label>
+                  <Label>Base price ($/month)</Label>
                   <Input
                     type="number" step="0.01" min="0"
                     value={form.price}
@@ -281,6 +303,21 @@ function PlansPage() {
                   />
                 </div>
               </div>
+              {form.interval === "year" && (
+                <div>
+                  <Label>Annual price ($/year)</Label>
+                  <Input
+                    type="number" step="0.01" min="0"
+                    value={form.annualPrice}
+                    onChange={(e) => setForm({ ...form, annualPrice: e.target.value })}
+                    disabled={editing.is_enterprise}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    The yearly base billed to annual tenants. The monthly base price above is
+                    never multiplied — MRR uses this value divided by 12.
+                  </p>
+                </div>
+              )}
               <div>
                 <Label htmlFor="plan-billing-interval">Billing interval</Label>
                 <select

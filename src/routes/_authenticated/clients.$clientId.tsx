@@ -73,7 +73,7 @@ export const Route = createFileRoute("/_authenticated/clients/$clientId")({
 
 function ClientDetail() {
   const { clientId } = Route.useParams();
-  const { can } = usePermissions();
+  const { can, loading: roleLoading } = usePermissions();
   const canBill = can("manage_client_billing");
   const canManagePricing = can("manage_pricing");
 
@@ -156,6 +156,15 @@ function ClientDetail() {
       replace: true,
     });
   }, [search.edit, search.editProperty, search.editService]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A deep link to ?tab=billing for a role without billing visibility (e.g. a
+  // dispatcher) falls back to Summary below — also strip the param (replace
+  // nav) so refresh/back don't keep re-pointing at a tab that never shows.
+  useEffect(() => {
+    if (!roleLoading && search.tab === "billing" && !canBill) {
+      navigate({ search: {}, replace: true });
+    }
+  }, [roleLoading, canBill, search.tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
   if (error) return <p className="text-destructive">{(error as Error).message}</p>;

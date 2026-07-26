@@ -23,7 +23,7 @@ export const listClients = createServerFn({ method: "GET" })
     const { data, error } = await supabase
       .from("clients")
       .select(
-        "id, display_name, account_type, primary_email, primary_phone, active, created_at, credit_balance_cents, churn_score",
+        "id, display_name, account_type, primary_email, primary_phone, active, created_at, credit_balance_cents, churn_score, comms_paused",
       )
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
@@ -198,7 +198,15 @@ export const updateClient = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    await requirePermission(supabase, userId, "view_client_directory");
+    // Archiving/reactivating a client (the `active` flag) shuts service and
+    // billing down — that's a manager-class write, not a directory edit, so a
+    // dispatcher token can't bulk-archive the book. Other contact-level edits
+    // keep the directory gate.
+    await requirePermission(
+      supabase,
+      userId,
+      data.active !== undefined ? "manage_client_billing" : "view_client_directory",
+    );
 
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     const changed: string[] = [];

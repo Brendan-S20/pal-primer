@@ -337,10 +337,11 @@ function InvoicesPage() {
     setStatus("all");
   };
 
-  // Shared multi-select hook (same plumbing as Clients / Leads / Visits). No
-  // clearKey: this page intentionally keeps a selection across filter tweaks.
+  // Shared multi-select hook (same plumbing as Clients / Leads / Visits).
+  // Selection clears whenever a filter changes so a bulk void/mark-paid never
+  // silently mutates rows that were filtered out of view.
   const visibleIds = useMemo(() => filtered.map((i) => i.id), [filtered]);
-  const sel = useRowSelection(visibleIds);
+  const sel = useRowSelection(visibleIds, `${status}|${search}|${from}|${to}`);
   const { selectedIds, allSelected: allVisibleSelected, toggleAll } = sel;
   const selectedRows = useMemo(
     () => filtered.filter((i) => sel.isSelected(i.id)),
@@ -349,12 +350,22 @@ function InvoicesPage() {
   const totalSelected = selectedRows.reduce((sum, i) => sum + (i.total_cents ?? 0), 0);
   const selectedOpen = selectedRows.filter((i) => i.status === "open");
 
+  // A void/paid changes every money surface at once — refresh the summary
+  // cards too, not just the table.
+  const refreshMoney = () => {
+    qc.invalidateQueries({ queryKey: ["invoices"] });
+    qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
+    qc.invalidateQueries({ queryKey: ["billing-summary"] });
+  };
+
   const voidM = useMutation({
     mutationFn: () => voidBulk({ data: { ids: selectedIds } }),
     onSuccess: (r) => {
-      toast.success(`Voided ${r.ok}${r.failed ? ` (${r.failed} skipped)` : ""}`);
+      // All-fail must not read as green success.
+      if (r.failed) toast.error(`Voided ${r.ok} of ${r.ok + r.failed} — ${r.failed} skipped`);
+      else toast.success(`Voided ${r.ok}`);
       sel.clear();
-      qc.invalidateQueries({ queryKey: ["invoices"] });
+      refreshMoney();
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -362,9 +373,11 @@ function InvoicesPage() {
   const paidM = useMutation({
     mutationFn: () => paidBulk({ data: { ids: selectedIds } }),
     onSuccess: (r) => {
-      toast.success(`Marked ${r.ok} paid${r.failed ? ` (${r.failed} skipped)` : ""}`);
+      if (r.failed)
+        toast.error(`Marked ${r.ok} of ${r.ok + r.failed} paid — ${r.failed} skipped`);
+      else toast.success(`Marked ${r.ok} paid`);
       sel.clear();
-      qc.invalidateQueries({ queryKey: ["invoices"] });
+      refreshMoney();
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -437,7 +450,7 @@ function InvoicesPage() {
     onSuccess: (r) => {
       if (r.ok) toast.success("Invoice marked paid");
       else toast.error("Invoice could not be marked paid");
-      qc.invalidateQueries({ queryKey: ["invoices"] });
+      refreshMoney();
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -445,7 +458,7 @@ function InvoicesPage() {
     mutationFn: (id: string) => voidOne({ data: { id } }),
     onSuccess: () => {
       toast.success("Invoice voided");
-      qc.invalidateQueries({ queryKey: ["invoices"] });
+      refreshMoney();
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -740,7 +753,18 @@ function InvoicesPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => paidM.mutate()}
+              onClick={async () => {
+                // Same confirm as the per-row action — this moves money.
+                if (
+                  await confirm({
+                    title: `Mark ${selectedIds.length} invoice${selectedIds.length === 1 ? "" : "s"} paid?`,
+                    description:
+                      "Records an out-of-band payment (cash, check, etc.) for each open balance. This can't be undone here.",
+                    confirmLabel: "Mark paid",
+                  })
+                )
+                  paidM.mutate();
+              }}
               disabled={paidM.isPending}
             >
               Mark paid

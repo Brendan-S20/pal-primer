@@ -410,6 +410,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
   const del = useMutation({
     mutationFn: (id: string) => deleteFn({ data: { id } }),
     onSuccess: () => refetch(),
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const bill = useMutation({
@@ -892,7 +893,23 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
                                   <FileText className="h-3.5 w-3.5 mr-1" /> Notice
                                 </Button>
                               )}
-                              <Button size="sm" variant="ghost" onClick={() => del.mutate(r.id)}>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={del.isPending}
+                                onClick={async () => {
+                                  if (
+                                    await confirm({
+                                      title: "Delete this DNA sample?",
+                                      description:
+                                        "The sample record (chain of custody, lab references, any match) is removed permanently.",
+                                      destructive: true,
+                                      confirmLabel: "Delete sample",
+                                    })
+                                  )
+                                    del.mutate(r.id);
+                                }}
+                              >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>

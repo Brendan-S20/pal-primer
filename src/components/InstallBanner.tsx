@@ -66,7 +66,9 @@ export function InstallBanner() {
   };
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-2 z-40 flex justify-center px-2">
+    // Below md the app shows a fixed bottom tab bar (3.5rem + safe area) —
+    // sit the banner above it instead of covering the tabs.
+    <div className="pointer-events-none fixed inset-x-0 bottom-2 z-40 flex justify-center px-2 max-md:bottom-[calc(3.5rem+env(safe-area-inset-bottom)+0.5rem)]">
       <div className="pointer-events-auto flex w-full max-w-md items-center gap-2 rounded-lg border bg-card p-3 shadow-lg">
         <Download className="h-5 w-5 shrink-0 text-primary" />
         <div className="min-w-0 flex-1 text-sm">

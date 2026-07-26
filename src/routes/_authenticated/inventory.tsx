@@ -116,6 +116,30 @@ function InventoryPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Archived items were unrecoverable (QA finding): per-row Restore reuses
+  // the same upsertItem fn with active:true.
+  const restoreM = useMutation({
+    mutationFn: (i: Item) =>
+      saveFn({
+        data: {
+          id: i.id,
+          name: i.name,
+          sku: i.sku,
+          unit: i.unit,
+          unit_cost_cents: Number(i.unit_cost_cents ?? 0),
+          reorder_threshold: Number(i.reorder_threshold ?? 0),
+          category: i.category,
+          notes: i.notes,
+          active: true,
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Item restored");
+      qc.invalidateQueries({ queryKey: ["inv-items"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   return (
     <div className="space-y-6">
       {bulkDialog}
@@ -227,7 +251,18 @@ function InventoryPage() {
                         <td className="px-4 py-2 text-muted-foreground">{fmtQty(i.reorder_threshold)}</td>
                         <td className="px-4 py-2">{fmtMoney(i.unit_cost_cents)}</td>
                         <td className="px-4 py-2 text-right">
-                          <MovementDialog item={i} staffList={staff.data ?? []} />
+                          {i.active ? (
+                            <MovementDialog item={i} staffList={staff.data ?? []} />
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={restoreM.isPending}
+                              onClick={() => restoreM.mutate(i)}
+                            >
+                              Restore
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     );
