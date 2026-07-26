@@ -216,6 +216,9 @@ export const sendWinBack = createServerFn({ method: "POST" })
         promoCode: code,
         expiresOn: new Date(expiresAt).toLocaleDateString(),
       },
+      // Explicit staff-initiated win-back — manual send: bypasses and clears
+      // the imported comms hold.
+      manual: true,
     });
     if (!res.ok) throw new Error(`Email not sent: ${res.reason}`);
 

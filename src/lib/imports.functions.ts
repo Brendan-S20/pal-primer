@@ -90,13 +90,34 @@ const CLIENT_PRESETS: Record<string, PresetMap> = {
     external_id: ["Client ID", "Customer ID", "ID"],
     notes: ["Notes"],
   },
+  // Header names verified against a real Jobber "Clients and properties"
+  // export (scratchpad/jobber-real.csv): "J-ID", "Display Name",
+  // "Is Company?", "Main Phone #s"/"Mobile Phone #s" (multi-value, ";"
+  // separated), "E-mails", "Tags", Service/Billing address columns.
   jobber: {
-    display_name: ["Company/Client name", "Client name", "Name"],
-    account_type: ["Client type", "Type"],
-    primary_email: ["Email", "Primary email"],
-    primary_phone: ["Mobile phone number", "Phone", "Primary phone number"],
-    external_id: ["Client ID", "ID"],
-    notes: ["Notes"],
+    display_name: ["Display Name", "Company/Client name", "Client name", "Company Name", "Name"],
+    // "Is Company?" carries "true"/"false" — normalizeAccountType maps
+    // true/yes/company → commercial.
+    account_type: ["Is Company?", "Client type", "Type"],
+    primary_email: ["E-mails", "Email", "Primary email"],
+    primary_phone: [
+      "Main Phone #s",
+      "Mobile Phone #s",
+      "Text Message Enabled Phone #",
+      "Mobile phone number",
+      "Phone",
+      "Primary phone number",
+    ],
+    external_id: ["J-ID", "Client ID", "ID"],
+    // Jobber Tags hold cadence/segment info ("2nd & 4th Week", "Follow-Up")
+    // worth keeping — land them in notes when there's no Notes column.
+    notes: ["Notes", "Tags"],
+    // Service address preferred; Billing is a per-row fallback in
+    // mapClientRow (BILLING_FALLBACK_COLUMNS) when Service cells are empty.
+    street: ["Service Street 1", "Billing Street 1", "street", "address", "street address"],
+    city: ["Service City", "Billing City", "city", "town"],
+    region: ["Service State", "Billing State", "region", "state", "province"],
+    postal_code: ["Service Zip code", "Billing Zip code", "postal_code", "zip", "zip code", "postcode"],
   },
   housecall_pro: {
     display_name: ["Customer Name", "Name"],
@@ -201,12 +222,12 @@ const PROPERTY_PRESETS: Record<string, PresetMap> = {
     notes: ["Notes", "Service Notes"],
   },
   jobber: {
-    client_external_id: ["Client ID"],
-    label: ["Property name"],
-    street: ["Street 1", "Street"],
-    city: ["City"],
-    region: ["Province/State", "State"],
-    postal_code: ["Postal/Zip Code", "Postal code", "Zip"],
+    client_external_id: ["J-ID", "Client ID"],
+    label: ["Service Property Name", "Property name"],
+    street: ["Service Street 1", "Street 1", "Street"],
+    city: ["Service City", "City"],
+    region: ["Service State", "Province/State", "State"],
+    postal_code: ["Service Zip code", "Postal/Zip Code", "Postal code", "Zip"],
     gate_code: ["Gate Code"],
     notes: ["Property notes", "Notes"],
   },
@@ -342,17 +363,32 @@ export function autoMap(
 
 function normalizeAccountType(v: unknown): "residential" | "commercial" {
   const s = String(v ?? "").toLowerCase().trim();
+  // Jobber's "Is Company?" column is a "true"/"false" boolean: company → commercial.
+  if (s === "true" || s === "yes" || s === "y" || s === "company") return "commercial";
+  if (s === "false" || s === "no" || s === "n") return "residential";
   if (s.startsWith("comm") || s.includes("business") || s.includes("hoa") || s.includes("commercial")) return "commercial";
   return "residential";
 }
 
 function normalizePhone(v: string | null): string | null {
   if (!v) return null;
-  const digits = v.replace(/\D+/g, "");
+  // Multi-value cells (Jobber "Main Phone #s": "+13136525507;7343416191")
+  // → keep the first non-empty number.
+  const first = v.split(/[;,/]/).map((p) => p.trim()).find((p) => p.length > 0);
+  if (!first) return null;
+  const digits = first.replace(/\D+/g, "");
   if (!digits) return null;
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-  return v.trim();
+  return first;
+}
+
+// Multi-value email cells (Jobber "E-mails" can hold several, ";"/"," separated)
+// → first non-empty entry.
+function firstEmail(v: string | null): string | null {
+  if (!v) return null;
+  const first = v.split(/[;,\s]+/).map((p) => p.trim()).find((p) => p.length > 0);
+  return first || null;
 }
 
 // Case-insensitive lookup across common column-name synonyms in the raw row.
@@ -373,7 +409,16 @@ function rawLookup(raw: Record<string, any>, names: string[]): string | null {
 
 const FIRST_NAME_COLUMNS = ["First Name", "First name", "first_name", "Given Name"];
 const LAST_NAME_COLUMNS = ["Last Name", "Last name", "last_name", "Family Name", "Surname"];
-const ADDRESS_2_COLUMNS = ["Street 2", "Address Line 2", "address_line_2", "Address 2", "Unit", "Apt", "Suite"];
+const ADDRESS_2_COLUMNS = ["Service Street 2", "Street 2", "Address Line 2", "address_line_2", "Address 2", "Unit", "Apt", "Suite"];
+// Per-row Billing fallbacks (Jobber): when the Service address cells are
+// empty on a given row, fall back to that row's Billing columns.
+const BILLING_FALLBACK_COLUMNS: Record<string, string[]> = {
+  street: ["Billing Street 1", "Billing Street"],
+  city: ["Billing City"],
+  region: ["Billing State", "Billing Province"],
+  postal_code: ["Billing Zip code", "Billing Zip", "Billing Postal code"],
+};
+const BILLING_ADDRESS_2_COLUMNS = ["Billing Street 2"];
 
 function getStr(raw: Record<string, any>, mapping: Record<string, string | null>, field: string): string | null {
   const src = mapping[field];
@@ -384,7 +429,8 @@ function getStr(raw: Record<string, any>, mapping: Record<string, string | null>
   return s === "" ? null : s;
 }
 
-function mapClientRow(raw: Record<string, any>, mapping: Record<string, string | null>) {
+// Exported for unit tests (tests/jobber-import.test.ts) — pure row mapper.
+export function mapClientRow(raw: Record<string, any>, mapping: Record<string, string | null>) {
   let display_name = getStr(raw, mapping, "display_name");
   if (!display_name) {
     const first = rawLookup(raw, FIRST_NAME_COLUMNS);
@@ -393,10 +439,30 @@ function mapClientRow(raw: Record<string, any>, mapping: Record<string, string |
     if (combined) display_name = combined;
   }
   if (!display_name) return { mapped: null, error: "Missing display_name (or First Name + Last Name)" };
-  const email = getStr(raw, mapping, "primary_email");
+  const email = firstEmail(getStr(raw, mapping, "primary_email"));
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return { mapped: null, error: `Invalid email: ${email}` };
   }
+
+  // Service address with per-row Billing fallback (Jobber exports often leave
+  // Billing empty and fill Service — or vice versa for billing-only rows).
+  let street = getStr(raw, mapping, "street");
+  let usedBilling = false;
+  if (!street) {
+    street = rawLookup(raw, BILLING_FALLBACK_COLUMNS.street);
+    usedBilling = !!street;
+  }
+  if (street) {
+    const line2 = rawLookup(raw, usedBilling ? BILLING_ADDRESS_2_COLUMNS : ADDRESS_2_COLUMNS);
+    if (line2) street = `${street}, ${line2}`;
+  }
+  const city =
+    getStr(raw, mapping, "city") ?? rawLookup(raw, BILLING_FALLBACK_COLUMNS.city);
+  const region =
+    getStr(raw, mapping, "region") ?? rawLookup(raw, BILLING_FALLBACK_COLUMNS.region);
+  const postal_code =
+    getStr(raw, mapping, "postal_code") ?? rawLookup(raw, BILLING_FALLBACK_COLUMNS.postal_code);
+
   return {
     mapped: {
       display_name,
@@ -406,10 +472,10 @@ function mapClientRow(raw: Record<string, any>, mapping: Record<string, string |
       external_id: getStr(raw, mapping, "external_id"),
       notes: getStr(raw, mapping, "notes"),
       // Optional inline service address → a property is created on commit.
-      street: getStr(raw, mapping, "street"),
-      city: getStr(raw, mapping, "city"),
-      region: getStr(raw, mapping, "region"),
-      postal_code: getStr(raw, mapping, "postal_code"),
+      street,
+      city,
+      region,
+      postal_code,
       gate_code: getStr(raw, mapping, "gate_code"),
     },
     error: null as string | null,
@@ -717,6 +783,11 @@ export const commitImport = createServerFn({ method: "POST" })
                 import_source: batch.source,
                 import_external_id: m.external_id,
                 import_batch_id: batch.id,
+                // Import comms hold: newly-imported clients must not receive
+                // automated communications until the org initiates contact
+                // (manual send clears it) or office lifts the hold. Only set
+                // on CREATE — updates leave an existing client's flag alone.
+                comms_paused: true,
               })
               .select("id").single();
             if (cErr) throw cErr;

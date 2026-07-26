@@ -157,7 +157,7 @@ export const getClient = createServerFn({ method: "GET" })
     const { data: client, error } = await supabase
       .from("clients")
       .select(
-        "id, display_name, first_name, last_name, company, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused, billing_frequency, dna_compliance_enabled",
+        "id, display_name, first_name, last_name, company, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, comms_paused, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused, billing_frequency, dna_compliance_enabled",
       )
       .eq("id", data.clientId)
       .single();
@@ -187,6 +187,9 @@ export const updateClient = createServerFn({ method: "POST" })
         referralSource: z.string().max(200).nullable().optional(),
         smsOptOut: z.boolean().optional(),
         emailOptOut: z.boolean().optional(),
+        // Import comms hold (office toggle on the client header): lift — or
+        // re-apply — the automated-communications pause for imported clients.
+        commsPaused: z.boolean().optional(),
         billingFrequency: z
           .enum(["after_each_visit", "weekly", "monthly", "quarterly", "yearly"])
           .optional(),
@@ -249,6 +252,10 @@ export const updateClient = createServerFn({ method: "POST" })
       patch.email_opt_out = data.emailOptOut;
       changed.push("email preference");
     }
+    if (data.commsPaused !== undefined) {
+      patch.comms_paused = data.commsPaused;
+      changed.push("communications hold");
+    }
     if (data.billingFrequency !== undefined) {
       patch.billing_frequency = data.billingFrequency;
       changed.push("billing cadence");
@@ -259,7 +266,7 @@ export const updateClient = createServerFn({ method: "POST" })
     const { data: beforeRow } = await supabase
       .from("clients")
       .select(
-        "display_name, first_name, last_name, company, primary_email, primary_phone, account_type, active, tags, preferred_contact, referral_source, sms_opt_out, email_opt_out",
+        "display_name, first_name, last_name, company, primary_email, primary_phone, account_type, active, tags, preferred_contact, referral_source, sms_opt_out, email_opt_out, comms_paused",
       )
       .eq("id", data.clientId)
       .single();

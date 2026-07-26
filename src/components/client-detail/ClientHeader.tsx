@@ -121,6 +121,17 @@ export function ClientHeader({
     },
     onError: (e) => toast.error((e as Error).message),
   });
+  // Import comms hold (office toggle): imported clients start with automated
+  // communications paused; lifting the hold re-enables invoice emails,
+  // reminders, visit texts, and review requests for this client.
+  const commsHoldMut = useMutation({
+    mutationFn: (paused: boolean) => updateFn({ data: { clientId, commsPaused: paused } }),
+    onSuccess: (_d, paused) => {
+      invalidate();
+      toast.success(paused ? "Automated communications paused" : "Communications hold lifted");
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
   const today = new Date().toISOString().slice(0, 10);
   const pausableSubs = subscriptions.filter(
     (s) => s.status === "active" && !isServiceEnded(s, today),
@@ -178,6 +189,9 @@ export function ClientHeader({
                       : `On hold until ${formatDay(currentHold.ends_on)}`
                   }
                 />
+              )}
+              {client.comms_paused && (
+                <StatusChip status="warning" label="Communications paused (imported)" />
               )}
               <MetaChip>{client.account_type === "commercial" ? "Commercial" : "Residential"}</MetaChip>
               {(client.churn_score ?? 0) >= 60 && <StatusChip status="overdue" label="At risk" />}
@@ -273,6 +287,27 @@ export function ClientHeader({
               <DropdownMenuItem onClick={() => setHoldDrawerOpen(true)}>
                 <CalendarOff className="mr-2 h-3.5 w-3.5" /> Vacation hold…
               </DropdownMenuItem>
+              {client.comms_paused ? (
+                <DropdownMenuItem
+                  onClick={async () => {
+                    if (
+                      await confirm({
+                        title: "Resume automated communications?",
+                        description:
+                          "This imported client currently receives no automated emails or texts (invoices, reminders, visit updates, review requests). Lifting the hold turns them back on.",
+                        confirmLabel: "Resume communications",
+                      })
+                    )
+                      commsHoldMut.mutate(false);
+                  }}
+                >
+                  Resume communications
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={() => commsHoldMut.mutate(true)}>
+                  Pause automated communications
+                </DropdownMenuItem>
+              )}
               {portalUrl && (
                 <>
                   <DropdownMenuItem onClick={() => window.open(portalUrl, "_blank", "noopener")}>

@@ -20,7 +20,7 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
 
     const { data: client, error: cErr } = await supabase
       .from("clients")
-      .select("id, organization_id, primary_phone, sms_opt_out, primary_email, email_opt_out, display_name, review_asked_at")
+      .select("id, organization_id, primary_phone, sms_opt_out, primary_email, email_opt_out, display_name, review_asked_at, comms_paused")
       .eq("id", data.clientId)
       .single();
     if (cErr) throw new Error(cErr.message);
@@ -89,6 +89,10 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
         error: errorText,
       });
       if (errorText) throw new Error(errorText);
+      // Explicit user-initiated send → lift the imported comms hold.
+      if (client.comms_paused) {
+        await supabase.from("clients").update({ comms_paused: false }).eq("id", client.id);
+      }
       await supabase.rpc("mark_review_asked", { _client_id: data.clientId });
       return { ok: true, channel: "sms" as const, body };
     }
@@ -102,6 +106,9 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
       notifyKey: "notify_email_review_request",
       idempotencyKey: `review-${client.id}-${new Date().toISOString().slice(0, 10)}`,
       templateData: { reviewUrl: org.google_review_url },
+      // Explicit staff action from the client page — bypasses (and on
+      // success clears) the imported comms hold.
+      manual: true,
     });
     if (!res.ok) {
       const msg =

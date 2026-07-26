@@ -50,6 +50,9 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
         periodLabel: period,
         reminder: data.reminder === true,
       },
+      // Explicit "Send invoice" / "Send reminder" button — a manual send that
+      // bypasses the imported comms hold and clears it on success.
+      manual: true,
     });
     if (!res.ok) throw new Error(`Email not sent: ${res.reason}`);
     // Stamp sent_at (full auto billing): a "Send now" during the grace window

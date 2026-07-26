@@ -261,6 +261,7 @@ async function autoSendScheduledInvoices(
   const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
   const base = appUrl();
   let sent = 0;
+  let pausedSkipped = 0;
   for (const inv of invoices as any[]) {
     const invoiceUrl = inv.public_token ? `${base}/pay/i/${inv.public_token}` : base;
     const period =
@@ -288,12 +289,16 @@ async function autoSendScheduledInvoices(
           .eq("id", inv.id)
           .is("sent_at", null);
         sent++;
+      } else if (res.reason === "comms_paused") {
+        // Imported comms hold: leave sent_at null — the invoice auto-sends
+        // once the hold is lifted (manual contact or office toggle).
+        pausedSkipped++;
       }
     } catch (e) {
       console.error("invoice auto-send failed", inv.id, e);
     }
   }
-  return sent;
+  return pausedSkipped > 0 ? `${sent} sent; ${pausedSkipped} skipped (comms hold)` : sent;
 }
 
 async function sendOverdueReminders(
@@ -323,7 +328,7 @@ async function sendOverdueReminders(
   const clientIds = [...new Set(eligible.map((i: any) => i.client_id))];
   const { data: clients } = await supabaseAdmin
     .from("clients")
-    .select("id, display_name, primary_phone, sms_opt_out, portal_token")
+    .select("id, display_name, primary_phone, sms_opt_out, portal_token, comms_paused")
     .in("id", clientIds);
   const byId = new Map((clients ?? []).map((c: any) => [c.id, c]));
 
@@ -331,9 +336,15 @@ async function sendOverdueReminders(
   const { buildPortalLink, ensureOrgSlug } = await import("@/lib/portal-links.server");
   const slug = await ensureOrgSlug(orgId).catch(() => null);
   let sent = 0;
+  let pausedSkipped = 0;
   for (const inv of eligible) {
     const client = byId.get(inv.client_id) as any;
     if (!client || client.sms_opt_out || !client.primary_phone) continue;
+    // Imported comms hold: no automated dunning SMS until the org initiates.
+    if (client.comms_paused) {
+      pausedSkipped++;
+      continue;
+    }
     const dollars = ((inv.total_cents ?? 0) / 100).toFixed(2);
     const link = await buildPortalLink(orgId, client.portal_token, slug);
     const body = `Hi ${client.display_name}, this is a friendly reminder that invoice for $${dollars} is past due. Pay: ${link}`;
@@ -358,7 +369,7 @@ async function sendOverdueReminders(
       console.error("reminder send failed", inv.id, e);
     }
   }
-  return sent;
+  return pausedSkipped > 0 ? `${sent} sent; ${pausedSkipped} skipped (comms hold)` : sent;
 }
 
 function appUrl() {
@@ -398,6 +409,7 @@ async function sendOverdueEmails(
   const { buildPortalLink, ensureOrgSlug } = await import("@/lib/portal-links.server");
   const slug = await ensureOrgSlug(orgId).catch(() => null);
   let sent = 0;
+  let pausedSkipped = 0;
   for (const inv of eligible) {
     const client = byId.get(inv.client_id) as any;
     if (!client) continue;
@@ -423,9 +435,11 @@ async function sendOverdueEmails(
         .update({ last_email_reminder_at: new Date().toISOString() })
         .eq("id", inv.id);
       sent++;
+    } else if (res.reason === "comms_paused") {
+      pausedSkipped++;
     }
   }
-  return sent;
+  return pausedSkipped > 0 ? `${sent} sent; ${pausedSkipped} skipped (comms hold)` : sent;
 }
 
 async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<number> {

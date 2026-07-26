@@ -837,6 +837,7 @@ export type Database = {
           churn_reason: string | null
           churn_score: number | null
           churn_scored_at: string | null
+          comms_paused: boolean
           company: string | null
           created_at: string
           credit_balance_cents: number
@@ -882,6 +883,7 @@ export type Database = {
           churn_reason?: string | null
           churn_score?: number | null
           churn_scored_at?: string | null
+          comms_paused?: boolean
           company?: string | null
           created_at?: string
           credit_balance_cents?: number
@@ -927,6 +929,7 @@ export type Database = {
           churn_reason?: string | null
           churn_score?: number | null
           churn_scored_at?: string | null
+          comms_paused?: boolean
           company?: string | null
           created_at?: string
           credit_balance_cents?: number
