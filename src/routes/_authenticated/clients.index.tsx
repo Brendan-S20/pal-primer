@@ -7,6 +7,9 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { listClients, updateClient } from "@/lib/clients.functions";
 import { useRowSelection } from "@/hooks/useRowSelection";
+import { usePermissions } from "@/hooks/useMyRole";
+import { humanizeEnum } from "@/lib/humanize";
+import { frequencyLabel } from "@/lib/frequency-request";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -60,7 +63,7 @@ function exportClientsCsv(rows: any[]) {
       c.active ? "active" : "inactive",
       c.primary_email,
       c.primary_phone,
-      (c.frequencies ?? []).map((f: string) => f.replace("_", "-")).join("; "),
+      (c.frequencies ?? []).map((f: string) => frequencyLabel(f)).join("; "),
       ((c.outstanding_cents ?? 0) / 100).toFixed(2),
       ((c.credit_balance_cents ?? 0) / 100).toFixed(2),
       c.churn_score ?? "",
@@ -73,6 +76,11 @@ function ClientsList() {
   const qc = useQueryClient();
   const fn = useServerFn(listClients);
   const updateFn = useServerFn(updateClient);
+  const { can } = usePermissions();
+  // Archiving is a manager-class write (updateClient enforces this
+  // server-side when `active` changes) — hide the bulk button for roles
+  // that would only get an error.
+  const canArchive = can("manage_client_billing");
   const { confirm, dialog } = useConfirmDialog();
   const { data, isLoading } = useQuery({
     queryKey: ["clients"],
@@ -132,6 +140,26 @@ function ClientsList() {
     onSuccess: (r) => {
       if (r.failed) toast.error(`Archived ${r.ok} of ${r.ok + r.failed} clients — ${r.failed} failed`);
       else toast.success(`Archived ${r.ok} client${r.ok === 1 ? "" : "s"}`);
+      sel.clear();
+      qc.invalidateQueries({ queryKey: ["clients"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Lift the imported-clients communications hold in bulk — same per-client
+  // updateClient fn (and activity log) as the client-header toggle.
+  const resumeCommsM = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(
+        ids.map((id) => updateFn({ data: { clientId: id, commsPaused: false } })),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      return { ok, failed: results.length - ok };
+    },
+    onSuccess: (r) => {
+      if (r.failed)
+        toast.error(`Resumed communications for ${r.ok} of ${r.ok + r.failed} clients — ${r.failed} failed`);
+      else toast.success(`Resumed communications for ${r.ok} client${r.ok === 1 ? "" : "s"}`);
       sel.clear();
       qc.invalidateQueries({ queryKey: ["clients"] });
     },
@@ -228,25 +256,41 @@ function ClientsList() {
             <Button size="sm" variant="outline" onClick={() => exportClientsCsv(selectedRows)}>
               <Download className="mr-1 h-4 w-4" /> Export CSV
             </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              disabled={archiveM.isPending}
-              onClick={async () => {
-                if (
-                  await confirm({
-                    title: `Archive ${sel.count} client${sel.count === 1 ? "" : "s"}?`,
-                    description:
-                      "They are marked inactive. You can reactivate a client anytime from their page.",
-                    destructive: true,
-                    confirmLabel: "Archive",
-                  })
-                )
-                  archiveM.mutate(sel.selectedIds);
-              }}
-            >
-              {archiveM.isPending ? "Archiving…" : "Archive"}
-            </Button>
+            {selectedRows.some((c: any) => c.comms_paused) && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={resumeCommsM.isPending}
+                onClick={() =>
+                  resumeCommsM.mutate(
+                    selectedRows.filter((c: any) => c.comms_paused).map((c: any) => c.id),
+                  )
+                }
+              >
+                {resumeCommsM.isPending ? "Resuming…" : "Resume communications"}
+              </Button>
+            )}
+            {canArchive && (
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={archiveM.isPending}
+                onClick={async () => {
+                  if (
+                    await confirm({
+                      title: `Archive ${sel.count} client${sel.count === 1 ? "" : "s"}?`,
+                      description:
+                        "They are marked inactive. You can reactivate a client anytime from their page.",
+                      destructive: true,
+                      confirmLabel: "Archive",
+                    })
+                  )
+                    archiveM.mutate(sel.selectedIds);
+                }}
+              >
+                {archiveM.isPending ? "Archiving…" : "Archive"}
+              </Button>
+            )}
             <Button size="sm" variant="ghost" onClick={sel.clear}>
               Clear
             </Button>
@@ -286,11 +330,16 @@ function ClientsList() {
                         variant={c.account_type === "commercial" ? "default" : "secondary"}
                         className="text-[10px]"
                       >
-                        {c.account_type}
+                        {humanizeEnum(c.account_type)}
                       </Badge>
                       {(c.churn_score ?? 0) >= 60 && (
                         <Badge variant="destructive" className="text-[10px]">
                           At risk
+                        </Badge>
+                      )}
+                      {c.comms_paused && (
+                        <Badge variant="outline" className="text-[10px]">
+                          Comms paused
                         </Badge>
                       )}
                     </div>
@@ -331,7 +380,7 @@ function ClientsList() {
                   <span>{c.active_subscription_count} subs</span>
                   {(c.frequencies ?? []).length > 0 && (
                     <Badge variant="outline" className="text-[10px]">
-                      {(c.frequencies as string[]).map((f) => f.replace("_", "-")).join(", ")}
+                      {(c.frequencies as string[]).map((f) => frequencyLabel(f)).join(", ")}
                     </Badge>
                   )}
                 </div>
@@ -390,7 +439,7 @@ function ClientsList() {
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant={c.account_type === "commercial" ? "default" : "secondary"}>
-                        {c.account_type}
+                        {humanizeEnum(c.account_type)}
                       </Badge>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{c.dog_count}</td>
@@ -399,7 +448,7 @@ function ClientsList() {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {(c.frequencies ?? []).length
-                        ? (c.frequencies as string[]).map((f) => f.replace("_", "-")).join(", ")
+                        ? (c.frequencies as string[]).map((f) => frequencyLabel(f)).join(", ")
                         : "-"}
                     </td>
                     <td className="px-4 py-3">
@@ -422,6 +471,11 @@ function ClientsList() {
                         <span className="text-emerald-600">Active</span>
                       ) : (
                         <span className="text-muted-foreground">Inactive</span>
+                      )}
+                      {c.comms_paused && (
+                        <Badge variant="outline" className="ml-2 text-[10px]">
+                          Comms paused
+                        </Badge>
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">

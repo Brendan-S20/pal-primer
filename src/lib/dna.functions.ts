@@ -156,6 +156,34 @@ export const createDnaMatch = createServerFn({ method: "POST" })
   .inputValidator((d) => createSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { orgId } = await resolveCaller(context.supabase, context.userId);
+    // A supplied property must belong to the caller's org, and a supplied
+    // client must actually be that property's client — otherwise a crafted id
+    // could key a sample (and its eventual fine) to the wrong tenant/client.
+    let propClientId: string | null = null;
+    if (data.propertyId) {
+      const { data: prop, error: pErr } = await context.supabase
+        .from("properties")
+        .select("id, organization_id, client_id")
+        .eq("id", data.propertyId)
+        .maybeSingle();
+      if (pErr) throw new Error(pErr.message);
+      if (!prop || prop.organization_id !== orgId) throw new Error("Property not found");
+      propClientId = (prop as any).client_id ?? null;
+    }
+    if (data.clientId) {
+      if (data.propertyId) {
+        if (propClientId !== data.clientId)
+          throw new Error("Client does not match the selected property");
+      } else {
+        const { data: cl, error: cErr } = await context.supabase
+          .from("clients")
+          .select("id, organization_id")
+          .eq("id", data.clientId)
+          .maybeSingle();
+        if (cErr) throw new Error(cErr.message);
+        if (!cl || cl.organization_id !== orgId) throw new Error("Client not found");
+      }
+    }
     // A supplied unit must belong to the supplied property (chain integrity;
     // the DB trigger also enforces this cross-tenant).
     if (data.unitId) {
@@ -215,9 +243,23 @@ export const updateDnaMatch = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     // Setting a fine amount or marking a sample billed is a billing action,
     // not a field-collection update — gate it separately from status moves
-    // like sent_to_lab/matched that techs legitimately perform.
-    if (data.fineCents !== undefined || data.status === "billed") {
-      await requirePermission(context.supabase, context.userId, "manage_dna_billing");
+    // like sent_to_lab/matched. The non-billing path still edits registry
+    // records that name other clients' dogs, so it requires the same
+    // directory capability as the reads (H1/I7) — a bare tech token may not
+    // re-point matches.
+    const { orgId } =
+      data.fineCents !== undefined || data.status === "billed"
+        ? await requirePermission(context.supabase, context.userId, "manage_dna_billing")
+        : await requirePermission(context.supabase, context.userId, "view_client_directory");
+    // A matched dog must be one of the org's own dogs.
+    if (data.matchedDogId) {
+      const { data: dog, error: dErr } = await context.supabase
+        .from("dogs")
+        .select("id, organization_id")
+        .eq("id", data.matchedDogId)
+        .maybeSingle();
+      if (dErr) throw new Error(dErr.message);
+      if (!dog || dog.organization_id !== orgId) throw new Error("Dog not found");
     }
     const patch: any = {};
     if (data.status) {
@@ -228,8 +270,14 @@ export const updateDnaMatch = createServerFn({ method: "POST" })
     if (data.labReference !== undefined) patch.lab_reference = data.labReference;
     if (data.fineCents !== undefined) patch.fine_cents = data.fineCents;
     if (data.notes !== undefined) patch.notes = data.notes;
-    const { error } = await context.supabase.from("dna_matches").update(patch).eq("id", data.id);
+    const { data: rows, error } = await context.supabase
+      .from("dna_matches")
+      .update(patch)
+      .eq("id", data.id)
+      .eq("organization_id", orgId)
+      .select("id");
     if (error) throw new Error(error.message);
+    if (!rows?.length) throw new Error("Sample not found");
     return { ok: true };
   });
 
@@ -274,7 +322,10 @@ export const listRegisteredDogs = createServerFn({ method: "GET" })
           "properties:property_id(street, clients:client_id(display_name))",
       )
       .eq("organization_id", orgId)
-      .eq("dna_registered", true);
+      // Legacy rows may carry only one of the two registration markers — the
+      // boolean flag or the status enum — so match either (sync finding; new
+      // writes keep them in lockstep).
+      .or("dna_registered.eq.true,dna_status.eq.registered");
     if (filter?.clientId) {
       // Dogs link to a client via their property.
       const propIds = await clientPropertyIds(context.supabase, orgId, filter.clientId);

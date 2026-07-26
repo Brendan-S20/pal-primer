@@ -26,6 +26,7 @@ import {
 import { Trash2, Ban, Copy, Printer } from "lucide-react";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { getMyOrg } from "@/lib/org.functions";
+import { listClients } from "@/lib/clients.functions";
 
 export const Route = createFileRoute("/_authenticated/settings/promotions")({
   component: PromotionsPage,
@@ -360,9 +361,19 @@ function GiftSection() {
   const voidFn = useServerFn(voidGiftCard);
   const redeemFn = useServerFn(redeemGiftCard);
   const orgFn = useServerFn(getMyOrg);
+  const clientsFn = useServerFn(listClients);
   const { data, isLoading } = useQuery({ queryKey: ["gift-cards"], queryFn: () => listFn() });
   const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
   const orgName: string = orgQ.data?.organization?.name ?? "Gift card";
+  // Same picker data as the New-invoice dialog: a redemption credits a
+  // specific client's account, so the form needs the client roster.
+  const clientsQ = useQuery({
+    queryKey: ["clients", "picker"],
+    queryFn: () => clientsFn(),
+    staleTime: 60_000,
+  });
+  const clientOptions: Array<{ id: string; display_name: string; active: boolean }> =
+    (clientsQ.data as any)?.clients ?? [];
 
   const emptyC = {
     amount: 50,
@@ -372,7 +383,7 @@ function GiftSection() {
     message: "",
   };
   const [form, setForm] = useState(emptyC);
-  const [redeem, setRedeem] = useState({ code: "", amount: 0 });
+  const [redeem, setRedeem] = useState({ code: "", amount: 0, clientId: "" });
 
   const create = useMutation({
     mutationFn: () =>
@@ -404,13 +415,22 @@ function GiftSection() {
 
   const redeemM = useMutation({
     mutationFn: () =>
-      redeemFn({ data: { code: redeem.code, amountCents: Math.round(redeem.amount * 100) } }),
+      redeemFn({
+        data: {
+          code: redeem.code,
+          amountCents: Math.round(redeem.amount * 100),
+          clientId: redeem.clientId,
+        },
+      }),
     onSuccess: (r) => {
+      const who =
+        clientOptions.find((c) => c.id === redeem.clientId)?.display_name ?? "the client";
       toast.success(
-        `Redeemed ${fmtMoney(r.redeemedCents)}. Remaining: ${fmtMoney(r.remainingCents)}`,
+        `Redeemed ${fmtMoney(r.redeemedCents)} to ${who}'s account credit. Remaining on card: ${fmtMoney(r.remainingCents)}`,
       );
-      setRedeem({ code: "", amount: 0 });
+      setRedeem({ code: "", amount: 0, clientId: "" });
       qc.invalidateQueries({ queryKey: ["gift-cards"] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -482,6 +502,26 @@ function GiftSection() {
               />
             </div>
             <div>
+              <Label>Client</Label>
+              <select
+                className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm"
+                value={redeem.clientId}
+                onChange={(e) => setRedeem({ ...redeem, clientId: e.target.value })}
+              >
+                <option value="">Select a client…</option>
+                {clientOptions
+                  .filter((c) => c.active !== false)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.display_name}
+                    </option>
+                  ))}
+              </select>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                The redeemed amount is added to this client's account credit.
+              </p>
+            </div>
+            <div>
               <Label>Amount ($)</Label>
               <Input
                 type="number"
@@ -494,7 +534,7 @@ function GiftSection() {
             <Button
               variant="outline"
               onClick={() => redeemM.mutate()}
-              disabled={!redeem.code || redeem.amount <= 0 || redeemM.isPending}
+              disabled={!redeem.code || !redeem.clientId || redeem.amount <= 0 || redeemM.isPending}
             >
               {redeemM.isPending ? "Redeeming…" : "Apply redemption"}
             </Button>

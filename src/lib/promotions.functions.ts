@@ -4,17 +4,6 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { assertValidPromoCode } from "@/lib/dna-linkage";
 
-async function resolveOrgId(supabase: any, userId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("organization_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("No organization for user");
-  return data.organization_id as string;
-}
-
 // Promo codes and gift cards are marketing/discount configuration living under
 // Settings; creating/deleting/voiding them is an office action, not something a
 // technician or dispatcher token may do (I7). RLS alone only tenant-scopes the
@@ -41,7 +30,10 @@ const promoSchema = z.object({
 export const listPromoCodes = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    // Reads are office-only too (the file's doctrine above): the promo/gift
+    // catalog with balances and purchaser PII is Settings data, not something
+    // a technician token may enumerate.
+    const orgId = await resolveManagerOrgId(context.supabase, context.userId);
     const { data, error } = await context.supabase
       .from("promo_codes")
       .select("*")
@@ -128,7 +120,8 @@ const giftSchema = z.object({
 export const listGiftCards = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    // Office-only read — codes + remaining balances are redeemable money.
+    const orgId = await resolveManagerOrgId(context.supabase, context.userId);
     const { data, error } = await context.supabase
       .from("gift_cards")
       .select("*")
@@ -185,14 +178,32 @@ export const redeemGiftCard = createServerFn({ method: "POST" })
       .object({
         code: z.string().min(4),
         amountCents: z.number().int().min(1),
-        clientId: z.string().uuid().optional(),
+        // Required: a redemption credits a specific client's account balance
+        // (the RPC posts a credit_ledger entry via post_credit_entry, same as
+        // addClientCredit). A redemption without a client moved no money.
+        clientId: z.string().uuid(),
         invoiceId: z.string().uuid().optional(),
         note: z.string().max(500).optional(),
       })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    // Crediting a client account is a billing action — same gate as
+    // addClientCredit. The RPC re-checks manage_client_billing in-database.
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_client_billing",
+    );
+    // Org-scoped client check for a clear error before the RPC runs.
+    const { data: client, error: cErr } = await context.supabase
+      .from("clients")
+      .select("id, organization_id, display_name, credit_balance_cents")
+      .eq("id", data.clientId)
+      .maybeSingle();
+    if (cErr) throw new Error(cErr.message);
+    if (!client || client.organization_id !== orgId) throw new Error("Client not found");
+
     const { data: res, error } = await context.supabase.rpc("redeem_gift_card", {
       _org_id: orgId,
       _code: data.code.trim().toUpperCase(),
@@ -203,8 +214,23 @@ export const redeemGiftCard = createServerFn({ method: "POST" })
     });
     if (error) throw new Error(error.message);
     const row = Array.isArray(res) ? res[0] : res;
+    const redeemedCents = row?.redeemed_cents ?? 0;
+    // Same activity trail as addClientCredit — credit appeared on the account.
+    try {
+      const { logActivity } = await import("@/lib/activity.server");
+      await logActivity(context.supabase, {
+        orgId,
+        clientId: data.clientId,
+        actorUserId: context.userId,
+        kind: "client.credit_adjusted",
+        summary: `Redeemed gift card ${data.code.trim().toUpperCase()} for $${(redeemedCents / 100).toFixed(2)} credit`,
+        meta: { amount_cents: redeemedCents, gift_card_code: data.code.trim().toUpperCase() },
+      });
+    } catch {
+      /* best-effort */
+    }
     return {
-      redeemedCents: row?.redeemed_cents ?? 0,
+      redeemedCents,
       remainingCents: row?.remaining_cents ?? 0,
     };
   });
@@ -213,7 +239,8 @@ export const listGiftCardRedemptions = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ giftCardId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    // Office-only read (file doctrine): redemption history names clients.
+    const orgId = await resolveManagerOrgId(context.supabase, context.userId);
     const { data: rows, error } = await context.supabase
       .from("gift_card_redemptions")
       .select("id, amount_cents, note, created_at, clients(display_name), invoice_id")

@@ -108,8 +108,14 @@ export function StaffInvoicePayForm({
     // result reflects everywhere without a manual reload (QA: "did not
     // reflect paid until I refreshed the session").
     qc.invalidateQueries({ queryKey: ["invoice-detail", invoiceId] });
-    if (client?.id) qc.invalidateQueries({ queryKey: ["client-credit", client.id] });
+    if (client?.id) {
+      qc.invalidateQueries({ queryKey: ["client-credit", client.id] });
+      // The client-detail billing tab reads its credit under ["credit", id].
+      qc.invalidateQueries({ queryKey: ["credit", client.id] });
+    }
     qc.invalidateQueries({ queryKey: ["invoices"] });
+    // Roster balances (outstanding / credit columns) on the Clients list.
+    qc.invalidateQueries({ queryKey: ["clients"] });
     qc.invalidateQueries({ queryKey: ["billing-summary"] });
     qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
     onPaid();

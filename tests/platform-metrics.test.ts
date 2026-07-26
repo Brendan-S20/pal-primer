@@ -78,11 +78,12 @@ describe("platform SaaS MRR is derived from subscriptions, not tenant collection
 
   it("annual→monthly conversion feeds MRR/ARR and still adds seat overage", () => {
     const annualScale: PlanForMrr = { ...SCALE, interval: "year" };
-    // Seat overage stays on top of the monthly-equivalent base: 34 seats on
-    // Scale (30 included) → 4 × $10.
+    // Seat overage stays on top of the monthly-equivalent base, and — like the
+    // base — the annual plan's per-seat rate is a YEARLY charge, so it is also
+    // divided by 12: 34 seats on Scale (30 included) → 4 × $10/yr → /12.
     expect(
       monthlyEquivalentCents({ ...DEMO, plan: annualScale, active_seat_count: 34 }),
-    ).toBe(Math.round(449000 / 12) + 4 * 1000);
+    ).toBe(Math.round(449000 / 12) + Math.round((4 * 1000) / 12));
 
     // The rollup uses the same conversion, so ARR of a single annual tenant is
     // 12 × its monthly equivalent (i.e. the annual price, up to rounding).

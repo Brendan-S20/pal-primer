@@ -13,10 +13,16 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context;
+    // Emailing an invoice (with its no-login pay link) is a billing action —
+    // gate it and scope the lookup to the caller's own org so a foreign
+    // invoice id can't leak another tenant's pay link.
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(supabase, context.userId, "manage_client_billing");
     const { data: invRow, error } = await supabase
       .from("invoices")
       .select("id, organization_id, client_id, total_cents, period_start, period_end, public_token, clients(portal_token)")
       .eq("id", data.invoiceId)
+      .eq("organization_id", orgId)
       .single();
     if (error) throw new Error(error.message);
     // public_token isn't in the generated types yet.

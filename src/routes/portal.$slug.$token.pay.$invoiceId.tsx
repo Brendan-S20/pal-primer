@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
 import {
@@ -139,6 +139,7 @@ function PayForm({
   const stripe = useStripe();
   const elements = useElements();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -171,6 +172,10 @@ function PayForm({
     }
 
     // No redirect needed → charge succeeded (or is processing, e.g. ACH).
+    // Drop every cached portal query for this token BEFORE navigating, so the
+    // billing page refetches and actually shows the invoice as paid instead
+    // of the stale open state.
+    await qc.invalidateQueries({ queryKey: ["portal", token] });
     navigate({
       to: "/portal/$slug/$token/billing",
       params: { slug, token },

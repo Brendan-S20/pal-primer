@@ -1,7 +1,19 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { resolveCaller, type CallerContext } from "@/lib/authz.server";
 import { assertValidDogName, dogNeedsUnitReview } from "@/lib/dna-linkage";
+
+/** Server-side twin of the can_write_org() SQL helper (everyone but techs) —
+ * same posture as units.functions.ts. Dog writes edit client records (and the
+ * DNA registry state), so a bare tech token may not perform them. */
+async function requireCanWriteOrg(supabase: any, userId: string): Promise<CallerContext> {
+  const caller = await resolveCaller(supabase, userId);
+  if (!["owner", "office_manager", "dispatcher"].includes(caller.role)) {
+    throw new Error("Not authorized");
+  }
+  return caller;
+}
 
 /** True when a property has at least one unit (dog must key to one, else review). */
 async function propertyHasUnits(supabase: any, propertyId: string): Promise<boolean> {
@@ -33,6 +45,7 @@ export const addDog = createServerFn({ method: "POST" })
   .inputValidator((d) => addDogSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
+    const { orgId } = await requireCanWriteOrg(supabase, context.userId);
     // Server-enforced name validation (I11, B8): reject "1"/"Ew"-class junk.
     const dogName = assertValidDogName(data.name);
     const { data: prop, error: pErr } = await supabase
@@ -41,6 +54,7 @@ export const addDog = createServerFn({ method: "POST" })
       .eq("id", data.propertyId)
       .single();
     if (pErr) throw new Error(pErr.message);
+    if (prop.organization_id !== orgId) throw new Error("Property not found");
     // A supplied unit must belong to this property (Units tab scoping).
     if (data.unitId) {
       const { data: unit, error: uErr } = await (supabase as any)
@@ -116,6 +130,7 @@ export const updateDog = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => editDogSchema.parse(d))
   .handler(async ({ data, context }) => {
+    const { orgId } = await requireCanWriteOrg(context.supabase, context.userId);
     // Fetch the current row once when we need the name or the property (for the
     // name-change check and/or the unit-belongs-to-property check).
     let dogPropertyId: string | null = null;
@@ -125,6 +140,7 @@ export const updateDog = createServerFn({ method: "POST" })
         .from("dogs")
         .select("name, property_id")
         .eq("id", data.id)
+        .eq("organization_id", orgId)
         .maybeSingle();
       if (dogErr) throw new Error(dogErr.message);
       if (!dog) throw new Error("Dog not found");
@@ -171,13 +187,20 @@ export const updateDog = createServerFn({ method: "POST" })
     if (data.notes !== undefined) patch.notes = data.notes || null;
     if (data.active !== undefined) patch.active = data.active;
     if (data.unitId !== undefined) patch.unit_id = data.unitId;
-    if (data.dnaStatus !== undefined) patch.dna_status = data.dnaStatus;
+    if (data.dnaStatus !== undefined) {
+      patch.dna_status = data.dnaStatus;
+      // Keep the boolean flag in lockstep with the status enum — the two
+      // fields answer the same question and the registered-dogs list reads
+      // both (dna_registered/dna_status sync finding).
+      patch.dna_registered = data.dnaStatus === "registered";
+    }
     if (Object.keys(patch).length === 0) return { ok: true };
 
     const { data: rows, error } = await context.supabase
       .from("dogs")
       .update(patch as never)
       .eq("id", data.id)
+      .eq("organization_id", orgId)
       .select("property_id");
     if (error) throw new Error(error.message);
     const row = rows?.[0];
@@ -223,12 +246,15 @@ export const deleteDog = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
+    const { orgId } = await requireCanWriteOrg(context.supabase, context.userId);
     const { data: rows, error } = await context.supabase
       .from("dogs")
       .delete()
       .eq("id", data.id)
+      .eq("organization_id", orgId)
       .select("property_id");
     if (error) throw new Error(error.message);
+    if (!rows?.length) throw new Error("Dog not found");
     const propertyId = rows?.[0]?.property_id;
     if (propertyId) {
       const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
@@ -251,7 +277,8 @@ export const setDogDna = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => dnaSchema.parse(d))
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase
+    const { orgId } = await requireCanWriteOrg(context.supabase, context.userId);
+    const { data: rows, error } = await context.supabase
       .from("dogs")
       .update({
         dna_registered: data.registered,
@@ -262,7 +289,10 @@ export const setDogDna = createServerFn({ method: "POST" })
         dna_provider: data.registered ? (data.provider || null) : null,
         dna_kit_reference: data.registered ? (data.kitReference || null) : null,
       } as any)
-      .eq("id", data.id);
+      .eq("id", data.id)
+      .eq("organization_id", orgId)
+      .select("id");
     if (error) throw new Error(error.message);
+    if (!rows?.length) throw new Error("Dog not found");
     return { ok: true };
   });

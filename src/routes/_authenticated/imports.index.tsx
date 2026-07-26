@@ -136,7 +136,8 @@ function ImportsPage() {
         <h1 className="text-2xl font-semibold">Import data</h1>
         <p className="text-sm text-muted-foreground">
           Migrate clients from Sweep&amp;Go, Jobber, Housecall Pro, or any CSV. Nothing is written
-          until you review a dry-run preview.
+          until you review a dry-run preview. Imported clients won't receive automated messages
+          until you resume communications or reach out first.
         </p>
       </div>
 

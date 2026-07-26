@@ -554,8 +554,23 @@ export const updateDispatchSettings = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
-    const { error } = await (context.supabase.from("organizations") as any).update(data).eq("id", orgId);
+    // Dispatch settings are org settings — gate like the rest of Settings.
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    // Write via the SECURITY DEFINER RPC (org-dispatch-settings-rpc migration):
+    // the only UPDATE RLS policy on organizations is owner-only, so a direct
+    // update from an office manager was a silent 0-row no-op. The RPC enforces
+    // the role check in the database and errors instead of no-oping.
+    const { error } = await (context.supabase as any).rpc("update_org_dispatch_settings", {
+      _org_id: orgId,
+      _workday_start: data.workday_start ?? null,
+      _workday_end: data.workday_end ?? null,
+      _avg_speed_kmh: data.avg_speed_kmh ?? null,
+      _traffic_profile: data.traffic_profile ?? null,
+      _max_drive_minutes: data.max_drive_minutes ?? null,
+      _timezone: data.timezone ?? null,
+      _work_days: data.work_days ?? null,
+    });
     if (error) throw new Error(error.message);
     return { ok: true };
   });

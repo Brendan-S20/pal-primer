@@ -108,6 +108,9 @@ function BatchDetail() {
       {batch.status === "committed" && stats.created !== undefined && (
         <div className="rounded border bg-emerald-50 p-4 text-sm text-emerald-900 dark:bg-emerald-500/10 dark:text-emerald-300">
           Import committed: {stats.created} created, {stats.updated} updated, {stats.failed} failed.
+          Imported clients won't receive automated messages until you resume communications or
+          reach out — lift the hold from each client's page, or select clients on the Clients list
+          and use "Resume communications".
         </div>
       )}
 

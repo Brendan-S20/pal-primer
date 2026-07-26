@@ -18,11 +18,12 @@ import {
   reorderRoute,
   getDispatchSettings,
   updateDispatchSettings,
+  completeVisitFromOffice,
 } from "@/lib/visits.functions";
 import { backfillPropertyGeocodes } from "@/lib/properties.functions";
 import { US_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/route-window";
-import { completeVisit } from "@/lib/my-day.functions";
 import { RouteMap, buildTechGroups } from "@/components/RouteMap";
+import { StatusChip } from "@/components/client-detail/primitives";
 import { MobileDayList } from "@/components/schedule/MobileDayList";
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
 import { WeatherStrip } from "@/components/WeatherStrip";
@@ -129,7 +130,10 @@ function RoutesPage() {
   const reorder = useServerFn(reorderRoute);
   const getSettings = useServerFn(getDispatchSettings);
   const updSettings = useServerFn(updateDispatchSettings);
-  const doComplete = useServerFn(completeVisit);
+  // Office action, not the my-day tech flow: completeVisitFromOffice checks
+  // the caller's office role + org and logs the completion on the timeline
+  // (the my-day completeVisit is scoped to the tech's OWN assigned visit).
+  const doComplete = useServerFn(completeVisitFromOffice);
   const qc = useQueryClient();
 
   const completeMut = useMutation({
@@ -657,12 +661,16 @@ function RoutesPage() {
 
       {/* Mobile Phase 2: below `md` the dnd board is replaced by a tap-through
           day list (per-tech rows → VisitDetailDrawer). Reassignment/reschedule
-          happen via the drawer's existing controls — no drag on touch. */}
-      {range === "today" && (
-        <div className="md:hidden">
-          <MobileDayList visits={visits} staff={staff} onOpen={setDetailVisitId} />
-        </div>
-      )}
+          happen via the drawer's existing controls — no drag on touch.
+          Rendered at EVERY range (QA: week/month left phones with no visit
+          list at all) — always the selected day's visits. */}
+      <div className="md:hidden">
+        <MobileDayList
+          visits={range === "today" ? visits : visits.filter((v: any) => v.scheduled_on === day)}
+          staff={staff}
+          onOpen={setDetailVisitId}
+        />
+      </div>
 
       {range === "today" && (
       <div className="max-md:hidden">
@@ -1076,7 +1084,7 @@ function VisitCardView({
           })()}
           <div className="mt-1 flex flex-wrap items-center gap-1">
             {visit.zones?.name && <Badge variant="outline" className="h-4 px-1 text-[10px]">{visit.zones.name}</Badge>}
-            <Badge variant="secondary" className="h-4 px-1 text-[10px]">{visit.status}</Badge>
+            <StatusChip status={visit.status} className="h-4 px-1 text-[10px]" />
             {visit.window_violated && <Badge variant="destructive" className="h-4 px-1 text-[10px]">Late</Badge>}
             {visit.weather_flagged && (
               <Badge

@@ -89,7 +89,11 @@ const updatePlatformPlanSchema = z.object({
   planId: z.string().uuid(),
   name: z.string().trim().min(1, "Name can't be empty").max(100).optional(),
   description: z.string().max(1000).nullable().optional(),
+  // MONTHLY base price. Never receives annual dollars — annual plans carry
+  // their yearly base in annualPriceCents (annual_price_cents), which the MRR
+  // math divides by 12 (platform-metrics.ts monthlyEquivalentCents).
   priceCents: z.number().int().min(0, "Price must be >= 0").optional(),
+  annualPriceCents: z.number().int().min(0, "Price must be >= 0").nullable().optional(),
   includedSeats: z.number().int().min(0).nullable().optional(),
   pricePerSeatCents: z.number().int().min(0, "Price must be >= 0").nullable().optional(),
   // Billing interval of the base price ('month' | 'year'). Annual plans are
@@ -108,7 +112,7 @@ export const updatePlatformPlan = createServerFn({ method: "POST" })
 
     const { data: before, error: beforeErr } = await supabaseAdmin
       .from("platform_plans")
-      .select("id, name, description, price_cents, included_seats, price_per_seat_cents, interval, is_active, sort_order")
+      .select("id, name, description, price_cents, annual_price_cents, included_seats, price_per_seat_cents, interval, is_active, sort_order")
       .eq("id", data.planId)
       .maybeSingle();
     if (beforeErr) throw new Error(beforeErr.message);
@@ -118,6 +122,7 @@ export const updatePlatformPlan = createServerFn({ method: "POST" })
     if (data.name !== undefined) patch.name = data.name;
     if (data.description !== undefined) patch.description = data.description;
     if (data.priceCents !== undefined) patch.price_cents = data.priceCents;
+    if (data.annualPriceCents !== undefined) patch.annual_price_cents = data.annualPriceCents;
     if (data.includedSeats !== undefined) patch.included_seats = data.includedSeats;
     if (data.pricePerSeatCents !== undefined) patch.price_per_seat_cents = data.pricePerSeatCents;
     if (data.interval !== undefined) patch.interval = data.interval;

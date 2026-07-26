@@ -428,6 +428,32 @@ export const portalSubscribeAddon = createServerFn({ method: "POST" })
       _property_id: (data.propertyId ?? null) as any,
     });
     if (error) throw new Error(error.message);
+    // In-app notification to the office (same pattern as portalReportConcern):
+    // a client asked for — and may now be billed for — a new service, which
+    // otherwise sat unseen until someone happened to open the client page.
+    // Best-effort; never block the client's request.
+    try {
+      const [{ data: cl }, { data: addon }] = await Promise.all([
+        sb
+          .from("clients")
+          .select("id, display_name, organization_id")
+          .eq("portal_token", data.token)
+          .maybeSingle(),
+        sb.from("addon_services").select("name").eq("id", data.addonServiceId).maybeSingle(),
+      ]);
+      if (cl?.organization_id) {
+        const { notifyRoles } = await import("@/lib/notify-center.server");
+        await notifyRoles(["owner", "office_manager"], {
+          orgId: cl.organization_id,
+          type: "addon_request",
+          title: `Add-on requested: ${(addon as any)?.name ?? "a service"}`,
+          body: `${cl.display_name ?? "A client"} requested ${(addon as any)?.name ?? "an add-on"}${data.quantity > 1 ? ` ×${data.quantity}` : ""} from the portal`,
+          link: `/clients/${cl.id}?tab=services`,
+        });
+      }
+    } catch (e) {
+      console.error("addon request in-app notification failed", (e as Error).message);
+    }
     return { id: id as string };
   });
 
