@@ -15,6 +15,7 @@ import { sendReviewRequest, applyReferralCode } from "@/lib/reviews.functions";
 import { sendSmsToClient, listClientMessages } from "@/lib/messages.functions";
 import { formatDay } from "@/lib/format";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { humanizeEnum } from "@/lib/humanize";
 
 export function MessageComposer({ client, bare = false }: { client: any; bare?: boolean }) {
   const qc = useQueryClient();
@@ -56,7 +57,8 @@ export function MessageComposer({ client, bare = false }: { client: any; bare?: 
             >
               <div className="text-xs uppercase text-foreground/70">
                 {m.direction === "outbound" ? "Sent" : "Received"}
-                {m.status ? ` · ${m.status}` : ""}
+                {/* BUG-4: raw delivery enums ("delivery_failed") reached users. */}
+                {m.status ? ` · ${humanizeEnum(m.status)}` : ""}
               </div>
               {m.body}
             </li>

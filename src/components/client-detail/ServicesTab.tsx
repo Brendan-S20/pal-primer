@@ -68,6 +68,7 @@ import { generatePrepaidInvoice } from "@/lib/invoices.functions";
 import { generateVisits } from "@/lib/visits.functions";
 import { listStations } from "@/lib/stations.functions";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { humanizeEnum } from "@/lib/humanize";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -685,7 +686,9 @@ function ServiceDetailDrawer({
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Billing</dt>
-            <dd className="capitalize">{s.billing_cadence}</dd>
+            {/* BUG-4: `capitalize` only uppercases the first letter, so a
+                snake_case cadence still reached the user as "Per_visit". */}
+            <dd>{humanizeEnum(s.billing_cadence)}</dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Arrival window</dt>

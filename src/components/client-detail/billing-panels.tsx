@@ -34,6 +34,7 @@ import {
 import { InvoiceDrawer } from "@/components/InvoiceDrawer";
 import { InvoiceRow } from "@/components/InvoiceRow";
 import { formatDay } from "@/lib/format";
+import { humanizeEnum } from "@/lib/humanize";
 import {
   listAddonServices,
   listClientAddons,
@@ -558,7 +559,8 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
             {subs.map((s) => (
               <li key={s.id} className="flex items-center justify-between py-2">
                 <span>
-                  {s.addon_services?.name}: {money(s.price_cents)} · {s.frequency}
+                  {/* BUG-4: raw frequency enums ("per_visit") reached users. */}
+                  {s.addon_services?.name}: {money(s.price_cents)} · {humanizeEnum(s.frequency)}
                   <span className="ml-2 text-xs text-muted-foreground">
                     next {formatDay(s.next_charge_on)}
                   </span>
