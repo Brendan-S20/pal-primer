@@ -13,6 +13,7 @@ import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as PlatformRouteImport } from './routes/platform'
+import { Route as NoWorkspaceRouteImport } from './routes/no-workspace'
 import { Route as ImpersonateRouteImport } from './routes/impersonate'
 import { Route as GetStartedRouteImport } from './routes/get-started'
 import { Route as AuthRouteImport } from './routes/auth'
@@ -142,6 +143,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const PlatformRoute = PlatformRouteImport.update({
   id: '/platform',
   path: '/platform',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NoWorkspaceRoute = NoWorkspaceRouteImport.update({
+  id: '/no-workspace',
+  path: '/no-workspace',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ImpersonateRoute = ImpersonateRouteImport.update({
@@ -737,6 +743,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/get-started': typeof GetStartedRoute
   '/impersonate': typeof ImpersonateRoute
+  '/no-workspace': typeof NoWorkspaceRoute
   '/platform': typeof PlatformRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/sign-up': typeof SignUpRoute
@@ -852,6 +859,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/get-started': typeof GetStartedRoute
   '/impersonate': typeof ImpersonateRoute
+  '/no-workspace': typeof NoWorkspaceRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-up': typeof SignUpRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -962,6 +970,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/get-started': typeof GetStartedRoute
   '/impersonate': typeof ImpersonateRoute
+  '/no-workspace': typeof NoWorkspaceRoute
   '/platform': typeof PlatformRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/sign-up': typeof SignUpRoute
@@ -1079,6 +1088,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/get-started'
     | '/impersonate'
+    | '/no-workspace'
     | '/platform'
     | '/reset-password'
     | '/sign-up'
@@ -1194,6 +1204,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/get-started'
     | '/impersonate'
+    | '/no-workspace'
     | '/reset-password'
     | '/sign-up'
     | '/unsubscribe'
@@ -1303,6 +1314,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/get-started'
     | '/impersonate'
+    | '/no-workspace'
     | '/platform'
     | '/reset-password'
     | '/sign-up'
@@ -1420,6 +1432,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   GetStartedRoute: typeof GetStartedRoute
   ImpersonateRoute: typeof ImpersonateRoute
+  NoWorkspaceRoute: typeof NoWorkspaceRoute
   PlatformRoute: typeof PlatformRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignUpRoute: typeof SignUpRoute
@@ -1481,6 +1494,13 @@ declare module '@tanstack/react-router' {
       path: '/platform'
       fullPath: '/platform'
       preLoaderRoute: typeof PlatformRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/no-workspace': {
+      id: '/no-workspace'
+      path: '/no-workspace'
+      fullPath: '/no-workspace'
+      preLoaderRoute: typeof NoWorkspaceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/impersonate': {
@@ -2500,6 +2520,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   GetStartedRoute: GetStartedRoute,
   ImpersonateRoute: ImpersonateRoute,
+  NoWorkspaceRoute: NoWorkspaceRoute,
   PlatformRoute: PlatformRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,
   SignUpRoute: SignUpRoute,
@@ -2535,13 +2556,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

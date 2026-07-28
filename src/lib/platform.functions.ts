@@ -253,9 +253,15 @@ export const consumeImpersonation = createServerFn({ method: "POST" })
 
     // Atomically claim the grant: only succeeds if unconsumed and unexpired.
     // (Untyped: generated types lag the finding-#5 migration.)
+    // BUG-2: stamp the SESSION's own window at the same moment the grant is
+    // claimed. `expires_at` bounds only the click-through link; without this
+    // the minted session refreshed itself forever and then failed silently.
+    const { IMPERSONATION_SESSION_TTL_MS } = await import("@/lib/impersonation-session.shared");
+    const sessionExpiresAt = new Date(Date.now() + IMPERSONATION_SESSION_TTL_MS).toISOString();
+
     const { data: grant, error: claimErr } = await (supabaseAdmin as any)
       .from("impersonation_grants")
-      .update({ consumed_at: nowIso })
+      .update({ consumed_at: nowIso, session_expires_at: sessionExpiresAt })
       .eq("token_hash", sha256(data.token))
       .is("consumed_at", null)
       .gte("expires_at", nowIso)
@@ -337,6 +343,15 @@ export const consumeImpersonation = createServerFn({ method: "POST" })
       // audit loop with a stop event + duration (H2).
       grantId: grant.id as string,
       startedAt: nowIso,
+      // BUG-2: the tab counts down to this and shows an explicit ended state.
+      // The server enforces the same window independently (resolveCaller), so
+      // a tampered client buys nothing.
+      sessionExpiresAt,
+      // Re-impersonating after expiry needs a NEW grant, which only the
+      // platform-admin console can mint — the tab carries these so it can ask
+      // its opener to do so with one click.
+      organizationId: grant.organization_id as string,
+      targetUserId: grant.target_user_id as string,
     };
   });
 

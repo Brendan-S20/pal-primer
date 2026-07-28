@@ -11,6 +11,14 @@ export type CallerContext = {
  * Throws if the user belongs to no organization.
  */
 export async function resolveCaller(supabase: any, userId: string): Promise<CallerContext> {
+  // BUG-2: an impersonated session past its window is no longer a valid
+  // identity. Checking here — ahead of the role lookup — means every server
+  // function that goes through requirePermission stops honoring an expired
+  // impersonation, rather than continuing to serve the target user's data
+  // because their JWT still refreshes. A no-op for ordinary sessions.
+  const { assertImpersonationSessionActive } = await import("@/lib/impersonation-session.server");
+  await assertImpersonationSessionActive();
+
   const { data, error } = await supabase
     .from("user_roles")
     .select("organization_id, role")

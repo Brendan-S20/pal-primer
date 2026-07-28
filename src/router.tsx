@@ -1,10 +1,25 @@
-import { QueryClient } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import { RouteError, RouteNotFound } from "./components/RouteError";
+import {
+  isImpersonationExpiredError,
+  notifyImpersonationExpired,
+} from "./lib/impersonation-expiry";
 
 export const getRouter = () => {
-  const queryClient = new QueryClient();
+  // BUG-2: the server rejects any request made under an expired impersonation
+  // session. Catching it centrally — for both reads and writes — is what turns
+  // that rejection into the explicit "session ended" state instead of a page
+  // that quietly stops loading data.
+  const onError = (error: unknown) => {
+    if (isImpersonationExpiredError(error)) notifyImpersonationExpired();
+  };
+
+  const queryClient = new QueryClient({
+    queryCache: new QueryCache({ onError }),
+    mutationCache: new MutationCache({ onError }),
+  });
 
   const router = createRouter({
     routeTree,

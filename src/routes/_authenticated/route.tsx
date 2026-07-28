@@ -8,6 +8,8 @@ import {
 } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getMyOrg } from "@/lib/org.functions";
+import { getPlatformContext } from "@/lib/platform.functions";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { OnboardingTour } from "@/components/OnboardingTour";
 import { InstallBanner } from "@/components/InstallBanner";
@@ -26,10 +28,37 @@ import { useBrandAccent } from "@/hooks/useBrandAccent";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
-  beforeLoad: async () => {
+  beforeLoad: async ({ context }) => {
     const { data, error } = await supabase.auth.getUser();
     if (error || !data.user) throw redirect({ to: "/auth" });
-    return { user: data.user };
+
+    // BUG-1: being signed in is not enough to render a tenant surface — every
+    // page below this route reads org-scoped data, so an account with no
+    // organization rendered tenant chrome around nothing (the repro was a
+    // platform-admin account opening /settings/addons and getting an empty
+    // settings page). Guarding here covers the WHOLE _authenticated tree
+    // rather than the one route the repro happened to name.
+    //
+    // This shares the ["my-org"] cache entry with useMyRole(), so the shell
+    // and every child that calls it reuse this fetch instead of adding one.
+    const org = await context.queryClient.ensureQueryData({
+      queryKey: ["my-org"],
+      queryFn: () => getMyOrg(),
+      staleTime: 60_000,
+    });
+    if (!org?.organization) {
+      // Platform admins have a real home; everyone else gets an explicit
+      // terminal state rather than a blank tenant page.
+      let isPlatformAdmin = false;
+      try {
+        isPlatformAdmin = !!(await getPlatformContext()).isPlatformAdmin;
+      } catch {
+        /* treat an unavailable check as "not an admin" — never fail open */
+      }
+      throw redirect({ to: isPlatformAdmin ? "/platform" : "/no-workspace" });
+    }
+
+    return { user: data.user, organization: org.organization };
   },
   component: AppShell,
 });

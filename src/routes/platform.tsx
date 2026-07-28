@@ -24,6 +24,7 @@ import {
   Gift,
 } from "lucide-react";
 import { getPlatformContext } from "@/lib/platform.functions";
+import { ReimpersonateListener } from "@/components/ReimpersonateListener";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Sidebar,
@@ -118,6 +119,8 @@ function PlatformLayout() {
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-background">
+        {/* BUG-2: lets an expired impersonation tab ask for a fresh session. */}
+        <ReimpersonateListener />
         <PlatformSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <PlatformHeader />
