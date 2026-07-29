@@ -24,7 +24,10 @@ export type Permission =
   | "manage_users"
   | "manage_settings";
 
-const ALL_PERMISSIONS: Permission[] = [
+/** Every permission the product defines. Exported so the TS↔SQL parity
+ *  test (IMP-3) can enumerate the matrix exhaustively rather than spot-check
+ *  it — a permission missing from one side is exactly the drift it guards. */
+export const ALL_PERMISSIONS: Permission[] = [
   "manage_pricing",
   "manage_client_billing",
   "view_financials",
