@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   computePlatformSaasMetrics,
   monthlyEquivalentCents,
+  addonMonthlyEquivalentCents,
+  totalMonthlyEquivalentCents,
   type OrgForMrr,
   type PlanForMrr,
 } from "@/lib/platform-metrics";
@@ -139,5 +141,88 @@ describe("signup org-name validation rejects junk tenants (H5 #4 / I11)", () => 
     expect(isValidOrgName("Demo Pet Waste Co")).toBe(true);
     expect(isValidOrgName("Mike's Scoop Squad")).toBe(true);
     expect(isValidOrgName("Test Client Services")).toBe(true); // has a real word
+  });
+});
+
+// BUG-11: the console reported MRR $449 for the demo tenant while its actual
+// subscription billed $527 — recurring add-ons were not counted at all.
+describe("recurring add-ons count toward platform MRR (BUG-11)", () => {
+  const RECEPTIONIST = { status: "active", price_cents: 4900, billing_interval: "month" };
+  const PRIORITY = { status: "active", price_cents: 2900, billing_interval: "month" };
+  const SETUP = { status: "active", price_cents: 49900, billing_interval: "one_time" };
+
+  it("reproduces the finding: $449 plan + $49 + $29 add-ons = $527", () => {
+    const org: OrgForMrr = { ...DEMO, addons: [RECEPTIONIST, PRIORITY] };
+    expect(monthlyEquivalentCents(org)).toBe(44900); // plan alone — the old number
+    expect(addonMonthlyEquivalentCents(org)).toBe(7800);
+    expect(totalMonthlyEquivalentCents(org)).toBe(52700); // $527.00
+  });
+
+  it("excludes ONE-TIME add-ons from a recurring metric", () => {
+    // "Done-for-you setup" is $499 charged once. Folding it into MRR would
+    // overstate monthly recurring revenue by more than a year of the plan.
+    const org: OrgForMrr = { ...DEMO, addons: [SETUP] };
+    expect(addonMonthlyEquivalentCents(org)).toBe(0);
+    expect(totalMonthlyEquivalentCents(org)).toBe(44900);
+  });
+
+  it("excludes canceled add-ons, and add-ons on a non-paying tenant", () => {
+    expect(
+      addonMonthlyEquivalentCents({ ...DEMO, addons: [{ ...RECEPTIONIST, status: "canceled" }] }),
+    ).toBe(0);
+    expect(
+      addonMonthlyEquivalentCents({
+        ...DEMO,
+        billing_status: "suspended",
+        addons: [RECEPTIONIST],
+      }),
+    ).toBe(0);
+  });
+
+  it("divides an annual add-on by 12, and ignores an unrecognized interval", () => {
+    expect(
+      addonMonthlyEquivalentCents({
+        ...DEMO,
+        addons: [{ status: "active", price_cents: 12000, billing_interval: "year" }],
+      }),
+    ).toBe(1000);
+    // Treating an unknown cadence as monthly is how a metric starts lying.
+    expect(
+      addonMonthlyEquivalentCents({
+        ...DEMO,
+        addons: [{ status: "active", price_cents: 5000, billing_interval: "fortnightly" }],
+      }),
+    ).toBe(0);
+  });
+
+  it("rolls the split up so plan + add-ons reconcile to the headline MRR", () => {
+    const m = computePlatformSaasMetrics([
+      { ...DEMO, addons: [RECEPTIONIST, PRIORITY, SETUP] },
+      ...FREE_ORGS,
+    ]);
+    expect(m.planMrrCents).toBe(44900);
+    expect(m.addonMrrCents).toBe(7800);
+    expect(m.mrrCents).toBe(52700);
+    expect(m.planMrrCents + m.addonMrrCents).toBe(m.mrrCents);
+    expect(m.arrCents).toBe(52700 * 12);
+    // Add-ons must not invent paying tenants.
+    expect(m.payingTenants).toBe(1);
+    expect(m.perOrg[0].plan_mrr_cents).toBe(44900);
+    expect(m.perOrg[0].addon_mrr_cents).toBe(7800);
+  });
+
+  it("does not count a tenant that has add-ons but no priced plan", () => {
+    const noPlan: OrgForMrr = {
+      id: "x", name: "Add-ons only", billing_status: "active",
+      active_seat_count: 1, plan: null, addons: [RECEPTIONIST],
+    };
+    const m = computePlatformSaasMetrics([noPlan]);
+    expect(m.payingTenants).toBe(0);
+    expect(m.mrrCents).toBe(0);
+  });
+
+  it("leaves orgs with no add-ons exactly as before", () => {
+    expect(addonMonthlyEquivalentCents(DEMO)).toBe(0);
+    expect(totalMonthlyEquivalentCents(DEMO)).toBe(monthlyEquivalentCents(DEMO));
   });
 });

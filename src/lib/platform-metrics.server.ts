@@ -7,6 +7,7 @@ import {
   computePlatformSaasMetrics,
   type OrgForMrr,
   type PlanForMrr,
+  type AddonForMrr,
   type PlatformSaasMetrics,
 } from "@/lib/platform-metrics";
 
@@ -46,12 +47,37 @@ export async function fetchPlatformSaasMetrics(
     }
   }
 
+  // BUG-11: recurring add-ons are SaaS revenue the tenant pays HoundStack, and
+  // were missing from MRR entirely — the console showed $449 for a tenant whose
+  // subscription bills $527. Loaded here alongside the plans so the pure
+  // computation still receives everything it needs in one shape.
+  const addonsByOrg = new Map<string, AddonForMrr[]>();
+  const { data: orgAddons, error: aErr } = await supabaseAdmin
+    .from("org_platform_addons")
+    .select("organization_id, status, platform_addons(price_cents, billing_interval)")
+    .eq("status", "active");
+  if (aErr) throw new Error(aErr.message);
+  for (const row of orgAddons ?? []) {
+    // PostgREST returns the embedded row as an object or a single-element array
+    // depending on how it infers the relationship; normalize both.
+    const a: any = Array.isArray(row.platform_addons) ? row.platform_addons[0] : row.platform_addons;
+    if (!a) continue;
+    const list = addonsByOrg.get(row.organization_id) ?? [];
+    list.push({
+      status: row.status ?? null,
+      price_cents: a.price_cents ?? null,
+      billing_interval: a.billing_interval ?? null,
+    });
+    addonsByOrg.set(row.organization_id, list);
+  }
+
   const rows: OrgForMrr[] = (orgs ?? []).map((o: any) => ({
     id: o.id,
     name: o.name,
     billing_status: o.billing_status ?? null,
     active_seat_count: o.active_seat_count ?? null,
     plan: o.plan_id ? planMap.get(o.plan_id) ?? null : null,
+    addons: addonsByOrg.get(o.id) ?? null,
   }));
 
   return computePlatformSaasMetrics(rows);

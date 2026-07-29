@@ -19,12 +19,22 @@ export type PlanForMrr = {
   is_free: boolean | null;
 };
 
+/** A platform add-on a tenant subscribes to. This is SaaS revenue — the tenant
+ *  paying HoundStack — so it belongs in MRR, and it is NOT tenant GMV. */
+export type AddonForMrr = {
+  status: string | null; // active | canceled
+  price_cents: number | null;
+  billing_interval: string | null; // 'month' | 'year' | 'one_time'
+};
+
 export type OrgForMrr = {
   id: string;
   name: string;
   billing_status: string | null; // active | grace | past_due | free | suspended | canceled
   active_seat_count: number | null;
   plan: PlanForMrr | null;
+  /** Optional so existing callers and fixtures stay valid; absent means none. */
+  addons?: AddonForMrr[] | null;
 };
 
 // A tenant contributes to MRR only while it is actually paying. `free` orgs (on
@@ -67,11 +77,58 @@ export function monthlyEquivalentCents(org: OrgForMrr): number {
   return base + overage;
 }
 
+/**
+ * BUG-11: recurring add-on revenue a tenant pays HoundStack, as a monthly
+ * equivalent. The console reported MRR of $449 for a tenant whose subscription
+ * actually bills $527, because add-ons were simply not counted.
+ *
+ * Two rules do the real work here:
+ *  - ONE-TIME add-ons are excluded. "Done-for-you setup" at $499 is a single
+ *    charge; folding it into a *recurring* revenue metric would overstate MRR
+ *    by more than a year of the plan itself.
+ *  - Only ACTIVE subscriptions count. A canceled add-on stops contributing,
+ *    the same rule isPayingStatus applies to the plan.
+ *
+ * Gated on the org being in a paying status at all, so a suspended tenant does
+ * not contribute add-on revenue while contributing no plan revenue.
+ */
+export function addonMonthlyEquivalentCents(org: OrgForMrr): number {
+  if (!isPayingStatus(org.billing_status)) return 0;
+  let total = 0;
+  for (const a of org.addons ?? []) {
+    if (a.status !== "active") continue;
+    const price = a.price_cents ?? 0;
+    if (price <= 0) continue;
+    if (a.billing_interval === "year") total += Math.round(price / 12);
+    else if (a.billing_interval === "month") total += price;
+    // one_time (and anything unrecognized) contributes nothing to a RECURRING
+    // metric. Unrecognized intervals are excluded on purpose: silently
+    // treating an unknown cadence as monthly is how a metric starts lying.
+  }
+  return total;
+}
+
+/** What a tenant pays HoundStack per month, all in: plan + recurring add-ons. */
+export function totalMonthlyEquivalentCents(org: OrgForMrr): number {
+  return monthlyEquivalentCents(org) + addonMonthlyEquivalentCents(org);
+}
+
 export type PlatformSaasMetrics = {
+  /** Plan + recurring add-ons. The headline number. */
   mrrCents: number;
+  /** The split, so the console can show where the money comes from and a
+   *  plan-only figure stays available rather than being lost (BUG-11). */
+  planMrrCents: number;
+  addonMrrCents: number;
   arrCents: number;
   payingTenants: number;
-  perOrg: Array<{ id: string; name: string; mrr_cents: number }>;
+  perOrg: Array<{
+    id: string;
+    name: string;
+    mrr_cents: number;
+    plan_mrr_cents: number;
+    addon_mrr_cents: number;
+  }>;
   byTier: Array<{ tier: string; tier_name: string; mrr_cents: number; count: number }>;
 };
 
@@ -83,16 +140,31 @@ export type PlatformSaasMetrics = {
  */
 export function computePlatformSaasMetrics(orgs: OrgForMrr[]): PlatformSaasMetrics {
   let mrrCents = 0;
+  let planMrrCents = 0;
+  let addonMrrCents = 0;
   let payingTenants = 0;
   const perOrg: PlatformSaasMetrics["perOrg"] = [];
   const tiers = new Map<string, { tier: string; tier_name: string; mrr_cents: number; count: number }>();
 
   for (const o of orgs) {
-    const m = monthlyEquivalentCents(o);
-    if (m <= 0) continue;
+    const planM = monthlyEquivalentCents(o);
+    const addonM = addonMonthlyEquivalentCents(o);
+    const m = planM + addonM;
+    // Still keyed on the PLAN being paid: a tenant with add-ons but no priced
+    // plan isn't a paying subscriber, and counting it would inflate the tenant
+    // count against a tier that doesn't exist.
+    if (planM <= 0) continue;
     mrrCents += m;
+    planMrrCents += planM;
+    addonMrrCents += addonM;
     payingTenants += 1;
-    perOrg.push({ id: o.id, name: o.name, mrr_cents: m });
+    perOrg.push({
+      id: o.id,
+      name: o.name,
+      mrr_cents: m,
+      plan_mrr_cents: planM,
+      addon_mrr_cents: addonM,
+    });
     const tier = o.plan?.slug ?? "unassigned";
     const existing = tiers.get(tier) ?? {
       tier,
@@ -108,5 +180,13 @@ export function computePlatformSaasMetrics(orgs: OrgForMrr[]): PlatformSaasMetri
   perOrg.sort((a, b) => b.mrr_cents - a.mrr_cents);
   const byTier = Array.from(tiers.values()).sort((a, b) => b.mrr_cents - a.mrr_cents);
 
-  return { mrrCents, arrCents: mrrCents * 12, payingTenants, perOrg, byTier };
+  return {
+    mrrCents,
+    planMrrCents,
+    addonMrrCents,
+    arrCents: mrrCents * 12,
+    payingTenants,
+    perOrg,
+    byTier,
+  };
 }

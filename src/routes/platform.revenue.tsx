@@ -34,7 +34,19 @@ function RevenuePage() {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard icon={DollarSign} label="MRR" value={money(d.mrrCents)} sub="active tenant subscriptions" />
+        {/* BUG-11: MRR is plan + recurring add-ons. The subtitle carries the
+            split so the figure reconciles against a tenant's actual bill —
+            previously it showed the plan alone and silently disagreed. */}
+        <StatCard
+          icon={DollarSign}
+          label="MRR"
+          value={money(d.mrrCents)}
+          sub={
+            d.addonMrrCents > 0
+              ? `${money(d.planMrrCents)} plans + ${money(d.addonMrrCents)} add-ons`
+              : "active tenant subscriptions"
+          }
+        />
         <StatCard icon={TrendingUp} label="ARR" value={money(d.arrEstimateCents)} sub="MRR × 12" />
         <StatCard icon={Building2} label="Paying orgs" value={`${d.payingOrgs} / ${d.totalOrgs}`} sub="active, past due, or grace" />
         <StatCard icon={AlertCircle} label="Platform AR" value={money(d.arOpenCents)} sub="unpaid SaaS invoices" />

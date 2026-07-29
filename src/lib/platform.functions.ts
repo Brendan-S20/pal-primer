@@ -506,6 +506,11 @@ export const getPlatformRevenueTrend = createServerFn({ method: "GET" })
       // by how much they collect from their own clients.
       topOrgs: saas.perOrg.slice(0, 5).map((o) => ({ id: o.id, name: o.name, revenue_cents: o.mrr_cents })),
       mrrCents: saas.mrrCents,
+      // BUG-11: MRR now includes recurring add-ons. The split rides along so
+      // the console can show where the number comes from — an MRR that jumped
+      // with no explanation would just be a different kind of wrong.
+      planMrrCents: saas.planMrrCents,
+      addonMrrCents: saas.addonMrrCents,
       arrEstimateCents: saas.arrCents,
       collectedMtdCents,
       arOpenCents: ar_open_cents,
