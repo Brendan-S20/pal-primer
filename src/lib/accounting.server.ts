@@ -25,6 +25,18 @@ type Conn = {
  * updated `Conn` with the fresh access token so callers can proceed.
  */
 export async function ensureFreshToken(conn: Conn): Promise<Conn> {
+  // IMP-1: tokens are stored encrypted. This function is the single funnel
+  // every accounting API path goes through, so decrypting here — before the
+  // early return as well as the refresh branch — is what guarantees callers
+  // downstream always hold usable plaintext and never accidentally send
+  // ciphertext as a Bearer token.
+  const { decryptSecret, encryptSecret } = await import("@/lib/secret-encryption.server");
+  conn = {
+    ...conn,
+    access_token: decryptSecret(conn.access_token),
+    refresh_token: conn.refresh_token ? decryptSecret(conn.refresh_token) : conn.refresh_token,
+  };
+
   const exp = conn.token_expires_at ? new Date(conn.token_expires_at).getTime() : 0;
   if (exp - Date.now() > 60_000) return conn;
   if (!conn.refresh_token) throw new Error("Access token expired and no refresh token stored. Reconnect the integration.");
@@ -58,7 +70,13 @@ export async function ensureFreshToken(conn: Conn): Promise<Conn> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   await supabaseAdmin
     .from("accounting_connections")
-    .update({ access_token: tok.access_token, refresh_token: nextRefresh, token_expires_at: expiresAt })
+    // Re-encrypted on the way back down. The rotated refresh token is just as
+    // sensitive as the original, so it gets the same treatment.
+    .update({
+      access_token: encryptSecret(tok.access_token),
+      refresh_token: nextRefresh ? encryptSecret(nextRefresh) : nextRefresh,
+      token_expires_at: expiresAt,
+    })
     .eq("id", conn.id);
 
   return { ...conn, access_token: tok.access_token, refresh_token: nextRefresh, token_expires_at: expiresAt };

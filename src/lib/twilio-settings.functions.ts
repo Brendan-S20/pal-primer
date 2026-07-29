@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
+import { encryptSecret, secretLast4, isEncrypted } from "@/lib/secret-encryption.server";
 
 // BYOK Twilio for the tenant<->client conversation channel. The owner enters
 // their own Twilio Account SID + Auth Token (+ optional Messaging Service SID)
@@ -16,7 +17,7 @@ export const getOrgTwilioSettings = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data } = await (supabaseAdmin as any)
       .from("org_twilio_credentials")
-      .select("account_sid, auth_token, sms_from_number, messaging_service_sid, updated_at")
+      .select("account_sid, auth_token, token_last4, sms_from_number, messaging_service_sid, updated_at")
       .eq("organization_id", orgId)
       .maybeSingle();
     if (!data) {
@@ -28,11 +29,14 @@ export const getOrgTwilioSettings = createServerFn({ method: "GET" })
         messagingServiceSid: null as string | null,
       };
     }
+    // IMP-1: hint from its own column; the stored token is ciphertext now.
     const token: string = data.auth_token ?? "";
     return {
       configured: true,
       accountSid: (data.account_sid as string) ?? null,
-      tokenLast4: token.length >= 4 ? token.slice(-4) : null,
+      tokenLast4:
+        (data.token_last4 as string | null) ??
+        (!isEncrypted(token) && token.length >= 4 ? token.slice(-4) : null),
       smsFromNumber: (data.sms_from_number as string) ?? null,
       messagingServiceSid: (data.messaging_service_sid as string) ?? null,
     };
@@ -77,7 +81,10 @@ export const setOrgTwilioSettings = createServerFn({ method: "POST" })
       {
         organization_id: orgId,
         account_sid: data.accountSid,
-        auth_token: data.authToken,
+        // IMP-1: ciphertext at rest; throws rather than storing plaintext if
+        // CREDENTIAL_ENCRYPTION_KEY is missing.
+        auth_token: encryptSecret(data.authToken),
+        token_last4: secretLast4(data.authToken),
         sms_from_number: data.smsFromNumber || null,
         messaging_service_sid: data.messagingServiceSid || null,
         updated_by: context.userId,

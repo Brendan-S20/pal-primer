@@ -14,7 +14,14 @@ export async function resolveOrgAiConfig(orgId: string): Promise<AiConfig | null
     .maybeSingle();
   if (data?.api_key) {
     const provider = data.provider === "openai" ? "openai" : "anthropic";
-    return { provider, apiKey: data.api_key, model: data.model || DEFAULT_MODELS[provider] };
+    // IMP-1: stored encrypted at rest. Decrypting here keeps the plaintext key
+    // on the server for exactly as long as the outbound call needs it.
+    const { decryptSecret } = await import("@/lib/secret-encryption.server");
+    return {
+      provider,
+      apiKey: decryptSecret(data.api_key as string),
+      model: data.model || DEFAULT_MODELS[provider],
+    };
   }
   // No per-org key configured → platform env fallback (if the operator set one).
   return resolveAiConfigFromEnv();

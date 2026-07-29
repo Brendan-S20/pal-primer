@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { DEFAULT_MODELS } from "@/lib/ai.server";
+import { encryptSecret, secretLast4, isEncrypted } from "@/lib/secret-encryption.server";
 
 // BYOK settings: the owner enters their own Anthropic/OpenAI key. Reads/writes
 // go through the service-role client so the key is never exposed to RLS/browser;
@@ -15,7 +16,7 @@ export const getOrgAiSettings = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data } = await (supabaseAdmin as any)
       .from("org_ai_credentials")
-      .select("provider, model, api_key, updated_at")
+      .select("provider, model, api_key, key_last4, updated_at")
       .eq("organization_id", orgId)
       .maybeSingle();
     const hasPlatformFallback = !!process.env.ANTHROPIC_API_KEY;
@@ -29,12 +30,19 @@ export const getOrgAiSettings = createServerFn({ method: "GET" })
         defaultModels: DEFAULT_MODELS,
       };
     }
-    const key: string = data.api_key ?? "";
+    // IMP-1: the hint is read from its own column rather than derived from the
+    // stored value, which is now ciphertext. Falls back to deriving it for any
+    // row written before the change (there were none, but the fallback costs
+    // nothing and makes the transition safe in either direction).
+    const stored: string = data.api_key ?? "";
+    const last4 =
+      (data.key_last4 as string | null) ??
+      (!isEncrypted(stored) && stored.length >= 4 ? stored.slice(-4) : null);
     return {
       configured: true,
       provider: data.provider as string,
       model: (data.model as string) || DEFAULT_MODELS[data.provider as "anthropic" | "openai"],
-      keyLast4: key.length >= 4 ? key.slice(-4) : null,
+      keyLast4: last4,
       usingPlatformFallback: false,
       defaultModels: DEFAULT_MODELS,
     };
@@ -58,7 +66,13 @@ export const setOrgAiSettings = createServerFn({ method: "POST" })
       {
         organization_id: orgId,
         provider: data.provider,
-        api_key: data.apiKey,
+        // IMP-1: ciphertext, never the raw key. encryptSecret throws when
+        // CREDENTIAL_ENCRYPTION_KEY is unset, so a misconfigured environment
+        // fails the save loudly instead of quietly writing plaintext.
+        api_key: encryptSecret(data.apiKey),
+        // Non-secret display hint, captured here so rendering the settings page
+        // never has to decrypt anything.
+        key_last4: secretLast4(data.apiKey),
         model: data.model || DEFAULT_MODELS[data.provider],
         updated_by: context.userId,
         updated_at: new Date().toISOString(),

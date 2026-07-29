@@ -1,3 +1,4 @@
+import { decryptSecret } from "@/lib/secret-encryption.server";
 // Server-only resolver for an org's own Twilio account (BYOK), used for the
 // tenant<->client CONVERSATION channel only: manual staff↔client SMS, inbound
 // replies, and the AI receptionist. Reads the service-role-only
@@ -24,7 +25,8 @@ export async function resolveOrgTwilioConfig(orgId: string): Promise<TenantTwili
   if (!data?.account_sid || !data?.auth_token) return null;
   return {
     accountSid: data.account_sid,
-    authToken: data.auth_token,
+    // IMP-1: decrypted only here, immediately before the outbound Twilio call.
+    authToken: decryptSecret(data.auth_token as string),
     from: data.sms_from_number || null,
     messagingServiceSid: data.messaging_service_sid || null,
   };
