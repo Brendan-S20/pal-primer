@@ -109,15 +109,15 @@ were built. Repo search finds no such mechanism. Raised as BUILD-10.
 | BUG-5 | ✅ Verified | 🟠 | Stations button on residential cards — already gated | v1.1 |
 | BUG-6 | ✅ Verified | 🟠 | Dispatcher hidden tab — already redirects to Summary | v1.1 |
 | BUG-7 | ✅ Verified | 🟠 | Overdue card — dispatchers lack `view_financials`; server returns null | v1.1 |
-| BUG-8 | 🔵 Open | 🟠 | Station "Last serviced" — likely closed by #62, **verify not fix** | v1.1 |
+| BUG-8 | ✅ Verified | 🟠 | Station "Last serviced" — closed by #62; reads the newest visit date across `station_service_logs`. Live data has 0 logs, so "not yet" on all 3 stations is correct, not the bug | v1.2 |
 | BUG-9 | 🔄 Split | 🟠 | (a) closed by design · (b) needs BUILD-10 | v1.1 |
 | BUG-10 | 🟢 Fixed | 🟠 | Station junk labels — schema was NOT NULL, see below | v1.1 |
-| BUG-11 | 🔵 Open | 🟠 | Platform MRR excludes add-ons — **only untouched P1** | v1.0 |
+| BUG-11 | 🟢 Fixed | 🟠 | Platform MRR excludes add-ons — annualized to a monthly equivalent; verified live at $449 + $78 = $527, one-time excluded | v1.2 |
 | BUG-12 | 🟢 Fixed | 🟠 | Portal skips today's visit — UTC vs org-local date | v1.1 |
-| BUG-13 | 🔵 Open | 🟡 | Onboarding tour fires in impersonation | v1.0 |
-| BUG-14 | 🔵 Open | 🟡 | Impersonation audit omits target user | v1.0 |
-| BUG-15 | 🔵 Open | 🟡 | Portal history under Requests; photos missing | v1.0 |
-| BUG-16 | 🔵 Open | 🟡 | No dog info on residential visit cards | v1.0 |
+| BUG-13 | ✅ Verified | 🟡 | Onboarding tour in impersonation — already guarded at both ends: never auto-fires in an impersonation tab, and a manual re-run never stamps the impersonated user's `tour_seen_at` | v1.2 |
+| BUG-14 | 🟢 Fixed | 🟡 | Impersonation audit — target was already recorded and displayed, but **not searchable**, and 21 of 22 sessions had no recorded end at all. See below | v1.2 |
+| BUG-15 | ✅ Verified | 🟡 | Portal history — already moved to the Visits tab (G4) with signed before/after photos | v1.2 |
+| BUG-16 | ✅ Verified | 🟡 | Dog info on residential cards — `DogsRow` renders name + temperament next to hazards; `dogs(name, temperament)` is in the My Day select | v1.2 |
 | BUG-17 | 🟢 Fixed | 🟠 | **New.** In-progress visit lost on reload | v1.1 |
 
 **BUG-10 detail:** `waste_stations.label` was `NOT NULL`, so the junk labels were
@@ -131,6 +131,39 @@ Creation still requires a real, non-placeholder label.
 `find(v => v.status === "scheduled" || v.status === "in_progress")`, which
 returns whichever comes *first in sequence* — so a tech who started #3 while #1
 was still scheduled got pointed at #1, and their open job appeared nowhere.
+
+**BUG-14 detail — the half that was actually broken.** The ticket said the audit
+omitted the target user. It did not: every one of the 52 impersonation rows in
+the live log carries `target_user_id` and `target_email`, and the row renders
+them inline. Two real defects were underneath it.
+
+*The filter could not find what the row displayed.* Searching by the
+impersonated user's email returned nothing, against text visibly on screen —
+the search covered action, org, and actor only. A filter that misses what it
+renders is worse than none, because an empty result reads as a definitive "no,
+that never happened." Filter and inline summary now come from one tested module
+(`src/lib/platform-audit.ts`).
+
+*Sessions ended by closing the tab were never recorded as ending.* Live counts:
+29 `start_impersonation`, 22 `enter_impersonation`, **one**
+`stop_impersonation`. The stop event only ever fired from the "Exit
+impersonation" button. Twenty-one sessions had no end in the log and their
+grants sat with `ended_at IS NULL` forever. The sessions were over regardless —
+BUG-2's server gate refuses them — but the record was missing, which is the
+whole point of an audit log. Two fixes:
+
+- Reaching the deadline with the tab open is an *observed* end, so the banner
+  now records the stop before signing out, and gets a real measured duration.
+- Everything else is swept nightly by
+  `close_abandoned_impersonation_grants()`, which stamps `ended_at` and writes
+  one stop event carrying `session_ended_at` and a **null** duration.
+
+That null is deliberate. We know when the window closed; we do not know when
+the operator walked away. Reporting a full-window duration would be inventing a
+fact — the same mistake BUG-9(a) was closed for refusing to make. The log says
+"ended at the time limit, no exit recorded" instead. Backfilled the 21
+historical sessions, dated at their real window-close time so the log reads in
+event order; the sweep returns 0 on re-run.
 
 ## Verify-then-fix
 

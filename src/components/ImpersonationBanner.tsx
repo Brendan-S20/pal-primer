@@ -44,6 +44,7 @@ export function ImpersonationBanner() {
   const [exiting, setExiting] = useState(false);
   const [expired, setExpired] = useState(false);
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
+  const infoRef = useRef<Info | null>(null);
   const [reimpersonateState, setReimpersonateState] = useState<"idle" | "asked" | "unavailable">(
     "idle",
   );
@@ -53,7 +54,11 @@ export function ImpersonationBanner() {
     if (!isImpersonationTab()) return;
     try {
       const raw = window.sessionStorage.getItem("hs_impersonation");
-      if (raw) setInfo(JSON.parse(raw));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        infoRef.current = parsed;
+        setInfo(parsed);
+      }
     } catch {
       /* ignore */
     }
@@ -65,6 +70,21 @@ export function ImpersonationBanner() {
     if (expiredRef.current) return;
     expiredRef.current = true;
     setExpired(true);
+    // BUG-14: close the audit loop here too, not only on the Exit button.
+    // Reaching the deadline with the tab open is an OBSERVED end, so this is
+    // the one chance to record a real, measured duration — the nightly sweep
+    // can only ever record the window bound. Order matters: signing out first
+    // would leave nothing to authorize this call. Still safe after the window
+    // has closed, because endImpersonationSession authorizes on the caller
+    // owning the grant and does not run through the expiry gate.
+    const grantId = infoRef.current?.grantId;
+    if (grantId) {
+      try {
+        await endImpersonationSession({ data: { grantId } });
+      } catch {
+        /* the sweep is the backstop — never block the sign-out */
+      }
+    }
     try {
       await supabase.auth.signOut();
     } catch {

@@ -60,7 +60,27 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           console.error("notification retention sweep failed", e);
         }
 
+        // BUG-14: an impersonation session ended by closing the tab left no
+        // stop event and no ended_at, so the audit log could not say when — or
+        // whether — it finished. The window had closed either way (BUG-2's
+        // server gate refuses the session); only the record was missing. This
+        // stamps the end and writes one honest stop event per grant, with the
+        // window-close time and a null duration rather than a fabricated one.
+        // Idempotent, so a retry costs nothing.
+        const impersonationSweep: Record<string, unknown> = {};
+        try {
+          const { data: n, error } = await (supabaseAdmin as any).rpc(
+            "close_abandoned_impersonation_grants",
+          );
+          impersonationSweep.impersonation_grants_closed = error
+            ? `err: ${error.message}`
+            : (n as number);
+        } catch (e) {
+          console.error("impersonation grant sweep failed", e);
+        }
+
         const summary: Array<Record<string, unknown>> = [];
+        if (Object.keys(impersonationSweep).length) summary.push(impersonationSweep);
 
         for (const org of orgs ?? []) {
           const perOrg: Record<string, unknown> = { org: org.name, id: org.id };
