@@ -3,6 +3,7 @@ import {
   visitDurationMinutes,
   formatVisitDuration,
   visitTimestampIssue,
+  isVisitAwaitingCloseOut,
   isMissedVisitCandidate,
 } from "@/lib/visit-lifecycle";
 
@@ -107,6 +108,46 @@ describe("isMissedVisitCandidate (I13 #8)", () => {
     for (const status of ["completed", "skipped", "canceled", "in_progress", "missed"]) {
       expect(
         isMissedVisitCandidate({ status, scheduled_on: "2026-07-09" }, TODAY),
+      ).toBe(false);
+    }
+  });
+});
+
+describe("isVisitAwaitingCloseOut (BUILD-11)", () => {
+  const TODAY = "2026-07-29";
+  const open = (scheduled_on: string) => ({ status: "in_progress", scheduled_on });
+
+  it("asks about a visit started on an earlier day", () => {
+    // The gap this closes: the nightly missed-visit job skips anything with a
+    // started_at, so an in_progress visit was never resolved by anything.
+    expect(isVisitAwaitingCloseOut(open("2026-07-28"), TODAY, "09:00", "17:00")).toBe(true);
+  });
+
+  it("leaves today's visit alone until the workday has ended", () => {
+    expect(isVisitAwaitingCloseOut(open(TODAY), TODAY, "16:59", "17:00")).toBe(false);
+    expect(isVisitAwaitingCloseOut(open(TODAY), TODAY, "17:00", "17:00")).toBe(true);
+    expect(isVisitAwaitingCloseOut(open(TODAY), TODAY, "18:30", "17:00")).toBe(true);
+  });
+
+  it("tolerates seconds on either time", () => {
+    expect(isVisitAwaitingCloseOut(open(TODAY), TODAY, "17:00:30", "17:00:00")).toBe(true);
+  });
+
+  it("falls back to date rollover only when no workday end is configured", () => {
+    // Conservative on purpose: better to ask a morning late than to interrupt
+    // a tech who is still working.
+    expect(isVisitAwaitingCloseOut(open(TODAY), TODAY, "23:00", null)).toBe(false);
+    expect(isVisitAwaitingCloseOut(open("2026-07-28"), TODAY, "23:00", null)).toBe(true);
+  });
+
+  it("never asks about a future-dated visit", () => {
+    expect(isVisitAwaitingCloseOut(open("2026-07-30"), TODAY, "23:00", "17:00")).toBe(false);
+  });
+
+  it("only ever applies to in_progress visits", () => {
+    for (const status of ["scheduled", "completed", "skipped", "missed", "canceled"]) {
+      expect(
+        isVisitAwaitingCloseOut({ status, scheduled_on: "2026-07-01" }, TODAY, "23:00", "17:00"),
       ).toBe(false);
     }
   });

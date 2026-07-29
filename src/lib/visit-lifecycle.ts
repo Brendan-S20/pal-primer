@@ -76,6 +76,37 @@ export function formatVisitDuration(
   return `${mins} min`;
 }
 
+/** BUILD-11: a visit the tech started and never closed, past the point where it
+ *  can still plausibly be in progress.
+ *
+ *  This gap exists because the nightly missed-visit job deliberately skips
+ *  anything with a started_at (see isMissedVisitCandidate), so an in_progress
+ *  visit is never resolved by anything — it just falls off the tech's day when
+ *  the date rolls over. Nothing auto-completes it: this predicate only decides
+ *  when to ASK.
+ *
+ *  Stale means either the org's day has moved past the visit's date, or it is
+ *  still that date but the workday has ended. All comparisons are in ORG-LOCAL
+ *  terms — callers pass the org-local date and time, never UTC, for the same
+ *  reason the portal's "today" is org-local (BUG-12).
+ *
+ *  `workdayEnd` is "HH:MM" (or "HH:MM:SS"); an absent one means only the
+ *  date rollover triggers, which is the conservative choice — better to ask a
+ *  morning late than to interrupt a tech still working. */
+export function isVisitAwaitingCloseOut(
+  v: Pick<VisitLike, "status" | "scheduled_on">,
+  orgLocalToday: string,
+  orgLocalTime?: string | null,
+  workdayEnd?: string | null,
+): boolean {
+  if (v.status !== "in_progress") return false;
+  if (v.scheduled_on < orgLocalToday) return true;
+  if (v.scheduled_on > orgLocalToday) return false;
+  // Same day: only once the workday is over.
+  if (!workdayEnd || !orgLocalTime) return false;
+  return orgLocalTime.slice(0, 5) >= workdayEnd.slice(0, 5);
+}
+
 /** True when a scheduled visit is genuinely past and never serviced, so the
  *  nightly job may move it to 'missed'. Mirrors admin_transition_missed_visits:
  *  only pre-service 'scheduled' rows strictly before today, with no partial

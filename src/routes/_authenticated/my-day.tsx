@@ -52,6 +52,7 @@ import { haptic } from "@/lib/haptics";
 import { useMyRole } from "@/hooks/useMyRole";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
+import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   // Honor ?date=YYYY-MM-DD deep-links (notifications, bookmarks) instead of
@@ -266,6 +267,10 @@ function MyDay() {
 
   return (
     <div className="-mx-4 -my-6 pb-[calc(7rem+env(safe-area-inset-bottom))] max-md:pb-[calc(10.5rem+env(safe-area-inset-bottom))]">
+      {/* BUILD-11: a visit started on an earlier day (or before today's workday
+          ended) that was never closed. Asks the tech what happened rather than
+          guessing — nothing here completes anything on its own. */}
+      <CloseOutOpenVisits />
       {/* Sticky, blurred top bar — feels like a native nav */}
       <div
         className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60"
