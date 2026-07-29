@@ -3,100 +3,52 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { DEFAULT_MODELS } from "@/lib/ai.server";
-import { encryptSecret, secretLast4, isEncrypted } from "@/lib/secret-encryption.server";
 
-// BYOK settings: the owner enters their own Anthropic/OpenAI key. Reads/writes
-// go through the service-role client so the key is never exposed to RLS/browser;
-// the status endpoint only ever returns a masked last-4, never the raw key.
+// AI settings after the BYOK retirement (IMP-9).
+//
+// This file used to hold setOrgAiSettings / clearOrgAiSettings — a tenant-facing
+// write path for their own Anthropic or OpenAI key. Both are gone, along with
+// every read of org_ai_credentials. AI runs on HoundStack's key; a tenant buys
+// an allowance and pays overages (Q-7).
+//
+// What remains is status and a health check, because "is AI working right now"
+// is still a question an owner reasonably asks — the answer just no longer has
+// anything to do with a key they hold.
 
 export const getOrgAiSettings = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data } = await (supabaseAdmin as any)
-      .from("org_ai_credentials")
-      .select("provider, model, api_key, key_last4, updated_at")
-      .eq("organization_id", orgId)
-      .maybeSingle();
-    const hasPlatformFallback = !!process.env.ANTHROPIC_API_KEY;
-    if (!data) {
-      return {
-        configured: false,
-        provider: null as string | null,
-        model: null as string | null,
-        keyLast4: null as string | null,
-        usingPlatformFallback: hasPlatformFallback,
-        defaultModels: DEFAULT_MODELS,
-      };
-    }
-    // IMP-1: the hint is read from its own column rather than derived from the
-    // stored value, which is now ciphertext. Falls back to deriving it for any
-    // row written before the change (there were none, but the fallback costs
-    // nothing and makes the transition safe in either direction).
-    const stored: string = data.api_key ?? "";
-    const last4 =
-      (data.key_last4 as string | null) ??
-      (!isEncrypted(stored) && stored.length >= 4 ? stored.slice(-4) : null);
+    // Still permission-gated: this reports on the org's paid service, so it
+    // belongs behind manage_settings like the rest of the settings surface.
+    await requirePermission(context.supabase, context.userId, "manage_settings");
     return {
-      configured: true,
-      provider: data.provider as string,
-      model: (data.model as string) || DEFAULT_MODELS[data.provider as "anthropic" | "openai"],
-      keyLast4: last4,
-      usingPlatformFallback: false,
-      defaultModels: DEFAULT_MODELS,
+      /** Whether the PLATFORM can serve AI at all. False is an operator
+       *  problem, never something a tenant can fix. */
+      available: !!process.env.ANTHROPIC_API_KEY,
+      model: DEFAULT_MODELS.anthropic,
+      /** Usage, allowance, and overage reporting arrive with BUILD-2. Saying so
+       *  explicitly beats rendering a zero that looks like a real measurement. */
+      meteringAvailable: false,
     };
   });
 
-export const setOrgAiSettings = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z
-      .object({
-        provider: z.enum(["anthropic", "openai"]),
-        apiKey: z.string().trim().min(10).max(300),
-        model: z.string().trim().max(100).optional(),
-      })
-      .parse(d),
-  )
-  .handler(async ({ data, context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await (supabaseAdmin as any).from("org_ai_credentials").upsert(
-      {
-        organization_id: orgId,
-        provider: data.provider,
-        // IMP-1: ciphertext, never the raw key. encryptSecret throws when
-        // CREDENTIAL_ENCRYPTION_KEY is unset, so a misconfigured environment
-        // fails the save loudly instead of quietly writing plaintext.
-        api_key: encryptSecret(data.apiKey),
-        // Non-secret display hint, captured here so rendering the settings page
-        // never has to decrypt anything.
-        key_last4: secretLast4(data.apiKey),
-        model: data.model || DEFAULT_MODELS[data.provider],
-        updated_by: context.userId,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "organization_id" },
-    );
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
-
-/** Health check: run a tiny structured call against the org's AI key so a
- *  revoked/invalid key surfaces here instead of failing silently in a tool. */
+/** Health check: a tiny structured call on the platform key, so a revoked or
+ *  misconfigured key surfaces here rather than failing inside a tool later. */
 export const testOrgAiKey = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
     const { resolveOrgAiConfig } = await import("@/lib/ai-credentials.server");
     const config = await resolveOrgAiConfig(orgId);
-    if (!config) return { ok: false as const, error: "No AI key configured yet." };
+    if (!config) {
+      // Deliberately not "add your key" — there is nothing for the tenant to do.
+      return { ok: false as const, error: "AI is not configured on this deployment." };
+    }
     const { generateStructured } = await import("@/lib/ai.server");
     try {
       await generateStructured({
         config,
-        label: "Key health check",
+        label: "AI health check",
         prompt: "Respond with status set to the string ok.",
         schema: z.object({ status: z.string() }),
         jsonSchema: { type: "object", properties: { status: { type: "string" } }, required: ["status"] },
@@ -106,17 +58,4 @@ export const testOrgAiKey = createServerFn({ method: "POST" })
     } catch (e) {
       return { ok: false as const, error: (e as Error).message };
     }
-  });
-
-export const clearOrgAiSettings = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await (supabaseAdmin as any)
-      .from("org_ai_credentials")
-      .delete()
-      .eq("organization_id", orgId);
-    if (error) throw new Error(error.message);
-    return { ok: true };
   });

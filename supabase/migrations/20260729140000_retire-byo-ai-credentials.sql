@@ -1,0 +1,42 @@
+-- IMP-9: drop org_ai_credentials. BYOK is retired from the product.
+--
+-- AI runs on HoundStack's key; tenants buy an allowance and pay overages (Q-7).
+-- This table existed for the bring-your-own path, which is gone — the settings
+-- page that wrote to it, the two server functions behind it, and the read in
+-- resolveOrgAiConfig were all removed in the same change.
+--
+-- Safe to drop rather than deprecate, verified against the live database
+-- immediately before applying:
+--   * 0 rows — no organization ever configured a key, so nothing is lost
+--   * 0 inbound foreign keys
+--   * 0 views, functions, or triggers referencing it
+--   * 0 remaining references in application code
+-- There is no data here to preserve and nothing that can break by its absence.
+--
+-- Note the asymmetry with the other two credential tables, which STAY:
+--   * org_twilio_credentials — a Twilio SUBACCOUNT still has its own SID and
+--     auth token. The row is still real; HoundStack writes it during
+--     provisioning (BUILD-3) instead of the customer. The encryption on that
+--     column matters MORE now, not less, because one key protects a credential
+--     for every tenant.
+--   * accounting_connections — QuickBooks/Xero OAuth is explicitly staying.
+--     These are tokens into a customer's books.
+--
+-- Reversal, should it ever be wanted, is the DDL below rather than a restore —
+-- there is no data to bring back:
+--
+--   CREATE TABLE public.org_ai_credentials (
+--     organization_id uuid NOT NULL PRIMARY KEY REFERENCES public.organizations(id) ON DELETE CASCADE,
+--     provider        text NOT NULL,
+--     api_key         text NOT NULL,
+--     model           text,
+--     updated_at      timestamptz NOT NULL DEFAULT now(),
+--     updated_by      uuid,
+--     key_last4       text
+--   );
+--   ALTER TABLE public.org_ai_credentials ENABLE ROW LEVEL SECURITY;
+--   -- (no policies: service-role access only, by design)
+--
+-- Idempotent.
+
+DROP TABLE IF EXISTS public.org_ai_credentials;

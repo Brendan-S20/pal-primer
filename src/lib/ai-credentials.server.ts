@@ -1,28 +1,31 @@
-// Server-only resolver for an org's AI provider credentials (BYOK). Reads the
-// service-role-only org_ai_credentials table; falls back to the platform's own
-// ANTHROPIC_API_KEY env when an org hasn't set its own key. The raw key never
-// leaves the server.
-import type { AiConfig } from "@/lib/ai.server";
-import { DEFAULT_MODELS, resolveAiConfigFromEnv } from "@/lib/ai.server";
+// AI inference runs on HOUNDSTACK's key. Always.
+//
+// IMP-9 / BYOK retirement (owner decision, 2026-07-29): this used to read a
+// per-org key out of org_ai_credentials and fall back to the platform key only
+// when an org had none. No org ever set one, so the fallback was the only path
+// that ever ran — the BYO branch was dead code that nonetheless made the
+// product ASK customers for a key it never needed.
+//
+// Tenants buy an AI allowance and pay overages (Q-7). Metering is BUILD-2 and is
+// not built yet, so inference on the platform key is currently uncapped. That
+// was already true before this change — every org was on the platform key — so
+// nothing got riskier here, it got honest. BUILD-2 is now the only thing between
+// us and unmetered spend, which is worth knowing when prioritizing it.
 
-export async function resolveOrgAiConfig(orgId: string): Promise<AiConfig | null> {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { data } = await (supabaseAdmin as any)
-    .from("org_ai_credentials")
-    .select("provider, api_key, model")
-    .eq("organization_id", orgId)
-    .maybeSingle();
-  if (data?.api_key) {
-    const provider = data.provider === "openai" ? "openai" : "anthropic";
-    // IMP-1: stored encrypted at rest. Decrypting here keeps the plaintext key
-    // on the server for exactly as long as the outbound call needs it.
-    const { decryptSecret } = await import("@/lib/secret-encryption.server");
-    return {
-      provider,
-      apiKey: decryptSecret(data.api_key as string),
-      model: data.model || DEFAULT_MODELS[provider],
-    };
-  }
-  // No per-org key configured → platform env fallback (if the operator set one).
+import { resolveAiConfigFromEnv, type AiConfig } from "@/lib/ai.server";
+
+/**
+ * The AI config for an org: the platform's, because that is the only kind there
+ * is now.
+ *
+ * Returns null when the platform key itself is unset. That is a deployment
+ * problem rather than a tenant one, and callers surface it as "AI is
+ * unavailable" — never as "add your key".
+ *
+ * `orgId` is kept in the signature deliberately. BUILD-2 needs a per-org hook
+ * exactly here to attribute usage and enforce the allowance; threading it back
+ * through every call site later would be pure churn.
+ */
+export async function resolveOrgAiConfig(_orgId: string): Promise<AiConfig | null> {
   return resolveAiConfigFromEnv();
 }

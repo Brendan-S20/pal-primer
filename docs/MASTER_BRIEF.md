@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.2** · Released 2026-07-29 · Supersedes: v1.1, v1.0
+> **Brief version: v1.3** · Released 2026-07-29 · Supersedes: v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,26 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+### v1.3 — 2026-07-29
+
+Second cycle. **BYOK removed from the product, not just from the ledger** — v1.2
+recorded the decision but deferred the removal, so Settings still asked customers
+for Anthropic/OpenAI keys and for their own Twilio credentials. IMP-9 closes that;
+see the detail below for why the "wait for BUILD-2/BUILD-3" ordering was wrong.
+
+**Shipped:** BUILD-1 (plan entitlements), BUG-14, IMP-1, IMP-3, IMP-4, IMP-9,
+BUILD-4, MKT-1, MKT-4.
+
+**Verified already fixed, no code written:** BUG-8, BUG-13, BUG-15, BUG-16.
+
+**Four more migrations applied and verified:** credential encryption at rest,
+the abandoned-impersonation-grant sweep, plan entitlements, and dropping
+`org_ai_credentials`.
+
+### v1.2 — 2026-07-29
+
+Recorded the BYOK retirement decision and its impact on IMP-1.
 
 ### v1.1 — 2026-07-29
 
@@ -84,12 +104,14 @@ integration is managed by HoundStack:
   Xero, more to follow. This is the one place a tenant still grants us a
   credential, and it is the one that matters most.
 
-Worth knowing: **managed AI already functions.** `resolveOrgAiConfig` falls back
-to `resolveAiConfigFromEnv()` — the platform's own `ANTHROPIC_API_KEY` — whenever
-an org has no key of its own, and no org ever set one (the table is empty). So
-every org is already served by the platform key today. What is missing is not
-the inference path but the METERING around it: usage capture, allowances,
-overages, and the 80% alert. That is BUILD-2, which is blocked on Stripe.
+Worth knowing: **managed AI already functioned before this decision.**
+`resolveOrgAiConfig` fell back to the platform's own `ANTHROPIC_API_KEY` whenever
+an org had no key of its own, and no org ever set one — so the fallback was the
+only path that ever ran. As of v1.3 there is no fallback: it reads the platform
+key, full stop, and the product no longer asks for a key anywhere (IMP-9). What
+is still missing is not the inference path but the METERING around it: usage
+capture, allowances, overages, and the 80% alert. That is BUILD-2, blocked on
+Stripe — and now the only control on AI spend.
 
 **§10.5's review queue does not exist.** The guardrail refers to it as though it
 were built. Repo search finds no such mechanism. Raised as BUILD-10.
@@ -215,6 +237,58 @@ Launch. Failing open would let a typo hand out Enterprise. A test asserts the
 live catalog's eleven slugs are all mapped, so the quiet-downgrade risk is
 caught in CI rather than by a customer.
 
+**IMP-9 detail — v1.2 recorded the decision but sequenced it wrongly.**
+v1.2 filed IMP-9 to retire the BYOK surfaces *after* BUILD-2/BUILD-3, reasoning
+that nothing should be removed before its managed replacement exists. That
+reasoning does not hold, and the consequence was that the **product kept asking
+customers for API keys** while the ledger said BYOK was dead.
+
+Settings → AI Tools read, verbatim: *"The AI features … run on your own provider
+key. Bring an **Anthropic** or **OpenAI** API key. You're billed by them
+directly."* Settings → SMS was a full bring-your-own-Twilio form — Account SID,
+Auth Token, Messaging Service SID, instructions for wiring an inbound webhook in
+the customer's own Twilio Console, and a warning to register their own 10DLC
+brand. The Knowledge Center told customers two-way texting used *"your own Twilio
+account."* All of that is now removed.
+
+Why the ordering was wrong, per surface:
+
+- **AI** — the managed replacement *already existed*. Every org was already
+  served by the platform key; the BYO branch was dead code. Waiting on BUILD-2
+  conflated "can we bill for this" with "can we serve this." We could serve it
+  all along.
+- **Twilio** — the managed replacement genuinely does not exist yet (BUILD-3,
+  carrier compliance queue). But the BYO form was not a working fallback either:
+  **no org had Twilio credentials and no org had a sender number**, verified
+  live. So removing it took nothing from anyone, and the page now states the
+  honest position — pending carrier registration, nothing for you to do — rather
+  than offering a form that leads nowhere.
+
+What was kept, and the asymmetry that matters:
+
+| Table | Outcome |
+|---|---|
+| `org_ai_credentials` | **Dropped.** 0 rows, 0 inbound FKs, 0 views/functions/triggers, 0 code references — all verified immediately before applying. Reversal DDL is in the migration's comment; there is no data to restore. |
+| `org_twilio_credentials` | **Kept, with its meaning changed.** A subaccount has its own SID and auth token, so the row is still real — HoundStack writes it during provisioning instead of the customer. Encryption there matters *more* now: one key protects a credential for every tenant rather than each tenant's own. |
+| `accounting_connections` | **Kept.** QuickBooks/Xero OAuth is explicitly staying, with more applications to follow. |
+
+Also removed: `updateOrgSmsFromNumber`. It let an owner type their own
+conversational sender number, which only made sense while they supplied the
+Twilio account. Leaving the server function after deleting its UI would have
+kept a tenant-facing write path open behind a screen that no longer offered it.
+
+**One thing this makes more urgent.** AI now runs on the platform key with no
+metering and no cap. That was *already* the reality — every org was on the
+platform key — so this change did not create the exposure, it removed the
+fiction that a customer's own key might absorb it. BUILD-2 is the only control,
+and it is blocked on Stripe. Worth weighing against "Stripe last."
+
+**The marketing site needed no change.** It never advertised BYO AI keys, and
+`/pricing` already said HoundStack supplies the number and handles carrier
+registration. The two remaining "bring your own key" strings on the site are both
+about **Stripe**, where it is correct — Connect pays into the customer's own
+account, which is the opposite of the thing being retired.
+
 ## Verify-then-fix
 
 | ID | Status | Summary | Changed in |
@@ -234,12 +308,12 @@ caught in CI rather than by a customer.
 | IMP-5 | 🔵 Open | ⚪ | Repo housekeeping | v1.0 |
 | IMP-6 | ❓ Blocked | 🟡 | Payment test coverage — needs Stripe authorized | v1.1 |
 | IMP-7 | 🔵 Open | 🟡 | **New.** Regenerate Supabase types (`label` nullable, `completion_source`, `key_last4`, `token_last4`) | v1.2 |
-| IMP-9 | 🔵 Open | 🟡 | **New.** Retire the BYOK surfaces — Settings → AI Tools key entry, `org_ai_credentials`, and the BYO half of Twilio settings. Do it AFTER BUILD-2/BUILD-3 land, so nothing is removed before its managed replacement exists | v1.2 |
+| IMP-9 | 🟢 Fixed | 🟠 | Retire the BYOK surfaces — **done, and the "wait for BUILD-2/BUILD-3" ordering in v1.2 was wrong.** See below | v1.3 |
 | IMP-8 | 🟢 Fixed | 🟡 | **New.** Org timezone was built but buried in Routes; moved to Settings | v1.1 |
 | BUILD-1 | 🟢 Fixed | 🔴 | Per-feature entitlements — plan tiers now enforced server-side; the published pricing matrix was being ignored by the app. See below | v1.2 |
-| BUILD-2 | ❓ Blocked | 🔴 | Usage metering — Q-7 answered (soft caps + overage); needs Stripe | v1.1 |
+| BUILD-2 | ❓ Blocked | 🔴 | Usage metering — Q-7 answered (soft caps + overage); needs Stripe. **Now the only thing between us and unmetered AI spend** — see IMP-9 below | v1.3 |
 | BUILD-3 | ⏳ Waiting | 🟠 | Managed texting — Q-8 = per-tenant subaccount + own brand. In the 10DLC compliance queue; nothing to accelerate | v1.1 |
-| BUILD-4 | 🔵 Open | 🟠 | Managed AI — **BYO deleted, not kept as an Enterprise option**. Inference already runs on the platform key; the gap is BUILD-2's metering | v1.2 |
+| BUILD-4 | 🟢 Fixed | 🟠 | Managed AI — BYO deleted, inference runs on the platform key, and the product no longer asks for a key. The remaining gap is metering, which is BUILD-2, not BUILD-4 | v1.3 |
 | BUILD-5 | 🔵 Open | 🟠 | White label (real build) | v1.0 |
 | BUILD-6 | 🔵 Open | 🟠 | Enterprise tier — Q-9 = grandfather existing multi-entity tenants indefinitely | v1.1 |
 | BUILD-7 | 🔵 Open | 🟡 | Trial → Growth + AI sandbox | v1.0 |
@@ -325,7 +399,7 @@ unevenly, so, plainly:
 |---|---|
 | `accounting_connections.access_token` / `refresh_token` | **Fully live and load-bearing.** QuickBooks/Xero OAuth is explicitly staying. These are tokens into a customer's books; encrypting them was the most valuable part of the item and the brief did not name them. |
 | `org_twilio_credentials.auth_token` | **Still needed, arguably more.** Subaccounts do not remove stored credentials — each subaccount has its own SID and auth token. The difference is they are now credentials WE are responsible for across every tenant, so a leak is worse, not better. |
-| `org_ai_credentials.api_key` | **Becomes vestigial.** With inference on the platform key, nothing writes this table. The encryption is harmless but pointless; the table should go with IMP-9 rather than be maintained. |
+| `org_ai_credentials.api_key` | **Gone.** The table was dropped in IMP-9 — 0 rows, 0 references. The encryption work on it was ~15 lines of the module; the module itself is generic and still protects the other three columns. |
 
 So two thirds of the item got more important, one third became dead code. The
 encryption module itself is generic — it is not BYOK-specific and serves any

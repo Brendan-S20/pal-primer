@@ -162,40 +162,15 @@ export const sendSmsToClient = createServerFn({ method: "POST" })
     return { id: inserted.id, sid, status };
   });
 
-export const updateOrgSmsFromNumber = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z
-      .object({
-        number: z
-          .string()
-          .trim()
-          .regex(/^\+[1-9]\d{6,15}$/i, "Must be an E.164 number, e.g. +15558675310")
-          .or(z.literal("")),
-      })
-      .parse(d),
-  )
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    // Setting the org's SMS sender number is an org-config change — gate it at
-    // manage_settings (owner/office_manager), not bare membership (#34).
-    const { requirePermission } = await import("@/lib/authz.server");
-    const { orgId } = await requirePermission(supabase, userId, "manage_settings");
-    // Security (Twilio H1): a sender number belongs to one org only.
-    if (data.number) {
-      const { data: taken } = await (supabase.from("organizations") as any)
-        .select("id").eq("sms_from_number", data.number).neq("id", orgId).maybeSingle();
-      if (taken) throw new Error("That number is already in use by another account.");
-    }
-    const { error } = await supabase
-      .from("organizations")
-      .update({ sms_from_number: data.number || null })
-      .eq("id", orgId);
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
+// IMP-9: updateOrgSmsFromNumber was removed here. It let an owner type their
+// own conversational sender number, which only made sense while they supplied
+// their own Twilio account. Under managed subaccounts (Q-8) the number is issued
+// during provisioning, so an editable field was just somewhere to type a value
+// that would be overwritten — and leaving the server function in place would
+// have kept a tenant-facing write path open after its UI was gone.
+// organizations.sms_from_number itself stays: provisioning writes it, and the
+// automated-notification path still reads it as a legacy fallback.
 
-// Convenience: send templated status update for a specific visit.
 export const sendVisitStatusSms = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
