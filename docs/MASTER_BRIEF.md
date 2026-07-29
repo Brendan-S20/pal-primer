@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.1** · Released 2026-07-29 · Supersedes: v1.0 (2026-07-27)
+> **Brief version: v1.2** · Released 2026-07-29 · Supersedes: v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -71,6 +71,26 @@ the app catalog at all** (AI Business Advisor, Referral Programs, Franchise
 Management). So "site must match app" executed literally would mean the site
 advertises nothing for sale. **Needs an owner decision — see Q-13.**
 
+**BYOK is retired from the product** *(owner decision, 2026-07-29)*.
+v1.0 assumed bring-your-own-key as a supported path, and BUILD-4 said to "keep
+BYO as an Enterprise option rather than deleting it." That is reversed. Every
+integration is managed by HoundStack:
+
+- **AI** runs on HoundStack's keys. Tenants buy an allowance and pay overages
+  (Q-7: soft caps + overage billing).
+- **Texting** runs on per-tenant Twilio **subaccounts** under HoundStack's
+  10DLC brand (Q-8, unchanged).
+- **Accounting** stays a tenant-authorized OAuth connection — QuickBooks and
+  Xero, more to follow. This is the one place a tenant still grants us a
+  credential, and it is the one that matters most.
+
+Worth knowing: **managed AI already functions.** `resolveOrgAiConfig` falls back
+to `resolveAiConfigFromEnv()` — the platform's own `ANTHROPIC_API_KEY` — whenever
+an org has no key of its own, and no org ever set one (the table is empty). So
+every org is already served by the platform key today. What is missing is not
+the inference path but the METERING around it: usage capture, allowances,
+overages, and the 80% alert. That is BUILD-2, which is blocked on Stripe.
+
 **§10.5's review queue does not exist.** The guardrail refers to it as though it
 were built. Repo search finds no such mechanism. Raised as BUILD-10.
 
@@ -124,18 +144,19 @@ was still scheduled got pointed at #1, and their open job appeared nowhere.
 
 | ID | Status | Pri | Summary | Changed in |
 |---|---|---|---|---|
-| IMP-1 | 🔵 Open | 🟠 | Encrypt BYOK credentials at rest | v1.0 |
+| IMP-1 | 🟢 Fixed | 🟠 | Encrypt credentials at rest — see note below | v1.2 |
 | IMP-2 | 🟢 Fixed | 🟠 | Migration drift check + the repo's first CI | v1.1 |
-| IMP-3 | 🔵 Open | 🟡 | TS↔SQL permission parity test | v1.0 |
-| IMP-4 | 🔵 Open | 🟡 | Type the authz boundary | v1.0 |
+| IMP-3 | 🟢 Fixed | 🟡 | TS↔SQL permission parity test — proven to fail on a TS-only grant, a SQL-only grant, and unparseable SQL | v1.2 |
+| IMP-4 | 🟢 Fixed | 🟡 | Type the authz boundary — `any` removed from `resolveCaller` | v1.2 |
 | IMP-5 | 🔵 Open | ⚪ | Repo housekeeping | v1.0 |
 | IMP-6 | ❓ Blocked | 🟡 | Payment test coverage — needs Stripe authorized | v1.1 |
-| IMP-7 | 🔵 Open | 🟡 | **New.** Regenerate Supabase types (`label` nullable, `completion_source` added) | v1.1 |
+| IMP-7 | 🔵 Open | 🟡 | **New.** Regenerate Supabase types (`label` nullable, `completion_source`, `key_last4`, `token_last4`) | v1.2 |
+| IMP-9 | 🔵 Open | 🟡 | **New.** Retire the BYOK surfaces — Settings → AI Tools key entry, `org_ai_credentials`, and the BYO half of Twilio settings. Do it AFTER BUILD-2/BUILD-3 land, so nothing is removed before its managed replacement exists | v1.2 |
 | IMP-8 | 🟢 Fixed | 🟡 | **New.** Org timezone was built but buried in Routes; moved to Settings | v1.1 |
 | BUILD-1 | 🔵 Open | 🔴 | Per-feature entitlements — **unblocked**, Q-6 = plan-gated existing roles | v1.1 |
 | BUILD-2 | ❓ Blocked | 🔴 | Usage metering — Q-7 answered (soft caps + overage); needs Stripe | v1.1 |
 | BUILD-3 | ⏳ Waiting | 🟠 | Managed texting — Q-8 = per-tenant subaccount + own brand. In the 10DLC compliance queue; nothing to accelerate | v1.1 |
-| BUILD-4 | 🔵 Open | 🟠 | Managed AI inference | v1.0 |
+| BUILD-4 | 🔵 Open | 🟠 | Managed AI — **BYO deleted, not kept as an Enterprise option**. Inference already runs on the platform key; the gap is BUILD-2's metering | v1.2 |
 | BUILD-5 | 🔵 Open | 🟠 | White label (real build) | v1.0 |
 | BUILD-6 | 🔵 Open | 🟠 | Enterprise tier — Q-9 = grandfather existing multi-entity tenants indefinitely | v1.1 |
 | BUILD-7 | 🔵 Open | 🟡 | Trial → Growth + AI sandbox | v1.0 |
@@ -209,3 +230,24 @@ against was not present. Going forward the check is a hard gate on `main` and
 advisory on pull requests, and it fails rather than skipping when
 `SUPABASE_DB_URL` is missing — a check that silently passes without checking is
 the exact failure mode it exists to remove.
+
+---
+
+# 5. IMP-1 AFTER THE BYOK DECISION
+
+IMP-1 encrypted four credential columns. The BYOK retirement lands on them
+unevenly, so, plainly:
+
+| Column | Standing |
+|---|---|
+| `accounting_connections.access_token` / `refresh_token` | **Fully live and load-bearing.** QuickBooks/Xero OAuth is explicitly staying. These are tokens into a customer's books; encrypting them was the most valuable part of the item and the brief did not name them. |
+| `org_twilio_credentials.auth_token` | **Still needed, arguably more.** Subaccounts do not remove stored credentials — each subaccount has its own SID and auth token. The difference is they are now credentials WE are responsible for across every tenant, so a leak is worse, not better. |
+| `org_ai_credentials.api_key` | **Becomes vestigial.** With inference on the platform key, nothing writes this table. The encryption is harmless but pointless; the table should go with IMP-9 rather than be maintained. |
+
+So two thirds of the item got more important, one third became dead code. The
+encryption module itself is generic — it is not BYOK-specific and serves any
+credential the product stores.
+
+`CREDENTIAL_ENCRYPTION_KEY` is still required in production before any
+accounting connection or Twilio subaccount is saved.
+
