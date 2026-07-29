@@ -25,6 +25,8 @@ const en: {
     nothingScheduled: "Nothing scheduled for you on this day.",
     nextUp: "Next up",
     jump: "Jump",
+    inProgress: "In progress",
+    resume: "Resume",
     directions: "Directions",
     call: "Call",
     start: "Start",

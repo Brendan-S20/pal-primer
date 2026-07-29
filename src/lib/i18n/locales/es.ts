@@ -23,6 +23,8 @@ const es: Translations = {
     nothingScheduled: "No hay visitas programadas para este día.",
     nextUp: "Siguiente",
     jump: "Ir",
+    inProgress: "En curso",
+    resume: "Reanudar",
     directions: "Cómo llegar",
     call: "Llamar",
     start: "Iniciar",

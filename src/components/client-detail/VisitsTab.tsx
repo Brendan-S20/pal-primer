@@ -568,7 +568,18 @@ function VisitTable({
                   )}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2.5">
-                  {durText === "Not recorded" ? (
+                  {/* BUG-9: "Needs review" means the timestamps contradict each
+                      other (known-bad), which is a different thing from a
+                      timestamp simply never being recorded. Amber so it reads as
+                      an item of work rather than an absence. */}
+                  {durText === "Needs review" ? (
+                    <span
+                      className="text-amber-600 dark:text-amber-400"
+                      title="Start and completion were recorded as the same instant, so the real duration is unknown. This visit needs a human to confirm what happened."
+                    >
+                      Needs review
+                    </span>
+                  ) : durText === "Not recorded" ? (
                     <span className="text-muted-foreground">Not recorded</span>
                   ) : (
                     durText

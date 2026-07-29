@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   visitDurationMinutes,
   formatVisitDuration,
+  visitTimestampIssue,
   isMissedVisitCandidate,
 } from "@/lib/visit-lifecycle";
 
@@ -15,14 +16,32 @@ describe("visitDurationMinutes / formatVisitDuration (I13 #10)", () => {
     expect(formatVisitDuration(started, completed)).toBe("42 min");
   });
 
-  it("treats the identical 6:05/6:05 repro as not recorded (fabricated start)", () => {
+  it("never derives a duration from the identical 6:05/6:05 repro (fabricated start)", () => {
     // The B6 backfill artifact: start == completion to the millisecond. An
     // equal start and completion is the fabrication signature (office-complete
-    // stamped started_at = now() = completed_at), never a real service, so it
-    // reads "Not recorded" rather than a misleading "Under a minute" (finding 4).
+    // stamped started_at = now() = completed_at), never a real service, so no
+    // duration is derived — a misleading "Under a minute" would assert that a
+    // real sub-minute service happened (finding 4).
     const t = "2026-07-16T06:05:00.000Z";
     expect(visitDurationMinutes(t, t)).toBeNull();
-    expect(formatVisitDuration(t, t)).toBe("Not recorded");
+  });
+
+  // BUG-9: known-bad data and absent data used to render identically, which is
+  // why the two live fabricated rows sat unnoticed for weeks.
+  it("distinguishes contradictory timestamps from missing ones", () => {
+    const t = "2026-07-16T06:05:00.000Z";
+    // Both present but contradictory → known-bad, needs a human.
+    expect(visitTimestampIssue(t, t)).toBe("unreliable");
+    expect(formatVisitDuration(t, t)).toBe("Needs review");
+    expect(visitTimestampIssue("2026-07-16T07:00:00Z", "2026-07-16T06:00:00Z")).toBe("unreliable");
+
+    // Absent → genuinely unknown, nobody recorded it.
+    expect(visitTimestampIssue(null, t)).toBe("missing");
+    expect(visitTimestampIssue(t, null)).toBe("missing");
+    expect(formatVisitDuration(t, null)).toBe("Not recorded");
+
+    // A real visit has no issue at all.
+    expect(visitTimestampIssue("2026-07-16T06:05:00Z", "2026-07-16T06:47:00Z")).toBeNull();
   });
 
   it("reads a genuine positive sub-minute gap as 'Under a minute'", () => {

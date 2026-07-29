@@ -221,7 +221,30 @@ function MyDay() {
   const skippedCount = visits.filter((v: any) => v.status === "skipped").length;
   const total = visits.length;
   const pct = total > 0 ? Math.round((completedCount / total) * 100) : 0;
-  const nextUp = visits.find((v: any) => v.status === "scheduled" || v.status === "in_progress");
+  // BUG-17: a visit the tech has already STARTED outranks anything merely
+  // scheduled. The previous single `.find()` returned whichever came first in
+  // sequence, so a tech who started #3 while #1 and #2 were still scheduled got
+  // pointed at #1 — their open job wasn't surfaced anywhere. Reloading the app
+  // (or a phone dropping the tab) has to bring them back to the job in hand.
+  const activeVisit = visits.find((v: any) => v.status === "in_progress");
+  const nextUp = activeVisit ?? visits.find((v: any) => v.status === "scheduled");
+
+  // ...and bring it back on screen without the tech hunting for it. Scrolls
+  // once per open visit, not on every render, so it never fights a tech who has
+  // deliberately scrolled elsewhere. Guarded on the id so re-renders and
+  // background refetches don't yank the viewport back.
+  const activeVisitId = activeVisit?.id as string | undefined;
+  useEffect(() => {
+    if (!activeVisitId) return;
+    // The list renders after this effect's first run on a cold load, so wait a
+    // frame for the anchor to exist rather than querying a DOM that isn't there.
+    const raf = requestAnimationFrame(() => {
+      document
+        .getElementById(`visit-${activeVisitId}`)
+        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [activeVisitId]);
 
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
 
@@ -482,13 +505,19 @@ function MyDay() {
             className="mx-auto flex max-w-lg items-center justify-between gap-3 px-4 py-3 active:opacity-70"
           >
             <div className="min-w-0">
-              <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                {t("myDay.nextUp")} · #{nextUp.sequence ?? ""}
+              {/* BUG-17: an open job is not "next up" — saying so invites the
+                  tech to start a second visit on top of one already running. */}
+              <div
+                className={`text-[10px] font-medium uppercase tracking-wide ${
+                  activeVisit ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"
+                }`}
+              >
+                {activeVisit ? t("myDay.inProgress") : t("myDay.nextUp")} · #{nextUp.sequence ?? ""}
               </div>
               <div className="truncate text-sm font-semibold">{nextUp.clients?.display_name}</div>
             </div>
             <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-md">
-              {t("myDay.jump")} <ArrowDown className="h-4 w-4" />
+              {activeVisit ? t("myDay.resume") : t("myDay.jump")} <ArrowDown className="h-4 w-4" />
             </div>
           </a>
         </div>
