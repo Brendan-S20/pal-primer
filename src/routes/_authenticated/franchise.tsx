@@ -39,9 +39,20 @@ import {
   Legend,
 } from "recharts";
 import { HelpTip } from "@/components/HelpTip";
+import { PlanGate } from "@/components/PlanGate";
 
 export const Route = createFileRoute("/_authenticated/franchise")({
-  component: FranchisePage,
+  // BUILD-1: the whole surface is Enterprise. The pricing page sells "Parent
+  // and child organization structure with full rollup" and "Franchise
+  // management, royalty billing, and regional dashboards" there and nowhere
+  // else; every function on this page was reachable from a $79 Launch org.
+  // Unlike Analytics there is no partial split — nothing on this route belongs
+  // to a lower tier. The server functions enforce it independently.
+  component: () => (
+    <PlanGate entitlement="franchise_structure">
+      <FranchisePage />
+    </PlanGate>
+  ),
 });
 
 const money = (c: number) =>

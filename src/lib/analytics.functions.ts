@@ -5,8 +5,18 @@ import { requirePermission } from "@/lib/authz.server";
 
 // Analytics is aggregate financial/business data — every function in this
 // file is gated on view_financials, matching the /analytics route boundary.
+//
+// BUILD-1: and on the plan. These four are exactly what the pricing page sells
+// as "Advanced analytics: cohort retention, zone profitability, churn drivers",
+// included on Growth and above — the app was serving all of it on Launch. Both
+// checks run on every call, in this one funnel, because a paywall the client
+// can skip by calling the server function directly is not a paywall
+// (guardrail 10.4).
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
-  return (await requirePermission(supabase, userId, "view_financials")).orgId;
+  const { orgId } = await requirePermission(supabase, userId, "view_financials");
+  const { requireEntitlement } = await import("@/lib/entitlements.server");
+  await requireEntitlement(orgId, "advanced_analytics");
+  return orgId;
 }
 
 export const getCohortRetention = createServerFn({ method: "POST" })

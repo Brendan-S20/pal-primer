@@ -165,6 +165,56 @@ fact — the same mistake BUG-9(a) was closed for refusing to make. The log says
 historical sessions, dated at their real window-close time so the log reads in
 event order; the sweep returns 0 on re-run.
 
+**BUILD-1 detail.** The pricing page has always published a per-tier feature
+matrix. The app enforced none of it. A $79 Launch organization could open
+Advanced Analytics (sold at $199 Growth) and the whole Franchise Management
+surface (sold at Enterprise only) — nine server functions' worth. This was
+revenue leaking and, more to the point, the site saying something the product
+contradicted.
+
+The matrix was not invented for this item: `TIER_FEATURE_GROUPS` on the
+marketing site is a commitment already made to customers, so it *is* the spec.
+`src/lib/entitlements.ts` restates it machine-readably, `public.has_plan_entitlement()`
+mirrors it in SQL, and `tests/entitlement-parity.test.ts` replays every
+(tier, entitlement) pair against both — the guard IMP-3 put on permissions,
+applied here from day one instead of after an incident. Both failure modes were
+proven: a matrix that drifts fails, and a SQL restructure the parser can't read
+fails rather than passing vacuously.
+
+Entitlements are kept separate from permissions on purpose (Q-6 said gate the
+existing roles, not add new ones). "Your role can't do this" and "your plan
+doesn't include this" are different facts with different fixes; collapsing them
+into one "Not authorized" tells a paying owner to go ask their admin for access
+they already have.
+
+Two honest limits, stated rather than papered over:
+
+- **Only two of the six entitlements are enforced** — `advanced_analytics` and
+  `franchise_structure`. The other four (regional reporting, custom permission
+  sets, expanded automation capacity, API access) describe things the site sells
+  that the product has not built. They are in the matrix because the matrix has
+  to match what is sold, and `ENFORCED_ENTITLEMENTS` records which ones have a
+  real check, because "gating" a feature that doesn't exist is coverage in
+  appearance only.
+- **Analytics is gated per tab, not per route.** Four tabs map exactly onto the
+  four functions in `analytics.functions.ts` and onto the pricing copy
+  ("cohort retention, zone profitability, churn drivers"). Win-back and the
+  weekly digest come from different modules and are not part of that SKU, so
+  they stay open on every plan. Gating the whole route was easier and would have
+  taken away something never sold as paid.
+
+**Q-9's grandfather clause has nothing to grandfather.** No organization in the
+database has a parent or a child — the multi-entity tenants the answer protects
+do not exist. Same shape as Q-10. The clause belongs in
+`franchise.functions.ts` as a bypass keyed on an org already having children if
+that changes before launch; it is deliberately not a hole in the matrix today.
+
+**Unknown plan slugs resolve to the FLOOR, never the ceiling.** A missing org, a
+null `plan_id`, or a slug added to the catalog without a mapping resolves to
+Launch. Failing open would let a typo hand out Enterprise. A test asserts the
+live catalog's eleven slugs are all mapped, so the quiet-downgrade risk is
+caught in CI rather than by a customer.
+
 ## Verify-then-fix
 
 | ID | Status | Summary | Changed in |
@@ -186,7 +236,7 @@ event order; the sweep returns 0 on re-run.
 | IMP-7 | 🔵 Open | 🟡 | **New.** Regenerate Supabase types (`label` nullable, `completion_source`, `key_last4`, `token_last4`) | v1.2 |
 | IMP-9 | 🔵 Open | 🟡 | **New.** Retire the BYOK surfaces — Settings → AI Tools key entry, `org_ai_credentials`, and the BYO half of Twilio settings. Do it AFTER BUILD-2/BUILD-3 land, so nothing is removed before its managed replacement exists | v1.2 |
 | IMP-8 | 🟢 Fixed | 🟡 | **New.** Org timezone was built but buried in Routes; moved to Settings | v1.1 |
-| BUILD-1 | 🔵 Open | 🔴 | Per-feature entitlements — **unblocked**, Q-6 = plan-gated existing roles | v1.1 |
+| BUILD-1 | 🟢 Fixed | 🔴 | Per-feature entitlements — plan tiers now enforced server-side; the published pricing matrix was being ignored by the app. See below | v1.2 |
 | BUILD-2 | ❓ Blocked | 🔴 | Usage metering — Q-7 answered (soft caps + overage); needs Stripe | v1.1 |
 | BUILD-3 | ⏳ Waiting | 🟠 | Managed texting — Q-8 = per-tenant subaccount + own brand. In the 10DLC compliance queue; nothing to accelerate | v1.1 |
 | BUILD-4 | 🔵 Open | 🟠 | Managed AI — **BYO deleted, not kept as an Enterprise option**. Inference already runs on the platform key; the gap is BUILD-2's metering | v1.2 |
@@ -198,10 +248,10 @@ event order; the sweep returns 0 on re-run.
 | BUILD-10 | 🔵 Open | 🟠 | **New.** Review queue — §10.5 assumes one exists; none does | v1.1 |
 | BUILD-11 | 🟢 Fixed | 🟠 | **New.** End-of-day close-out for visits left open | v1.1 |
 | RESP-1…5 | 🔵 Open | 🟠 | All five still need real hardware | v1.0 |
-| MKT-1 | ❓ Blocked | 🔴 | Catalog truth — **needs Q-13**, see §1.1 | v1.1 |
+| MKT-1 | 🟢 Fixed | 🔴 | Catalog truth — Q-13 answered (every add-on at launch). Site now lists the 6 real add-ons with prices; the 3 phantom SKUs are gone | v1.2 |
 | MKT-2 | 🟢 Fixed | 🔴 | Broken AI features no longer described as live | v1.1 |
 | MKT-3 | 🔵 Open | 🟠 | Pricing table rendering | v1.0 |
-| MKT-4 | 🟠 Half-done | 🔴 | `REPLACE_ACCESS_FORM_ID` no longer exists (early access is live). Only the contact form remains — **needs the real Formspree ID** | v1.1 |
+| MKT-4 | 🟢 Fixed | 🔴 | Contact form wired to the real Formspree endpoint, with `_subject` and a `form` field so the two forms are distinguishable in one inbox | v1.2 |
 | MKT-5 | 🔵 Open | 🟠 | Legal drafts pending review | v1.0 |
 | MKT-6 | 🔵 Open | 🟡 | Analytics + SEO setup | v1.0 |
 | MKT-7 | 🔵 Open | 🟡 | Real product screenshots | v1.0 |
@@ -224,7 +274,7 @@ event order; the sweep returns 0 on re-run.
 | Q-10 | 🔄 | Cancel with credit/refund — **moot**, no external subscribers exist | v1.1 |
 | Q-11 | 🔵 Open | Offline money (add-on charges) — non-blocking | — |
 | Q-12 | 🔵 Open | Mobile dispatch depth — non-blocking | — |
-| Q-13 | 🔵 Open | **New, blocking MKT-1.** Which SKUs are actually buyable at launch? The app currently has zero purchasable add-ons and the site advertises four, three of which don't exist in the app | — |
+| Q-13 | ✅ | Every add-on available at launch, after QA. Site updated; the app's `platform_addons` are still `coming_soon`/inactive and stay that way until live Stripe (owner: Stripe last) | v1.2 |
 
 ---
 
@@ -233,9 +283,9 @@ event order; the sweep returns 0 on re-run.
 **Needs your action, not engineering:**
 
 1. **Authorize Stripe** — OAuth can't run in a headless session. Blocks BUILD-2, BUILD-8, IMP-6.
-2. **Formspree contact form ID** — the last piece of MKT-4. Account config; a plausible-looking fake would be worse than a placeholder that fails loudly.
+2. ~~**Formspree contact form ID**~~ — ✅ supplied and wired (MKT-4 closed).
 3. **`SUPABASE_DB_URL` secret** — ✅ added, and verified working end-to-end in CI.
-4. **Q-13** — the launch catalog (above).
+4. ~~**Q-13**~~ — ✅ answered: every add-on available at launch, after QA.
 5. **10DLC registration** — compliance queue; paced by the registrar.
 
 **Accepted trade-offs, recorded so they aren't rediscovered as bugs:**

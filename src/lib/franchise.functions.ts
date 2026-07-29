@@ -5,8 +5,23 @@ import { requirePermission } from "@/lib/authz.server";
 
 // Franchise rollup is owner-only — every function in this file is gated on
 // manage_franchise, matching the /franchise route boundary.
+//
+// BUILD-1: and on the plan. The pricing page sells "Parent and child
+// organization structure with full rollup" and "Franchise management, royalty
+// billing, and regional dashboards" at Enterprise only; the app was serving
+// both to any owner on any plan, including $79 Launch. Both checks run on every
+// call, in this one funnel (guardrail 10.4).
+//
+// Q-9 said to grandfather existing multi-entity tenants indefinitely. There are
+// none — no organization in the database has a parent or a child (verified
+// live), so nothing is being taken away from anyone. If that changes before
+// this ships, the grandfather clause belongs here, as a bypass keyed on the org
+// already having children, not as a hole in the matrix.
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
-  return (await requirePermission(supabase, userId, "manage_franchise")).orgId;
+  const { orgId } = await requirePermission(supabase, userId, "manage_franchise");
+  const { requireEntitlement } = await import("@/lib/entitlements.server");
+  await requireEntitlement(orgId, "franchise_structure");
+  return orgId;
 }
 
 export type FranchiseRow = {

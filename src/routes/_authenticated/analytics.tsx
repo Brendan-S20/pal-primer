@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { PlanGate } from "@/components/PlanGate";
 
 
 function fmt(cents: number) {
@@ -54,10 +55,25 @@ function AnalyticsPage() {
           <TabsTrigger value="winback">Win-back</TabsTrigger>
           <TabsTrigger value="digest">Weekly digest</TabsTrigger>
         </TabsList>
-        <TabsContent value="retention"><CohortTab /></TabsContent>
-        <TabsContent value="ltv"><LtvTab /></TabsContent>
-        <TabsContent value="zones"><ZoneTab /></TabsContent>
-        <TabsContent value="churn"><ChurnTab /></TabsContent>
+        {/* BUILD-1: these four are the "Advanced analytics: cohort retention,
+            zone profitability, churn drivers" the pricing page sells on Growth
+            and above, and they map one-to-one onto analytics.functions.ts.
+            Win-back and the weekly digest are NOT part of that SKU — they come
+            from churn.functions and digest.functions — so they stay open on
+            every plan. Gating the whole route would have been easier and would
+            have taken away something we never said was paid. */}
+        <TabsContent value="retention">
+          <PlanGate entitlement="advanced_analytics"><CohortTab /></PlanGate>
+        </TabsContent>
+        <TabsContent value="ltv">
+          <PlanGate entitlement="advanced_analytics"><LtvTab /></PlanGate>
+        </TabsContent>
+        <TabsContent value="zones">
+          <PlanGate entitlement="advanced_analytics"><ZoneTab /></PlanGate>
+        </TabsContent>
+        <TabsContent value="churn">
+          <PlanGate entitlement="advanced_analytics"><ChurnTab /></PlanGate>
+        </TabsContent>
         <TabsContent value="winback"><WinBackTab /></TabsContent>
         <TabsContent value="digest"><DigestTab /></TabsContent>
       </Tabs>
