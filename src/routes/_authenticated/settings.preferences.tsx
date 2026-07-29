@@ -19,6 +19,8 @@ import { getOrgBranding, updateOrgBranding, getMyOrg, setPortalSlug, suggestPort
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
+import { US_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/route-window";
 
 export const Route = createFileRoute("/_authenticated/settings/preferences")({
   component: PreferencesPage,
@@ -130,6 +132,7 @@ function PreferencesPage() {
         </CardContent>
       </Card>
 
+      <TimeZoneCard />
       <PricingBaselineCard />
       <PortalAddressCard />
       <BrandingCard />
@@ -140,6 +143,62 @@ function PreferencesPage() {
 
 // Standard pricing moved here from the top of the Zones page (QA round 3,
 // C5): it is workspace-wide configuration, not a zone.
+// IMP-8: the org time zone lived only in the Routes dispatch panel, where its
+// help text framed it as a routing detail. It is not — it is the definition of
+// "today" for the whole product: the portal's next-visit window (BUG-12), the
+// nightly missed-visit job, the end-of-day close-out prompt (BUILD-11), and
+// route windows all resolve dates against it. Settings is where someone looks
+// for that, so it lives here now and Routes points at it.
+//
+// Same server fn and the same US_TIMEZONES list the Routes panel used — moved,
+// not reimplemented, so there is one control and one source of options (10.2).
+function TimeZoneCard() {
+  const qc = useQueryClient();
+  const getFn = useServerFn(getDispatchSettings);
+  const updateFn = useServerFn(updateDispatchSettings);
+  const q = useQuery({ queryKey: ["dispatch-settings"], queryFn: () => getFn() });
+  const current = (q.data?.settings as { timezone?: string | null } | undefined)?.timezone;
+
+  const m = useMutation({
+    mutationFn: (timezone: string) => updateFn({ data: { timezone } }),
+    onSuccess: () => {
+      toast.success("Time zone saved");
+      qc.invalidateQueries({ queryKey: ["dispatch-settings"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Time zone</CardTitle>
+        <CardDescription>
+          Your business's local time. This decides what counts as "today" everywhere — the schedule,
+          your clients' portal, overdue and missed-visit detection, and arrival windows.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Label htmlFor="org-timezone" className="text-xs">
+          Time zone
+        </Label>
+        <select
+          id="org-timezone"
+          value={current ?? DEFAULT_TIMEZONE}
+          disabled={q.isLoading || m.isPending}
+          onChange={(e) => m.mutate(e.target.value)}
+          className="mt-1 h-10 w-full max-w-sm rounded-md border bg-background px-3 text-sm disabled:opacity-60"
+        >
+          {US_TIMEZONES.map((tz) => (
+            <option key={tz.value} value={tz.value}>
+              {tz.label}
+            </option>
+          ))}
+        </select>
+      </CardContent>
+    </Card>
+  );
+}
+
 function PricingBaselineCard() {
   const { can } = usePermissions();
   if (!can("manage_pricing")) return null;

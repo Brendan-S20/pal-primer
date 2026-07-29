@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { humanizeRole } from "@/lib/humanize";
 import { AiSection, DispatchPanel } from "@/components/ai/AiPanels";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -592,21 +592,22 @@ function RoutesPage() {
               Assignments implying a longer drive are flagged as implausible.
             </p>
           </div>
+          {/* IMP-8: the time zone control moved to Settings → Preferences. It
+              is not a routing detail — it defines "today" for the portal, the
+              missed-visit job and the end-of-day close-out as well — and it was
+              effectively unfindable here. Pointer, not a second control (10.2). */}
           <div className="col-span-2">
             <Label className="text-xs">Timezone</Label>
-            <select
-              defaultValue={(settings as any).timezone ?? DEFAULT_TIMEZONE}
-              onChange={(e) => settingsMut.mutate({ timezone: e.target.value })}
-              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-            >
-              {US_TIMEZONES.map((tz) => (
-                <option key={tz.value} value={tz.value}>
-                  {tz.label}
-                </option>
-              ))}
-            </select>
+            <p className="mt-1 text-sm">
+              {US_TIMEZONES.find((tz) => tz.value === ((settings as any).timezone ?? DEFAULT_TIMEZONE))
+                ?.label ?? ((settings as any).timezone ?? DEFAULT_TIMEZONE)}
+            </p>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              Route windows and arrival times are anchored to the workday start in this timezone.
+              Arrival windows are anchored to the workday start in this time zone. Change it in{" "}
+              <Link to="/settings/preferences" className="underline underline-offset-2">
+                Settings → Preferences
+              </Link>
+              .
             </p>
           </div>
           <div className="col-span-2">

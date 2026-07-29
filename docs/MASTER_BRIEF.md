@@ -1,0 +1,211 @@
+# HoundStack — Master Work Brief
+
+> **Brief version: v1.1** · Released 2026-07-29 · Supersedes: v1.0 (2026-07-27)
+> **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
+> It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
+> site) — and the marketing repo carries a pointer to it rather than a second
+> copy, so the ledger can never disagree with itself.
+> **Next version trigger:** live QA run, or the next completion report.
+
+This is the status ledger and changelog. §3–§13 of v1.0 (do-not-break list,
+engineering guardrails, definition of done) are unchanged and still authoritative
+— see the v1.0 document. What follows is what MOVED.
+
+---
+
+# 1. CHANGELOG
+
+### v1.1 — 2026-07-29
+
+First Claude Code completion report against v1.0. All 10 blocking questions
+answered; §12 steps 2–4 worked.
+
+**Shipped (unverified — awaiting live QA):** BUG-1, BUG-2, BUG-4, BUG-9a,
+BUG-10, BUG-12, BUG-17, IMP-2, IMP-8, BUILD-11, MKT-2.
+
+**Verified already fixed, no code written:** BUG-3, BUG-5, BUG-6, BUG-7, VER-4.
+Roughly a third of the P1 list was closed by QA round 5 before this cycle began;
+those needed re-verification, not new code.
+
+**Three migrations applied to production**, then verified by querying the result
+rather than trusting the tool: the impersonation session window, the station
+label cleanup, and the portal timezone fix. Plus BUILD-11's close-out schema.
+
+**Corrections to v1.0** — see §1.1 below. Four of them change what an item means.
+
+### v1.0 — 2026-07-27
+First consolidated release. (See the v1.0 document.)
+
+---
+
+## 1.1 Corrections to v1.0
+
+These are places where v1.0's premise did not survive contact with the code or
+the data. Recorded here so the next cycle doesn't re-derive them.
+
+**BUG-9(a) — the instruction would have regressed a prior fix.**
+v1.0 says "derive duration whenever both timestamps exist." Implementing that
+literally makes an identical start/completion pair derive 0 and render "Under a
+minute" — asserting a real sub-minute service happened. `visit-lifecycle.ts`
+deliberately treats that pair as unknown because it is the signature of the old
+office-completion fabrication bug. **Closed as already-correct-by-design.** What
+the ticket was actually reaching for shipped instead: known-bad timestamps now
+read "Needs review", distinct from genuinely-missing ones.
+
+**BUG-9 affects two visits, not one.** `f336fc0e` (the Jul 2 record named in
+v1.0) and `04a7898a`, whose timestamps were written fourteen days after its
+scheduled date. Both remain in the database, now flagged in the UI.
+
+**BUILD-8's premise is wrong.** "Three SKUs have live subscribers (AI
+Receptionist 1, Priority Support 1, Done-for-you 1)" reads as three customers at
+risk. All three belong to **one org — "Demo Pet Waste Co"** — which is internal
+and deliberately configured for testing. There are no external paying customers
+in the database at all. Q-10's "cancel with credit/refund" is therefore **moot,
+not executed**: there is nobody to refund.
+
+**MKT-1's catalog numbers match neither side.** v1.0 says "6 buyable SKUs, 9
+roadmap SKUs." The app's `platform_addons` table holds **6 add-ons, all of them
+`status='coming_soon'` and `is_active=false`** — zero are purchasable. The
+marketing site advertises **4** add-ons as buyable, of which **3 do not exist in
+the app catalog at all** (AI Business Advisor, Referral Programs, Franchise
+Management). So "site must match app" executed literally would mean the site
+advertises nothing for sale. **Needs an owner decision — see Q-13.**
+
+**§10.5's review queue does not exist.** The guardrail refers to it as though it
+were built. Repo search finds no such mechanism. Raised as BUILD-10.
+
+---
+
+# 2. STATUS LEDGER
+
+## Bugs
+
+| ID | Status | Pri | Summary | Changed in |
+|---|---|---|---|---|
+| BUG-1 | 🟢 Fixed | 🔴 | No-org accounts reach tenant surfaces | v1.1 |
+| BUG-2 | 🟢 Fixed | 🔴 | Impersonation expires silently | v1.1 |
+| BUG-3 | ✅ Verified | 🟠 | Tech progress counts skipped as done — already fixed | v1.1 |
+| BUG-4 | 🟢 Fixed | 🟠 | Raw enum tokens leak to users (5 more surfaces) | v1.1 |
+| BUG-5 | ✅ Verified | 🟠 | Stations button on residential cards — already gated | v1.1 |
+| BUG-6 | ✅ Verified | 🟠 | Dispatcher hidden tab — already redirects to Summary | v1.1 |
+| BUG-7 | ✅ Verified | 🟠 | Overdue card — dispatchers lack `view_financials`; server returns null | v1.1 |
+| BUG-8 | 🔵 Open | 🟠 | Station "Last serviced" — likely closed by #62, **verify not fix** | v1.1 |
+| BUG-9 | 🔄 Split | 🟠 | (a) closed by design · (b) needs BUILD-10 | v1.1 |
+| BUG-10 | 🟢 Fixed | 🟠 | Station junk labels — schema was NOT NULL, see below | v1.1 |
+| BUG-11 | 🔵 Open | 🟠 | Platform MRR excludes add-ons — **only untouched P1** | v1.0 |
+| BUG-12 | 🟢 Fixed | 🟠 | Portal skips today's visit — UTC vs org-local date | v1.1 |
+| BUG-13 | 🔵 Open | 🟡 | Onboarding tour fires in impersonation | v1.0 |
+| BUG-14 | 🔵 Open | 🟡 | Impersonation audit omits target user | v1.0 |
+| BUG-15 | 🔵 Open | 🟡 | Portal history under Requests; photos missing | v1.0 |
+| BUG-16 | 🔵 Open | 🟡 | No dog info on residential visit cards | v1.0 |
+| BUG-17 | 🟢 Fixed | 🟠 | **New.** In-progress visit lost on reload | v1.1 |
+
+**BUG-10 detail:** `waste_stations.label` was `NOT NULL`, so the junk labels were
+not merely left behind — they were *structurally impossible to clear*. Every
+reader in the app already treated the column as optional
+(`stationDisplayName(1, null)` → `"Station 1"`); only the schema disagreed. The
+constraint was dropped so the column matches the design its own readers assume.
+Creation still requires a real, non-placeholder label.
+
+**BUG-17 detail:** worse than described. The lookup was
+`find(v => v.status === "scheduled" || v.status === "in_progress")`, which
+returns whichever comes *first in sequence* — so a tech who started #3 while #1
+was still scheduled got pointed at #1, and their open job appeared nowhere.
+
+## Verify-then-fix
+
+| ID | Status | Summary | Changed in |
+|---|---|---|---|
+| VER-4 | ✅ Verified | Non-field roles in tech lists — both surfaces filter `is_field_tech`; confirmed in live data | v1.1 |
+| VER-8 | 🟠 Near-closed | `annual_plan_prices` **is** applied live, so annual billing exists in the app. The gap is the marketing site. Unblocks MKT-9. | v1.1 |
+| VER-1, 2, 3, 5, 6, 7, 9, 10, 11 | 🔵 Open | Need a live session with real fixtures (Jobber CSV, a prepaid client, the DNA wizard) — not answerable by reading code | v1.1 |
+
+## Improvements · Builds · Responsiveness · Marketing
+
+| ID | Status | Pri | Summary | Changed in |
+|---|---|---|---|---|
+| IMP-1 | 🔵 Open | 🟠 | Encrypt BYOK credentials at rest | v1.0 |
+| IMP-2 | 🟢 Fixed | 🟠 | Migration drift check + the repo's first CI | v1.1 |
+| IMP-3 | 🔵 Open | 🟡 | TS↔SQL permission parity test | v1.0 |
+| IMP-4 | 🔵 Open | 🟡 | Type the authz boundary | v1.0 |
+| IMP-5 | 🔵 Open | ⚪ | Repo housekeeping | v1.0 |
+| IMP-6 | ❓ Blocked | 🟡 | Payment test coverage — needs Stripe authorized | v1.1 |
+| IMP-7 | 🔵 Open | 🟡 | **New.** Regenerate Supabase types (`label` nullable, `completion_source` added) | v1.1 |
+| IMP-8 | 🟢 Fixed | 🟡 | **New.** Org timezone was built but buried in Routes; moved to Settings | v1.1 |
+| BUILD-1 | 🔵 Open | 🔴 | Per-feature entitlements — **unblocked**, Q-6 = plan-gated existing roles | v1.1 |
+| BUILD-2 | ❓ Blocked | 🔴 | Usage metering — Q-7 answered (soft caps + overage); needs Stripe | v1.1 |
+| BUILD-3 | ⏳ Waiting | 🟠 | Managed texting — Q-8 = per-tenant subaccount + own brand. In the 10DLC compliance queue; nothing to accelerate | v1.1 |
+| BUILD-4 | 🔵 Open | 🟠 | Managed AI inference | v1.0 |
+| BUILD-5 | 🔵 Open | 🟠 | White label (real build) | v1.0 |
+| BUILD-6 | 🔵 Open | 🟠 | Enterprise tier — Q-9 = grandfather existing multi-entity tenants indefinitely | v1.1 |
+| BUILD-7 | 🔵 Open | 🟡 | Trial → Growth + AI sandbox | v1.0 |
+| BUILD-8 | 🔵 Open | 🟡 | Catalog reconciliation — **premise corrected**, see §1.1 | v1.1 |
+| BUILD-9 | 🔵 Open | 🟠 | Mobile Phase 2/3 — Q-2 = dedicated tablet tier, Q-3 = bundled assets | v1.1 |
+| BUILD-10 | 🔵 Open | 🟠 | **New.** Review queue — §10.5 assumes one exists; none does | v1.1 |
+| BUILD-11 | 🟢 Fixed | 🟠 | **New.** End-of-day close-out for visits left open | v1.1 |
+| RESP-1…5 | 🔵 Open | 🟠 | All five still need real hardware | v1.0 |
+| MKT-1 | ❓ Blocked | 🔴 | Catalog truth — **needs Q-13**, see §1.1 | v1.1 |
+| MKT-2 | 🟢 Fixed | 🔴 | Broken AI features no longer described as live | v1.1 |
+| MKT-3 | 🔵 Open | 🟠 | Pricing table rendering | v1.0 |
+| MKT-4 | 🟠 Half-done | 🔴 | `REPLACE_ACCESS_FORM_ID` no longer exists (early access is live). Only the contact form remains — **needs the real Formspree ID** | v1.1 |
+| MKT-5 | 🔵 Open | 🟠 | Legal drafts pending review | v1.0 |
+| MKT-6 | 🔵 Open | 🟡 | Analytics + SEO setup | v1.0 |
+| MKT-7 | 🔵 Open | 🟡 | Real product screenshots | v1.0 |
+| MKT-8 | ⚪ Deferred | ⚪ | `/customers` stub | v1.0 |
+| MKT-9 | 🔵 Open | 🟡 | Annual billing on site — see VER-8 | v1.1 |
+
+## Questions
+
+| ID | Status | Answer | Answered in |
+|---|---|---|---|
+| Q-1 | ✅ | Dispatchers ops-only, no billing | v1.1 |
+| Q-2 | ✅ | Dedicated tablet tier (768–1024px) | v1.1 |
+| Q-3 | ✅ | Bundled Capacitor assets | v1.1 |
+| Q-4 | 🔵 Open | Create (+) sheet contents — non-blocking | — |
+| Q-5 | 🔵 Open | Tech "More" ceiling — non-blocking | — |
+| Q-6 | ✅ | Plan-gated existing roles | v1.1 |
+| Q-7 | ✅ | Soft caps + overage billing | v1.1 |
+| Q-8 | ✅ | Per-tenant subaccount + own 10DLC brand | v1.1 |
+| Q-9 | ✅ | Grandfather existing multi-entity tenants indefinitely | v1.1 |
+| Q-10 | 🔄 | Cancel with credit/refund — **moot**, no external subscribers exist | v1.1 |
+| Q-11 | 🔵 Open | Offline money (add-on charges) — non-blocking | — |
+| Q-12 | 🔵 Open | Mobile dispatch depth — non-blocking | — |
+| Q-13 | 🔵 Open | **New, blocking MKT-1.** Which SKUs are actually buyable at launch? The app currently has zero purchasable add-ons and the site advertises four, three of which don't exist in the app | — |
+
+---
+
+# 3. OPEN DECISIONS & EXTERNAL BLOCKERS
+
+**Needs your action, not engineering:**
+
+1. **Authorize Stripe** — OAuth can't run in a headless session. Blocks BUILD-2, BUILD-8, IMP-6.
+2. **Formspree contact form ID** — the last piece of MKT-4. Account config; a plausible-looking fake would be worse than a placeholder that fails loudly.
+3. **`SUPABASE_DB_URL` secret** — ✅ added, and verified working end-to-end in CI.
+4. **Q-13** — the launch catalog (above).
+5. **10DLC registration** — compliance queue; paced by the registrar.
+
+**Accepted trade-offs, recorded so they aren't rediscovered as bugs:**
+
+- **Late confirmations don't require a completion photo** (BUILD-11). A tech who left the site has no photo to take; requiring one would strand the visit open or push someone to fake it. Marked in provenance and on the activity timeline instead. *Owner-approved 2026-07-29.*
+- **`completion_source` is not backfilled.** Existing rows stay NULL. Stamping them `tech_live` would assert provenance nobody recorded.
+- **eslint is non-blocking in CI.** The repo carries pre-existing formatting drift (164 errors in `platform.tenants.$id.tsx` alone) that is not this workflow's job to gate on. Typecheck and tests are hard gates.
+
+---
+
+# 4. WHAT IMP-2 LEARNED (worth keeping)
+
+A naive name comparison between `supabase/migrations/` and the live database
+reports **~80 false positives**: much of this repo's history was applied under
+different names and timestamps than the filenames — the 2026-07-09 consolidated
+bootstrap dump, plus renames like `20260716180000_prepaid-invoice-period-fix.sql`
+landing as `prepaid_invoice_period_not_null_fix`.
+
+A check that cries wolf eighty times gets ignored, which is worse than no check.
+So `supabase/migrations-baseline.json` records those files, **each verified** by
+confirming the objects it creates exist in the live database — not assumed.
+
+**Result: the live schema is in sync with the repo.** The drift IMP-2 guards
+against was not present. Going forward the check is a hard gate on `main` and
+advisory on pull requests, and it fails rather than skipping when
+`SUPABASE_DB_URL` is missing — a check that silently passes without checking is
+the exact failure mode it exists to remove.
