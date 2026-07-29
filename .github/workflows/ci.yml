@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The migration check reflects the state of the LIVE DATABASE, not of this
+  # commit, so it can go stale (or newly pass) without anyone pushing anything.
+  # Manual runs let you re-check after applying migrations, without inventing a
+  # commit to trigger CI.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
