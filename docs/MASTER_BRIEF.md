@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.3** · Released 2026-07-29 · Supersedes: v1.2, v1.1, v1.0
+> **Brief version: v1.4** · Released 2026-07-30 · Supersedes: v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,17 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+### v1.4 — 2026-07-30
+
+**BUILD-10 shipped** — guardrail 10.5's review queue, which the guardrail had
+been referring to as though it existed. Research pass on BUILD-6 surfaced two
+live security/data bugs unrelated to it; both are logged below as new items.
+
+**Shipped:** BUILD-10, BUG-9(b), IMP-7, BUILD-8 (AI Business Advisor).
+
+**New:** BUG-18, BUG-19 (both found by the BUILD-6 survey, both reachable
+today), BUILD-12 (invoice dispute queue).
 
 ### v1.3 — 2026-07-29
 
@@ -132,7 +143,7 @@ were built. Repo search finds no such mechanism. Raised as BUILD-10.
 | BUG-6 | ✅ Verified | 🟠 | Dispatcher hidden tab — already redirects to Summary | v1.1 |
 | BUG-7 | ✅ Verified | 🟠 | Overdue card — dispatchers lack `view_financials`; server returns null | v1.1 |
 | BUG-8 | ✅ Verified | 🟠 | Station "Last serviced" — closed by #62; reads the newest visit date across `station_service_logs`. Live data has 0 logs, so "not yet" on all 3 stations is correct, not the bug | v1.2 |
-| BUG-9 | 🔄 Split | 🟠 | (a) closed by design · (b) needs BUILD-10 | v1.1 |
+| BUG-9 | 🟢 Fixed | 🟠 | (a) closed by design · (b) **closed by BUILD-10** — both records are now filed as review items instead of being findable only by chance | v1.4 |
 | BUG-10 | 🟢 Fixed | 🟠 | Station junk labels — schema was NOT NULL, see below | v1.1 |
 | BUG-11 | 🟢 Fixed | 🟠 | Platform MRR excludes add-ons — annualized to a monthly equivalent; verified live at $449 + $78 = $527, one-time excluded | v1.2 |
 | BUG-12 | 🟢 Fixed | 🟠 | Portal skips today's visit — UTC vs org-local date | v1.1 |
@@ -141,6 +152,8 @@ were built. Repo search finds no such mechanism. Raised as BUILD-10.
 | BUG-15 | ✅ Verified | 🟡 | Portal history — already moved to the Visits tab (G4) with signed before/after photos | v1.2 |
 | BUG-16 | ✅ Verified | 🟡 | Dog info on residential cards — `DogsRow` renders name + temperament next to hazards; `dogs(name, temperament)` is in the My Day select | v1.2 |
 | BUG-17 | 🟢 Fixed | 🟠 | **New.** In-progress visit lost on reload | v1.1 |
+| BUG-18 | 🔵 Open | 🔴 | **New.** Accepting a second org invite hard-bricks the account — `resolveCaller` throws, taking 154 server functions with it. Reachable today | v1.4 |
+| BUG-19 | 🔵 Open | 🟠 | **New.** `parent_organization_id` is not in the protected-columns trigger, so a tenant owner can declare themselves someone else's child via direct PostgREST | v1.4 |
 
 **BUG-10 detail:** `waste_stations.label` was `NOT NULL`, so the junk labels were
 not merely left behind — they were *structurally impossible to clear*. Every
@@ -370,6 +383,75 @@ affected, because "AI is down" when half of it is down sends someone looking in
 the wrong place. Consolidating the two providers is worth doing and belongs with
 BUILD-2.
 
+**BUILD-10 detail — the guardrail was pointing at nothing.** §10.5 reads
+"Ambiguous records go to a **review queue** — never silently guessed." It was
+written as though the queue existed. It did not, so every place that honored the
+rule honored it by doing nothing:
+
+- **BUG-9's visits** were detected *client-side, one row at a time*, only if a
+  human happened to open that one client's Visits tab. There was no query
+  anywhere that selected them. Nobody could ask how many existed. (Two.)
+- **`admin_transition_missed_visits`** says, verbatim, "Ambiguous records are
+  LEFT for human review (I5)". Nothing received them. A visit a tech started and
+  never finished sat in `scheduled` indefinitely, visible only as a number on a
+  platform-admin health tile. (One.)
+
+Now `review_items` + `detect_review_items()`, run nightly, with three detectors.
+Three real items filed on the first run — exactly the pending records §10.5
+names.
+
+Design decisions worth keeping:
+
+- **It is an INDEX of ambiguity, not an editing surface.** Remediation happens
+  through the flow that already owns the record (`correctVisitTimestamps`,
+  `confirm_open_visit`). A second code path that can edit a visit is how the
+  underlying bugs got written in the first place.
+- **It blocks nothing** *(owner decision)*. Billing, reports, and analytics are
+  untouched. An unresolved item is visible work, not a tripwire.
+- **The org resolves; platform admins read across and cannot write**
+  *(owner decision)*. Only the tenant knows whether a visit happened — resolving
+  on their behalf would be the silent guess the guardrail forbids. Encoded in
+  RLS, not just UI.
+- **A resolution REQUIRES a note.** An item that vanishes with no account of
+  what was decided leaves the next reader exactly as uninformed as the guess
+  would have. The note also lands on the client's activity timeline.
+- **A human's decision outlives the detector.** `ON CONFLICT DO NOTHING` means a
+  resolved item is never resurrected — verified live: resolved an item, re-ran
+  the sweep, and it stayed resolved even though its underlying condition is
+  still true. Without that the queue would nag forever and be ignored.
+- **Org-local dates.** The BUG-12 mistake has now appeared *four* times (portal,
+  weekly digest, missed-visit sweep, and this detector before it was written
+  correctly). The parity test asserts against a bare `CURRENT_DATE`.
+
+TS↔SQL parity test, as with permissions (IMP-3) and entitlements (BUILD-1).
+
+**BUG-18 / BUG-19 — found while scoping BUILD-6, unrelated to it, live today.**
+
+*BUG-18 (P0).* `accept_org_invite_for_current_user` checks membership of the
+*invited* org only before inserting into `user_roles`. A user already in org A
+who accepts an invite to org B gets a second row — and `resolveCaller`'s
+`.maybeSingle()` then throws on **every** subsequent request. That is **154
+authz call sites across 48 files**, plus `getMyOrg`, which backs the entire
+client-side role/nav layer. The account is unusable and nothing in the product
+can fix it. No BUILD-6 required; it is reachable now.
+
+*BUG-19.* `parent_organization_id` and `is_franchise_parent` are absent from
+`tg_orgs_protect_platform_columns`, while the "Owners update own org" policy
+permits owners to update their own row. So a tenant owner can
+`UPDATE organizations SET parent_organization_id = '<any uuid>'` via direct
+PostgREST and unilaterally declare themselves someone else's franchise child,
+with no consent from the named parent. Today that only feeds the royalty cron;
+under a working BUILD-6 it becomes self-enrollment into another tenant's books.
+
+**BUILD-6 is ~15% built, and less than it looks.** The rollup page runs on the
+caller's RLS-bound client and queries children by `parent_organization_id` — a
+query that returns **zero rows for every possible caller**, because
+`is_org_member` is strict org-id equality. The one piece of correct cross-org
+authz in the repo, the `SECURITY DEFINER` `franchise_rollup()`, was written,
+granted, typed — and never called. The TypeScript is a hand-rolled
+reimplementation that dropped the only part that made it work. There is also no
+way to create or link a child org through the product at all.
+
 ## Verify-then-fix
 
 | ID | Status | Summary | Changed in |
@@ -400,8 +482,9 @@ BUILD-2.
 | BUILD-7 | 🔵 Open | 🟡 | Trial → Growth + AI sandbox | v1.0 |
 | BUILD-8 | 🟢 Fixed | 🟡 | AI Business Advisor **built out** (owner reversed the retire instruction). On-demand, 7/30/90-day windows, evidence shown beside the advice. See below | v1.3 |
 | BUILD-9 | 🔵 Open | 🟠 | Mobile Phase 2/3 — Q-2 = dedicated tablet tier, Q-3 = bundled assets | v1.1 |
-| BUILD-10 | 🔵 Open | 🟠 | **New.** Review queue — §10.5 assumes one exists; none does | v1.1 |
+| BUILD-10 | 🟢 Fixed | 🟠 | Review queue built. §10.5's rule pointed at a mechanism nobody had made, so every place that "honored" it honored it by doing nothing. See below | v1.4 |
 | BUILD-11 | 🟢 Fixed | 🟠 | **New.** End-of-day close-out for visits left open | v1.1 |
+| BUILD-12 | 🔵 Open | 🟠 | **New.** Invoice dispute queue — owner decision: disputes get their own queue, analytics inclusion is a toggle, and they always render as issue/lost rather than being absorbed silently | v1.4 |
 | RESP-1…5 | 🔵 Open | 🟠 | All five still need real hardware | v1.0 |
 | MKT-1 | 🟢 Fixed | 🔴 | Catalog truth — Q-13 answered (every add-on at launch). Site now lists the 6 real add-ons with prices; the 3 phantom SKUs are gone | v1.2 |
 | MKT-2 | 🟢 Fixed | 🔴 | Broken AI features no longer described as live | v1.1 |

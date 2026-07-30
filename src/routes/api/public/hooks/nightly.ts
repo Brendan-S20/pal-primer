@@ -67,20 +67,32 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
         // stamps the end and writes one honest stop event per grant, with the
         // window-close time and a null duration rather than a fabricated one.
         // Idempotent, so a retry costs nothing.
-        const impersonationSweep: Record<string, unknown> = {};
+        // Org-agnostic sweeps, run once rather than per-org.
+        const globalSweeps: Record<string, unknown> = {};
         try {
           const { data: n, error } = await (supabaseAdmin as any).rpc(
             "close_abandoned_impersonation_grants",
           );
-          impersonationSweep.impersonation_grants_closed = error
+          globalSweeps.impersonation_grants_closed = error
             ? `err: ${error.message}`
             : (n as number);
         } catch (e) {
           console.error("impersonation grant sweep failed", e);
         }
 
+        // BUILD-10: file anything our automated checks could not settle on
+        // their own into the review queue, instead of leaving it to be
+        // discovered by accident. Idempotent, and it never reopens an item a
+        // human already decided.
+        try {
+          const { data: n, error } = await (supabaseAdmin as any).rpc("detect_review_items");
+          globalSweeps.review_items_filed = error ? `err: ${error.message}` : (n as number);
+        } catch (e) {
+          console.error("review item detection failed", e);
+        }
+
         const summary: Array<Record<string, unknown>> = [];
-        if (Object.keys(impersonationSweep).length) summary.push(impersonationSweep);
+        if (Object.keys(globalSweeps).length) summary.push(globalSweeps);
 
         for (const org of orgs ?? []) {
           const perOrg: Record<string, unknown> = { org: org.name, id: org.id };

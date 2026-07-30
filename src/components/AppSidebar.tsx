@@ -23,6 +23,7 @@ import {
   Package,
   Shield,
   Dna,
+  ClipboardCheck,
 } from "lucide-react";
 
 import {
@@ -87,6 +88,10 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { title: "Reports", url: "/reports", icon: BarChart3 },
       { title: "Analytics", url: "/analytics", icon: LineChart },
+      // BUILD-10: guardrail 10.5's review queue. In the nav rather than
+      // URL-only on purpose — a queue of things we refused to guess about
+      // is worthless if nobody knows it exists.
+      { title: "Needs review", url: "/review", icon: ClipboardCheck },
       // Royalties (/franchise) is hidden until multi-location is a real,
       // supported offering (per Brendan, 2026-07-14). The route still works
       // by URL for the rare royalty-parent org.

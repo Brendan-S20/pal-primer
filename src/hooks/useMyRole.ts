@@ -57,6 +57,10 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/settings/referrals": ["owner", "office_manager"],
   "/reports": ["owner", "office_manager"],
   "/analytics": ["owner", "office_manager"],
+  // BUILD-10: dispatchers and techs can SEE that a record is uncertain
+  // (the list is gated on view_client_directory server-side), but only
+  // office roles can record a decision. Route ACL matches the read gate.
+  "/review": ["owner", "office_manager", "dispatcher"],
   "/franchise": ["owner"],
   // /ai-tools is now a redirect to /dashboard — no ACL entry needed.
   "/imports": ["owner", "office_manager"],
