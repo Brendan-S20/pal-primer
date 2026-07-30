@@ -845,6 +845,7 @@ export type Database = {
           default_card_last4: string | null
           default_payment_method_id: string | null
           display_name: string
+          dna_compliance_enabled: boolean
           email_opt_out: boolean
           first_name: string | null
           id: string
@@ -891,6 +892,7 @@ export type Database = {
           default_card_last4?: string | null
           default_payment_method_id?: string | null
           display_name: string
+          dna_compliance_enabled?: boolean
           email_opt_out?: boolean
           first_name?: string | null
           id?: string
@@ -937,6 +939,7 @@ export type Database = {
           default_card_last4?: string | null
           default_payment_method_id?: string | null
           display_name?: string
+          dna_compliance_enabled?: boolean
           email_opt_out?: boolean
           first_name?: string | null
           id?: string
@@ -1071,6 +1074,7 @@ export type Database = {
           property_id: string | null
           report_reference: string | null
           sample_kind: string
+          sample_photo_path: string | null
           status: string
           unit_id: string | null
           updated_at: string
@@ -1094,6 +1098,7 @@ export type Database = {
           property_id?: string | null
           report_reference?: string | null
           sample_kind: string
+          sample_photo_path?: string | null
           status?: string
           unit_id?: string | null
           updated_at?: string
@@ -1117,6 +1122,7 @@ export type Database = {
           property_id?: string | null
           report_reference?: string | null
           sample_kind?: string
+          sample_photo_path?: string | null
           status?: string
           unit_id?: string | null
           updated_at?: string
@@ -1563,31 +1569,40 @@ export type Database = {
       impersonation_grants: {
         Row: {
           actor_user_id: string
+          auth_session_id: string | null
           consumed_at: string | null
           created_at: string
+          ended_at: string | null
           expires_at: string
           id: string
           organization_id: string
+          session_expires_at: string | null
           target_user_id: string
           token_hash: string
         }
         Insert: {
           actor_user_id: string
+          auth_session_id?: string | null
           consumed_at?: string | null
           created_at?: string
+          ended_at?: string | null
           expires_at: string
           id?: string
           organization_id: string
+          session_expires_at?: string | null
           target_user_id: string
           token_hash: string
         }
         Update: {
           actor_user_id?: string
+          auth_session_id?: string | null
           consumed_at?: string | null
           created_at?: string
+          ended_at?: string | null
           expires_at?: string
           id?: string
           organization_id?: string
+          session_expires_at?: string | null
           target_user_id?: string
           token_hash?: string
         }
@@ -2331,41 +2346,6 @@ export type Database = {
           },
         ]
       }
-      org_ai_credentials: {
-        Row: {
-          api_key: string
-          model: string | null
-          organization_id: string
-          provider: string
-          updated_at: string
-          updated_by: string | null
-        }
-        Insert: {
-          api_key: string
-          model?: string | null
-          organization_id: string
-          provider: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Update: {
-          api_key?: string
-          model?: string | null
-          organization_id?: string
-          provider?: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "org_ai_credentials_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: true
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       org_invites: {
         Row: {
           accepted_at: string | null
@@ -2462,6 +2442,7 @@ export type Database = {
           messaging_service_sid: string | null
           organization_id: string
           sms_from_number: string | null
+          token_last4: string | null
           updated_at: string
           updated_by: string | null
         }
@@ -2471,6 +2452,7 @@ export type Database = {
           messaging_service_sid?: string | null
           organization_id: string
           sms_from_number?: string | null
+          token_last4?: string | null
           updated_at?: string
           updated_by?: string | null
         }
@@ -2480,6 +2462,7 @@ export type Database = {
           messaging_service_sid?: string | null
           organization_id?: string
           sms_from_number?: string | null
+          token_last4?: string | null
           updated_at?: string
           updated_by?: string | null
         }
@@ -2591,6 +2574,7 @@ export type Database = {
           traffic_profile: string
           trial_ends_at: string | null
           updated_at: string
+          work_days: number[]
           workday_end: string
           workday_start: string
         }
@@ -2691,6 +2675,7 @@ export type Database = {
           traffic_profile?: string
           trial_ends_at?: string | null
           updated_at?: string
+          work_days?: number[]
           workday_end?: string
           workday_start?: string
         }
@@ -2791,6 +2776,7 @@ export type Database = {
           traffic_profile?: string
           trial_ends_at?: string | null
           updated_at?: string
+          work_days?: number[]
           workday_end?: string
           workday_start?: string
         }
@@ -2893,6 +2879,7 @@ export type Database = {
           price_cents: number
           slug: string
           sort_order: number
+          status: string
           stripe_price_id: string | null
           stripe_product_id: string | null
           updated_at: string
@@ -2908,6 +2895,7 @@ export type Database = {
           price_cents: number
           slug: string
           sort_order?: number
+          status?: string
           stripe_price_id?: string | null
           stripe_product_id?: string | null
           updated_at?: string
@@ -2923,6 +2911,7 @@ export type Database = {
           price_cents?: number
           slug?: string
           sort_order?: number
+          status?: string
           stripe_price_id?: string | null
           stripe_product_id?: string | null
           updated_at?: string
@@ -4783,6 +4772,7 @@ export type Database = {
           assigned_staff_id: string | null
           client_id: string
           completed_at: string | null
+          completion_source: string | null
           created_at: string
           deepclean_charge_cents: number
           eta_end: string | null
@@ -4816,6 +4806,7 @@ export type Database = {
           assigned_staff_id?: string | null
           client_id: string
           completed_at?: string | null
+          completion_source?: string | null
           created_at?: string
           deepclean_charge_cents?: number
           eta_end?: string | null
@@ -4849,6 +4840,7 @@ export type Database = {
           assigned_staff_id?: string | null
           client_id?: string
           completed_at?: string | null
+          completion_source?: string | null
           created_at?: string
           deepclean_charge_cents?: number
           eta_end?: string | null
@@ -5041,7 +5033,7 @@ export type Database = {
           client_id: string
           created_at: string
           id: string
-          label: string
+          label: string | null
           latitude: number | null
           liner_size: string | null
           location_description: string | null
@@ -5059,7 +5051,7 @@ export type Database = {
           client_id: string
           created_at?: string
           id?: string
-          label: string
+          label?: string | null
           latitude?: number | null
           liner_size?: string | null
           location_description?: string | null
@@ -5077,7 +5069,7 @@ export type Database = {
           client_id?: string
           created_at?: string
           id?: string
-          label?: string
+          label?: string | null
           latitude?: number | null
           liner_size?: string | null
           location_description?: string | null
@@ -5350,7 +5342,17 @@ export type Database = {
           tenure_days: number
         }[]
       }
+      close_abandoned_impersonation_grants: { Args: never; Returns: number }
       complete_visit: { Args: { _visit_id: string }; Returns: undefined }
+      confirm_open_visit: {
+        Args: {
+          _completed: boolean
+          _completed_at?: string
+          _note?: string
+          _visit_id: string
+        }
+        Returns: string
+      }
       create_addon_charge: {
         Args: {
           _addon_service_id: string
@@ -5377,6 +5379,10 @@ export type Database = {
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
+      }
+      finalize_visit_completion: {
+        Args: { _visit_id: string }
+        Returns: undefined
       }
       franchise_rollup: {
         Args: { _parent_org: string }
@@ -5434,6 +5440,10 @@ export type Database = {
       }
       has_permission: {
         Args: { _org_id: string; _permission: string; _user_id: string }
+        Returns: boolean
+      }
+      has_plan_entitlement: {
+        Args: { _entitlement: string; _org_id: string }
         Returns: boolean
       }
       has_role: {
@@ -5541,6 +5551,7 @@ export type Database = {
       org_can_add_client: { Args: { _org_id: string }; Returns: boolean }
       org_seat_overage_cents: { Args: { _org_id: string }; Returns: number }
       phone_digits: { Args: { _p: string }; Returns: string }
+      plan_tier_for_org: { Args: { _org_id: string }; Returns: string }
       platform_org_stats: {
         Args: never
         Returns: {
@@ -5565,7 +5576,7 @@ export type Database = {
           _subscription_id: string
           _token: string
         }
-        Returns: undefined
+        Returns: string
       }
       portal_get_client: {
         Args: { _token: string }
@@ -5839,7 +5850,7 @@ export type Database = {
       redeem_gift_card: {
         Args: {
           _amount_cents: number
-          _client_id?: string
+          _client_id: string
           _code: string
           _invoice_id?: string
           _note?: string
@@ -5901,6 +5912,19 @@ export type Database = {
           _enabled: boolean
           _months: number[]
           _org_id: string
+        }
+        Returns: undefined
+      }
+      update_org_dispatch_settings: {
+        Args: {
+          _avg_speed_kmh?: number
+          _max_drive_minutes?: number
+          _org_id: string
+          _timezone?: string
+          _traffic_profile?: string
+          _work_days?: number[]
+          _workday_end?: string
+          _workday_start?: string
         }
         Returns: undefined
       }

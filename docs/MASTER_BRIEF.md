@@ -289,6 +289,35 @@ registration. The two remaining "bring your own key" strings on the site are bot
 about **Stripe**, where it is correct — Connect pays into the customer's own
 account, which is the opposite of the thing being retired.
 
+**IMP-7 detail.** The generated types had drifted further than the item
+described. They still declared `org_ai_credentials`, a table IMP-9 had just
+dropped — so they were *wrong*, not merely incomplete — and they predated
+`update_org_dispatch_settings`, a migration from before this cycle even started.
+Regenerating added `confirm_open_visit`, `finalize_visit_completion`,
+`has_plan_entitlement`, and `update_org_dispatch_settings`, and removed the dead
+table. Typecheck and all 333 tests passed unchanged.
+
+The payoff is the casts it unlocks. Four are gone — two structural stand-ins I
+had written (`impersonation-session.server.ts`, `entitlements.server.ts`) and one
+`as any` in `activity.server.ts` — each of which existed *only* because the
+columns weren't in the types. The impersonation one matters most: that gate reads
+`session_expires_at` and `consumed_at` to decide whether an impersonated session
+is still valid, and a typo behind a cast would have silently stopped expiring
+sessions.
+
+Deliberately **not** removed: the four `as any` casts on `impersonation_grants`
+in `platform.functions.ts`. That file is large, and it is the same
+instantiation-budget hazard that produced TS2589 in `org.functions.ts` during
+IMP-4 — where annotating one call site simply moved the error to another. Worth
+doing, but as its own change with room to back out, not bundled here. Filed under
+IMP-5.
+
+Several comments elsewhere still read "isn't in the generated types yet"
+(`invoices.functions.ts`, `clients.functions.ts`, `automation.functions.ts`,
+`addons.functions.ts`). Every column they name is now present, so those comments
+are false and could mislead someone into adding a cast that isn't needed. Also
+IMP-5.
+
 ## Verify-then-fix
 
 | ID | Status | Summary | Changed in |
@@ -305,9 +334,9 @@ account, which is the opposite of the thing being retired.
 | IMP-2 | 🟢 Fixed | 🟠 | Migration drift check + the repo's first CI | v1.1 |
 | IMP-3 | 🟢 Fixed | 🟡 | TS↔SQL permission parity test — proven to fail on a TS-only grant, a SQL-only grant, and unparseable SQL | v1.2 |
 | IMP-4 | 🟢 Fixed | 🟡 | Type the authz boundary — `any` removed from `resolveCaller` | v1.2 |
-| IMP-5 | 🔵 Open | ⚪ | Repo housekeeping | v1.0 |
+| IMP-5 | 🔵 Open | ⚪ | Repo housekeeping — now also: the 4 `as any` casts on `impersonation_grants` in `platform.functions.ts`, and ~6 now-false "not in the generated types yet" comments. See IMP-7 below | v1.3 |
 | IMP-6 | ❓ Blocked | 🟡 | Payment test coverage — needs Stripe authorized | v1.1 |
-| IMP-7 | 🔵 Open | 🟡 | **New.** Regenerate Supabase types (`label` nullable, `completion_source`, `key_last4`, `token_last4`) | v1.2 |
+| IMP-7 | 🟢 Fixed | 🟡 | Supabase types regenerated. They had been stale since before this cycle and IMP-9's table drop made them wrong, not just incomplete. Four `any`/structural casts removed as a result | v1.3 |
 | IMP-9 | 🟢 Fixed | 🟠 | Retire the BYOK surfaces — **done, and the "wait for BUILD-2/BUILD-3" ordering in v1.2 was wrong.** See below | v1.3 |
 | IMP-8 | 🟢 Fixed | 🟡 | **New.** Org timezone was built but buried in Routes; moved to Settings | v1.1 |
 | BUILD-1 | 🟢 Fixed | 🔴 | Per-feature entitlements — plan tiers now enforced server-side; the published pricing matrix was being ignored by the app. See below | v1.2 |

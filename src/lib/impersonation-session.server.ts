@@ -36,24 +36,6 @@ export class ImpersonationExpiredError extends Error {
   }
 }
 
-/** The slice of the query builder this module uses, so the cast that works
- *  around the lagging generated types stays narrow instead of `any`. */
-type UntypedTable = {
-  from: (table: string) => {
-    select: (cols: string) => {
-      eq: (
-        col: string,
-        val: string,
-      ) => {
-        is: (
-          col: string,
-          val: null,
-        ) => { maybeSingle: () => Promise<{ data: unknown; error: unknown }> };
-      };
-    };
-  };
-};
-
 // One probe per session per minute rather than per permission check. Mirrors
 // the cache in activity.server.ts. Expiry is evaluated against the cached
 // window on every call, so a cache hit still expires the session on time — the
@@ -74,9 +56,12 @@ async function grantForSession(sessionId: string): Promise<GrantWindow | null> {
   let grant: GrantWindow | null = null;
   try {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    // Untyped on purpose: the generated Supabase types lag this table's
-    // migrations (same reason the other impersonation_grants call sites cast).
-    const { data } = await (supabaseAdmin as unknown as UntypedTable)
+    // IMP-7: `session_expires_at` and `consumed_at` are in the generated types
+    // now, so the structural cast that stood in for them is gone. The columns
+    // this gate reads are checked by the compiler again — which matters here
+    // more than most places, since a typo would silently stop expiring
+    // impersonated sessions.
+    const { data } = await supabaseAdmin
       .from("impersonation_grants")
       .select("session_expires_at, consumed_at")
       .eq("auth_session_id", sessionId)

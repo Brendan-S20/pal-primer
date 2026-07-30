@@ -36,21 +36,6 @@ export class PlanUpgradeRequiredError extends Error {
   }
 }
 
-/** The slice of the client this module uses, so the cast around the lagging
- *  generated types stays narrow instead of `any`. */
-type PlanLookupClient = {
-  from: (table: "organizations") => {
-    select: (cols: string) => {
-      eq: (
-        col: string,
-        val: string,
-      ) => {
-        maybeSingle: () => PromiseLike<{ data: unknown; error: { message: string } | null }>;
-      };
-    };
-  };
-};
-
 // One lookup per org per minute rather than per gated call. An org's plan
 // changes on a checkout or an admin edit, not on a page view. Mirrors the
 // caches in activity.server.ts and impersonation-session.server.ts.
@@ -71,7 +56,10 @@ export async function planTierForOrg(orgId: string): Promise<PlanTier> {
 
   let tier: PlanTier = DEFAULT_TIER;
   try {
-    const { data, error } = await (supabaseAdmin as unknown as PlanLookupClient)
+    // IMP-7: this was a hand-written structural cast because the generated
+    // types predated several migrations. They are current now, so the real
+    // client types carry it.
+    const { data, error } = await supabaseAdmin
       .from("organizations")
       .select("plan_id, platform_plans(slug)")
       .eq("id", orgId)
