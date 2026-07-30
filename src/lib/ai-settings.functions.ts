@@ -21,10 +21,22 @@ export const getOrgAiSettings = createServerFn({ method: "GET" })
     // Still permission-gated: this reports on the org's paid service, so it
     // belongs behind manage_settings like the rest of the settings surface.
     await requirePermission(context.supabase, context.userId, "manage_settings");
+    // There are TWO managed AI paths, not one, and reporting only the first
+    // would have let this page say "AI is enabled" while the receptionist and
+    // the weekly digest were dead:
+    //
+    //   tools    — Anthropic, via ANTHROPIC_API_KEY (ai.server.ts). Powers
+    //              marketing content, review replies, churn scoring, AI
+    //              dispatch, zone pricing.
+    //   assistant— Lovable AI gateway, via LOVABLE_API_KEY
+    //              (ai-gateway.server.ts). Powers the AI receptionist and the
+    //              business advisor / weekly digest.
+    //
+    // Consolidating them is worth doing and belongs with BUILD-2's metering,
+    // which has to capture usage on BOTH or it will undercount.
     return {
-      /** Whether the PLATFORM can serve AI at all. False is an operator
-       *  problem, never something a tenant can fix. */
-      available: !!process.env.ANTHROPIC_API_KEY,
+      toolsAvailable: !!process.env.ANTHROPIC_API_KEY,
+      assistantAvailable: !!process.env.LOVABLE_API_KEY,
       model: DEFAULT_MODELS.anthropic,
       /** Usage, allowance, and overage reporting arrive with BUILD-2. Saying so
        *  explicitly beats rendering a zero that looks like a real measurement. */

@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { PlanGate } from "@/components/PlanGate";
+import { BusinessAdvisor } from "@/components/BusinessAdvisor";
 
 
 function fmt(cents: number) {
@@ -46,8 +47,9 @@ function AnalyticsPage() {
         <h1 className="text-2xl font-semibold">Advanced analytics</h1>
         <p className="text-sm text-muted-foreground">Cohort retention, lifetime value, zone profitability, and churn drivers.</p>
       </div>
-      <Tabs defaultValue="retention" className="space-y-4">
+      <Tabs defaultValue="advisor" className="space-y-4">
         <TabsList>
+          <TabsTrigger value="advisor">Advisor</TabsTrigger>
           <TabsTrigger value="retention">Cohort retention</TabsTrigger>
           <TabsTrigger value="ltv">LTV</TabsTrigger>
           <TabsTrigger value="zones">Zone profitability</TabsTrigger>
@@ -55,6 +57,12 @@ function AnalyticsPage() {
           <TabsTrigger value="winback">Win-back</TabsTrigger>
           <TabsTrigger value="digest">Weekly digest</TabsTrigger>
         </TabsList>
+        {/* BUILD-8: the advisor is NOT plan-gated. It isn't one of the four
+            functions the pricing page sells as "Advanced analytics", and it was
+            removed from the site as a phantom add-on SKU (MKT-1) rather than
+            sold. Gating it would invent a commitment nobody made. */}
+        <TabsContent value="advisor"><BusinessAdvisor /></TabsContent>
+
         {/* BUILD-1: these four are the "Advanced analytics: cohort retention,
             zone profitability, churn drivers" the pricing page sells on Growth
             and above, and they map one-to-one onto analytics.functions.ts.

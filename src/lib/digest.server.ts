@@ -62,24 +62,51 @@ function fmtRange(startMs: number, endMs: number) {
   return `${m(s)} - ${m(e)}`;
 }
 
-export async function computeDigestMetrics(orgId: string): Promise<DigestMetrics | null> {
+/** Windows the advisor can analyze. The weekly digest email uses 7, which is
+ *  why that stays the default — this parameter widens the same engine rather
+ *  than forking it, so the email and the in-app advisor can never disagree. */
+export type AdvisorWindowDays = 7 | 30 | 90;
+
+/** A date in the ORG's timezone, not the database's.
+ *
+ *  `scheduled_on` is a DATE column, so comparing it against a UTC-derived
+ *  "today" is the BUG-12 mistake: for an org west of UTC the boundary lands up
+ *  to a day early, quietly shifting which visits count as inside the window.
+ *  en-CA formats as YYYY-MM-DD, which is what the column wants. */
+function orgLocalDate(ms: number, tz: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(ms));
+}
+
+export async function computeDigestMetrics(
+  orgId: string,
+  windowDays: AdvisorWindowDays = 7,
+): Promise<DigestMetrics | null> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
   const { data: org } = await supabaseAdmin
     .from("organizations")
-    .select("id, name")
+    .select("id, name, timezone")
     .eq("id", orgId)
     .maybeSingle();
   if (!org) return null;
 
+  const { DEFAULT_TIMEZONE } = await import("@/lib/route-window");
+  const tz = (org as { timezone?: string | null }).timezone || DEFAULT_TIMEZONE;
+
   const now = Date.now();
-  const weekStart = now - 7 * DAY;
-  const prevStart = now - 14 * DAY;
+  const weekStart = now - windowDays * DAY;
+  const prevStart = now - 2 * windowDays * DAY;
   const weekStartIso = new Date(weekStart).toISOString();
   const prevStartIso = new Date(prevStart).toISOString();
-  const weekStartDate = new Date(weekStart).toISOString().slice(0, 10);
-  const prevStartDate = new Date(prevStart).toISOString().slice(0, 10);
-  const todayDate = new Date(now).toISOString().slice(0, 10);
+  // Timestamp columns stay in UTC (they are instants); DATE columns are
+  // compared in org-local terms.
+  const weekStartDate = orgLocalDate(weekStart, tz);
+  const todayDate = orgLocalDate(now, tz);
 
   // Revenue (paid payments) — this week & previous week for WoW
   const [{ data: payThis }, { data: payPrev }] = await Promise.all([
@@ -205,11 +232,18 @@ export interface DigestInsights {
   headline: string;
   insights: string[];
   recommendations: string[];
+  /** True when the model actually produced this. False means the deterministic
+   *  fallback below did — the key was missing, or the call failed. The digest
+   *  email ignores this (it must go out either way), but any SCREEN showing this
+   *  content has to be able to say which it is, rather than presenting
+   *  arithmetic as analysis. */
+  aiGenerated: boolean;
 }
 
 export async function generateDigestInsights(m: DigestMetrics): Promise<DigestInsights> {
   const key = process.env.LOVABLE_API_KEY;
   const fallback: DigestInsights = {
+    aiGenerated: false,
     headline: `Revenue of ${fmt(m.raw.revenueCents)} across ${m.raw.visitsCompleted} completed visits.`,
     insights: [
       `Compared to last week, revenue moved ${pct(m.raw.revenueCents, m.raw.prevRevenueCents)}.`,
@@ -229,8 +263,8 @@ export async function generateDigestInsights(m: DigestMetrics): Promise<DigestIn
   try {
     const gateway = createLovableAiGatewayProvider(key);
     const prompt = [
-      `You are analyzing weekly performance for ${m.orgName}, a residential dog-waste cleanup business.`,
-      `Week: ${m.weekLabel}.`,
+      `You are analyzing business performance for ${m.orgName}, a residential dog-waste cleanup business.`,
+      `Period: ${m.weekLabel}.`,
       `Metrics:`,
       `- Revenue: ${fmt(m.raw.revenueCents)} (prev week ${fmt(m.raw.prevRevenueCents)}, ${pct(m.raw.revenueCents, m.raw.prevRevenueCents)})`,
       `- Visits completed: ${m.raw.visitsCompleted}`,
@@ -246,7 +280,7 @@ export async function generateDigestInsights(m: DigestMetrics): Promise<DigestIn
       "Return concise, plain-language output for the owner:",
       "- headline: one sentence, ≤ 120 chars, the single most important takeaway.",
       "- insights: 2-3 short bullet points, each ≤ 140 chars, quantitative when possible.",
-      "- recommendations: 2-3 specific next actions the owner can take THIS week, each ≤ 140 chars.",
+      "- recommendations: 2-3 specific next actions the owner can take now, each ≤ 140 chars.",
       "Do not restate every metric. Avoid hype. Be direct.",
     ]
       .filter(Boolean)
@@ -269,6 +303,7 @@ export async function generateDigestInsights(m: DigestMetrics): Promise<DigestIn
         headline: experimental_output.headline,
         insights: experimental_output.insights,
         recommendations: experimental_output.recommendations,
+        aiGenerated: true,
       };
     }
     return fallback;

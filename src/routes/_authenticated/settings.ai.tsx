@@ -52,7 +52,7 @@ function AiSettings() {
       ) : (
         <>
           <div className="rounded-lg border bg-card p-4 text-sm">
-            {q.data?.available ? (
+            {q.data?.toolsAvailable && q.data?.assistantAvailable ? (
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-start gap-2">
                   <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
@@ -76,10 +76,21 @@ function AiSettings() {
               <div className="flex items-start gap-2 text-amber-700 dark:text-amber-400">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <div>
-                  <div className="font-medium">AI is temporarily unavailable</div>
+                  <div className="font-medium">
+                    {q.data?.toolsAvailable || q.data?.assistantAvailable
+                      ? "Some AI features are unavailable"
+                      : "AI is temporarily unavailable"}
+                  </div>
                   <div className="text-xs">
-                    This is a HoundStack configuration issue, not something in your account. The AI
-                    Tools won&apos;t run until it&apos;s resolved — please contact support.
+                    {/* Named specifically. "AI is down" when only half of it is
+                        down sends someone looking in the wrong place. */}
+                    {!q.data?.toolsAvailable && !q.data?.assistantAvailable
+                      ? "No AI features will run until this is resolved."
+                      : !q.data?.toolsAvailable
+                        ? "Marketing content, review replies, churn scoring, AI dispatch, and zone pricing are unavailable. The receptionist and business advisor are unaffected."
+                        : "The AI receptionist and the business advisor are unavailable. The AI tools are unaffected."}{" "}
+                    This is a HoundStack configuration issue, not something in your account — please
+                    contact support.
                   </div>
                 </div>
               </div>

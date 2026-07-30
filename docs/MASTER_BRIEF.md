@@ -318,6 +318,58 @@ Several comments elsewhere still read "isn't in the generated types yet"
 are false and could mislead someone into adding a cast that isn't needed. Also
 IMP-5.
 
+**BUILD-8 detail — the AI Business Advisor.** v1.0 said to retire it; the owner
+reversed that. The analysis engine already existed (`digest.server.ts`) but was
+reachable exactly one way: a weekly email. Advice on our schedule, over our
+window, with no way to see what it was based on.
+
+Now an Advisor tab on `/analytics`, with three deliberate choices:
+
+- **The numbers load free; the AI commentary is a button.** A model call spends
+  the org's AI allowance, and spending it as a side effect of opening a tab is
+  someone else's money quietly leaving — particularly with no metering to observe
+  it (BUILD-2). Split into `getAdvisorMetrics` (database only) and
+  `getAdvisorInsights` (the model call, explicit action only). It reads better
+  too: data first, interpretation on request.
+- **Evidence sits beside the advice, never behind a toggle.** An advisor that
+  emits three confident bullets with nothing to check them against is a
+  horoscope. "Chase your overdue invoices" renders next to the actual A/R figure.
+  The insight cards are keyed by window so 7-day commentary can never appear
+  beside 30-day numbers.
+- **It says when the AI didn't run.** `generateDigestInsights` silently falls
+  back to deterministic arithmetic when the model is unreachable — correct for an
+  email that must go out, wrong for a screen that would imply an AI read the
+  business. `DigestInsights` now carries `aiGenerated`, and the UI labels the
+  output "AI analysis" or "Direct calculation".
+
+**Not plan-gated**, deliberately. It is not one of the four functions the pricing
+page sells as Advanced Analytics, and MKT-1 removed "AI Business Advisor" from
+the site as a phantom SKU rather than selling it. Gating it would invent a
+commitment nobody made. Permission-gated on `view_financials` like the rest of
+`/analytics` (Q-1: dispatchers and techs are ops-only).
+
+**Two findings surfaced while building it:**
+
+*The digest's window boundaries were UTC, not org-local* — the BUG-12 mistake
+again, in a place nobody had looked. Demonstrated live while fixing it: UTC read
+`2026-07-30` while the org's own Chicago date was `2026-07-29`, and **5 visits
+that had not happened yet** were inside the window. Now org-local, using the same
+`Intl.DateTimeFormat("en-CA")` pattern as My Day and the portal.
+
+*There are TWO managed AI paths, not one*, and BUILD-2 has to meter both:
+
+| Path | Key | Powers |
+|---|---|---|
+| Anthropic (`ai.server.ts`) | `ANTHROPIC_API_KEY` | marketing content, review replies, churn scoring, AI dispatch, zone pricing |
+| Lovable gateway (`ai-gateway.server.ts`) | `LOVABLE_API_KEY` | AI receptionist, business advisor / weekly digest |
+
+The Settings → AI Tools page shipped in IMP-9 checked only the first, so it would
+have reported "AI is enabled" while the receptionist and advisor were dead. Fixed
+in the same change — it now reports each path and names which features are
+affected, because "AI is down" when half of it is down sends someone looking in
+the wrong place. Consolidating the two providers is worth doing and belongs with
+BUILD-2.
+
 ## Verify-then-fix
 
 | ID | Status | Summary | Changed in |
@@ -346,7 +398,7 @@ IMP-5.
 | BUILD-5 | 🔵 Open | 🟠 | White label (real build) | v1.0 |
 | BUILD-6 | 🔵 Open | 🟠 | Enterprise tier — Q-9 = grandfather existing multi-entity tenants indefinitely | v1.1 |
 | BUILD-7 | 🔵 Open | 🟡 | Trial → Growth + AI sandbox | v1.0 |
-| BUILD-8 | 🔵 Open | 🟡 | Catalog reconciliation — **premise corrected**, see §1.1 | v1.1 |
+| BUILD-8 | 🟢 Fixed | 🟡 | AI Business Advisor **built out** (owner reversed the retire instruction). On-demand, 7/30/90-day windows, evidence shown beside the advice. See below | v1.3 |
 | BUILD-9 | 🔵 Open | 🟠 | Mobile Phase 2/3 — Q-2 = dedicated tablet tier, Q-3 = bundled assets | v1.1 |
 | BUILD-10 | 🔵 Open | 🟠 | **New.** Review queue — §10.5 assumes one exists; none does | v1.1 |
 | BUILD-11 | 🟢 Fixed | 🟠 | **New.** End-of-day close-out for visits left open | v1.1 |
