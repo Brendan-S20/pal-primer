@@ -196,19 +196,27 @@ export const setChildRoyaltyRate = createServerFn({ method: "POST" })
     z.object({ childOrgId: z.string().uuid(), percent: z.number().min(0).max(100) }).parse(d),
   )
   .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
-    // Confirm the target really is a child of the caller's org.
-    const { data: child } = await context.supabase
-      .from("organizations")
-      .select("id, parent_organization_id")
-      .eq("id", data.childOrgId)
-      .maybeSingle();
-    if (!child || child.parent_organization_id !== orgId) {
-      throw new Error("That location isn't part of your franchise.");
-    }
-    const { error } = await (context.supabase.from("organizations") as any)
-      .update({ franchise_royalty_percent: data.percent })
-      .eq("id", data.childOrgId);
+    // Keeps the role + entitlement gate (owner, Enterprise plan) so the app
+    // layer still refuses early with a good message.
+    await resolveOrgId(context.supabase, context.userId);
+
+    // BUG-19: this used to read the CHILD org and then update it through the
+    // caller's own RLS-bound client. Both halves were impossible —
+    // "Members read own org" made the read return null, so this function threw
+    // "That location isn't part of your franchise" for every caller, always.
+    // It had never worked.
+    //
+    // Setting a child's royalty rate is inherently a CROSS-org write, which no
+    // tenant-scoped client can perform. It now goes through
+    // set_child_royalty_percent(), which re-derives the parent from the child's
+    // own row and requires the caller to own THAT parent — so authorization is
+    // decided against the real relationship rather than anything the caller
+    // supplied. The column is now protected by the platform-columns trigger,
+    // and that function is the one sanctioned way through it.
+    const { error } = await (context.supabase as any).rpc("set_child_royalty_percent", {
+      _child_org_id: data.childOrgId,
+      _percent: data.percent,
+    });
     if (error) throw new Error(error.message);
     return { ok: true };
   });

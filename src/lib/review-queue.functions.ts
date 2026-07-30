@@ -9,8 +9,16 @@ import { REVIEW_KINDS, REVIEW_STATUSES, type ReviewKind, type ReviewStatus } fro
 // Owner decision on ownership: the ORG resolves its own items. The knowledge
 // required to answer "did this visit actually happen" lives with the tenant, so
 // resolving on their behalf would be precisely the silent guess guardrail 10.5
-// forbids. Platform admins get read-across for oversight (see the RLS policy),
-// and deliberately no write.
+// forbids.
+//
+// Platform admins acting as themselves get read-across and no write. Support
+// still works, because helping a tenant past an obstacle is done by
+// impersonating them — and an impersonated session IS that tenant user, so the
+// ordinary can_write_org policy lets it through with no special case. That is
+// the better route anyway: the decision is attributed to the account it was
+// made under and carries the impersonation marker into activity_log (BUG-14),
+// so an admin resolving something while supporting a customer is visible in the
+// record instead of looking like the customer did it.
 
 export type ReviewItemRow = {
   id: string;

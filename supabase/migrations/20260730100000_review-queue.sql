@@ -33,7 +33,16 @@
 -- WHO RESOLVES (owner decision). The org owner. The knowledge required to
 -- resolve "did this visit actually happen" lives with the tenant, not with us —
 -- resolving it on their behalf would be the silent guess the guardrail forbids.
--- Platform admins get read-across for oversight, not resolution.
+--
+-- Platform admins reading as THEMSELVES get read-across for oversight and no
+-- write. That is not a support dead-end: supporting a tenant through an
+-- obstacle is done by impersonating them, and an impersonated session IS the
+-- tenant user — auth.uid() is theirs, so can_write_org passes and the write
+-- goes through the ordinary policy. The support path therefore needs no
+-- special case here, and it is better than one: the decision is attributed to
+-- the account it was made under and carries the impersonation marker into
+-- activity_log (BUG-14), so "an admin resolved this while helping" is visible
+-- rather than indistinguishable from the tenant doing it themselves.
 --
 -- Idempotent.
 
@@ -95,9 +104,11 @@ CREATE POLICY review_items_select ON public.review_items
     OR public.is_platform_admin(auth.uid())
   );
 
--- Write: office roles only, and only their own org's rows. Platform admins are
--- deliberately NOT granted write — they can see everything and resolve nothing,
--- because resolving requires knowledge they do not have.
+-- Write: office roles only, and only their own org's rows. A platform admin's
+-- OWN identity is not granted write here — but note this policy is also what
+-- lets a support session through, because an impersonated admin is running as
+-- the tenant user and satisfies can_write_org normally. One policy covers both
+-- cases; there is no admin bypass to maintain.
 DROP POLICY IF EXISTS review_items_update ON public.review_items;
 CREATE POLICY review_items_update ON public.review_items
   FOR UPDATE TO authenticated
