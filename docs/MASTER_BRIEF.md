@@ -152,8 +152,8 @@ were built. Repo search finds no such mechanism. Raised as BUILD-10.
 | BUG-15 | ✅ Verified | 🟡 | Portal history — already moved to the Visits tab (G4) with signed before/after photos | v1.2 |
 | BUG-16 | ✅ Verified | 🟡 | Dog info on residential cards — `DogsRow` renders name + temperament next to hazards; `dogs(name, temperament)` is in the My Day select | v1.2 |
 | BUG-17 | 🟢 Fixed | 🟠 | **New.** In-progress visit lost on reload | v1.1 |
-| BUG-18 | 🔵 Open | 🔴 | **New.** Accepting a second org invite hard-bricks the account — `resolveCaller` throws, taking 154 server functions with it. Reachable today | v1.4 |
-| BUG-19 | 🔵 Open | 🟠 | **New.** `parent_organization_id` is not in the protected-columns trigger, so a tenant owner can declare themselves someone else's child via direct PostgREST | v1.4 |
+| BUG-18 | 🟢 Fixed | 🔴 | **New.** Accepting a second org invite hard-bricked the account. Invite now refused with a readable message; unique index as the safety net. Multi-org itself stays with BUILD-6 (owner decision) | v1.4 |
+| BUG-19 | 🟢 Fixed | 🟠 | **New.** Three franchise columns were writable by tenants — including `franchise_royalty_percent`, i.e. a franchisee could zero out what they owed. All protected, verified against the real tenant path | v1.4 |
 
 **BUG-10 detail:** `waste_stations.label` was `NOT NULL`, so the junk labels were
 not merely left behind — they were *structurally impossible to clear*. Every
@@ -452,6 +452,74 @@ granted, typed — and never called. The TypeScript is a hand-rolled
 reimplementation that dropped the only part that made it work. There is also no
 way to create or link a child org through the product at all.
 
+**BUILD-6 detail — what was salvageable, and a correction to my own last report.**
+
+I reported `franchise_rollup()` as "the one correct piece of cross-org authz in
+the repo — written, granted, typed, and never called," and recommended reusing
+it as-is. **The authorization was right; the body was not.** Because it had never
+executed once, three errors sat in it undetected until the first call raised
+`42703: column cl.status does not exist`:
+
+- `cl.status = 'active'` — `clients` has no `status` column, only `active
+  boolean`. The same function gets `staff` right on the next line, so this was
+  an authoring slip, not schema drift.
+- `i.amount_paid_cents` — does not exist on `invoices`; that column is on
+  `platform_invoices`, a different table.
+- `i.status IN ('open','draft','past_due')` — `past_due` is not in the
+  `invoice_status` enum.
+
+The lesson worth keeping: **a SECURITY DEFINER function granted to
+`authenticated` and never called is not a spare part, it is unverified surface
+area.** "Never called" is why it looked clean.
+
+Salvage outcome:
+
+| Piece | Verdict |
+|---|---|
+| `franchise_rollup()` authorization | **Reused unchanged** — owner/office_manager of the parent. The only shape that can answer this question. |
+| `franchise_rollup()` body | **Rewritten** against the real schema, canonical AR, org-local dates |
+| `mark_franchise_parent()` | **Repaired.** Called a two-argument `has_role()` that does not exist and tested for an `'admin'` role absent from the enum, so it raised `42883` on every call. The "Mark as franchise parent" button had never worked once. |
+| `computeRowForOrg` (TS) | **Deleted.** Returned zeros for every caller AND used invoice statuses that are not in the enum while ignoring applied credit. Dead code producing plausible-looking wrong numbers is worse than none. |
+| `franchise_royalty_invoices` + arithmetic | **Kept** — sound and idempotent |
+
+**Why the page always said "No child organizations linked yet."** Not an empty
+database — `getFranchiseContext`, `getFranchiseRollup`, and `getFranchiseTrend`
+all listed children with `.eq("parent_organization_id", orgId)` on the caller's
+own RLS-bound client. A parent is not a member of its children, so
+"Members read own org" filtered every child out for every possible caller. All
+three now go through SECURITY DEFINER helpers.
+
+**Linking, which did not exist at all.** `parent_organization_id` was never
+written anywhere in TypeScript; the page's own empty state described editing the
+column by hand, and BUG-19 then closed that off. So linking became mandatory,
+and it is built consent-first: the PARENT issues a single-use 14-day code, the
+CHILD's owner redeems it. Consent is the redemption — which is exactly what
+BUG-19 was missing. A bearer code rather than "parent enters the child's email"
+because the latter lets anyone probe which organizations exist and puts the
+decision on the wrong side of the relationship.
+
+Structure is **exactly two levels**, enforced at redemption rather than by
+convention: a parent may not have a parent, a child may not have children, plus
+a redundant cycle check. Deeper hierarchies would need recursive forms of the
+rollup, the royalty math, and every RLS decision; leaving the door open is how a
+cycle reaches production.
+
+Either side's owner can unlink. Royalty invoices already raised are deliberately
+preserved — unlinking is not a way to erase what was owed.
+
+Verified live end to end, nine steps: owner issues → non-owner refused → child
+redeems → code single-use → second franchise refused → three levels refused →
+**rollup returns 2 rows where the TypeScript returned 0** → child cannot roll up
+the parent → unlink clears both sides.
+
+**IMP-10 — no canonical revenue definition.** Unlike AR, which has `ar.ts` and a
+documented "B1" canon every surface routes through, revenue is computed six
+ways across three incompatible families. The franchise rollup deliberately
+matches the **royalty generators** (`payments.created_at`, `succeeded`) rather
+than the weekly digest (`paid_at`), because a parent will compare the rollup's
+revenue against a royalty invoice for the same period and those two must
+reconcile. Two numbers that agree beat one that is arguably more correct alone.
+
 ## Verify-then-fix
 
 | ID | Status | Summary | Changed in |
@@ -471,6 +539,7 @@ way to create or link a child org through the product at all.
 | IMP-5 | 🔵 Open | ⚪ | Repo housekeeping — now also: the 4 `as any` casts on `impersonation_grants` in `platform.functions.ts`, and ~6 now-false "not in the generated types yet" comments. See IMP-7 below | v1.3 |
 | IMP-6 | ❓ Blocked | 🟡 | Payment test coverage — needs Stripe authorized | v1.1 |
 | IMP-7 | 🟢 Fixed | 🟡 | Supabase types regenerated. They had been stale since before this cycle and IMP-9's table drop made them wrong, not just incomplete. Four `any`/structural casts removed as a result | v1.3 |
+| IMP-10 | 🔵 Open | 🟡 | **New.** There is no canonical tenant REVENUE definition. Six implementations split three ways — `payments.paid_at`, `payments.created_at`, and paid-invoices-by-`issued_at` — with no shared helper and nothing claiming authority. `ar.ts` is the model to follow | v1.4 |
 | IMP-9 | 🟢 Fixed | 🟠 | Retire the BYOK surfaces — **done, and the "wait for BUILD-2/BUILD-3" ordering in v1.2 was wrong.** See below | v1.3 |
 | IMP-8 | 🟢 Fixed | 🟡 | **New.** Org timezone was built but buried in Routes; moved to Settings | v1.1 |
 | BUILD-1 | 🟢 Fixed | 🔴 | Per-feature entitlements — plan tiers now enforced server-side; the published pricing matrix was being ignored by the app. See below | v1.2 |
@@ -478,7 +547,7 @@ way to create or link a child org through the product at all.
 | BUILD-3 | ⏳ Waiting | 🟠 | Managed texting — Q-8 = per-tenant subaccount + own brand. In the 10DLC compliance queue; nothing to accelerate | v1.1 |
 | BUILD-4 | 🟢 Fixed | 🟠 | Managed AI — BYO deleted, inference runs on the platform key, and the product no longer asks for a key. The remaining gap is metering, which is BUILD-2, not BUILD-4 | v1.3 |
 | BUILD-5 | 🔵 Open | 🟠 | White label (real build) | v1.0 |
-| BUILD-6 | 🔵 Open | 🟠 | Enterprise tier — Q-9 = grandfather existing multi-entity tenants indefinitely | v1.1 |
+| BUILD-6 | 🟠 Part-built | 🟠 | Enterprise tier — **phase 1+2 shipped**: consent-based linking, repaired rollup, franchise page works for the first time. Remaining: multi-org membership, child-side UI, drill-down, royalty delivery. See below | v1.4 |
 | BUILD-7 | 🔵 Open | 🟡 | Trial → Growth + AI sandbox | v1.0 |
 | BUILD-8 | 🟢 Fixed | 🟡 | AI Business Advisor **built out** (owner reversed the retire instruction). On-demand, 7/30/90-day windows, evidence shown beside the advice. See below | v1.3 |
 | BUILD-9 | 🔵 Open | 🟠 | Mobile Phase 2/3 — Q-2 = dedicated tablet tier, Q-3 = bundled assets | v1.1 |

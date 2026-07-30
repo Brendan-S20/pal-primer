@@ -45,80 +45,74 @@ export const getFranchiseContext = createServerFn({ method: "GET" })
       .eq("id", orgId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    const { data: children } = await context.supabase
-      .from("organizations")
-      .select("id, name")
-      .eq("parent_organization_id", orgId)
-      .order("name");
+    // BUILD-6: was .eq("parent_organization_id", orgId) on the caller's own
+    // client, which returns nothing for every caller — a parent is not a member
+    // of its children, so RLS filters them all out. That is why the page always
+    // said "No child organizations linked yet."
+    const { data: children } = await (context.supabase as any).rpc("franchise_children", {
+      _parent_org: orgId,
+    });
+    const kids = (children ?? []) as Array<{ id: string; name: string }>;
     return {
       org,
-      isParent: !!org?.is_franchise_parent || (children ?? []).length > 0,
-      children: children ?? [],
+      isParent: !!org?.is_franchise_parent || kids.length > 0,
+      children: kids,
     };
   });
 
-async function computeRowForOrg(supabase: any, orgId: string, name: string): Promise<FranchiseRow> {
-  const today = new Date().toISOString().slice(0, 10);
-  const monthStart = new Date();
-  monthStart.setUTCDate(1);
-  monthStart.setUTCHours(0, 0, 0, 0);
-
-  const [clients, techs, visitsToday, visitsDone, mtdPayments, arInvoices] = await Promise.all([
-    supabase.from("clients").select("id", { count: "exact", head: true })
-      .eq("organization_id", orgId).eq("active", true),
-    supabase.from("staff").select("id", { count: "exact", head: true })
-      .eq("organization_id", orgId).eq("active", true),
-    supabase.from("visits").select("id", { count: "exact", head: true })
-      .eq("organization_id", orgId).eq("scheduled_on", today),
-    supabase.from("visits").select("id", { count: "exact", head: true })
-      .eq("organization_id", orgId).eq("scheduled_on", today).eq("status", "completed"),
-    supabase.from("payments").select("amount_cents")
-      .eq("organization_id", orgId).eq("status", "succeeded")
-      .gte("created_at", monthStart.toISOString()),
-    supabase.from("invoices").select("total_cents")
-      .eq("organization_id", orgId).in("status", ["open", "overdue", "sent"]),
-  ]);
-
-  const revenue = (mtdPayments.data ?? []).reduce((s: number, r: any) => s + Number(r.amount_cents ?? 0), 0);
-  const ar = (arInvoices.data ?? []).reduce((s: number, r: any) => s + Number(r.total_cents ?? 0), 0);
-
-  return {
-    organization_id: orgId,
-    organization_name: name,
-    active_clients: clients.count ?? 0,
-    tech_count: techs.count ?? 0,
-    visits_today: visitsToday.count ?? 0,
-    visits_completed_today: visitsDone.count ?? 0,
-    revenue_mtd_cents: revenue,
-    ar_open_cents: ar,
-  };
-}
+// BUILD-6: computeRowForOrg was removed here. It recomputed each location's
+// numbers in TypeScript on the caller's RLS-bound client, so it returned zeros
+// for every caller — and its AR used statuses that are not in the invoice_status
+// enum ("overdue", "sent") while ignoring credit_applied_cents entirely. Leaving
+// a dead function that produces plausible-looking wrong numbers is worse than
+// leaving nothing. franchise_rollup() is the single implementation now.
 
 export const getFranchiseRollup = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const orgId = await resolveOrgId(context.supabase, context.userId);
-    const { data: children, error } = await context.supabase
-      .from("organizations")
-      .select("id, name")
-      .eq("parent_organization_id", orgId)
-      .order("name");
+
+    // BUILD-6: this used to list children on the caller's own RLS-bound client
+    // and compute each row in TypeScript. Both halves were impossible. A parent
+    // is not a member of its children, so "Members read own org" filtered every
+    // child out — the list came back EMPTY for every possible caller, and the
+    // page rendered "No child organizations linked yet" no matter what. Even
+    // given rows, the per-child counts hit the same wall.
+    //
+    // franchise_rollup() is SECURITY DEFINER and does its own authorization
+    // (owner or office_manager OF THE PARENT), which is the only shape that can
+    // answer this question. It existed all along and nothing ever called it.
+    // Its body needed repair first — see the migration — but the authorization
+    // was always right.
+    const { data, error } = await (context.supabase as any).rpc("franchise_rollup", {
+      _parent_org: orgId,
+    });
     if (error) throw new Error(error.message);
-    const rows = await Promise.all(
-      (children ?? []).map((c: any) => computeRowForOrg(context.supabase, c.id, c.name)),
-    );
-    return { rows };
+
+    const rows: FranchiseRow[] = (data ?? []).map((r: any) => ({
+      organization_id: r.organization_id,
+      organization_name: r.organization_name,
+      active_clients: r.active_clients ?? 0,
+      visits_today: r.visits_today ?? 0,
+      visits_completed_today: r.visits_completed_today ?? 0,
+      revenue_mtd_cents: Number(r.revenue_mtd_cents ?? 0),
+      ar_open_cents: Number(r.ar_open_cents ?? 0),
+      tech_count: r.tech_count ?? 0,
+    }));
+
+    // The parent's own row is first (the function orders it so). The UI needs to
+    // tell "my own numbers" from "a location's".
+    return { rows, parentOrgId: orgId };
   });
 
 export const getFranchiseTrend = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const orgId = await resolveOrgId(context.supabase, context.userId);
-    const { data: children } = await context.supabase
-      .from("organizations")
-      .select("id, name")
-      .eq("parent_organization_id", orgId)
-      .order("name");
+    // BUILD-6: same RLS wall as the rollup — see getFranchiseContext.
+    const { data: children } = await (context.supabase as any).rpc("franchise_children", {
+      _parent_org: orgId,
+    });
     const kids = (children ?? []) as Array<{ id: string; name: string }>;
     if (kids.length === 0) return { weeks: [] as any[], locations: [] as any[] };
 
