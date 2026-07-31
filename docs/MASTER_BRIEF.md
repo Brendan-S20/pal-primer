@@ -794,10 +794,10 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | RESP-1…5 | 🔵 Open | 🟠 | All five still need real hardware | v1.0 |
 | MKT-1 | 🟢 Fixed | 🔴 | Catalog truth — Q-13 answered (every add-on at launch). Site now lists the 6 real add-ons with prices; the 3 phantom SKUs are gone | v1.2 |
 | MKT-2 | 🟢 Fixed | 🔴 | Broken AI features no longer described as live | v1.1 |
-| MKT-3 | 🔵 Open | 🟠 | Pricing table rendering | v1.0 |
+| MKT-3 | 🟢 Fixed | 🟠 | The four tier cards did not line up — 117px of drift on the divider at 1280px, because each card sized itself independently and the price/allowance/blurb wrap to different line counts per tier. Cards are now subgrids sharing the outer grid's row tracks, so alignment holds by construction with no magic heights to go stale. Feature matrix itself was already correct at every width | v1.5 |
 | MKT-4 | 🟢 Fixed | 🔴 | Contact form wired to the real Formspree endpoint, with `_subject` and a `form` field so the two forms are distinguishable in one inbox | v1.2 |
 | MKT-5 | 🔵 Open | 🟠 | Legal drafts pending review | v1.0 |
-| MKT-6 | 🔵 Open | 🟡 | Analytics + SEO setup | v1.0 |
+| MKT-6 | 🟠 Part-built | 🟡 | SEO gaps closed: a double-escaped title, TWO identical FAQPage blocks on two pages, four separate Organization nodes and two contradicting SoftwareApplication entities, all now single-`@id`. Offers say PreOrder, not InStock — nothing is buyable yet. **Analytics needs you:** Plausible is already installed and firing events; registering the domain and creating goals needs your account | v1.5 |
 | MKT-7 | 🔵 Open | 🟡 | Real product screenshots | v1.0 |
 | MKT-8 | ⚪ Deferred | ⚪ | `/customers` stub | v1.0 |
 | MKT-9 | 🔵 Open | 🟡 | Annual billing on site — see VER-8 | v1.1 |
@@ -963,6 +963,14 @@ rather than the following January.
 # 3. OPEN DECISIONS & EXTERNAL BLOCKERS
 
 **Needs your action, not engineering:**
+
+0. **Which hostname actually serves the marketing site?** `SITE.url` is
+   `www.houndstack.com`, so every canonical URL published is the www form —
+   while `robots.txt`, Plausible's `data-domain` and the README's deploy note
+   all say the apex `houndstack.com`. Canonicals pointing at a host that
+   redirects, or analytics keyed to a domain that never loads, are both silent
+   failures. One line to fix once you say which is authoritative.
+
 
 1. **Authorize Stripe** — OAuth can't run in a headless session. Blocks BUILD-2, BUILD-8, IMP-6.
 2. ~~**Formspree contact form ID**~~ — ✅ supplied and wired (MKT-4 closed).

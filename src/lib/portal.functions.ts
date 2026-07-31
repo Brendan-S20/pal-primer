@@ -379,9 +379,8 @@ export const portalChangeFrequency = createServerFn({ method: "POST" })
     });
     if (error) throw new Error(error.message);
     // 'applied' | 'requested' | 'unchanged' — 'requested' means auto-apply is
-    // off and the office got a structured review ticket instead (C4/G4). The
-    // generated RPC types lag the void -> text migration, hence the cast.
-    return { ok: true, status: (result as unknown as string) ?? "applied" };
+    // off and the office got a structured review ticket instead (C4/G4).
+    return { ok: true, status: result ?? "applied" };
   });
 
 export const portalListAddonCatalog = createServerFn({ method: "GET" })

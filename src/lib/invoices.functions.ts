@@ -2,6 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 
 export const listInvoices = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -545,7 +547,7 @@ export const getInvoicePayLink = createServerFn({ method: "GET" })
 // log exist exactly once. Charges the invoice's OPEN amount
 // (total_cents - credit_applied_cents), never the gross total.
 async function chargeSavedCardCore(
-  supabase: any,
+  supabase: SupabaseClient<Database>,
   actorUserId: string,
   invoiceId: string,
 ): Promise<{ chargedCents: number; status: string }> {
@@ -557,7 +559,7 @@ async function chargeSavedCardCore(
     .eq("id", invoiceId)
     .single();
   if (iErr) throw new Error(iErr.message);
-  const invoice = invoiceRow as any;
+  const invoice = invoiceRow;
   if (invoice.status === "paid") throw new Error("Invoice already paid");
   if (invoice.status === "void") throw new Error("Invoice is voided");
   // Drafts are unfinalized: send (or finalize) the invoice before collecting.
