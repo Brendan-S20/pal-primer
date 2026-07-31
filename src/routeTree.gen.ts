@@ -45,6 +45,7 @@ import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe
 import { Route as EmailSuppressionRouteImport } from './routes/email/suppression'
 import { Route as AuthenticatedZonesRouteImport } from './routes/_authenticated/zones'
 import { Route as AuthenticatedWasteLogRouteImport } from './routes/_authenticated/waste-log'
+import { Route as AuthenticatedTaxReportsRouteImport } from './routes/_authenticated/tax-reports'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedRoutesRouteImport } from './routes/_authenticated/routes'
 import { Route as AuthenticatedReviewRouteImport } from './routes/_authenticated/review'
@@ -304,6 +305,11 @@ const AuthenticatedZonesRoute = AuthenticatedZonesRouteImport.update({
 const AuthenticatedWasteLogRoute = AuthenticatedWasteLogRouteImport.update({
   id: '/waste-log',
   path: '/waste-log',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedTaxReportsRoute = AuthenticatedTaxReportsRouteImport.update({
+  id: '/tax-reports',
+  path: '/tax-reports',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
@@ -783,6 +789,7 @@ export interface FileRoutesByFullPath {
   '/review': typeof AuthenticatedReviewRoute
   '/routes': typeof AuthenticatedRoutesRoute
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/tax-reports': typeof AuthenticatedTaxReportsRoute
   '/waste-log': typeof AuthenticatedWasteLogRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/suppression': typeof EmailSuppressionRoute
@@ -896,6 +903,7 @@ export interface FileRoutesByTo {
   '/reports': typeof AuthenticatedReportsRoute
   '/review': typeof AuthenticatedReviewRoute
   '/routes': typeof AuthenticatedRoutesRoute
+  '/tax-reports': typeof AuthenticatedTaxReportsRoute
   '/waste-log': typeof AuthenticatedWasteLogRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/suppression': typeof EmailSuppressionRoute
@@ -1014,6 +1022,7 @@ export interface FileRoutesById {
   '/_authenticated/review': typeof AuthenticatedReviewRoute
   '/_authenticated/routes': typeof AuthenticatedRoutesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/_authenticated/tax-reports': typeof AuthenticatedTaxReportsRoute
   '/_authenticated/waste-log': typeof AuthenticatedWasteLogRoute
   '/_authenticated/zones': typeof AuthenticatedZonesRoute
   '/email/suppression': typeof EmailSuppressionRoute
@@ -1134,6 +1143,7 @@ export interface FileRouteTypes {
     | '/review'
     | '/routes'
     | '/settings'
+    | '/tax-reports'
     | '/waste-log'
     | '/zones'
     | '/email/suppression'
@@ -1247,6 +1257,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/review'
     | '/routes'
+    | '/tax-reports'
     | '/waste-log'
     | '/zones'
     | '/email/suppression'
@@ -1364,6 +1375,7 @@ export interface FileRouteTypes {
     | '/_authenticated/review'
     | '/_authenticated/routes'
     | '/_authenticated/settings'
+    | '/_authenticated/tax-reports'
     | '/_authenticated/waste-log'
     | '/_authenticated/zones'
     | '/email/suppression'
@@ -1743,6 +1755,13 @@ declare module '@tanstack/react-router' {
       path: '/waste-log'
       fullPath: '/waste-log'
       preLoaderRoute: typeof AuthenticatedWasteLogRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/tax-reports': {
+      id: '/_authenticated/tax-reports'
+      path: '/tax-reports'
+      fullPath: '/tax-reports'
+      preLoaderRoute: typeof AuthenticatedTaxReportsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/settings': {
@@ -2437,6 +2456,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedReviewRoute: typeof AuthenticatedReviewRoute
   AuthenticatedRoutesRoute: typeof AuthenticatedRoutesRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRouteWithChildren
+  AuthenticatedTaxReportsRoute: typeof AuthenticatedTaxReportsRoute
   AuthenticatedWasteLogRoute: typeof AuthenticatedWasteLogRoute
   AuthenticatedZonesRoute: typeof AuthenticatedZonesRoute
   AuthenticatedImportsBatchIdRoute: typeof AuthenticatedImportsBatchIdRoute
@@ -2467,6 +2487,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedReviewRoute: AuthenticatedReviewRoute,
   AuthenticatedRoutesRoute: AuthenticatedRoutesRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRouteWithChildren,
+  AuthenticatedTaxReportsRoute: AuthenticatedTaxReportsRoute,
   AuthenticatedWasteLogRoute: AuthenticatedWasteLogRoute,
   AuthenticatedZonesRoute: AuthenticatedZonesRoute,
   AuthenticatedImportsBatchIdRoute: AuthenticatedImportsBatchIdRoute,
@@ -2599,13 +2620,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

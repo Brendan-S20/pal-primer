@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.4** · Released 2026-07-30 · Supersedes: v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.5** · Released 2026-07-31 · Supersedes: v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,29 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+### v1.5 — 2026-07-31
+
+**The money side of BUILD-6 is finished.** A franchise can collect on its
+locations' behalf or leave them collecting for themselves; either way the
+royalty is computed the same, refunds and chargebacks are recorded and carried
+forward, and each period settles in whichever direction the balance actually
+runs. The last piece — actually applying carried-forward adjustments to a
+settlement — is in, and re-running a settlement no longer changes what is owed.
+
+**BUILD-13 shipped: the accountant's pack.** Ten reports covering income on both
+bases, the bridge between them, receivables aged at a point in time, refunds,
+write-offs, processor volume against the 1099-K, franchise settlements and
+referral rewards. Every sheet declares its basis and carries its own caveats
+into the CSV.
+
+**Shipped:** BUILD-13, BUG-20, the settlement/adjustment half of BUILD-6.
+
+**New:** BUG-20 (settlement regeneration was not idempotent).
+
+**Also worth knowing:** four migrations had been applied to the live database
+without a matching repo file, which meant the IMP-2 drift check was reporting
+green while genuinely being unable to see them. Filed; the check is honest again.
 
 ### v1.4 — 2026-07-30
 
@@ -154,6 +177,7 @@ were built. Repo search finds no such mechanism. Raised as BUILD-10.
 | BUG-17 | 🟢 Fixed | 🟠 | **New.** In-progress visit lost on reload | v1.1 |
 | BUG-18 | 🟢 Fixed | 🔴 | **New.** Accepting a second org invite hard-bricked the account. Invite now refused with a readable message; unique index as the safety net. Multi-org itself stays with BUILD-6 (owner decision) | v1.4 |
 | BUG-19 | 🟢 Fixed | 🟠 | **New.** Three franchise columns were writable by tenants — including `franchise_royalty_percent`, i.e. a franchisee could zero out what they owed. All protected, verified against the real tenant path | v1.4 |
+| BUG-20 | 🟢 Fixed | 🔴 | **New.** Re-running a franchise settlement over the same period silently changed what was owed — a $0 settled statement went back to $900 owed, because the recalculation only looked for *pending* adjustments and the first run had already consumed them. Regeneration now counts what it applied to the same draft. Verified over three consecutive runs, plus a fourth after the statement was sent | v1.5 |
 
 **BUG-10 detail:** `waste_stations.label` was `NOT NULL`, so the junk labels were
 not merely left behind — they were *structurally impossible to clear*. Every
@@ -582,7 +606,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | IMP-5 | 🔵 Open | ⚪ | Repo housekeeping — now also: the 4 `as any` casts on `impersonation_grants` in `platform.functions.ts`, and ~6 now-false "not in the generated types yet" comments. See IMP-7 below | v1.3 |
 | IMP-6 | ❓ Blocked | 🟡 | Payment test coverage — needs Stripe authorized | v1.1 |
 | IMP-7 | 🟢 Fixed | 🟡 | Supabase types regenerated. They had been stale since before this cycle and IMP-9's table drop made them wrong, not just incomplete. Four `any`/structural casts removed as a result | v1.3 |
-| IMP-10 | 🔵 Open | 🟡 | **New.** There is no canonical tenant REVENUE definition. Six implementations split three ways — `payments.paid_at`, `payments.created_at`, and paid-invoices-by-`issued_at` — with no shared helper and nothing claiming authority. `ar.ts` is the model to follow | v1.4 |
+| IMP-10 | 🔵 Open | 🟠 | **Raised to 🟠 in v1.5.** There is no canonical tenant REVENUE definition. Six implementations split three ways — `payments.paid_at`, `payments.created_at`, and paid-invoices-by-`issued_at` — with no shared helper and nothing claiming authority. BUILD-13 gave the TAX surface an authoritative definition and found the sharp edge while doing it: filtering on `status = 'succeeded'` makes a refund silently erase income recorded in an earlier, possibly already-filed period. `/reports` and `/analytics` both still do that. `ar.ts` is the model to follow | v1.4 |
 | IMP-9 | 🟢 Fixed | 🟠 | Retire the BYOK surfaces — **done, and the "wait for BUILD-2/BUILD-3" ordering in v1.2 was wrong.** See below | v1.3 |
 | IMP-8 | 🟢 Fixed | 🟡 | **New.** Org timezone was built but buried in Routes; moved to Settings | v1.1 |
 | BUILD-1 | 🟢 Fixed | 🔴 | Per-feature entitlements — plan tiers now enforced server-side; the published pricing matrix was being ignored by the app. See below | v1.2 |
@@ -596,6 +620,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | BUILD-9 | 🔵 Open | 🟠 | Mobile Phase 2/3 — Q-2 = dedicated tablet tier, Q-3 = bundled assets | v1.1 |
 | BUILD-10 | 🟢 Fixed | 🟠 | Review queue built. §10.5's rule pointed at a mechanism nobody had made, so every place that "honored" it honored it by doing nothing. See below | v1.4 |
 | BUILD-11 | 🟢 Fixed | 🟠 | **New.** End-of-day close-out for visits left open | v1.1 |
+| BUILD-13 | 🟢 Fixed | 🟠 | **New.** CPA / tax report pack — ten reports, each declaring its basis and carrying its caveats into the CSV. Cash and accrual income, the bridge between them, point-in-time AR aging, refunds, write-offs, 1099-K reconciliation, franchise settlements, referral rewards. Also the 1099-K explanation the owner asked for, keyed to how payments are actually routed. See below | v1.5 |
 | BUILD-12 | 🔵 Open | 🟠 | **New.** Invoice dispute queue — owner decision: disputes get their own queue, analytics inclusion is a toggle, and they always render as issue/lost rather than being absorbed silently | v1.4 |
 | RESP-1…5 | 🔵 Open | 🟠 | All five still need real hardware | v1.0 |
 | MKT-1 | 🟢 Fixed | 🔴 | Catalog truth — Q-13 answered (every add-on at launch). Site now lists the 6 real add-ons with prices; the 3 phantom SKUs are gone | v1.2 |
@@ -607,6 +632,48 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | MKT-7 | 🔵 Open | 🟡 | Real product screenshots | v1.0 |
 | MKT-8 | ⚪ Deferred | ⚪ | `/customers` stub | v1.0 |
 | MKT-9 | 🔵 Open | 🟡 | Annual billing on site — see VER-8 | v1.1 |
+
+**BUILD-13 detail — the accountant's pack.**
+
+The ask was about removing strain: "we don't have to put a strain on them to try
+to find numbers that are needed and are not available or hard to calculate."
+Two things follow, and they mattered more than the report list.
+
+*Basis is stated on every sheet.* The existing `/reports` page counts invoices
+marked paid, dated by when they were **issued** — neither cash nor accrual. That
+is fine for "how are we doing" and unusable on a return. So cash income comes
+from `payments.paid_at`, accrual income from `invoices.issued_at`, and
+`cash_accrual_bridge` reconciles the two so the first question an accountant
+asks — "why doesn't this tie to the bank?" — is answered before it is asked.
+
+*Refunds no longer restate closed periods.* When a refund lands the webhook sets
+`payments.status = 'refunded'`. Anything filtering on `'succeeded'` therefore
+erases the original receipt retroactively: a refund in October silently removes
+income recorded in March, possibly after March was filed, and nothing shows that
+it happened. Cash income now counts every payment that actually arrived and
+deducts the refund in the month it occurred. **This same flaw is live today in
+`/reports` and `/analytics`** — it is the sharpest edge of IMP-10 and is why
+that item stays open rather than being closed by this build.
+
+Two smaller definitions were corrected on the way. Aging now runs from the
+**due** date rather than the issue date, so an invoice on 30-day terms is not
+reported as a month overdue on the day it is sent. And every date is converted
+to the organization's own timezone before it is bucketed — a payment taken at
+7pm on 31 December in Chicago is a 1 January UTC timestamp, so a naive
+`slice(0,10)` files it in the **wrong tax year**.
+
+What the pack deliberately cannot produce is stated on the page: no sales tax
+(the schema holds no rate or taxable flag), no expenses, and no Stripe
+processing fees (netted out before payout, never recorded here). An accountant
+who learns that in thirty seconds stops looking.
+
+The 1099-K explanation the owner asked for lives in one shared function and is
+keyed to how payments are actually routed, because the consequence is not
+obvious and cannot be undone after the fact: whoever's Stripe account takes the
+charge receives the 1099-K for the **full gross**, including what they pass
+straight through. A collecting franchise should expect a 1099-K several times
+larger than its own revenue, and should know that before it picks the setting
+rather than the following January.
 
 ## Questions
 

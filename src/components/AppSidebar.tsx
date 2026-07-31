@@ -24,6 +24,7 @@ import {
   Shield,
   Dna,
   ClipboardCheck,
+  FileSpreadsheet,
 } from "lucide-react";
 
 import {
@@ -41,7 +42,11 @@ import {
 import { APP_NAME } from "@/lib/scoop";
 import { Logo } from "@/components/Logo";
 
-export type NavItem = { title: string; url: string; icon: React.ComponentType<{ className?: string }> };
+export type NavItem = {
+  title: string;
+  url: string;
+  icon: React.ComponentType<{ className?: string }>;
+};
 
 // Single source of nav truth — also consumed by MobileTabBar's "More" sheet so
 // the phone nav can never drift from (or exceed) what the sidebar offers.
@@ -81,6 +86,10 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { title: "Invoices", url: "/invoices", icon: Receipt },
       { title: "Payments", url: "/payments", icon: CreditCard },
+      // BUILD-13: the accountant's pack. In the nav rather than URL-only
+      // because the whole point is that an owner finds it in January without
+      // having to be told it exists.
+      { title: "Tax & accountant", url: "/tax-reports", icon: FileSpreadsheet },
     ],
   },
   {

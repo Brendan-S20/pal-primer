@@ -56,6 +56,10 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   // Referral rewards are real money to the business — keep it office-level.
   "/settings/referrals": ["owner", "office_manager"],
   "/reports": ["owner", "office_manager"],
+  // BUILD-13: same audience as /reports, because the server gate is the same
+  // (view_financials). Making the route stricter than the function behind it
+  // would only hide the link from someone who could still fetch the data.
+  "/tax-reports": ["owner", "office_manager"],
   "/analytics": ["owner", "office_manager"],
   // BUILD-10: dispatchers and techs can SEE that a record is uncertain
   // (the list is gated on view_client_directory server-side), but only
