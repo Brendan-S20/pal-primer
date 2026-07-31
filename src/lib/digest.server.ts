@@ -8,6 +8,7 @@ import { generateText, Output } from "ai";
 import { z } from "zod";
 import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
 import { TEMPLATES } from "@/lib/email-templates/registry";
+import { grossReceivedCents, receivedPaymentStatuses } from "@/lib/revenue";
 
 const MODEL_ID = "google/gemini-3-flash-preview";
 const SITE_NAME = "HoundStack";
@@ -108,27 +109,30 @@ export async function computeDigestMetrics(
   const weekStartDate = orgLocalDate(weekStart, tz);
   const todayDate = orgLocalDate(now, tz);
 
-  // Revenue (paid payments) — this week & previous week for WoW
+  // Revenue received — this week & previous week for WoW.
+  //
+  // IMP-10: `.in(RECEIVED)` rather than `.eq("succeeded")`. A refund flips the
+  // original payment to 'refunded', so filtering on 'succeeded' would erase it
+  // from LAST week's figure too — and the advisor's whole job is comparing this
+  // week against last. A single refund would show up as a week-over-week
+  // improvement, which is the opposite of what happened.
   const [{ data: payThis }, { data: payPrev }] = await Promise.all([
     supabaseAdmin
       .from("payments")
-      .select("amount_cents, paid_at")
+      .select("amount_cents, status, paid_at")
       .eq("organization_id", orgId)
-      .eq("status", "succeeded")
+      .in("status", receivedPaymentStatuses())
       .gte("paid_at", weekStartIso),
     supabaseAdmin
       .from("payments")
-      .select("amount_cents, paid_at")
+      .select("amount_cents, status, paid_at")
       .eq("organization_id", orgId)
-      .eq("status", "succeeded")
+      .in("status", receivedPaymentStatuses())
       .gte("paid_at", prevStartIso)
       .lt("paid_at", weekStartIso),
   ]);
-  const revenueCents = (payThis ?? []).reduce((s: number, p: any) => s + (p.amount_cents ?? 0), 0);
-  const prevRevenueCents = (payPrev ?? []).reduce(
-    (s: number, p: any) => s + (p.amount_cents ?? 0),
-    0,
-  );
+  const revenueCents = grossReceivedCents(payThis ?? []);
+  const prevRevenueCents = grossReceivedCents(payPrev ?? []);
 
   // Visits this week
   const { data: visits } = await supabaseAdmin
@@ -180,8 +184,6 @@ export async function computeDigestMetrics(
   // Top zones intentionally omitted — visits schema has no zone_id.
   const topZones: Array<{ name: string; revenueCents: number }> = [];
 
-
-
   const alerts: string[] = [];
   if (overdueInvoices > 0) {
     alerts.push(
@@ -193,7 +195,11 @@ export async function computeDigestMetrics(
       `${complaintsCount} client complaint${complaintsCount > 1 ? "s" : ""} logged this week.`,
     );
   }
-  if (visitsSkipped > 0 && visitsCompleted > 0 && visitsSkipped / (visitsSkipped + visitsCompleted) > 0.1) {
+  if (
+    visitsSkipped > 0 &&
+    visitsCompleted > 0 &&
+    visitsSkipped / (visitsSkipped + visitsCompleted) > 0.1
+  ) {
     const rate = Math.round((visitsSkipped / (visitsSkipped + visitsCompleted)) * 100);
     alerts.push(`Skip rate is ${rate}%, above the 10% threshold.`);
   }

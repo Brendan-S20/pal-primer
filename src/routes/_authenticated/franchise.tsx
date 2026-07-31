@@ -28,6 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Building2, ArrowUp, ArrowDown } from "lucide-react";
+import { PaymentRouting } from "@/components/PaymentRouting";
 import {
   LineChart,
   Line,
@@ -334,6 +335,11 @@ function FranchisePage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* BUILD-6: routing sits ABOVE royalty billing on purpose. Who collects
+          decides what a settlement even means, so it is the first decision, not
+          a detail buried under the invoice list. */}
+      <PaymentRouting />
 
       <RoyaltyBilling />
     </div>

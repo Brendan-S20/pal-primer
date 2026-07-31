@@ -4,6 +4,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { generateStructured, generateAiText } from "@/lib/ai.server";
 import { resolveOrgAiConfig } from "@/lib/ai-credentials.server";
+import { grossReceivedCents, receivedPaymentStatuses } from "@/lib/revenue";
 
 async function callerOrg(context: { supabase: any; userId: string }) {
   const { data: staff, error } = await context.supabase
@@ -23,7 +24,13 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
   .inputValidator((d) =>
     z
       .object({
-        kind: z.enum(["facebook_post", "instagram_caption", "email_blast", "google_business_update", "flyer_headline"]),
+        kind: z.enum([
+          "facebook_post",
+          "instagram_caption",
+          "email_blast",
+          "google_business_update",
+          "flyer_headline",
+        ]),
         topic: z.string().trim().min(3).max(400),
         tone: z.enum(["friendly", "professional", "playful", "urgent"]).default("friendly"),
         includeCta: z.boolean().default(true),
@@ -54,7 +61,10 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
           title: { type: "string" },
           body: { type: "string" },
           hashtags: { type: "array", items: { type: "string" }, maxItems: 8 },
-          cta: { type: "string", description: "Short call to action (empty string if none requested)." },
+          cta: {
+            type: "string",
+            description: "Short call to action (empty string if none requested).",
+          },
         },
         required: ["title", "body", "hashtags", "cta"],
       },
@@ -128,7 +138,11 @@ interface ChurnSignals {
   sms_opt_out: boolean;
 }
 
-async function gatherChurnSignals(supabase: any, organizationId: string, clientId?: string): Promise<ChurnSignals[]> {
+async function gatherChurnSignals(
+  supabase: any,
+  organizationId: string,
+  clientId?: string,
+): Promise<ChurnSignals[]> {
   // NB: clients has no `status` column — active clients are `active = true`.
   let q = supabase
     .from("clients")
@@ -181,13 +195,15 @@ async function gatherChurnSignals(supabase: any, organizationId: string, clientI
 
 export const scoreChurn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z.object({ clientId: z.string().uuid().optional() }).parse(d ?? {}),
-  )
+  .inputValidator((d) => z.object({ clientId: z.string().uuid().optional() }).parse(d ?? {}))
   .handler(async ({ data, context }) => {
     await requirePermission(context.supabase, context.userId, "use_ai_tools");
     const staff = await callerOrg(context);
-    const signals = await gatherChurnSignals(context.supabase, staff.organization_id, data.clientId);
+    const signals = await gatherChurnSignals(
+      context.supabase,
+      staff.organization_id,
+      data.clientId,
+    );
     if (!signals.length) return { scored: 0 };
 
     const output = await generateStructured({
@@ -231,7 +247,11 @@ export const scoreChurn = createServerFn({ method: "POST" })
     for (const s of output.scores) {
       await context.supabase
         .from("clients")
-        .update({ churn_score: s.score, churn_reason: s.reason, churn_scored_at: new Date().toISOString() })
+        .update({
+          churn_score: s.score,
+          churn_reason: s.reason,
+          churn_scored_at: new Date().toISOString(),
+        })
         .eq("id", s.client_id)
         .eq("organization_id", staff.organization_id);
     }
@@ -287,20 +307,22 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
         .select("status, total_cents, issued_at")
         .eq("organization_id", orgId)
         .gte("issued_at", weekAgoIso),
+      // IMP-10: this had NO status filter at all, so a declined card and a
+      // pending intent both counted as revenue collected — and the number fed
+      // an assistant that answers "how did we do this week" in plain English.
+      // Wrong in the flattering direction, stated confidently.
       context.supabase
         .from("payments")
-        .select("amount_cents, paid_at")
+        .select("amount_cents, status, paid_at")
         .eq("organization_id", orgId)
+        .in("status", receivedPaymentStatuses())
         .gte("paid_at", weekAgoIso),
       context.supabase
         .from("clients")
         .select("id")
         .eq("organization_id", orgId)
         .gte("created_at", weekAgoIso),
-      context.supabase
-        .from("leads")
-        .select("id, status")
-        .gte("created_at", weekAgoIso),
+      context.supabase.from("leads").select("id, status").gte("created_at", weekAgoIso),
       context.supabase
         .from("clients")
         .select("id, display_name, churn_score, churn_reason")
@@ -313,8 +335,11 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
     const completed = (visits ?? []).filter((v: any) => v.status === "completed").length;
     const skipped = (visits ?? []).filter((v: any) => v.status === "skipped").length;
     const scheduled = (visits ?? []).length;
-    const revenueCollected = (payments ?? []).reduce((s: number, p: any) => s + (p.amount_cents ?? 0), 0);
-    const revenueInvoiced = (invoices ?? []).reduce((s: number, i: any) => s + (i.total_cents ?? 0), 0);
+    const revenueCollected = grossReceivedCents(payments ?? []);
+    const revenueInvoiced = (invoices ?? []).reduce(
+      (s: number, i: any) => s + (i.total_cents ?? 0),
+      0,
+    );
     const openInvoices = (invoices ?? []).filter((i: any) => i.status === "open").length;
 
     const stats = {
@@ -359,10 +384,10 @@ export const suggestDispatch = createServerFn({ method: "POST" })
         .from("visits")
         .select(
           "id, assigned_staff_id, sequence, status, client_id, zone_id, " +
-          "clients(display_name, churn_score, credit_balance_cents), " +
-          "properties(street, city, postal_code, latitude, longitude), " +
-          "zones(name, postal_prefix), " +
-          "subscriptions(price_cents, frequency, billing_cadence)",
+            "clients(display_name, churn_score, credit_balance_cents), " +
+            "properties(street, city, postal_code, latitude, longitude), " +
+            "zones(name, postal_prefix), " +
+            "subscriptions(price_cents, frequency, billing_cadence)",
         )
         .eq("organization_id", orgId)
         .eq("scheduled_on", data.day)
@@ -375,7 +400,8 @@ export const suggestDispatch = createServerFn({ method: "POST" })
     ]);
     if (vErr) throw new Error(vErr.message);
     if (sErr) throw new Error(sErr.message);
-    if (!visits?.length) return { day: data.day, suggestions: [], notes: "No open visits on this day." };
+    if (!visits?.length)
+      return { day: data.day, suggestions: [], notes: "No open visits on this day." };
 
     const visitPayload = visits.map((v: any) => ({
       id: v.id,
@@ -391,8 +417,11 @@ export const suggestDispatch = createServerFn({ method: "POST" })
       lng: v.properties?.longitude ?? null,
     }));
     const staffPayload = (techs ?? []).map((s: any) => ({
-      id: s.id, name: s.display_name, role: s.role,
-      start_lat: s.start_latitude, start_lng: s.start_longitude,
+      id: s.id,
+      name: s.display_name,
+      role: s.role,
+      start_lat: s.start_latitude,
+      start_lng: s.start_longitude,
     }));
 
     const output = await generateStructured({
@@ -415,11 +444,13 @@ export const suggestDispatch = createServerFn({ method: "POST" })
         properties: {
           notes: {
             type: "string",
-            description: "Brief overall dispatcher notes. If no changes are worth making, say why here.",
+            description:
+              "Brief overall dispatcher notes. If no changes are worth making, say why here.",
           },
           suggestions: {
             type: "array",
-            description: "One entry per visit whose assignment should change. Empty if the current plan is already optimal.",
+            description:
+              "One entry per visit whose assignment should change. Empty if the current plan is already optimal.",
             items: {
               type: "object",
               properties: {
@@ -455,8 +486,12 @@ export const suggestDispatch = createServerFn({ method: "POST" })
         return {
           ...s,
           client: v.clients?.display_name,
-          current_staff: v.assigned_staff_id ? (byStaff.get(v.assigned_staff_id) as any)?.display_name ?? null : null,
-          suggested_staff: s.suggested_staff_id ? (byStaff.get(s.suggested_staff_id) as any)?.display_name ?? null : null,
+          current_staff: v.assigned_staff_id
+            ? ((byStaff.get(v.assigned_staff_id) as any)?.display_name ?? null)
+            : null,
+          suggested_staff: s.suggested_staff_id
+            ? ((byStaff.get(s.suggested_staff_id) as any)?.display_name ?? null)
+            : null,
           zone: v.zones?.name ?? null,
           price_cents: v.subscriptions?.price_cents ?? 0,
         };
@@ -468,11 +503,14 @@ export const suggestDispatch = createServerFn({ method: "POST" })
 export const applyDispatchSuggestions = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({
-      changes: z.array(
-        z.object({ visit_id: z.string().uuid(), staff_id: z.string().uuid().nullable() }),
-      ).min(1).max(500),
-    }).parse(d),
+    z
+      .object({
+        changes: z
+          .array(z.object({ visit_id: z.string().uuid(), staff_id: z.string().uuid().nullable() }))
+          .min(1)
+          .max(500),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     await requirePermission(context.supabase, context.userId, "use_ai_tools");
@@ -521,7 +559,9 @@ export const suggestZonePricing = createServerFn({ method: "POST" })
       const prices = completed
         .map((v: any) => v.subscriptions?.price_cents ?? 0)
         .filter((n: number) => n > 0);
-      const avg = prices.length ? Math.round(prices.reduce((a: number, b: number) => a + b, 0) / prices.length) : 0;
+      const avg = prices.length
+        ? Math.round(prices.reduce((a: number, b: number) => a + b, 0) / prices.length)
+        : 0;
       return {
         zone_id: z.id,
         name: z.name,
@@ -556,7 +596,8 @@ export const suggestZonePricing = createServerFn({ method: "POST" })
         properties: {
           notes: {
             type: "string",
-            description: "Brief overall pricing notes. If no changes are recommended, say why here.",
+            description:
+              "Brief overall pricing notes. If no changes are recommended, say why here.",
           },
           suggestions: {
             type: "array",
@@ -594,11 +635,14 @@ export const suggestZonePricing = createServerFn({ method: "POST" })
 export const applyZonePricing = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({
-      changes: z.array(
-        z.object({ zone_id: z.string().uuid(), price_note: z.string().max(200) }),
-      ).min(1).max(200),
-    }).parse(d),
+    z
+      .object({
+        changes: z
+          .array(z.object({ zone_id: z.string().uuid(), price_note: z.string().max(200) }))
+          .min(1)
+          .max(200),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     await requirePermission(context.supabase, context.userId, "use_ai_tools");

@@ -30,9 +30,23 @@ write-offs, processor volume against the 1099-K, franchise settlements and
 referral rewards. Every sheet declares its basis and carries its own caveats
 into the CSV.
 
-**Shipped:** BUILD-13, BUG-20, the settlement/adjustment half of BUILD-6.
+**Payment routing is finally reachable.** The parent can now set, per location,
+whether the franchise collects and who bears a refund — settings the charge
+funnel and the settlement math have always enforced and nothing could set. The
+1099-K explanation sits at the switch, from the same function the tax reports
+use, so the two surfaces cannot disagree about an owner's own filing.
 
-**New:** BUG-20 (settlement regeneration was not idempotent).
+**IMP-10 closed, and it was hiding a money bug.** One definition of revenue,
+mirrored in SQL, with a parity test that fails on drift. Getting there surfaced
+BUG-21, a third copy of the royalty calculation in the nightly cron, and a query
+that counted declined cards as income.
+
+**Shipped:** BUILD-13, IMP-10, BUG-20, BUG-21, BUG-22, and the settlement,
+adjustment and routing halves of BUILD-6.
+
+**New:** BUG-20 (settlement regeneration was not idempotent), BUG-21 (a
+same-period refund was counted twice), BUG-22 (`chargeback_responsibility`
+unprotected).
 
 **Also worth knowing:** four migrations had been applied to the live database
 without a matching repo file, which meant the IMP-2 drift check was reporting
@@ -177,6 +191,8 @@ were built. Repo search finds no such mechanism. Raised as BUILD-10.
 | BUG-17 | 🟢 Fixed | 🟠 | **New.** In-progress visit lost on reload | v1.1 |
 | BUG-18 | 🟢 Fixed | 🔴 | **New.** Accepting a second org invite hard-bricked the account. Invite now refused with a readable message; unique index as the safety net. Multi-org itself stays with BUILD-6 (owner decision) | v1.4 |
 | BUG-19 | 🟢 Fixed | 🟠 | **New.** Three franchise columns were writable by tenants — including `franchise_royalty_percent`, i.e. a franchisee could zero out what they owed. All protected, verified against the real tenant path | v1.4 |
+| BUG-21 | 🟢 Fixed | 🔴 | **New.** A refund in the SAME period as the sale was counted twice — the payment dropped out of revenue AND its adjustment was deducted. All three chargeback policies produced the wrong number, one of them paying a location $0 on a period where the franchise had explicitly agreed to eat the loss. Reproduced live, fixed, re-verified in six scenarios including composition across a period boundary | v1.5 |
+| BUG-22 | 🟢 Fixed | 🟠 | **New.** `chargeback_responsibility` was writable by tenants — BUG-19's exact shape. A location's own owner could set it to `franchise` and push every future chargeback onto their parent. Protected; verified blocked in an isolated transaction | v1.5 |
 | BUG-20 | 🟢 Fixed | 🔴 | **New.** Re-running a franchise settlement over the same period silently changed what was owed — a $0 settled statement went back to $900 owed, because the recalculation only looked for *pending* adjustments and the first run had already consumed them. Regeneration now counts what it applied to the same draft. Verified over three consecutive runs, plus a fourth after the statement was sent | v1.5 |
 
 **BUG-10 detail:** `waste_stations.label` was `NOT NULL`, so the junk labels were
@@ -606,7 +622,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | IMP-5 | 🔵 Open | ⚪ | Repo housekeeping — now also: the 4 `as any` casts on `impersonation_grants` in `platform.functions.ts`, and ~6 now-false "not in the generated types yet" comments. See IMP-7 below | v1.3 |
 | IMP-6 | ❓ Blocked | 🟡 | Payment test coverage — needs Stripe authorized | v1.1 |
 | IMP-7 | 🟢 Fixed | 🟡 | Supabase types regenerated. They had been stale since before this cycle and IMP-9's table drop made them wrong, not just incomplete. Four `any`/structural casts removed as a result | v1.3 |
-| IMP-10 | 🔵 Open | 🟠 | **Raised to 🟠 in v1.5.** There is no canonical tenant REVENUE definition. Six implementations split three ways — `payments.paid_at`, `payments.created_at`, and paid-invoices-by-`issued_at` — with no shared helper and nothing claiming authority. BUILD-13 gave the TAX surface an authoritative definition and found the sharp edge while doing it: filtering on `status = 'succeeded'` makes a refund silently erase income recorded in an earlier, possibly already-filed period. `/reports` and `/analytics` both still do that. `ar.ts` is the model to follow | v1.4 |
+| IMP-10 | 🟢 Fixed | 🔴 | **Closed in v1.5, and it was worse than logged.** `src/lib/revenue.ts` is now the one definition — money that ARRIVED (`succeeded` or `refunded`), reversals deducted in their own period — mirrored in SQL with a parity test that fails on drift. Fixing it turned up BUG-21 (a real money error), a third copy of the royalty calculation in the nightly cron, and an AI-tools query with no status filter at all that counted declined cards as revenue. Invoice-based revenue stays separate and is reconciled by BUILD-13's bridge rather than conflated | v1.4 |
 | IMP-9 | 🟢 Fixed | 🟠 | Retire the BYOK surfaces — **done, and the "wait for BUILD-2/BUILD-3" ordering in v1.2 was wrong.** See below | v1.3 |
 | IMP-8 | 🟢 Fixed | 🟡 | **New.** Org timezone was built but buried in Routes; moved to Settings | v1.1 |
 | BUILD-1 | 🟢 Fixed | 🔴 | Per-feature entitlements — plan tiers now enforced server-side; the published pricing matrix was being ignored by the app. See below | v1.2 |
@@ -632,6 +648,52 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | MKT-7 | 🔵 Open | 🟡 | Real product screenshots | v1.0 |
 | MKT-8 | ⚪ Deferred | ⚪ | `/customers` stub | v1.0 |
 | MKT-9 | 🔵 Open | 🟡 | Annual billing on site — see VER-8 | v1.1 |
+
+**BUG-21 detail — the same-period refund, and why nobody would have caught it.**
+
+Reproduced live before it was fixed. $1,000 collected by the franchise, 10%
+royalty, refunded inside the same settlement period:
+
+| policy | produced | actually owed |
+|---|---|---|
+| location | location owes **$1,000** | location owes $100 |
+| split | location owes **$900** | settled, $0 |
+| franchise | **settled, $0** | franchise owes location $900 |
+
+Every mode wrong, each in the direction favouring whoever ran the generator. The
+`franchise` row is the worst: the franchise had explicitly agreed to absorb the
+chargeback, and the statement paid the location nothing at all.
+
+The cause is one filter. `status = 'succeeded'` drops a refunded payment out of
+revenue, while the adjustment separately deducts the location's share — so the
+same loss lands twice. It also printed `revenue: $0` on a statement covering a
+$1,000 sale, which a franchisee cannot tell apart from a month with no business.
+
+Fixed by counting money that ARRIVED (`succeeded` or `refunded`) and letting the
+adjustment be the only deduction. Re-verified in six scenarios, including the one
+that matters most: a refund settled a period LATE composes to the same net −$100
+for the location as the same-period case. Two different paths, one answer.
+
+**BUILD-6 detail — payment routing setup.**
+
+All three writers already existed (`set_child_royalty_percent`,
+`set_location_payment_routing`, `set_chargeback_responsibility`), written
+alongside the money plumbing and never reachable from the product. What was
+missing was a READ — a parent is not a member of its locations, so every
+RLS-bound query for them comes back empty, the same wall that made the whole
+franchise surface silently blank. So the migration adds one reader and no
+writers, and the screen is thin.
+
+Turning collection ON is refused unless the franchise's Stripe account can
+actually accept charges, because the charge path deliberately has no fallback:
+flip it with a half-onboarded account and nobody can pay that location until
+someone works out why. Turning it OFF is never blocked — a franchise whose
+Stripe has broken needs that exit exactly when things are going wrong.
+
+Not built: attaching an arbitrary Stripe account to a location. Routing is "their
+account" or "the franchise's account" because those are the two Connect can
+verify. Letting a parent type in any `acct_…` would let one tenant direct another
+tenant's customer payments to a third party, and no UI copy makes that safe.
 
 **BUILD-13 detail — the accountant's pack.**
 

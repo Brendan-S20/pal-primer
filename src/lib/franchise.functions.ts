@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
+import { paymentWasReceived, receivedPaymentStatuses } from "@/lib/revenue";
 
 // Franchise rollup is owner-only — every function in this file is gated on
 // manage_franchise, matching the /franchise route boundary.
@@ -145,9 +146,15 @@ export const getFranchiseTrend = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: pays } = await (supabaseAdmin as any)
       .from("payments")
-      .select("organization_id, amount_cents, created_at")
-      .in("organization_id", kids.map((k) => k.id))
-      .eq("status", "succeeded")
+      .select("organization_id, amount_cents, status, created_at")
+      .in(
+        "organization_id",
+        kids.map((k) => k.id),
+      )
+      // IMP-10: money that ARRIVED. Filtering on 'succeeded' would make a
+      // refund rewrite an earlier week of the trend line, so the chart would
+      // change shape retroactively with nothing to explain it.
+      .in("status", receivedPaymentStatuses())
       .gte("created_at", earliest)
       .lt("created_at", latest);
 
@@ -155,6 +162,7 @@ export const getFranchiseTrend = createServerFn({ method: "GET" })
     const bucket: Record<string, Record<string, number>> = {};
     for (const w of weeks) bucket[w.key] = {};
     for (const p of pays ?? []) {
+      if (!paymentWasReceived(p.status as string)) continue;
       const t = new Date(p.created_at as string).getTime();
       const w = weeks.find((x) => t >= x.start.getTime() && t < x.end.getTime());
       if (!w) continue;
@@ -242,15 +250,31 @@ export const getFranchiseRoyaltySettings = createServerFn({ method: "GET" })
   });
 
 /**
- * Generate (or refresh) royalty invoices for every child for a period —
- * defaults to the previous full calendar month. Royalty = collected revenue in
- * the period × the child's rate. Idempotent per child+period (upsert on the
- * unique key). Can be called manually here and from the nightly cron.
+ * Generate (or refresh) each location's settlement for a period — defaults to
+ * the previous full calendar month. Idempotent per child+period.
+ *
+ * IMP-10: this used to be its own implementation of the royalty calculation,
+ * and the nightly cron had a THIRD. All three computed revenue as
+ * `payments where status = 'succeeded'`, which BUG-21 showed is wrong, and the
+ * two TypeScript copies knew nothing about who collected the money or about
+ * refunds — they wrote a royalty amount and left `direction` and
+ * `net_due_cents` at their defaults, producing a statement whose headline
+ * contradicted its own arithmetic.
+ *
+ * So the calculation now lives in exactly one place, generate_franchise_
+ * settlements, and this is a thin caller. The server function keeps its name
+ * and return shape so nothing above it had to change.
+ *
+ * Run on the CALLER's client so auth.uid() inside the SECURITY DEFINER routine
+ * is the real person — it re-checks franchise ownership independently rather
+ * than trusting resolveOrgId above.
  */
 export const generateRoyaltyInvoices = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({ periodStart: z.string().optional(), periodEnd: z.string().optional() }).parse(d ?? {}),
+    z
+      .object({ periodStart: z.string().optional(), periodEnd: z.string().optional() })
+      .parse(d ?? {}),
   )
   .handler(async ({ data, context }) => {
     const orgId = await resolveOrgId(context.supabase, context.userId);
@@ -259,50 +283,25 @@ export const generateRoyaltyInvoices = createServerFn({ method: "POST" })
         ? { start: data.periodStart, end: data.periodEnd }
         : lastMonthRange();
 
-    // BUILD-6: children AND their payments are both unreadable on the caller's
-    // client, so this loop ran zero times and "generate royalty invoices"
-    // silently produced nothing for every caller. Authorized by resolveOrgId
-    // above; every query below is scoped to this parent's own children.
+    const { error } = await (context.supabase as any).rpc("generate_franchise_settlements", {
+      _parent: orgId,
+      _start: start,
+      _end: end,
+    });
+    if (error) throw new Error(error.message);
+
+    // The RPC returns the number of adjustments it consumed, which is not what
+    // this function has always reported. Count the statements themselves so the
+    // caller's "Generated N" stays true to what it means.
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: children, error: cErr } = await (supabaseAdmin as any)
-      .from("organizations")
-      .select("id, name, franchise_royalty_percent")
-      .eq("parent_organization_id", orgId);
-    if (cErr) throw new Error(cErr.message);
+    const { count } = await (supabaseAdmin as any)
+      .from("franchise_royalty_invoices")
+      .select("id", { count: "exact", head: true })
+      .eq("parent_organization_id", orgId)
+      .eq("period_start", start)
+      .eq("period_end", end);
 
-    let generated = 0;
-    for (const child of (children ?? []) as any[]) {
-      const percent = Number(child.franchise_royalty_percent ?? 0);
-      // Collected (succeeded) revenue in the period.
-      const { data: pays } = await (supabaseAdmin as any)
-        .from("payments")
-        .select("amount_cents")
-        .eq("organization_id", child.id)
-        .eq("status", "succeeded")
-        .gte("created_at", `${start}T00:00:00Z`)
-        .lt("created_at", `${end}T00:00:00Z`);
-      const revenue = (pays ?? []).reduce((s: number, r: any) => s + Number(r.amount_cents ?? 0), 0);
-      const amount = Math.round((revenue * percent) / 100);
-
-      const { error: upErr } = await (supabaseAdmin as any).from("franchise_royalty_invoices")
-        .upsert(
-          {
-            parent_organization_id: orgId,
-            child_organization_id: child.id,
-            period_start: start,
-            period_end: end,
-            revenue_cents: revenue,
-            royalty_percent: percent,
-            amount_cents: amount,
-            status: "draft",
-            created_by: context.userId,
-          },
-          { onConflict: "child_organization_id,period_start,period_end" },
-        );
-      if (upErr) throw new Error(upErr.message);
-      generated += 1;
-    }
-    return { generated, periodStart: start, periodEnd: end };
+    return { generated: count ?? 0, periodStart: start, periodEnd: end };
   });
 
 /** List generated royalty invoices, newest period first. Parent-only. */
@@ -310,7 +309,8 @@ export const listRoyaltyInvoices = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const orgId = await resolveOrgId(context.supabase, context.userId);
-    const { data, error } = await (context.supabase as any).from("franchise_royalty_invoices")
+    const { data, error } = await (context.supabase as any)
+      .from("franchise_royalty_invoices")
       .select(
         "id, child_organization_id, period_start, period_end, revenue_cents, royalty_percent, amount_cents, status, created_at, organizations!franchise_royalty_invoices_child_organization_id_fkey(name)",
       )
@@ -326,11 +326,14 @@ export const listRoyaltyInvoices = createServerFn({ method: "GET" })
 export const setRoyaltyInvoiceStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({ invoiceId: z.string().uuid(), status: z.enum(["draft", "issued", "paid", "void"]) }).parse(d),
+    z
+      .object({ invoiceId: z.string().uuid(), status: z.enum(["draft", "issued", "paid", "void"]) })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     const orgId = await resolveOrgId(context.supabase, context.userId);
-    const { error } = await (context.supabase as any).from("franchise_royalty_invoices")
+    const { error } = await (context.supabase as any)
+      .from("franchise_royalty_invoices")
       .update({ status: data.status })
       .eq("id", data.invoiceId)
       .eq("parent_organization_id", orgId);
@@ -384,28 +387,30 @@ export const listFranchiseLinkCodes = createServerFn({ method: "GET" })
     const names = new Map<string, string>();
     if (usedIds.length) {
       const { data: orgs } = await (supabaseAdmin as any)
-        .from("organizations").select("id, name").in("id", usedIds);
+        .from("organizations")
+        .select("id, name")
+        .in("id", usedIds);
       for (const o of orgs ?? []) names.set(o.id, o.name);
     }
 
     const now = Date.now();
     const codes: FranchiseLinkCode[] = (data ?? []).map((r: any) => ({
-        id: r.id as string,
-        code: r.code as string,
-        createdAt: r.created_at as string,
-        expiresAt: r.expires_at as string,
-        usedAt: (r.used_at as string | null) ?? null,
-        usedByName: r.used_by_org_id ? (names.get(r.used_by_org_id) ?? null) : null,
-        revokedAt: (r.revoked_at as string | null) ?? null,
-        // Derived once here so three surfaces don't each re-derive it slightly
-        // differently.
-        state: r.revoked_at
-          ? ("revoked" as const)
-          : r.used_at
-            ? ("used" as const)
-            : Date.parse(r.expires_at) <= now
-              ? ("expired" as const)
-              : ("active" as const),
+      id: r.id as string,
+      code: r.code as string,
+      createdAt: r.created_at as string,
+      expiresAt: r.expires_at as string,
+      usedAt: (r.used_at as string | null) ?? null,
+      usedByName: r.used_by_org_id ? (names.get(r.used_by_org_id) ?? null) : null,
+      revokedAt: (r.revoked_at as string | null) ?? null,
+      // Derived once here so three surfaces don't each re-derive it slightly
+      // differently.
+      state: r.revoked_at
+        ? ("revoked" as const)
+        : r.used_at
+          ? ("used" as const)
+          : Date.parse(r.expires_at) <= now
+            ? ("expired" as const)
+            : ("active" as const),
     }));
     return { codes };
   });
