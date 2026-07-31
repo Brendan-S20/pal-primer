@@ -425,6 +425,93 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               }
             }
 
+          } else if (
+            event.type === "charge.refunded" ||
+            event.type === "charge.dispute.created" ||
+            event.type === "charge.dispute.closed"
+          ) {
+            // BUILD-6: reversals. Until now the app recorded NONE of these —
+            // a refund or chargeback simply never existed as far as HoundStack
+            // was concerned, so revenue, reports, and franchise settlements all
+            // counted money that had gone back to the customer.
+            //
+            // These event types must be subscribed on the Stripe endpoint or
+            // this branch never runs. Stripe sends only what you select, and
+            // for Connect they have to be enabled on the CONNECT endpoint so
+            // events raised on connected accounts arrive at all.
+            const obj = event.data.object as any;
+            const paymentIntentId: string | null =
+              obj?.payment_intent ?? obj?.charge?.payment_intent ?? null;
+            if (!paymentIntentId) return new Response("ok", { status: 200 });
+
+            const { data: pay } = await (supabaseAdmin as any)
+              .from("payments")
+              .select("id, organization_id, amount_cents")
+              .eq("stripe_payment_intent_id", paymentIntentId)
+              .maybeSingle();
+            if (!pay) return new Response("ok", { status: 200 });
+            // Works for a parent-collected location too: the dispute arrives
+            // from the FRANCHISE's connected account, and resolveOrgStripeAccount
+            // now returns exactly that account for such a location.
+            if (!(await accountMatches(pay.organization_id))) {
+              console.error("reversal webhook account mismatch", {
+                paymentIntentId, eventAccount: event.account,
+              });
+              return new Response("ok", { status: 200 });
+            }
+
+            let kind: string | null = null;
+            let amount = 0;
+            if (event.type === "charge.refunded") {
+              kind = "refund";
+              amount = Number(obj?.amount_refunded ?? 0);
+            } else if (event.type === "charge.dispute.created") {
+              kind = "chargeback";
+              amount = Number(obj?.amount ?? 0);
+            } else {
+              // dispute.closed — only a WIN returns the money. A loss simply
+              // confirms the chargeback already recorded when it opened, so
+              // recording anything here would double-count it.
+              if (obj?.status === "won") { kind = "chargeback_won"; amount = Number(obj?.amount ?? 0); }
+            }
+
+            if (kind) {
+              // Mark the payment so every revenue figure stops counting it.
+              // Deliberately NOT for a won dispute — that money is ours again.
+              if (kind !== "chargeback_won") {
+                await (supabaseAdmin as any)
+                  .from("payments").update({ status: "refunded" }).eq("id", pay.id);
+              } else {
+                await (supabaseAdmin as any)
+                  .from("payments").update({ status: "succeeded" }).eq("id", pay.id);
+              }
+
+              // Franchise apportionment, if this location belongs to one.
+              // Returns null for an ordinary independent business.
+              const { data: adjId } = await (supabaseAdmin as any).rpc(
+                "record_franchise_adjustment",
+                {
+                  _payment_id: pay.id,
+                  _kind: kind,
+                  _amount_cents: amount,
+                  _note: `Stripe ${event.type}`,
+                },
+              );
+
+              // ALERT, because the owner is right that this WILL happen and
+              // silence is the failure mode. Reuses the review queue rather
+              // than inventing a second place to look (BUILD-10).
+              try {
+                await (supabaseAdmin as any).rpc("file_reversal_review_item", {
+                  _org_id: pay.organization_id,
+                  _payment_id: pay.id,
+                  _kind: kind,
+                  _amount_cents: amount,
+                  _adjustment_id: adjId ?? null,
+                });
+              } catch (e) { console.error("reversal review item failed", e); }
+            }
+
           } else if (event.type === "account.updated") {
             // Express onboarding progress: keep the org's charge-readiness fresh
             // so Settings → Payments flips to "Charges enabled" without a manual
