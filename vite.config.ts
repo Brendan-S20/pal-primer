@@ -28,6 +28,20 @@ Object.assign(process.env, serverEnv);
 // native one. `npm run build:native` sets it; `npm run build` is untouched.
 const NATIVE_BUILD = process.env.NATIVE_BUILD === "1";
 
+// Where a bundled build sends server functions. Server-function URLs are baked
+// into the client bundle at build time as a PATH (`/_serverFn/<id>`), which is
+// correct only while the document is served from the API's own origin. In a
+// Capacitor bundle the origin is capacitor://localhost / https://localhost, so
+// that path resolves to the app bundle — which serves no API — and every
+// server function fails even on a perfect network. `serverFns.base` cannot fix
+// it (TanStack's createServerFnBasePath runs the value through joinPaths, which
+// collapses `//`, so an absolute URL becomes "/https:/app.houndstack.com/..."),
+// so the origin is handed to the runtime instead — see src/lib/server-fn-origin.ts.
+// Override with NATIVE_API_ORIGIN=... to build a binary against staging.
+const NATIVE_API_ORIGIN = NATIVE_BUILD
+  ? process.env.NATIVE_API_ORIGIN || "https://app.houndstack.com"
+  : "";
+
 export default defineConfig({
   tanstackStart: {
     server: { entry: "server" },
@@ -57,6 +71,21 @@ export default defineConfig({
   ...(NATIVE_BUILD ? { nitro: false as const } : {}),
   vite: {
     ...(NATIVE_BUILD ? { build: { outDir: "dist-native" } } : {}),
+    // Native-only rather than defined-as-"" for both, so this whole config is
+    // provably inert for the hosted build: with only vite.config.ts changed,
+    // `npm run build` reproduces .output byte-for-byte apart from the two files
+    // that already differ between two consecutive identical builds (nitro.json
+    // and server/index.mjs, which embed the build timestamp). Without the
+    // define the key is simply absent from import.meta.env, so
+    // src/lib/server-fn-origin.ts reads "" and the branch in src/start.ts is
+    // dropped from the web bundle entirely.
+    ...(NATIVE_BUILD
+      ? {
+          define: {
+            "import.meta.env.VITE_NATIVE_API_ORIGIN": JSON.stringify(NATIVE_API_ORIGIN),
+          },
+        }
+      : {}),
     resolve: {
       alias: {
         "entities/lib/decode.js": path.resolve(

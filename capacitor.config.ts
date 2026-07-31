@@ -7,28 +7,38 @@ const config: CapacitorConfig = {
   // Display name — kept in sync with the PWA manifest (vite.config.ts) and the
   // head <title> (src/routes/__root.tsx).
   appName: 'HoundStack',
-  // NOTE: this app is server-rendered (TanStack Start + Nitro), so
-  // `.output/public` holds static assets and NO index.html — there is nothing
-  // here for a WebView to boot. `webDir` is required by the CLI but is not, on
-  // its own, a runnable bundle. See the note on `server.url` below; Q-3's
-  // answer ("bundled Capacitor assets") is an architecture change, not a config
-  // flag, and is not done.
-  webDir: '.output/public',
+  // Output of `npm run build:native`, NOT of `npm run build`.
+  //
+  // `npm run build` is the hosted web build: Nitro packages it for deployment
+  // into `.output/{server,public}`, and `.output/public` contains static assets
+  // and NO index.html — nothing a WebView can boot. `build:native` skips the
+  // deploy packaging, turns on TanStack Start's SPA prerender and emits a real
+  // client-bootable shell here at dist-native/client/index.html, alongside the
+  // hashed assets it references. That is what ships inside the binary.
+  webDir: 'dist-native/client',
   server: {
-    // WHICH SERVER THE SHIPPED APP LOADS.
+    // NO `url` BY DEFAULT — the app loads the bundled `webDir` above.
     //
     // This was hard-coded to https://pal-primer.lovable.app — a Lovable PREVIEW
     // domain — with a comment saying to remove it before a store build. Nothing
     // enforced that, so a binary built today would have shipped pointing at a
     // preview host rather than the product: wrong domain, and a dependency on
-    // an environment nobody promises to keep alive.
+    // an environment nobody promises to keep alive. It also meant the app could
+    // not start at all without network.
     //
-    // Defaults to production now, and dev live-reload is opt-in through
-    // CAP_SERVER_URL, so the dangerous value can no longer be the one you get
-    // by forgetting. Set CAP_SERVER_URL=https://pal-primer.lovable.app while
-    // developing against the preview.
-    url: process.env.CAP_SERVER_URL || 'https://app.houndstack.com',
-    cleartext: false,
+    // Setting `url` makes the WebView load a remote origin and ignore the
+    // bundle entirely, so it is now opt-in for dev live-reload only:
+    // CAP_SERVER_URL=http://192.168.1.10:8080 npx cap run ios
+    //
+    // cleartext is derived from that URL rather than hard-coded: a LAN dev
+    // server is http://, and permitting cleartext unconditionally would relax
+    // the ATS/network-security policy of the shipped binary too.
+    ...(process.env.CAP_SERVER_URL
+      ? {
+          url: process.env.CAP_SERVER_URL,
+          cleartext: process.env.CAP_SERVER_URL.startsWith('http://'),
+        }
+      : {}),
   },
   ios: {
     contentInset: 'always',
