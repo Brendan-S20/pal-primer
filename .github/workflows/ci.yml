@@ -36,6 +36,19 @@ jobs:
       - name: Tests
         run: npm test
 
+      # IMP-11: catches the failure this project keeps producing — something
+      # built, granted and correct that nothing ever calls. Six instances in one
+      # cycle, every one invisible to tests and types because an uncalled
+      # function is perfectly well-typed and passes every test written for it.
+      #
+      # A HARD gate, unlike lint: it starts green (every existing exception is
+      # recorded in scripts/dead-machinery-baseline.json with its reason), so a
+      # failure means something NEW was added and left unwired. It also prints
+      # the known gaps on every run, green or not, so recorded debt stays visible
+      # instead of disappearing the moment it is written down.
+      - name: Dead machinery
+        run: npm run check:dead-machinery
+
       # Non-blocking: the repo carries pre-existing formatting drift that is not
       # this workflow's job to gate on. Kept visible so it doesn't grow unseen.
       - name: Lint

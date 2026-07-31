@@ -1,0 +1,40 @@
+{
+  "_readme": [
+    "IMP-11. Exceptions to check-dead-machinery.mjs, each with a reason someone",
+    "can evaluate later. This is a record of decisions, not a mute button.",
+    "",
+    "A reason beginning with 'KNOWN GAP' means the thing genuinely is not wired",
+    "up yet. Those are counted and reported separately on every run, so unfinished",
+    "work stays visible in the check's own output instead of being silenced by",
+    "being written down. Clear them by wiring the thing up, not by editing the",
+    "reason."
+  ],
+
+  "uncalled_rpcs": {
+    "is_visit_tech": "Verified in the live database: used by the storage RLS policy 'assigned tech uploads visit photo files' on storage.objects. Policies from the consolidated bootstrap dump are not files in supabase/migrations, so the scanner cannot see them.",
+    "optimize_route_for_day": "KNOWN GAP — granted to authenticated and called from nowhere. Route optimisation runs in the app today; this SQL implementation predates it and is either dead or an unfinished server-side path. Needs a decision: wire it up or drop it.",
+    "franchise_signals": "KNOWN GAP — platform-admin sales intelligence (clusters of orgs sharing a custom email domain, i.e. one multi-location operator signing up piecemeal). Built during BUILD-6; no platform screen renders it yet.",
+    "provision_franchise_location": "KNOWN GAP — the flow the owner described: a franchise creates a location, names the staff, they get invites. The SQL is built and verified against the live database; no UI calls it, so a franchise still cannot open a location from the product. Tracked under BUILD-6."
+  },
+
+  "endpoint_callers": {
+    "src/routes/api/public/hooks/nightly.ts": "pg_cron job 'nightly-automation', 0 9 * * * — verified in cron.job.",
+    "src/routes/api/public/hooks/weekly-digest.ts": "pg_cron job 'weekly-digest', 0 13 * * 1 — created by 20260731130000, verified in cron.job.",
+    "src/routes/email/queue/process.ts": "pg_cron job 'process-email-queue', * * * * * — verified in cron.job.",
+    "src/routes/api/public/hooks/announcement-emails.ts": "KNOWN GAP — no scheduler targets it, so an announcement marked send_email=true is never sent. Scheduling platform-wide outbound email is an owner decision, not a cleanup task.",
+    "src/routes/api/public/hooks/stripe.ts": "Stripe Connect webhook endpoint. Called by Stripe on tenant payment events.",
+    "src/routes/api/public/hooks/platform-stripe.ts": "Stripe platform webhook endpoint, for HoundStack's own SaaS billing (bucket A).",
+    "src/routes/api/public/hooks/twilio.ts": "Twilio inbound-SMS webhook.",
+    "src/routes/api/public/hooks/twilio-voice.ts": "Twilio inbound-voice webhook.",
+    "src/routes/api/public/hooks/qbo-callback.ts": "QuickBooks OAuth redirect target — the browser lands here after a tenant authorizes.",
+    "src/routes/api/public/hooks/xero-callback.ts": "Xero OAuth redirect target.",
+    "src/routes/api/public/leads.ts": "Public lead-capture form, embedded on tenant websites. Called by a browser from outside the app.",
+    "src/routes/api/public/verify-email.ts": "Target of the verification link in a signup email.",
+    "src/routes/email/auth/webhook.ts": "Supabase Auth send-email hook — Supabase calls this to render auth mail.",
+    "src/routes/email/transactional/send.ts": "Server-to-server send path, called by the app's own notification code rather than imported.",
+    "src/routes/email/unsubscribe.ts": "Target of the List-Unsubscribe header and the footer link in every marketing email.",
+    "src/routes/email/suppression.ts": "Provider bounce/complaint webhook — writes the suppression list."
+  },
+
+  "write_only_columns": {}
+}

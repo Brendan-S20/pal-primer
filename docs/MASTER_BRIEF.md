@@ -607,6 +607,52 @@ generator limitation, not stale types), and roughly forty `(supabase as any)`
 sites that carry no stale-types comment and belong to the pre-existing
 `no-explicit-any` baseline CI already treats as non-blocking.
 
+**IMP-11 detail — the detector, and what it caught immediately.**
+
+Six times in one cycle the same defect appeared: machinery built, granted,
+correct, and called by nothing. `franchise_rollup` (every franchise dashboard
+blank, for everyone, always). The weekly-digest endpoint (never scheduled). The
+`trialing` state (never entered). Three routing functions (unreachable). And
+`franchise_share_cents` — written on every adjustment, read by nothing, and it
+turned out to be the missing term in the settlement formula, so locations were
+billed for refunds they had already paid.
+
+None of those is catchable by tests or types. A test proves machinery works
+*when called*; it says nothing about whether anything calls it. An uncalled
+function is perfectly well-typed.
+
+So the check looks only at the SEAMS where one system hands off to another —
+SQL→app, cron→endpoint, writer→reader — and asks whether the other side exists.
+Three rules: an RPC granted to the app and called from neither TypeScript nor
+SQL; an external endpoint with no declared caller; a column written by a
+migration and read by nothing.
+
+*It starts green and it is a hard CI gate*, unlike lint. The precedent is
+`check-migrations.mjs`, whose own header records that a naive diff reported ~80
+false positives and would have been ignored — worse than no check. So every rule
+is conservative, trigger functions and generated files are excluded, and every
+existing exception is recorded with a reason.
+
+*Mutation-tested*, like the permission parity test: adding a granted function
+with no caller fails the check; giving it a caller passes; removing it returns
+to green.
+
+**On its first run it found four things nothing calls**, two of which this cycle
+built:
+
+| | |
+|---|---|
+| `provision_franchise_location` | The flow the owner described — a franchise creates a location, names the staff, they get invites. SQL built and verified live; **no UI calls it**, so a franchise still cannot open a location from the product. |
+| `franchise_signals` | Platform-admin sales intelligence; no screen renders it. |
+| `optimize_route_for_day` | Predates the in-app optimiser. Dead or unfinished — needs a decision. |
+| `/hooks/announcement-emails` | No scheduler, so an announcement marked `send_email` is never sent. |
+
+*Known gaps are reported on every run, green or not.* A baseline entry whose
+reason starts `KNOWN GAP` is counted and named in the check's own output, so
+recorded debt stays visible rather than vanishing the moment it is written down.
+The baseline is a record of decisions, not a mute button — which is exactly the
+trap a check like this invites.
+
 **BUILD-5 detail — what white label already was, and the bug underneath it.**
 
 Unlike the trial, branding was NOT dead machinery. `brand_color` and `logo_url`
@@ -880,6 +926,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | IMP-5 | 🟢 Fixed | ⚪ | Repo housekeeping — ~20 stale `as any` casts removed across 14 files, each verified against the regenerated types first and probed to confirm a REAL type flowed rather than degrading to `any`. That probe found a live dead branch: `StaffInvoicePayForm` tested `payment.status === "paid"`, a value the `payment_status` enum has never had. See below | v1.5 |
 | IMP-6 | ❓ Blocked | 🟡 | Payment test coverage — needs Stripe authorized | v1.1 |
 | IMP-7 | 🟢 Fixed | 🟡 | Supabase types regenerated. They had been stale since before this cycle and IMP-9's table drop made them wrong, not just incomplete. Four `any`/structural casts removed as a result | v1.3 |
+| IMP-11 | 🟢 Fixed | 🟠 | **New.** Dead-machinery detector — a hard CI gate for the failure this project keeps producing: something built, granted and correct that nothing ever calls. Six instances in one cycle, every one invisible to tests and types. Found four more on its first run. See below | v1.5 |
 | IMP-10 | 🟢 Fixed | 🔴 | **Closed in v1.5, and it was worse than logged.** `src/lib/revenue.ts` is now the one definition — money that ARRIVED (`succeeded` or `refunded`), reversals deducted in their own period — mirrored in SQL with a parity test that fails on drift. Fixing it turned up BUG-21 (a real money error), a third copy of the royalty calculation in the nightly cron, and an AI-tools query with no status filter at all that counted declined cards as revenue. Invoice-based revenue stays separate and is reconciled by BUILD-13's bridge rather than conflated | v1.4 |
 | IMP-9 | 🟢 Fixed | 🟠 | Retire the BYOK surfaces — **done, and the "wait for BUILD-2/BUILD-3" ordering in v1.2 was wrong.** See below | v1.3 |
 | IMP-8 | 🟢 Fixed | 🟡 | **New.** Org timezone was built but buried in Routes; moved to Settings | v1.1 |
