@@ -516,9 +516,8 @@ export const getDispatchSettings = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const orgId = await resolveOrgId(context.supabase, context.userId);
-    // max_drive_minutes was added by the finding-#10 migration; generated types
-    // lag until Lovable regenerates them, so read it untyped.
-    const { data, error } = await (context.supabase.from("organizations") as any)
+    const { data, error } = await context.supabase
+      .from("organizations")
       .select("workday_start, workday_end, avg_speed_kmh, traffic_profile, max_drive_minutes, timezone, work_days")
       .eq("id", orgId)
       .maybeSingle();

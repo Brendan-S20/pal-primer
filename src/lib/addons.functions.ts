@@ -150,11 +150,9 @@ export const createAddonCharge = createServerFn({ method: "POST" })
           .maybeSingle(),
         supabase
           .from("organizations")
-          // Column ships with the field-addon-cap migration; generated types
-          // lag until Lovable regenerates them, hence the cast.
-          .select("field_addon_cap_cents" as any)
+          .select("field_addon_cap_cents")
           .eq("id", orgId)
-          .single() as unknown as Promise<{ data: { field_addon_cap_cents: number | null } | null; error: any }>,
+          .single(),
       ]);
       if (sErr) throw new Error(sErr.message);
       if (!svc) throw new Error("Add-on service not found");

@@ -15,27 +15,7 @@ export const listInvoices = createServerFn({ method: "GET" })
       )
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
-    // due_on/send_after/sent_at/public_token aren't in the generated types yet.
-    return (data ?? []) as any[] as Array<{
-      id: string;
-      client_id: string;
-      status: string;
-      kind: string | null;
-      subtotal_cents: number | null;
-      total_cents: number | null;
-      credit_applied_cents: number | null;
-      currency: string | null;
-      period_start: string | null;
-      period_end: string | null;
-      issued_at: string | null;
-      paid_at: string | null;
-      due_on: string | null;
-      send_after: string | null;
-      sent_at: string | null;
-      public_token: string;
-      checkout_url: string | null;
-      clients: { display_name: string | null } | Array<{ display_name: string | null }> | null;
-    }>;
+    return data ?? [];
   });
 
 /**
@@ -198,7 +178,7 @@ export const createManualInvoice = createServerFn({ method: "POST" })
       .select("invoice_net_days")
       .eq("id", orgId)
       .single();
-    const netDays = (org as any)?.invoice_net_days ?? 15;
+    const netDays = org?.invoice_net_days ?? 15;
     const dueOn = new Date(Date.now() + netDays * 86_400_000).toISOString().slice(0, 10);
     const { data: inv, error: iErr } = await supabase
       .from("invoices")
@@ -214,7 +194,7 @@ export const createManualInvoice = createServerFn({ method: "POST" })
         issued_at: nowIso,
         due_on: dueOn,
         notes: data.notes ?? "Manual invoice",
-      } as any)
+      })
       .select("id")
       .single();
     if (iErr) throw new Error(iErr.message);
@@ -368,8 +348,7 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
     const { supabase } = context;
     await requirePermission(supabase, context.userId, "manage_client_billing");
     // Read invoice + verify access via RLS
-    // (credit_applied_cents isn't in the generated types yet.)
-    const { data: invoiceRow, error } = await supabase
+    const { data: invoice, error } = await supabase
       .from("invoices")
       .select(
         "id, organization_id, client_id, total_cents, credit_applied_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id",
@@ -377,12 +356,11 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
       .eq("id", data.id)
       .single();
     if (error) throw new Error(error.message);
-    const invoice = invoiceRow as any;
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
     // Charge the OPEN amount: total net of applied credit (B7).
     const dueCents = Math.max(
-      (invoice.total_cents ?? 0) - ((invoice as any).credit_applied_cents ?? 0),
+      (invoice.total_cents ?? 0) - (invoice.credit_applied_cents ?? 0),
       0,
     );
     if (dueCents <= 0) throw new Error("Nothing due on this invoice");
@@ -554,7 +532,7 @@ export const getInvoicePayLink = createServerFn({ method: "GET" })
       .eq("id", data.invoiceId)
       .single();
     if (error) throw new Error(error.message);
-    const token = (invoice as any).public_token as string | null;
+    const token = invoice.public_token;
     if (!token) throw new Error("This invoice has no pay link yet");
     const base = process.env.APP_URL || "https://app.houndstack.com";
     return { url: `${base}/pay/i/${token}` };
@@ -571,7 +549,6 @@ async function chargeSavedCardCore(
   actorUserId: string,
   invoiceId: string,
 ): Promise<{ chargedCents: number; status: string }> {
-  // credit_applied_cents isn't in the generated types yet.
   const { data: invoiceRow, error: iErr } = await supabase
     .from("invoices")
     .select(
@@ -588,7 +565,7 @@ async function chargeSavedCardCore(
   // apply_credit_to_invoice only touches open invoices.
   if (invoice.status !== "open") throw new Error("Only open invoices can be charged");
   const dueCents = Math.max(
-    (invoice.total_cents ?? 0) - ((invoice as any).credit_applied_cents ?? 0),
+    (invoice.total_cents ?? 0) - (invoice.credit_applied_cents ?? 0),
     0,
   );
   if (dueCents <= 0) throw new Error("Nothing due on this invoice");
@@ -994,26 +971,7 @@ export const getClientBillingSummary = createServerFn({ method: "GET" })
     ]);
     if (clientRes.error) throw new Error(clientRes.error.message);
 
-    // due_on/send_after/sent_at/public_token aren't in the generated types yet.
-    const invoices = (invoicesRes.data ?? []) as any[] as Array<{
-      id: string;
-      status: string;
-      kind: string;
-      currency: string | null;
-      subtotal_cents: number | null;
-      total_cents: number | null;
-      credit_applied_cents: number | null;
-      period_start: string | null;
-      period_end: string | null;
-      issued_at: string | null;
-      paid_at: string | null;
-      due_on: string | null;
-      send_after: string | null;
-      sent_at: string | null;
-      public_token: string;
-      checkout_url: string | null;
-      created_at: string;
-    }>;
+    const invoices = invoicesRes.data ?? [];
     const invoiceIds = invoices.map((i) => i.id);
     const paymentsRes = invoiceIds.length
       ? await supabase
@@ -1094,58 +1052,19 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
     if (iErr) throw new Error(iErr.message);
     if (lErr) throw new Error(lErr.message);
     if (pErr) throw new Error(pErr.message);
-    const inv = invoice as any;
-    const client = Array.isArray(inv?.clients) ? inv.clients[0] : inv?.clients;
-    if (inv) delete inv.clients;
+    // `.single()` errors on a missing row, so iErr above already covers it;
+    // this guard is only here to satisfy the nullable `data` type.
+    if (!invoice) throw new Error("Invoice not found");
+    // Split the embedded client off the invoice row: the drawer's action
+    // buttons want it as its own object.
+    // `credit_applied_cents` is the portion of total already covered by
+    // applied credit (B7); the amount due is total_cents - credit_applied_cents.
+    const { clients, ...inv } = invoice;
     return {
-      invoice: inv as {
-        id: string;
-        client_id: string;
-        status: string;
-        kind: string;
-        currency: string | null;
-        subtotal_cents: number | null;
-        total_cents: number | null;
-        /** Portion of total already covered by applied credit (B7); the
-         * amount due is total_cents - credit_applied_cents. */
-        credit_applied_cents: number | null;
-        period_start: string | null;
-        period_end: string | null;
-        issued_at: string | null;
-        paid_at: string | null;
-        due_on: string | null;
-        send_after: string | null;
-        sent_at: string | null;
-        public_token: string;
-        voided_at: string | null;
-        notes: string | null;
-        checkout_url: string | null;
-        created_at: string;
-      },
-      client: (client ?? null) as {
-        id: string;
-        display_name: string | null;
-        primary_email: string | null;
-        default_payment_method_id: string | null;
-        default_card_brand: string | null;
-        default_card_last4: string | null;
-      } | null,
-      lineItems: (lines ?? []) as any[] as Array<{
-        id: string;
-        description: string;
-        amount_cents: number;
-        visit_id: string | null;
-        subscription_id: string | null;
-        created_at: string;
-      }>,
-      payments: (pays ?? []) as any[] as Array<{
-        id: string;
-        amount_cents: number;
-        status: string;
-        paid_at: string | null;
-        created_at: string;
-        stripe_payment_intent_id: string | null;
-      }>,
+      invoice: inv,
+      client: clients ?? null,
+      lineItems: lines ?? [],
+      payments: pays ?? [],
     };
   });
 
@@ -1228,10 +1147,10 @@ async function invoiceByPublicToken(token: string) {
     .select(
       "id, organization_id, client_id, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, period_start, period_end, issued_at, paid_at, due_on, stripe_payment_intent_id, stripe_checkout_session_id, organizations(name), clients(display_name)",
     )
-    .eq("public_token" as any, token)
+    .eq("public_token", token)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  return data as any;
+  return data;
 }
 
 export const getPublicInvoice = createServerFn({ method: "GET" })
@@ -1284,7 +1203,7 @@ export const getPublicInvoice = createServerFn({ method: "GET" })
       },
       orgName: (org?.name ?? "Your service provider") as string,
       clientName: (client?.display_name ?? null) as string | null,
-      items: (items ?? []).map((i: any) => ({
+      items: (items ?? []).map((i) => ({
         id: i.id as string,
         description: i.description as string,
         amountCents: i.amount_cents as number,

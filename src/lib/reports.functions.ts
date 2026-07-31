@@ -3,6 +3,22 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { invoiceOutstandingCents, isOutstanding } from "@/lib/ar";
+import type { Database } from "@/integrations/supabase/types";
+
+/** The invoice columns this report reads, taken straight from the generated
+ * types so a renamed or dropped column is a compile error here. */
+type ReportInvoice = Pick<
+  Database["public"]["Tables"]["invoices"]["Row"],
+  | "id"
+  | "client_id"
+  | "status"
+  | "total_cents"
+  | "credit_applied_cents"
+  | "due_on"
+  | "issued_at"
+  | "paid_at"
+  | "kind"
+>;
 
 const rangeSchema = z.object({
   from: z.string(), // YYYY-MM-DD
@@ -94,7 +110,7 @@ export const getReports = createServerFn({ method: "POST" })
     // figure on this page — revenue, outstanding, aging, top clients — was
     // quietly low, and got worse the longer the business ran.
     const { fetchAllPages } = await import("@/lib/supabase-paging.server");
-    const invoices = await fetchAllPages<any>((a, b) =>
+    const invoices = await fetchAllPages<ReportInvoice>((a, b) =>
       supabase
         .from("invoices")
         .select(
@@ -135,18 +151,17 @@ export const getReports = createServerFn({ method: "POST" })
     const aging = { current: 0, d30: 0, d60: 0, d90: 0 };
     const today = new Date();
 
-    // credit_applied_cents/due_on aren't in the generated types yet.
-    for (const inv of (invoices ?? []) as any[]) {
+    for (const inv of invoices ?? []) {
       const issued = inv.issued_at ? inv.issued_at.slice(0, 10) : null;
       const inRange = issued && issued >= from && issued <= to;
       if (inv.status === "paid" && inRange) {
         revenuePaidCents += inv.total_cents ?? 0;
         perClient[inv.client_id] = (perClient[inv.client_id] ?? 0) + (inv.total_cents ?? 0);
       }
-      if (isOutstanding(inv as any)) {
+      if (isOutstanding(inv)) {
         // Shared AR math (finding #7/B1) so this matches Clients + Dashboard
         // + Invoices exactly: open balance net of applied credit (B7).
-        const owed = invoiceOutstandingCents(inv as any);
+        const owed = invoiceOutstandingCents(inv);
         outstandingCents += owed;
         const ref = inv.issued_at;
         if (ref) {

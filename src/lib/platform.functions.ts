@@ -214,9 +214,7 @@ export const startImpersonation = createServerFn({ method: "POST" })
     if (!email) throw new Error("Target user has no email.");
 
     const token = randomBytes(32).toString("hex");
-    // impersonation_grants is added by the finding-#5 migration; generated
-    // Supabase types lag until Lovable regenerates them, so talk to it untyped.
-    const { error: insErr } = await (supabaseAdmin as any).from("impersonation_grants").insert({
+    const { error: insErr } = await supabaseAdmin.from("impersonation_grants").insert({
       token_hash: sha256(token),
       organization_id: data.organization_id,
       target_user_id: data.target_user_id,
@@ -252,14 +250,13 @@ export const consumeImpersonation = createServerFn({ method: "POST" })
     const nowIso = new Date().toISOString();
 
     // Atomically claim the grant: only succeeds if unconsumed and unexpired.
-    // (Untyped: generated types lag the finding-#5 migration.)
     // BUG-2: stamp the SESSION's own window at the same moment the grant is
     // claimed. `expires_at` bounds only the click-through link; without this
     // the minted session refreshed itself forever and then failed silently.
     const { IMPERSONATION_SESSION_TTL_MS } = await import("@/lib/impersonation-session.shared");
     const sessionExpiresAt = new Date(Date.now() + IMPERSONATION_SESSION_TTL_MS).toISOString();
 
-    const { data: grant, error: claimErr } = await (supabaseAdmin as any)
+    const { data: grant, error: claimErr } = await supabaseAdmin
       .from("impersonation_grants")
       .update({ consumed_at: nowIso, session_expires_at: sessionExpiresAt })
       .eq("token_hash", sha256(data.token))
@@ -310,7 +307,7 @@ export const consumeImpersonation = createServerFn({ method: "POST" })
       const { sessionIdFromAuthHeader } = await import("@/lib/impersonation-marker");
       const authSessionId = sessionIdFromAuthHeader(`Bearer ${session.access_token}`);
       if (authSessionId) {
-        await (supabaseAdmin as any)
+        await supabaseAdmin
           .from("impersonation_grants")
           .update({ auth_session_id: authSessionId })
           .eq("id", grant.id);
@@ -375,7 +372,7 @@ export const endImpersonationSession = createServerFn({ method: "POST" })
     // owned by the calling impersonated session), so a stranger can't end
     // someone else's grant or forge a stop event, and concurrent/duplicate
     // exits produce a single stop event.
-    const { data: grant, error } = await (supabaseAdmin as any)
+    const { data: grant, error } = await supabaseAdmin
       .from("impersonation_grants")
       .update({ ended_at: nowIso })
       .eq("id", data.grantId)

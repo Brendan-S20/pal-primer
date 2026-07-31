@@ -23,8 +23,7 @@ export const getAutomationSettings = createServerFn({ method: "GET" })
       .eq("id", orgId)
       .single();
     if (error) throw new Error(error.message);
-    // invoice_net_days isn't in the generated types yet.
-    return data as any as Record<string, any>;
+    return data;
   });
 
 // Every field is optional so a caller can send just the settings it edits and

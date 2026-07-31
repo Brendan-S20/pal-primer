@@ -162,8 +162,7 @@ export const getClient = createServerFn({ method: "GET" })
       .eq("id", data.clientId)
       .single();
     if (error) throw new Error(error.message);
-    // billing_frequency / dna_compliance_enabled aren't in the generated types yet.
-    return { client: client as any };
+    return { client };
   });
 
 /** Edit-client drawer (client detail refactor): contact, status, tags,
@@ -400,11 +399,9 @@ export const listDogsForClient = createServerFn({ method: "GET" })
       .select("id, street")
       .eq("client_id", data.clientId);
     if (pErr) throw new Error(pErr.message);
-    const ids = (props ?? []).map((p: any) => p.id);
+    const ids = (props ?? []).map((p) => p.id);
     if (!ids.length) return { dogs: [] };
-    // Cast: unit_id/dna_status ship with the commercial-units migration;
-    // generated types lag until regenerated.
-    const { data: dogs, error } = await (supabase as any)
+    const { data: dogs, error } = await supabase
       .from("dogs")
       .select(
         "id, property_id, name, breed, weight_class, temperament, notes, active, unit_id, dna_status",
@@ -412,9 +409,9 @@ export const listDogsForClient = createServerFn({ method: "GET" })
       .in("property_id", ids)
       .order("name");
     if (error) throw new Error(error.message);
-    const streetById = new Map((props ?? []).map((p: any) => [p.id, p.street]));
+    const streetById = new Map((props ?? []).map((p) => [p.id, p.street]));
     return {
-      dogs: (dogs ?? []).map((d: any) => ({
+      dogs: (dogs ?? []).map((d) => ({
         ...d,
         property_street: streetById.get(d.property_id) ?? "",
       })),
