@@ -98,6 +98,21 @@ export function disputeStatusMovedMoney(status: string | null | undefined): bool
   return true;
 }
 
+/**
+ * Is this dispute over?
+ *
+ * `won` and `lost` are the real outcomes; `warning_closed` is an inquiry that
+ * was dropped without becoming one. Everything else — needs_response,
+ * under_review and their `warning_` twins — is still live.
+ *
+ * Used to read `charge.dispute.updated`, which carries no hint of its own about
+ * whether it is announcing a beginning or an end.
+ */
+export function disputeIsClosed(status: string | null | undefined): boolean {
+  const s = (status ?? "").trim().toLowerCase();
+  return s === "won" || s === "lost" || s === "warning_closed";
+}
+
 /** The reversal kind a dispute webhook should file, and what it means for money. */
 export type DisputeWebhookPlan = {
   /** The `_kind` to hand the SQL filer, or null to record nothing. */
@@ -141,6 +156,35 @@ export function planDisputeEvent(
     if (!moved) return { kind: "dispute_inquiry_closed", movesMoney: false };
     // A genuine loss. Status only — the money left when the dispute opened.
     return { kind: "chargeback_lost", movesMoney: false };
+  }
+
+  if (eventType === "charge.dispute.updated") {
+    // The event that carries the promotion nobody sees coming.
+    //
+    // Stripe does not always open a NEW dispute object when an inquiry becomes
+    // a real chargeback — it can change `status` on the existing one, from
+    // `warning_needs_response` to `needs_response`, and announce it here. The
+    // money leaves the account at that moment. Arbitration works the same way
+    // in the other direction: a dispute already closed as `won` can flip to
+    // `lost` on an update, and the funds go back out.
+    //
+    // Neither transition raises `created` or `closed`. So with this event
+    // unsubscribed, the two cases where money moves without a new dispute
+    // object were exactly the two the system could not see — an inquiry we had
+    // told the owner cost nothing quietly becoming a chargeback that did.
+    //
+    // Deliberately no new state machine: an update on a live dispute means the
+    // same thing as an opening, and an update on a finished one means the same
+    // thing as a closure, so it delegates to the branches above rather than
+    // reimplementing them slightly differently. What makes this safe to run on
+    // every update — Stripe also fires this when evidence is attached, with no
+    // status change at all — is that every write it leads to is idempotent per
+    // dispute id: the adjustment records a delta against what that dispute has
+    // already billed, and the review item conflicts on the same key.
+    return planDisputeEvent(
+      disputeIsClosed(status) ? "charge.dispute.closed" : "charge.dispute.created",
+      status,
+    );
   }
 
   return { kind: null, movesMoney: false };

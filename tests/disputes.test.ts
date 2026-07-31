@@ -4,6 +4,7 @@ import {
   DISPUTE_KINDS,
   DISPUTE_OUTCOMES,
   disputeFrom,
+  disputeIsClosed,
   disputeKey,
   disputeReducesAnalyticsRevenue,
   disputeStatusMovedMoney,
@@ -117,8 +118,79 @@ describe("planning a charge.dispute.* webhook", () => {
   });
 
   it("does nothing at all for an event it does not handle", () => {
-    expect(planDisputeEvent("charge.dispute.updated", "needs_response").kind).toBeNull();
     expect(planDisputeEvent("charge.refunded", null).kind).toBeNull();
+    expect(planDisputeEvent("charge.dispute.funds_reinstated", "won").kind).toBeNull();
+  });
+});
+
+describe("charge.dispute.updated — the promotion nobody sees coming", () => {
+  // This event used to return null, and a test asserted that it did — pinning
+  // the gap as though it were the design. Stripe does not always open a new
+  // dispute object when an inquiry becomes a real chargeback; it changes
+  // `status` on the existing one and announces it here. The money leaves at
+  // that moment, and neither `created` nor `closed` fires.
+
+  it("bills an inquiry that was promoted to a chargeback in place", () => {
+    // warning_needs_response → needs_response on the SAME dispute id. Before
+    // this, the location was told the inquiry cost nothing and was never told
+    // otherwise.
+    const plan = planDisputeEvent("charge.dispute.updated", "needs_response");
+    expect(plan.kind).toBe("chargeback");
+    expect(plan.movesMoney).toBe(true);
+  });
+
+  it("still moves no money while the dispute is only an inquiry", () => {
+    for (const s of ["warning_needs_response", "warning_under_review"]) {
+      const plan = planDisputeEvent("charge.dispute.updated", s);
+      expect(plan.kind, s).toBe("dispute_inquiry");
+      expect(plan.movesMoney, s).toBe(false);
+    }
+  });
+
+  it("repays the location when arbitration flips a dispute to won", () => {
+    const plan = planDisputeEvent("charge.dispute.updated", "won");
+    expect(plan.kind).toBe("chargeback_won");
+    expect(plan.movesMoney).toBe(true);
+  });
+
+  it("records a loss as status only, exactly like a closure does", () => {
+    // The money left when the dispute opened; billing again here would charge
+    // the location twice for one chargeback.
+    const plan = planDisputeEvent("charge.dispute.updated", "lost");
+    expect(plan.kind).toBe("chargeback_lost");
+    expect(plan.movesMoney).toBe(false);
+  });
+
+  it("treats a dropped inquiry as dropped, not as a loss", () => {
+    expect(planDisputeEvent("charge.dispute.updated", "warning_closed").kind).toBe(
+      "dispute_inquiry_closed",
+    );
+  });
+
+  it("agrees with the closed branch on every terminal status", () => {
+    // The point of delegating rather than reimplementing: these cannot drift.
+    for (const s of ["won", "lost", "warning_closed"]) {
+      expect(planDisputeEvent("charge.dispute.updated", s), s).toEqual(
+        planDisputeEvent("charge.dispute.closed", s),
+      );
+    }
+  });
+
+  it("agrees with the created branch on every live status", () => {
+    for (const s of ["needs_response", "under_review", "warning_needs_response", "prevented"]) {
+      expect(planDisputeEvent("charge.dispute.updated", s), s).toEqual(
+        planDisputeEvent("charge.dispute.created", s),
+      );
+    }
+  });
+
+  it("knows which statuses end a dispute", () => {
+    for (const s of ["won", "lost", "warning_closed", "WON", " Lost "]) {
+      expect(disputeIsClosed(s), s).toBe(true);
+    }
+    for (const s of ["needs_response", "under_review", "warning_needs_response", "", null]) {
+      expect(disputeIsClosed(s), String(s)).toBe(false);
+    }
   });
 });
 

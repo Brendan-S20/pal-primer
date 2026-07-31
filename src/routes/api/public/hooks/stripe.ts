@@ -428,6 +428,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
           } else if (
             event.type === "charge.refunded" ||
             event.type === "charge.dispute.created" ||
+            event.type === "charge.dispute.updated" ||
             event.type === "charge.dispute.closed"
           ) {
             // BUILD-6: reversals. Until now the app recorded NONE of these —
@@ -439,6 +440,13 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             // this branch never runs. Stripe sends only what you select, and
             // for Connect they have to be enabled on the CONNECT endpoint so
             // events raised on connected accounts arrive at all.
+            //
+            // `charge.dispute.updated` is in that list and is easy to leave out
+            // because it sounds like a notification rather than a transaction.
+            // It is not: Stripe promotes an inquiry to a real chargeback by
+            // changing `status` on the existing dispute, and arbitration flips
+            // a won dispute to lost the same way. Money moves on both, and
+            // neither raises `created` or `closed`. See planDisputeEvent.
             const obj = event.data.object as any;
             const paymentIntentId: string | null =
               obj?.payment_intent ?? obj?.charge?.payment_intent ?? null;
