@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.7** · Released 2026-07-31 · Supersedes: v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.8** · Released 2026-07-31 · Supersedes: v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,65 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+### v1.8 — 2026-07-31
+
+**CI had never run four of its test files, and one of them was failing.**
+`npm test` was a hand-typed list of 48 filenames in `package.json`; the repo
+has 52 test files. The four that were never added had never run, and
+`tests/stripe-connect.server.test.ts` had been failing since BUILD-6 changed
+the return shape it asserts on. CI was green the whole time, because a test
+file CI does not name is a test file CI cannot fail on. `npm test` is now
+`vitest run` (BUG-47).
+
+That makes **five** checks this cycle that were green while measuring nothing —
+and this is the one that undermines the other four, because every "verified by
+tests" claim in this ledger was made against a runner that was skipping files.
+Nothing else turned out to be broken; the point is that nothing else was being
+watched either.
+
+**Fixing that test found the BUILD-6 branch had no coverage at all** — the half
+that decides *whose bank account* a customer's money lands in. Added, including
+the case where the franchise has no connected account and the resolver must
+refuse rather than quietly bill into the franchisee's. Mutation-tested: removing
+the no-fallback guard fails a test, disabling franchise routing fails two.
+
+**Every button in the visit drawer was guaranteed to fail** (BUG-48). It opens
+only from `/routes` and `/dashboard`, which techs cannot reach, and it called
+the tech RPCs, which authorize on `is_visit_tech()`. Proven live on a real
+scheduled visit: the org's own owner returns false for that guard. The desktop
+board had this right and said so in a comment; the drawer never got the same
+treatment, and the comment claiming otherwise had been copied into two more
+places (BUG-49).
+
+**A second `skip_visit` had been granted to every signed-in user since July**
+(BUG-50), and the dead-machinery detector could not have found it — rule 1 keys
+on the NAME, so two signatures collapse into one entry and the live overload's
+callers vouch for the dead one. Dropping it made things briefly worse: a single
+`DROP` marked the whole name dropped, so the live three-argument `skip_visit`
+fell out of coverage entirely. Both fixed, and a fourth rule now flags any name
+with more than one live signature (IMP-11).
+
+**Rule 4's first run reported five findings and all five were wrong** — it read
+`public.addon_frequency` and `addon_frequency` as different types. Zero were
+real. That is now written into the detector's header as a rule of its own: a new
+check's first output is evidence about the check, not about the codebase.
+
+**Q-4 and Q-12 answered by building the small half.** A dispatcher can now
+reassign a visit from a phone, which is the one dispatch action a phone is
+actually for. The ➕ sheet had three rows and one of them created anything;
+the other two are relabelled as the shortcuts they are.
+
+**Q-2 is reopened, not closed.** The v1.1 answer was a dedicated tablet tier at
+768–1024px. It was never built — there is one breakpoint in this app — and it
+cannot be fixed by moving the breakpoint, because the tech nav and the dispatch
+board want opposite answers on an iPad. Recorded rather than guessed at.
+
+**Still not built, and it is bigger than the ledger implied:** there is no way
+to create a one-off visit anywhere in the product, on any device. Visits exist
+only as output of `generate_visits_through` from a subscription, so an emergency
+call-out, a make-up visit after a skip, and a one-time deep clean cannot be put
+on the schedule at all.
 
 ### v1.7 — 2026-07-31
 
@@ -370,6 +429,11 @@ were built. Repo search finds no such mechanism. Raised as BUILD-10.
 | BUG-44 | 🟢 Fixed | 🟠 | **New.** The app could not open offline at its own front door. `_authenticated.beforeLoad` called `supabase.auth.getUser()` — a **network call** — and read any failure as "not signed in", redirecting to `/auth`. No amount of caching could have helped. Now falls back to the local session, but only when the failure looks like lost network; a 4xx from the auth server is still a real rejection, and that distinction is tested, because getting it backwards would let an expired account in | v1.7 |
 | BUG-45 | 🟢 Fixed | 🟡 | **New.** The marketing site quoted an annual price the app does not charge. The app bills annual as ten months — `annual_price_cents` is exactly 10× monthly on every live tier, "two months free", 16.7% — while the site applied a flat 15% and said so in the FAQ. `/pricing` quoted Launch at $67.15/mo against an actual $65.83. Under-promising, so harmless in direction, but a published price that is not the price. Now derived from months-paid so the two cannot drift | v1.7 |
 | BUG-46 | 🟢 Fixed | 🟡 | **New.** `franchise_signals` returned organization names and ids as two parallel arrays that were not in the same order, so per-organization links would have pointed at the wrong tenant about half the time. Never mispaired anyone only because the screen noticed and rendered no links. Not fixed by adding `ORDER BY name` — that is not a total order (three organizations here are literally named "Test Test") and two aggregates sort independently. Replaced with one jsonb array of self-contained `{id, name, linked}` objects: nothing left to zip | v1.7 |
+| BUG-47 | 🟢 Fixed | 🟠 | **New.** CI ran **48 of the 52 test files**. `npm test` was a hand-typed list of filenames in `package.json`; four files had never been added and so had never run, and `tests/stripe-connect.server.test.ts` had been **failing since BUILD-6** changed the return shape it asserts on. CI was green throughout — a test file CI does not name is a test file CI cannot fail on. `npm test` is now `vitest run`: 55 files discovered, 659 passing. Fixing that test also revealed the BUILD-6 branch had **no coverage at all** — the half that decides whose bank account a customer's money lands in. Added, mutation-tested both ways | v1.8 |
+| BUG-48 | 🟢 Fixed | 🟠 | **New.** Every button in `VisitDetailDrawer` was guaranteed to fail. It opens from `/routes` and `/dashboard`, and `ROUTE_ROLES` excludes techs from both — so nobody who could see it was ever the assigned tech, and it called the tech RPCs, which authorize on `is_visit_tech()`. Proven live on a real scheduled visit: the org's own owner returns **false** for that guard and **true** for `can_write_org`. Now uses the `office_*` variants like the desktop board, hides the controls from a dispatcher instead of showing buttons that throw, and drops Start entirely — there is no `office_start_visit`, because the office has no honest arrival time to stamp | v1.8 |
+| BUG-49 | 🟢 Fixed | 🟡 | **New.** The mobile schedule told users to *"tap a visit to view details, reassign, or reschedule"*. The drawer has no staff picker and no date field and never did. The same wrong claim sat in three places — the component header, the user-facing footer, and the comment in `routes.tsx` that seeded both. Corrected, and a reassign control was actually built (Q-12) | v1.8 |
+| BUG-50 | 🟢 Fixed | 🟡 | **New.** A **second `skip_visit`**, granted to `authenticated`, called by nothing since 2026-07-01. `skip_visit(uuid,text)` shipped first; the reason-code version arrived two days later as a *new signature*, so Postgres kept both, and the older body predates the org skip-billing rules. Dropped and verified live. The detector could not have found it — see IMP-11 | v1.8 |
+| BUG-51 | 🟢 Fixed | 🟡 | **New.** Billing an add-on is the only visit action **not** queued offline — start, complete, skip and photos all go to IndexedDB. A tech offline saw either a wrong sentence (the price list is deliberately not persisted to the device, so an empty catalog read as *"the office never set add-ons up"*) or a live-looking Bill button that failed with a raw network error. Both now say what is actually happening. Whether the charge itself should queue is Q-11 | v1.8 |
 | BUG-36 | 🟢 Fixed | 🔴🔴 | **New.** BUG-33's twin, one tier up. That closed the anon surface; nobody asked what a *signed-in* user could reach. ~35 SECURITY DEFINER functions took an org, client, visit or payment id as a **parameter** and trusted it, with no authorization check in the body — and signup is public, so anyone can hold an authenticated session. Reads included customer names and revenue for any organization; writes included account credit, franchise billing, visit completion and the email queue. Revoked where the app never calls from a browser, membership-checked where it does | v1.6 |
 | BUG-37 | 🟢 Fixed | 🔴🔴 | **New.** Postpaid invoicing produced **nothing for fifteen days and reported success**. `20260716220000` reintroduced `p.address_line1` — a column renamed to `street` long before, and already fixed once — so every invoice raised. It stayed invisible because `run_billing_cycles` catches per-client failures with a `RAISE WARNING` into a log nobody reads and returns only the SUCCESS count: a night where every client failed returns 0, the same answer as a night with nothing due. Verified live — newest `invoice_line_items` row dated 2026-07-16, the day that migration landed. Failures now file to the review queue | v1.6 |
 | BUG-38 | 🟢 Fixed | 🟠 | **New.** A $79 Launch org could mint franchise codes. The franchise RPCs checked role and never plan, and the TypeScript funnel was the only gate — which a browser skips by calling `supabase.rpc` directly. So a Launch owner could create a link code, recruit locations, and run the entire Enterprise franchise feature unpaid. `has_plan_entitlement`, the SQL mirror nothing had ever called, is now the check inside all six parent-side functions | v1.6 |
@@ -1145,7 +1209,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | IMP-5 | 🟢 Fixed | ⚪ | Repo housekeeping — ~20 stale `as any` casts removed across 14 files, each verified against the regenerated types first and probed to confirm a REAL type flowed rather than degrading to `any`. That probe found a live dead branch: `StaffInvoicePayForm` tested `payment.status === "paid"`, a value the `payment_status` enum has never had. See below | v1.5 |
 | IMP-6 | ❓ Blocked | 🟡 | Payment test coverage — needs Stripe authorized | v1.1 |
 | IMP-7 | 🟢 Fixed | 🟡 | Supabase types regenerated. They had been stale since before this cycle and IMP-9's table drop made them wrong, not just incomplete. Four `any`/structural casts removed as a result | v1.3 |
-| IMP-11 | 🟢 Fixed | 🟠 | Dead-machinery detector — a hard CI gate for the failure this project keeps producing: something built, granted and correct that nothing ever calls. Six instances in one cycle, every one invisible to tests and types. Turned on itself in v1.6 and found one rule that could not fire, one counting comments as callers, and one that would have failed CI on correct code; all three rewritten and mutation-proven in v1.7. Green with 17 named exceptions and no open known gaps. One residual, stated in its header: the cron schedules in rule 2's baseline are asserted by a human and checked by nothing. See below | v1.5 |
+| IMP-11 | 🟢 Fixed | 🟠 | Dead-machinery detector — a hard CI gate for the failure this project keeps producing: something built, granted and correct that nothing ever calls. Turned on itself in v1.6 and found one rule that could not fire, one counting comments as callers, and one that would have failed CI on correct code; all three rewritten and mutation-proven in v1.7. **v1.8 adds a fourth rule and fixes a blind spot the first three shared:** rule 1 keys on a function's NAME, so two signatures of one name collapse and a dead overload is vouched for by the live one's callers — which is how a second `skip_visit` stayed granted and uncalled for a month (BUG-50). Drops and creates are now tracked per signature, and rule 4 flags any name with more than one live signature. Its first run reported five findings, all five false, all caused by its own type normalization — recorded in the header as the general rule. Green with 17 exceptions, no open known gaps. One residual: the cron schedules in rule 2's baseline are asserted by a human and checked by nothing | v1.5 |
 | IMP-10 | 🟢 Fixed | 🔴 | **Closed in v1.5, and it was worse than logged.** `src/lib/revenue.ts` is now the one definition — money that ARRIVED (`succeeded` or `refunded`), reversals deducted in their own period — mirrored in SQL with a parity test that fails on drift. Fixing it turned up BUG-21 (a real money error), a third copy of the royalty calculation in the nightly cron, and an AI-tools query with no status filter at all that counted declined cards as revenue. Invoice-based revenue stays separate and is reconciled by BUILD-13's bridge rather than conflated | v1.4 |
 | IMP-9 | 🟢 Fixed | 🟠 | Retire the BYOK surfaces — **done, and the "wait for BUILD-2/BUILD-3" ordering in v1.2 was wrong.** See below | v1.3 |
 | IMP-8 | 🟢 Fixed | 🟡 | **New.** Org timezone was built but buried in Routes; moved to Settings | v1.1 |
@@ -1316,17 +1380,17 @@ rather than the following January.
 | ID | Status | Answer | Answered in |
 |---|---|---|---|
 | Q-1 | ✅ | Dispatchers ops-only, no billing | v1.1 |
-| Q-2 | ✅ | Dedicated tablet tier (768–1024px) | v1.1 |
+| Q-2 | ⚠️ Answered, never built | The answer was a dedicated tablet tier at 768–1024px. **There is one breakpoint in this app (768px) and no tablet tier exists.** The mobile tab bar is `md:hidden`, so it vanishes at exactly 768 — a tech on a crew tablet gets the desktop sidebar and none of the tech nav, while the offline-cache code repeatedly assumes crew tablets. Not fixed by a blunt breakpoint move: pushing the bar to `lg` would also hide the dispatch board from an iPad, where it renders today and is arguably right. The two halves want different answers, which makes it a real tablet tier or nothing | v1.1, reopened v1.8 |
 | Q-3 | ✅ | Bundled Capacitor assets | v1.1 |
-| Q-4 | 🔵 Open | Create (+) sheet contents — non-blocking | — |
+| Q-4 | 🟠 Part-answered | Sheet relabelled: it had three rows and one of them created anything. **The real finding is bigger and still open — there is no way to create a one-off visit anywhere in the product, on any device.** Visits exist only as output of `generate_visits_through` from a subscription, so an emergency call-out, a make-up visit after a skip, or a one-time deep clean cannot be scheduled at all. Building it is a capability decision, not a label fix | v1.8 |
 | Q-5 | 🔵 Open | Tech "More" ceiling — non-blocking | — |
 | Q-6 | ✅ | Plan-gated existing roles | v1.1 |
 | Q-7 | ✅ | Soft caps + overage billing | v1.1 |
 | Q-8 | ✅ | Per-tenant subaccount + own 10DLC brand | v1.1 |
 | Q-9 | ✅ | Grandfather existing multi-entity tenants indefinitely | v1.1 |
 | Q-10 | 🔄 | Cancel with credit/refund — **moot**, no external subscribers exist | v1.1 |
-| Q-11 | 🔵 Open | Offline money (add-on charges) — non-blocking | — |
-| Q-12 | 🔵 Open | Mobile dispatch depth — non-blocking | — |
+| Q-11 | 🟠 Part-answered | The UI is honest now (BUG-51): an add-on charge is the one field action that is not queued, and it says so. Whether it *should* queue is still yours. My recommendation is no — the other four queued actions record what happened; this one moves money against a price the device cached earlier | v1.8 |
+| Q-12 | 🟠 Part-answered | **Reassign only, and it is built.** Below 768px the drag board is `display:none` and there was no other way to move a visit, so a dispatcher could not redistribute a sick tech's day from a phone. The drawer now has a tech picker. Reschedule and reorder stay desktop — reorder is meaningless without the board, and reschedule needs `manage_client_billing`, which a dispatcher does not hold | v1.8 |
 | Q-13 | ✅ | Every add-on available at launch, after QA. Site updated; the app's `platform_addons` are still `coming_soon`/inactive and stay that way until live Stripe (owner: Stripe last) | v1.2 |
 
 ---
