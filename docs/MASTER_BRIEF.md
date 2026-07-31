@@ -578,6 +578,35 @@ than the weekly digest (`paid_at`), because a parent will compare the rollup's
 revenue against a royalty invoice for the same period and those two must
 reconcile. Two numbers that agree beat one that is arguably more correct alone.
 
+**IMP-5 detail — and the technique that made it worth doing.**
+
+Removing a cast is only safe if you know what flows in its place. `as any`
+removed carelessly can leave a value still typed `any` through some other
+route, in which case nothing is checked and the build stays green — the change
+looks done and achieves nothing.
+
+So each removal was verified by temporarily inserting a bogus property access
+and confirming `tsc` named the *concrete* row type in the error. That probe is
+what found a live bug: `StaffInvoicePayForm` computed amounts paid with
+
+    .filter((p) => p.status === "succeeded" || p.status === "paid")
+
+and the structural cast on `getInvoiceDetail` had been typing `status` as
+`string`, so the comparison read as plausible. With the real type it fails:
+`payment_status` is exactly `pending, succeeded, failed, refunded`, verified
+against the live enum. Postgres could never have stored `"paid"`, so that
+branch has been unreachable for as long as it has existed.
+
+Harmless here — the surviving `succeeded` test is the correct one. But it is a
+good illustration of what a stale cast costs: it does not just fail to catch
+mistakes, it makes wrong code read as careful.
+
+**Deliberately left:** `null as any` on two `post_credit_entry` RPC arguments
+(the generator declares nullable RPC params as required non-nullable — a
+generator limitation, not stale types), and roughly forty `(supabase as any)`
+sites that carry no stale-types comment and belong to the pre-existing
+`no-explicit-any` baseline CI already treats as non-blocking.
+
 **BUILD-12 detail — the dispute queue, and the bug it nearly introduced.**
 
 Owner: "If the invoice is disputed, it should end-up in a dispute queue; then
@@ -772,7 +801,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | IMP-2 | 🟢 Fixed | 🟠 | Migration drift check + the repo's first CI | v1.1 |
 | IMP-3 | 🟢 Fixed | 🟡 | TS↔SQL permission parity test — proven to fail on a TS-only grant, a SQL-only grant, and unparseable SQL | v1.2 |
 | IMP-4 | 🟢 Fixed | 🟡 | Type the authz boundary — `any` removed from `resolveCaller` | v1.2 |
-| IMP-5 | 🔵 Open | ⚪ | Repo housekeeping — now also: the 4 `as any` casts on `impersonation_grants` in `platform.functions.ts`, and ~6 now-false "not in the generated types yet" comments. See IMP-7 below | v1.3 |
+| IMP-5 | 🟢 Fixed | ⚪ | Repo housekeeping — ~20 stale `as any` casts removed across 14 files, each verified against the regenerated types first and probed to confirm a REAL type flowed rather than degrading to `any`. That probe found a live dead branch: `StaffInvoicePayForm` tested `payment.status === "paid"`, a value the `payment_status` enum has never had. See below | v1.5 |
 | IMP-6 | ❓ Blocked | 🟡 | Payment test coverage — needs Stripe authorized | v1.1 |
 | IMP-7 | 🟢 Fixed | 🟡 | Supabase types regenerated. They had been stale since before this cycle and IMP-9's table drop made them wrong, not just incomplete. Four `any`/structural casts removed as a result | v1.3 |
 | IMP-10 | 🟢 Fixed | 🔴 | **Closed in v1.5, and it was worse than logged.** `src/lib/revenue.ts` is now the one definition — money that ARRIVED (`succeeded` or `refunded`), reversals deducted in their own period — mirrored in SQL with a parity test that fails on drift. Fixing it turned up BUG-21 (a real money error), a third copy of the royalty calculation in the nightly cron, and an AI-tools query with no status filter at all that counted declined cards as revenue. Invoice-based revenue stays separate and is reconciled by BUILD-13's bridge rather than conflated | v1.4 |
