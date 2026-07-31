@@ -32,6 +32,7 @@ import {
 import { EmptyState } from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, Gift } from "lucide-react";
+import { SignupAttribution } from "@/components/SignupAttribution";
 
 export const Route = createFileRoute("/platform/referrals")({
   component: ReferralsPage,
@@ -109,6 +110,11 @@ function ReferralsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Paid acquisition sits beside referred acquisition on purpose: they are
+          the same question answered two ways, and on separate screens nobody
+          ever compares them. */}
+      <SignupAttribution />
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">

@@ -33,6 +33,46 @@ async function audit(
   }
 }
 
+// The reader `organizations.signup_utm` never had. See
+// signup-attribution.report.ts for why this is a reader rather than a deletion.
+export const getSignupAttribution = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertPlatformAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Service-role: this reads across every tenant, which is the whole point of
+    // a platform acquisition view and is precisely what RLS forbids.
+    //
+    // Paged, because PostgREST silently caps an un-ranged select at 1000 rows
+    // (BUG-23) — and a signup report that quietly stops counting after a
+    // thousand tenants would understate exactly the campaigns that worked.
+    const { fetchAllPages } = await import("@/lib/supabase-paging.server");
+    const rows = await fetchAllPages<any>((a, b) =>
+      (supabaseAdmin as any)
+        .from("organizations")
+        .select("id, signup_utm, plan_status")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(a, b),
+    );
+
+    const { groupByUtm, hasAnyAttribution, orgHasConverted, UTM_KEYS } = await import(
+      "@/lib/signup-attribution.report"
+    );
+    const orgs = (rows ?? []).map((o: any) => ({
+      signup_utm: (o.signup_utm as Record<string, unknown> | null) ?? null,
+      converted: orgHasConverted(o.plan_status),
+    }));
+
+    return {
+      totalOrgs: orgs.length,
+      anyAttribution: hasAnyAttribution(orgs),
+      byKey: Object.fromEntries(UTM_KEYS.map((k) => [k, groupByUtm(orgs, k)])),
+    };
+  });
+
 export type PlatformReferralRow = {
   id: string;
   referrer_org_id: string;
