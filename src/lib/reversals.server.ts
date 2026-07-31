@@ -116,6 +116,51 @@ export async function loadOrgReversals(
     .filter((r) => !!r.day && r.day >= from && r.day <= to);
 }
 
+/**
+ * The outcome of every dispute touching these payments — BUILD-12.
+ *
+ * Deliberately NOT windowed. A dispute opened in March and lost in July is
+ * still one dispute; asking "is this open?" against a March-only window would
+ * answer yes forever. So this reads the payment's whole dispute history and
+ * lets disputes.ts fold it.
+ */
+export async function resolveDisputeOutcomes(
+  supabase: any,
+  orgId: string,
+  paymentIds: string[],
+): Promise<Map<string, "open" | "won" | "lost">> {
+  const out = new Map<string, "open" | "won" | "lost">();
+  const ids = [...new Set(paymentIds.filter(Boolean))];
+  if (ids.length === 0) return out;
+
+  const { DISPUTE_KINDS, disputesFrom } = await import("@/lib/disputes");
+  const rows: any[] = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data, error } = await supabase
+      .from("review_items")
+      .select("kind, subject_id, detected_at, detail")
+      .eq("organization_id", orgId)
+      .in("kind", [...DISPUTE_KINDS])
+      .in("subject_id", ids.slice(i, i + 200));
+    if (error) throw new Error(error.message);
+    rows.push(...(data ?? []));
+  }
+
+  for (const d of disputesFrom(
+    rows.map((r) => ({
+      paymentId: (r.subject_id as string | null) ?? null,
+      kind: r.kind as string,
+      // The fold only orders and reports days; any consistent day works here
+      // because the outcome depends on WHICH events exist, not when.
+      day: String(r.detected_at ?? "").slice(0, 10),
+      amountCents: Number(r.detail?.amount_cents ?? 0),
+    })),
+  )) {
+    out.set(d.paymentId, d.outcome);
+  }
+  return out;
+}
+
 export function totalReversals(rows: Reversal[]): ReversalTotals {
   let deductedCents = 0;
   let recoveredCents = 0;

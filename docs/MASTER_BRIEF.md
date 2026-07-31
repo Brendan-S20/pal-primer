@@ -578,6 +578,44 @@ than the weekly digest (`paid_at`), because a parent will compare the rollup's
 revenue against a royalty invoice for the same period and those two must
 reconcile. Two numbers that agree beat one that is arguably more correct alone.
 
+**BUILD-12 detail — the dispute queue, and the bug it nearly introduced.**
+
+Owner: "If the invoice is disputed, it should end-up in a dispute queue; then
+that can either be toggled into the analytics or toggled out, it should
+definitely show as an issue/lost."
+
+*A lost dispute was never recorded as lost.* The webhook records
+`charge.dispute.created` (money withdrawn) and `charge.dispute.closed` only when
+the outcome is **won** — deliberately, because the money already left when the
+dispute opened and recording it again would deduct it twice. That is right about
+the money and wrong about the STATE: a dispute we lost stayed "open" forever, so
+an owner could not tell "still fighting this" from "lost it in March". Hence
+`payment_chargeback_lost`, a review kind that moves no money and records only
+the outcome. The alternative — inferring a loss from age — is a guess, which is
+what the review queue exists to prevent.
+
+*The bug that nearly shipped with it.* `record_franchise_adjustment` handles
+`chargeback_won` explicitly and treats everything else as a new deduction to
+apportion. Feeding it the new kind would have billed a franchise location the
+full disputed amount a **second** time when the dispute closed — one event,
+charged twice, and only for franchise locations, which is the hardest kind to
+notice because it looks fine for every ordinary business. Caught before shipping;
+guarded in the SQL and again at the call site.
+
+*The toggle is a lens, not a fact.* `disputes_in_analytics` defaults to false —
+the money has genuinely left. It changes only the management surfaces
+(Dashboard, the Invoices card) and only for **open** disputes: a won one never
+deducted, a lost one always does, so the toggle can only touch the genuinely
+undecided middle. **It is never consulted by the tax reports**, which read the
+reversal ledger directly. A figure on a return cannot depend on a display
+preference.
+
+*One coupling worth knowing about.* `payment_chargeback_lost` is deliberately
+NOT in `REVERSAL_KINDS`. `reducesIncome()` returns false for anything that is
+not a refund or an open chargeback, so adding it there would classify a lost
+dispute as a **recovery** and add the money back — turning a lost dispute into a
+refund of itself. A test pins both halves so nobody "completes" the list.
+
 **BUILD-8b — the weekly digest is scheduled, and why that alone was not the
 fix.** The Analytics panel has promised "Every Monday morning, we email a
 plain-language summary of the past week" since it shipped, and it had never once
@@ -752,7 +790,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | BUILD-10 | 🟢 Fixed | 🟠 | Review queue built. §10.5's rule pointed at a mechanism nobody had made, so every place that "honored" it honored it by doing nothing. See below | v1.4 |
 | BUILD-11 | 🟢 Fixed | 🟠 | **New.** End-of-day close-out for visits left open | v1.1 |
 | BUILD-13 | 🟢 Fixed | 🟠 | **New.** CPA / tax report pack — ten reports, each declaring its basis and carrying its caveats into the CSV. Cash and accrual income, the bridge between them, point-in-time AR aging, refunds, write-offs, 1099-K reconciliation, franchise settlements, referral rewards. Also the 1099-K explanation the owner asked for, keyed to how payments are actually routed. See below | v1.5 |
-| BUILD-12 | 🔵 Open | 🟠 | **New.** Invoice dispute queue — owner decision: disputes get their own queue, analytics inclusion is a toggle, and they always render as issue/lost rather than being absorbed silently | v1.4 |
+| BUILD-12 | 🟢 Fixed | 🟠 | Invoice dispute queue — own page under Billing, an analytics toggle that never touches the tax reports, and `payment_chargeback_lost` so a lost dispute stops reading as "open" forever. See below | v1.5 |
 | RESP-1…5 | 🔵 Open | 🟠 | All five still need real hardware | v1.0 |
 | MKT-1 | 🟢 Fixed | 🔴 | Catalog truth — Q-13 answered (every add-on at launch). Site now lists the 6 real add-ons with prices; the 3 phantom SKUs are gone | v1.2 |
 | MKT-2 | 🟢 Fixed | 🔴 | Broken AI features no longer described as live | v1.1 |

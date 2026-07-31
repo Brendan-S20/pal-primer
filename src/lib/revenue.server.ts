@@ -37,7 +37,11 @@
 
 import { grossReceivedCents, receivedPaymentStatuses } from "@/lib/revenue";
 import { orgLocalDay } from "@/lib/cpa-reports";
-import { loadOrgReversals, totalReversals } from "@/lib/reversals.server";
+import {
+  loadOrgReversals,
+  resolveDisputeOutcomes,
+  totalReversals,
+} from "@/lib/reversals.server";
 
 export type CollectedSummary = {
   /** Money that reached the account in the period, before reversals. */
@@ -89,7 +93,17 @@ export function monthToDate(timezone: string, now: Date = new Date()) {
  */
 export async function collectedInPeriod(
   supabase: any,
-  opts: { orgId: string; from: string; to: string; timezone?: string },
+  opts: {
+    orgId: string;
+    from: string;
+    to: string;
+    timezone?: string;
+    /** BUILD-12. When true, an amount under an OPEN dispute is still counted as
+     *  revenue. Only the management surfaces pass this — the tax pack reads the
+     *  reversal ledger directly and never consults it, because a figure on a
+     *  return cannot depend on a display preference. */
+    includeOpenDisputes?: boolean;
+  },
 ): Promise<CollectedSummary> {
   const { orgId, from, to } = opts;
   const timezone = opts.timezone ?? (await orgTimezone(supabase, orgId));
@@ -137,7 +151,24 @@ export async function collectedInPeriod(
     return !!day && day >= from && day <= to;
   });
 
-  const reversals = totalReversals(await loadOrgReversals(supabase, { orgId, timezone, from, to }));
+  let reversalRows = await loadOrgReversals(supabase, { orgId, timezone, from, to });
+
+  if (opts.includeOpenDisputes) {
+    // Drop the deduction for disputes that are STILL OPEN. A lost one always
+    // deducts and a won one never did, so the toggle can only ever touch the
+    // genuinely undecided middle — which is the only case an owner could have
+    // a defensible opinion about.
+    const outcomes = await resolveDisputeOutcomes(
+      supabase,
+      orgId,
+      reversalRows.filter((r) => r.kind === "payment_chargeback").map((r) => r.paymentId ?? ""),
+    );
+    reversalRows = reversalRows.filter(
+      (r) => !(r.kind === "payment_chargeback" && outcomes.get(r.paymentId ?? "") === "open"),
+    );
+  }
+
+  const reversals = totalReversals(reversalRows);
 
   const grossCents = grossReceivedCents(inPeriod);
   return {
@@ -152,12 +183,27 @@ export async function collectedInPeriod(
   };
 }
 
-/** Month-to-date collected, the figure the Dashboard and Invoices cards show. */
+/** Month-to-date collected, the figure the Dashboard and Invoices cards show.
+ *
+ *  These are MANAGEMENT surfaces, so they honour the org's dispute lens
+ *  (BUILD-12). The tax pack deliberately does not. */
 export async function collectedMonthToDate(
   supabase: any,
   orgId: string,
 ): Promise<CollectedSummary> {
   const timezone = await orgTimezone(supabase, orgId);
   const { from, to } = monthToDate(timezone);
-  return collectedInPeriod(supabase, { orgId, from, to, timezone });
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("disputes_in_analytics")
+    .eq("id", orgId)
+    .maybeSingle();
+  return collectedInPeriod(supabase, {
+    orgId,
+    from,
+    to,
+    timezone,
+    includeOpenDisputes: !!(org as { disputes_in_analytics?: boolean } | null)
+      ?.disputes_in_analytics,
+  });
 }

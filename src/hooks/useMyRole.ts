@@ -60,6 +60,10 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   // (view_financials). Making the route stricter than the function behind it
   // would only hide the link from someone who could still fetch the data.
   "/tax-reports": ["owner", "office_manager"],
+  // BUILD-12: same audience as the other money surfaces — the server gate is
+  // view_financials, and a route stricter than the function behind it only
+  // hides the link from someone who could still fetch the data.
+  "/disputes": ["owner", "office_manager"],
   "/analytics": ["owner", "office_manager"],
   // BUILD-10: dispatchers and techs can SEE that a record is uncertain
   // (the list is gated on view_client_directory server-side), but only

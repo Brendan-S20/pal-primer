@@ -25,6 +25,7 @@ import {
   Dna,
   ClipboardCheck,
   FileSpreadsheet,
+  ShieldAlert,
 } from "lucide-react";
 
 import {
@@ -90,6 +91,10 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       // because the whole point is that an owner finds it in January without
       // having to be told it exists.
       { title: "Tax & accountant", url: "/tax-reports", icon: FileSpreadsheet },
+      // BUILD-12: disputes get their own entry rather than living inside the
+      // review queue. A chargeback has a deadline attached, and one buried
+      // under visit-timestamp warnings is one nobody answers in time.
+      { title: "Disputes", url: "/disputes", icon: ShieldAlert },
     ],
   },
   {

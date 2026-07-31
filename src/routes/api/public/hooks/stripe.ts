@@ -469,34 +469,59 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               kind = "chargeback";
               amount = Number(obj?.amount ?? 0);
             } else {
-              // dispute.closed — only a WIN returns the money. A loss simply
-              // confirms the chargeback already recorded when it opened, so
-              // recording anything here would double-count it.
-              if (obj?.status === "won") { kind = "chargeback_won"; amount = Number(obj?.amount ?? 0); }
+              // dispute.closed. Only a WIN returns money — a loss confirms the
+              // withdrawal already recorded when the dispute opened, so treating
+              // it as a second reversal would deduct the same amount twice.
+              //
+              // BUILD-12: but the OUTCOME still has to be recorded, or the queue
+              // says "open" forever and an owner cannot tell "still fighting
+              // this" from "lost it in March". `chargeback_lost` is a
+              // status-only kind: it files a queue entry, moves no money, and
+              // raises no adjustment. Inferring the loss from age instead would
+              // be a guess, which is what the review queue exists to prevent.
+              if (obj?.status === "won") {
+                kind = "chargeback_won";
+                amount = Number(obj?.amount ?? 0);
+              } else {
+                // Every non-won closure is a loss for our purposes: `lost`,
+                // `warning_closed` and the rest all end with the customer
+                // keeping the money.
+                kind = "chargeback_lost";
+                amount = Number(obj?.amount ?? 0);
+              }
             }
 
             if (kind) {
               // Mark the payment so every revenue figure stops counting it.
-              // Deliberately NOT for a won dispute — that money is ours again.
-              if (kind !== "chargeback_won") {
+              // Deliberately NOT for a won dispute — that money is ours again —
+              // and NOT for a lost one either: the payment was already marked
+              // when the dispute opened, and re-marking it would be a no-op that
+              // implies a second event.
+              if (kind !== "chargeback_won" && kind !== "chargeback_lost") {
                 await (supabaseAdmin as any)
                   .from("payments").update({ status: "refunded" }).eq("id", pay.id);
-              } else {
+              } else if (kind === "chargeback_won") {
                 await (supabaseAdmin as any)
                   .from("payments").update({ status: "succeeded" }).eq("id", pay.id);
               }
 
               // Franchise apportionment, if this location belongs to one.
               // Returns null for an ordinary independent business.
-              const { data: adjId } = await (supabaseAdmin as any).rpc(
-                "record_franchise_adjustment",
-                {
-                  _payment_id: pay.id,
-                  _kind: kind,
-                  _amount_cents: amount,
-                  _note: `Stripe ${event.type}`,
-                },
-              );
+              //
+              // BUILD-12: skipped entirely for a lost dispute. The money left —
+              // and was apportioned — when the dispute OPENED; losing it changes
+              // the outcome, not the balance. The SQL refuses this kind too, but
+              // a guard on both sides of a boundary that decides whether someone
+              // is billed twice is worth the four lines.
+              const { data: adjId } =
+                kind === "chargeback_lost"
+                  ? { data: null }
+                  : await (supabaseAdmin as any).rpc("record_franchise_adjustment", {
+                      _payment_id: pay.id,
+                      _kind: kind,
+                      _amount_cents: amount,
+                      _note: `Stripe ${event.type}`,
+                    });
 
               // ALERT, because the owner is right that this WILL happen and
               // silence is the failure mode. Reuses the review queue rather
