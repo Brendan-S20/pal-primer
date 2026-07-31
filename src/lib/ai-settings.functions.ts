@@ -18,9 +18,6 @@ import { DEFAULT_MODELS } from "@/lib/ai.server";
 export const getOrgAiSettings = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    // Still permission-gated: this reports on the org's paid service, so it
-    // belongs behind manage_settings like the rest of the settings surface.
-    await requirePermission(context.supabase, context.userId, "manage_settings");
     // There are TWO managed AI paths, not one, and reporting only the first
     // would have let this page say "AI is enabled" while the receptionist and
     // the weekly digest were dead:
@@ -34,7 +31,29 @@ export const getOrgAiSettings = createServerFn({ method: "GET" })
     //
     // Consolidating them is worth doing and belongs with BUILD-2's metering,
     // which has to capture usage on BOTH or it will undercount.
+    // BUILD-7: availability was reported from environment variables ALONE, so
+    // an organization whose plan does not include AI saw "AI is enabled for
+    // this organization" and, on pressing the check, "AI is not configured on
+    // this deployment" — the page blaming our infrastructure for their plan,
+    // while the tools themselves refused for a third, different reason. Three
+    // contradictory answers to one question.
+    //
+    // The two facts are reported separately because they need different words
+    // and different people fix them: a missing key is ours, a plan is theirs.
+    //
+    // Still permission-gated: this reports on the org's paid service, so it
+    // belongs behind manage_settings like the rest of the settings surface.
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_settings",
+    );
+    const { checkAiAccess } = await import("@/lib/ai-access.server");
+    const { allowed: planAllowsAi, reason: planReason } = await checkAiAccess(orgId);
+
     return {
+      planAllowsAi,
+      planReason,
       toolsAvailable: !!process.env.ANTHROPIC_API_KEY,
       assistantAvailable: !!process.env.LOVABLE_API_KEY,
       model: DEFAULT_MODELS.anthropic,
@@ -51,7 +70,17 @@ export const testOrgAiKey = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
     const { resolveOrgAiConfig } = await import("@/lib/ai-credentials.server");
-    const config = await resolveOrgAiConfig(orgId);
+    let config;
+    try {
+      config = await resolveOrgAiConfig(orgId);
+    } catch (e) {
+      // A plan refusal, which resolveOrgAiConfig now raises with its own words.
+      // This used to come back as null and get reported as "AI is not
+      // configured on this deployment" — blaming our infrastructure for the
+      // caller's plan, and sending them to support over something support
+      // cannot change.
+      return { ok: false as const, error: (e as Error).message };
+    }
     if (!config) {
       // Deliberately not "add your key" — there is nothing for the tenant to do.
       return { ok: false as const, error: "AI is not configured on this deployment." };

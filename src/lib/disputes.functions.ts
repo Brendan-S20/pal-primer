@@ -136,10 +136,9 @@ export const setDisputesInAnalytics = createServerFn({ method: "POST" })
     // view_financials, which lets someone read the number without being able
     // to change how everyone else sees it.
     const { orgId } = await requirePermission(supabase, context.userId, "manage_settings");
-    const { error } = await supabase
-      .from("organizations")
-      .update({ disputes_in_analytics: data.include } as any)
-      .eq("id", orgId);
-    if (error) throw new Error(error.message);
+    // Through the helper so a zero-row update is an error rather than a
+    // success toast over an unchanged setting — see org-write.server.
+    const { updateOwnOrg } = await import("@/lib/org-write.server");
+    await updateOwnOrg(supabase, orgId, { disputes_in_analytics: data.include });
     return { ok: true as const };
   });

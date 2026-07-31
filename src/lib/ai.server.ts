@@ -56,9 +56,13 @@ type JsonSchema = Record<string, unknown>;
 
 function requireConfig(label: string, config: AiConfig | null): AiConfig {
   if (!config || !config.apiKey) {
+    // Was "Add your Anthropic or OpenAI API key in Settings → AI", which named
+    // a field IMP-9 removed with BYOK. Nothing a tenant can do reaches this
+    // now: the only way here is a deployment with no platform key, since a
+    // plan refusal throws its own reason in resolveOrgAiConfig.
     throw new AiGenerationError(
       label,
-      "AI isn't configured yet. Add your Anthropic or OpenAI API key in Settings → AI.",
+      "AI is temporarily unavailable on HoundStack's side. Nothing is wrong with your account — please contact support if it persists.",
     );
   }
   return config;

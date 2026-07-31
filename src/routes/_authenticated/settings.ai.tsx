@@ -52,7 +52,24 @@ function AiSettings() {
       ) : (
         <>
           <div className="rounded-lg border bg-card p-4 text-sm">
-            {q.data?.toolsAvailable && q.data?.assistantAvailable ? (
+            {q.data && !q.data.planAllowsAi ? (
+              // BUILD-7: checked FIRST. This page used to read availability
+              // from environment variables alone, so an organization whose plan
+              // does not include AI was told "AI is enabled for this
+              // organization" — and, if they pressed the check, that it was a
+              // HoundStack configuration issue and to contact support. Support
+              // cannot change someone's plan for them, and nothing on the page
+              // hinted that the plan was the point.
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                <div>
+                  <div className="font-medium">AI isn&apos;t included on your plan</div>
+                  <div className="text-xs text-muted-foreground">
+                    {q.data.planReason ?? "AI features need a paid plan."}
+                  </div>
+                </div>
+              </div>
+            ) : q.data?.toolsAvailable && q.data?.assistantAvailable ? (
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-start gap-2">
                   <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />

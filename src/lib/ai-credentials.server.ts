@@ -28,13 +28,22 @@ import { resolveAiConfigFromEnv, type AiConfig } from "@/lib/ai.server";
  */
 export async function resolveOrgAiConfig(_orgId: string): Promise<AiConfig | null> {
   // BUILD-7: the per-org hook this signature was reserved for, used first for
-  // access rather than metering. Returns null when the org may not use AI, and
-  // callers already treat null as "AI is unavailable" — so no call site needed
-  // to change to respect a paid-only policy.
+  // access rather than metering.
   //
   // NOT the only gate: digest.server.ts and ai-receptionist.server.ts reach the
   // gateway directly and check ai-access.server.ts themselves.
-  const { orgMayUseAi } = await import("@/lib/ai-access.server");
-  if (!(await orgMayUseAi(_orgId))) return null;
+  //
+  // THROWS rather than returning null when the plan is the reason, because the
+  // two causes need different words and null erased the difference. Returning
+  // null sent every caller into requireConfig's "Add your Anthropic or OpenAI
+  // API key in Settings → AI" — a field IMP-9 deleted when BYOK was removed. So
+  // a trial org clicking an AI tool was told to go and fill in something that
+  // does not exist, for a reason that was never about a key.
+  //
+  // null still means what it always meant: the DEPLOYMENT has no key. That is
+  // our problem, not the tenant's, and it keeps the wording it had.
+  const { checkAiAccess } = await import("@/lib/ai-access.server");
+  const { allowed, reason } = await checkAiAccess(_orgId);
+  if (!allowed) throw new Error(reason ?? "AI features need a paid plan.");
   return resolveAiConfigFromEnv();
 }
