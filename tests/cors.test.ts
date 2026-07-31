@@ -28,12 +28,7 @@ describe("who is allowed", () => {
   it("ignores an origin it does not know, rather than reflecting it", () => {
     // Reflecting whatever arrives is the wildcard hole wearing a disguise, and
     // it reads as a working allowlist right up until someone tries it.
-    for (const origin of [
-      "https://evil.test",
-      "null",
-      "http://localhost",
-      "capacitor://evil",
-    ]) {
+    for (const origin of ["https://evil.test", "null", "http://localhost", "capacitor://evil"]) {
       expect(corsDecision({ method: "POST", path: RPC, origin }).kind, origin).toBe("ignore");
     }
   });
