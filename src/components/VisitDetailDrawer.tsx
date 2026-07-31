@@ -18,6 +18,8 @@ import {
   getVisitDetail,
   completeVisitFromOffice,
   cancelVisitFromOffice,
+  reassignVisit,
+  listStaff,
 } from "@/lib/visits.functions";
 import { usePermissions } from "@/hooks/useMyRole";
 import { addDog, setDogDna } from "@/lib/dogs.functions";
@@ -110,6 +112,36 @@ export function VisitDetailDrawer({
   const { can, role } = usePermissions();
   const canActFromOffice = can("manage_client_billing");
 
+  // Q-12, narrowest useful answer. Below 768px the dnd board is display:none
+  // and there is no other way to move a visit, so a dispatcher on a phone
+  // could not do the one thing a phone is for: a tech calls in sick and the
+  // day has to be redistributed from wherever they are standing.
+  //
+  // Reassign only. Reschedule and reorder stay desktop — reorder has no
+  // meaning without the board, and reschedule needs manage_client_billing,
+  // which a dispatcher does not hold. reassign_visit authorizes on
+  // can_write_org, which all three office roles pass, so this is reachable by
+  // exactly the people who reach this drawer.
+  const doReassign = useServerFn(reassignVisit);
+  const listStaffFn = useServerFn(listStaff);
+  const { data: staffData } = useQuery({
+    enabled: !!visitId,
+    queryKey: ["staff"],
+    queryFn: () => listStaffFn(),
+    staleTime: 5 * 60_000,
+  });
+  const reassignMut = useMutation({
+    mutationFn: (staffId: string | null) => doReassign({ data: { visitId: visitId!, staffId } }),
+    onSuccess: () => {
+      toast.success("Visit reassigned");
+      invalidate();
+      // The board and the mobile day list both key off "visits"; invalidate()
+      // covers those, but the tech lanes are grouped client-side from the same
+      // query so no extra refetch is needed.
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const { data, isLoading } = useQuery({
     enabled: !!visitId,
     queryKey: ["visit-detail", visitId],
@@ -151,6 +183,12 @@ export function VisitDetailDrawer({
   // already in progress has a tech on site, and cancelling it from a desk
   // would overwrite what they are doing.
   const canCancel = v?.status === "scheduled";
+  // Only work that has not happened yet can be moved. Reassigning a completed
+  // visit would rewrite who did it.
+  const canReassign = v?.status === "scheduled";
+  const techs = (staffData?.staff ?? []).filter(
+    (s: any) => s.is_field_tech || s.id === v?.assigned_staff_id,
+  );
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -270,6 +308,30 @@ export function VisitDetailDrawer({
                     </li>
                   ))}
                 </ul>
+              </section>
+            )}
+
+            {canReassign && (
+              <section className="space-y-1 border-t pt-3">
+                <Label htmlFor="reassign" className="text-xs">Assigned tech</Label>
+                <select
+                  id="reassign"
+                  className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                  value={v?.assigned_staff_id ?? ""}
+                  disabled={reassignMut.isPending}
+                  onChange={(e) => reassignMut.mutate(e.target.value || null)}
+                >
+                  <option value="">Unassigned</option>
+                  {techs.map((s: any) => (
+                    <option key={s.id} value={s.id}>
+                      {s.display_name}
+                      {s.routing_available ? "" : " (off routes)"}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-muted-foreground">
+                  Moving a visit to another day, or reordering a tech's stops, is on desktop.
+                </p>
               </section>
             )}
 
