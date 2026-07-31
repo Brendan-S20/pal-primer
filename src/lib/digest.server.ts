@@ -29,8 +29,17 @@ export interface DigestMetrics {
   weekLabel: string;
   stats: DigestStat[];
   raw: {
+    /** NET of the reversals that happened in the same window — see the
+     *  deduction in computeDigestMetrics for why this cannot be the gross. */
     revenueCents: number;
+    revenueGrossCents: number;
+    /** Refunds and lost chargebacks less won disputes, dated to when the money
+     *  moved. Carried separately so the digest can SHOW the reversal instead of
+     *  handing the owner a figure that quietly shrank. */
+    refundsCents: number;
     prevRevenueCents: number;
+    prevRevenueGrossCents: number;
+    prevRefundsCents: number;
     visitsCompleted: number;
     visitsSkipped: number;
     newClients: number;
@@ -131,8 +140,46 @@ export async function computeDigestMetrics(
       .gte("paid_at", prevStartIso)
       .lt("paid_at", weekStartIso),
   ]);
-  const revenueCents = grossReceivedCents(payThis ?? []);
-  const prevRevenueCents = grossReceivedCents(payPrev ?? []);
+  const revenueGrossCents = grossReceivedCents(payThis ?? []);
+  const prevRevenueGrossCents = grossReceivedCents(payPrev ?? []);
+
+  // IMP-10, the other half of the rule. Keeping the receipt in the period it
+  // arrived is only truthful if the reversal is deducted in the period IT
+  // happened, and nothing above does that — `refunded` payments are counted at
+  // full value and the refund itself is never subtracted anywhere. A $5,000
+  // dispute would therefore leave last week's revenue untouched AND leave this
+  // week's untouched, so the advisor reads a chargeback as flat or, once the
+  // replacement sale lands, as a GAIN, and then says so in plain English.
+  //
+  // The previous window gets the identical treatment because the entire point
+  // of this function is the week-over-week delta; netting only the current side
+  // would compare two different definitions of revenue and put the error into
+  // the one number the owner actually reads.
+  //
+  // Windows are org-local DAYS (what review_items can be bucketed by), so the
+  // previous one ends the day BEFORE the current one starts — adjacent, never
+  // overlapping, so no reversal is deducted twice.
+  const { loadOrgReversals, totalReversals } = await import("@/lib/reversals.server");
+  const prevStartDate = orgLocalDate(prevStart, tz);
+  const prevEndDate = orgLocalDate(weekStart - DAY, tz);
+  const [thisReversals, prevReversals] = await Promise.all([
+    loadOrgReversals(supabaseAdmin, {
+      orgId,
+      timezone: tz,
+      from: weekStartDate,
+      to: todayDate,
+    }),
+    loadOrgReversals(supabaseAdmin, {
+      orgId,
+      timezone: tz,
+      from: prevStartDate,
+      to: prevEndDate,
+    }),
+  ]);
+  const refundsCents = totalReversals(thisReversals).netCents;
+  const prevRefundsCents = totalReversals(prevReversals).netCents;
+  const revenueCents = revenueGrossCents - refundsCents;
+  const prevRevenueCents = prevRevenueGrossCents - prevRefundsCents;
 
   // Visits this week
   const { data: visits } = await supabaseAdmin
@@ -204,8 +251,30 @@ export async function computeDigestMetrics(
     alerts.push(`Skip rate is ${rate}%, above the 10% threshold.`);
   }
 
+  // The refund gets its own tile whenever there is one, the same way /reports
+  // splits gross / refunds / net. A single number that is simply smaller this
+  // week tells an owner nothing about WHY, and "revenue fell" and "a customer
+  // disputed a charge" call for completely different responses.
+  const hadReversals = refundsCents !== 0 || prevRefundsCents !== 0;
   const stats: DigestStat[] = [
-    { label: "Revenue", value: fmt(revenueCents), delta: pct(revenueCents, prevRevenueCents) },
+    {
+      label: hadReversals ? "Revenue (net)" : "Revenue",
+      value: fmt(revenueCents),
+      delta: pct(revenueCents, prevRevenueCents),
+    },
+    ...(hadReversals
+      ? [
+          {
+            label: "Refunds & chargebacks",
+            value:
+              refundsCents === 0
+                ? "-"
+                : refundsCents > 0
+                  ? `-${fmt(refundsCents)}`
+                  : `+${fmt(-refundsCents)}`,
+          },
+        ]
+      : []),
     { label: "Visits done", value: String(visitsCompleted) },
     { label: "New clients", value: String(newClients ?? 0) },
     { label: "Open A/R", value: fmt(openArCents) },
@@ -220,7 +289,11 @@ export async function computeDigestMetrics(
     stats,
     raw: {
       revenueCents,
+      revenueGrossCents,
+      refundsCents,
       prevRevenueCents,
+      prevRevenueGrossCents,
+      prevRefundsCents,
       visitsCompleted,
       visitsSkipped,
       newClients: newClients ?? 0,
@@ -272,7 +345,12 @@ export async function generateDigestInsights(m: DigestMetrics): Promise<DigestIn
       `You are analyzing business performance for ${m.orgName}, a residential dog-waste cleanup business.`,
       `Period: ${m.weekLabel}.`,
       `Metrics:`,
-      `- Revenue: ${fmt(m.raw.revenueCents)} (prev week ${fmt(m.raw.prevRevenueCents)}, ${pct(m.raw.revenueCents, m.raw.prevRevenueCents)})`,
+      `- Revenue (net of refunds): ${fmt(m.raw.revenueCents)} (prev week ${fmt(m.raw.prevRevenueCents)}, ${pct(m.raw.revenueCents, m.raw.prevRevenueCents)})`,
+      // Given the components, the model can say a drop was a dispute rather
+      // than lost business. Given only the net it would invent a reason.
+      m.raw.refundsCents !== 0 || m.raw.prevRefundsCents !== 0
+        ? `- Of which refunds/chargebacks: ${fmt(m.raw.refundsCents)} this week off ${fmt(m.raw.revenueGrossCents)} collected (prev week ${fmt(m.raw.prevRefundsCents)} off ${fmt(m.raw.prevRevenueGrossCents)})`
+        : "",
       `- Visits completed: ${m.raw.visitsCompleted}`,
       `- Visits skipped/no-show: ${m.raw.visitsSkipped}`,
       `- New clients: ${m.raw.newClients}`,

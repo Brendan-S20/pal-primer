@@ -90,7 +90,13 @@ export async function loadOrgReversals(
       .in("kind", REVERSAL_KINDS as unknown as string[])
       .gte("detected_at", lo)
       .lte("detected_at", hi)
+      // `id` is the tiebreaker, not decoration. Paging on a non-unique sort key
+      // is undefined between pages, and a webhook backfill files many review
+      // items on the same timestamp — so a tie group straddling a page boundary
+      // could return one reversal twice or drop it, silently, in the module
+      // whose whole job is that the refund figure is right.
       .order("detected_at")
+      .order("id")
       .range(a, b),
   );
 

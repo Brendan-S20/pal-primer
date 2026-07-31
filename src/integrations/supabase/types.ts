@@ -1382,6 +1382,115 @@ export type Database = {
           },
         ]
       }
+      franchise_adjustments: {
+        Row: {
+          amount_cents: number
+          applied_settlement_id: string | null
+          child_organization_id: string
+          collected_by_organization_id: string | null
+          created_at: string
+          cumulative_cents: number | null
+          due_by: string
+          franchise_share_cents: number
+          id: string
+          kind: string
+          location_share_cents: number
+          note: string | null
+          original_period_end: string | null
+          original_period_start: string | null
+          parent_organization_id: string
+          payment_id: string | null
+          reversed_at: string | null
+          reversed_by_adjustment_id: string | null
+          status: string
+        }
+        Insert: {
+          amount_cents: number
+          applied_settlement_id?: string | null
+          child_organization_id: string
+          collected_by_organization_id?: string | null
+          created_at?: string
+          cumulative_cents?: number | null
+          due_by?: string
+          franchise_share_cents?: number
+          id?: string
+          kind: string
+          location_share_cents?: number
+          note?: string | null
+          original_period_end?: string | null
+          original_period_start?: string | null
+          parent_organization_id: string
+          payment_id?: string | null
+          reversed_at?: string | null
+          reversed_by_adjustment_id?: string | null
+          status?: string
+        }
+        Update: {
+          amount_cents?: number
+          applied_settlement_id?: string | null
+          child_organization_id?: string
+          collected_by_organization_id?: string | null
+          created_at?: string
+          cumulative_cents?: number | null
+          due_by?: string
+          franchise_share_cents?: number
+          id?: string
+          kind?: string
+          location_share_cents?: number
+          note?: string | null
+          original_period_end?: string | null
+          original_period_start?: string | null
+          parent_organization_id?: string
+          payment_id?: string | null
+          reversed_at?: string | null
+          reversed_by_adjustment_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "franchise_adjustments_applied_settlement_id_fkey"
+            columns: ["applied_settlement_id"]
+            isOneToOne: false
+            referencedRelation: "franchise_royalty_invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "franchise_adjustments_child_organization_id_fkey"
+            columns: ["child_organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "franchise_adjustments_collected_by_organization_id_fkey"
+            columns: ["collected_by_organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "franchise_adjustments_parent_organization_id_fkey"
+            columns: ["parent_organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "franchise_adjustments_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "franchise_adjustments_reversed_by_adjustment_id_fkey"
+            columns: ["reversed_by_adjustment_id"]
+            isOneToOne: false
+            referencedRelation: "franchise_adjustments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       franchise_link_codes: {
         Row: {
           code: string
@@ -1435,6 +1544,7 @@ export type Database = {
       }
       franchise_royalty_invoices: {
         Row: {
+          adjustments_applied_cents: number
           amount_cents: number
           child_organization_id: string
           created_at: string
@@ -1453,6 +1563,7 @@ export type Database = {
           status: string
         }
         Insert: {
+          adjustments_applied_cents?: number
           amount_cents?: number
           child_organization_id: string
           created_at?: string
@@ -1471,6 +1582,7 @@ export type Database = {
           status?: string
         }
         Update: {
+          adjustments_applied_cents?: number
           amount_cents?: number
           child_organization_id?: string
           created_at?: string
@@ -2559,6 +2671,7 @@ export type Database = {
           billing_status: Database["public"]["Enums"]["org_billing_status"]
           billing_tier: string | null
           brand_color: string | null
+          chargeback_responsibility: string
           contact_email: string | null
           contact_phone: string | null
           created_at: string
@@ -2662,6 +2775,7 @@ export type Database = {
           billing_status?: Database["public"]["Enums"]["org_billing_status"]
           billing_tier?: string | null
           brand_color?: string | null
+          chargeback_responsibility?: string
           contact_email?: string | null
           contact_phone?: string | null
           created_at?: string
@@ -2765,6 +2879,7 @@ export type Database = {
           billing_status?: Database["public"]["Enums"]["org_billing_status"]
           billing_tier?: string | null
           brand_color?: string | null
+          chargeback_responsibility?: string
           contact_email?: string | null
           contact_phone?: string | null
           created_at?: string
@@ -5517,6 +5632,16 @@ export type Database = {
         Args: { payload: Json; queue_name: string }
         Returns: number
       }
+      file_reversal_review_item: {
+        Args: {
+          _adjustment_id?: string
+          _amount_cents: number
+          _kind: string
+          _org_id: string
+          _payment_id: string
+        }
+        Returns: string
+      }
       finalize_visit_completion: {
         Args: { _visit_id: string }
         Returns: undefined
@@ -5528,6 +5653,18 @@ export type Database = {
           name: string
         }[]
       }
+      franchise_payment_routing: {
+        Args: never
+        Returns: {
+          chargeback_responsibility: string
+          child_account_id: string
+          child_charges_enabled: boolean
+          child_name: string
+          child_organization_id: string
+          payments_collected_by_parent: boolean
+          royalty_percent: number
+        }[]
+      }
       franchise_rollup: {
         Args: { _parent_org: string }
         Returns: {
@@ -5535,7 +5672,9 @@ export type Database = {
           ar_open_cents: number
           organization_id: string
           organization_name: string
+          refunds_mtd_cents: number
           revenue_mtd_cents: number
+          revenue_mtd_gross_cents: number
           tech_count: number
           visits_completed_today: number
           visits_today: number
@@ -6008,6 +6147,15 @@ export type Database = {
         Args: { _staff_id: string; _visit_id: string }
         Returns: undefined
       }
+      record_franchise_adjustment: {
+        Args: {
+          _amount_cents: number
+          _kind: string
+          _note?: string
+          _payment_id: string
+        }
+        Returns: string
+      }
       record_visit_station_service: {
         Args: { _visit_id: string }
         Returns: number
@@ -6056,6 +6204,10 @@ export type Database = {
         }[]
       }
       run_billing_cycles: { Args: { _org_id?: string }; Returns: number }
+      set_chargeback_responsibility: {
+        Args: { _child_org_id: string; _responsibility: string }
+        Returns: undefined
+      }
       set_child_royalty_percent: {
         Args: { _child_org_id: string; _percent: number }
         Returns: undefined

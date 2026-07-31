@@ -41,12 +41,24 @@ mirrored in SQL, with a parity test that fails on drift. Getting there surfaced
 BUG-21, a third copy of the royalty calculation in the nightly cron, and a query
 that counted declined cards as income.
 
-**Shipped:** BUILD-13, IMP-10, BUG-20, BUG-21, BUG-22, and the settlement,
+**Shipped:** BUILD-13, IMP-10, BUG-20 through BUG-27, and the settlement,
 adjustment and routing halves of BUILD-6.
 
 **New:** BUG-20 (settlement regeneration was not idempotent), BUG-21 (a
-same-period refund was counted twice), BUG-22 (`chargeback_responsibility`
-unprotected).
+same-period refund counted twice), BUG-22 (`chargeback_responsibility`
+unprotected), BUG-23 (`/reports` silently truncated at 1000 invoices), BUG-24
+(the settlement billed a location for refunds it had already paid itself),
+BUG-25 (only the first partial refund recorded), BUG-26 (a won dispute never
+repaid once the statement had gone out), BUG-27 (settlement periods measured in
+UTC days).
+
+**On how the second half of that list was found.** BUG-21 came out of running
+the generator twice on purpose. BUG-22 through BUG-27 came out of a dedicated
+adversarial pass over the money code that had just been written and verified —
+briefed to produce concrete failing scenarios and to discard any finding it
+could not demonstrate. It returned fourteen, of which these are the ones that
+moved money. Reading the same code for plausibility would have found none of
+them: every version read perfectly well.
 
 **Also worth knowing:** four migrations had been applied to the live database
 without a matching repo file, which meant the IMP-2 drift check was reporting
@@ -191,6 +203,12 @@ were built. Repo search finds no such mechanism. Raised as BUILD-10.
 | BUG-17 | 🟢 Fixed | 🟠 | **New.** In-progress visit lost on reload | v1.1 |
 | BUG-18 | 🟢 Fixed | 🔴 | **New.** Accepting a second org invite hard-bricked the account. Invite now refused with a readable message; unique index as the safety net. Multi-org itself stays with BUILD-6 (owner decision) | v1.4 |
 | BUG-19 | 🟢 Fixed | 🟠 | **New.** Three franchise columns were writable by tenants — including `franchise_royalty_percent`, i.e. a franchisee could zero out what they owed. All protected, verified against the real tenant path | v1.4 |
+| BUG-24 | 🟢 Fixed | 🔴 | **New.** The settlement charged a location for refunds that left the location's OWN Stripe account — it credited only parent-collected revenue but debited the location's share of every reversal. All three chargeback policies out by the full refund, always in the franchise's favour; under `franchise` the software billed the franchisee for a loss the franchise had contractually agreed to absorb. The tell was `franchise_share_cents`: written since adjustments were built, read by nothing. Verified across all six collector × policy combinations | v1.5 |
+| BUG-25 | 🟢 Fixed | 🟠 | **New.** Only the first partial refund of a payment was ever recorded. Stripe's `charge.refunded` carries the CUMULATIVE amount and the unique key was `(payment_id, kind)` with DO NOTHING, so $200-then-$800 recorded $200 and dropped the rest. Now records the delta, keyed on the cumulative so redelivery is still idempotent | v1.5 |
+| BUG-26 | 🟢 Fixed | 🔴 | **New.** Winning a dispute after the statement was sent never gave the money back — the original adjustment was marked `reversed` and nothing repaid it, while the review-queue alert told the owner the deduction "has been reversed." Now raises a compensating adjustment so the next settlement returns it. Owner's rule was explicit: recovery is paid back | v1.5 |
+| BUG-27 | 🟢 Fixed | 🟠 | **New.** Settlement periods were measured in UTC days while every other money surface uses the organization's calendar. Every payment after 19:00 local on a month's last day landed on the wrong statement — revenue understated, royalty billed a month late, and the tax pack disagreeing with the settlement about the same sale | v1.5 |
+| BUG-23 | 🟢 Fixed | 🟠 | **New.** `/reports` selected every invoice in the organization with no range and no paging. PostgREST caps a response at 1000 rows silently — no error, no flag — so past a thousand invoices revenue, outstanding, aging and top clients were all quietly low, and got worse the longer the business ran. Paging is now a shared helper | v1.5 |
+| BUG-22 | 🟢 Fixed | 🟠 | **New.** `chargeback_responsibility` was writable by tenants — BUG-19's exact shape. A location's own owner could set it to `franchise` and push every future chargeback onto their parent. Protected; verified blocked in an isolated transaction | v1.5 |
 | BUG-21 | 🟢 Fixed | 🔴 | **New.** A refund in the SAME period as the sale was counted twice — the payment dropped out of revenue AND its adjustment was deducted. All three chargeback policies produced the wrong number, one of them paying a location $0 on a period where the franchise had explicitly agreed to eat the loss. Reproduced live, fixed, re-verified in six scenarios including composition across a period boundary | v1.5 |
 | BUG-22 | 🟢 Fixed | 🟠 | **New.** `chargeback_responsibility` was writable by tenants — BUG-19's exact shape. A location's own owner could set it to `franchise` and push every future chargeback onto their parent. Protected; verified blocked in an isolated transaction | v1.5 |
 | BUG-20 | 🟢 Fixed | 🔴 | **New.** Re-running a franchise settlement over the same period silently changed what was owed — a $0 settled statement went back to $900 owed, because the recalculation only looked for *pending* adjustments and the first run had already consumed them. Regeneration now counts what it applied to the same draft. Verified over three consecutive runs, plus a fourth after the statement was sent | v1.5 |
@@ -648,6 +666,56 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | MKT-7 | 🔵 Open | 🟡 | Real product screenshots | v1.0 |
 | MKT-8 | ⚪ Deferred | ⚪ | `/customers` stub | v1.0 |
 | MKT-9 | 🔵 Open | 🟡 | Annual billing on site — see VER-8 | v1.1 |
+
+**BUG-24 detail — the term nobody was reading, found by an adversarial pass.**
+
+After BUG-21 was fixed and verified, a dedicated review of the same code found a
+second, larger error underneath it. The settlement netted
+`collected_by_parent − royalty − location_share`: it credited only revenue the
+FRANCHISE collected, but debited the location's share of every reversal —
+including reversals whose money had left the LOCATION's own Stripe account. A
+self-collecting location paid for its refunds twice.
+
+Reproduced live, $1,000 refunded on a $1,000 sale at 10%, location collecting:
+
+| policy | produced | actually owed |
+|---|---|---|
+| location | location owes $1,100 | location owes $100 |
+| split | location owes $1,000 | settled, $0 |
+| franchise | location owes $100 | **franchise owes them $900** |
+
+Out by the full refund in every case, in the franchise's favour in every case.
+The `franchise` row is the one that should worry us most: the franchise had
+contractually agreed to absorb the chargeback and the software billed the
+franchisee for it.
+
+The tell was sitting in the schema. `franchise_share_cents` had been written by
+`record_franchise_adjustment` since adjustments were built and read by **nothing**
+— a column with a writer and no reader is a formula with a missing term:
+
+```
+balance = collected_by_parent
+        − royalty
+        − Σ location_share   where the PARENT paid the refund out
+        + Σ franchise_share  where the LOCATION paid the refund out
+```
+
+Read plainly: settle the half the other party is carrying. Verified across all
+six collector × policy combinations plus the no-reversal case.
+
+Worth recording how this was found. BUG-21 was caught by deliberately running
+the generator twice and reading the output; BUG-24 was caught by a review whose
+brief was to construct concrete failing scenarios and to drop any finding it
+could not. Neither would have surfaced from reading the code for plausibility —
+both versions read perfectly well.
+
+**One thing that looks inconsistent and is not.** A settlement statement's
+`revenue_cents` is GROSS while the franchise dashboard's "Revenue MTD" is now
+net. That is deliberate: royalty is charged on gross, and the reversal is
+apportioned separately by policy, so netting revenue first would take the loss
+twice — which is BUG-21 again. The statement itemises revenue, royalty and
+adjustments precisely so the arithmetic is visible; the dashboard shows gross,
+refunds and net for the same reason.
 
 **BUG-21 detail — the same-period refund, and why nobody would have caught it.**
 

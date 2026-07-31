@@ -4,18 +4,22 @@ import {
   REPORT_ORDER,
   agingBucket,
   daysBetween,
+  mayViewFranchiseSettlements,
   monthLabel,
   monthsBetween,
   monthKey,
   orgLocalDay,
+  previousDay,
   reducesIncome,
   reportFileName,
   reportsFor,
   reversalLabel,
   routingAudience,
+  settlementOverlapsPeriod,
   stripe1099kGuidance,
   type ReportId,
 } from "@/lib/cpa-reports";
+import { totalReversals, type Reversal } from "@/lib/reversals.server";
 
 // BUILD-13. These are tax definitions, so the tests are about the cases that
 // produce a WRONG NUMBER on a return rather than about coverage: the year
@@ -121,12 +125,161 @@ describe("reversals", () => {
     expect(reducesIncome("payment_chargeback_won")).toBe(false);
   });
 
+  // The cash sheets group reversals by month, by customer and by collecting
+  // account, and each group is netted with totalReversals. What the loops used
+  // to do instead was skip every row reducesIncome() said no to, which threw
+  // the recovery away entirely: the deduction stayed and the money never came
+  // back. These pin the arithmetic those groups run.
+  const monthNet = (rows: Reversal[]) => {
+    const byMonth = new Map<string, Reversal[]>();
+    for (const r of rows) {
+      const m = monthKey(r.day);
+      byMonth.set(m, [...(byMonth.get(m) ?? []), r]);
+    }
+    return [...byMonth.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([m, group]) => [m, totalReversals(group).netCents] as const);
+  };
+
+  const reversal = (over: Partial<Reversal>): Reversal => ({
+    id: "r",
+    kind: "payment_refunded",
+    paymentId: "p",
+    day: "2026-04-05",
+    amountCents: 0,
+    deducts: true,
+    typeLabel: "Refund",
+    ...over,
+  });
+
+  it("gives back a won dispute instead of leaving income deducted forever", () => {
+    // $1,000 paid in March, disputed in April, dispute WON in June. Filtering
+    // the recovery out reported gross 1000 / refunds 1000 / net 0 for the year
+    // — the full sale erased permanently, on the sheet whose own note says a
+    // won dispute is not deducted.
+    const year = [
+      reversal({ kind: "payment_chargeback", day: "2026-04-05", amountCents: 100_000 }),
+      reversal({
+        kind: "payment_chargeback_won",
+        day: "2026-06-20",
+        amountCents: 100_000,
+        deducts: false,
+      }),
+    ];
+    const grossCents = 100_000;
+    expect(totalReversals(year).netCents).toBe(0);
+    expect(grossCents - totalReversals(year).netCents).toBe(100_000);
+  });
+
+  it("moves the money between months rather than restating either one", () => {
+    // April carries the withdrawal, June carries it back. Neither month is
+    // rewritten after the fact, which is the rule the whole cash basis rests on.
+    expect(
+      monthNet([
+        reversal({ kind: "payment_chargeback", day: "2026-04-05", amountCents: 100_000 }),
+        reversal({
+          kind: "payment_chargeback_won",
+          day: "2026-06-20",
+          amountCents: 100_000,
+          deducts: false,
+        }),
+      ]),
+    ).toEqual([
+      ["2026-04", 100_000],
+      ["2026-06", -100_000],
+    ]);
+  });
+
+  it("still deducts a dispute that is open at the period end", () => {
+    // Only a WON dispute comes back. An open one is money that has left.
+    expect(
+      totalReversals([
+        reversal({ kind: "payment_chargeback", day: "2026-04-05", amountCents: 100_000 }),
+        reversal({ kind: "payment_refunded", day: "2026-04-09", amountCents: 2_500 }),
+      ]).netCents,
+    ).toBe(102_500);
+  });
+
   it("labels every kind the webhook can file", () => {
     for (const k of ["payment_refunded", "payment_chargeback", "payment_chargeback_won"]) {
       const l = reversalLabel(k);
       expect(l.type).toBeTruthy();
       expect(l.outcome).toBeTruthy();
     }
+  });
+});
+
+describe("settlement periods — the end date is EXCLUSIVE", () => {
+  // generate_franchise_settlements sums payments with created_at < period_end,
+  // and the app writes December 2025 as 2025-12-01 → 2026-01-01. Treating that
+  // end as a day inside the period put the December statement in the 2025 pack
+  // AND the 2026 pack, so one royalty was income in two tax years.
+  const dec2025 = ["2025-12-01", "2026-01-01"] as const;
+  const jan2026 = ["2026-01-01", "2026-02-01"] as const;
+
+  it("keeps a December statement out of the following year's pack", () => {
+    expect(settlementOverlapsPeriod(...dec2025, "2026-01-01", "2026-12-31")).toBe(false);
+  });
+
+  it("keeps that same statement in its own year's pack", () => {
+    expect(settlementOverlapsPeriod(...dec2025, "2025-01-01", "2025-12-31")).toBe(true);
+  });
+
+  it("does not pull January back into the prior year either", () => {
+    expect(settlementOverlapsPeriod(...jan2026, "2025-01-01", "2025-12-31")).toBe(false);
+    expect(settlementOverlapsPeriod(...jan2026, "2026-01-01", "2026-12-31")).toBe(true);
+  });
+
+  it("still includes a settlement the period boundary cuts through", () => {
+    // A quarter reported mid-month must still show the whole statement rather
+    // than a slice of it — that behaviour is deliberate and must not regress.
+    expect(settlementOverlapsPeriod("2026-06-01", "2026-07-01", "2026-06-15", "2026-06-20")).toBe(
+      true,
+    );
+  });
+
+  it("says no when a row has no period at all rather than guessing", () => {
+    expect(settlementOverlapsPeriod("", "", "2026-01-01", "2026-12-31")).toBe(false);
+  });
+});
+
+describe("previousDay — the day before a boundary", () => {
+  it("steps back over a month, a year and a leap day", () => {
+    expect(previousDay("2026-07-01")).toBe("2026-06-30");
+    expect(previousDay("2026-01-01")).toBe("2025-12-31");
+    expect(previousDay("2028-03-01")).toBe("2028-02-29");
+  });
+
+  it("does not slip a day when the clocks change", () => {
+    // US DST starts 8 March 2026 and ends 1 November. Anchoring at UTC noon is
+    // what keeps the opening position of a period from landing two days back.
+    expect(previousDay("2026-03-09")).toBe("2026-03-08");
+    expect(previousDay("2026-11-02")).toBe("2026-11-01");
+  });
+});
+
+describe("who may see the franchise settlements sheet", () => {
+  // These rows are read past RLS with service-role, so this predicate is the
+  // only boundary there is. It has to sit at the same height as /franchise —
+  // one report a tier lower is a way around every other door to the same data.
+  it("refuses an office_manager, who is denied manage_franchise on purpose", () => {
+    expect(mayViewFranchiseSettlements("office_manager", "enterprise")).toBe(false);
+    expect(mayViewFranchiseSettlements("dispatcher", "enterprise")).toBe(false);
+    expect(mayViewFranchiseSettlements("tech", "enterprise")).toBe(false);
+  });
+
+  it("refuses an owner whose plan does not include franchise structure", () => {
+    expect(mayViewFranchiseSettlements("owner", "launch")).toBe(false);
+    expect(mayViewFranchiseSettlements("owner", "growth")).toBe(false);
+    expect(mayViewFranchiseSettlements("owner", "scale")).toBe(false);
+  });
+
+  it("admits the Enterprise owner /franchise already serves", () => {
+    expect(mayViewFranchiseSettlements("owner", "enterprise")).toBe(true);
+  });
+
+  it("refuses a caller with no role at all", () => {
+    expect(mayViewFranchiseSettlements(null, "enterprise")).toBe(false);
   });
 });
 

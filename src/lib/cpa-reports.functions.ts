@@ -5,20 +5,28 @@ import { requirePermission } from "@/lib/authz.server";
 import {
   REPORT_DEFS,
   agingBucket,
+  mayViewFranchiseSettlements,
   monthLabel,
   monthsBetween,
   monthKey,
   orgLocalDay,
+  previousDay,
   reducesIncome,
   reportsFor,
   reversalLabel,
   routingAudience,
+  settlementOverlapsPeriod,
   stripe1099kGuidance,
   type Guidance,
   type ReportColumn,
   type ReportId,
 } from "@/lib/cpa-reports";
+// Static rather than the dynamic import the other reversal readers use: this is
+// the pure arithmetic half of that module (no service-role client behind it),
+// and every sheet below needs it.
+import { totalReversals, type Reversal } from "@/lib/reversals.server";
 import { fetchAllPages as fetchAll } from "@/lib/supabase-paging.server";
+import type { AppRole } from "@/hooks/useMyRole";
 
 // BUILD-13 — building the accountant's pack. Definitions live in
 // src/lib/cpa-reports.ts; this file only assembles rows.
@@ -64,9 +72,22 @@ export type ReportResult = {
 // Paging comes from supabase-paging.server.ts — PostgREST's silent 1000-row cap
 // is a whole-app hazard, not this file's private problem (BUG-23 was /reports
 // hitting it with no guard at all).
+//
+// Every paged query below orders by `created_at` AND `id`. created_at alone is
+// not a total order here: run_billing_cycles inserts a whole billing batch in
+// one transaction, so an entire month of invoices — and the payments that
+// follow them — share a timestamp to the microsecond. Postgres is free to
+// return tied rows in a different order for each page request, so a tie group
+// straddling a page boundary can hand back the same invoice twice and drop
+// another entirely. The id breaks every tie, which makes the sort total and the
+// paging repeatable. A duplicated invoice inflates income; a dropped one hides
+// it, and neither leaves a trace on the sheet.
 
 type OrgContext = {
   orgId: string;
+  /** Carried so a report needing a tighter gate than view_financials can be
+   *  answered without resolving the caller a second time. */
+  role: AppRole;
   name: string;
   timezone: string;
   parentOrganizationId: string | null;
@@ -76,7 +97,7 @@ type OrgContext = {
 };
 
 async function loadOrgContext(supabase: any, userId: string): Promise<OrgContext> {
-  const { orgId } = await requirePermission(supabase, userId, "view_financials");
+  const { orgId, role } = await requirePermission(supabase, userId, "view_financials");
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
   // Service-role, scoped to this one row: the franchise columns are readable
@@ -103,6 +124,7 @@ async function loadOrgContext(supabase: any, userId: string): Promise<OrgContext
 
   return {
     orgId,
+    role,
     name: org?.name ?? "Your business",
     // Falling back to UTC rather than a guess: a wrong timezone silently files
     // year-end payments in the wrong tax year, and UTC at least fails in a
@@ -156,6 +178,7 @@ async function loadReceipts(supabase: any, ctx: OrgContext, from: string, to: st
       .gte("created_at", lo)
       .lte("created_at", hi)
       .order("created_at")
+      .order("id")
       .range(a, b),
   );
   return rows
@@ -209,6 +232,7 @@ async function loadInvoices(supabase: any, ctx: OrgContext) {
       .eq("organization_id", ctx.orgId)
       .neq("status", "draft")
       .order("created_at")
+      .order("id")
       .range(a, b),
   );
 }
@@ -256,12 +280,12 @@ async function buildIncomeCash(supabase: any, ctx: OrgContext, from: string, to:
     loadReversals(supabase, ctx, from, to),
   ]);
 
-  const byMonth = new Map<string, { gross: number; refunds: number; count: number }>();
-  for (const m of monthsBetween(from, to)) byMonth.set(m, { gross: 0, refunds: 0, count: 0 });
+  const byMonth = new Map<string, { gross: number; reversals: Reversal[]; count: number }>();
+  for (const m of monthsBetween(from, to)) byMonth.set(m, { gross: 0, reversals: [], count: 0 });
   const bucket = (m: string) => {
     let b = byMonth.get(m);
     if (!b) {
-      b = { gross: 0, refunds: 0, count: 0 };
+      b = { gross: 0, reversals: [], count: 0 };
       byMonth.set(m, b);
     }
     return b;
@@ -272,20 +296,27 @@ async function buildIncomeCash(supabase: any, ctx: OrgContext, from: string, to:
     b.gross += p.amount_cents ?? 0;
     b.count += 1;
   }
-  for (const r of reversals) {
-    if (!reducesIncome(r.kind)) continue;
-    bucket(monthKey(r.day)).refunds += r.amountCents;
-  }
+  // Every reversal, recoveries included. Skipping the won disputes here — which
+  // is what this loop used to do — deducted the chargeback in the month the
+  // funds were pulled and then never put the money back when the dispute was
+  // won, so a $1,000 sale that was disputed and successfully defended read as
+  // $0 of income forever. totalReversals is the one implementation of
+  // "deducted minus recovered"; the register sheet and /reports net it the same
+  // way, and three copies of that subtraction is how they would stop agreeing.
+  for (const r of reversals) bucket(monthKey(r.day)).reversals.push(r);
 
   const rows: ReportRow[] = [...byMonth.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([m, b]) => ({
-      month: monthLabel(m),
-      grossCents: b.gross,
-      refundsCents: b.refunds,
-      netCents: b.gross - b.refunds,
-      paymentCount: b.count,
-    }));
+    .map(([m, b]) => {
+      const net = totalReversals(b.reversals).netCents;
+      return {
+        month: monthLabel(m),
+        grossCents: b.gross,
+        refundsCents: net,
+        netCents: b.gross - net,
+        paymentCount: b.count,
+      };
+    });
 
   const totals = rows.reduce(
     (t, r) => ({
@@ -304,6 +335,7 @@ async function buildIncomeCash(supabase: any, ctx: OrgContext, from: string, to:
     caveats: [
       "Stripe's processing fees are deducted before payout and are not recorded in HoundStack, so they do not appear here. They are a deductible expense and come from your Stripe payout statements.",
       "Cash paid directly to you and recorded manually is included, and is not part of any 1099-K.",
+      "Refunds & chargebacks is net of disputes you won: the deduction stands in the month the funds were withdrawn and the recovery is added back in the month they returned. A month can therefore show a negative figure in that column, and a dispute opened in one period and won in the next moves income between the two rather than restating either.",
     ],
   };
 }
@@ -368,9 +400,7 @@ async function buildIncomeAccrual(supabase: any, ctx: OrgContext, from: string, 
 async function buildBridge(supabase: any, ctx: OrgContext, from: string, to: string) {
   const invoices = await loadInvoices(supabase, ctx);
   const tz = ctx.timezone;
-  const dayBefore = new Date(`${from}T12:00:00Z`);
-  dayBefore.setUTCDate(dayBefore.getUTCDate() - 1);
-  const opening = dayBefore.toISOString().slice(0, 10);
+  const opening = previousDay(from);
 
   let openingAr = 0;
   let closingAr = 0;
@@ -383,13 +413,30 @@ async function buildBridge(supabase: any, ctx: OrgContext, from: string, to: str
     closingAr += outstandingAsOf(inv, to, tz);
 
     const issued = inv.issued_at ? orgLocalDay(inv.issued_at, tz) : null;
-    if (issued && inRange(issued, from, to) && inv.status !== "void") {
+    const issuedThisPeriod = !!issued && inRange(issued, from, to);
+    const billed = issuedThisPeriod && inv.status !== "void";
+    if (billed) {
       invoiced += inv.total_cents ?? 0;
       creditsApplied += inv.credit_applied_cents ?? 0;
     }
     const voided = inv.voided_at ? orgLocalDay(inv.voided_at, tz) : null;
-    if (voided && inRange(voided, from, to)) writtenOff += inv.total_cents ?? 0;
-    else if (inv.status === "uncollectible") {
+    if (voided && inRange(voided, from, to)) {
+      // Only what receivables were actually CARRYING can be taken back out of
+      // them, and only if it was ever put in.
+      //
+      // An invoice issued and voided inside the same period never reached the
+      // "invoiced" line above — a void is not billed revenue — so writing it
+      // off as well subtracted it a second time and printed a "Difference to
+      // investigate" on a period that ties exactly. And for one issued earlier,
+      // opening receivables carried it NET of any credit applied, so deducting
+      // the gross total left the bridge out by exactly that credit.
+      //
+      // Asking outstandingAsOf for the day before the void answers both, and
+      // the day the invoice was already paid off before being voided as well:
+      // it is the same function that produced the opening figure, so the two
+      // sides cannot drift apart.
+      if (!issuedThisPeriod) writtenOff += outstandingAsOf(inv, previousDay(voided), tz);
+    } else if (inv.status === "uncollectible") {
       const off = inv.updated_at ? orgLocalDay(inv.updated_at, tz) : null;
       if (off && inRange(off, from, to)) {
         writtenOff += Math.max((inv.total_cents ?? 0) - (inv.credit_applied_cents ?? 0), 0);
@@ -437,11 +484,11 @@ async function buildRevenueByClient(supabase: any, ctx: OrgContext, from: string
   const invoiceClient = new Map(invoices.map((i) => [i.id, i.client_id]));
   const paymentClient = new Map(receipts.map((p) => [p.id, invoiceClient.get(p.invoice_id) ?? ""]));
 
-  const acc = new Map<string, { gross: number; refunds: number; count: number }>();
+  const acc = new Map<string, { gross: number; reversals: Reversal[]; count: number }>();
   const at = (cid: string) => {
     let b = acc.get(cid);
     if (!b) {
-      b = { gross: 0, refunds: 0, count: 0 };
+      b = { gross: 0, reversals: [], count: 0 };
       acc.set(cid, b);
     }
     return b;
@@ -451,23 +498,25 @@ async function buildRevenueByClient(supabase: any, ctx: OrgContext, from: string
     b.gross += p.amount_cents ?? 0;
     b.count += 1;
   }
-  for (const r of reversals) {
-    if (!reducesIncome(r.kind)) continue;
-    // The reversal's subject is the payment; the payment may pre-date the
-    // window, so fall back to the invoice ledger rather than dropping it.
-    const cid = paymentClient.get(r.paymentId ?? "") ?? "";
-    at(cid).refunds += r.amountCents;
-  }
+  // Recoveries as well as deductions — a customer whose disputed payment was
+  // defended must not be left showing zero income for a sale they never got
+  // their money back on. The reversal's subject is the payment; the payment may
+  // pre-date the window, so fall back to the invoice ledger rather than
+  // dropping it.
+  for (const r of reversals) at(paymentClient.get(r.paymentId ?? "") ?? "").reversals.push(r);
 
   const names = await clientNames(supabase, ctx, [...acc.keys()]);
   const rows: ReportRow[] = [...acc.entries()]
-    .map(([cid, b]) => ({
-      clientName: names.get(cid) ?? "Unattributed",
-      grossCents: b.gross,
-      refundsCents: b.refunds,
-      netCents: b.gross - b.refunds,
-      paymentCount: b.count,
-    }))
+    .map(([cid, b]) => {
+      const net = totalReversals(b.reversals).netCents;
+      return {
+        clientName: names.get(cid) ?? "Unattributed",
+        grossCents: b.gross,
+        refundsCents: net,
+        netCents: b.gross - net,
+        paymentCount: b.count,
+      };
+    })
     .sort((a, b) => (b.netCents as number) - (a.netCents as number));
 
   const totals = rows.reduce(
@@ -492,6 +541,7 @@ async function buildRevenueByClient(supabase: any, ctx: OrgContext, from: string
     totals,
     caveats: [
       '"Unattributed" covers refunds against payments taken before this period, where the original customer is outside the window being reported.',
+      "Refunds is net of any dispute won in this period, so a customer whose chargeback you successfully defended can show a negative figure in that column.",
     ],
   };
 }
@@ -680,18 +730,58 @@ async function buildWriteOffs(supabase: any, ctx: OrgContext, from: string, to: 
   };
 }
 
+/** Card volume this organization collected on behalf of its LOCATIONS.
+ *
+ *  These payments belong to the location's rows — payments.organization_id is
+ *  the location — but the charge landed in this org's Stripe account, so Stripe
+ *  puts it on THIS org's 1099-K and on nobody else's. Reading only
+ *  organization_id showed a collecting franchise its own volume beside a 1099-K
+ *  several times larger, which is precisely the difference this sheet promises
+ *  to explain and could not.
+ *
+ *  Service-role because a franchise is not a member of its locations. Scoped to
+ *  collected_by_organization_id = this org, so it can select nothing but money
+ *  that went through this org's own processing account. */
+async function loadCollectedForLocations(ctx: OrgContext, from: string, to: string) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { lo, hi } = utcWindow(from, to);
+  const rows = await fetchAll<PaymentRow>((a, b) =>
+    (supabaseAdmin as any)
+      .from("payments")
+      .select(
+        "id, invoice_id, amount_cents, status, paid_at, created_at, collected_by_organization_id",
+      )
+      .eq("collected_by_organization_id", ctx.orgId)
+      .neq("organization_id", ctx.orgId)
+      .in("status", ["succeeded", "refunded"])
+      .gte("created_at", lo)
+      .lte("created_at", hi)
+      .order("created_at")
+      .order("id")
+      .range(a, b),
+  );
+  // Dated in the collecting org's timezone, because it is the collecting org's
+  // 1099-K the sheet is being reconciled against.
+  return rows
+    .map((p) => ({ ...p, day: orgLocalDay(p.paid_at ?? p.created_at, ctx.timezone) }))
+    .filter((p) => inRange(p.day, from, to));
+}
+
 async function build1099k(supabase: any, ctx: OrgContext, from: string, to: string) {
-  const [receipts, reversals] = await Promise.all([
+  const [receipts, reversals, onBehalf] = await Promise.all([
     loadReceipts(supabase, ctx, from, to),
     loadReversals(supabase, ctx, from, to),
+    ctx.collectsForAnyLocation
+      ? loadCollectedForLocations(ctx, from, to)
+      : Promise.resolve([] as Awaited<ReturnType<typeof loadCollectedForLocations>>),
   ]);
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-  const acc = new Map<string, { gross: number; refunds: number; count: number }>();
+  const acc = new Map<string, { gross: number; reversals: Reversal[]; count: number }>();
   const at = (key: string) => {
     let b = acc.get(key);
     if (!b) {
-      b = { gross: 0, refunds: 0, count: 0 };
+      b = { gross: 0, reversals: [], count: 0 };
       acc.set(key, b);
     }
     return b;
@@ -704,10 +794,20 @@ async function build1099k(supabase: any, ctx: OrgContext, from: string, to: stri
     b.gross += p.amount_cents ?? 0;
     b.count += 1;
   }
-  for (const r of reversals) {
-    if (!reducesIncome(r.kind)) continue;
-    at(collectorOf.get(r.paymentId ?? "") ?? ctx.orgId).refunds += r.amountCents;
+  // One row per COLLECTING account, which is what a 1099-K is issued against —
+  // so volume this org collected for its locations joins this org's own row
+  // rather than becoming a separate line for a form nobody will receive.
+  let onBehalfGross = 0;
+  for (const p of onBehalf) {
+    const b = at(ctx.orgId);
+    b.gross += p.amount_cents ?? 0;
+    b.count += 1;
+    onBehalfGross += p.amount_cents ?? 0;
   }
+  // Recoveries add back — see buildIncomeCash. A won dispute that stayed
+  // deducted here would leave this sheet unable to tie to the income report it
+  // exists to explain.
+  for (const r of reversals) at(collectorOf.get(r.paymentId ?? "") ?? ctx.orgId).reversals.push(r);
 
   // Name the collecting organizations. Service-role and scoped to the exact
   // ids that appear on this org's own payments — nothing is enumerable.
@@ -722,16 +822,21 @@ async function build1099k(supabase: any, ctx: OrgContext, from: string, to: stri
   }
 
   const rows: ReportRow[] = [...acc.entries()]
-    .map(([key, b]) => ({
-      collectedBy:
-        key === ctx.orgId
-          ? `${ctx.name} (your own Stripe account)`
-          : `${orgNames.get(key) ?? "Another organization"} — collected on your behalf`,
-      grossCents: b.gross,
-      refundsCents: b.refunds,
-      netCents: b.gross - b.refunds,
-      paymentCount: b.count,
-    }))
+    .map(([key, b]) => {
+      const net = totalReversals(b.reversals).netCents;
+      return {
+        collectedBy:
+          key === ctx.orgId
+            ? onBehalfGross > 0
+              ? `${ctx.name} (your own Stripe account, including what you collected for your locations)`
+              : `${ctx.name} (your own Stripe account)`
+            : `${orgNames.get(key) ?? "Another organization"} — collected on your behalf`,
+        grossCents: b.gross,
+        refundsCents: net,
+        netCents: b.gross - net,
+        paymentCount: b.count,
+      };
+    })
     .sort((a, b) => (b.grossCents as number) - (a.grossCents as number));
 
   const guidance = stripe1099kGuidance(
@@ -761,7 +866,16 @@ async function build1099k(supabase: any, ctx: OrgContext, from: string, to: stri
         paymentCount: 0,
       } as ReportRow,
     ),
-    caveats: [guidance.headline, ...guidance.points],
+    caveats: [
+      guidance.headline,
+      ...guidance.points,
+      ...(onBehalfGross > 0
+        ? [
+            `Of the gross above, ${(onBehalfGross / 100).toFixed(2)} was collected in your Stripe account on behalf of your locations. It is on your 1099-K because the charge landed in your account, but it is not your income — what you passed on is supported by the settlement statements.`,
+            "Refunds and chargebacks against that location volume are recorded on the location's own books, so they are not deducted in the row above. Take those from the location's own reversals register when reconciling the 1099-K line by line.",
+          ]
+        : []),
+    ],
   };
 }
 
@@ -779,13 +893,23 @@ async function buildFranchiseSettlements(ctx: OrgContext, from: string, to: stri
     )
     .or(`parent_organization_id.eq.${ctx.orgId},child_organization_id.eq.${ctx.orgId}`)
     .lte("period_start", to)
-    .gte("period_end", from)
+    // Strictly greater: period_end is the first day of the NEXT period, not the
+    // last of this one — see settlementOverlapsPeriod. With `gte`, December
+    // 2025 (2025-12-01 → 2026-01-01) landed in the 2025 pack and the 2026 pack,
+    // and its royalty was income in two tax years at once.
+    .gt("period_end", from)
     .order("period_start");
   if (error) throw new Error(error.message);
 
+  // The same rule again in JS, so the sheet cannot disagree with the query it
+  // was built from if either is ever edited alone.
+  const settlements = (data ?? []).filter((r: any) =>
+    settlementOverlapsPeriod(r.period_start, r.period_end, from, to),
+  );
+
   const counterpartyIds = [
     ...new Set(
-      (data ?? []).map((r: any) =>
+      settlements.map((r: any) =>
         r.parent_organization_id === ctx.orgId ? r.child_organization_id : r.parent_organization_id,
       ),
     ),
@@ -805,7 +929,7 @@ async function buildFranchiseSettlements(ctx: OrgContext, from: string, to: stri
     settled: "Settled — nothing to move",
   };
 
-  const rows: ReportRow[] = (data ?? []).map((r: any) => ({
+  const rows: ReportRow[] = settlements.map((r: any) => ({
     counterparty:
       names.get(
         r.parent_organization_id === ctx.orgId ? r.child_organization_id : r.parent_organization_id,
@@ -839,6 +963,7 @@ async function buildFranchiseSettlements(ctx: OrgContext, from: string, to: stri
         ? "Royalty you collect is ordinary income. What you pass back to a location on a settlement is not your income and should not appear as such."
         : "Royalty is a deductible business expense. These statements are the support for that deduction.",
       "Settlements overlapping the period are included, so a period boundary that cuts through a settlement still shows the whole statement rather than a slice of it.",
+      'The period end shown is EXCLUSIVE — it is the first day of the next period, so a December statement reads "2026-01-01". A statement is counted in the year its period runs in, not the year its end date falls in.',
     ],
   };
 }
@@ -929,6 +1054,14 @@ export const getTaxReportIndex = createServerFn({ method: "GET" })
   .handler(async ({ context }): Promise<TaxReportIndex> => {
     const ctx = await loadOrgContext(context.supabase, context.userId);
     const inFranchise = ctx.isFranchiseParent || !!ctx.parentOrganizationId;
+    // The settlements sheet needs what /franchise needs, so it is offered only
+    // to a caller who would actually be served it. Answered from the matrices
+    // rather than by calling the throwing gate, because the rest of the pack
+    // must still list for an office_manager — the index says what you can have,
+    // getTaxReport is what says no.
+    const { planTierForOrg } = await import("@/lib/entitlements.server");
+    const canSeeSettlements =
+      inFranchise && mayViewFranchiseSettlements(ctx.role, await planTierForOrg(ctx.orgId));
     const audience = routingAudience({
       parentOrganizationId: ctx.parentOrganizationId,
       isFranchiseParent: ctx.isFranchiseParent,
@@ -940,12 +1073,14 @@ export const getTaxReportIndex = createServerFn({ method: "GET" })
       timezone: ctx.timezone,
       inFranchise,
       routing: { ...stripe1099kGuidance(audience), audience },
-      reports: reportsFor({ inFranchise }).map((d) => ({
-        id: d.id,
-        title: d.title,
-        purpose: d.purpose,
-        basis: d.basis,
-      })),
+      reports: reportsFor({ inFranchise })
+        .filter((d) => d.id !== "franchise_settlements" || canSeeSettlements)
+        .map((d) => ({
+          id: d.id,
+          title: d.title,
+          purpose: d.purpose,
+          basis: d.basis,
+        })),
       gaps: [
         "Sales tax is not tracked. HoundStack does not hold a tax rate or a taxable flag on invoices, so no sales-tax return can be produced from this data.",
         "Expenses are not tracked. These reports cover income and receivables only — payroll, fuel, disposal fees and Stripe's processing fees all come from elsewhere.",
@@ -968,6 +1103,22 @@ export const getTaxReport = createServerFn({ method: "POST" })
     const inFranchise = ctx.isFranchiseParent || !!ctx.parentOrganizationId;
     if (def.franchiseOnly && !inFranchise) {
       throw new Error("That report only applies to a business that is part of a franchise.");
+    }
+
+    // The settlements sheet is the only report here that reads rows belonging to
+    // ANOTHER organization, through service-role, past RLS. view_financials is
+    // the wrong height for that: it admits an office_manager, who is denied
+    // manage_franchise exactly so a location's staff cannot see the franchise's
+    // side of the relationship — and /tax-reports let them download all of it.
+    //
+    // Same two checks, same order, same errors as resolveOrgId in
+    // franchise.functions.ts. Deliberately the throwing funnel rather than the
+    // predicate the index uses: a caller on the wrong plan has to be told to
+    // upgrade, and a caller in the wrong role has to be told it is their role.
+    if (def.id === "franchise_settlements") {
+      await requirePermission(supabase, context.userId, "manage_franchise");
+      const { requireEntitlement } = await import("@/lib/entitlements.server");
+      await requireEntitlement(ctx.orgId, "franchise_structure");
     }
 
     let built: { rows: ReportRow[]; totals: ReportRow | null; caveats: string[] };

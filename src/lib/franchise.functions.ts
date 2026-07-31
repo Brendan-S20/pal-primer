@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { paymentWasReceived, receivedPaymentStatuses } from "@/lib/revenue";
+import { REVERSAL_KINDS, reducesIncome } from "@/lib/cpa-reports";
 
 // Franchise rollup is owner-only — every function in this file is gated on
 // manage_franchise, matching the /franchise route boundary.
@@ -31,7 +32,15 @@ export type FranchiseRow = {
   active_clients: number;
   visits_today: number;
   visits_completed_today: number;
+  /** NET: gross less the refunds and chargebacks recorded this month.
+   *
+   *  It became net in SQL without the two component columns being carried up
+   *  here, which would have left this screen showing one shrunken figure while
+   *  a location's settlement statement shows gross, refunds and net side by
+   *  side. A franchise owner reads both — they have to reconcile. */
   revenue_mtd_cents: number;
+  revenue_mtd_gross_cents: number;
+  refunds_mtd_cents: number;
   ar_open_cents: number;
   tech_count: number;
 };
@@ -97,6 +106,8 @@ export const getFranchiseRollup = createServerFn({ method: "GET" })
       visits_today: r.visits_today ?? 0,
       visits_completed_today: r.visits_completed_today ?? 0,
       revenue_mtd_cents: Number(r.revenue_mtd_cents ?? 0),
+      revenue_mtd_gross_cents: Number(r.revenue_mtd_gross_cents ?? 0),
+      refunds_mtd_cents: Number(r.refunds_mtd_cents ?? 0),
       ar_open_cents: Number(r.ar_open_cents ?? 0),
       tech_count: r.tech_count ?? 0,
     }));
@@ -158,6 +169,27 @@ export const getFranchiseTrend = createServerFn({ method: "GET" })
       .gte("created_at", earliest)
       .lt("created_at", latest);
 
+    // IMP-10, the other half. Counting money that ARRIVED is only honest if
+    // reversals are deducted where they happened — otherwise this chart is
+    // confidently wrong in the flattering direction, and it sits directly above
+    // a "Net revenue MTD" figure that IS net. Two numbers on one screen that
+    // cannot be reconciled is worse than either being wrong alone.
+    //
+    // Read from review_items, the same source as everywhere else. Same
+    // service-role justification as the payments query above: `kids` came from
+    // franchise_children(), which authorized the caller against the parent
+    // first, so this can only touch organizations already proven to be theirs.
+    const { data: reversals } = await (supabaseAdmin as any)
+      .from("review_items")
+      .select("organization_id, kind, detected_at, detail")
+      .in(
+        "organization_id",
+        kids.map((k) => k.id),
+      )
+      .in("kind", [...REVERSAL_KINDS])
+      .gte("detected_at", earliest)
+      .lt("detected_at", latest);
+
     // Build week buckets: [{ week: "MM-DD", [orgId]: cents, ... }]
     const bucket: Record<string, Record<string, number>> = {};
     for (const w of weeks) bucket[w.key] = {};
@@ -168,6 +200,17 @@ export const getFranchiseTrend = createServerFn({ method: "GET" })
       if (!w) continue;
       const oid = p.organization_id as string;
       bucket[w.key][oid] = (bucket[w.key][oid] ?? 0) + Number(p.amount_cents ?? 0);
+    }
+    for (const r of reversals ?? []) {
+      const t = new Date(r.detected_at as string).getTime();
+      const w = weeks.find((x) => t >= x.start.getTime() && t < x.end.getTime());
+      if (!w) continue;
+      const oid = r.organization_id as string;
+      const cents = Number(r.detail?.amount_cents ?? 0);
+      // A won dispute is a recovery, so it adds back rather than deducting.
+      // Counting it as a loss would move the line the wrong way twice.
+      const delta = reducesIncome(r.kind as string) ? -cents : cents;
+      bucket[w.key][oid] = (bucket[w.key][oid] ?? 0) + delta;
     }
     const series = weeks.map((w) => {
       const row: Record<string, any> = { week: w.key };
@@ -283,25 +326,23 @@ export const generateRoyaltyInvoices = createServerFn({ method: "POST" })
         ? { start: data.periodStart, end: data.periodEnd }
         : lastMonthRange();
 
-    const { error } = await (context.supabase as any).rpc("generate_franchise_settlements", {
-      _parent: orgId,
-      _start: start,
-      _end: end,
-    });
+    // The RPC returns how many statements it actually WROTE, and that is the
+    // only number entitled to be called "generated".
+    //
+    // This used to discard the return and head-count the statements existing
+    // for the period, which answers a different question. The RPC's
+    // ON CONFLICT … DO UPDATE is guarded by `status = 'draft'`, so once a
+    // period's statements are issued it recalculates nothing at all — and the
+    // head count still came back full, so the button reported a successful
+    // regeneration of numbers it had not touched. An owner who changed a
+    // royalty rate and pressed Generate was told it had taken effect.
+    const { data: written, error } = await (context.supabase as any).rpc(
+      "generate_franchise_settlements",
+      { _parent: orgId, _start: start, _end: end },
+    );
     if (error) throw new Error(error.message);
 
-    // The RPC returns the number of adjustments it consumed, which is not what
-    // this function has always reported. Count the statements themselves so the
-    // caller's "Generated N" stays true to what it means.
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { count } = await (supabaseAdmin as any)
-      .from("franchise_royalty_invoices")
-      .select("id", { count: "exact", head: true })
-      .eq("parent_organization_id", orgId)
-      .eq("period_start", start)
-      .eq("period_end", end);
-
-    return { generated: count ?? 0, periodStart: start, periodEnd: end };
+    return { generated: Number(written ?? 0), periodStart: start, periodEnd: end };
   });
 
 /** List generated royalty invoices, newest period first. Parent-only. */

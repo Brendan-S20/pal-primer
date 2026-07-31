@@ -14,9 +14,10 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
         // Auth: accept the generated CRON_SECRET, the service role key as a
         // Bearer token (the same pattern pg_cron already uses for
         // /email/queue/process, read from Supabase Vault), or the project anon
-        // key (per Lovable scheduled-jobs pattern). Nightly work is idempotent,
-        // so the worst-case if someone triggers it is running an org's
-        // automation early.
+        // key (per Lovable scheduled-jobs pattern). The work the anon key can
+        // reach is idempotent, so the worst case if someone triggers it is
+        // running an org's automation early — see `canCharge` below for the
+        // work that is not, and therefore is not reachable that way.
         const cronSecret = process.env.CRON_SECRET;
         const anonKey = process.env.SUPABASE_PUBLISHABLE_KEY;
         const serviceKey = process.env.SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -32,9 +33,19 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
         const okAnon = !!(anonKey && providedApiKey === anonKey);
         if (!okSecret && !okService && !okAnon) return json({ error: "unauthorized" }, 401);
         // Security (C2): the anon key is public (shipped in the browser bundle),
-        // so it must NOT authorize real money movement. Autopay charges run only
-        // under a private credential (CRON_SECRET or the service role key); the
-        // anon path can still drive the idempotent, non-charging automation.
+        // so it must NOT authorize real money movement. Autopay charges and
+        // franchise settlement generation run only under a private credential
+        // (CRON_SECRET or the service role key); the anon path can still drive
+        // the idempotent, non-charging automation.
+        //
+        // Settlements are on this side of the line because
+        // generate_franchise_settlements does not just compute — it flips every
+        // PENDING franchise_adjustments row to 'applied' and binds it to the
+        // draft statement it just wrote. Those adjustments are consumed once.
+        // With generation outside the gate, anyone holding the public key could
+        // curl this endpoint and burn every tenant's pending adjustments into a
+        // statement nobody asked for, on a date nobody chose, and there is no
+        // "un-apply".
         const canCharge = okSecret || okService;
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -184,13 +195,17 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
 
           // Franchise royalty billing (finding #16): on the 1st of the month,
           // generate last month's royalty invoices for each franchise parent's
-          // children. Idempotent per child+period.
+          // children. Idempotent per child+period, but NOT harmless — it
+          // consumes pending adjustments (see canCharge), so the public key
+          // cannot reach it.
+          //
+          // The skip is reported rather than dropped: a nightly run that
+          // silently did less than the run before it is how an owner discovers
+          // a missing month's statements weeks later, from the statements.
           if (today.getUTCDate() === 1) {
-            perOrg.royalties_generated = await generateRoyaltiesForParent(
-              supabaseAdmin,
-              org.id,
-              today,
-            );
+            perOrg.royalties_generated = canCharge
+              ? await generateRoyaltiesForParent(supabaseAdmin, org.id, today)
+              : "skipped: settlement generation needs CRON_SECRET or the service role key";
           }
 
           // Seasonal deep-cleans: run on the 1st of each configured month.
@@ -251,20 +266,21 @@ async function generateRoyaltiesForParent(
   const startStr = start.toISOString().slice(0, 10);
   const endStr = end.toISOString().slice(0, 10);
 
-  const { error } = await supabaseAdmin.rpc("generate_franchise_settlements", {
+  // The RPC returns how many statements it actually WROTE. This used to ignore
+  // it and head-count the statements that exist for the period instead, which
+  // is a different question: its ON CONFLICT … DO UPDATE is guarded by
+  // `status = 'draft'`, so once a period's statements have been issued the RPC
+  // recalculates nothing and the count still comes back full. The log then
+  // claimed a fresh recalculation every night, for months, over numbers that
+  // had not moved since the day they were issued.
+  const { data: written, error } = await supabaseAdmin.rpc("generate_franchise_settlements", {
     _parent: parentOrgId,
     _start: startStr,
     _end: endStr,
   });
   if (error) return `err: ${error.message}`;
-
-  const { count } = await supabaseAdmin
-    .from("franchise_royalty_invoices")
-    .select("id", { count: "exact", head: true })
-    .eq("parent_organization_id", parentOrgId)
-    .eq("period_start", startStr)
-    .eq("period_end", endStr);
-  return count ?? 0;
+  const n = Number(written ?? 0);
+  return n === 0 ? "0 (nothing to recalculate — no locations, or all issued)" : n;
 }
 
 // Auto-send invoices whose grace window has ended (full auto billing).

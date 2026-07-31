@@ -285,10 +285,25 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 3600_000);
     const weekAgoIso = weekAgo.toISOString();
-    const weekAgoDate = weekAgoIso.slice(0, 10);
+
+    // The org is fetched BEFORE the rest, not alongside it, because its
+    // timezone decides the window. `scheduled_on` is a DATE column, so
+    // comparing it against a UTC-derived day is the BUG-12 mistake: for an org
+    // west of UTC the boundary lands up to a day early and quietly shifts which
+    // visits count as "this week" — in a summary an assistant then reads out as
+    // fact. One extra round trip is the right price.
+    const { data: org } = await context.supabase
+      .from("organizations")
+      .select("name, timezone")
+      .eq("id", orgId)
+      .single();
+    const { DEFAULT_TIMEZONE } = await import("@/lib/route-window");
+    const { orgLocalDay } = await import("@/lib/cpa-reports");
+    const tz = (org as { timezone?: string | null } | null)?.timezone || DEFAULT_TIMEZONE;
+    const orgDay = (ms: number) => orgLocalDay(new Date(ms), tz);
+    const weekAgoDate = orgDay(weekAgo.getTime());
 
     const [
-      { data: org },
       { data: visits },
       { data: invoices },
       { data: payments },
@@ -296,7 +311,7 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
       { data: leads },
       { data: churn },
     ] = await Promise.all([
-      context.supabase.from("organizations").select("name").eq("id", orgId).single(),
+      // timezone: the reversal reader buckets by the ORG's calendar day, so a
       context.supabase
         .from("visits")
         .select("status, scheduled_on")
@@ -322,7 +337,16 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
         .select("id")
         .eq("organization_id", orgId)
         .gte("created_at", weekAgoIso),
-      context.supabase.from("leads").select("id, status").gte("created_at", weekAgoIso),
+      // The org filter is belt-and-braces: `leads` SELECT is org-scoped by RLS
+      // (verified), so this is not a leak today. But it is the only query in
+      // this Promise.all without one, and "safe because a policy elsewhere says
+      // so" is a bad thing to have to rediscover — especially in a figure fed
+      // to an assistant that states it as fact.
+      context.supabase
+        .from("leads")
+        .select("id, status")
+        .eq("organization_id", orgId)
+        .gte("created_at", weekAgoIso),
       context.supabase
         .from("clients")
         .select("id, display_name, churn_score, churn_reason")
@@ -335,7 +359,28 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
     const completed = (visits ?? []).filter((v: any) => v.status === "completed").length;
     const skipped = (visits ?? []).filter((v: any) => v.status === "skipped").length;
     const scheduled = (visits ?? []).length;
-    const revenueCollected = grossReceivedCents(payments ?? []);
+
+    // IMP-10, the other half of the rule. `revenue.ts` counts a refunded
+    // payment at full value on purpose — the money did arrive — but that is
+    // only truthful if the reversal is deducted in the period IT happened, and
+    // nothing here was doing that. So a week in which a $5,000 charge was
+    // disputed reported the same revenue_collected_cents as a week in which it
+    // was not, and this number is read out loud by an assistant answering "how
+    // did we do this week". Wrong in the flattering direction, stated
+    // confidently, with no line an owner could trace it back to.
+    const { loadOrgReversals, totalReversals } = await import("@/lib/reversals.server");
+    const reversals = totalReversals(
+      await loadOrgReversals(context.supabase, {
+        orgId,
+        timezone: tz,
+        // Same window as the payments query above, expressed in the org's own
+        // days — a refund netted against a different span is not a correction.
+        from: weekAgoDate,
+        to: orgDay(now.getTime()),
+      }),
+    );
+    const revenueGrossCollected = grossReceivedCents(payments ?? []);
+    const revenueCollected = revenueGrossCollected - reversals.netCents;
     const revenueInvoiced = (invoices ?? []).reduce(
       (s: number, i: any) => s + (i.total_cents ?? 0),
       0,
@@ -349,6 +394,11 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
       scheduled,
       completion_rate: scheduled ? Math.round((completed / scheduled) * 100) : 0,
       revenue_collected_cents: revenueCollected,
+      // The components ride along so the digest can name a dispute as the
+      // reason revenue moved, instead of attributing it to lost business.
+      revenue_collected_gross_cents: revenueGrossCollected,
+      refunds_chargebacks_cents: reversals.netCents,
+      refunds_chargebacks_count: reversals.count,
       revenue_invoiced_cents: revenueInvoiced,
       open_invoices: openInvoices,
       new_clients: (newClients ?? []).length,
@@ -363,6 +413,8 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
         `Write a concise weekly owner digest for a pet waste removal business. ` +
         `Use short section headings ("This week", "Money", "Growth", "Watch list") and plain prose bullet points. ` +
         `No emoji. End with 2-3 concrete recommended actions for the owner.\n\n` +
+        `revenue_collected_cents is already NET of the refunds and chargebacks that landed this week. ` +
+        `If refunds_chargebacks_cents is non-zero, name it under "Money" — a reversal and a sales slump ask for different responses.\n\n` +
         `Stats JSON:\n${JSON.stringify(stats, null, 2)}`,
     });
 

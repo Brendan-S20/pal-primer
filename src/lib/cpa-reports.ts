@@ -41,6 +41,10 @@
 // period they occurred. Gross minus refunds equals net, no closed period ever
 // moves, and the return matches the 1099-K. See REVERSAL_KINDS below.
 
+import type { AppRole } from "@/hooks/useMyRole";
+import { hasEntitlement, type PlanTier } from "@/lib/entitlements";
+import { hasPermission } from "@/lib/permissions";
+
 export type ReportBasis = "cash" | "accrual" | "none";
 
 export type ColumnType = "text" | "money" | "date" | "number";
@@ -97,7 +101,7 @@ export const REPORT_DEFS: Record<ReportId, ReportDef> = {
       money("netCents", "Net income"),
       num("paymentCount", "Payments"),
     ],
-    note: "Dated by when each payment settled, in the organization's own timezone. A payment that was later refunded still appears as gross income in the month it arrived — the refund is deducted in the month it happened, so a prior period is never restated.",
+    note: "Dated by when each payment settled, in the organization's own timezone. A payment that was later refunded still appears as gross income in the month it arrived — the refund is deducted in the month it happened, so a prior period is never restated. A dispute that is later WON is added back in the month the money returned, so this column is net of recoveries and can be negative in a month where more came back than went out.",
   },
   income_accrual: {
     id: "income_accrual",
@@ -390,6 +394,59 @@ export function daysBetween(fromDay: string, toDay: string): number {
   const b = Date.parse(`${toDay}T12:00:00Z`);
   if (Number.isNaN(a) || Number.isNaN(b)) return 0;
   return Math.round((b - a) / 86400000);
+}
+
+/** The calendar day before `day`, as YYYY-MM-DD.
+ *
+ *  Anchored at UTC noon for the same reason daysBetween is: stepping a bare
+ *  midnight date back one day lands on 23:00 of the previous day in a zone that
+ *  just changed its clocks, and slicing that gives the wrong date. Used for the
+ *  opening position of a period and for the balance an invoice was carrying the
+ *  day before it was voided — both are answers to "what was true just before",
+ *  and both are wrong by a whole day if the arithmetic slips. */
+export function previousDay(day: string): string {
+  const d = new Date(`${day}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return day;
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Does a settlement period overlap the reporting period?
+ *
+ *  `period_end` on a settlement is EXCLUSIVE — generate_franchise_settlements
+ *  sums payments with `created_at < _end`, and the app generates December as
+ *  2025-12-01 → 2026-01-01. Treating that end date as a day inside the period
+ *  puts the December statement in the 2025 pack AND the 2026 pack, so its
+ *  royalty is counted in two tax years and neither return can be traced back to
+ *  the statements that support it. A period covers [start, end), so it overlaps
+ *  an inclusive [from, to] window only when it starts on or before `to` and
+ *  ends strictly after `from`. */
+export function settlementOverlapsPeriod(
+  periodStart: string,
+  periodEndExclusive: string,
+  from: string,
+  to: string,
+): boolean {
+  if (!periodStart || !periodEndExclusive) return false;
+  return periodStart <= to && periodEndExclusive > from;
+}
+
+/** May this caller see the franchise settlements sheet?
+ *
+ *  The settlement rows are read with service-role (neither party to a
+ *  settlement is a member of the other's org), so the app layer is the only
+ *  boundary there is. Every other route to these same rows — listRoyaltyInvoices
+ *  and the rest of /franchise — requires manage_franchise AND the Enterprise
+ *  franchise_structure entitlement. view_financials alone would let an
+ *  office_manager at a location, who is denied manage_franchise precisely so
+ *  they cannot see the franchise's side of the relationship, pull every
+ *  settlement in the org from /tax-reports instead. One report must not be a
+ *  tier below every other door to the same data. */
+export function mayViewFranchiseSettlements(
+  role: AppRole | null | undefined,
+  tier: PlanTier,
+): boolean {
+  return hasPermission(role, "manage_franchise") && hasEntitlement(tier, "franchise_structure");
 }
 
 /** A filename an accountant can find again in six months without opening it. */
