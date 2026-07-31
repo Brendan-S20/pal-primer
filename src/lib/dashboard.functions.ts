@@ -8,11 +8,6 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function firstOfMonthISO() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-}
-
 export const getDashboardSummary = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -22,10 +17,9 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
     // (e.g. dispatcher) get null for these fields, and the queries never run.
     const canViewFinancials = hasPermission(role, "view_financials");
     const today = todayISO();
-    const monthStart = firstOfMonthISO();
     const emptyRes = { data: [] as any[], error: null as any };
 
-    const [activeClientsRes, todayVisitsRes, mtdInvoicesRes, openInvoicesRes, staffRes, openTicketsRes] =
+    const [activeClientsRes, todayVisitsRes, collected, openInvoicesRes, staffRes, openTicketsRes] =
       await Promise.all([
         supabase
           .from("clients")
@@ -41,14 +35,15 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
           .eq("scheduled_on", today)
           .order("assigned_staff_id", { ascending: true, nullsFirst: true })
           .order("sequence", { ascending: true, nullsFirst: false }),
+        // IMP-10: this used to sum PAID INVOICES dated by `issued_at`, with the
+        // month boundary taken from the SERVER's clock. Three things wrong at
+        // once: an invoice issued in March and paid in May counted in March; a
+        // refund never appeared, because the invoice stays 'paid' forever; and
+        // for any org west of UTC the first hours of a month landed in the
+        // previous one. Now one shared cash-basis query — see revenue.server.ts.
         canViewFinancials
-          ? supabase
-              .from("invoices")
-              .select("total_cents, status, issued_at")
-              .eq("organization_id", orgId)
-              .eq("status", "paid")
-              .gte("issued_at", `${monthStart}T00:00:00`)
-          : Promise.resolve(emptyRes),
+          ? import("@/lib/revenue.server").then((m) => m.collectedMonthToDate(supabase, orgId))
+          : Promise.resolve(null),
         canViewFinancials
           ? supabase
               .from("invoices")
@@ -56,7 +51,9 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
               // and dropping it from this select made every row sum to $0
               // while Reports (which selects status) showed the real figure.
               // due_on + credit_applied_cents feed the shared overdue/net math.
-              .select("id, status, total_cents, credit_applied_cents, due_on, issued_at, client_id, clients(display_name)")
+              .select(
+                "id, status, total_cents, credit_applied_cents, due_on, issued_at, client_id, clients(display_name)",
+              )
               .eq("organization_id", orgId)
               .eq("status", "open")
               .order("due_on", { ascending: true, nullsFirst: false })
@@ -79,13 +76,18 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
           .limit(10),
       ]);
 
-
     if (todayVisitsRes.error) throw new Error(todayVisitsRes.error.message);
-    if (mtdInvoicesRes.error) throw new Error(mtdInvoicesRes.error.message);
     if (openInvoicesRes.error) throw new Error(openInvoicesRes.error.message);
 
     const visits = todayVisitsRes.data ?? [];
-    const visitCounts = { total: visits.length, completed: 0, skipped: 0, in_progress: 0, scheduled: 0, cancelled: 0 } as Record<string, number>;
+    const visitCounts = {
+      total: visits.length,
+      completed: 0,
+      skipped: 0,
+      in_progress: 0,
+      scheduled: 0,
+      cancelled: 0,
+    } as Record<string, number>;
     let unassigned = 0;
     let weatherFlagged = 0;
     for (const v of visits) {
@@ -94,10 +96,10 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
       if (v.weather_flagged) weatherFlagged++;
     }
 
-    const mtdRevenueCents = (mtdInvoicesRes.data ?? []).reduce(
-      (s: number, r: any) => s + (r.total_cents ?? 0),
-      0,
-    );
+    // Net of this month's refunds and chargebacks. The components travel with
+    // it so the card can show why the figure moved — a number that quietly
+    // shrank is the failure mode the review queue exists to prevent.
+    const mtdRevenueCents = collected?.netCents ?? 0;
 
     const openInvoices = (openInvoicesRes.data ?? []) as any[];
     // Shared AR math (B1/finding #7): one authoritative rollup, identical to
@@ -121,6 +123,8 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
       // null (not 0) when the caller can't view financials, so the UI can
       // distinguish "hidden for this role" from a real zero.
       mtdRevenueCents: canViewFinancials ? mtdRevenueCents : null,
+      mtdGrossCents: canViewFinancials ? (collected?.grossCents ?? 0) : null,
+      mtdRefundsCents: canViewFinancials ? (collected?.refundsCents ?? 0) : null,
       arOpenCents: canViewFinancials ? ar.arOpenCents : null,
       overdueCount: canViewFinancials ? ar.overdueCount : null,
       visitCounts,
@@ -149,9 +153,12 @@ export const resolveConcern = createServerFn({ method: "POST" })
     const { supabase } = context;
     const { error } = await supabase
       .from("qc_tickets")
-      .update({ status: "resolved", resolved_at: new Date().toISOString(), resolved_by: context.userId })
+      .update({
+        status: "resolved",
+        resolved_at: new Date().toISOString(),
+        resolved_by: context.userId,
+      })
       .eq("id", data.ticketId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
-

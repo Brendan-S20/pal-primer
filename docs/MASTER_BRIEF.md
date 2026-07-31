@@ -578,6 +578,40 @@ than the weekly digest (`paid_at`), because a parent will compare the rollup's
 revenue against a royalty invoice for the same period and those two must
 reconcile. Two numbers that agree beat one that is arguably more correct alone.
 
+**IMP-10 closed — the last three cash cards.** "How much did we take this month"
+had three implementations left, disagreeing on four axes at once:
+
+| surface | dated by | month boundary from |
+|---|---|---|
+| Dashboard | `issued_at` | the **server's** clock |
+| Invoices index | `paid_at` | the **browser's** UTC |
+| Reports | `issued_at` | an explicit range |
+
+So an invoice issued in March and paid in May counted in March on two of them
+and in May on the third; none subtracted applied credit; none could see a
+refund; and both month boundaries were computed in whichever timezone happened
+to be running the code, putting the first five hours of every month in the
+previous one for a Chicago org.
+
+All three now call `collectedInPeriod` in `revenue.server.ts`, which counts
+**payments** rather than invoices. An invoice is a claim; a payment is the
+money — and asking the payment ledger makes partial payments, credit
+application and manually recorded cash fall out correctly instead of each
+needing a special case.
+
+Checked against live data before and after. The Demo org's July figure moved
+from **$3,200.00 to $3,185.00**, and the $15.00 is a real error the old cards
+had been showing for months: invoice `65efa3b5` was settled entirely with
+account credit, so **no money moved at all**. The invoice-based figure counted
+it as cash collected. Nothing about the old number looked wrong.
+
+The two remaining invoice-derived figures — Zone profitability and the
+per-tech number on /routes — are deliberately NOT routed through this. They sum
+subscription **list price** and have never tracked payment, discount or refund,
+so they are relabelled "booked value" and given no refunds line. Deducting money
+from a figure that never followed money would make it look more trustworthy than
+it is.
+
 **BUILD-6 phase 3 — wiring it up, and the same mistake nearly repeated.**
 
 Phases 1–2 left three SECURITY DEFINER functions granted to `authenticated`

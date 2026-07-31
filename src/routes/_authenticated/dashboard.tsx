@@ -92,9 +92,7 @@ function Dashboard() {
     );
   }
 
-  const groups = sum
-    ? buildTechGroups(sum.todayVisits as MapVisit[], sum.staff as any)
-    : [];
+  const groups = sum ? buildTechGroups(sum.todayVisits as MapVisit[], sum.staff as any) : [];
 
   const alerts: Array<{ icon: any; text: string; to?: string; tone: "warn" | "danger" }> = [];
   if (sum) {
@@ -134,7 +132,6 @@ function Dashboard() {
     }
   }
 
-
   const completed = sum?.visitCounts.completed ?? 0;
   const total = sum?.visitCounts.total ?? 0;
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -150,8 +147,16 @@ function Dashboard() {
           <p className="text-sm text-muted-foreground">Signed in as {humanizeRole(org.role)}</p>
         </div>
         <div className="flex gap-2">
-          <Link to="/routes"><Button variant="outline" size="sm">Today's routes</Button></Link>
-          <Link to="/clients"><Button variant="outline" size="sm">Clients</Button></Link>
+          <Link to="/routes">
+            <Button variant="outline" size="sm">
+              Today's routes
+            </Button>
+          </Link>
+          <Link to="/clients">
+            <Button variant="outline" size="sm">
+              Clients
+            </Button>
+          </Link>
         </div>
       </div>
 
@@ -174,7 +179,9 @@ function Dashboard() {
               </div>
             );
             return a.to ? (
-              <Link key={i} to={a.to}>{content}</Link>
+              <Link key={i} to={a.to}>
+                {content}
+              </Link>
             ) : (
               <div key={i}>{content}</div>
             );
@@ -194,8 +201,17 @@ function Dashboard() {
         {(!sum || sum.mtdRevenueCents !== null) && (
           <KpiCard
             icon={DollarSign}
-            label="MTD revenue"
+            label="Collected MTD"
             value={sum ? fmtMoney(sum.mtdRevenueCents ?? 0) : "-"}
+            // IMP-10: net of this month's refunds and chargebacks. The hint
+            // appears only when something came back — an org that has never had
+            // a reversal keeps the card it already knows, and when the figure
+            // does drop it says why instead of leaving an owner to wonder.
+            hint={
+              sum && (sum.mtdRefundsCents ?? 0) !== 0
+                ? `${fmtMoney(sum.mtdGrossCents ?? 0)} in, ${fmtMoney(sum.mtdRefundsCents ?? 0)} refunded`
+                : undefined
+            }
           />
         )}
         {(!sum || sum.arOpenCents !== null) && (
@@ -241,11 +257,7 @@ function Dashboard() {
               No visits scheduled today.
             </div>
           ) : (
-            <RouteMap
-              groups={groups}
-              height={380}
-              onVisitClick={(id) => setDetailVisitId(id)}
-            />
+            <RouteMap groups={groups} height={380} onVisitClick={(id) => setDetailVisitId(id)} />
           )}
         </div>
 
@@ -284,7 +296,6 @@ function Dashboard() {
                   );
                 })}
               </ul>
-
             )}
           </div>
 
@@ -326,10 +337,16 @@ function Dashboard() {
 
       {/* Owner-facing AI summaries live on the dashboard (punch list #11). */}
       <div className="flex flex-col gap-6 max-md:order-3">
-        <AiSection title="AI: weekly digest" description="Owner-focused summary of the last 7 days.">
+        <AiSection
+          title="AI: weekly digest"
+          description="Owner-focused summary of the last 7 days."
+        >
           <DigestPanel />
         </AiSection>
-        <AiSection title="AI: marketing content" description="Draft posts, captions, and email blasts.">
+        <AiSection
+          title="AI: marketing content"
+          description="Draft posts, captions, and email blasts."
+        >
           <MarketingPanel />
         </AiSection>
       </div>

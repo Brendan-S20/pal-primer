@@ -7,6 +7,7 @@ import {
   paymentWasReceived,
   receivedPaymentStatuses,
 } from "@/lib/revenue";
+import { monthToDate } from "@/lib/revenue.server";
 
 // IMP-10 / BUG-21.
 //
@@ -82,6 +83,41 @@ describe("TS↔SQL parity on what counts as revenue", () => {
   it("the parser would notice a drifted list rather than matching anything", () => {
     expect(paymentStatusListsIn("AND p.status IN ('succeeded')")).toEqual([["succeeded"]]);
     expect(paymentStatusListsIn("-- p.status IN ('succeeded')\nSELECT 1")).toEqual([]);
+  });
+});
+
+describe("the month boundary belongs to the org, not the server", () => {
+  it("does not roll a Chicago month over until Chicago says so", () => {
+    // 1 Aug 03:00 UTC is still 31 July in Chicago. The dashboard took its month
+    // from the SERVER's clock and the invoices index from the browser's UTC, so
+    // for the first five hours of every month both cards showed the new month
+    // as empty while the org was still working the old one.
+    const justAfterUtcMidnight = new Date("2026-08-01T03:00:00Z");
+    expect(monthToDate("America/Chicago", justAfterUtcMidnight)).toEqual({
+      from: "2026-07-01",
+      to: "2026-07-31",
+    });
+    expect(monthToDate("UTC", justAfterUtcMidnight)).toEqual({
+      from: "2026-08-01",
+      to: "2026-08-01",
+    });
+  });
+
+  it("rolls over for an org east of UTC before UTC does", () => {
+    const lateUtc = new Date("2026-07-31T13:00:00Z"); // already 1 Aug in Auckland
+    expect(monthToDate("Pacific/Auckland", lateUtc)).toEqual({
+      from: "2026-08-01",
+      to: "2026-08-01",
+    });
+  });
+
+  it("runs from the first of the month to today, not to the month end", () => {
+    // Month-TO-DATE. Ending at the month end would sweep in nothing today, but
+    // it would also make the card claim a period that has not happened yet.
+    expect(monthToDate("UTC", new Date("2026-07-14T09:00:00Z"))).toEqual({
+      from: "2026-07-01",
+      to: "2026-07-14",
+    });
   });
 });
 
