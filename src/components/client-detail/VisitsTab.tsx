@@ -7,7 +7,9 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { CalendarOff, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { CalendarClock, CalendarOff, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { usePermissions } from "@/hooks/useMyRole";
+import { OneOffVisitDialog } from "@/components/OneOffVisitDialog";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -66,6 +68,14 @@ export function VisitsTab({
   const [propertyFilter, setPropertyFilter] = useState("all");
   const [detailVisit, setDetailVisit] = useState<any | null>(null);
   const [view, setView] = useState<"list" | "calendar">("list");
+  // The client-scoped entry to the one-off booking. This is the surface that
+  // makes OneOffVisitDialog's `clientId` prop mean anything — it shipped with
+  // the prop and nothing passing it, which is the built-and-uncalled pattern
+  // the dead-machinery check exists for, in TypeScript where that check cannot
+  // see it.
+  const [oneOffOpen, setOneOffOpen] = useState(false);
+  const { can } = usePermissions();
+  const canBookOneOff = can("manage_pricing");
 
   // Vacation hold banner (QA round 8): an active or upcoming hold explains
   // why no visits exist in a range. Managed from the header's ••• menu.
@@ -216,7 +226,7 @@ export function VisitsTab({
     <div className="space-y-4">
       {holdBanner}
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="mr-auto flex flex-wrap items-end gap-3">
           {grouped && (
             <>
               <div>
@@ -261,7 +271,13 @@ export function VisitsTab({
             </>
           )}
         </div>
-        <div className="ml-auto flex items-center gap-1" role="group" aria-label="View">
+        {canBookOneOff && (
+          <Button size="sm" variant="outline" onClick={() => setOneOffOpen(true)}>
+            <CalendarClock className="mr-1.5 h-4 w-4" />
+            Book a visit
+          </Button>
+        )}
+        <div className="flex items-center gap-1" role="group" aria-label="View">
           <Button
             size="sm"
             variant={view === "list" ? "default" : "outline"}
@@ -280,6 +296,16 @@ export function VisitsTab({
           </Button>
         </div>
       </div>
+
+      <OneOffVisitDialog
+        open={oneOffOpen}
+        onOpenChange={setOneOffOpen}
+        clientId={clientId}
+        onCreated={() => {
+          qc.invalidateQueries({ queryKey: ["client-visit-history", clientId] });
+          qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
+        }}
+      />
 
       {bulkConfirmDialog}
 
