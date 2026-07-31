@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.5** · Released 2026-07-31 · Supersedes: v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.6** · Released 2026-07-31 · Supersedes: v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,54 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+### v1.6 — 2026-07-31
+
+**A franchise can open a location.** Name it, name who works there, and they get
+invites and sign themselves in — the franchisee performs no setup step at all.
+This is the flow the owner described on 2026-07-30. The SQL for it was written
+that day, was correct, and **nothing ever called it**, so for a day and a half
+the only way to add a location was the invitation code, which assumes the
+location already runs on HoundStack. That covers acquisitions, not openings.
+Both paths now sit next to each other saying which is which, because picking
+wrong is the difference between a fresh location and an acquisition whose client
+history has to survive.
+
+Building the caller exposed two defects in the SQL that no amount of reading it
+would have found (BUG-31). A provisioned location was **free forever** — it
+INSERTs the organization directly, bypassing the only code that starts a trial —
+and it could be created with **no owner**, producing an organization nobody in
+the product could reach, including the franchise that made it.
+
+**An adversarial review of the last four builds found eleven issues; three of
+them ended in the same place.** A cancelled subscription, a tenant suspended for
+fraud, and an organization on an admin-granted grace period all reached the
+`paid` phase and kept HoundStack's AI keys running unmetered (BUG-29). Each
+arrived by a different route — a subscription id that survives cancellation, a
+suspension that writes only one of two status columns, and a status label that
+exists in the other enum — and all three went *through* the gate rather than
+around it. One of my own tests asserted the grace case worked by passing a value
+the column cannot hold.
+
+**Two more from the same review, both about the product lying quietly rather
+than failing.** Every settings change an office manager made reported success
+and did nothing, because the RLS policy said owner-only while both permission
+matrices say `manage_settings` — and a zero-row UPDATE is a successful UPDATE
+(BUG-30). And "is AI on" had three contradictory answers, none of them the
+correct sentence that had been written for it (BUG-32).
+
+**The dead-machinery detector is itself under review.** It found four real gaps
+on its first run and has cleared two of them, but the same adversarial pass
+found that one of its three rules cannot fire at all and another counts
+TypeScript *comments* as callers. A check that reports green by construction is
+worse than no check, because it is trusted. Being fixed now; IMP-11 moves back
+to part-built until it can prove each rule catches the case it was written for.
+
+**Platform-side franchise sales signals now render.** `franchise_signals` —
+clusters of organizations sharing a custom email domain, i.e. one multi-location
+operator signing up piecemeal — was the sixth instance of built-and-uncalled in
+a single cycle. `/platform/signals` shows them as leads worth a call, with
+already-linked clusters sunk to the bottom.
 
 ### v1.5 — 2026-07-31
 
@@ -210,8 +258,11 @@ were built. Repo search finds no such mechanism. Raised as BUILD-10.
 | BUG-23 | 🟢 Fixed | 🟠 | **New.** `/reports` selected every invoice in the organization with no range and no paging. PostgREST caps a response at 1000 rows silently — no error, no flag — so past a thousand invoices revenue, outstanding, aging and top clients were all quietly low, and got worse the longer the business ran. Paging is now a shared helper | v1.5 |
 | BUG-22 | 🟢 Fixed | 🟠 | **New.** `chargeback_responsibility` was writable by tenants — BUG-19's exact shape. A location's own owner could set it to `franchise` and push every future chargeback onto their parent. Protected; verified blocked in an isolated transaction | v1.5 |
 | BUG-21 | 🟢 Fixed | 🔴 | **New.** A refund in the SAME period as the sale was counted twice — the payment dropped out of revenue AND its adjustment was deducted. All three chargeback policies produced the wrong number, one of them paying a location $0 on a period where the franchise had explicitly agreed to eat the loss. Reproduced live, fixed, re-verified in six scenarios including composition across a period boundary | v1.5 |
-| BUG-22 | 🟢 Fixed | 🟠 | **New.** `chargeback_responsibility` was writable by tenants — BUG-19's exact shape. A location's own owner could set it to `franchise` and push every future chargeback onto their parent. Protected; verified blocked in an isolated transaction | v1.5 |
 | BUG-20 | 🟢 Fixed | 🔴 | **New.** Re-running a franchise settlement over the same period silently changed what was owed — a $0 settled statement went back to $900 owed, because the recalculation only looked for *pending* adjustments and the first run had already consumed them. Regeneration now counts what it applied to the same draft. Verified over three consecutive runs, plus a fourth after the statement was sent | v1.5 |
+| BUG-29 | 🟢 Fixed | 🔴 | **New.** A cancelled subscription kept HoundStack's AI keys forever. `customer.subscription.deleted` re-writes `stripe_subscription_id` rather than clearing it, and BUILD-7's "a live subscription is a fact" shortcut read that stored id as proof of payment — so a cancelled org stayed `paid`, its AI receptionist kept answering on our unmetered keys, and no banner said otherwise. Two siblings in the same read: a tenant suspended **for fraud** kept `plan_status='active'` (suspension only writes `billing_status`), and an admin-granted grace period read as no-plan-at-all because `grace` exists only in the *other* enum. Now reads both columns and checks ended states first, so the failure direction is a denial we can hear about rather than a bill we cannot | v1.6 |
+| BUG-30 | 🟢 Fixed | 🟠 | **New.** Every settings change an office manager made reported success and did nothing. `organizations` had one UPDATE policy — owner-only — while both permission matrices grant `manage_settings` to office_manager; PostgREST reports a zero-row UPDATE as a success. Worst case was `contact_email`, the reply-to address BUILD-5 had just made load-bearing: an office manager fixing it got a green toast while replies kept going to `noreply@`. Policy now keyed on `has_permission()` so the matrix has one definition, and `updateOwnOrg` refuses to claim success without the row back | v1.6 |
+| BUG-31 | 🟢 Fixed | 🟠 | **New.** A franchise-provisioned location was free forever and could be created with nobody able to administer it. `provision_franchise_location` INSERTs the organization directly, bypassing the only code that starts a trial, so each one landed in the `none` phase with nothing for enforcement to act on — a button that minted permanently free accounts, available only to Enterprise franchises. It also accepted a member list with no owner, and the parent is not a member of its own child, so the result was an organization nobody in the product could reach and no product path could repair | v1.6 |
+| BUG-32 | 🟢 Fixed | 🟡 | **New.** Three contradictory answers to "is AI on". Settings → AI read availability from environment variables alone, so a trial org was told AI was enabled; its health check blamed our deployment for their plan and sent them to support, who cannot change a plan; and the tools themselves said to add an API key in a field IMP-9 deleted with BYOK. The one correct sentence — `aiUnavailableReason` — was written and never reached. Related: BUILD-7 set `plan_status='trialing'` but left `billing_status`, and `/platform/tenants` reads the latter, so every trial showed as "Free" and the trialing filter returned nothing | v1.6 |
 
 **BUG-10 detail:** `waste_stations.label` was `NOT NULL`, so the junk labels were
 not merely left behind — they were *structurally impossible to clear*. Every
@@ -926,7 +977,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | IMP-5 | 🟢 Fixed | ⚪ | Repo housekeeping — ~20 stale `as any` casts removed across 14 files, each verified against the regenerated types first and probed to confirm a REAL type flowed rather than degrading to `any`. That probe found a live dead branch: `StaffInvoicePayForm` tested `payment.status === "paid"`, a value the `payment_status` enum has never had. See below | v1.5 |
 | IMP-6 | ❓ Blocked | 🟡 | Payment test coverage — needs Stripe authorized | v1.1 |
 | IMP-7 | 🟢 Fixed | 🟡 | Supabase types regenerated. They had been stale since before this cycle and IMP-9's table drop made them wrong, not just incomplete. Four `any`/structural casts removed as a result | v1.3 |
-| IMP-11 | 🟢 Fixed | 🟠 | **New.** Dead-machinery detector — a hard CI gate for the failure this project keeps producing: something built, granted and correct that nothing ever calls. Six instances in one cycle, every one invisible to tests and types. Found four more on its first run. See below | v1.5 |
+| IMP-11 | 🟠 Part-built | 🟠 | **New.** Dead-machinery detector — a hard CI gate for the failure this project keeps producing: something built, granted and correct that nothing ever calls. Six instances in one cycle, every one invisible to tests and types. Found four more on its first run. See below | v1.5 |
 | IMP-10 | 🟢 Fixed | 🔴 | **Closed in v1.5, and it was worse than logged.** `src/lib/revenue.ts` is now the one definition — money that ARRIVED (`succeeded` or `refunded`), reversals deducted in their own period — mirrored in SQL with a parity test that fails on drift. Fixing it turned up BUG-21 (a real money error), a third copy of the royalty calculation in the nightly cron, and an AI-tools query with no status filter at all that counted declined cards as revenue. Invoice-based revenue stays separate and is reconciled by BUILD-13's bridge rather than conflated | v1.4 |
 | IMP-9 | 🟢 Fixed | 🟠 | Retire the BYOK surfaces — **done, and the "wait for BUILD-2/BUILD-3" ordering in v1.2 was wrong.** See below | v1.3 |
 | IMP-8 | 🟢 Fixed | 🟡 | **New.** Org timezone was built but buried in Routes; moved to Settings | v1.1 |
@@ -935,8 +986,8 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | BUILD-3 | ⏳ Waiting | 🟠 | Managed texting — Q-8 = per-tenant subaccount + own brand. In the 10DLC compliance queue; nothing to accelerate | v1.1 |
 | BUILD-4 | 🟢 Fixed | 🟠 | Managed AI — BYO deleted, inference runs on the platform key, and the product no longer asks for a key. The remaining gap is metering, which is BUILD-2, not BUILD-4 | v1.3 |
 | BUILD-5 | 🟠 Part-built | 🟠 | White label — the surveyable half is done and it turned up a live customer-facing bug: **every reply to an invoice or reminder went to a no-reply address nobody reads**, with no bounce, so the customer believed they had been in touch. Reply-to now carries the tenant's office email end to end. True white label (own sending domain, own portal domain) needs the Resend account and per-tenant DNS — owner-blocked like Stripe. Both add-ons are `coming_soon` and unsellable until then | v1.5 |
-| BUILD-6 | 🟠 Part-built | 🟠 | Enterprise tier — **phases 1–3 shipped**: consent-based linking end to end, repaired rollup, both sides' UI. The franchise feature works for the first time. Remaining: multi-org membership, drill-down, royalty *delivery*. See below | v1.4 |
-| BUILD-7 | 🟠 Part-built | 🟡 | Trial lifecycle built — and the finding is that **no organization has ever had a trial**, because `bootstrap_organization` never started one and nothing in the tenant app gates on billing status at all. New signups now get the 14 days the site promises; expiry is a state and a banner, NOT a lock, because Stripe cannot take a payment yet. AI is paid-only (owner decision). Enforcement is one constant, flipped when Stripe lands | v1.5 |
+| BUILD-6 | 🟠 Part-built | 🟠 | Enterprise tier — **phases 1–4 shipped**: consent-based linking, repaired rollup, both sides' UI, the money side, and now **a franchise can open a location from the product** — name it, name the staff, they get invites and sign themselves in. That was the flow the owner described, the SQL for it had existed unused since 2026-07-30, and it was the last piece the product could not do. Platform-side franchise sales signals now render too. Remaining: multi-org membership, drill-down, royalty *delivery* | v1.6 |
+| BUILD-7 | 🟠 Part-built | 🟡 | Trial lifecycle built — and the finding was that **no organization had ever had a trial**, because `bootstrap_organization` never started one and nothing in the tenant app gated on billing status at all. New signups get the 14 days the site promises; expiry is a state and a banner, NOT a lock, because Stripe cannot take a payment yet. AI is paid-only (owner decision). Enforcement is one constant, flipped when Stripe lands. **v1.6:** an adversarial review found three ways a non-paying org still reached `paid` and kept the AI keys — see BUG-29. The state machine now reads both status columns and has a `lapsed` phase, because telling someone who cancelled a paid plan that their free trial ended reads as a product that lost track of what they bought | v1.6 |
 | BUILD-8 | 🟢 Fixed | 🟡 | AI Business Advisor **built out** (owner reversed the retire instruction). On-demand, 7/30/90-day windows, evidence shown beside the advice. See below | v1.3 |
 | BUILD-9 | 🔵 Open | 🟠 | Mobile Phase 2/3 — Q-2 = dedicated tablet tier, Q-3 = bundled assets | v1.1 |
 | BUILD-10 | 🟢 Fixed | 🟠 | Review queue built. §10.5's rule pointed at a mechanism nobody had made, so every place that "honored" it honored it by doing nothing. See below | v1.4 |
