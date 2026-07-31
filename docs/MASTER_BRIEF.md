@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.6** · Released 2026-07-31 · Supersedes: v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.7** · Released 2026-07-31 · Supersedes: v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,76 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+### v1.7 — 2026-07-31
+
+**The native app boots and runs with no network, for real.** Not a claim from a
+config file — the bundle was served as dumb static files with every off-origin
+request blocked, loaded in headless Chromium, and it hydrated, client-routed
+and rendered from 36 files on disk with zero off-origin requests. Getting there
+was not the config change the ledger implied: this is a server-rendered app,
+`.output/public` had no index.html, and Q-3's answer ("bundled assets") could
+not be implemented as written. It needed a client-bootable shell, an absolute
+server-function origin, CORS, CSRF, and an offline read cache — plus two
+defects that had to be fixed before "offline" could mean anything at all
+(BUG-43, BUG-44).
+
+**Two security holes that had been open since the code was written.** Server
+functions had NO CSRF protection, because supplying any `requestMiddleware`
+silently replaces TanStack's default — and the customer portal authenticates
+with a cookie (BUG-40). And the six authorization primitives would answer about
+any user, to anyone who asked (BUG-42). Both are closed and both were verified
+live in both directions rather than by reading.
+
+**`/sw.js` has 404'd in production since the PWA was built** (BUG-41), through
+three independent defects, so every offline claim on the web was decorative.
+The config read correctly the whole time. That is the theme of this release:
+
+**Four separate checks in this codebase were green while measuring nothing.**
+The dead-machinery rule that counted TypeScript comments as callers. The IMP-3
+parity test pinned to a superseded migration, which would have started checking
+history the moment anything replaced the function. A CSRF drift-guard I wrote
+today that tripped over its own warning comment. And the service-worker config,
+which no test could see because the defect existed only in the build output.
+Every one was written by someone confident it worked, and every one was caught
+by making it fail on purpose rather than by reading it. Mutation-testing a new
+check is now the cheapest thing in this repo that keeps paying.
+
+**Corrections to my own reporting this cycle**, recorded because a ledger that
+only records other people's mistakes is not a ledger. I reported the service
+worker's precache manifest as empty; it held 324 entries, and I had grepped for
+`"url":` against a minified file that writes `url:`. I reported the membership
+oracle as needing a signature change across every RLS policy; it needed six
+small guards, and I had repeated an agent's framing without checking it. And I
+shipped a broken `run_billing_cycles` while fixing `run_billing_cycles`, by
+rebuilding its body from a fragment instead of its source — caught by testing,
+not by reading.
+
+**Annual billing was already built on both sides and priced differently on each**
+(BUG-45, closing MKT-9 and VER-8). The site sold 15% off and the app charged
+16.7% off; nobody could have noticed from either side alone, because each was
+internally consistent.
+
+**The dead-machinery detector is back to green and now earns it** (IMP-11).
+v1.6 left it part-built because an adversarial pass found one rule that could
+not fire, one that counted comments as callers, and one that would have failed
+CI on correct code. All three are rewritten and each is mutation-proven against
+the case it was written for. The known-gap ledger went 2 → 10 on the fix — that
+was measurement, not a new outbreak — and is now at 0, with 17 baseline
+exceptions each carrying a reason. One residual is named in its own header
+rather than left implied: the pg_cron schedules rule 2 asserts were checked by
+hand once and are re-checked by nothing.
+
+**`franchise_signals` paired the wrong organization with the wrong domain**
+(BUG-46). Two parallel arrays were built by separate queries and zipped by
+index; the screen shipped in v1.6 was showing plausible, wrong sales leads.
+
+**Twelve migrations went out live** — the provisioning RPC, three superseded RPCs
+retired, the fifteen-day postpaid outage, the tenant read/write hole, the
+publishable-key leak, the membership oracle, and the deep-clean and repayment
+money fixes. The security ones were each proved to fail before and pass after,
+in the live database, inside a transaction that rolls itself back — reading a
+policy is not evidence that it holds.
 
 ### v1.6 — 2026-07-31
 
@@ -293,6 +363,13 @@ were built. Repo search finds no such mechanism. Raised as BUILD-10.
 | BUG-22 | 🟢 Fixed | 🟠 | **New.** `chargeback_responsibility` was writable by tenants — BUG-19's exact shape. A location's own owner could set it to `franchise` and push every future chargeback onto their parent. Protected; verified blocked in an isolated transaction | v1.5 |
 | BUG-21 | 🟢 Fixed | 🔴 | **New.** A refund in the SAME period as the sale was counted twice — the payment dropped out of revenue AND its adjustment was deducted. All three chargeback policies produced the wrong number, one of them paying a location $0 on a period where the franchise had explicitly agreed to eat the loss. Reproduced live, fixed, re-verified in six scenarios including composition across a period boundary | v1.5 |
 | BUG-20 | 🟢 Fixed | 🔴 | **New.** Re-running a franchise settlement over the same period silently changed what was owed — a $0 settled statement went back to $900 owed, because the recalculation only looked for *pending* adjustments and the first run had already consumed them. Regeneration now counts what it applied to the same draft. Verified over three consecutive runs, plus a fourth after the statement was sent | v1.5 |
+| BUG-40 | 🟢 Fixed | 🔴🔴 | **New.** Server functions had **no CSRF protection at all**, for the life of the app. `createStartHandler` installs its default CSRF middleware only when no start instance supplies `requestMiddleware` — `src/start.ts` always has, so the default was replaced silently, with no error and no warning. Tenant auth is a bearer token, which limited the exposure there; the **customer portal authenticates with a cookie**, and its server functions reschedule visits, cancel add-ons and toggle autopay. A page a customer happened to be visiting could have done any of those on their behalf. Configuring it had a trap of its own: `Sec-Fetch-Site` short-circuits the check, so the obvious fix admits every site on the internet while looking configured | v1.7 |
+| BUG-41 | 🟢 Fixed | 🟠 | **New.** `/sw.js` has **404'd in production since the PWA was built**, and it took three independent defects: the worker was emitted to `dist/` while deployment ships `.output/public`; its precache manifest globbed a directory with no app assets; and the CacheFirst rule matched `/_build/`, a path this build has never produced. Every offline claim on the web was decorative — config that read correctly, was reviewed as if it worked, and never once executed. All three lived in the build OUTPUT, invisible from source, so `scripts/check-pwa-output.mjs` now asserts against the output and runs as part of `npm run build` | v1.7 |
+| BUG-42 | 🟢 Fixed | 🟡 | **New.** The six authorization primitives (`has_role`, `is_org_member`, `has_permission`, `can_write_org`, `is_platform_admin`, `is_visit_tech`) took *whose* permissions to check as an argument and answered about anybody. Any signed-in account could ask whether a given user belonged to a given organization, and in what role — a membership oracle. Low severity (one bit, no data, both ids required) but real. Fixed with six small guards after checking all 182 call sites pass the caller's own identity; I had first reported this as needing a signature change across every RLS policy, which was wrong | v1.7 |
+| BUG-43 | 🟢 Fixed | 🟠 | **New.** `myDayCache.ts` wrote a tech's route — addresses, gate codes, access notes — to `localStorage` keyed only by date and staff id. Not user-scoped, referenced by nothing but my-day, and therefore **cleared by no sign-out path**: on a shared crew tablet it sat there indefinitely, survived sign-out, and was written during impersonation. Removed and subsumed by a store that is scoped per user, erased before `signOut()` is called, and never written while impersonating | v1.7 |
+| BUG-44 | 🟢 Fixed | 🟠 | **New.** The app could not open offline at its own front door. `_authenticated.beforeLoad` called `supabase.auth.getUser()` — a **network call** — and read any failure as "not signed in", redirecting to `/auth`. No amount of caching could have helped. Now falls back to the local session, but only when the failure looks like lost network; a 4xx from the auth server is still a real rejection, and that distinction is tested, because getting it backwards would let an expired account in | v1.7 |
+| BUG-45 | 🟢 Fixed | 🟡 | **New.** The marketing site quoted an annual price the app does not charge. The app bills annual as ten months — `annual_price_cents` is exactly 10× monthly on every live tier, "two months free", 16.7% — while the site applied a flat 15% and said so in the FAQ. `/pricing` quoted Launch at $67.15/mo against an actual $65.83. Under-promising, so harmless in direction, but a published price that is not the price. Now derived from months-paid so the two cannot drift | v1.7 |
+| BUG-46 | 🟢 Fixed | 🟡 | **New.** `franchise_signals` returned organization names and ids as two parallel arrays that were not in the same order, so per-organization links would have pointed at the wrong tenant about half the time. Never mispaired anyone only because the screen noticed and rendered no links. Not fixed by adding `ORDER BY name` — that is not a total order (three organizations here are literally named "Test Test") and two aggregates sort independently. Replaced with one jsonb array of self-contained `{id, name, linked}` objects: nothing left to zip | v1.7 |
 | BUG-36 | 🟢 Fixed | 🔴🔴 | **New.** BUG-33's twin, one tier up. That closed the anon surface; nobody asked what a *signed-in* user could reach. ~35 SECURITY DEFINER functions took an org, client, visit or payment id as a **parameter** and trusted it, with no authorization check in the body — and signup is public, so anyone can hold an authenticated session. Reads included customer names and revenue for any organization; writes included account credit, franchise billing, visit completion and the email queue. Revoked where the app never calls from a browser, membership-checked where it does | v1.6 |
 | BUG-37 | 🟢 Fixed | 🔴🔴 | **New.** Postpaid invoicing produced **nothing for fifteen days and reported success**. `20260716220000` reintroduced `p.address_line1` — a column renamed to `street` long before, and already fixed once — so every invoice raised. It stayed invisible because `run_billing_cycles` catches per-client failures with a `RAISE WARNING` into a log nobody reads and returns only the SUCCESS count: a night where every client failed returns 0, the same answer as a night with nothing due. Verified live — newest `invoice_line_items` row dated 2026-07-16, the day that migration landed. Failures now file to the review queue | v1.6 |
 | BUG-38 | 🟢 Fixed | 🟠 | **New.** A $79 Launch org could mint franchise codes. The franchise RPCs checked role and never plan, and the TypeScript funnel was the only gate — which a browser skips by calling `supabase.rpc` directly. So a Launch owner could create a link code, recruit locations, and run the entire Enterprise franchise feature unpaid. `has_plan_entitlement`, the SQL mirror nothing had ever called, is now the check inside all six parent-side functions | v1.6 |
@@ -745,6 +822,56 @@ recorded debt stays visible rather than vanishing the moment it is written down.
 The baseline is a record of decisions, not a mute button — which is exactly the
 trap a check like this invites.
 
+**And then the check was turned on itself, and all three rules were wrong.**
+This is the part worth remembering, because the check had been reporting green
+the whole time.
+
+*Rule 3 could never fire.* The write-only-column rule allowed `ON|AND|OR|,` plus
+200 characters of anything before the column name, so a column matched its own
+`CREATE TABLE` body and counted as read by itself. Run with the application text
+forced empty — where every column in the repo should have been flagged — it
+flagged 0 of 187, `franchise_share_cents` among them: the BUG-24 column the rule
+was written for, matching `ON DELETE SET NULL,` two lines above its own
+declaration. It now inverts the question — blank every declaration and every
+write, and whatever text is still standing is a read — and is proven both ways:
+with that column's two real readers deleted the new rule flags it and the old
+one still does not.
+
+*Rule 1 counted comments as callers.* SQL comments were stripped precisely
+because prose headers name the functions they explain; TypeScript was scanned
+raw. Six granted RPCs appeared in `src/` only inside comments.
+`portal_resolve_contact` is the proof: retired, unreachable, and passing the
+check because the sentence announcing its retirement mentions it by name. The
+same defect existed in SQL and the review missed it on the first pass —
+`detect_review_items` looked called from a string inside `COMMENT ON TABLE`.
+
+*Rule 1's call pattern would have failed CI on correct code.* It enumerated
+`PERFORM|SELECT|JOIN|FROM|=|,|(` and omitted `RETURN`, `IF`, `NOT`, `AND`, `OR`
+and `WHERE` — so a function called only as `IF NOT public.x(...) THEN RAISE`,
+this repo's dominant guard idiom at four existing sites, read as uncalled. The
+enumeration was itself the bug, so it is gone: strip the DDL that names the
+function, and any surviving `name(` is a call.
+
+**Known gaps went 2 → 10, and that was the point.** The jump was measurement,
+not a new outbreak — seven things had always been dead and invisible. Among them
+`has_plan_entitlement`, the SQL mirror of `PLAN_ENTITLEMENTS`, which the IMP-3
+parity test keeps honest by parsing the migration *as text* rather than calling
+it: so plan gating was enforced in TypeScript only and the database enforced
+none of it, which is the exact thing having a SQL mirror was supposed to fix.
+Also `signup_utm`, captured since 2026-07-14 and read by nothing, and a reversal
+audit trail nothing could answer a question from. Every one was verified against
+the live database before being believed. All ten have since been closed — the
+ledger is at zero, and the check is green with 17 exceptions, each carrying a
+reason.
+
+**One residual, and the header says so rather than implying otherwise.** Rule
+2's baseline records a pg_cron schedule for each scheduled endpoint —
+`nightly-automation`, `weekly-digest`, `process-email-queue`. Those strings were
+verified by hand against `cron.job` once; nothing re-checks them. If a job is
+dropped, the baseline still asserts it exists and the check still reports green.
+Verifying only when database credentials happen to be present would be worse: it
+would pass silently in exactly the environment everyone trusts.
+
 **BUILD-5 detail — what white label already was, and the bug underneath it.**
 
 Unlike the trial, branding was NOT dead machinery. `brand_color` and `logo_url`
@@ -1004,7 +1131,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | ID | Status | Summary | Changed in |
 |---|---|---|---|
 | VER-4 | ✅ Verified | Non-field roles in tech lists — both surfaces filter `is_field_tech`; confirmed in live data | v1.1 |
-| VER-8 | 🟠 Near-closed | `annual_plan_prices` **is** applied live, so annual billing exists in the app. The gap is the marketing site. Unblocks MKT-9. | v1.1 |
+| VER-8 | ✅ Verified | Annual billing works in the app and is now correctly priced on the site. Two corrections to this entry's own wording: there is no `annual_plan_prices` table — the columns live on `platform_plans` — and the gap was never that the site lacked annual billing. It had it, at the wrong number. Closed with MKT-9 / BUG-45 | v1.7 |
 | VER-1, 2, 3, 5, 6, 7, 9, 10, 11 | 🔵 Open | Need a live session with real fixtures (Jobber CSV, a prepaid client, the DNA wizard) — not answerable by reading code | v1.1 |
 
 ## Improvements · Builds · Responsiveness · Marketing
@@ -1018,7 +1145,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | IMP-5 | 🟢 Fixed | ⚪ | Repo housekeeping — ~20 stale `as any` casts removed across 14 files, each verified against the regenerated types first and probed to confirm a REAL type flowed rather than degrading to `any`. That probe found a live dead branch: `StaffInvoicePayForm` tested `payment.status === "paid"`, a value the `payment_status` enum has never had. See below | v1.5 |
 | IMP-6 | ❓ Blocked | 🟡 | Payment test coverage — needs Stripe authorized | v1.1 |
 | IMP-7 | 🟢 Fixed | 🟡 | Supabase types regenerated. They had been stale since before this cycle and IMP-9's table drop made them wrong, not just incomplete. Four `any`/structural casts removed as a result | v1.3 |
-| IMP-11 | 🟠 Part-built | 🟠 | **New.** Dead-machinery detector — a hard CI gate for the failure this project keeps producing: something built, granted and correct that nothing ever calls. Six instances in one cycle, every one invisible to tests and types. Found four more on its first run. See below | v1.5 |
+| IMP-11 | 🟢 Fixed | 🟠 | Dead-machinery detector — a hard CI gate for the failure this project keeps producing: something built, granted and correct that nothing ever calls. Six instances in one cycle, every one invisible to tests and types. Turned on itself in v1.6 and found one rule that could not fire, one counting comments as callers, and one that would have failed CI on correct code; all three rewritten and mutation-proven in v1.7. Green with 17 named exceptions and no open known gaps. One residual, stated in its header: the cron schedules in rule 2's baseline are asserted by a human and checked by nothing. See below | v1.5 |
 | IMP-10 | 🟢 Fixed | 🔴 | **Closed in v1.5, and it was worse than logged.** `src/lib/revenue.ts` is now the one definition — money that ARRIVED (`succeeded` or `refunded`), reversals deducted in their own period — mirrored in SQL with a parity test that fails on drift. Fixing it turned up BUG-21 (a real money error), a third copy of the royalty calculation in the nightly cron, and an AI-tools query with no status filter at all that counted declined cards as revenue. Invoice-based revenue stays separate and is reconciled by BUILD-13's bridge rather than conflated | v1.4 |
 | IMP-9 | 🟢 Fixed | 🟠 | Retire the BYOK surfaces — **done, and the "wait for BUILD-2/BUILD-3" ordering in v1.2 was wrong.** See below | v1.3 |
 | IMP-8 | 🟢 Fixed | 🟡 | **New.** Org timezone was built but buried in Routes; moved to Settings | v1.1 |
@@ -1030,7 +1157,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | BUILD-6 | 🟠 Part-built | 🟠 | Enterprise tier — **phases 1–4 shipped**: consent-based linking, repaired rollup, both sides' UI, the money side, and now **a franchise can open a location from the product** — name it, name the staff, they get invites and sign themselves in. That was the flow the owner described, the SQL for it had existed unused since 2026-07-30, and it was the last piece the product could not do. Platform-side franchise sales signals now render too. Remaining: multi-org membership, drill-down, royalty *delivery* | v1.6 |
 | BUILD-7 | 🟠 Part-built | 🟡 | Trial lifecycle built — and the finding was that **no organization had ever had a trial**, because `bootstrap_organization` never started one and nothing in the tenant app gated on billing status at all. New signups get the 14 days the site promises; expiry is a state and a banner, NOT a lock, because Stripe cannot take a payment yet. AI is paid-only (owner decision). Enforcement is one constant, flipped when Stripe lands. **v1.6:** an adversarial review found three ways a non-paying org still reached `paid` and kept the AI keys — see BUG-29. The state machine now reads both status columns and has a `lapsed` phase, because telling someone who cancelled a paid plan that their free trial ended reads as a product that lost track of what they bought | v1.6 |
 | BUILD-8 | 🟢 Fixed | 🟡 | AI Business Advisor **built out** (owner reversed the retire instruction). On-demand, 7/30/90-day windows, evidence shown beside the advice. See below | v1.3 |
-| BUILD-9 | 🔵 Open | 🟠 | Mobile Phase 2/3 — Q-2 = dedicated tablet tier, Q-3 = bundled assets | v1.1 |
+| BUILD-9 | 🟠 Part-built | 🟠 | Mobile Phase 2/3. **The native app now boots and runs with no network** — proven by serving the bundle as static files with every off-origin request blocked, loading it in headless Chromium, and watching it hydrate and render from 36 files on disk with zero off-origin requests. Getting there meant a client-bootable SPA shell (this is a server-rendered app; `.output/public` had no index.html, which is why the config pointed at a remote URL), an absolute server-function origin, CORS, CSRF, and an offline read cache — plus BUG-43 and BUG-44, both of which had to be fixed before "offline" could mean anything. Q-3's answer was NOT a config flag as the ledger implied. Remaining: Q-4, Q-5 and Q-12 (create-sheet contents, tech "More" ceiling, dispatch depth), all marked non-blocking, and a real device in a real dead zone | v1.7 |
 | BUILD-10 | 🟢 Fixed | 🟠 | Review queue built. §10.5's rule pointed at a mechanism nobody had made, so every place that "honored" it honored it by doing nothing. See below | v1.4 |
 | BUILD-11 | 🟢 Fixed | 🟠 | **New.** End-of-day close-out for visits left open | v1.1 |
 | BUILD-13 | 🟢 Fixed | 🟠 | **New.** CPA / tax report pack — ten reports, each declaring its basis and carrying its caveats into the CSV. Cash and accrual income, the bridge between them, point-in-time AR aging, refunds, write-offs, 1099-K reconciliation, franchise settlements, referral rewards. Also the 1099-K explanation the owner asked for, keyed to how payments are actually routed. See below | v1.5 |
@@ -1044,7 +1171,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | MKT-6 | 🟠 Part-built | 🟡 | SEO gaps closed: a double-escaped title, TWO identical FAQPage blocks on two pages, four separate Organization nodes and two contradicting SoftwareApplication entities, all now single-`@id`. Offers say PreOrder, not InStock — nothing is buyable yet. **Analytics needs you:** Plausible is already installed and firing events; registering the domain and creating goals needs your account | v1.5 |
 | MKT-7 | 🔵 Open | 🟡 | Real product screenshots | v1.0 |
 | MKT-8 | ⚪ Deferred | ⚪ | `/customers` stub | v1.0 |
-| MKT-9 | 🔵 Open | 🟡 | Annual billing on site — see VER-8 | v1.1 |
+| MKT-9 | 🟢 Fixed | 🟡 | Annual billing was already built on BOTH sides — the app has the interval toggle and switch confirmation, the site has the monthly/yearly switch. What no ledger entry caught is that they disagreed on the number; see BUG-45 | v1.7 |
 
 **BUG-24 detail — the term nobody was reading, found by an adversarial pass.**
 
@@ -1229,6 +1356,20 @@ rather than the following January.
 3. **`SUPABASE_DB_URL` secret** — ✅ added, and verified working end-to-end in CI.
 4. ~~**Q-13**~~ — ✅ answered: every add-on available at launch, after QA.
 5. **10DLC registration** — compliance queue; paced by the registrar.
+
+**Two things only you can confirm, because this sandbox cannot:**
+
+6. **One curl against the real deployment**, once the CSRF and CORS work is
+   live: `curl -i -X OPTIONS https://app.houndstack.com/_serverFn/getMyDay -H
+   'Origin: capacitor://localhost' -H 'Access-Control-Request-Method: POST'`
+   should answer 204 with `access-control-allow-origin: capacitor://localhost`.
+   The rules are unit-tested and the middleware is wired, but nothing here has
+   seen a preflight cross a real edge.
+
+7. **The native app on a real device with no signal.** Offline boot was proved
+   in headless Chromium against static files with every off-origin request
+   blocked, which is the strongest evidence available without hardware — it is
+   not the same as airplane mode on a tech's phone in a yard.
 
 **Accepted trade-offs, recorded so they aren't rediscovered as bugs:**
 
