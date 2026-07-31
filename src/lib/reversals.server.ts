@@ -30,6 +30,7 @@
 // hand one to their accountant and read the other over coffee.
 
 import { orgLocalDay, reducesIncome, REVERSAL_KINDS, reversalLabel } from "@/lib/cpa-reports";
+import type { DisputeOutcome as DisputeOutcomeName } from "@/lib/disputes";
 import { fetchAllPages } from "@/lib/supabase-paging.server";
 
 export type Reversal = {
@@ -37,6 +38,9 @@ export type Reversal = {
   kind: string;
   /** The payment this reversed. May be older than the window being reported. */
   paymentId: string | null;
+  /** The Stripe dispute this row belongs to, or "" for a refund. A payment can
+   *  carry several disputes, so the payment id alone does not identify one. */
+  disputeId: string;
   /** Org-local calendar day the money moved — never a UTC slice. */
   day: string;
   amountCents: number;
@@ -85,7 +89,7 @@ export async function loadOrgReversals(
   const rows = await fetchAllPages<any>((a, b) =>
     supabase
       .from("review_items")
-      .select("id, kind, subject_id, detected_at, detail")
+      .select("id, kind, subject_id, detected_at, detail, dispute_ref")
       .eq("organization_id", orgId)
       .in("kind", REVERSAL_KINDS as unknown as string[])
       .gte("detected_at", lo)
@@ -107,6 +111,7 @@ export async function loadOrgReversals(
         id: r.id as string,
         kind: r.kind as string,
         paymentId: (r.subject_id as string | null) ?? null,
+        disputeId: (r.dispute_ref as string | null) ?? "",
         day,
         amountCents: Number(r.detail?.amount_cents ?? 0),
         deducts: reducesIncome(r.kind as string),
@@ -128,22 +133,37 @@ export async function resolveDisputeOutcomes(
   supabase: any,
   orgId: string,
   paymentIds: string[],
-): Promise<Map<string, "open" | "won" | "lost">> {
-  const out = new Map<string, "open" | "won" | "lost">();
+): Promise<Map<string, DisputeOutcomeName>> {
+  const out = new Map<string, DisputeOutcomeName>();
   const ids = [...new Set(paymentIds.filter(Boolean))];
   if (ids.length === 0) return out;
 
-  const { DISPUTE_KINDS, disputesFrom } = await import("@/lib/disputes");
+  const { DISPUTE_KINDS, disputeKey, disputesFrom } = await import("@/lib/disputes");
   const rows: any[] = [];
+  // PAGED, not sized by arithmetic. This used to fetch 200 ids at a time and be
+  // safe only because 200 × 3 kinds = 600 sat under PostgREST's silent 1000-row
+  // cap (BUG-23) — a bound that broke the moment the inquiry kinds took it to
+  // 200 × 5 = 1000 exactly, and that stopped being computable at all once a
+  // payment could carry SEVERAL disputes (one row per kind PER DISPUTE, with no
+  // upper limit). Paging removes the sum from the argument entirely.
   for (let i = 0; i < ids.length; i += 200) {
-    const { data, error } = await supabase
-      .from("review_items")
-      .select("kind, subject_id, detected_at, detail")
-      .eq("organization_id", orgId)
-      .in("kind", [...DISPUTE_KINDS])
-      .in("subject_id", ids.slice(i, i + 200));
-    if (error) throw new Error(error.message);
-    rows.push(...(data ?? []));
+    const chunk = ids.slice(i, i + 200);
+    rows.push(
+      ...(await fetchAllPages<any>((a, b) =>
+        supabase
+          .from("review_items")
+          .select("kind, subject_id, detected_at, detail, dispute_ref")
+          .eq("organization_id", orgId)
+          .in("kind", [...DISPUTE_KINDS])
+          .in("subject_id", chunk)
+          // Stable ordering, because paging an unordered query can repeat or
+          // drop a row between pages.
+          .order("subject_id")
+          .order("kind")
+          .order("id")
+          .range(a, b),
+      )),
+    );
   }
 
   for (const d of disputesFrom(
@@ -154,9 +174,12 @@ export async function resolveDisputeOutcomes(
       // because the outcome depends on WHICH events exist, not when.
       day: String(r.detected_at ?? "").slice(0, 10),
       amountCents: Number(r.detail?.amount_cents ?? 0),
+      disputeId: (r.dispute_ref as string | null) ?? "",
     })),
   )) {
-    out.set(d.paymentId, d.outcome);
+    // Keyed per DISPUTE. A payment with two disputes has two outcomes, and
+    // keying on the payment let whichever was folded last speak for both.
+    out.set(disputeKey(d.paymentId, d.disputeId), d.outcome);
   }
   return out;
 }

@@ -71,8 +71,10 @@ function DisputesPage() {
           <ShieldAlert className="h-6 w-6" /> Disputes
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          When a customer&apos;s bank reverses a payment, it lands here. The money has already
-          left the account — this is where you see what is still contestable and what is settled.
+          When a customer&apos;s bank queries or reverses a payment, it lands here. An
+          INQUIRY is a question and takes nothing; a CHARGEBACK has already left the
+          account. This is where you see which is which, what is still contestable, and
+          what is settled.
         </p>
       </div>
 
@@ -82,7 +84,13 @@ function DisputesPage() {
         <p className="text-sm text-destructive">{(q.error as Error).message}</p>
       ) : !data ? null : (
         <>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat
+              label="Inquiries"
+              value={money(t?.inquiryCents ?? 0)}
+              sub={`${t?.inquiryCount ?? 0} queried, nothing taken`}
+              tone={(t?.inquiryCount ?? 0) > 0 ? "warn" : undefined}
+            />
             <Stat
               label="Open"
               value={money(t?.openCents ?? 0)}
@@ -150,7 +158,12 @@ function DisputesPage() {
                   {data.disputes.map((d) => {
                     const copy = DISPUTE_COPY[d.outcome];
                     return (
-                      <div key={d.paymentId} className="rounded-md border p-3">
+                      // Keyed on the dispute, not the payment: a payment can
+                      // carry more than one and React would collapse them.
+                      <div
+                        key={`${d.paymentId}:${d.disputeId}`}
+                        className="rounded-md border p-3"
+                      >
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">

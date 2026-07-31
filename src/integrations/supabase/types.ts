@@ -1390,6 +1390,7 @@ export type Database = {
           collected_by_organization_id: string | null
           created_at: string
           cumulative_cents: number | null
+          dispute_ref: string | null
           due_by: string
           franchise_share_cents: number
           id: string
@@ -1411,6 +1412,7 @@ export type Database = {
           collected_by_organization_id?: string | null
           created_at?: string
           cumulative_cents?: number | null
+          dispute_ref?: string | null
           due_by?: string
           franchise_share_cents?: number
           id?: string
@@ -1432,6 +1434,7 @@ export type Database = {
           collected_by_organization_id?: string | null
           created_at?: string
           cumulative_cents?: number | null
+          dispute_ref?: string | null
           due_by?: string
           franchise_share_cents?: number
           id?: string
@@ -4316,6 +4319,7 @@ export type Database = {
         Row: {
           detail: Json
           detected_at: string
+          dispute_ref: string
           id: string
           kind: string
           organization_id: string
@@ -4330,6 +4334,7 @@ export type Database = {
         Insert: {
           detail?: Json
           detected_at?: string
+          dispute_ref?: string
           id?: string
           kind: string
           organization_id: string
@@ -4344,6 +4349,7 @@ export type Database = {
         Update: {
           detail?: Json
           detected_at?: string
+          dispute_ref?: string
           id?: string
           kind?: string
           organization_id?: string
@@ -5636,6 +5642,7 @@ export type Database = {
         Args: {
           _adjustment_id?: string
           _amount_cents: number
+          _dispute_ref?: string
           _kind: string
           _org_id: string
           _payment_id: string
@@ -6150,6 +6157,7 @@ export type Database = {
       record_franchise_adjustment: {
         Args: {
           _amount_cents: number
+          _dispute_ref?: string
           _kind: string
           _note?: string
           _payment_id: string

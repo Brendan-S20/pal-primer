@@ -2,7 +2,13 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
-import { DISPUTE_KINDS, disputesFrom, summarizeDisputes, type Dispute } from "@/lib/disputes";
+import {
+  DISPUTE_KINDS,
+  disputeKey,
+  disputesFrom,
+  summarizeDisputes,
+  type Dispute,
+} from "@/lib/disputes";
 
 // BUILD-12 — the dispute queue's data.
 //
@@ -50,14 +56,22 @@ export const getDisputeQueue = createServerFn({ method: "GET" })
     // No date window: a dispute queue is a worklist, not a period report. An
     // open dispute from four months ago is the one most in need of attention,
     // and windowing it out is how it stops being anybody's problem.
-    const { data: items, error } = await supabase
-      .from("review_items")
-      .select("id, kind, subject_id, detected_at, detail, reason")
-      .eq("organization_id", orgId)
-      .in("kind", [...DISPUTE_KINDS])
-      .order("detected_at", { ascending: false })
-      .order("id");
-    if (error) throw new Error(error.message);
+    //
+    // Paged, because PostgREST caps an un-ranged select at 1000 rows and says
+    // nothing about it (BUG-23). A dispute is three or four rows over its life,
+    // so an unpaged query starts losing disputes — and understating the money —
+    // somewhere past ~300 of them, with no error anywhere.
+    const { fetchAllPages } = await import("@/lib/supabase-paging.server");
+    const items = await fetchAllPages<any>((a, b) =>
+      supabase
+        .from("review_items")
+        .select("id, kind, subject_id, detected_at, detail, reason, dispute_ref")
+        .eq("organization_id", orgId)
+        .in("kind", [...DISPUTE_KINDS])
+        .order("detected_at", { ascending: false })
+        .order("id")
+        .range(a, b),
+    );
 
     const events = (items ?? []).map((r: any) => ({
       paymentId: (r.subject_id as string | null) ?? null,
@@ -65,6 +79,7 @@ export const getDisputeQueue = createServerFn({ method: "GET" })
       day: orgLocalDay(r.detected_at, timezone),
       amountCents: Number(r.detail?.amount_cents ?? 0),
       reason: r.reason as string,
+      disputeId: (r.dispute_ref as string | null) ?? "",
     }));
     const disputes = disputesFrom(events);
 
@@ -102,8 +117,15 @@ export const getDisputeQueue = createServerFn({ method: "GET" })
       for (const c of data ?? []) clientName.set(c.id, c.display_name);
     }
 
+    // Keyed on the DISPUTE, not the payment: a payment can carry more than one,
+    // and keying on the payment showed the second dispute the first one's
+    // reason — the wrong amount, against the wrong bank deadline.
     const openingReason = new Map(
-      events.filter((e) => e.kind === "payment_chargeback").map((e) => [e.paymentId ?? "", e.reason]),
+      events
+        .filter(
+          (e) => e.kind === "payment_chargeback" || e.kind === "payment_dispute_inquiry",
+        )
+        .map((e) => [disputeKey(e.paymentId ?? "", e.disputeId), e.reason]),
     );
 
     return {
@@ -117,7 +139,7 @@ export const getDisputeQueue = createServerFn({ method: "GET" })
           // cannot attribute is still money that left, and hiding it would
           // make the queue's total disagree with the bank.
           clientName: (cid && clientName.get(cid)) || "Unknown customer",
-          reason: openingReason.get(d.paymentId) ?? "",
+          reason: openingReason.get(disputeKey(d.paymentId, d.disputeId)) ?? "",
         };
       }),
       totals: summarizeDisputes(disputes),

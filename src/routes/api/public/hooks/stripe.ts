@@ -446,7 +446,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
 
             const { data: pay } = await (supabaseAdmin as any)
               .from("payments")
-              .select("id, organization_id, amount_cents")
+              .select("id, organization_id, amount_cents, status")
               .eq("stripe_payment_intent_id", paymentIntentId)
               .maybeSingle();
             if (!pay) return new Response("ok", { status: 200 });
@@ -462,66 +462,53 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
 
             let kind: string | null = null;
             let amount = 0;
+            // Stripe's dispute id. THE identity of a dispute — a payment can be
+            // disputed more than once over its life (an inquiry that escalates
+            // is a new dispute object; a charge can carry two partial disputes),
+            // and keying the ledgers on the payment alone silently discarded
+            // every dispute after the first.
+            let disputeRef: string | null = null;
+            let movesMoney = false;
+
             if (event.type === "charge.refunded") {
               kind = "refund";
               amount = Number(obj?.amount_refunded ?? 0);
-            } else if (event.type === "charge.dispute.created") {
-              kind = "chargeback";
-              amount = Number(obj?.amount ?? 0);
+              movesMoney = true;
             } else {
-              // dispute.closed. Only a WIN returns money — a loss confirms the
-              // withdrawal already recorded when the dispute opened, so treating
-              // it as a second reversal would deduct the same amount twice.
-              //
-              // BUILD-12: but the OUTCOME still has to be recorded, or the queue
-              // says "open" forever and an owner cannot tell "still fighting
-              // this" from "lost it in March". `chargeback_lost` is a
-              // status-only kind: it files a queue entry, moves no money, and
-              // raises no adjustment. Inferring the loss from age instead would
-              // be a guess, which is what the review queue exists to prevent.
-              if (obj?.status === "won") {
-                kind = "chargeback_won";
-                amount = Number(obj?.amount ?? 0);
-              } else {
-                // Every non-won closure is a loss for our purposes: `lost`,
-                // `warning_closed` and the rest all end with the customer
-                // keeping the money.
-                kind = "chargeback_lost";
-                amount = Number(obj?.amount ?? 0);
-              }
+              // BUILD-12: `charge.dispute.created` and `charge.dispute.closed`
+              // carry BOTH inquiries and real chargebacks, and only `status`
+              // tells them apart. This handler used to read every `created` as a
+              // withdrawal and every non-`won` `closed` as a loss — so an
+              // inquiry that was simply dropped (`warning_closed`) deducted its
+              // amount from revenue for ever and billed a franchise location for
+              // money nobody had taken. The decision lives in disputes.ts,
+              // pure and unit-tested, because production traffic is the only
+              // other thing that exercises it.
+              const { planDisputeEvent } = await import("@/lib/disputes");
+              const plan = planDisputeEvent(event.type, obj?.status);
+              kind = plan.kind;
+              movesMoney = plan.movesMoney;
+              amount = Number(obj?.amount ?? 0);
+              disputeRef = typeof obj?.id === "string" ? obj.id : null;
             }
 
             if (kind) {
-              // Mark the payment so every revenue figure stops counting it.
-              // Deliberately NOT for a won dispute — that money is ours again —
-              // and NOT for a lost one either: the payment was already marked
-              // when the dispute opened, and re-marking it would be a no-op that
-              // implies a second event.
-              if (kind !== "chargeback_won" && kind !== "chargeback_lost") {
-                await (supabaseAdmin as any)
-                  .from("payments").update({ status: "refunded" }).eq("id", pay.id);
-              } else if (kind === "chargeback_won") {
-                await (supabaseAdmin as any)
-                  .from("payments").update({ status: "succeeded" }).eq("id", pay.id);
-              }
-
               // Franchise apportionment, if this location belongs to one.
               // Returns null for an ordinary independent business.
               //
-              // BUILD-12: skipped entirely for a lost dispute. The money left —
-              // and was apportioned — when the dispute OPENED; losing it changes
-              // the outcome, not the balance. The SQL refuses this kind too, but
-              // a guard on both sides of a boundary that decides whether someone
-              // is billed twice is worth the four lines.
-              const { data: adjId } =
-                kind === "chargeback_lost"
-                  ? { data: null }
-                  : await (supabaseAdmin as any).rpc("record_franchise_adjustment", {
-                      _payment_id: pay.id,
-                      _kind: kind,
-                      _amount_cents: amount,
-                      _note: `Stripe ${event.type}`,
-                    });
+              // Only for an event that actually moved money. A lost dispute and
+              // both inquiry kinds are status facts; the SQL refuses them too,
+              // but a guard on both sides of a boundary that decides whether
+              // someone is billed is worth the three lines.
+              const { data: adjId } = movesMoney
+                ? await (supabaseAdmin as any).rpc("record_franchise_adjustment", {
+                    _payment_id: pay.id,
+                    _kind: kind,
+                    _amount_cents: amount,
+                    _note: `Stripe ${event.type}`,
+                    _dispute_ref: disputeRef,
+                  })
+                : { data: null };
 
               // ALERT, because the owner is right that this WILL happen and
               // silence is the failure mode. Reuses the review queue rather
@@ -533,8 +520,57 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                   _kind: kind,
                   _amount_cents: amount,
                   _adjustment_id: adjId ?? null,
+                  _dispute_ref: disputeRef,
                 });
               } catch (e) { console.error("reversal review item failed", e); }
+
+              // Mark the payment so every revenue figure agrees with the bank.
+              //
+              // Derived from the WHOLE ledger rather than from this one event.
+              // Flipping straight to 'succeeded' on a win restored the entire
+              // gross of a payment that might still carry a second, open or
+              // lost, dispute — and would have erased a refund recorded
+              // separately. A refund is left alone here: it has its own status
+              // already and no dispute outcome should overrule it.
+              if (event.type === "charge.refunded") {
+                await (supabaseAdmin as any)
+                  .from("payments").update({ status: "refunded" }).eq("id", pay.id);
+              } else {
+                const { DISPUTE_KINDS, disputesFrom, paymentIsReversedByDisputes } =
+                  await import("@/lib/disputes");
+                const { data: ledger } = await (supabaseAdmin as any)
+                  .from("review_items")
+                  .select("kind, subject_id, detected_at, detail, dispute_ref")
+                  .eq("organization_id", pay.organization_id)
+                  .eq("subject_id", pay.id)
+                  .in("kind", [...DISPUTE_KINDS, "payment_refunded"]);
+                const rows = (ledger ?? []) as any[];
+                const refunded = rows.some((r) => r.kind === "payment_refunded");
+                const reversed =
+                  refunded ||
+                  paymentIsReversedByDisputes(
+                    disputesFrom(
+                      rows.map((r) => ({
+                        paymentId: (r.subject_id as string | null) ?? null,
+                        kind: r.kind as string,
+                        day: String(r.detected_at ?? "").slice(0, 10),
+                        amountCents: Number(r.detail?.amount_cents ?? 0),
+                        disputeId: (r.dispute_ref as string | null) ?? "",
+                      })),
+                    ),
+                  );
+                const want = reversed ? "refunded" : "succeeded";
+                // Only ever move BETWEEN those two. A payment sitting in any
+                // other status was put there by something that is not a
+                // dispute, and a dispute has no business overwriting it.
+                if (
+                  pay.status !== want &&
+                  (pay.status === "refunded" || pay.status === "succeeded")
+                ) {
+                  await (supabaseAdmin as any)
+                    .from("payments").update({ status: want }).eq("id", pay.id);
+                }
+              }
             }
 
           } else if (event.type === "account.updated") {

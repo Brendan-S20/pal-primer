@@ -158,13 +158,21 @@ export async function collectedInPeriod(
     // deducts and a won one never did, so the toggle can only ever touch the
     // genuinely undecided middle — which is the only case an owner could have
     // a defensible opinion about.
+    const { disputeKey } = await import("@/lib/disputes");
     const outcomes = await resolveDisputeOutcomes(
       supabase,
       orgId,
       reversalRows.filter((r) => r.kind === "payment_chargeback").map((r) => r.paymentId ?? ""),
     );
+    // Keyed on the DISPUTE. A payment disputed twice — one still open, one
+    // lost — has two answers, and asking by payment id gave whichever was
+    // folded last to both, hiding or double-counting a real deduction.
     reversalRows = reversalRows.filter(
-      (r) => !(r.kind === "payment_chargeback" && outcomes.get(r.paymentId ?? "") === "open"),
+      (r) =>
+        !(
+          r.kind === "payment_chargeback" &&
+          outcomes.get(disputeKey(r.paymentId ?? "", r.disputeId)) === "open"
+        ),
     );
   }
 
