@@ -7,11 +7,27 @@ const config: CapacitorConfig = {
   // Display name — kept in sync with the PWA manifest (vite.config.ts) and the
   // head <title> (src/routes/__root.tsx).
   appName: 'HoundStack',
+  // NOTE: this app is server-rendered (TanStack Start + Nitro), so
+  // `.output/public` holds static assets and NO index.html — there is nothing
+  // here for a WebView to boot. `webDir` is required by the CLI but is not, on
+  // its own, a runnable bundle. See the note on `server.url` below; Q-3's
+  // answer ("bundled Capacitor assets") is an architecture change, not a config
+  // flag, and is not done.
   webDir: '.output/public',
   server: {
-    // Point to your Lovable published URL for live-reload during dev.
-    // Comment out `url` before building a store-ready binary that runs from bundled assets.
-    url: 'https://pal-primer.lovable.app',
+    // WHICH SERVER THE SHIPPED APP LOADS.
+    //
+    // This was hard-coded to https://pal-primer.lovable.app — a Lovable PREVIEW
+    // domain — with a comment saying to remove it before a store build. Nothing
+    // enforced that, so a binary built today would have shipped pointing at a
+    // preview host rather than the product: wrong domain, and a dependency on
+    // an environment nobody promises to keep alive.
+    //
+    // Defaults to production now, and dev live-reload is opt-in through
+    // CAP_SERVER_URL, so the dangerous value can no longer be the one you get
+    // by forgetting. Set CAP_SERVER_URL=https://pal-primer.lovable.app while
+    // developing against the preview.
+    url: process.env.CAP_SERVER_URL || 'https://app.houndstack.com',
     cleartext: false,
   },
   ios: {
