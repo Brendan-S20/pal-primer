@@ -62,6 +62,11 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   // office roles can record a decision. Route ACL matches the read gate.
   "/review": ["owner", "office_manager", "dispatcher"],
   "/franchise": ["owner"],
+  // BUILD-6: the CHILD side. Deliberately NOT Enterprise-gated — a
+  // franchisee is a location someone else recruited, most likely on a
+  // cheaper plan. Gating it would make linking impossible unless every
+  // location bought Enterprise too.
+  "/settings/franchise": ["owner"],
   // /ai-tools is now a redirect to /dashboard — no ACL entry needed.
   "/imports": ["owner", "office_manager"],
   "/settings": ["owner", "office_manager", "tech"],

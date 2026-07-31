@@ -520,6 +520,49 @@ than the weekly digest (`paid_at`), because a parent will compare the rollup's
 revenue against a royalty invoice for the same period and those two must
 reconcile. Two numbers that agree beat one that is arguably more correct alone.
 
+**BUILD-6 phase 3 — wiring it up, and the same mistake nearly repeated.**
+
+Phases 1–2 left three SECURITY DEFINER functions granted to `authenticated`
+that **nothing called** — exactly the `franchise_rollup` failure documented one
+section above, committed by me, one hour later. Phase 3 is the wiring.
+
+**Five more instances of the same RLS wall were found and fixed.** The rollup was
+not the only casualty: `getFranchiseContext`, `getFranchiseTrend`,
+`getFranchiseRoyaltySettings`, and `generateRoyaltyInvoices` all listed children
+or read their payments on the caller's own client. Every one returned empty for
+every possible caller, so:
+
+- the location list was always empty,
+- the 8-week revenue chart was always blank,
+- the royalty settings page had nothing to configure,
+- and "generate royalty invoices" looped zero times and silently produced
+  **nothing**, for everyone, always.
+
+None of these would have surfaced as errors. They returned empty successfully.
+
+**The gating split that makes the feature usable.** Everything in
+`franchise.functions.ts` requires the `franchise_structure` entitlement, which is
+right for the PARENT — rollup and royalty billing are what Enterprise sells. It
+is wrong for the child. A franchisee is a location somebody else recruited,
+most likely on Launch or Growth; gating redemption behind Enterprise would mean
+linking only works if **every location independently buys the most expensive
+plan**. So the child side lives in `franchise-membership.functions.ts`, ungated:
+
+| Capability | Gate |
+|---|---|
+| Issue a code, rollup, trend, set royalty | Enterprise (parent capability) |
+| Redeem a code, see my parent + my rate | Ungated, owner-only |
+| Leave the franchise | Ungated — a relationship you can enter and cannot exit is a trap, and it must not become one because a plan lapsed |
+
+The franchisee can **see** their royalty rate even though only the parent can set
+it. Billing someone a percentage they cannot look up would be indefensible.
+
+**Verified live through the whole round trip**, then production restored exactly
+as found: children visible `0 → 1`, `set_child_royalty_percent` writes `6.50`
+(that function had never once succeeded), the child is **blocked** from changing
+it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returned
+0. Cleanup confirmed `linked=0 codes=0 royalty=0.00`.
+
 ## Verify-then-fix
 
 | ID | Status | Summary | Changed in |
@@ -547,7 +590,7 @@ reconcile. Two numbers that agree beat one that is arguably more correct alone.
 | BUILD-3 | ⏳ Waiting | 🟠 | Managed texting — Q-8 = per-tenant subaccount + own brand. In the 10DLC compliance queue; nothing to accelerate | v1.1 |
 | BUILD-4 | 🟢 Fixed | 🟠 | Managed AI — BYO deleted, inference runs on the platform key, and the product no longer asks for a key. The remaining gap is metering, which is BUILD-2, not BUILD-4 | v1.3 |
 | BUILD-5 | 🔵 Open | 🟠 | White label (real build) | v1.0 |
-| BUILD-6 | 🟠 Part-built | 🟠 | Enterprise tier — **phase 1+2 shipped**: consent-based linking, repaired rollup, franchise page works for the first time. Remaining: multi-org membership, child-side UI, drill-down, royalty delivery. See below | v1.4 |
+| BUILD-6 | 🟠 Part-built | 🟠 | Enterprise tier — **phases 1–3 shipped**: consent-based linking end to end, repaired rollup, both sides' UI. The franchise feature works for the first time. Remaining: multi-org membership, drill-down, royalty *delivery*. See below | v1.4 |
 | BUILD-7 | 🔵 Open | 🟡 | Trial → Growth + AI sandbox | v1.0 |
 | BUILD-8 | 🟢 Fixed | 🟡 | AI Business Advisor **built out** (owner reversed the retire instruction). On-demand, 7/30/90-day windows, evidence shown beside the advice. See below | v1.3 |
 | BUILD-9 | 🔵 Open | 🟠 | Mobile Phase 2/3 — Q-2 = dedicated tablet tier, Q-3 = bundled assets | v1.1 |

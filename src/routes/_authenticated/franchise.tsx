@@ -40,6 +40,7 @@ import {
 } from "recharts";
 import { HelpTip } from "@/components/HelpTip";
 import { PlanGate } from "@/components/PlanGate";
+import { FranchiseLinkCodes } from "@/components/FranchiseLinkCodes";
 
 export const Route = createFileRoute("/_authenticated/franchise")({
   // BUILD-1: the whole surface is Enterprise. The pricing page sells "Parent
@@ -135,19 +136,23 @@ function FranchisePage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground space-y-3">
-            <p>This organization is not configured as a royalty parent yet.</p>
+            <p>This organization is not set up as a franchise yet.</p>
             <p>
-              This page rolls up clients, revenue, and open AR from other HoundStack organizations
-              that bill you royalties. Each location runs as its own separate organization with its
-              own users and data. Full multi-location management (shared branches, per-location user
-              scoping) is on the roadmap.
+              This page rolls up active clients, visits, revenue, and open balances from the
+              locations in your franchise. Each location runs as its own organization with its own
+              users and client records — you see their totals, not their customers.
             </p>
+            {/* BUILD-6: this used to say "any organization whose
+                parent_organization_id points at this one will roll up here",
+                which described editing a database column by hand — the only way
+                to link anything, because no linking flow existed. It does now. */}
             <p>
-              Once you enable it, any organization whose <code>parent_organization_id</code> points
-              at this one will roll up here.
+              To add a location, mark this organization as the franchise, then send its owner an
+              invitation code. They join from their own account, so nothing is linked without their
+              agreement.
             </p>
             <Button onClick={() => mark.mutate()} disabled={mark.isPending}>
-              {mark.isPending ? "Marking…" : "Mark this org as a franchise parent"}
+              {mark.isPending ? "Marking…" : "Set up as a franchise"}
             </Button>
           </CardContent>
         </Card>
@@ -178,6 +183,8 @@ function FranchisePage() {
           </p>
         </div>
       </div>
+
+      <FranchiseLinkCodes />
 
       <div className="grid gap-4 md:grid-cols-4">
         <StatCard label="Active clients" value={totals.clients.toLocaleString()} />

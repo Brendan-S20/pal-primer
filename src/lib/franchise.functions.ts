@@ -135,7 +135,15 @@ export const getFranchiseTrend = createServerFn({ method: "GET" })
     const earliest = weeks[0].start.toISOString();
     const latest = weeks[weeks.length - 1].end.toISOString();
 
-    const { data: pays } = await context.supabase
+    // BUILD-6: this hit the SAME RLS wall — payments belong to the children, and
+    // the parent is not a member of them, so the caller's client returned an
+    // empty set and the chart was blank even once the location list was fixed.
+    // Service-role is safe here precisely because `kids` came from
+    // franchise_children(), which authorized the caller against the parent
+    // first; the query can only ever touch organizations already proven to be
+    // this parent's.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: pays } = await (supabaseAdmin as any)
       .from("payments")
       .select("organization_id, amount_cents, created_at")
       .in("organization_id", kids.map((k) => k.id))
@@ -220,7 +228,12 @@ export const getFranchiseRoyaltySettings = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const orgId = await resolveOrgId(context.supabase, context.userId);
-    const { data, error } = await (context.supabase.from("organizations") as any)
+    // BUILD-6: same RLS wall — the caller's client cannot see its own children,
+    // so this returned an empty list and the royalty settings page had nothing
+    // to configure. Authorized above; service-role read scoped to this parent.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await (supabaseAdmin as any)
+      .from("organizations")
       .select("id, name, franchise_royalty_percent")
       .eq("parent_organization_id", orgId)
       .order("name");
@@ -246,7 +259,13 @@ export const generateRoyaltyInvoices = createServerFn({ method: "POST" })
         ? { start: data.periodStart, end: data.periodEnd }
         : lastMonthRange();
 
-    const { data: children, error: cErr } = await (context.supabase.from("organizations") as any)
+    // BUILD-6: children AND their payments are both unreadable on the caller's
+    // client, so this loop ran zero times and "generate royalty invoices"
+    // silently produced nothing for every caller. Authorized by resolveOrgId
+    // above; every query below is scoped to this parent's own children.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: children, error: cErr } = await (supabaseAdmin as any)
+      .from("organizations")
       .select("id, name, franchise_royalty_percent")
       .eq("parent_organization_id", orgId);
     if (cErr) throw new Error(cErr.message);
@@ -255,7 +274,7 @@ export const generateRoyaltyInvoices = createServerFn({ method: "POST" })
     for (const child of (children ?? []) as any[]) {
       const percent = Number(child.franchise_royalty_percent ?? 0);
       // Collected (succeeded) revenue in the period.
-      const { data: pays } = await context.supabase
+      const { data: pays } = await (supabaseAdmin as any)
         .from("payments")
         .select("amount_cents")
         .eq("organization_id", child.id)
@@ -265,7 +284,7 @@ export const generateRoyaltyInvoices = createServerFn({ method: "POST" })
       const revenue = (pays ?? []).reduce((s: number, r: any) => s + Number(r.amount_cents ?? 0), 0);
       const amount = Math.round((revenue * percent) / 100);
 
-      const { error: upErr } = await (context.supabase as any).from("franchise_royalty_invoices")
+      const { error: upErr } = await (supabaseAdmin as any).from("franchise_royalty_invoices")
         .upsert(
           {
             parent_organization_id: orgId,
@@ -317,4 +336,110 @@ export const setRoyaltyInvoiceStatus = createServerFn({ method: "POST" })
       .eq("parent_organization_id", orgId);
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+// ── Recruiting locations (BUILD-6) ──────────────────────────────────────────
+//
+// Issuing a code is a PARENT capability, so it sits behind the same Enterprise
+// funnel as the rest of this file. Redeeming one is not — see
+// franchise-membership.functions.ts for why the child side is ungated.
+
+export const createFranchiseLinkCode = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await resolveOrgId(context.supabase, context.userId);
+    // Caller's client, so auth.uid() inside the function is the real owner.
+    const { data, error } = await (context.supabase as any).rpc("create_franchise_link_code");
+    if (error) throw new Error(error.message);
+    return { code: data as string };
+  });
+
+export type FranchiseLinkCode = {
+  id: string;
+  code: string;
+  createdAt: string;
+  expiresAt: string;
+  usedAt: string | null;
+  usedByName: string | null;
+  revokedAt: string | null;
+  state: "active" | "used" | "expired" | "revoked";
+};
+
+export const listFranchiseLinkCodes = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await (supabaseAdmin as any)
+      .from("franchise_link_codes")
+      .select("id, code, created_at, expires_at, used_at, used_by_org_id, revoked_at")
+      .eq("parent_organization_id", orgId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error) throw new Error(error.message);
+
+    // Resolve who redeemed each code. The parent is entitled to know which
+    // organization took the invitation they issued.
+    const usedIds = (data ?? []).map((r: any) => r.used_by_org_id).filter(Boolean);
+    const names = new Map<string, string>();
+    if (usedIds.length) {
+      const { data: orgs } = await (supabaseAdmin as any)
+        .from("organizations").select("id, name").in("id", usedIds);
+      for (const o of orgs ?? []) names.set(o.id, o.name);
+    }
+
+    const now = Date.now();
+    const codes: FranchiseLinkCode[] = (data ?? []).map((r: any) => ({
+        id: r.id as string,
+        code: r.code as string,
+        createdAt: r.created_at as string,
+        expiresAt: r.expires_at as string,
+        usedAt: (r.used_at as string | null) ?? null,
+        usedByName: r.used_by_org_id ? (names.get(r.used_by_org_id) ?? null) : null,
+        revokedAt: (r.revoked_at as string | null) ?? null,
+        // Derived once here so three surfaces don't each re-derive it slightly
+        // differently.
+        state: r.revoked_at
+          ? ("revoked" as const)
+          : r.used_at
+            ? ("used" as const)
+            : Date.parse(r.expires_at) <= now
+              ? ("expired" as const)
+              : ("active" as const),
+    }));
+    return { codes };
+  });
+
+export const revokeFranchiseLinkCode = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ codeId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // Scoped to this parent AND to unused codes: revoking one that was already
+    // redeemed would imply it undoes the link, which it does not — unlinking is
+    // a separate, deliberate act.
+    const { data: updated, error } = await (supabaseAdmin as any)
+      .from("franchise_link_codes")
+      .update({ revoked_at: new Date().toISOString() })
+      .eq("id", data.codeId)
+      .eq("parent_organization_id", orgId)
+      .is("used_at", null)
+      .is("revoked_at", null)
+      .select("id")
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return { ok: true as const, alreadyClosed: !updated };
+  });
+
+export const unlinkFranchiseLocation = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ childOrgId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await resolveOrgId(context.supabase, context.userId);
+    const { error } = await (context.supabase as any).rpc("unlink_franchise_child", {
+      _child_org_id: data.childOrgId,
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true as const };
   });
