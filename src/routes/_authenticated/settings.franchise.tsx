@@ -3,16 +3,14 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Building2, LogOut } from "lucide-react";
+import { Building2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
   getMyFranchiseMembership,
   joinFranchise,
-  leaveFranchise,
 } from "@/lib/franchise-membership.functions";
 
 // BUILD-6 — the CHILD's side, and deliberately in Settings rather than on
@@ -25,8 +23,11 @@ import {
 // location independently bought the most expensive plan — so the feature would
 // be unusable exactly where it is meant to be used.
 //
-// Leaving is ungated for a stronger reason still: a relationship you can enter
-// and cannot exit is a trap, and it must not become one because a plan lapsed.
+// Leaving is NOT offered here (owner decision). A franchisee is contractually
+// bound to the franchise system; exit is governed by the franchise agreement,
+// not by a button in software. The page says so plainly rather than hiding it,
+// and names who to contact — including support, for the case where the
+// franchise itself has gone quiet.
 
 export const Route = createFileRoute("/_authenticated/settings/franchise")({
   head: () => ({ meta: [{ title: "Franchise · HoundStack" }] }),
@@ -37,8 +38,6 @@ function FranchiseSettings() {
   const qc = useQueryClient();
   const getFn = useServerFn(getMyFranchiseMembership);
   const joinFn = useServerFn(joinFranchise);
-  const leaveFn = useServerFn(leaveFranchise);
-  const { confirm, dialog } = useConfirmDialog();
   const [code, setCode] = useState("");
 
   const q = useQuery({ queryKey: ["franchise", "membership"], queryFn: () => getFn() });
@@ -54,21 +53,10 @@ function FranchiseSettings() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const leave = useMutation({
-    mutationFn: () => leaveFn(),
-    onSuccess: () => {
-      toast.success("Left the franchise");
-      qc.invalidateQueries({ queryKey: ["franchise"] });
-      qc.invalidateQueries({ queryKey: ["org"] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
   const m = q.data;
 
   return (
     <div className="max-w-2xl space-y-6">
-      {dialog}
       <div>
         <h1 className="text-xl font-semibold">Franchise</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -105,23 +93,12 @@ function FranchiseSettings() {
                 Set by your franchise. Ask them if this doesn&apos;t look right.
               </p>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={leave.isPending}
-              onClick={async () => {
-                const ok = await confirm({
-                  title: "Leave this franchise?",
-                  description: `${m.parentName ?? "The franchise"} will stop seeing this location's numbers, and your royalty rate resets to 0%. Royalty invoices already raised are not affected.`,
-                  confirmLabel: "Leave franchise",
-                  destructive: true,
-                });
-                if (ok) leave.mutate();
-              }}
-            >
-              <LogOut className="mr-1 h-3 w-3" />
-              {leave.isPending ? "Leaving…" : "Leave franchise"}
-            </Button>
+            <p className="text-xs text-muted-foreground">
+              Being part of a franchise is set by your franchise agreement, so this connection is
+              managed by <strong>{m.parentName ?? "them"}</strong> rather than from here. If you
+              need to end it, speak to them first. If they&apos;re unreachable, contact HoundStack
+              support and we can help.
+            </p>
           </CardContent>
         </Card>
       ) : m?.isParent ? (
@@ -165,7 +142,8 @@ function FranchiseSettings() {
             </Button>
             <p className="text-xs text-muted-foreground">
               Joining lets your franchise see this location&apos;s totals and bill you a royalty
-              percentage. You can leave at any time.
+              percentage. Once joined, ending the connection is handled by your franchise — check
+              your agreement before you accept.
             </p>
           </CardContent>
         </Card>

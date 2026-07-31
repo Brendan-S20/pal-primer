@@ -16,8 +16,8 @@ import { requirePermission } from "@/lib/authz.server";
 // Launch could never join, so the feature would only work if every location
 // independently bought the most expensive plan. That is not the product.
 //
-// Leaving is ungated for a stronger reason: a relationship you can enter and
-// cannot exit is a trap, and it must not become one because a plan lapsed.
+// Leaving, by contrast, is NOT the child's to do — see the note at the bottom
+// of this file.
 //
 // Owner-only on both sides, enforced in SQL as well as here — joining a
 // franchise changes who can see this organization's numbers, which is not a
@@ -87,17 +87,15 @@ export const joinFranchise = createServerFn({ method: "POST" })
     return { ok: true as const, parentOrganizationId: parentId as string };
   });
 
-export const leaveFranchise = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(
-      context.supabase,
-      context.userId,
-      "manage_settings",
-    );
-    const { error } = await (context.supabase as any).rpc("unlink_franchise_child", {
-      _child_org_id: orgId,
-    });
-    if (error) throw new Error(error.message);
-    return { ok: true as const };
-  });
+// BUILD-6: leaveFranchise was removed here (owner decision, 2026-07-30).
+//
+// I had built it so a franchisee could detach themselves, reasoning that a
+// relationship you can enter and cannot exit is a trap. That is wrong for
+// franchising: a franchisee is contractually bound, and exit is governed by the
+// franchise agreement rather than by a button. A location that could silently
+// detach — stopping the royalty accrual its parent depends on — would let the
+// product override the contract.
+//
+// Membership is the parent's to grant and to end. The abandonment case the
+// button was protecting against is covered by platform support, who can unlink
+// on request; see unlink_franchise_child.
