@@ -436,6 +436,180 @@ export const balanceOverloadedRoutes = createServerFn({ method: "POST" })
     };
   });
 
+/**
+ * Book a single visit that is not part of a recurring plan — an emergency
+ * call-out, a make-up after a skip, a one-time deep clean.
+ *
+ * ── WHY THIS CREATES A SUBSCRIPTION AND NOT JUST A VISIT ───────────────────
+ *
+ * Because `visits.subscription_id` is NOT NULL, and that is not an oversight.
+ * BOTH invoicing paths select visits the same way —
+ *
+ *     FROM public.visits v
+ *     JOIN public.subscriptions s ON s.id = v.subscription_id
+ *
+ * — an inner join with no frequency filter, in `generate_invoices_for_org` and
+ * in `run_billing_cycles` alike, and the amount comes from `s.price_cents`. A
+ * visit with no subscription would not merely be unpriced; it would not appear
+ * in the query at all. Making the column nullable would have been a way to do
+ * unbillable work and never find out.
+ *
+ * So the product already models "one visit" as a `one_time` service, and every
+ * piece of that was already built: the `one_time` value in `service_frequency`,
+ * a complete branch in `generate_visits_core` that honours blackout dates, work
+ * days and client holds, and the "One time — a single visit on the chosen date"
+ * option in the service drawer. Verified live against the real database: a
+ * `one_time` service created for today generates exactly one visit, dated
+ * today, and it bills at the subscription price like any other.
+ *
+ * What did NOT exist was a way to get there quickly, or at all on the day it
+ * matters — see the comment on the generate call below. This is that path, and
+ * it is deliberately a thin wrapper over the existing machinery rather than a
+ * second way to make a visit, because two ways to create the same row is how
+ * the two diverge.
+ */
+export const createOneOffVisit = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        clientId: z.string().uuid(),
+        propertyId: z.string().uuid(),
+        /** The day the visit should happen. */
+        scheduledOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        priceCents: z.number().int().min(0).max(10_000_00),
+        /** Optional: put it straight on a tech's route. */
+        staffId: z.string().uuid().nullable().optional(),
+        /** Why it was booked. Shows on the client's activity timeline. */
+        note: z.string().max(300).optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { requirePermission } = await import("@/lib/authz.server");
+    // Booking a one-off sets a price, so it is the same permission creating any
+    // other service needs. A dispatcher does not hold it — consistent with Q-1
+    // ("dispatchers ops-only, no billing"), and the UI hides the entry point
+    // rather than letting them fill a form that throws on submit.
+    const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
+
+    const { data: client, error: cErr } = await supabase
+      .from("clients")
+      .select("id, organization_id, account_type, display_name")
+      .eq("id", data.clientId)
+      .single();
+    if (cErr) throw new Error(cErr.message);
+    if (client.organization_id !== orgId) throw new Error("That client is not in your organization");
+
+    const { data: prop, error: pErr } = await supabase
+      .from("properties")
+      .select("id, client_id, zone_id, auto_zone_id, total_units")
+      .eq("id", data.propertyId)
+      .single();
+    if (pErr) throw new Error(pErr.message);
+    if (prop.client_id !== data.clientId)
+      throw new Error("That property belongs to a different client");
+
+    // subscriptions_account_shape_chk: residential needs dog_count, commercial
+    // needs unit_count, and exactly one of them. Getting this wrong fails at
+    // the constraint with a message no office manager could act on.
+    const accountType = (client.account_type as string) === "commercial" ? "commercial" : "residential";
+    const dogCount =
+      accountType === "residential"
+        ? await supabase
+            .from("dogs")
+            .select("id", { count: "exact", head: true })
+            .eq("property_id", data.propertyId)
+            // NOT (active IS false) — `neq("active", false)` would drop rows
+            // where active is NULL, which is how most dogs are stored.
+            .not("active", "is", false)
+            .then((r: any) => Math.max(1, r.count ?? 1))
+        : null;
+
+    const { data: sub, error: sErr } = await supabase
+      .from("subscriptions")
+      .insert({
+        organization_id: orgId,
+        client_id: data.clientId,
+        property_id: data.propertyId,
+        account_type: accountType,
+        frequency: "one_time",
+        price_cents: data.priceCents,
+        dog_count: dogCount,
+        unit_count: accountType === "commercial" ? Math.max(1, prop.total_units ?? 1) : null,
+        zone_id: prop.zone_id ?? prop.auto_zone_id ?? null,
+        started_on: data.scheduledOn,
+        // A one-off must not keep generating. Bounding it on the same day is
+        // what makes the `one_time` branch terminate rather than relying on
+        // the frequency alone.
+        ends_on: data.scheduledOn,
+      })
+      .select("id")
+      .single();
+    if (sErr) throw new Error(sErr.message);
+
+    // ── Generate NOW rather than waiting for the nightly run ────────────────
+    //
+    // This is the whole reason this function exists. Saving a service has never
+    // created its visits — the nightly cron does, or someone presses "Generate
+    // schedule". And that button was explicitly disabled for one_time
+    // (`canGenerate = … && s.frequency !== "one_time"`), so booking a one-off
+    // for TODAY produced a service with no visit, no button, and a banner
+    // reading "Its one-time visit is in the past" — which was false. The
+    // emergency case was the one case that could not work.
+    //
+    // `generate_visits_through` is org-wide, so this also fills in anything
+    // else due on or before this date. That is the same work the nightly run
+    // and the dispatch board's "Generate visits" button already do, and it is
+    // idempotent, so the side effect is that the schedule is slightly more
+    // up to date than it was.
+    const { error: gErr } = await (supabase as any).rpc("generate_visits_through", {
+      _org_id: orgId,
+      _through: data.scheduledOn,
+    });
+    if (gErr) throw new Error(gErr.message);
+
+    const { data: visit } = await supabase
+      .from("visits")
+      .select("id, scheduled_on")
+      .eq("subscription_id", sub.id)
+      .maybeSingle();
+
+    // The generator declines a date that is blacked out, outside the org's work
+    // days, or inside a client hold — all of which are correct refusals, and
+    // all of which would otherwise look like the booking silently vanishing.
+    if (!visit) {
+      throw new Error(
+        "The service was created but no visit could be scheduled on that date — it may be a blackout day, outside your work days, or inside a hold on this client. Pick another date.",
+      );
+    }
+
+    if (data.staffId) {
+      const { error: rErr } = await (supabase as any).rpc("reassign_visit", {
+        _visit_id: visit.id,
+        _staff_id: data.staffId,
+      });
+      if (rErr) throw new Error(rErr.message);
+    }
+
+    try {
+      const { logActivity } = await import("@/lib/activity.server");
+      await logActivity(supabase, {
+        orgId,
+        clientId: data.clientId,
+        propertyId: data.propertyId,
+        actorUserId: userId,
+        kind: "visit.created",
+        summary: `Booked a one-off visit on ${visit.scheduled_on}${
+          data.note ? ` — ${data.note}` : ""
+        }`,
+      });
+    } catch {}
+
+    return { visitId: visit.id as string, subscriptionId: sub.id as string, scheduledOn: visit.scheduled_on as string };
+  });
+
 export const reassignVisit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>

@@ -3,6 +3,7 @@ import {
   subscriptionToFormValues,
   blankSubscriptionFormValues,
   isServiceEnded,
+  serviceScheduleState,
 } from "@/lib/subscription-form";
 
 // Finding #8: the edit form must mirror the actual subscription record, not
@@ -120,5 +121,66 @@ describe("isServiceEnded", () => {
   it("open-ended active and paused services are live", () => {
     expect(isServiceEnded({ status: "active", ends_on: null }, today)).toBe(false);
     expect(isServiceEnded({ status: "paused", ends_on: null }, today)).toBe(false);
+  });
+});
+
+// ── the one-off booking dead end ───────────────────────────────────────────
+//
+// Booking a one-off visit for TODAY produced a service with no visit, a banner
+// reading "Its one-time visit is in the past" (false), and no Generate button,
+// because canGenerate excluded one_time outright. Three things had to be true
+// at once for the emergency case to be the one case that could not work.
+
+describe("serviceScheduleState — why there is no upcoming visit", () => {
+  const base = { status: "active", started_on: "2026-07-31" };
+  const opts = { today: "2026-07-31", nextVisit: null, ended: false, paused: false };
+
+  it("says a one-time visit booked for TODAY is unscheduled, not in the past", () => {
+    const r = serviceScheduleState({ ...base, frequency: "one_time" }, opts);
+    expect(r.reason).toBe("Its visit on 2026-07-31 hasn't been scheduled yet");
+    expect(r.reason).not.toMatch(/in the past/);
+  });
+
+  it("offers a way to generate it", () => {
+    // The half that made the wrong sentence unrecoverable.
+    expect(serviceScheduleState({ ...base, frequency: "one_time" }, opts).canGenerate).toBe(true);
+  });
+
+  it("still says 'in the past' when the date really has gone by", () => {
+    const r = serviceScheduleState(
+      { ...base, frequency: "one_time", started_on: "2026-07-20" },
+      opts,
+    );
+    expect(r.reason).toBe("Its one-time visit is in the past");
+    // Generating a past-dated one-time service does nothing, so the button
+    // would only look broken.
+    expect(r.canGenerate).toBe(false);
+  });
+
+  it("leaves recurring services exactly as they were", () => {
+    const r = serviceScheduleState({ ...base, frequency: "weekly" }, opts);
+    expect(r.reason).toBe("Schedule hasn't been generated yet");
+    expect(r.canGenerate).toBe(true);
+  });
+
+  it("explains a future start without offering to generate it", () => {
+    const r = serviceScheduleState(
+      { ...base, frequency: "weekly", started_on: "2026-08-10" },
+      opts,
+    );
+    expect(r.reason).toBe("Starts 2026-08-10; visits appear once it begins");
+    expect(r.canGenerate).toBe(false);
+  });
+
+  it("shows no banner at all when a visit is already scheduled", () => {
+    for (const state of [
+      { ...opts, nextVisit: "2026-08-01" },
+      { ...opts, ended: true },
+      { ...opts, paused: true },
+    ]) {
+      const r = serviceScheduleState({ ...base, frequency: "one_time" }, state);
+      expect(r.reason).toBeNull();
+      expect(r.canGenerate).toBe(false);
+    }
   });
 });

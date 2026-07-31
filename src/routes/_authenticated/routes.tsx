@@ -26,8 +26,10 @@ import { RouteMap, buildTechGroups } from "@/components/RouteMap";
 import { StatusChip } from "@/components/client-detail/primitives";
 import { MobileDayList } from "@/components/schedule/MobileDayList";
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
+import { OneOffVisitDialog } from "@/components/OneOffVisitDialog";
+import { usePermissions } from "@/hooks/useMyRole";
 import { WeatherStrip } from "@/components/WeatherStrip";
-import { Navigation, CheckCircle2, MapPin, CloudRain, Settings2 } from "lucide-react";
+import { Navigation, CheckCircle2, MapPin, CloudRain, Settings2, CalendarClock } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -138,6 +140,13 @@ function RoutesPage() {
   };
   const [toolsOpen, setToolsOpen] = useState(false);
   const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
+  const [oneOffOpen, setOneOffOpen] = useState(false);
+  // Booking a one-off sets a price, so it takes manage_pricing — the same gate
+  // createSubscription uses. A dispatcher does not hold it, and the server
+  // refuses regardless; hiding the button keeps it from being a form that
+  // throws only after it has been filled in.
+  const { can: canDo } = usePermissions();
+  const canBookOneOff = canDo("manage_pricing");
 
   const listV = useServerFn(listVisitsForDay);
   const listS = useServerFn(listStaff);
@@ -408,6 +417,16 @@ function RoutesPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* The emergency button. A one-off used to mean going to the client,
+              opening Services, adding a "service", choosing One time, and then
+              waiting for the nightly run to put it on the board — which is not
+              a thing anyone does while someone is on the phone. */}
+          {canBookOneOff && (
+            <Button variant="outline" onClick={() => setOneOffOpen(true)}>
+              <CalendarClock className="mr-1.5 h-4 w-4" />
+              One-off visit
+            </Button>
+          )}
           <Input
             type="date"
             value={day}
@@ -796,6 +815,15 @@ function RoutesPage() {
           </DndContext>
         </div>
       )}
+      <OneOffVisitDialog
+        open={oneOffOpen}
+        onOpenChange={setOneOffOpen}
+        onCreated={() => {
+          setLocalColumns(null);
+          qc.invalidateQueries({ queryKey: ["visits"] });
+        }}
+      />
+
       <VisitDetailDrawer
         visitId={detailVisitId}
         onOpenChange={(o) => !o && setDetailVisitId(null)}

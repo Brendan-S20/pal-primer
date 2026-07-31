@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { CalendarPlus, Sparkles, UserPlus } from "lucide-react";
+import { CalendarClock, CalendarPlus, Sparkles, UserPlus } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { canAccess, useMyRole } from "@/hooks/useMyRole";
+import { canAccess, useMyRole, usePermissions } from "@/hooks/useMyRole";
+import { OneOffVisitDialog } from "@/components/OneOffVisitDialog";
 
 /**
  * Mobile quick-create bottom sheet (the ➕ tab).
@@ -17,12 +19,25 @@ import { canAccess, useMyRole } from "@/hooks/useMyRole";
  * shortcuts — they are just shortcuts, and now say so. The first row stays a
  * create because it is one.
  *
- * The real finding underneath Q-4 is not about this sheet: THERE IS NO WAY TO
- * CREATE A ONE-OFF VISIT ANYWHERE IN THE PRODUCT, on any device. Visits exist
- * only as output of generate_visits_through from a subscription. So an
- * emergency call-out, a make-up visit after a skip, or a one-time deep clean
- * cannot be put on the schedule at all. That is a missing capability, not a
- * label problem, and it is left for the owner to schedule — noted in Q-4.
+ * ── A CORRECTION, LEFT IN RATHER THAN QUIETLY DELETED ──────────────────────
+ *
+ * An earlier version of this header stated that there was NO WAY to create a
+ * one-off visit anywhere in the product. That was wrong. It is recorded here
+ * because of what happened next: a later research pass over this codebase
+ * quoted this very comment back as its evidence for the same claim. A wrong
+ * comment does not stay contained — it becomes a source.
+ *
+ * What is true: Client → Services → Add service → "One time" has existed all
+ * along, `service_frequency` carries a `one_time` value, and
+ * `generate_visits_core` has a complete branch for it that honours blackout
+ * dates, work days and client holds. Verified against the live database.
+ *
+ * What genuinely did not work was booking one for TODAY: saving a service has
+ * never generated its visits (the nightly run does), and the per-service
+ * "Generate schedule" button was explicitly disabled for one_time. So the
+ * emergency case produced a service with no visit and a banner that read "Its
+ * one-time visit is in the past" — which was false. `createOneOffVisit` is
+ * that missing path, and the row below is its entry point.
  *
  * Entries are role-filtered with the same canAccess used by routing, so a
  * dispatcher never sees a link the RoleGuard would bounce.
@@ -37,7 +52,7 @@ const CREATE_ACTIONS = [
   },
   {
     title: "Go to the schedule",
-    description: "Plan and adjust visits — there is no one-off visit form yet",
+    description: "Plan and adjust the day's routes",
     url: "/routes",
     gate: "/routes",
     icon: CalendarPlus,
@@ -59,7 +74,14 @@ export function CreateSheet({
   onOpenChange: (open: boolean) => void;
 }) {
   const { role } = useMyRole();
+  const { can } = usePermissions();
   const actions = CREATE_ACTIONS.filter((a) => canAccess(role, a.gate));
+  const [oneOff, setOneOff] = useState(false);
+  // Booking a one-off sets a price, so it needs manage_pricing — the same
+  // permission createSubscription requires. A dispatcher does not hold it, and
+  // showing them a form that throws on submit is the failure this whole pass
+  // has been about.
+  const canBookOneOff = can("manage_pricing");
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -93,9 +115,34 @@ export function CreateSheet({
                 </Link>
               </li>
             ))}
+            {canBookOneOff && (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenChange(false);
+                    setOneOff(true);
+                  }}
+                  className="flex min-h-14 w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted active:bg-muted"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <CalendarClock className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">One-off visit</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      A single visit on a chosen date — call-out, make-up, deep clean
+                    </span>
+                  </span>
+                </button>
+              </li>
+            )}
           </ul>
         </nav>
       </SheetContent>
+      {/* Outside SheetContent: the sheet closes when this opens, and a dialog
+          rendered inside a closing sheet unmounts with it. */}
+      <OneOffVisitDialog open={oneOff} onOpenChange={setOneOff} />
     </Sheet>
   );
 }

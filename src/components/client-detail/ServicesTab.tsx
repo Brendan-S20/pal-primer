@@ -54,6 +54,7 @@ import {
   scheduleChoiceToFields,
   formatFrequency,
   isServiceEnded,
+  serviceScheduleState,
   type ScheduleChoice,
   type SubscriptionFormValues,
 } from "@/lib/subscription-form";
@@ -265,15 +266,15 @@ export function ServicesTab({
             // QA follow-up 1.6: an active service with no upcoming visit must
             // say why and offer a way out.
             const startsLater = s.started_on && s.started_on > today;
-            const noVisitReason =
-              !ended && !paused && s.status === "active" && !nextVisit
-                ? startsLater
-                  ? `Starts ${s.started_on}; visits appear once it begins`
-                  : s.frequency === "one_time"
-                    ? "Its one-time visit is in the past"
-                    : "Schedule hasn't been generated yet"
-                : null;
-            const canGenerate = noVisitReason != null && !startsLater && s.frequency !== "one_time";
+            // Moved to lib/subscription-form so it can be tested: this was
+            // inline and wrong in the case that mattered — see
+            // serviceScheduleState's header.
+            const { reason: noVisitReason, canGenerate } = serviceScheduleState(s, {
+              today,
+              nextVisit,
+              ended,
+              paused,
+            });
             const showEnd = !ended && started;
             const showDelete = !started;
             return (

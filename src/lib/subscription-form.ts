@@ -185,3 +185,57 @@ export function blankSubscriptionFormValues(opts: {
     latestTime: "",
   };
 }
+
+// ── "why is there no upcoming visit, and can I do anything about it" ────────
+//
+// Extracted from ServicesTab so it can be tested. It was inline, and it was
+// wrong in the one case that mattered: a one-time service booked for TODAY had
+// no visit yet (saving a service has never generated visits — the nightly run
+// does), and the banner said "Its one-time visit is in the past" while the
+// generate button was explicitly withheld from one_time services. A false
+// explanation and no way out, on the emergency booking.
+
+export type ServiceScheduleState = {
+  /** Sentence shown in the amber banner, or null for no banner. */
+  reason: string | null;
+  /** Whether to offer "Generate schedule". */
+  canGenerate: boolean;
+};
+
+export function serviceScheduleState(
+  s: {
+    frequency: string;
+    status: string;
+    started_on?: string | null;
+  },
+  opts: {
+    today: string;
+    /** Earliest scheduled visit on or after today, if any. */
+    nextVisit?: string | null;
+    ended: boolean;
+    paused: boolean;
+  },
+): ServiceScheduleState {
+  const { today, nextVisit, ended, paused } = opts;
+  if (ended || paused || s.status !== "active" || nextVisit) {
+    return { reason: null, canGenerate: false };
+  }
+
+  const startsLater = !!s.started_on && s.started_on > today;
+  const isOneTime = s.frequency === "one_time";
+  // Its day has not gone by, so the visit is missing rather than expired.
+  const oneTimeStillAhead = isOneTime && !!s.started_on && s.started_on >= today;
+
+  const reason = startsLater
+    ? `Starts ${s.started_on}; visits appear once it begins`
+    : isOneTime
+      ? oneTimeStillAhead
+        ? `Its visit on ${s.started_on} hasn't been scheduled yet`
+        : "Its one-time visit is in the past"
+      : "Schedule hasn't been generated yet";
+
+  // Generating a past-dated one-time service does nothing, so offering the
+  // button there would just look broken.
+  const canGenerate = !startsLater && (!isOneTime || oneTimeStillAhead);
+  return { reason, canGenerate };
+}
