@@ -14,11 +14,49 @@ import { VitePWA } from "vite-plugin-pwa";
 const serverEnv = loadEnv(process.env.NODE_ENV || "development", process.cwd(), "");
 Object.assign(process.env, serverEnv);
 
+// BUILD-9. The native app has to boot with no network, and this app is
+// server-rendered: `.output/public` held static assets and NO index.html, so
+// there was literally nothing for a WebView to load. That is why
+// capacitor.config.ts pointed at a remote URL, and why the store app had no
+// offline capability at all whatever the marketing site claimed.
+//
+// SPA mode prerenders a client-bootable shell to /index.html. It is gated on
+// NATIVE_BUILD rather than switched on globally BECAUSE IT CHANGES RENDERING
+// MODE: turning it on for the hosted app at app.houndstack.com would trade its
+// server-rendered first paint for a client-side boot, which is a decision about
+// the web product and not something to change as a side effect of fixing the
+// native one. `npm run build:native` sets it; `npm run build` is untouched.
+const NATIVE_BUILD = process.env.NATIVE_BUILD === "1";
+
 export default defineConfig({
   tanstackStart: {
     server: { entry: "server" },
+    ...(NATIVE_BUILD
+      ? {
+          spa: {
+            enabled: true,
+            prerender: { enabled: true, outputPath: "/index.html" },
+          },
+        }
+      : {}),
   },
+  // The prerender that produces index.html works by booting a Vite *preview*
+  // server against the just-built server bundle, and it looks for it at the
+  // stock TanStack layout `<build.outDir>/server/server.js`. The web build has
+  // no such file: the Lovable wrapper runs Nitro with the cloudflare-module
+  // preset, which relocates the output to `.output/{server,public}` — hence
+  // `Cannot find module '<root>/dist/server/server.js'` the moment SPA
+  // prerendering is switched on. Nitro also only registers during `command ===
+  // "build"`, so its own preview handler is absent when the prerenderer
+  // re-resolves this config in preview mode; there is nothing to fall back to.
+  //
+  // The native build does not deploy a server at all — it needs static files in
+  // an app bundle — so the deploy packaging is simply skipped and Vite's stock
+  // layout is kept. `dist-native/` keeps it clear of the web build's `.output/`
+  // so the two can coexist without either clobbering the other.
+  ...(NATIVE_BUILD ? { nitro: false as const } : {}),
   vite: {
+    ...(NATIVE_BUILD ? { build: { outDir: "dist-native" } } : {}),
     resolve: {
       alias: {
         "entities/lib/decode.js": path.resolve(
