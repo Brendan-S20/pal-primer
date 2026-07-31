@@ -101,6 +101,24 @@ export default defineConfig({
     },
     plugins: [
       VitePWA({
+        // WHERE THE WORKER ACTUALLY GOES.
+        //
+        // It was being written to Vite's default outDir — `dist/` — while the
+        // deployed client assets are produced by Nitro into `.output/public`.
+        // So /sw.js has never existed on the web: src/pwa/register.ts asked the
+        // browser for it and got a 404, and every runtime-caching rule below
+        // has been dead since it was written.
+        //
+        // Setting outDir also fixes the second half. workbox globs this same
+        // directory to build its precache manifest, and `dist/` contained no
+        // app assets, so even the orphaned worker precached NOTHING — a file
+        // that was both undeployed and empty.
+        //
+        // Skipped entirely for the native build, which serves its own bundled
+        // shell: precaching would duplicate files already on disk and
+        // navigateFallback could shadow the shipped shell with a stale one.
+        // See src/pwa/register.ts, which refuses to register there.
+        outDir: NATIVE_BUILD ? "dist-native/client" : ".output/public",
         registerType: "autoUpdate",
         injectRegister: null,
         filename: "sw.js",
@@ -124,18 +142,18 @@ export default defineConfig({
           icons: [
             { src: "/pwa-192.png", sizes: "192x192", type: "image/png" },
             { src: "/pwa-512.png", sizes: "512x512", type: "image/png" },
-            { src: "/pwa-512-maskable.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+            {
+              src: "/pwa-512-maskable.png",
+              sizes: "512x512",
+              type: "image/png",
+              purpose: "maskable",
+            },
           ],
         },
         workbox: {
           importScripts: ["/push-handlers.js"],
           navigateFallback: "/",
-          navigateFallbackDenylist: [
-            /^\/api\//,
-            /^\/lovable\//,
-            /^\/email\//,
-            /^\/~oauth/,
-          ],
+          navigateFallbackDenylist: [/^\/api\//, /^\/lovable\//, /^\/email\//, /^\/~oauth/],
           runtimeCaching: [
             {
               // App shell / HTML — network first, fall back to cache when offline
@@ -148,8 +166,15 @@ export default defineConfig({
               },
             },
             {
-              // Hashed built assets — safe to cache-first
-              urlPattern: ({ url, sameOrigin }) => sameOrigin && /\/_build\//.test(url.pathname),
+              // Hashed built assets — safe to cache-first.
+              //
+              // This tested for `/_build/`, which this build has never
+              // produced: Nitro emits hashed assets under `/assets/`. So the
+              // rule matched nothing and no asset was ever runtime-cached —
+              // the third of three reasons the offline story on web was
+              // decorative (the other two: the worker was written to an
+              // undeployed directory, and its precache manifest was empty).
+              urlPattern: ({ url, sameOrigin }) => sameOrigin && /\/assets\//.test(url.pathname),
               handler: "CacheFirst",
               options: {
                 cacheName: "static-assets",
@@ -162,4 +187,3 @@ export default defineConfig({
     ],
   },
 });
-
