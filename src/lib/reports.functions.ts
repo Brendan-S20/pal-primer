@@ -26,13 +26,22 @@ export const getReports = createServerFn({ method: "POST" })
     // Visits in range
     const { data: visits, error: vErr } = await supabase
       .from("visits")
-      .select("id, status, scheduled_on, assigned_staff_id, zone_id, subscription_id, client_id, skip_reason_code, skip_charge_cents")
+      .select(
+        "id, status, scheduled_on, assigned_staff_id, zone_id, subscription_id, client_id, skip_reason_code, skip_charge_cents",
+      )
       .eq("organization_id", orgId)
       .gte("scheduled_on", from)
       .lte("scheduled_on", to);
     if (vErr) throw new Error(vErr.message);
 
-    const visitCounts = { completed: 0, skipped: 0, missed: 0, scheduled: 0, in_progress: 0, cancelled: 0 } as Record<string, number>;
+    const visitCounts = {
+      completed: 0,
+      skipped: 0,
+      missed: 0,
+      scheduled: 0,
+      in_progress: 0,
+      cancelled: 0,
+    } as Record<string, number>;
     const perTech: Record<string, { completed: number; skipped: number; total: number }> = {};
     const perZone: Record<string, { completed: number; skipped: number; total: number }> = {};
     const skipReasons: Record<string, number> = {};
@@ -75,12 +84,50 @@ export const getReports = createServerFn({ method: "POST" })
       : { data: [] as { id: string; name: string }[] };
     const zoneName = new Map((zoneRows ?? []).map((z) => [z.id, z.name]));
 
-    // Invoices in range (by issued_at)
-    const { data: invoices, error: iErr } = await supabase
-      .from("invoices")
-      .select("id, client_id, status, total_cents, credit_applied_cents, due_on, issued_at, paid_at, kind")
-      .eq("organization_id", orgId);
-    if (iErr) throw new Error(iErr.message);
+    // The whole invoice ledger. It has to be the whole thing rather than the
+    // range: revenue is range-bounded by issued_at, but outstanding and aging
+    // are a POSITION, and an invoice issued three years ago and still open is
+    // part of it.
+    //
+    // BUG-23: this was previously a bare select with no paging. PostgREST caps
+    // a response at 1000 rows silently, so past a thousand invoices every
+    // figure on this page — revenue, outstanding, aging, top clients — was
+    // quietly low, and got worse the longer the business ran.
+    const { fetchAllPages } = await import("@/lib/supabase-paging.server");
+    const invoices = await fetchAllPages<any>((a, b) =>
+      supabase
+        .from("invoices")
+        .select(
+          "id, client_id, status, total_cents, credit_applied_cents, due_on, issued_at, paid_at, kind",
+        )
+        .eq("organization_id", orgId)
+        .order("id")
+        .range(a, b),
+    );
+
+    // Refunds and chargebacks in range (IMP-10).
+    //
+    // Invoice-based revenue cannot see a reversal: the invoice stays 'paid'
+    // forever, because the work WAS done and the money DID arrive. So the
+    // reversal is shown as its own dated line rather than by rewriting the
+    // original figure — which would silently change every historical period the
+    // moment a dispute landed.
+    //
+    // Read through the shared module so this page and the CPA pack cannot
+    // disagree; an owner will hand one to their accountant and read the other
+    // over coffee.
+    const { data: orgRow } = await supabase
+      .from("organizations")
+      .select("timezone")
+      .eq("id", orgId)
+      .maybeSingle();
+    const timezone = (orgRow as { timezone?: string | null } | null)?.timezone || "UTC";
+
+    const { loadOrgReversals, totalReversals, reversalsByClient } =
+      await import("@/lib/reversals.server");
+    const reversalRows = await loadOrgReversals(supabase, { orgId, timezone, from, to });
+    const reversals = totalReversals(reversalRows);
+    const refundsByClient = await reversalsByClient(supabase, orgId, reversalRows);
 
     let revenuePaidCents = 0;
     let outstandingCents = 0;
@@ -114,8 +161,17 @@ export const getReports = createServerFn({ method: "POST" })
       }
     }
 
-    // Top clients
-    const topClientIds = Object.entries(perClient)
+    // Top clients, net of what came back.
+    //
+    // The contra line above and this table are on the same screen, so they have
+    // to agree. Ranking on gross while the headline shows net is how a customer
+    // who refunded everything stays top of the list.
+    const perClientNet: Record<string, number> = { ...perClient };
+    for (const [clientId, totals] of refundsByClient) {
+      if (!clientId) continue; // unattributed — counted in the headline only
+      perClientNet[clientId] = (perClientNet[clientId] ?? 0) - totals.netCents;
+    }
+    const topClientIds = Object.entries(perClientNet)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([id]) => id);
@@ -140,7 +196,15 @@ export const getReports = createServerFn({ method: "POST" })
 
     return {
       range: { from, to },
+      // Gross is kept as-is and NOT netted in place. A figure that changes
+      // meaning without changing name is how a report starts lying: anything
+      // that read `revenuePaidCents` before still gets what it asked for.
       revenuePaidCents,
+      refundsDeductedCents: reversals.deductedCents,
+      refundsRecoveredCents: reversals.recoveredCents,
+      refundsNetCents: reversals.netCents,
+      refundsCount: reversals.count,
+      revenueNetCents: revenuePaidCents - reversals.netCents,
       outstandingCents,
       aging,
       visitCounts,
@@ -148,7 +212,7 @@ export const getReports = createServerFn({ method: "POST" })
       // completion rate alongside skips (B6 finding 5) — otherwise a month of
       // missed visits would still read 100% complete.
       completionRate:
-        (visitCounts.completed + visitCounts.skipped + visitCounts.missed) > 0
+        visitCounts.completed + visitCounts.skipped + visitCounts.missed > 0
           ? visitCounts.completed /
             (visitCounts.completed + visitCounts.skipped + visitCounts.missed)
           : null,
@@ -173,7 +237,12 @@ export const getReports = createServerFn({ method: "POST" })
       topClients: topClientIds.map((id) => ({
         id,
         name: clientName.get(id) ?? "-",
-        revenueCents: perClient[id],
+        // Gross and refunded shown separately, same reasoning as the headline:
+        // "$4,000, of which $1,500 came back" is a different customer from
+        // "$2,500", and the table should not flatten the two into one number.
+        revenueCents: perClient[id] ?? 0,
+        refundsCents: refundsByClient.get(id)?.netCents ?? 0,
+        netRevenueCents: perClientNet[id] ?? 0,
       })),
       newClients: newClients ?? 0,
       activeClients: activeClients ?? 0,

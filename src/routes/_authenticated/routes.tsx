@@ -84,8 +84,10 @@ function RoutesPage() {
   const [localColumns, setLocalColumns] = useState<Record<string, Visit[]> | null>(null);
 
   const [weekDays, setWeekDays] = useState(7);
-  const [viewMode, setViewMode] = useState<"map" | "board">(
-    () => (typeof localStorage !== "undefined" && localStorage.getItem("routes.viewMode") === "board" ? "board" : "map"),
+  const [viewMode, setViewMode] = useState<"map" | "board">(() =>
+    typeof localStorage !== "undefined" && localStorage.getItem("routes.viewMode") === "board"
+      ? "board"
+      : "map",
   );
   const [range, setRange] = useState<"today" | "week" | "month">(() => {
     if (typeof localStorage === "undefined") return "today";
@@ -94,26 +96,45 @@ function RoutesPage() {
   });
   const setViewModePersist = (m: "map" | "board") => {
     setViewMode(m);
-    try { localStorage.setItem("routes.viewMode", m); } catch { /* private mode */ }
+    try {
+      localStorage.setItem("routes.viewMode", m);
+    } catch {
+      /* private mode */
+    }
   };
   const setRangePersist = (r: "today" | "week" | "month") => {
     setRange(r);
-    try { localStorage.setItem("routes.range", r); } catch { /* private mode */ }
+    try {
+      localStorage.setItem("routes.range", r);
+    } catch {
+      /* private mode */
+    }
   };
   // Gear option: tech lanes as vertical columns or full-width horizontal rows.
-  const [boardLayout, setBoardLayout] = useState<"columns" | "rows">(
-    () => (typeof localStorage !== "undefined" && localStorage.getItem("routes.boardLayout") === "rows" ? "rows" : "columns"),
+  const [boardLayout, setBoardLayout] = useState<"columns" | "rows">(() =>
+    typeof localStorage !== "undefined" && localStorage.getItem("routes.boardLayout") === "rows"
+      ? "rows"
+      : "columns",
   );
   const setBoardLayoutPersist = (l: "columns" | "rows") => {
     setBoardLayout(l);
-    try { localStorage.setItem("routes.boardLayout", l); } catch { /* private mode */ }
+    try {
+      localStorage.setItem("routes.boardLayout", l);
+    } catch {
+      /* private mode */
+    }
   };
   const [hideWeekends, setHideWeekends] = useState<boolean>(
-    () => typeof localStorage !== "undefined" && localStorage.getItem("routes.hideWeekends") === "1",
+    () =>
+      typeof localStorage !== "undefined" && localStorage.getItem("routes.hideWeekends") === "1",
   );
   const setHideWeekendsPersist = (v: boolean) => {
     setHideWeekends(v);
-    try { localStorage.setItem("routes.hideWeekends", v ? "1" : "0"); } catch { /* private mode */ }
+    try {
+      localStorage.setItem("routes.hideWeekends", v ? "1" : "0");
+    } catch {
+      /* private mode */
+    }
   };
   const [toolsOpen, setToolsOpen] = useState(false);
   const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
@@ -167,8 +188,7 @@ function RoutesPage() {
   }, [range, day]);
   const { data: visitsData } = useQuery({
     queryKey: ["visits", day, rangeEnd],
-    queryFn: () =>
-      listV({ data: { day, ...(rangeEnd !== day ? { throughDay: rangeEnd } : {}) } }),
+    queryFn: () => listV({ data: { day, ...(rangeEnd !== day ? { throughDay: rangeEnd } : {}) } }),
   });
   const { data: staffData } = useQuery({ queryKey: ["staff"], queryFn: () => listS() });
 
@@ -177,7 +197,9 @@ function RoutesPage() {
   // off-duty ones stay visible as muted "Off routes" lanes so a dispatcher
   // sees at a glance who's not in play today (finding #12). Non-field roles
   // still only appear if they somehow already own a visit.
-  const assignedIds = new Set((visitsData?.visits ?? []).map((v: any) => v.assigned_staff_id).filter(Boolean));
+  const assignedIds = new Set(
+    (visitsData?.visits ?? []).map((v: any) => v.assigned_staff_id).filter(Boolean),
+  );
   const staff = allStaff
     .filter((s: any) => s.is_field_tech || assignedIds.has(s.id))
     .sort((a: any, b: any) => {
@@ -263,11 +285,15 @@ function RoutesPage() {
     onSuccess: (r: any) => {
       const over = (r.loads ?? []).filter((l: any) => l.overCapacity).length;
       if (r.applied > 0) {
-        toast.success(`Rebalanced ${r.applied} overflow stop(s) off overloaded routes. Re-optimize to tidy sequences.`);
+        toast.success(
+          `Rebalanced ${r.applied} overflow stop(s) off overloaded routes. Re-optimize to tidy sequences.`,
+        );
       } else if (over === 0) {
         toast.success("No overloaded routes. Everyone's within capacity.");
       } else {
-        toast.warning("Some routes are overloaded but no tech has spare capacity. Add a tech or move visits to another day.");
+        toast.warning(
+          "Some routes are overloaded but no tech has spare capacity. Add a tech or move visits to another day.",
+        );
       }
       setLocalColumns(null);
       qc.invalidateQueries({ queryKey: ["visits", day] });
@@ -275,7 +301,6 @@ function RoutesPage() {
     onError: (e: Error) => toast.error(e.message),
   });
   const settingsMut = useMutation({
-
     mutationFn: (patch: any) => updSettings({ data: patch }),
     onSuccess: () => {
       toast.success("Dispatch settings saved");
@@ -287,7 +312,9 @@ function RoutesPage() {
   const geocodeMut = useMutation({
     mutationFn: () => geocode({ data: { limit: 100 } }),
     onSuccess: (r) => {
-      toast.success(`Geocoded ${r.updated} addresses${r.remaining ? ` · ${r.remaining} remaining` : ""}`);
+      toast.success(
+        `Geocoded ${r.updated} addresses${r.remaining ? ` · ${r.remaining} remaining` : ""}`,
+      );
       qc.invalidateQueries({ queryKey: ["visits"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -381,7 +408,15 @@ function RoutesPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Input type="date" value={day} onChange={(e) => { setLocalColumns(null); setDay(e.target.value); }} className="w-[160px]" />
+          <Input
+            type="date"
+            value={day}
+            onChange={(e) => {
+              setLocalColumns(null);
+              setDay(e.target.value);
+            }}
+            className="w-[160px]"
+          />
           {/* Two clean axes instead of five mixed buttons: WHAT you look at
               (Map = map + load + board, Board = board only) and WHEN
               (Today / Week / Month). */}
@@ -418,13 +453,17 @@ function RoutesPage() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium">Hide weekends</div>
-                  <div className="text-[11px] text-muted-foreground">Skip Sat/Sun in Week and Month views.</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Skip Sat/Sun in Week and Month views.
+                  </div>
                 </div>
                 <Switch checked={hideWeekends} onCheckedChange={setHideWeekendsPersist} />
               </div>
               <div className="space-y-1.5">
                 <div className="text-sm font-medium">Board layout</div>
-                <div className="text-[11px] text-muted-foreground">How tech lanes are arranged on the board.</div>
+                <div className="text-[11px] text-muted-foreground">
+                  How tech lanes are arranged on the board.
+                </div>
                 <div className="inline-flex rounded-md border p-0.5 text-xs">
                   <button
                     className={`px-3 py-1 rounded ${boardLayout === "columns" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
@@ -445,185 +484,212 @@ function RoutesPage() {
           <Button variant="outline" size="sm" onClick={() => setToolsOpen((v) => !v)}>
             {toolsOpen ? "Hide planning tools" : "Planning tools"}
           </Button>
-
         </div>
       </div>
       <WeatherStrip day={day} />
 
-
       {toolsOpen && (
-      <div className="grid gap-4 rounded-lg border bg-card p-5 sm:grid-cols-3">
-
-        <div className="space-y-2">
-          <Label htmlFor="day">Day</Label>
-          <Input id="day" type="date" value={day} onChange={(e) => { setLocalColumns(null); setDay(e.target.value); }} />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="through">Generate visits through</Label>
-          <div className="flex gap-2">
-            <Input id="through" type="date" value={through} onChange={(e) => setThrough(e.target.value)} />
-            <Button onClick={() => genMut.mutate()} disabled={genMut.isPending}>
-              {genMut.isPending ? "…" : "Generate"}
-            </Button>
+        <div className="grid gap-4 rounded-lg border bg-card p-5 sm:grid-cols-3">
+          <div className="space-y-2">
+            <Label htmlFor="day">Day</Label>
+            <Input
+              id="day"
+              type="date"
+              value={day}
+              onChange={(e) => {
+                setLocalColumns(null);
+                setDay(e.target.value);
+              }}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="through">Generate visits through</Label>
+            <div className="flex gap-2">
+              <Input
+                id="through"
+                type="date"
+                value={through}
+                onChange={(e) => setThrough(e.target.value)}
+              />
+              <Button onClick={() => genMut.mutate()} disabled={genMut.isPending}>
+                {genMut.isPending ? "…" : "Generate"}
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="tech">Auto-assign / optimize day for tech</Label>
+            <div className="flex gap-2">
+              <select
+                id="tech"
+                value={assignStaffId}
+                onChange={(e) => setAssignStaffId(e.target.value)}
+                className="h-10 flex-1 rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="">Select…</option>
+                {staff.map((s: any) => (
+                  <option key={s.id} value={s.id}>
+                    {s.display_name}
+                  </option>
+                ))}
+              </select>
+              <Button
+                onClick={() => assignMut.mutate()}
+                disabled={!assignStaffId || assignMut.isPending}
+                variant="secondary"
+              >
+                Assign
+              </Button>
+              <Button
+                onClick={() => optimizeMut.mutate()}
+                disabled={!assignStaffId || optimizeMut.isPending}
+              >
+                {optimizeMut.isPending ? "…" : "Optimize"}
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Optimize uses nearest-neighbor with time windows + traffic from the tech's start
+              location.
+            </p>
           </div>
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="tech">Auto-assign / optimize day for tech</Label>
-          <div className="flex gap-2">
-            <select
-              id="tech"
-              value={assignStaffId}
-              onChange={(e) => setAssignStaffId(e.target.value)}
-              className="h-10 flex-1 rounded-md border bg-background px-3 text-sm"
-            >
-              <option value="">Select…</option>
-              {staff.map((s: any) => (
-                <option key={s.id} value={s.id}>{s.display_name}</option>
-              ))}
-            </select>
-            <Button onClick={() => assignMut.mutate()} disabled={!assignStaffId || assignMut.isPending} variant="secondary">
-              Assign
-            </Button>
-            <Button onClick={() => optimizeMut.mutate()} disabled={!assignStaffId || optimizeMut.isPending}>
-              {optimizeMut.isPending ? "…" : "Optimize"}
-            </Button>
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            Optimize uses nearest-neighbor with time windows + traffic from the tech's start location.
-          </p>
-        </div>
-      </div>
       )}
 
       {toolsOpen && (
-      <div className="grid gap-4 rounded-lg border bg-card p-5 md:grid-cols-2">
-
-        <div className="space-y-2">
-          <Label>Optimize multiple days (auto-balance across techs)</Label>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min={1}
-              max={31}
-              value={weekDays}
-              onChange={(e) => setWeekDays(Math.max(1, Math.min(31, Number(e.target.value) || 1)))}
-              className="w-20"
-            />
-            <span className="text-sm text-muted-foreground">days starting {day}</span>
-            <Button onClick={() => weekMut.mutate()} disabled={weekMut.isPending}>
-              {weekMut.isPending ? "…" : "Optimize week"}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => reoptMut.mutate()}
-              disabled={reoptMut.isPending}
-              title="Recompute sequence for every tech using their remaining stops"
-            >
-              {reoptMut.isPending ? "…" : "Re-optimize today"}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => balanceMut.mutate()}
-              disabled={balanceMut.isPending}
-              title="Move overflow off any tech whose day exceeds working-hours capacity"
-            >
-              {balanceMut.isPending ? "…" : "Balance overloaded routes"}
-            </Button>
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            Distributes unassigned visits round-robin by zone, then optimizes each tech's day.
-          </p>
-        </div>
-        <div className="md:col-span-2">
-          {/* Value-aware dispatch belongs with the other planning tools (punch list #11). */}
-          <AiSection title="AI dispatch" description="Suggest value-aware reassignments for a day.">
-            <DispatchPanel />
-          </AiSection>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <Label className="text-xs">Workday start</Label>
-            <Input
-              type="time"
-              defaultValue={settings.workday_start?.slice(0, 5) ?? "08:00"}
-              onBlur={(e) => settingsMut.mutate({ workday_start: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label className="text-xs">Workday end</Label>
-            <Input
-              type="time"
-              defaultValue={settings.workday_end?.slice(0, 5) ?? "17:00"}
-              onBlur={(e) => settingsMut.mutate({ workday_end: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label className="text-xs">Avg speed (km/h)</Label>
-            <Input
-              type="number"
-              min={5}
-              max={120}
-              defaultValue={settings.avg_speed_kmh ?? 30}
-              onBlur={(e) => settingsMut.mutate({ avg_speed_kmh: Number(e.target.value) })}
-            />
-          </div>
-          <div>
-            <Label className="text-xs">Traffic profile</Label>
-            <select
-              defaultValue={settings.traffic_profile ?? "normal"}
-              onChange={(e) => settingsMut.mutate({ traffic_profile: e.target.value as any })}
-              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-            >
-              <option value="light">Light (faster)</option>
-              <option value="normal">Normal</option>
-              <option value="heavy">Heavy (slower)</option>
-            </select>
-          </div>
-          <div>
-            <Label className="text-xs">Max drive to a stop (min)</Label>
-            <Input
-              type="number"
-              min={15}
-              max={1440}
-              defaultValue={(settings as any).max_drive_minutes ?? 240}
-              onBlur={(e) => settingsMut.mutate({ max_drive_minutes: Number(e.target.value) })}
-            />
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Assignments implying a longer drive are flagged as implausible.
+        <div className="grid gap-4 rounded-lg border bg-card p-5 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Optimize multiple days (auto-balance across techs)</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={1}
+                max={31}
+                value={weekDays}
+                onChange={(e) =>
+                  setWeekDays(Math.max(1, Math.min(31, Number(e.target.value) || 1)))
+                }
+                className="w-20"
+              />
+              <span className="text-sm text-muted-foreground">days starting {day}</span>
+              <Button onClick={() => weekMut.mutate()} disabled={weekMut.isPending}>
+                {weekMut.isPending ? "…" : "Optimize week"}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => reoptMut.mutate()}
+                disabled={reoptMut.isPending}
+                title="Recompute sequence for every tech using their remaining stops"
+              >
+                {reoptMut.isPending ? "…" : "Re-optimize today"}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => balanceMut.mutate()}
+                disabled={balanceMut.isPending}
+                title="Move overflow off any tech whose day exceeds working-hours capacity"
+              >
+                {balanceMut.isPending ? "…" : "Balance overloaded routes"}
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Distributes unassigned visits round-robin by zone, then optimizes each tech's day.
             </p>
           </div>
-          {/* IMP-8: the time zone control moved to Settings → Preferences. It
+          <div className="md:col-span-2">
+            {/* Value-aware dispatch belongs with the other planning tools (punch list #11). */}
+            <AiSection
+              title="AI dispatch"
+              description="Suggest value-aware reassignments for a day."
+            >
+              <DispatchPanel />
+            </AiSection>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-xs">Workday start</Label>
+              <Input
+                type="time"
+                defaultValue={settings.workday_start?.slice(0, 5) ?? "08:00"}
+                onBlur={(e) => settingsMut.mutate({ workday_start: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Workday end</Label>
+              <Input
+                type="time"
+                defaultValue={settings.workday_end?.slice(0, 5) ?? "17:00"}
+                onBlur={(e) => settingsMut.mutate({ workday_end: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Avg speed (km/h)</Label>
+              <Input
+                type="number"
+                min={5}
+                max={120}
+                defaultValue={settings.avg_speed_kmh ?? 30}
+                onBlur={(e) => settingsMut.mutate({ avg_speed_kmh: Number(e.target.value) })}
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Traffic profile</Label>
+              <select
+                defaultValue={settings.traffic_profile ?? "normal"}
+                onChange={(e) => settingsMut.mutate({ traffic_profile: e.target.value as any })}
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="light">Light (faster)</option>
+                <option value="normal">Normal</option>
+                <option value="heavy">Heavy (slower)</option>
+              </select>
+            </div>
+            <div>
+              <Label className="text-xs">Max drive to a stop (min)</Label>
+              <Input
+                type="number"
+                min={15}
+                max={1440}
+                defaultValue={(settings as any).max_drive_minutes ?? 240}
+                onBlur={(e) => settingsMut.mutate({ max_drive_minutes: Number(e.target.value) })}
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Assignments implying a longer drive are flagged as implausible.
+              </p>
+            </div>
+            {/* IMP-8: the time zone control moved to Settings → Preferences. It
               is not a routing detail — it defines "today" for the portal, the
               missed-visit job and the end-of-day close-out as well — and it was
               effectively unfindable here. Pointer, not a second control (10.2). */}
-          <div className="col-span-2">
-            <Label className="text-xs">Timezone</Label>
-            <p className="mt-1 text-sm">
-              {US_TIMEZONES.find((tz) => tz.value === ((settings as any).timezone ?? DEFAULT_TIMEZONE))
-                ?.label ?? ((settings as any).timezone ?? DEFAULT_TIMEZONE)}
-            </p>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Arrival windows are anchored to the workday start in this time zone. Change it in{" "}
-              <Link to="/settings/preferences" className="underline underline-offset-2">
-                Settings → Preferences
-              </Link>
-              .
-            </p>
-          </div>
-          <div className="col-span-2">
-            <Label className="text-xs">Work days</Label>
-            <WorkDaysPicker
-              value={((settings as any).work_days as number[] | null) ?? [0, 1, 2, 3, 4, 5, 6]}
-              onChange={(days) => settingsMut.mutate({ work_days: days })}
-              disabled={settingsMut.isPending}
-            />
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              New visits are only scheduled on these days. A client's explicit preferred weekdays
-              still win — an agreed Saturday stays a Saturday.
-            </p>
+            <div className="col-span-2">
+              <Label className="text-xs">Timezone</Label>
+              <p className="mt-1 text-sm">
+                {US_TIMEZONES.find(
+                  (tz) => tz.value === ((settings as any).timezone ?? DEFAULT_TIMEZONE),
+                )?.label ??
+                  (settings as any).timezone ??
+                  DEFAULT_TIMEZONE}
+              </p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Arrival windows are anchored to the workday start in this time zone. Change it in{" "}
+                <Link to="/settings/preferences" className="underline underline-offset-2">
+                  Settings → Preferences
+                </Link>
+                .
+              </p>
+            </div>
+            <div className="col-span-2">
+              <Label className="text-xs">Work days</Label>
+              <WorkDaysPicker
+                value={((settings as any).work_days as number[] | null) ?? [0, 1, 2, 3, 4, 5, 6]}
+                onChange={(days) => settingsMut.mutate({ work_days: days })}
+                disabled={settingsMut.isPending}
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                New visits are only scheduled on these days. A client's explicit preferred weekdays
+                still win — an agreed Saturday stays a Saturday.
+              </p>
+            </div>
           </div>
         </div>
-      </div>
       )}
 
       {/* The map follows the Map/Board toggle at EVERY range — only Board is
@@ -656,7 +722,11 @@ function RoutesPage() {
           day={day}
           initialSpan={range === "month" ? "month" : 7}
           hideWeekends={hideWeekends}
-          onPickDay={(d) => { setLocalColumns(null); setDay(d); setRangePersist("today"); }}
+          onPickDay={(d) => {
+            setLocalColumns(null);
+            setDay(d);
+            setRangePersist("today");
+          }}
         />
       )}
 
@@ -674,52 +744,59 @@ function RoutesPage() {
       </div>
 
       {range === "today" && (
-      <div className="max-md:hidden">
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-      >
-        <div className={boardLayout === "rows" ? "grid gap-4 grid-cols-1" : "grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"}>
-
-          <Column
-            id={UNASSIGNED}
-            title="Unassigned"
-            items={columns[UNASSIGNED] ?? []}
-            tone="muted"
-            layout={boardLayout}
-            onComplete={(id) => completeMut.mutate(id)}
-            completingId={completeMut.isPending ? (completeMut.variables as string) : null}
-            onOpen={setDetailVisitId}
-          />
-          {staff.map((s: any) => {
-            const offRoutes = s.is_field_tech && !s.routing_available;
-            return (
+        <div className="max-md:hidden">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+          >
+            <div
+              className={
+                boardLayout === "rows"
+                  ? "grid gap-4 grid-cols-1"
+                  : "grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+              }
+            >
               <Column
-                key={s.id}
-                id={s.id}
-                title={s.display_name}
-                subtitle={s.role ? humanizeRole(s.role) : undefined}
-                offRoutes={offRoutes}
-                items={columns[s.id] ?? []}
+                id={UNASSIGNED}
+                title="Unassigned"
+                items={columns[UNASSIGNED] ?? []}
+                tone="muted"
                 layout={boardLayout}
                 onComplete={(id) => completeMut.mutate(id)}
                 completingId={completeMut.isPending ? (completeMut.variables as string) : null}
                 onOpen={setDetailVisitId}
               />
-            );
-          })}
+              {staff.map((s: any) => {
+                const offRoutes = s.is_field_tech && !s.routing_available;
+                return (
+                  <Column
+                    key={s.id}
+                    id={s.id}
+                    title={s.display_name}
+                    subtitle={s.role ? humanizeRole(s.role) : undefined}
+                    offRoutes={offRoutes}
+                    items={columns[s.id] ?? []}
+                    layout={boardLayout}
+                    onComplete={(id) => completeMut.mutate(id)}
+                    completingId={completeMut.isPending ? (completeMut.variables as string) : null}
+                    onOpen={setDetailVisitId}
+                  />
+                );
+              })}
+            </div>
+            <DragOverlay>
+              {activeVisit ? <VisitCardView visit={activeVisit} dragging /> : null}
+            </DragOverlay>
+          </DndContext>
         </div>
-        <DragOverlay>
-          {activeVisit ? <VisitCardView visit={activeVisit} dragging /> : null}
-        </DragOverlay>
-      </DndContext>
-      </div>
       )}
-      <VisitDetailDrawer visitId={detailVisitId} onOpenChange={(o) => !o && setDetailVisitId(null)} />
+      <VisitDetailDrawer
+        visitId={detailVisitId}
+        onOpenChange={(o) => !o && setDetailVisitId(null)}
+      />
     </div>
-
   );
 }
 
@@ -768,16 +845,24 @@ function WorkDaysPicker({
 }
 
 function MapPanel({
-  visits, staff, onOpenVisit, onGeocode, geocoding, drawRoutes = true,
+  visits,
+  staff,
+  onOpenVisit,
+  onGeocode,
+  geocoding,
+  drawRoutes = true,
 }: {
-  visits: any[]; staff: any[];
+  visits: any[];
+  staff: any[];
   onOpenVisit?: (id: string) => void;
   onGeocode?: () => void;
   geocoding?: boolean;
   drawRoutes?: boolean;
 }) {
   const groups = useMemo(() => buildTechGroups(visits as any, staff as any), [visits, staff]);
-  const mappable = visits.filter((v: any) => v.properties?.latitude != null && v.properties?.longitude != null).length;
+  const mappable = visits.filter(
+    (v: any) => v.properties?.latitude != null && v.properties?.longitude != null,
+  ).length;
   const missing = visits.length - mappable;
   return (
     <div className="rounded-lg border bg-card p-4">
@@ -797,7 +882,10 @@ function MapPanel({
           )}
           {groups.map((g) => (
             <div key={g.staffId ?? "u"} className="flex items-center gap-1 text-[11px]">
-              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: g.color }} />
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{ background: g.color }}
+              />
               <span>{g.name}</span>
             </div>
           ))}
@@ -826,10 +914,22 @@ function MapPanel({
 // or a true calendar month — with weekends optionally hidden.
 type OverviewSpan = 7 | 28 | "month";
 
-function WeekOverview({ day, onPickDay, initialSpan = 7, hideWeekends = false }: { day: string; onPickDay: (d: string) => void; initialSpan?: OverviewSpan; hideWeekends?: boolean }) {
+function WeekOverview({
+  day,
+  onPickDay,
+  initialSpan = 7,
+  hideWeekends = false,
+}: {
+  day: string;
+  onPickDay: (d: string) => void;
+  initialSpan?: OverviewSpan;
+  hideWeekends?: boolean;
+}) {
   const [span, setSpan] = useState<OverviewSpan>(initialSpan);
   const rangeFn = useServerFn(getVisitRangeSummary);
-  useEffect(() => { setSpan(initialSpan); }, [initialSpan]);
+  useEffect(() => {
+    setSpan(initialSpan);
+  }, [initialSpan]);
 
   const iso = (d: Date) => {
     const off = d.getTimezoneOffset();
@@ -879,9 +979,11 @@ function WeekOverview({ day, onPickDay, initialSpan = 7, hideWeekends = false }:
   const monthBlanks = span === "month" ? Math.min(leadingBlanks, 5) : 0;
   const visibleDays = hideWeekends ? days.filter((d) => !isWeekend(d)) : days;
   const title =
-    span === 7 ? "This week"
-    : span === 28 ? "Next 4 weeks"
-    : base.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    span === 7
+      ? "This week"
+      : span === 28
+        ? "Next 4 weeks"
+        : base.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 
   return (
     <div className="rounded-lg border bg-card p-4">
@@ -889,9 +991,24 @@ function WeekOverview({ day, onPickDay, initialSpan = 7, hideWeekends = false }:
         <h2 className="text-sm font-semibold">{title}</h2>
         <div className="flex items-center gap-2">
           <div className="inline-flex rounded-md border p-0.5 text-xs">
-            <button onClick={() => setSpan(7)} className={`px-3 py-1 rounded ${span === 7 ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Week</button>
-            <button onClick={() => setSpan(28)} className={`px-3 py-1 rounded ${span === 28 ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>4 weeks</button>
-            <button onClick={() => setSpan("month")} className={`px-3 py-1 rounded ${span === "month" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}>Month</button>
+            <button
+              onClick={() => setSpan(7)}
+              className={`px-3 py-1 rounded ${span === 7 ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            >
+              Week
+            </button>
+            <button
+              onClick={() => setSpan(28)}
+              className={`px-3 py-1 rounded ${span === 28 ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            >
+              4 weeks
+            </button>
+            <button
+              onClick={() => setSpan("month")}
+              className={`px-3 py-1 rounded ${span === "month" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            >
+              Month
+            </button>
           </div>
         </div>
       </div>
@@ -915,7 +1032,9 @@ function WeekOverview({ day, onPickDay, initialSpan = 7, hideWeekends = false }:
                 {dt.toLocaleDateString(undefined, { weekday: "short" })}
               </span>
               <span className="font-medium">{dt.getDate()}</span>
-              <span className="mt-1 text-[11px]">{c.total} visit{c.total === 1 ? "" : "s"}</span>
+              <span className="mt-1 text-[11px]">
+                {c.total} visit{c.total === 1 ? "" : "s"}
+              </span>
               {c.unassigned > 0 && (
                 <span className="text-[10px] text-amber-700">{c.unassigned} unassigned</span>
               )}
@@ -931,9 +1050,22 @@ function WeekOverview({ day, onPickDay, initialSpan = 7, hideWeekends = false }:
 }
 
 function Column({
-  id, title, subtitle, items, tone, offRoutes, onComplete, completingId, onOpen, layout = "columns",
+  id,
+  title,
+  subtitle,
+  items,
+  tone,
+  offRoutes,
+  onComplete,
+  completingId,
+  onOpen,
+  layout = "columns",
 }: {
-  id: string; title: string; subtitle?: string; items: any[]; tone?: "muted";
+  id: string;
+  title: string;
+  subtitle?: string;
+  items: any[];
+  tone?: "muted";
   offRoutes?: boolean;
   onComplete?: (visitId: string) => void;
   completingId?: string | null;
@@ -970,8 +1102,17 @@ function Column({
           )}
         </div>
       </div>
-      <SortableContext items={items.map((v) => v.id)} strategy={layout === "rows" ? rectSortingStrategy : verticalListSortingStrategy}>
-        <div className={layout === "rows" ? "flex min-h-[80px] flex-wrap gap-2 p-2 [&>*]:w-72" : "min-h-[80px] space-y-2 p-2"}>
+      <SortableContext
+        items={items.map((v) => v.id)}
+        strategy={layout === "rows" ? rectSortingStrategy : verticalListSortingStrategy}
+      >
+        <div
+          className={
+            layout === "rows"
+              ? "flex min-h-[80px] flex-wrap gap-2 p-2 [&>*]:w-72"
+              : "min-h-[80px] space-y-2 p-2"
+          }
+        >
           {items.map((v, i) => (
             <SortableVisitCard
               key={v.id}
@@ -992,8 +1133,18 @@ function Column({
 }
 
 function SortableVisitCard({
-  visit, seq, onComplete, completing, onOpen,
-}: { visit: Visit; seq: number; onComplete?: (id: string) => void; completing?: boolean; onOpen?: (id: string) => void }) {
+  visit,
+  seq,
+  onComplete,
+  completing,
+  onOpen,
+}: {
+  visit: Visit;
+  seq: number;
+  onComplete?: (id: string) => void;
+  completing?: boolean;
+  onOpen?: (id: string) => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: visit.id,
   });
@@ -1027,15 +1178,26 @@ function directionsUrl(p: any): string | null {
 }
 
 function VisitCardView({
-  visit, seq, dragging, dragHandle, onComplete, completing, onOpen,
+  visit,
+  seq,
+  dragging,
+  dragHandle,
+  onComplete,
+  completing,
+  onOpen,
 }: {
-  visit: Visit; seq?: number; dragging?: boolean; dragHandle?: any;
-  onComplete?: (id: string) => void; completing?: boolean;
+  visit: Visit;
+  seq?: number;
+  dragging?: boolean;
+  dragHandle?: any;
+  onComplete?: (id: string) => void;
+  completing?: boolean;
   onOpen?: (id: string) => void;
 }) {
   const p = visit.properties;
   const dirUrl = directionsUrl(p);
-  const canComplete = onComplete && (visit.status === "scheduled" || visit.status === "in_progress");
+  const canComplete =
+    onComplete && (visit.status === "scheduled" || visit.status === "in_progress");
   return (
     <div
       className={`rounded-md border bg-background p-2 text-xs shadow-sm ${dragging ? "shadow-lg" : ""} ${onOpen ? "cursor-pointer hover:border-primary/40 hover:bg-muted/40" : ""}`}
@@ -1066,10 +1228,18 @@ function VisitCardView({
           {(visit.eta_start || visit.travel_min != null) && (
             <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
               {visit.eta_start && (
-                <span>ETA {new Date(visit.eta_start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                <span>
+                  ETA{" "}
+                  {new Date(visit.eta_start).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
               )}
               {visit.travel_km != null && <span>· {Number(visit.travel_km).toFixed(1)} km</span>}
-              {visit.travel_min != null && <span>· {Math.round(Number(visit.travel_min))} min drive</span>}
+              {visit.travel_min != null && (
+                <span>· {Math.round(Number(visit.travel_min))} min drive</span>
+              )}
             </div>
           )}
           {(() => {
@@ -1084,9 +1254,17 @@ function VisitCardView({
             return <div className="mt-0.5 text-[10px] text-muted-foreground">Window {label}</div>;
           })()}
           <div className="mt-1 flex flex-wrap items-center gap-1">
-            {visit.zones?.name && <Badge variant="outline" className="h-4 px-1 text-[10px]">{visit.zones.name}</Badge>}
+            {visit.zones?.name && (
+              <Badge variant="outline" className="h-4 px-1 text-[10px]">
+                {visit.zones.name}
+              </Badge>
+            )}
             <StatusChip status={visit.status} className="h-4 px-1 text-[10px]" />
-            {visit.window_violated && <Badge variant="destructive" className="h-4 px-1 text-[10px]">Late</Badge>}
+            {visit.window_violated && (
+              <Badge variant="destructive" className="h-4 px-1 text-[10px]">
+                Late
+              </Badge>
+            )}
             {visit.weather_flagged && (
               <Badge
                 variant="destructive"
@@ -1128,7 +1306,6 @@ function VisitCardView({
   );
 }
 
-
 function HeatmapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
   const perTech = staff.map((s: any) => {
     const mine = visits.filter((v) => v.assigned_staff_id === s.id);
@@ -1137,13 +1314,28 @@ function HeatmapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
     const inProgress = mine.filter((v) => v.status === "in_progress").length;
     const remaining = mine.filter((v) => v.status === "scheduled").length;
     const late = mine.filter((v) => v.window_violated).length;
-    const revenue = mine.reduce((sum, v) => sum + (v.subscriptions?.price_cents ?? 0), 0);
+    // IMP-10: subscription LIST PRICE for the day's assigned work, not money
+    // collected — it knows nothing about payment, discounts, credits or
+    // refunds. Named bookedValue rather than revenue so a dispatch board figure
+    // can't be mistaken for a financial one; the same formula on /analytics is
+    // labelled the same way.
+    const bookedValue = mine.reduce((sum, v) => sum + (v.subscriptions?.price_cents ?? 0), 0);
     const withEta = mine
       .map((v) => v.eta_end)
       .filter(Boolean)
       .map((s) => new Date(s as string).getTime());
     const projectedEnd = withEta.length ? new Date(Math.max(...withEta)) : null;
-    return { staff: s, total: mine.length, done, skipped, inProgress, remaining, late, revenue, projectedEnd };
+    return {
+      staff: s,
+      total: mine.length,
+      done,
+      skipped,
+      inProgress,
+      remaining,
+      late,
+      bookedValue,
+      projectedEnd,
+    };
   });
   const unassigned = visits.filter((v) => !v.assigned_staff_id).length;
   const maxTotal = Math.max(1, ...perTech.map((t) => t.total));
@@ -1153,7 +1345,9 @@ function HeatmapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
     const name = v.zones?.name ?? "No zone";
     zoneMap.set(name, (zoneMap.get(name) ?? 0) + 1);
   }
-  const zones = Array.from(zoneMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const zones = Array.from(zoneMap.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8);
   const maxZone = Math.max(1, ...zones.map(([, n]) => n));
 
   if (staff.length === 0 && visits.length === 0) return null;
@@ -1163,7 +1357,9 @@ function HeatmapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold">Tech load</h2>
           {unassigned > 0 && (
-            <Badge variant="destructive" className="text-[10px]">{unassigned} unassigned</Badge>
+            <Badge variant="destructive" className="text-[10px]">
+              {unassigned} unassigned
+            </Badge>
           )}
         </div>
         <div className="space-y-2">
@@ -1178,20 +1374,21 @@ function HeatmapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
                 <div className="flex items-center justify-between">
                   <span className="font-medium">{t.staff.display_name}</span>
                   <span className="text-muted-foreground">
-                    {t.done}/{t.total} · ${(t.revenue / 100).toFixed(0)}
+                    {t.done}/{t.total} · ${(t.bookedValue / 100).toFixed(0)}
                     {t.late > 0 && <span className="ml-2 text-destructive">{t.late} late</span>}
                     {t.projectedEnd && (
                       <span className="ml-2">
-                        ends {t.projectedEnd.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        ends{" "}
+                        {t.projectedEnd.toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </span>
                     )}
                   </span>
                 </div>
                 <div className="mt-1 h-2 w-full overflow-hidden rounded bg-muted">
-                  <div
-                    className="h-full bg-primary/30"
-                    style={{ width: `${pct}%` }}
-                  >
+                  <div className="h-full bg-primary/30" style={{ width: `${pct}%` }}>
                     <div className="h-full bg-primary" style={{ width: `${donePct}%` }} />
                   </div>
                 </div>

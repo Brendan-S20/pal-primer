@@ -30,6 +30,7 @@
 // hand one to their accountant and read the other over coffee.
 
 import { orgLocalDay, reducesIncome, REVERSAL_KINDS, reversalLabel } from "@/lib/cpa-reports";
+import { fetchAllPages } from "@/lib/supabase-paging.server";
 
 export type Reversal = {
   id: string;
@@ -54,20 +55,6 @@ export type ReversalTotals = {
   netCents: number;
   count: number;
 };
-
-/** PostgREST caps a response at 1000 rows and does it silently — the report
- *  renders, the number is just wrong and low. */
-async function fetchAllPages<T>(build: (from: number, to: number) => any): Promise<T[]> {
-  const PAGE = 1000;
-  const out: T[] = [];
-  for (let offset = 0; ; offset += PAGE) {
-    const { data, error } = await build(offset, offset + PAGE - 1);
-    if (error) throw new Error(error.message);
-    const batch = (data ?? []) as T[];
-    out.push(...batch);
-    if (batch.length < PAGE) return out;
-  }
-}
 
 /** UTC bounds wide enough to catch every row whose ORG-LOCAL day falls in the
  *  range. Three days of padding covers every real offset (UTC−12 … UTC+14) in

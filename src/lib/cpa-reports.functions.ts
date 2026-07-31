@@ -4,7 +4,6 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import {
   REPORT_DEFS,
-  REVERSAL_KINDS,
   agingBucket,
   monthLabel,
   monthsBetween,
@@ -19,6 +18,7 @@ import {
   type ReportColumn,
   type ReportId,
 } from "@/lib/cpa-reports";
+import { fetchAllPages as fetchAll } from "@/lib/supabase-paging.server";
 
 // BUILD-13 — building the accountant's pack. Definitions live in
 // src/lib/cpa-reports.ts; this file only assembles rows.
@@ -61,20 +61,9 @@ export type ReportResult = {
 
 // ── Plumbing ───────────────────────────────────────────────────────────────
 
-/** PostgREST caps a response at 1000 rows. A year of payments blows straight
- *  through that, and the failure mode is silent: the report renders, the
- *  numbers are just wrong and low. Everything here pages. */
-async function fetchAll<T>(build: (from: number, to: number) => any): Promise<T[]> {
-  const PAGE = 1000;
-  const out: T[] = [];
-  for (let offset = 0; ; offset += PAGE) {
-    const { data, error } = await build(offset, offset + PAGE - 1);
-    if (error) throw new Error(error.message);
-    const batch = (data ?? []) as T[];
-    out.push(...batch);
-    if (batch.length < PAGE) return out;
-  }
-}
+// Paging comes from supabase-paging.server.ts — PostgREST's silent 1000-row cap
+// is a whole-app hazard, not this file's private problem (BUG-23 was /reports
+// hitting it with no guard at all).
 
 type OrgContext = {
   orgId: string;
@@ -174,37 +163,22 @@ async function loadReceipts(supabase: any, ctx: OrgContext, from: string, to: st
     .filter((p) => inRange(p.day, from, to));
 }
 
-type ReversalRow = {
-  id: string;
-  kind: string;
-  subject_id: string | null;
-  detected_at: string;
-  detail: any;
-};
-
-/** Refunds and chargebacks, read from the review queue — the same rows the
- *  tenant was alerted with. One source means the register and the deduction on
- *  the income sheet can never disagree. */
+/** Refunds and chargebacks, from the shared reader.
+ *
+ *  This used to be a private copy of loadOrgReversals — byte-identical query,
+ *  same padding, same org-local filter. Two implementations of one rule is
+ *  exactly what produced BUG-21, and the copies here and in /reports would have
+ *  been the same mistake in a place where it matters more: an owner hands the
+ *  tax pack to their accountant and reads /reports over coffee, so the two must
+ *  agree by construction rather than by coincidence. */
 async function loadReversals(supabase: any, ctx: OrgContext, from: string, to: string) {
-  const { lo, hi } = utcWindow(from, to);
-  const rows = await fetchAll<ReversalRow>((a, b) =>
-    supabase
-      .from("review_items")
-      .select("id, kind, subject_id, detected_at, detail")
-      .eq("organization_id", ctx.orgId)
-      .in("kind", REVERSAL_KINDS as unknown as string[])
-      .gte("detected_at", lo)
-      .lte("detected_at", hi)
-      .order("detected_at")
-      .range(a, b),
-  );
-  return rows
-    .map((r) => ({
-      ...r,
-      day: orgLocalDay(r.detected_at, ctx.timezone),
-      amountCents: Number(r.detail?.amount_cents ?? 0),
-    }))
-    .filter((r) => inRange(r.day, from, to));
+  const { loadOrgReversals } = await import("@/lib/reversals.server");
+  return loadOrgReversals(supabase, {
+    orgId: ctx.orgId,
+    timezone: ctx.timezone,
+    from,
+    to,
+  });
 }
 
 type InvoiceRow = {
@@ -481,7 +455,7 @@ async function buildRevenueByClient(supabase: any, ctx: OrgContext, from: string
     if (!reducesIncome(r.kind)) continue;
     // The reversal's subject is the payment; the payment may pre-date the
     // window, so fall back to the invoice ledger rather than dropping it.
-    const cid = paymentClient.get(r.subject_id ?? "") ?? "";
+    const cid = paymentClient.get(r.paymentId ?? "") ?? "";
     at(cid).refunds += r.amountCents;
   }
 
@@ -595,7 +569,7 @@ async function buildReversals(supabase: any, ctx: OrgContext, from: string, to: 
   // The reversal points at a payment; the payment may be older than the window,
   // so resolve the customer through the full payment ledger rather than the
   // period's receipts.
-  const ids = reversals.map((r) => r.subject_id).filter(Boolean) as string[];
+  const ids = reversals.map((r) => r.paymentId).filter(Boolean) as string[];
   const payMap = new Map<string, string>();
   for (let i = 0; i < ids.length; i += 200) {
     const { data } = await supabase
@@ -616,7 +590,7 @@ async function buildReversals(supabase: any, ctx: OrgContext, from: string, to: 
     .sort((a, b) => a.day.localeCompare(b.day))
     .map((r) => {
       const label = reversalLabel(r.kind);
-      const cid = invoiceClient.get(payMap.get(r.subject_id ?? "") ?? "") ?? "";
+      const cid = invoiceClient.get(payMap.get(r.paymentId ?? "") ?? "") ?? "";
       return {
         occurredAt: r.day,
         kindLabel: label.type,
@@ -732,7 +706,7 @@ async function build1099k(supabase: any, ctx: OrgContext, from: string, to: stri
   }
   for (const r of reversals) {
     if (!reducesIncome(r.kind)) continue;
-    at(collectorOf.get(r.subject_id ?? "") ?? ctx.orgId).refunds += r.amountCents;
+    at(collectorOf.get(r.paymentId ?? "") ?? ctx.orgId).refunds += r.amountCents;
   }
 
   // Name the collecting organizations. Service-role and scoped to the exact
