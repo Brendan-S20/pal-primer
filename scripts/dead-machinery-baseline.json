@@ -13,7 +13,6 @@
   "uncalled_rpcs": {
     "is_visit_tech": "Verified in the live database: used by the storage RLS policy 'assigned tech uploads visit photo files' on storage.objects. Policies from the consolidated bootstrap dump are not files in supabase/migrations, so the scanner cannot see them.",
     "optimize_route_for_day": "KNOWN GAP — granted to authenticated and called from nowhere. Route optimisation runs in the app today; this SQL implementation predates it and is either dead or an unfinished server-side path. Needs a decision: wire it up or drop it.",
-    "franchise_signals": "KNOWN GAP — platform-admin sales intelligence (clusters of orgs sharing a custom email domain, i.e. one multi-location operator signing up piecemeal). Built during BUILD-6; no platform screen renders it yet.",
     "provision_franchise_location": "KNOWN GAP — the flow the owner described: a franchise creates a location, names the staff, they get invites. The SQL is built and verified against the live database; no UI calls it, so a franchise still cannot open a location from the product. Tracked under BUILD-6."
   },
 

@@ -25,6 +25,7 @@ import { Route as SignupSuccessRouteImport } from './routes/signup.success'
 import { Route as SignupSlugRouteImport } from './routes/signup.$slug'
 import { Route as PortalSlugRouteImport } from './routes/portal.$slug'
 import { Route as PlatformUsersRouteImport } from './routes/platform.users'
+import { Route as PlatformSignalsRouteImport } from './routes/platform.signals'
 import { Route as PlatformRevenueRouteImport } from './routes/platform.revenue'
 import { Route as PlatformReferralsRouteImport } from './routes/platform.referrals'
 import { Route as PlatformPlansRouteImport } from './routes/platform.plans'
@@ -206,6 +207,11 @@ const PortalSlugRoute = PortalSlugRouteImport.update({
 const PlatformUsersRoute = PlatformUsersRouteImport.update({
   id: '/users',
   path: '/users',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformSignalsRoute = PlatformSignalsRouteImport.update({
+  id: '/signals',
+  path: '/signals',
   getParentRoute: () => PlatformRoute,
 } as any)
 const PlatformRevenueRoute = PlatformRevenueRouteImport.update({
@@ -817,6 +823,7 @@ export interface FileRoutesByFullPath {
   '/platform/plans': typeof PlatformPlansRoute
   '/platform/referrals': typeof PlatformReferralsRoute
   '/platform/revenue': typeof PlatformRevenueRoute
+  '/platform/signals': typeof PlatformSignalsRoute
   '/platform/users': typeof PlatformUsersRoute
   '/portal/$slug': typeof PortalSlugRouteWithChildren
   '/signup/$slug': typeof SignupSlugRoute
@@ -932,6 +939,7 @@ export interface FileRoutesByTo {
   '/platform/plans': typeof PlatformPlansRoute
   '/platform/referrals': typeof PlatformReferralsRoute
   '/platform/revenue': typeof PlatformRevenueRoute
+  '/platform/signals': typeof PlatformSignalsRoute
   '/platform/users': typeof PlatformUsersRoute
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
@@ -1052,6 +1060,7 @@ export interface FileRoutesById {
   '/platform/plans': typeof PlatformPlansRoute
   '/platform/referrals': typeof PlatformReferralsRoute
   '/platform/revenue': typeof PlatformRevenueRoute
+  '/platform/signals': typeof PlatformSignalsRoute
   '/platform/users': typeof PlatformUsersRoute
   '/portal/$slug': typeof PortalSlugRouteWithChildren
   '/signup/$slug': typeof SignupSlugRoute
@@ -1174,6 +1183,7 @@ export interface FileRouteTypes {
     | '/platform/plans'
     | '/platform/referrals'
     | '/platform/revenue'
+    | '/platform/signals'
     | '/platform/users'
     | '/portal/$slug'
     | '/signup/$slug'
@@ -1289,6 +1299,7 @@ export interface FileRouteTypes {
     | '/platform/plans'
     | '/platform/referrals'
     | '/platform/revenue'
+    | '/platform/signals'
     | '/platform/users'
     | '/signup/$slug'
     | '/signup/success'
@@ -1408,6 +1419,7 @@ export interface FileRouteTypes {
     | '/platform/plans'
     | '/platform/referrals'
     | '/platform/revenue'
+    | '/platform/signals'
     | '/platform/users'
     | '/portal/$slug'
     | '/signup/$slug'
@@ -1627,6 +1639,13 @@ declare module '@tanstack/react-router' {
       path: '/users'
       fullPath: '/platform/users'
       preLoaderRoute: typeof PlatformUsersRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/signals': {
+      id: '/platform/signals'
+      path: '/signals'
+      fullPath: '/platform/signals'
+      preLoaderRoute: typeof PlatformSignalsRouteImport
       parentRoute: typeof PlatformRoute
     }
     '/platform/revenue': {
@@ -2532,6 +2551,7 @@ interface PlatformRouteChildren {
   PlatformPlansRoute: typeof PlatformPlansRoute
   PlatformReferralsRoute: typeof PlatformReferralsRoute
   PlatformRevenueRoute: typeof PlatformRevenueRoute
+  PlatformSignalsRoute: typeof PlatformSignalsRoute
   PlatformUsersRoute: typeof PlatformUsersRoute
   PlatformIndexRoute: typeof PlatformIndexRoute
   PlatformTenantsIdRoute: typeof PlatformTenantsIdRoute
@@ -2550,6 +2570,7 @@ const PlatformRouteChildren: PlatformRouteChildren = {
   PlatformPlansRoute: PlatformPlansRoute,
   PlatformReferralsRoute: PlatformReferralsRoute,
   PlatformRevenueRoute: PlatformRevenueRoute,
+  PlatformSignalsRoute: PlatformSignalsRoute,
   PlatformUsersRoute: PlatformUsersRoute,
   PlatformIndexRoute: PlatformIndexRoute,
   PlatformTenantsIdRoute: PlatformTenantsIdRoute,

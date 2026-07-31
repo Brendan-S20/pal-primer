@@ -18,6 +18,7 @@ import {
   TrendingUp,
   Activity,
   ScrollText,
+  Radar,
   ArrowLeft,
   LogOut,
   Loader2,
@@ -53,6 +54,7 @@ const NAV = [
       { to: "/platform/tenants" as const, label: "Tenants", icon: Building2 },
       { to: "/platform/invites" as const, label: "Invites", icon: UserPlus },
       { to: "/platform/users" as const, label: "Users", icon: Users },
+      { to: "/platform/signals" as const, label: "Franchise signals", icon: Radar },
     ],
   },
   {
