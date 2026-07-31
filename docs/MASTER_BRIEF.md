@@ -607,6 +607,47 @@ generator limitation, not stale types), and roughly forty `(supabase as any)`
 sites that carry no stale-types comment and belong to the pre-existing
 `no-explicit-any` baseline CI already treats as non-blocking.
 
+**BUILD-7 detail — the trial nobody ever had.**
+
+The ledger line was five words from v1.0 ("Trial → Growth + AI sandbox"), so
+the first job was finding out what existed. The answer: nothing.
+
+`bootstrap_organization` has never set `trial_ends_at` or
+`plan_status = 'trialing'`. Verified live — seven organizations, zero with a
+trial end date, none ever in `trialing`. And **nothing in the tenant app gates
+on billing status**: every reference is a platform-admin view or a metrics
+rollup. So every account that has ever signed up has unlimited free access,
+forever, and always did. The `trialing` enum value, billing-state's branch for
+it, and the announcement audience filter were all built around a state nothing
+ever entered — the same shape as the weekly digest and the franchise rollup.
+
+*Two owner decisions shaped the rest.*
+
+**Day 15 does not lock.** Stripe is not authorized, so there is no way to
+convert. A paywall whose only exit is a payment nobody can make is an outage: it
+would brick every existing account fourteen days from deploy, the owner's
+included. Expiry is a state and a banner; `TRIAL_ENFORCEMENT` in
+`src/lib/trial.ts` is the single constant that makes it real when Stripe lands.
+
+**AI is paid-only** — the owner chose this over a capped sandbox. AI runs on
+HoundStack's keys with no metering (BUILD-2, Stripe-blocked), so a trial with AI
+is unbounded spend with nothing to detect it. Gating it needed one new module
+because there are THREE ways into the model and only one goes through
+`resolveOrgAiConfig`: the weekly digest and the AI receptionist reach the
+gateway directly, and those are the *unattended* paths — cron and inbound SMS —
+so neither has a human to notice the bill. `ai-access.server.ts` is the one rule
+all three consult. It fails CLOSED, unlike `PlanGate`, which fails open:
+showing a feature to a non-payer costs nothing, calling the model does.
+
+*Not backfilled, deliberately.* The six existing free organizations keep what
+they have. Retro-fitting a fourteen-day clock onto an account somebody has used
+for weeks is a surprise, not a migration.
+
+*Consequence to be aware of:* six organizations are `free`, including the
+owner's own, and none of them can use AI under this rule. Only Demo Pet Waste Co
+is `active`. Any org that needs AI for testing should be given a paid status
+from the platform tenant screen.
+
 **BUILD-12 detail — the dispute queue, and the bug it nearly introduced.**
 
 Owner: "If the invoice is disputed, it should end-up in a dispute queue; then
@@ -813,7 +854,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | BUILD-4 | 🟢 Fixed | 🟠 | Managed AI — BYO deleted, inference runs on the platform key, and the product no longer asks for a key. The remaining gap is metering, which is BUILD-2, not BUILD-4 | v1.3 |
 | BUILD-5 | 🔵 Open | 🟠 | White label (real build) | v1.0 |
 | BUILD-6 | 🟠 Part-built | 🟠 | Enterprise tier — **phases 1–3 shipped**: consent-based linking end to end, repaired rollup, both sides' UI. The franchise feature works for the first time. Remaining: multi-org membership, drill-down, royalty *delivery*. See below | v1.4 |
-| BUILD-7 | 🔵 Open | 🟡 | Trial → Growth + AI sandbox | v1.0 |
+| BUILD-7 | 🟠 Part-built | 🟡 | Trial lifecycle built — and the finding is that **no organization has ever had a trial**, because `bootstrap_organization` never started one and nothing in the tenant app gates on billing status at all. New signups now get the 14 days the site promises; expiry is a state and a banner, NOT a lock, because Stripe cannot take a payment yet. AI is paid-only (owner decision). Enforcement is one constant, flipped when Stripe lands | v1.5 |
 | BUILD-8 | 🟢 Fixed | 🟡 | AI Business Advisor **built out** (owner reversed the retire instruction). On-demand, 7/30/90-day windows, evidence shown beside the advice. See below | v1.3 |
 | BUILD-9 | 🔵 Open | 🟠 | Mobile Phase 2/3 — Q-2 = dedicated tablet tier, Q-3 = bundled assets | v1.1 |
 | BUILD-10 | 🟢 Fixed | 🟠 | Review queue built. §10.5's rule pointed at a mechanism nobody had made, so every place that "honored" it honored it by doing nothing. See below | v1.4 |
@@ -992,6 +1033,14 @@ rather than the following January.
 # 3. OPEN DECISIONS & EXTERNAL BLOCKERS
 
 **Needs your action, not engineering:**
+
+0a. **Should the site say the trial excludes AI?** BUILD-7 makes AI paid-only,
+   which is a material limitation a prospect should know before signing up. No
+   published copy currently claims the trial includes AI, so nothing is false
+   today — but nothing says it doesn't either, and the pricing FAQ is where that
+   belongs. How to frame a limitation that affects conversion is your call, not
+   an engineering one.
+
 
 0. **Which hostname actually serves the marketing site?** `SITE.url` is
    `www.houndstack.com`, so every canonical URL published is the www form —

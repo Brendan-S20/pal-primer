@@ -31,14 +31,32 @@ export type AiReceptionistResult = {
   error: string | null;
 };
 
-export async function runAiReceptionist(
-  input: AiReceptionistInput,
-): Promise<AiReceptionistResult> {
+export async function runAiReceptionist(input: AiReceptionistInput): Promise<AiReceptionistResult> {
   const key = process.env.LOVABLE_API_KEY;
   if (!key) {
     return {
-      reply: null, toolCalls: [], escalated: true, latencyMs: 0,
-      model: MODEL_ID, error: "LOVABLE_API_KEY not configured",
+      reply: null,
+      toolCalls: [],
+      escalated: true,
+      latencyMs: 0,
+      model: MODEL_ID,
+      error: "LOVABLE_API_KEY not configured",
+    };
+  }
+
+  // BUILD-7: AI is paid-only. Escalate rather than fail — a real customer just
+  // texted this business, and the worst outcome is that nobody answers because
+  // the plan lapsed. `escalated: true` routes it to a human on the existing
+  // path, which is exactly what should happen when the robot cannot reply.
+  const { orgMayUseAi } = await import("@/lib/ai-access.server");
+  if (!(await orgMayUseAi(input.organizationId))) {
+    return {
+      reply: null,
+      toolCalls: [],
+      escalated: true,
+      latencyMs: 0,
+      model: MODEL_ID,
+      error: "AI receptionist needs a paid plan",
     };
   }
 
@@ -75,7 +93,9 @@ export async function runAiReceptionist(
     lookup_faq: tool({
       description:
         "Look up an answer in the business's FAQ knowledge base for questions about scheduling, service area, cancellation, weather, or company policies.",
-      inputSchema: z.object({ topic: z.string().describe("The topic the caller is asking about.") }),
+      inputSchema: z.object({
+        topic: z.string().describe("The topic the caller is asking about."),
+      }),
       execute: async ({ topic }) => ({ faq: input.faq ?? "", topic }),
     }),
     capture_lead: tool({
@@ -162,8 +182,11 @@ export async function runAiReceptionist(
     return { reply, toolCalls, escalated, latencyMs, model: MODEL_ID, error: null };
   } catch (e: any) {
     return {
-      reply: null, toolCalls: [], escalated: true,
-      latencyMs: Date.now() - started, model: MODEL_ID,
+      reply: null,
+      toolCalls: [],
+      escalated: true,
+      latencyMs: Date.now() - started,
+      model: MODEL_ID,
       error: e?.message ?? String(e),
     };
   }

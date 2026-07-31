@@ -27,5 +27,14 @@ import { resolveAiConfigFromEnv, type AiConfig } from "@/lib/ai.server";
  * through every call site later would be pure churn.
  */
 export async function resolveOrgAiConfig(_orgId: string): Promise<AiConfig | null> {
+  // BUILD-7: the per-org hook this signature was reserved for, used first for
+  // access rather than metering. Returns null when the org may not use AI, and
+  // callers already treat null as "AI is unavailable" — so no call site needed
+  // to change to respect a paid-only policy.
+  //
+  // NOT the only gate: digest.server.ts and ai-receptionist.server.ts reach the
+  // gateway directly and check ai-access.server.ts themselves.
+  const { orgMayUseAi } = await import("@/lib/ai-access.server");
+  if (!(await orgMayUseAi(_orgId))) return null;
   return resolveAiConfigFromEnv();
 }

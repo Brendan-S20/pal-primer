@@ -339,6 +339,14 @@ export async function generateDigestInsights(m: DigestMetrics): Promise<DigestIn
   };
   if (!key) return fallback;
 
+  // BUILD-7: AI is paid-only, and this runs unattended from cron. Skipping into
+  // the fallback the function already builds means a trial org still gets its
+  // digest — with real metrics and rule-based advice — just without the model.
+  // Throwing here would fail the whole weekly run for every org behind the
+  // first trial account in the loop.
+  const { orgMayUseAi } = await import("@/lib/ai-access.server");
+  if (!(await orgMayUseAi(m.orgId))) return fallback;
+
   try {
     const gateway = createLovableAiGatewayProvider(key);
     const prompt = [

@@ -14,6 +14,7 @@ import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { OnboardingTour } from "@/components/OnboardingTour";
 import { InstallBanner } from "@/components/InstallBanner";
 import { AppSidebar } from "@/components/AppSidebar";
+import { TrialBanner } from "@/components/TrialBanner";
 import { MobileTabBar } from "@/components/MobileTabBar";
 import { RoleGuard } from "@/components/RoleGuard";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -178,6 +179,11 @@ function AppShell() {
             </Button>
           </header>
           <SuspensionBanner />
+          {/* BUILD-7: after suspension (which actually blocks) and before
+              announcements (which are optional reading). A trial countdown is
+              information, not an obstacle — it sits in the flow rather than in
+              front of it. */}
+          <TrialBanner />
           <AnnouncementBanner />
           {/* Below `md` the bottom padding keeps content clear of the fixed tab
               bar; md:pb-8 restores the original desktop padding. */}
