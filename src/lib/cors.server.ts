@@ -82,6 +82,19 @@ export const CORS_PATH_PREFIX = "/_serverFn/";
  */
 const ALLOWED_REQUEST_HEADERS = "authorization, content-type, x-tsr-serverfn";
 
+/**
+ * Is this an origin the native app legitimately runs on?
+ *
+ * Shared with the CSRF middleware in src/start.ts deliberately: CSRF has to
+ * make an exception for exactly the origins CORS admits, and two lists that
+ * must agree are two lists that will eventually disagree. One definition, one
+ * place to widen it, one place to get it wrong.
+ */
+export function isAllowedOrigin(origin: string | null, env?: string | undefined): boolean {
+  if (!origin) return false;
+  return allowedOrigins(env).includes(origin);
+}
+
 export type CorsDecision =
   | { kind: "ignore" }
   | { kind: "preflight"; headers: Record<string, string> }
@@ -106,7 +119,7 @@ export function corsDecision(input: {
   const { method, path, origin } = input;
   if (!origin) return { kind: "ignore" };
   if (!path.startsWith(CORS_PATH_PREFIX)) return { kind: "ignore" };
-  if (!allowedOrigins(input.env).includes(origin)) return { kind: "ignore" };
+  if (!isAllowedOrigin(origin, input.env)) return { kind: "ignore" };
 
   const base: Record<string, string> = {
     "access-control-allow-origin": origin,
