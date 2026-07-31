@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { lookupInviteByToken, acceptPlatformInvite } from "@/lib/platform-onboarding.functions";
 import { supabase } from "@/integrations/supabase/client";
+import { signOutAndClearDevice } from "@/lib/offline/read-cache";
 import { humanizeRole } from "@/lib/humanize";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -103,7 +104,9 @@ function InvitePage() {
                     <strong>{q.data.email}</strong>. Sign out and sign back in with the right email.
                   </div>
                   <Button variant="outline" className="w-full" onClick={async () => {
-                    await supabase.auth.signOut();
+                    // Switching accounts on a shared device: the outgoing
+                    // account's cached day must not survive the switch.
+                    await signOutAndClearDevice();
                     navigate({ to: "/auth", search: { redirect: `/invite/${token}` } as any });
                   }}>
                     Sign out &amp; switch accounts

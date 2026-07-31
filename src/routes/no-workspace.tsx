@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { signOutAndClearDevice } from "@/lib/offline/read-cache";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { PublicShell } from "@/components/PublicShell";
 import { Button } from "@/components/ui/button";
@@ -51,7 +52,7 @@ function NoWorkspacePage() {
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    await signOutAndClearDevice();
     window.location.href = "/auth";
   };
 

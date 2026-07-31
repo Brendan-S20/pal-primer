@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { ReimpersonateListener } from "@/components/ReimpersonateListener";
-import { supabase } from "@/integrations/supabase/client";
+import { signOutAndClearDevice } from "@/lib/offline/read-cache";
 import {
   Sidebar,
   SidebarContent,
@@ -188,7 +188,7 @@ function PlatformHeader() {
     "Platform";
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    await signOutAndClearDevice();
     window.location.href = "/auth";
   };
 

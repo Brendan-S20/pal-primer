@@ -7,7 +7,14 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { useEffect } from "react";
+import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  ensureReadCachePersistence,
+  readLastUser,
+  signOutAndClearDevice,
+} from "@/lib/offline/read-cache";
+import { isOfflineAuthFailure } from "@/lib/offline/read-cache-policy";
 import { getMyOrg } from "@/lib/org.functions";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
@@ -30,8 +37,15 @@ import { useBrandAccent } from "@/hooks/useBrandAccent";
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async ({ context }) => {
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) throw redirect({ to: "/auth" });
+    const online = typeof navigator === "undefined" || navigator.onLine !== false;
+    const identity = await resolveIdentity(online);
+    if (!identity) throw redirect({ to: "/auth" });
+
+    // Put this user's persisted reads back into the query cache before anything
+    // asks it a question. On a cold offline launch the ensureQueryData below
+    // and every useQuery under this route resolve from what this restores;
+    // doing it any later means the shell renders its empty state first.
+    ensureReadCachePersistence(context.queryClient, identity.userId);
 
     // BUG-1: being signed in is not enough to render a tenant surface — every
     // page below this route reads org-scoped data, so an account with no
@@ -42,11 +56,23 @@ export const Route = createFileRoute("/_authenticated")({
     //
     // This shares the ["my-org"] cache entry with useMyRole(), so the shell
     // and every child that calls it reuse this fetch instead of adding one.
-    const org = await context.queryClient.ensureQueryData({
-      queryKey: ["my-org"],
-      queryFn: () => getMyOrg(),
-      staleTime: 60_000,
-    });
+    // ensureQueryData answers from cache when one exists, so offline this is
+    // the restored copy rather than a request that cannot be made.
+    let org: Awaited<ReturnType<typeof getMyOrg>> | undefined;
+    try {
+      org = await context.queryClient.ensureQueryData({
+        queryKey: ["my-org"],
+        queryFn: () => getMyOrg(),
+        staleTime: 60_000,
+      });
+    } catch (e) {
+      if (online) throw e;
+      // Offline with nothing cached: bouncing to /auth would strand a tech on
+      // a sign-in form they cannot submit, so say what is actually wrong.
+      throw new Error(
+        "You're offline and this device has no saved copy of your workspace yet. Reconnect once to download your day.",
+      );
+    }
     if (!org?.organization) {
       // Platform admins have a real home; everyone else gets an explicit
       // terminal state rather than a blank tenant page.
@@ -59,10 +85,50 @@ export const Route = createFileRoute("/_authenticated")({
       throw redirect({ to: isPlatformAdmin ? "/platform" : "/no-workspace" });
     }
 
-    return { user: data.user, organization: org.organization };
+    return { userId: identity.userId, user: identity.user, organization: org.organization };
   },
   component: AppShell,
 });
+
+/**
+ * Who is signed in, tolerating a dead connection.
+ *
+ * supabase.auth.getUser() is a NETWORK call, so offline it fails and the old
+ * code read that as "not signed in" and redirected to /auth — the app's entire
+ * offline story died here, before any cache could be consulted. The fallbacks
+ * only ever apply when the failure looks like a lost network (never a 4xx from
+ * the auth server), and they grant nothing but a read of data already on this
+ * device; every server call still needs a real token.
+ */
+async function resolveIdentity(
+  online: boolean,
+): Promise<{ userId: string; user: User | null } | null> {
+  let authError: unknown = null;
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (data?.user) return { userId: data.user.id, user: data.user };
+    authError = error;
+  } catch (e) {
+    authError = e;
+  }
+  if (!isOfflineAuthFailure(authError, { online })) return null;
+
+  // Local read of the persisted session — no network, still authoritative
+  // about which account this device belongs to.
+  try {
+    const { data } = await supabase.auth.getSession();
+    if (data.session?.user) return { userId: data.session.user.id, user: data.session.user };
+  } catch {
+    /* fall through to the pointer below */
+  }
+
+  // The access token expired overnight and cannot be refreshed without a
+  // network: exactly the 7am-in-a-dead-zone case this feature exists for.
+  // The pointer is written only on a verified sign-in and deleted on sign-out,
+  // so it can only name a user whose session is still on this device.
+  const lastUser = readLastUser();
+  return lastUser ? { userId: lastUser, user: null } : null;
+}
 
 function openPalette() {
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }));
@@ -111,7 +177,9 @@ function AppShell() {
   }, [router]);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    // Destroys the device's persisted day as well as the session — see
+    // signOutAndClearDevice.
+    await signOutAndClearDevice();
     window.location.href = "/auth";
   };
 

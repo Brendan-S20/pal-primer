@@ -33,7 +33,7 @@ import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
 import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { syncQueue } from "@/lib/offline/sync";
 import { countPendingForVisit } from "@/lib/offline/queue";
-import { saveMyDaySnapshot, loadMyDaySnapshot } from "@/lib/offline/myDayCache";
+import { describeReadFreshness, formatCacheAge } from "@/lib/offline/read-cache-policy";
 import { toast } from "sonner";
 import {
   Navigation,
@@ -70,6 +70,11 @@ export const Route = createFileRoute("/_authenticated/my-day")({
   },
   component: MyDay,
 });
+
+// When this app instance started. Anything in the query cache whose
+// dataUpdatedAt predates it was restored from the device rather than fetched
+// now — that is what separates "today's route" from "the copy on disk".
+const SESSION_STARTED_AT = Date.now();
 
 function todayISO() {
   const d = new Date();
@@ -137,35 +142,42 @@ function MyDay() {
   const fn = useServerFn(getMyDay);
   const qc = useQueryClient();
   const online = useOnline();
+  // "Saved 4 hr ago" has to keep counting while a tech sits in a dead zone —
+  // a frozen age reads as if the app just refreshed.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
   const pending = usePendingCount();
   const { t } = useTranslation();
   const { role } = useMyRole();
   const isOfficeRole = role === "owner" || role === "office_manager" || role === "dispatcher";
 
   const {
-    data: liveData,
+    data,
     isLoading,
     isError,
+    dataUpdatedAt,
     refetch,
   } = useQuery({
     queryKey: ["my-day", day, staffParam ?? ""],
     queryFn: () => fn({ data: staffParam ? { day, staffId: staffParam } : { day } }),
   });
 
-  // Mobile Phase 3 offline hardening: persist the last good getMyDay response
-  // per (day, staff) and serve it read-only when the fetch fails (dead zone).
-  // Visit actions still queue through the existing IndexedDB path; money
-  // actions remain online-only.
-  useEffect(() => {
-    if (liveData) saveMyDaySnapshot(day, staffParam ?? null, liveData);
-  }, [liveData, day, staffParam]);
-  const snapshot = useMemo(
-    () =>
-      isError && !liveData ? loadMyDaySnapshot<typeof liveData>(day, staffParam ?? null) : null,
-    [isError, liveData, day, staffParam],
-  );
-  const data = liveData ?? snapshot?.data;
-  const servingSnapshot = !liveData && !!snapshot?.data;
+  // Mobile Phase 3 offline hardening: this response is one of the few written
+  // to the device (lib/offline/read-cache-policy.ts) and restored on launch, so
+  // `data` here can be a copy fetched hours ago. Whether that is what the tech
+  // is looking at right now is not something they can be left to guess — a
+  // silently stale route is how someone drives to yesterday's houses.
+  const freshness = describeReadFreshness({
+    hasData: !!data,
+    dataUpdatedAt,
+    isError,
+    online,
+    now: nowTick,
+    sessionStartedAt: SESSION_STARTED_AT,
+  });
   const previewing = !!data?.previewing;
 
   // Office/dispatch users: fetch the field-staff list so we can show a picker.
@@ -306,28 +318,51 @@ function MyDay() {
             </div>
           )}
 
-          {/* Read-only offline fallback (Phase 3): the fetch failed but a prior
-              successful response for this day is cached on-device. */}
-          {servingSnapshot && snapshot && (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-2.5 text-sm text-amber-700 dark:text-amber-400 animate-fade-in">
-              <div className="flex items-center gap-2">
-                <WifiOff className="h-4 w-4 shrink-0" />
-                <span className="font-medium">
-                  Offline — showing last synced{" "}
-                  {new Date(snapshot.ts).toLocaleString(undefined, {
+          {/* Read-only offline fallback (Phase 3): what is on screen was not
+              fetched just now — either the device is offline or the refresh
+              failed — so it is labelled with WHEN it was fetched. Past the
+              trust horizon the wording escalates from "saved copy" to a
+              warning, because a route that old has probably been re-sequenced
+              and driving off it sends the tech to the wrong houses. */}
+          {freshness?.status === "cached" && (
+            <div
+              className={`flex items-center justify-between gap-3 rounded-lg border p-2.5 text-sm animate-fade-in ${
+                freshness.beyondTrustHorizon
+                  ? "border-destructive/50 bg-destructive/10 text-destructive"
+                  : "border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+              }`}
+            >
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  {online ? (
+                    <RefreshCw className="h-4 w-4 shrink-0" />
+                  ) : (
+                    <WifiOff className="h-4 w-4 shrink-0" />
+                  )}
+                  <span className="font-medium">
+                    {online ? "Couldn't refresh" : "Offline"} — saved copy,{" "}
+                    {formatCacheAge(freshness.ageMs)}
+                  </span>
+                </div>
+                <div className="pl-6 text-xs opacity-90">
+                  Last updated{" "}
+                  {new Date(freshness.fetchedAt).toLocaleString(undefined, {
                     month: "short",
                     day: "numeric",
                     hour: "numeric",
                     minute: "2-digit",
                   })}
-                </span>
+                  {freshness.beyondTrustHorizon
+                    ? " — this route may have changed. Confirm before driving it."
+                    : ""}
+                </div>
               </div>
               <button
                 onClick={() => {
                   haptic("tap");
                   refetch();
                 }}
-                className="inline-flex min-h-9 items-center gap-1 rounded-md border border-current px-3 py-1 text-xs font-medium active:scale-95 transition-transform"
+                className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md border border-current px-3 py-1 text-xs font-medium active:scale-95 transition-transform"
               >
                 <RefreshCw className="h-3 w-3" /> Retry
               </button>

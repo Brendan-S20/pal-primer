@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate, redirect, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { signOutAndClearDevice } from "@/lib/offline/read-cache";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,7 +48,7 @@ function AdminLoginPage() {
     setLoading(false);
     if (roleErr) return setError(roleErr.message);
     if (!isAdmin) {
-      await supabase.auth.signOut();
+      await signOutAndClearDevice();
       return setError("This account is not a platform operator.");
     }
     navigate({ to: "/platform" });

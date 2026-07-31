@@ -11,7 +11,7 @@ import {
   Sun,
   Users,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { signOutAndClearDevice } from "@/lib/offline/read-cache";
 import { canAccess, useMyRole } from "@/hooks/useMyRole";
 import { NAV_GROUPS, type NavItem } from "@/components/AppSidebar";
 import { CreateSheet } from "@/components/CreateSheet";
@@ -68,7 +68,9 @@ export function MobileTabBar() {
   })).filter((g) => g.items.length > 0);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    // Wipes this device's persisted day along with the session: the next tech
+    // to unlock a shared tablet must not inherit the previous one's route.
+    await signOutAndClearDevice();
     window.location.href = "/auth";
   };
 
