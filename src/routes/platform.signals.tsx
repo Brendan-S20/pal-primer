@@ -56,7 +56,6 @@ function whyInteresting(r: FranchiseSignalRow): string {
 function SignalCard({ r }: { r: FranchiseSignalRow }) {
   const unlinked = r.org_count - r.already_linked;
   const converted = unlinked === 0;
-  const orgNames = r.org_names.split(" · ");
 
   return (
     <Card className={converted ? "opacity-60" : undefined}>
@@ -82,18 +81,32 @@ function SignalCard({ r }: { r: FranchiseSignalRow }) {
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">{whyInteresting(r)}</p>
-        {/* Names only, no per-org links: the RPC's organization_ids array is not
-            ordered to match org_names, so pairing them here would link the
-            wrong tenant as often as the right one. */}
+        {/* Each chip now links to its own tenant. It could not before: the RPC
+            returned names and ids as two arrays that were not in the same
+            order, so pairing them here would have pointed at the wrong tenant
+            about as often as the right one. They arrive as one object each now.
+
+            The ones NOT already linked are the calls left to make, so linked
+            ones are dimmed rather than hidden — a cluster where two of five are
+            done is a different pitch from one where none are. */}
         <div className="flex flex-wrap gap-1.5">
-          {orgNames.map((name) => (
-            <span
-              key={name}
-              className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-0.5 text-xs"
+          {r.orgs.map((org) => (
+            <Link
+              key={org.id}
+              to="/platform/tenants/$id"
+              params={{ id: org.id }}
+              className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs transition hover:border-primary hover:text-primary ${
+                org.linked ? "bg-muted/20 text-muted-foreground" : "bg-muted/40"
+              }`}
+              title={org.linked ? "Already linked to a franchise" : "Not linked yet"}
             >
-              <Building2 className="h-3 w-3 shrink-0 text-muted-foreground" />
-              {name}
-            </span>
+              {org.linked ? (
+                <Link2 className="h-3 w-3 shrink-0" />
+              ) : (
+                <Building2 className="h-3 w-3 shrink-0 text-muted-foreground" />
+              )}
+              {org.name}
+            </Link>
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -106,7 +119,7 @@ function SignalCard({ r }: { r: FranchiseSignalRow }) {
             {r.stripe_accounts} Stripe account{r.stripe_accounts === 1 ? "" : "s"}
           </span>
           <Link to="/platform/tenants" className="font-medium text-primary hover:underline">
-            Find them in Tenants →
+            All tenants →
           </Link>
         </div>
       </CardContent>
@@ -127,9 +140,8 @@ function SignalsPage() {
         <h1 className="text-2xl font-semibold">Franchise signals</h1>
         <p className="text-sm text-muted-foreground">
           Clusters of separate signups sharing a custom email domain — the tell-tale that one
-          multi-location operator is paying per location instead of talking to us about
-          Enterprise. Public providers like Gmail are excluded: they're the base rate, not a
-          signal.
+          multi-location operator is paying per location instead of talking to us about Enterprise.
+          Public providers like Gmail are excluded: they're the base rate, not a signal.
         </p>
       </div>
 

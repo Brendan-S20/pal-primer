@@ -5689,8 +5689,7 @@ export type Database = {
           already_linked: number
           email_domain: string
           org_count: number
-          org_names: string
-          organization_ids: string[]
+          orgs: Json
           state_count: number
           states: string
           stripe_accounts: number
