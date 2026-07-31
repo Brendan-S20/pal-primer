@@ -44,7 +44,7 @@ export const TRIAL_DAYS = 14;
  */
 export const TRIAL_ENFORCEMENT = false;
 
-export const TRIAL_PHASES = ["none", "trialing", "expired", "paid"] as const;
+export const TRIAL_PHASES = ["none", "trialing", "expired", "lapsed", "paid"] as const;
 export type TrialPhase = (typeof TRIAL_PHASES)[number];
 
 export type TrialInput = {
@@ -64,7 +64,22 @@ export type TrialState = {
   restricted: boolean;
 };
 
+// Read from BOTH columns, not one-or-the-other.
+//
+// This was `planStatus || billingStatus`, which never fell through, because
+// plan_status is NOT NULL DEFAULT 'free' — the fallback could not fire. And
+// 'grace' and 'suspended' exist ONLY in org_billing_status; org_plan_status has
+// no such labels. So the 'grace' entry here was unreachable, and a platform
+// admin granting a grace period (which writes billing_status='grace' and leaves
+// plan_status alone) got an organization this function called `none` — AI
+// switched off for the tenant they had just extended service to.
 const PAID_STATUSES = new Set(["active", "past_due", "grace"]);
+
+// Someone decided these. They outrank everything below, including a stored
+// subscription id, and they are checked FIRST so the failure direction is
+// "denied AI we should have allowed" rather than "billed HoundStack for an
+// account that is not paying".
+const ENDED_STATUSES = new Set(["canceled", "suspended"]);
 
 /**
  * Which phase an organization is in.
@@ -73,11 +88,43 @@ const PAID_STATUSES = new Set(["active", "past_due", "grace"]);
  * organization's own timezone rather than the server's.
  */
 export function trialStateFor(org: TrialInput, now: Date = new Date()): TrialState {
-  const status = (org.planStatus || org.billingStatus || "").toLowerCase();
+  const plan = (org.planStatus || "").toLowerCase();
+  const billing = (org.billingStatus || "").toLowerCase();
+  const either = (s: Set<string>) => s.has(plan) || s.has(billing);
 
-  // A subscription outranks whatever the status column says. Statuses are
-  // written by several paths and can lag; a live subscription is a fact.
-  if (org.hasSubscription || PAID_STATUSES.has(status)) {
+  // Cancelled or suspended, whichever column says so.
+  //
+  // This has to come before the subscription check below, because
+  // stripe_subscription_id SURVIVES cancellation: the platform webhook's
+  // customer.subscription.deleted branch writes { stripe_subscription_id:
+  // sub.id, plan_status: 'canceled' } — it re-writes the id rather than
+  // clearing it, and only refreshBillingStatus ever nulls it, which requires
+  // the cancelled tenant to go and open Settings → Billing.
+  //
+  // With the old ordering a cancelled organization read as `paid` forever: its
+  // AI receptionist kept answering every inbound message on HoundStack's own
+  // model keys, unmetered, with no banner to tell anyone. Suspension was worse
+  // — suspendTenant writes billing_status='suspended' and never touches
+  // plan_status, so a tenant suspended FOR FRAUD kept its plan_status='active'
+  // and kept spending our money.
+  if (either(ENDED_STATUSES)) {
+    return {
+      phase: "lapsed",
+      daysRemaining: null,
+      endsOn: null,
+      // A suspension is a decision already enforced elsewhere, so it restricts
+      // regardless of the trial-enforcement switch. A cancellation waits for
+      // the same switch as an expired trial: with no way to pay yet, cutting
+      // someone off is an outage, not a paywall.
+      restricted: billing === "suspended" || plan === "suspended" || TRIAL_ENFORCEMENT,
+    };
+  }
+
+  // A live subscription outranks a lagging status column. It genuinely can
+  // lead: createPlanSubscription writes stripe_subscription_id at checkout,
+  // before the webhook that sets plan_status arrives. Now that a cancellation
+  // is caught above, the id can only mean "paying".
+  if (org.hasSubscription || either(PAID_STATUSES)) {
     return { phase: "paid", daysRemaining: null, endsOn: null, restricted: false };
   }
 
@@ -132,6 +179,14 @@ export const TRIAL_COPY: Record<
   Exclude<TrialPhase, "paid" | "none">,
   { headline: (s: TrialState) => string; body: string; tone: "info" | "warn" }
 > = {
+  lapsed: {
+    // Deliberately not the `expired` copy. Someone who cancelled a paid plan
+    // being told "your free trial has ended" would reasonably conclude the
+    // product has lost track of what they paid for.
+    headline: () => "Your plan has ended",
+    body: "Your account still works and nothing has been deleted. AI features are switched off until a plan is active again.",
+    tone: "warn",
+  },
   trialing: {
     headline: (s) =>
       s.daysRemaining === 1
@@ -150,7 +205,11 @@ export const TRIAL_COPY: Record<
 /** Why AI is unavailable, in words a tenant can act on. Never "unavailable". */
 export function aiUnavailableReason(state: TrialState): string | null {
   if (aiAvailableFor(state)) return null;
-  return state.phase === "trialing"
-    ? "AI features need a paid plan. They're the one thing the free trial doesn't include, because every request costs us real money to run."
-    : "AI features need a paid plan.";
+  if (state.phase === "trialing") {
+    return "AI features need a paid plan. They're the one thing the free trial doesn't include, because every request costs us real money to run.";
+  }
+  if (state.phase === "lapsed") {
+    return "AI features need an active plan. Yours has ended — everything else still works.";
+  }
+  return "AI features need a paid plan.";
 }

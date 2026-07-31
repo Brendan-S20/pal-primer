@@ -51,10 +51,22 @@ describe("phases", () => {
     expect(aiAvailableFor(s)).toBe(true);
   });
 
-  it("is paid for active, past_due and grace", () => {
-    for (const planStatus of ["active", "past_due", "grace"]) {
+  it("is paid for active and past_due", () => {
+    for (const planStatus of ["active", "past_due"]) {
       expect(trialStateFor({ planStatus, trialEndsAt: null }, NOW).phase).toBe("paid");
     }
+  });
+
+  it("is paid during an admin-granted grace period", () => {
+    // This test used to pass `planStatus: "grace"` — a value org_plan_status
+    // cannot hold. 'grace' and 'suspended' exist only in org_billing_status. So
+    // it pinned a case that cannot occur while missing the one that does:
+    // grantGracePeriod writes billing_status='grace' and leaves plan_status
+    // 'free', which read as `none` and switched AI off for the tenant an admin
+    // had just extended service to.
+    const s = trialStateFor({ planStatus: "free", billingStatus: "grace", trialEndsAt: null }, NOW);
+    expect(s.phase).toBe("paid");
+    expect(aiAvailableFor(s)).toBe(true);
   });
 
   it("is `none` for an organization that predates trials", () => {
@@ -81,6 +93,55 @@ describe("phases", () => {
     // Failing the other way would lock an account out on bad data.
     expect(trialStateFor({ planStatus: "trialing", trialEndsAt: "not a date" }, NOW).phase).toBe(
       "none",
+    );
+  });
+});
+
+describe("a plan that ended stops being paid", () => {
+  // The whole point of BUILD-7's AI gate is that nobody uses HoundStack's model
+  // keys for free. Each of these reached `paid` before and kept the AI
+  // receptionist answering, unmetered, with no banner to tell anyone.
+
+  it("does not read a cancelled org as paid because the subscription id is still there", () => {
+    // customer.subscription.deleted writes { stripe_subscription_id: sub.id,
+    // plan_status: 'canceled' } — it re-writes the id rather than clearing it.
+    const s = trialStateFor(
+      { planStatus: "canceled", trialEndsAt: null, hasSubscription: true },
+      NOW,
+    );
+    expect(s.phase).toBe("lapsed");
+    expect(aiAvailableFor(s)).toBe(false);
+  });
+
+  it("does not read a SUSPENDED org as paid", () => {
+    // suspendTenant writes billing_status='suspended' and never touches
+    // plan_status, so a tenant suspended for fraud kept plan_status='active'.
+    const s = trialStateFor(
+      { planStatus: "active", billingStatus: "suspended", trialEndsAt: null, hasSubscription: true },
+      NOW,
+    );
+    expect(s.phase).toBe("lapsed");
+    expect(aiAvailableFor(s)).toBe(false);
+    // A suspension is already enforced elsewhere; it does not wait for the
+    // trial-enforcement switch.
+    expect(s.restricted).toBe(true);
+  });
+
+  it("does not tell someone who cancelled a paid plan that their trial ended", () => {
+    expect(TRIAL_COPY.lapsed.headline({} as any)).toMatch(/plan has ended/i);
+    expect(TRIAL_COPY.lapsed.body).toMatch(/nothing has been deleted/i);
+  });
+
+  it("explains AI in terms of the plan, not the trial", () => {
+    const s = trialStateFor({ planStatus: "canceled", trialEndsAt: null }, NOW);
+    expect(aiUnavailableReason(s)).toMatch(/active plan/i);
+  });
+
+  it("still leaves a cancelled account working", () => {
+    // Same reasoning as an expired trial: with no way to pay yet, cutting
+    // someone off is an outage rather than a paywall.
+    expect(trialStateFor({ planStatus: "canceled", trialEndsAt: null }, NOW).restricted).toBe(
+      TRIAL_ENFORCEMENT,
     );
   });
 });
