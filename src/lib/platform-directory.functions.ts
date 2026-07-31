@@ -95,6 +95,50 @@ export const createAnnouncement = createServerFn({ method: "POST" })
     return { id: row.id };
   });
 
+// The caller `/hooks/announcement-emails` never had.
+//
+// An announcement created with "Also send email" on was emailed to nobody,
+// because the only thing that sends is a cron endpoint no scheduler targets.
+// Rather than schedule platform-wide outbound mail — the owner's call, not a
+// cleanup task — a platform admin sends each announcement deliberately. Same
+// code path a future scheduler would use, and the per-recipient idempotency key
+// means having both is safe.
+export const sendAnnouncementEmails = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { sendPendingAnnouncementEmails } = await import("@/lib/announcement-emails.server");
+    const result = await sendPendingAnnouncementEmails(data.id);
+
+    // Audited like every other platform action that reaches outside the
+    // product. Sending mail to every tenant is not something that should be
+    // reconstructable only from the email log.
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      await supabaseAdmin.from("platform_admin_audit").insert({
+        actor_user_id: context.userId,
+        organization_id: null,
+        action: "send_announcement_emails",
+        after_json: result as any,
+      });
+    } catch {
+      /* the mail is already queued; an audit failure must not look like a
+         send failure and prompt someone to press it again */
+    }
+
+    // `sent` distinguishes "nothing was due" from "we mailed nobody", which
+    // are different problems and were previously the same silence.
+    const first = result.summary[0];
+    return {
+      ok: true as const,
+      found: result.processed,
+      recipients: first?.recipients ?? 0,
+      enqueued: first?.enqueued ?? 0,
+      skipped: first?.skipped ?? null,
+    };
+  });
+
 export const deleteAnnouncement = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))

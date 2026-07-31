@@ -5502,10 +5502,6 @@ export type Database = {
         Args: { _client_id: string; _through: string }
         Returns: string
       }
-      admin_generate_invoices_for_org: {
-        Args: { _org_id: string; _through: string }
-        Returns: number
-      }
       admin_generate_seasonal_deepcleans: {
         Args: { _month: number; _org_id: string; _year: number }
         Returns: number
@@ -5829,15 +5825,6 @@ export type Database = {
         }
         Returns: undefined
       }
-      optimize_route_for_day: {
-        Args: {
-          _day: string
-          _org_id: string
-          _reassign?: boolean
-          _staff_id: string
-        }
-        Returns: number
-      }
       optimize_route_v2: {
         Args: {
           _day: string
@@ -6061,17 +6048,6 @@ export type Database = {
       portal_reschedule_visit: {
         Args: { _new_date: string; _token: string; _visit_id: string }
         Returns: undefined
-      }
-      portal_resolve_contact: {
-        Args: { _token: string }
-        Returns: {
-          client_id: string
-          display_name: string
-          org_name: string
-          organization_id: string
-          primary_email: string
-          primary_phone: string
-        }[]
       }
       portal_set_autopay: {
         Args: { _enabled: boolean; _token: string }

@@ -35,6 +35,7 @@ import { InvoiceDrawer } from "@/components/InvoiceDrawer";
 import { InvoiceRow } from "@/components/InvoiceRow";
 import { formatDay } from "@/lib/format";
 import { humanizeEnum } from "@/lib/humanize";
+import { addonBillingTrail } from "@/lib/addon-billing";
 import {
   listAddonServices,
   listClientAddons,
@@ -658,38 +659,65 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
           <p className="mt-2 text-sm text-muted-foreground">No add-on charges yet.</p>
         ) : (
           <ul className="mt-2 divide-y text-sm">
-            {charges.slice(0, 12).map((c) => (
-              <li key={c.id} className="flex items-center justify-between py-2">
-                <span>
-                  <span className="text-muted-foreground">{formatDay(c.occurred_on)}</span>
-                  <span className="ml-2">{c.description}</span>
-                  {c.quantity > 1 && (
-                    <span className="ml-1 text-xs text-muted-foreground">× {c.quantity}</span>
-                  )}
-                  <StatusChip
-                    status={c.status}
-                    className="ml-2"
-                    // 'pending' is billing-internal jargon: the charge is
-                    // live and lands on the next invoice, nothing to accept.
-                    label={c.status === "pending" ? "Unbilled, next invoice" : undefined}
-                  />
-                  {c.source === "field" && <MetaChip className="ml-1">Field</MetaChip>}
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="font-medium">{money(c.amount_cents)}</span>
-                  {c.status !== "invoiced" && c.status !== "voided" && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => voidMut.mutate(c.id)}
-                      disabled={voidMut.isPending}
-                    >
-                      Void
-                    </Button>
-                  )}
-                </span>
-              </li>
-            ))}
+            {charges.slice(0, 12).map((c) => {
+              // Where the charge ended up. "Invoiced" on its own has always
+              // left whoever is on the phone with the client to go and find the
+              // invoice by hand; the charge knew which line it became all along.
+              const billing = addonBillingTrail(c);
+              return (
+                <li key={c.id} className="flex items-start justify-between py-2">
+                  <span>
+                    <span className="text-muted-foreground">{formatDay(c.occurred_on)}</span>
+                    <span className="ml-2">{c.description}</span>
+                    {c.quantity > 1 && (
+                      <span className="ml-1 text-xs text-muted-foreground">× {c.quantity}</span>
+                    )}
+                    <StatusChip
+                      status={c.status}
+                      className="ml-2"
+                      // 'pending' is billing-internal jargon: the charge is
+                      // live and lands on the next invoice, nothing to accept.
+                      label={c.status === "pending" ? "Unbilled, next invoice" : undefined}
+                    />
+                    {c.source === "field" && <MetaChip className="ml-1">Field</MetaChip>}
+                    {/* Only when it says something the chip does not. The chip
+                        already covers "unbilled" and "voided"; what it has never
+                        been able to say is WHICH invoice a billed charge is on. */}
+                    {(billing.invoiceId || billing.warning) && (
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                        {billing.invoiceId ? (
+                          <Link
+                            to="/invoices/$invoiceId"
+                            params={{ invoiceId: billing.invoiceId }}
+                            className="underline underline-offset-2 hover:text-foreground"
+                          >
+                            {billing.label}
+                          </Link>
+                        ) : (
+                          billing.label
+                        )}
+                        {billing.warning && (
+                          <span className="ml-1 text-amber-600">{billing.warning}</span>
+                        )}
+                      </span>
+                    )}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="font-medium">{money(c.amount_cents)}</span>
+                    {c.status !== "invoiced" && c.status !== "voided" && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => voidMut.mutate(c.id)}
+                        disabled={voidMut.isPending}
+                      >
+                        Void
+                      </Button>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

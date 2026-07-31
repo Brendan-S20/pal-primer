@@ -43,6 +43,17 @@ const MIGRATION = join(
 
 const sql = readFileSync(MIGRATION, "utf8");
 
+/** The migration that made the franchise paywall real in SQL. */
+const FRANCHISE_GATE_MIGRATION = join(
+  __dirname,
+  "..",
+  "supabase",
+  "migrations",
+  "20260731230000_a-79-dollar-org-could-mint-franchise-codes.sql",
+);
+
+const franchiseGateSql = readFileSync(FRANCHISE_GATE_MIGRATION, "utf8");
+
 /** The (tier, entitlement) pairs in has_plan_entitlement's VALUES list. */
 function parseSqlMatrix(source: string): Array<[string, string]> {
   const start = source.indexOf("CREATE OR REPLACE FUNCTION public.has_plan_entitlement");
@@ -248,5 +259,134 @@ describe("upgrade signalling (BUILD-1)", () => {
         expect(upgradeMessage(e, tier).length).toBeGreaterThan(20);
       }
     }
+  });
+});
+
+// ── The franchise paywall, enforced in SQL ──────────────────────────────────
+//
+// has_plan_entitlement() mirrored PLAN_ENTITLEMENTS faithfully and was called
+// by NOTHING, so the franchise paywall existed only in TypeScript. Every
+// parent-side franchise RPC is granted to `authenticated` and checked only
+// ROLE, which a browser can reach with supabase.rpc(...) without ever entering
+// the server-fn funnel that holds requireEntitlement — an owner on $79 Launch
+// could mint link codes, open locations, and read every location's revenue.
+//
+// These assertions read the migration as TEXT, like the parity checks above and
+// like tests/cron-auth and tests/org-write do, so they need no database
+// credentials in CI. They cannot prove the guard REJECTS anyone — only a live
+// call can, and that was done against the live database when the migration was
+// applied. What they can prove, and what actually rots, is that the guard is
+// still there, still on the right six functions, still positioned after the
+// role check, and still saying what the TypeScript says.
+
+/** Every CREATE OR REPLACE FUNCTION body in a migration, keyed by name.
+ *  Strict on purpose: a migration restructured past this parser FAILS rather
+ *  than passing vacuously with zero functions checked. */
+function parseFunctionBodies(source: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const re =
+    /CREATE OR REPLACE FUNCTION public\.(\w+)\s*\([\s\S]*?AS \$function\$([\s\S]*?)\$function\$;/g;
+  for (const m of source.matchAll(re)) out[m[1]] = m[2];
+  if (Object.keys(out).length === 0) {
+    throw new Error("Parsed no function bodies out of the franchise gate migration");
+  }
+  return out;
+}
+
+const franchiseGateBodies = parseFunctionBodies(franchiseGateSql);
+
+/** The PARENT side: capabilities the pricing page sells at Enterprise. */
+const PARENT_SIDE_FRANCHISE_RPCS = [
+  "franchise_rollup",
+  "franchise_children",
+  "franchise_payment_routing",
+  "create_franchise_link_code",
+  "set_child_royalty_percent",
+  "provision_franchise_location",
+];
+
+describe("franchise_structure is gated in SQL, not only in TypeScript (BUILD-1)", () => {
+  it("gates exactly the six parent-side RPCs — no more, no fewer", () => {
+    expect(Object.keys(franchiseGateBodies).sort()).toEqual([...PARENT_SIDE_FRANCHISE_RPCS].sort());
+  });
+
+  it("puts a franchise_structure check in every one of them", () => {
+    const missing = PARENT_SIDE_FRANCHISE_RPCS.filter(
+      (fn) => !/public\.has_plan_entitlement\(\s*\w+\s*,\s*'franchise_structure'\s*\)/.test(
+        franchiseGateBodies[fn] ?? "",
+      ),
+    );
+    expect(
+      missing,
+      `These franchise RPCs are granted to \`authenticated\` with no plan check, so any signed-in owner can call them directly: ${missing.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("checks the ROLE first and the plan second", () => {
+    // "You are not the owner of this franchise" must not be leaked past by an
+    // upgrade prompt — that would tell a stranger which plan a franchise is on.
+    for (const fn of PARENT_SIDE_FRANCHISE_RPCS) {
+      const body = franchiseGateBodies[fn];
+      const role = body.indexOf("public.has_role(");
+      const plan = body.indexOf("public.has_plan_entitlement(");
+      expect(role, `${fn} lost its role check`).toBeGreaterThan(-1);
+      expect(plan, `${fn} lost its plan check`).toBeGreaterThan(-1);
+      expect(plan, `${fn} asks about the plan before it asks who the caller is`).toBeGreaterThan(
+        role,
+      );
+    }
+  });
+
+  it("tells a blocked caller what to buy, in the same words the app uses", () => {
+    // Not "Not authorized" — that sends a paying owner to ask their admin for
+    // access they already hold. The SQL message is upgradeMessage() with the
+    // tier interpolated, so this ties the two wordings together.
+    const needed = lowestTierWith("franchise_structure");
+    expect(needed, "No plan includes franchise_structure").toBe("enterprise");
+    const sqlText =
+      `${PLAN_UPGRADE_REQUIRED}: ${ENTITLEMENT_LABELS.franchise_structure} is included on ` +
+      `${TIER_NAMES[needed as PlanTier]} and above. This organization is on %.`;
+    for (const fn of PARENT_SIDE_FRANCHISE_RPCS) {
+      expect(franchiseGateBodies[fn], `${fn}'s refusal has drifted from upgradeMessage()`).toContain(
+        sqlText,
+      );
+    }
+    expect(upgradeMessage("franchise_structure", "launch")).toBe(
+      sqlText.replace("%.", `${TIER_NAMES.launch}.`),
+    );
+  });
+
+  it("derives the tier's display name the way the SQL does", () => {
+    // The SQL fills that %s with initcap(plan_tier_for_org(org)) rather than
+    // carrying a second copy of TIER_NAMES. That only stays honest while every
+    // display name is the capitalised slug.
+    for (const tier of PLAN_TIERS) {
+      const initcap = tier.charAt(0).toUpperCase() + tier.slice(1);
+      expect(
+        TIER_NAMES[tier],
+        `initcap('${tier}') no longer produces its pricing-page name, so the SQL upgrade prompt would name a tier the customer cannot find on the site`,
+      ).toBe(initcap);
+    }
+    for (const fn of PARENT_SIDE_FRANCHISE_RPCS) {
+      expect(franchiseGateBodies[fn]).toContain("initcap(public.plan_tier_for_org(");
+    }
+  });
+
+  it("leaves the CHILD side and the platform-admin side alone", () => {
+    // redeem_franchise_link_code is how a franchisee ACCEPTS an invitation.
+    // Requiring Enterprise to accept one would mean linking only works if every
+    // location independently buys the most expensive plan — see the header of
+    // src/lib/franchise-membership.functions.ts. franchise_signals is
+    // platform-admin only; platform staff are not a tenant and have no plan.
+    expect(franchiseGateSql).not.toContain("FUNCTION public.redeem_franchise_link_code");
+    expect(franchiseGateSql).not.toContain("FUNCTION public.franchise_signals");
+    expect(franchiseGateBodies).not.toHaveProperty("redeem_franchise_link_code");
+    expect(franchiseGateBodies).not.toHaveProperty("franchise_signals");
+  });
+
+  it("keeps franchise_structure on the list of entitlements that are really enforced", () => {
+    expect(ENFORCED_ENTITLEMENTS).toContain("franchise_structure");
+    expect(hasEntitlement("scale", "franchise_structure")).toBe(false);
+    expect(hasEntitlement("enterprise", "franchise_structure")).toBe(true);
   });
 });

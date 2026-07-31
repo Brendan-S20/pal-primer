@@ -13,8 +13,10 @@ import {
   generateRoyaltyInvoices,
   listRoyaltyInvoices,
   setRoyaltyInvoiceStatus,
+  getFranchiseAdjustments,
   type FranchiseRow,
 } from "@/lib/franchise.functions";
+import { FranchiseAdjustmentTrail } from "@/components/FranchiseAdjustmentTrail";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -430,7 +432,26 @@ function FranchisePage() {
       <PaymentRouting />
 
       <RoyaltyBilling />
+
+      {/* Directly under the statements it explains. The royalty table shows a
+          net figure per period; this is where the refunds and chargebacks
+          inside that figure are itemised, and where a credit from a won dispute
+          says which deduction it gives back. */}
+      <AdjustmentTrail />
     </div>
+  );
+}
+
+function AdjustmentTrail() {
+  const fn = useServerFn(getFranchiseAdjustments);
+  const q = useQuery({ queryKey: ["franchise", "adjustments"], queryFn: () => fn() });
+  return (
+    <FranchiseAdjustmentTrail
+      rows={q.data?.rows ?? []}
+      audience="franchise"
+      isLoading={q.isLoading}
+      error={q.error ? (q.error as Error).message : null}
+    />
   );
 }
 

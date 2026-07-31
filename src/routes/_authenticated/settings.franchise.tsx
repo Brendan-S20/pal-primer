@@ -10,8 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   getMyFranchiseMembership,
+  getMyFranchiseAdjustments,
   joinFranchise,
 } from "@/lib/franchise-membership.functions";
+import { FranchiseAdjustmentTrail } from "@/components/FranchiseAdjustmentTrail";
 
 // BUILD-6 — the CHILD's side, and deliberately in Settings rather than on
 // /franchise.
@@ -101,13 +103,23 @@ function FranchiseSettings() {
             </p>
           </CardContent>
         </Card>
-      ) : m?.isParent ? (
+      ) : null}
+
+      {/* The deduction trail is the other half of "you can see what you owe".
+          A royalty percentage explains the royalty line; it explains nothing
+          about a chargeback that was taken off a statement months ago and — if
+          the dispute was won — quietly given back on a later one. This is the
+          franchisee's own copy of that trail, so querying a deduction does not
+          require asking the party that raised it. */}
+      {m?.isChild ? <MyAdjustments /> : null}
+
+      {q.isLoading || m?.isChild ? null : m?.isParent ? (
         <Card>
           <CardContent className="p-6 text-sm">
             <p className="font-medium">This organization is a franchise parent.</p>
             <p className="mt-1 text-muted-foreground">
-              Manage your locations and royalty rates from the Franchise page. A parent
-              can&apos;t also be a location within another franchise.
+              Manage your locations and royalty rates from the Franchise page. A parent can&apos;t
+              also be a location within another franchise.
             </p>
           </CardContent>
         </Card>
@@ -118,8 +130,8 @@ function FranchiseSettings() {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Enter the invitation code your franchise gave you. Nothing changes until you do —
-              they can&apos;t link your business without this step.
+              Enter the invitation code your franchise gave you. Nothing changes until you do — they
+              can&apos;t link your business without this step.
             </p>
             <div>
               <Label htmlFor="franchise-code" className="text-xs">
@@ -149,5 +161,21 @@ function FranchiseSettings() {
         </Card>
       )}
     </div>
+  );
+}
+
+/** The location's own deduction trail. Its own query so the membership card
+ *  renders immediately — a franchisee who opens this page to check their
+ *  royalty rate should not wait on a ledger. */
+function MyAdjustments() {
+  const fn = useServerFn(getMyFranchiseAdjustments);
+  const q = useQuery({ queryKey: ["franchise", "my-adjustments"], queryFn: () => fn() });
+  return (
+    <FranchiseAdjustmentTrail
+      rows={q.data?.rows ?? []}
+      audience="location"
+      isLoading={q.isLoading}
+      error={q.error ? (q.error as Error).message : null}
+    />
   );
 }

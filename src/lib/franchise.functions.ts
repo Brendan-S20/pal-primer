@@ -4,6 +4,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { paymentWasReceived, receivedPaymentStatuses } from "@/lib/revenue";
 import { REVERSAL_KINDS, reducesIncome } from "@/lib/cpa-reports";
+import type { AdjustmentLedgerRow } from "@/lib/franchise-adjustments";
 
 // Franchise rollup is owner-only — every function in this file is gated on
 // manage_franchise, matching the /franchise route boundary.
@@ -380,6 +381,32 @@ export const setRoyaltyInvoiceStatus = createServerFn({ method: "POST" })
       .eq("parent_organization_id", orgId);
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+/**
+ * The adjustment lines behind the settlement statements — every refund and
+ * chargeback, and for each reversed deduction the repayment that cancelled it.
+ *
+ * BUG-26 gave a won dispute a compensating adjustment so the money actually
+ * goes back, and recorded `reversed_at` and `reversed_by_adjustment_id` to say
+ * which repayment answered which deduction. Nothing read either column, so the
+ * statement showed a credit the product could not explain — the deduction on
+ * one statement, the repayment on another, joined by a foreign key no screen
+ * followed. `franchise_adjustment_ledger` follows it, in both directions.
+ *
+ * Runs on the CALLER's client: the routine is SECURITY DEFINER and authorizes
+ * `view_financials` against the org id passed in, so auth.uid() has to be the
+ * real person.
+ */
+export const getFranchiseAdjustments = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { data, error } = await (context.supabase as any).rpc("franchise_adjustment_ledger", {
+      _org_id: orgId,
+    });
+    if (error) throw new Error(error.message);
+    return { rows: (data ?? []) as AdjustmentLedgerRow[] };
   });
 
 // ── Recruiting locations (BUILD-6) ──────────────────────────────────────────

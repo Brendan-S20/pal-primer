@@ -14,20 +14,14 @@
     "Everything added that day was already in this state and invisible, and each",
     "entry was checked against the live database before being written down."
   ],
-
   "uncalled_rpcs": {
-    "is_visit_tech": "Verified in the live database: used by the storage RLS policy 'assigned tech uploads visit photo files' on storage.objects. Policies from the consolidated bootstrap dump are not files in supabase/migrations, so the scanner cannot see them.",
-    "optimize_route_for_day": "KNOWN GAP — granted to authenticated and called from nowhere. Route optimisation runs in the app today; this SQL implementation predates it and is either dead or an unfinished server-side path. Needs a decision: wire it up or drop it.",
-    "admin_generate_invoices_for_org": "KNOWN GAP — retired but still granted to service_role. hooks/nightly.ts explains that run_billing_cycles replaced 'the old cadence-blind admin_generate_invoices_for_org sweep', and that comment was the only thing in src/ naming it — which is why the check passed it until TypeScript comments were stripped. Verified in the live database on 2026-07-31: the function exists and nothing references it (no policy, view, trigger, cron job or other function body). Drop it, or say why it is kept.",
-    "has_plan_entitlement": "KNOWN GAP — the SQL mirror of PLAN_ENTITLEMENTS. tests/entitlement-parity.test.ts keeps it honest, but by parsing the migration's VALUES matrix as text, not by calling it; nothing else does either. So plan gating is enforced in TypeScript only and the database enforces none of it, which is the thing having a SQL mirror was supposed to fix. Verified in the live database on 2026-07-31: no policy, view, trigger or function body references it.",
-    "portal_resolve_contact": "KNOWN GAP — retired and still granted to service_role. src/lib/portal-auth.server.ts resolves the contact with a direct service-role query instead 'so branding lives in code', and the sentence saying so was the only mention in src/. Its one remaining caller is tests/integration/portal-auth.db.test.ts, which is exactly the shape this check exists to catch: a test proves the machinery works when called, and says nothing about whether anything calls it. Verified in the live database on 2026-07-31: no other reference. Revoke and drop it."
+    "is_visit_tech": "Verified in the live database: used by the storage RLS policy 'assigned tech uploads visit photo files' on storage.objects. Policies from the consolidated bootstrap dump are not files in supabase/migrations, so the scanner cannot see them."
   },
-
   "endpoint_callers": {
     "src/routes/api/public/hooks/nightly.ts": "pg_cron job 'nightly-automation', 0 9 * * * — verified in cron.job.",
     "src/routes/api/public/hooks/weekly-digest.ts": "pg_cron job 'weekly-digest', 0 13 * * 1 — created by 20260731130000, verified in cron.job.",
     "src/routes/email/queue/process.ts": "pg_cron job 'process-email-queue', * * * * * — verified in cron.job.",
-    "src/routes/api/public/hooks/announcement-emails.ts": "KNOWN GAP — no scheduler targets it, so an announcement marked send_email=true is never sent. Scheduling platform-wide outbound email is an owner decision, not a cleanup task.",
+    "src/routes/api/public/hooks/announcement-emails.ts": "Deliberately unscheduled, and no longer unreachable. The 120-line send moved to lib/announcement-emails.server, which a platform admin now invokes per announcement from /platform/announcements — so an announcement marked send_email actually gets sent, which it never did before. This endpoint stays as the shape a scheduler needs if the owner ever wants one; scheduling platform-wide outbound email is their decision, not a cleanup task. Both callers share a per-recipient idempotency key, so adding a cron later cannot double-send.",
     "src/routes/api/public/hooks/stripe.ts": "Stripe Connect webhook endpoint. Called by Stripe on tenant payment events.",
     "src/routes/api/public/hooks/platform-stripe.ts": "Stripe platform webhook endpoint, for HoundStack's own SaaS billing (bucket A).",
     "src/routes/api/public/hooks/twilio.ts": "Twilio inbound-SMS webhook.",
@@ -41,12 +35,5 @@
     "src/routes/email/unsubscribe.ts": "Target of the List-Unsubscribe header and the footer link in every marketing email.",
     "src/routes/email/suppression.ts": "Provider bounce/complaint webhook — writes the suppression list."
   },
-
-  "write_only_columns": {
-    "deepclean_charge_cents": "KNOWN GAP — visits.deepclean_charge_cents. admin_generate_seasonal_deepcleans stamps each generated visit with the org's seasonal charge, and nothing ever reads it: not the invoicing path, not the app. is_deepclean IS read (the UI shows a 'Deep clean' chip), so the visit is marked as a deep clean and then billed as an ordinary one. Either the charge belongs in the invoice line or the column should go.",
-    "invoice_line_item_id": "KNOWN GAP — addon_charges.invoice_line_item_id. Set by admin_generate_invoice_for_client when an add-on is billed, so the charge points at the line it became, and nothing follows the pointer in either direction. Verified in the live database on 2026-07-31: one function mentions it, and that mention is the UPDATE that writes it.",
-    "reversed_at": "KNOWN GAP — franchise_adjustments.reversed_at, written by record_franchise_adjustment alongside status = 'reversed'. The settlement query filters on status, never on this timestamp, so when an adjustment was reversed is recorded and never asked. Harmless today; it is the BUG-24 shape (a fact recorded and ignored), so it is written down rather than assumed fine.",
-    "reversed_by_adjustment_id": "KNOWN GAP — franchise_adjustments.reversed_by_adjustment_id, the link from a reversed adjustment to the one that reversed it. Written by record_franchise_adjustment, read by nothing, so a statement cannot show which repayment cancelled which deduction — the audit trail exists in the table and not in any answer the system can give.",
-    "signup_utm": "KNOWN GAP — organizations.signup_utm. bootstrap_organization captures the signup UTM payload on every new tenant and nothing reads it: no report, no platform metric, no query. Attribution data collected since 2026-07-14 that no one can see. Either surface it or stop storing it — it is personal data with no purpose."
-  }
+  "write_only_columns": {}
 }

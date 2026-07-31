@@ -260,14 +260,30 @@ function sqlText() {
 function checkUncalledRpcs(baseline) {
   const defined = new Map(); // name -> { file, returnsTrigger }
   const grantedToApp = new Set();
+  // A function this repo has since DROPPED. Migrations are an append-only
+  // history, so the CREATE and the GRANT stay in the tree for ever — without
+  // this, dropping a dead function leaves it looking dead for ever, and the
+  // only way to green the check would be a baseline entry describing something
+  // that no longer exists. Three drops on 2026-07-31 hit exactly that.
+  //
+  // Tracked in migration order, and a later CREATE un-drops it, so a
+  // drop-and-recreate (the only way to change a function's signature) is not
+  // mistaken for a removal.
+  const dropped = new Set();
 
   for (const file of migrationFiles()) {
     const code = sqlCode(readFileSync(file, "utf8"));
+
+    const dropRe = /DROP\s+FUNCTION\s+(?:IF\s+EXISTS\s+)?public\.([a-z0-9_]+)/gi;
+    let d;
+    while ((d = dropRe.exec(code))) dropped.add(d[1]);
 
     const defRe =
       /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.([a-z0-9_]+)\s*\(([\s\S]*?)\)\s*RETURNS\s+([a-z ]+)/gi;
     let m;
     while ((m = defRe.exec(code))) {
+      // Re-created after a drop: it is live again.
+      dropped.delete(m[1]);
       defined.set(m[1], {
         file: relative(ROOT, file),
         // A trigger function is invoked by the trigger, never by name from the
@@ -290,6 +306,7 @@ function checkUncalledRpcs(baseline) {
 
   const dead = [];
   for (const name of grantedToApp) {
+    if (dropped.has(name)) continue;
     const def = defined.get(name);
     if (def?.returnsTrigger) continue;
     if (baseline.uncalled_rpcs?.[name]) continue;

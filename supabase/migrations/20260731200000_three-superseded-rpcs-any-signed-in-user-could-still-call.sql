@@ -1,0 +1,101 @@
+-- Drop three functions that were replaced by something else and never removed.
+-- All three were still granted to `authenticated`, so they were not merely dead
+-- weight: they were reachable surface for every signed-in user of every tenant.
+-- (20260731190000 revoked PUBLIC and anon across the schema; it deliberately did
+-- not touch `authenticated`, so these three survived it.)
+--
+-- IMP-11 / check-dead-machinery.mjs listed all three as built-and-uncalled once
+-- rule 1 stopped counting TypeScript COMMENTS as callers — in two of the three
+-- cases the only mention left in src/ was the sentence announcing the
+-- retirement.
+--
+-- ── HOW "NOTHING CALLS THIS" WAS ESTABLISHED ───────────────────────────────
+--
+-- For each name, against the LIVE database on 2026-07-31, and finding nothing:
+--
+--   pg_proc.prosrc ILIKE the name, excluding the function itself   (no caller
+--                                   from any other function body, incl. v2)
+--   pg_policies.qual / with_check   (no RLS policy invokes it)
+--   pg_views / pg_matviews.definition
+--   pg_trigger (non-internal) — neither as tgfoid nor named in a trigger fn
+--   cron.job.command — the four live jobs are nightly-automation,
+--                      process-email-queue, run-billing-cycles, weekly-digest
+--   pg_attrdef (column DEFAULTs), pg_constraint, pg_rules, index expressions
+--   pg_depend on each oid, deptype <> 'i' — zero non-internal dependents
+--
+-- Plus the repo: no `.rpc("<name>")` and no SQL call site outside the DDL that
+-- creates/grants it. The one exception is written up under each function below.
+--
+-- ── optimize_route_for_day(uuid, uuid, date, boolean) ──────────────────────
+--
+-- WAS: the first nearest-neighbour route builder (20260702001425). Walks the
+-- day's unassigned visits from the tech's start point and writes back
+-- visits.assigned_staff_id and visits.sequence.
+--
+-- REPLACED BY: optimize_route_v2, added the same day (20260702005539) with an
+-- IDENTICAL signature — same four argument types, same integer return — and
+-- last rewritten by 20260717150100 to anchor windows at the org-local workday
+-- start. v2 writes everything v1 writes AND eta_start, eta_end, travel_km,
+-- travel_min, window_violated. v1 is a strict subset: running it today would
+-- reorder a day and leave every ETA and travel estimate on those visits stale.
+--
+-- v2 is what the product actually calls — src/lib/visits.functions.ts:123
+-- (optimizeRoute), :154 (reoptimizeAll) and :416, plus one SQL caller inside
+-- 20260702005539. Because the signatures are identical, the two were trivially
+-- confusable; removing v1 makes the wrong one unpickable.
+--
+-- ── admin_generate_invoices_for_org(uuid, date) ────────────────────────────
+--
+-- WAS: the cadence-blind invoicing sweep (20260701173945, revised
+-- 20260701213007). Invoices every unbilled postpaid visit in an org up to a
+-- date, in one pass, regardless of each client's billing_frequency.
+--
+-- REPLACED BY: run_billing_cycles(uuid) (20260716220000, hardened for
+-- concurrency by 20260716235000), which respects clients.billing_frequency and
+-- stamps send_after for the grace window. Two callers, both verified:
+-- src/routes/api/public/hooks/nightly.ts:129 under the org's
+-- auto_invoice_enabled gate, and pg_cron job 'run-billing-cycles' (10 6 * * *,
+-- active, command `SELECT public.run_billing_cycles();`).
+--
+-- The only thing left in src/ naming the old function is the COMMENT at
+-- nightly.ts:127 explaining that run_billing_cycles replaced it.
+--
+-- It carried no authorization check of any kind — no can_write_org, no
+-- has_permission, no reference to auth.uid() — while being SECURITY DEFINER and
+-- granted to `authenticated`. Any signed-in user could have written invoices
+-- into any organization by id. 20260731190000 names it as one of the functions
+-- that were reachable; it was reachable one grant further than that migration
+-- closed.
+--
+-- NOT TOUCHED: admin_generate_invoice_for_client(uuid, date) — singular, a
+-- different function, still live and still service_role-only.
+--
+-- ── portal_resolve_contact(uuid) ───────────────────────────────────────────
+--
+-- WAS: SELECT the client + org name for a portal token (20260708210000), used
+-- to decide where a portal OTP should be delivered.
+--
+-- REPLACED BY: resolveContact() in src/lib/portal-auth.server.ts:75, a direct
+-- service-role query that returns the same row plus the org's portal_slug,
+-- logo_url and brand_color, "so branding lives in code" — the RPC returned only
+-- org_name and could not have served the branded sign-in page.
+--
+-- Its last caller anywhere was tests/integration/portal-auth.db.test.ts, which
+-- is the exact shape this check exists to catch: a test proves the machinery
+-- works when called and says nothing about whether anything calls it. That case
+-- has been retargeted at the replacement query in the same commit, so no test
+-- is left calling a dropped function.
+--
+-- Like the invoicing sweep it was SECURITY DEFINER with no authorization check
+-- and a live `authenticated` grant: a signed-in user of any tenant holding a
+-- portal token could read that customer's name, phone and email out of another
+-- org, bypassing RLS.
+--
+-- Idempotent — explicit argument types, IF EXISTS, no CASCADE. CASCADE is
+-- deliberately absent: pg_depend showed zero dependents, so if a DROP here ever
+-- fails, something references the function and this migration should stop
+-- rather than take that something with it.
+
+DROP FUNCTION IF EXISTS public.optimize_route_for_day(uuid, uuid, date, boolean);
+DROP FUNCTION IF EXISTS public.admin_generate_invoices_for_org(uuid, date);
+DROP FUNCTION IF EXISTS public.portal_resolve_contact(uuid);

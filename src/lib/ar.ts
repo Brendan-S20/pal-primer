@@ -122,3 +122,74 @@ export function computeCreditApplication({
     invoiceStatus: remainingDueCents <= 0 ? "paid" : "open",
   };
 }
+
+// ── Visit → invoice line math, incl. the seasonal deep-clean surcharge ───────
+// Pure mirror of the visit loop inside public.admin_generate_invoice_for_client
+// (migration 20260731210000_a-deep-clean-was-billed-as-an-ordinary-visit.sql),
+// same shape as computeCreditApplication above: the SQL is the writer of
+// record, this makes its money math testable without a database. The bug it
+// guards: deepclean_charge_cents was written on every generated deep-clean
+// visit and read by nothing, so a deep clean invoiced at the ordinary visit
+// price and the surcharge the tenant sells was never charged.
+
+export type VisitBillingRow = {
+  visitId: string;
+  /** Canonical ISO date, as stored — descriptions are humanized at render. */
+  scheduledOn: string;
+  status: "completed" | "skipped";
+  /** The subscription's ordinary per-visit price. */
+  priceCents: number | null;
+  street?: string | null;
+  skipChargeCents?: number | null;
+  skipReasonCode?: string | null;
+  isDeepclean?: boolean | null;
+  /** Snapshotted on the visit when it was generated, not read live from the
+   *  org, so re-pricing the setting cannot retro-price a finished deep clean. */
+  deepcleanChargeCents?: number | null;
+};
+
+export type InvoiceLineDraft = {
+  /** null for the surcharge line: invoice_line_items_visit_unique allows one
+   *  row per visit, and that row must stay the service line because every
+   *  "not yet billed" test joins invoice_line_items on visit_id. */
+  visitId: string | null;
+  description: string;
+  amountCents: number;
+};
+
+export function composeVisitInvoiceLines(v: VisitBillingRow): InvoiceLineDraft[] {
+  const suffix = v.street ? ` - ${v.street}` : "";
+  if (v.status === "skipped") {
+    // A skipped deep clean did not happen: it bills its skip charge only.
+    return [
+      {
+        visitId: v.visitId,
+        description: `Skipped visit ${v.scheduledOn} (${v.skipReasonCode ?? "other"})`,
+        amountCents: v.skipChargeCents ?? 0,
+      },
+    ];
+  }
+  const lines: InvoiceLineDraft[] = [
+    {
+      visitId: v.visitId,
+      description: `${v.isDeepclean ? "Deep clean" : "Service"} on ${v.scheduledOn}${suffix}`,
+      amountCents: v.priceCents ?? 0,
+    },
+  ];
+  const surcharge = v.deepcleanChargeCents ?? 0;
+  if (v.isDeepclean && surcharge > 0) {
+    lines.push({
+      visitId: null,
+      description: `Seasonal deep-clean surcharge (${v.scheduledOn})`,
+      amountCents: surcharge,
+    });
+  }
+  return lines;
+}
+
+/** What the client is actually billed for one visit — the sum the invoice
+ *  total moves by. Ordinary visit: the visit price. Deep clean: the visit
+ *  price PLUS the seasonal surcharge. */
+export function visitBillableCents(v: VisitBillingRow): number {
+  return composeVisitInvoiceLines(v).reduce((sum, l) => sum + l.amountCents, 0);
+}

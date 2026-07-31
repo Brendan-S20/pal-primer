@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
+import type { AdjustmentLedgerRow } from "@/lib/franchise-adjustments";
 
 // BUILD-6 — the CHILD side of a franchise relationship.
 //
@@ -26,11 +27,7 @@ import { requirePermission } from "@/lib/authz.server";
 export const getMyFranchiseMembership = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(
-      context.supabase,
-      context.userId,
-      "manage_settings",
-    );
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // Service-role on purpose: the whole point is reading the PARENT's name,
@@ -85,6 +82,37 @@ export const joinFranchise = createServerFn({ method: "POST" })
     );
     if (error) throw new Error(error.message);
     return { ok: true as const, parentOrganizationId: parentId as string };
+  });
+
+/**
+ * The location's own side of the settlement: every deduction taken from it, and
+ * for a reversed one, the repayment that cancelled it and the statement it came
+ * back on.
+ *
+ * This is the surface BUG-26 was missing. A franchisee reads a statement and
+ * reconciles it against their bank; when a chargeback they were deducted for is
+ * later won, the money returns as a credit on a LATER statement, and until now
+ * nothing in the product connected the two. "Both sides can READ an adjustment.
+ * A deduction a franchisee cannot look up is indistinguishable from an error,
+ * and they will assume the worst" — that was the rule when the table was built;
+ * this is it applied to the reversal trail.
+ *
+ * Ungated by plan, like the rest of the child side: a location is not buying
+ * franchise management, it is being billed by one.
+ *
+ * `view_financials` rather than `manage_settings`: these are money lines. The
+ * SQL re-checks it independently against the org id, so nothing here is load
+ * bearing for authorization.
+ */
+export const getMyFranchiseAdjustments = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { orgId } = await requirePermission(context.supabase, context.userId, "view_financials");
+    const { data, error } = await (context.supabase as any).rpc("franchise_adjustment_ledger", {
+      _org_id: orgId,
+    });
+    if (error) throw new Error(error.message);
+    return { rows: (data ?? []) as AdjustmentLedgerRow[] };
   });
 
 // BUILD-6: leaveFranchise was removed here (owner decision, 2026-07-30).

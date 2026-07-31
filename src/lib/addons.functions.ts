@@ -47,7 +47,11 @@ export const upsertAddonService = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_client_billing");
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_client_billing",
+    );
     const payload: any = {
       organization_id: orgId,
       code: data.code,
@@ -86,7 +90,13 @@ export const listClientAddons = createServerFn({ method: "GET" })
     const [charges, subs] = await Promise.all([
       context.supabase
         .from("addon_charges")
-        .select("*, addon_services(name)")
+        // `invoice_line_item_id` has been written since add-on billing shipped
+        // and followed by nothing, so a charge could say it had been billed and
+        // not say WHERE. Following it here turns "invoiced" into an invoice
+        // someone can open. One to-one FK hop, the same shape as the
+        // addon_services embed above, and covered by the same billing
+        // permission this handler already required.
+        .select("*, addon_services(name), invoice_line_items(invoice_id)")
         .eq("client_id", data.clientId)
         .order("occurred_on", { ascending: false })
         .limit(100),
@@ -98,7 +108,39 @@ export const listClientAddons = createServerFn({ method: "GET" })
     ]);
     if (charges.error) throw new Error(charges.error.message);
     if (subs.error) throw new Error(subs.error.message);
-    return { charges: charges.data ?? [], subscriptions: subs.data ?? [] };
+
+    // Flattened here rather than in the component: PostgREST returns an object
+    // for a to-one embed and an array for a to-many, and a UI guessing at that
+    // is how a link silently stops resolving.
+    const rows = (charges.data ?? []).map((c: any) => {
+      const li = Array.isArray(c.invoice_line_items)
+        ? c.invoice_line_items[0]
+        : c.invoice_line_items;
+      return { ...c, billed_invoice_id: (li?.invoice_id as string | undefined) ?? null };
+    });
+
+    // Whether that invoice was actually PAID is the second half of "was this
+    // add-on ever billed" — a charge sitting on an invoice nobody paid is not
+    // the same answer as one that settled. Second query rather than a nested
+    // embed: one FK hop is the pattern used everywhere else in this file.
+    const invoiceIds = [...new Set(rows.map((r: any) => r.billed_invoice_id).filter(Boolean))];
+    const statuses = new Map<string, string>();
+    if (invoiceIds.length) {
+      const { data: invs } = await context.supabase
+        .from("invoices")
+        .select("id, status")
+        .in("id", invoiceIds as string[]);
+      for (const i of invs ?? []) statuses.set(i.id as string, i.status as string);
+    }
+
+    const withInvoice = rows.map((r: any) => ({
+      ...r,
+      billed_invoice_status: r.billed_invoice_id
+        ? (statuses.get(r.billed_invoice_id) ?? null)
+        : null,
+    }));
+
+    return { charges: withInvoice, subscriptions: subs.data ?? [] };
   });
 
 export const createAddonCharge = createServerFn({ method: "POST" })
@@ -135,7 +177,8 @@ export const createAddonCharge = createServerFn({ method: "POST" })
         .maybeSingle();
       if (vErr) throw new Error(vErr.message);
       if (!visit) throw new Error("Visit not found");
-      if (visit.client_id !== data.clientId) throw new Error("Visit does not belong to this client");
+      if (visit.client_id !== data.clientId)
+        throw new Error("Visit does not belong to this client");
       if ((visit as any).staff?.user_id !== userId) {
         // Office roles may still field-bill on a tech's behalf.
         await requirePermission(supabase, userId, "manage_client_billing");
@@ -148,11 +191,7 @@ export const createAddonCharge = createServerFn({ method: "POST" })
           .eq("id", data.addonServiceId)
           .eq("organization_id", orgId)
           .maybeSingle(),
-        supabase
-          .from("organizations")
-          .select("field_addon_cap_cents")
-          .eq("id", orgId)
-          .single(),
+        supabase.from("organizations").select("field_addon_cap_cents").eq("id", orgId).single(),
       ]);
       if (sErr) throw new Error(sErr.message);
       if (!svc) throw new Error("Add-on service not found");
@@ -189,7 +228,9 @@ export const voidAddonCharge = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ chargeId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await requirePermission(context.supabase, context.userId, "manage_client_billing");
-    const { error } = await context.supabase.rpc("void_addon_charge", { _charge_id: data.chargeId });
+    const { error } = await context.supabase.rpc("void_addon_charge", {
+      _charge_id: data.chargeId,
+    });
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -209,7 +250,11 @@ export const createAddonSubscription = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_client_billing");
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_client_billing",
+    );
     const started = data.startedOn ?? new Date().toISOString().slice(0, 10);
     const { data: row, error } = await context.supabase
       .from("addon_subscriptions")
@@ -260,7 +305,8 @@ export const listAddonRequests = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await requirePermission(context.supabase, context.userId, "manage_client_billing");
-    const { data: rows, error } = await ((context.supabase as any).from("addon_requests"))
+    const { data: rows, error } = await (context.supabase as any)
+      .from("addon_requests")
       .select(
         "id, client_id, addon_service_id, property_id, kind, frequency, quantity, unit_price_cents, status, created_at, addon_services(name), properties(street)",
       )
@@ -272,7 +318,8 @@ export const listAddonRequests = createServerFn({ method: "GET" })
   });
 
 async function loadPendingRequest(supabase: any, requestId: string) {
-  const { data: req, error } = await ((supabase as any).from("addon_requests"))
+  const { data: req, error } = await (supabase as any)
+    .from("addon_requests")
     .select("*, addon_services(name)")
     .eq("id", requestId)
     .single();
@@ -293,7 +340,8 @@ export const approveAddonRequest = createServerFn({ method: "POST" })
     // Claim FIRST: two concurrent approvals (double-click, two staff) must
     // not both create the billable object. The status flip is the atomic
     // gate; whoever matches zero rows lost the race and stops here.
-    const { data: claimed, error: claimErr } = await ((supabase as any).from("addon_requests"))
+    const { data: claimed, error: claimErr } = await (supabase as any)
+      .from("addon_requests")
       .update({ status: "approved", decided_by: userId, decided_at: new Date().toISOString() })
       .eq("id", data.requestId)
       .eq("status", "pending")
@@ -302,7 +350,8 @@ export const approveAddonRequest = createServerFn({ method: "POST" })
     if (!claimed || claimed.length === 0) throw new Error("This request was already decided");
 
     const revertClaim = async () => {
-      await ((supabase as any).from("addon_requests"))
+      await (supabase as any)
+        .from("addon_requests")
         .update({ status: "pending", decided_by: null, decided_at: null })
         .eq("id", data.requestId);
     };
@@ -325,13 +374,14 @@ export const approveAddonRequest = createServerFn({ method: "POST" })
         throw new Error(error.message);
       }
       if (req.property_id) {
-        await ((supabase as any).from("addon_charges"))
+        await (supabase as any)
+          .from("addon_charges")
           .update({ property_id: req.property_id })
           .eq("id", chargeId);
       }
     } else {
       const started = new Date().toISOString().slice(0, 10);
-      const { error } = await ((supabase as any).from("addon_subscriptions")).insert({
+      const { error } = await (supabase as any).from("addon_subscriptions").insert({
         organization_id: req.organization_id,
         client_id: req.client_id,
         addon_service_id: req.addon_service_id,
@@ -369,7 +419,8 @@ export const declineAddonRequest = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     await requirePermission(supabase, userId, "manage_client_billing");
     const req = await loadPendingRequest(supabase, data.requestId);
-    const { error } = await ((supabase as any).from("addon_requests"))
+    const { error } = await (supabase as any)
+      .from("addon_requests")
       .update({
         status: "declined",
         decided_by: userId,
@@ -396,7 +447,11 @@ export const generateAddonCharges = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ through: z.string() }).parse(d))
   .handler(async ({ data, context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_client_billing");
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_client_billing",
+    );
     const { data: n, error } = await context.supabase.rpc("generate_addon_charges_through", {
       _org_id: orgId,
       _through: data.through,
