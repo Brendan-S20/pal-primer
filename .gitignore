@@ -10,6 +10,9 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# BUILD-9: output of `build:native` — the bundled shell Capacitor loads.
+# Build artefact, 8MB+, regenerated every build; never committed.
+dist-native
 .output
 .vinxi
 .tanstack/**
