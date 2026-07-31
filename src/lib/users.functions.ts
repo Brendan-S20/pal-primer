@@ -95,29 +95,14 @@ export const resyncMySeats = createServerFn({ method: "POST" })
 // ── Teammate invites (finding #40) ───────────────────────────────────────────
 const inviteRoleEnum = z.enum(["office_manager", "dispatcher", "tech"]);
 
-// Best-effort Resend invite email. The pending row + link work regardless of
-// whether the email actually sends, so failures are logged, not thrown.
+// BUILD-6: the body of this moved to @/lib/invite-email.server so the
+// franchise-location flow sends the same email rather than a second one that
+// drifts. Still best-effort — the pending row works whether or not the mail
+// does — and still imported lazily, so the Resend call never enters a bundle
+// that does not send invites.
 async function sendInviteEmail(orgName: string, email: string, role: string): Promise<void> {
-  try {
-    const resendApiKey = process.env.RESEND_API_KEY;
-    if (!resendApiKey) return;
-    const link = `https://www.app.houndstack.com/auth`;
-    const label = role.replace(/_/g, " ");
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from: `${orgName} <noreply@notify.houndstack.com>`,
-        to: [email],
-        subject: `You've been invited to join ${orgName}`,
-        html: `<p>You've been invited to join <strong>${orgName}</strong> on HoundStack as ${label}.</p>` +
-          `<p>Create your account (or sign in) with <strong>${email}</strong> here: <a href="${link}">${link}</a>. Your role is assigned automatically on first sign-in.</p>`,
-        text: `You've been invited to join ${orgName} on HoundStack. Sign up with ${email} at ${link}.`,
-      }),
-    });
-  } catch (e) {
-    console.error("invite email failed", (e as Error).message);
-  }
+  const { sendInviteEmail: send } = await import("@/lib/invite-email.server");
+  await send(orgName, email, role);
 }
 
 export const createOrgInvite = createServerFn({ method: "POST" })

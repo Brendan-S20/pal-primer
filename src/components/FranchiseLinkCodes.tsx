@@ -77,11 +77,17 @@ export function FranchiseLinkCodes() {
       <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
         <div>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Building2 className="h-4 w-4" /> Add a location
+            <Building2 className="h-4 w-4" /> Link a location already on HoundStack
           </CardTitle>
+          {/* BUILD-6: this said "Add a location", which is now also the card
+              above it. The two do different things — that one creates an
+              organization, this one attaches an existing one — and a franchise
+              picking the wrong one either loses an operator's client history or
+              ends up with an empty duplicate of their business. */}
           <p className="mt-1 text-xs text-muted-foreground">
-            Create an invitation code and send it to the location&apos;s owner. They enter it in
-            their own account to join — nothing is linked until they do.
+            For an operator who already runs their business on HoundStack: their clients, visits and
+            history come with them. Create a code and send it to their owner — they enter it in
+            their own account, so nothing is linked until they agree.
           </p>
         </div>
         <Button size="sm" onClick={() => create.mutate()} disabled={create.isPending}>

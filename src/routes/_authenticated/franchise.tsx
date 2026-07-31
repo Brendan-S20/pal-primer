@@ -42,6 +42,7 @@ import {
 import { HelpTip } from "@/components/HelpTip";
 import { PlanGate } from "@/components/PlanGate";
 import { FranchiseLinkCodes } from "@/components/FranchiseLinkCodes";
+import { ProvisionLocation } from "@/components/ProvisionLocation";
 
 export const Route = createFileRoute("/_authenticated/franchise")({
   // BUILD-1: the whole surface is Enterprise. The pricing page sells "Parent
@@ -160,17 +161,29 @@ function FranchisePage() {
             {/* BUILD-6: this used to say "any organization whose
                 parent_organization_id points at this one will roll up here",
                 which described editing a database column by hand — the only way
-                to link anything, because no linking flow existed. It does now. */}
+                to link anything, because no linking flow existed. It does now,
+                two ways, and which one is right depends on whether the location
+                already exists. */}
             <p>
-              To add a location, mark this organization as the franchise, then send its owner an
-              invitation code. They join from their own account, so nothing is linked without their
-              agreement.
+              There are two ways to add one. If you&apos;re <strong>starting</strong> a location,
+              open it below — we create it, link it, and email the people who work there. If the
+              location is an <strong>existing business</strong> already running on HoundStack, set
+              this organization up as the franchise and send its owner an invitation code instead,
+              so their clients and history come across with them.
             </p>
-            <Button onClick={() => mark.mutate()} disabled={mark.isPending}>
-              {mark.isPending ? "Marking…" : "Set up as a franchise"}
+            <Button onClick={() => mark.mutate()} disabled={mark.isPending} variant="outline">
+              {mark.isPending ? "Marking…" : "Set up as a franchise (for invitation codes)"}
             </Button>
           </CardContent>
         </Card>
+
+        {/* Opening a location marks this organization as the franchise on its
+            own — provision_franchise_location sets is_franchise_parent — so
+            there is no reason to make someone press a button first and then do
+            the thing they came here to do. */}
+        <div className="mt-6">
+          <ProvisionLocation />
+        </div>
       </div>
     );
   }
@@ -199,6 +212,10 @@ function FranchisePage() {
         </div>
       </div>
 
+      {/* Opening a location comes first: it is the common case (a franchise
+          starting a location) and the one that needs no coordination with
+          anyone. Codes are for the rarer acquisition case. */}
+      <ProvisionLocation />
       <FranchiseLinkCodes />
 
       <div
