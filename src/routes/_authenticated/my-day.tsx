@@ -796,6 +796,12 @@ function VisitCard({
   const canPerformVisit = !preview && role !== "dispatcher";
 
   const actions = useOfflineVisitActions(visit.id, visit.organization_id as string | undefined);
+  // Billing an add-on is the one action on this card that is NOT queued when
+  // the signal drops — start/complete/skip/photo all go to IndexedDB, this
+  // goes straight to the server. The tech has no way to know that, so the card
+  // has to say it. (Q-11 is whether it should queue at all; until that is
+  // answered, refusing honestly beats failing with a network error.)
+  const cardOnline = useOnline();
 
   const [showSkip, setShowSkip] = useState(false);
   const [showAddon, setShowAddon] = useState(false);
@@ -1290,11 +1296,27 @@ function VisitCard({
               const totalCents = svc ? svc.unit_price_cents * qtyNum : 0;
               if (!addonServices.length) {
                 // An empty catalog used to leave a permanently-disabled Bill
-                // button with no explanation — say why instead.
+                // button with no explanation — say why instead. Two different
+                // reasons produce an empty list and they need different
+                // sentences: the price list is deliberately NOT persisted to
+                // the device (see read-cache-policy), so offline it is empty
+                // even when the office has a full catalog. Telling a tech at a
+                // fence with no bars that the office never set add-ons up
+                // sends them to complain about a setting that is already
+                // correct.
                 return (
                   <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-                    No add-on services are set up yet, so there's nothing to bill. Ask the office to
-                    add them under Settings → Add-ons.
+                    {cardOnline ? (
+                      <>
+                        No add-on services are set up yet, so there's nothing to bill. Ask the
+                        office to add them under Settings → Add-ons.
+                      </>
+                    ) : (
+                      <>
+                        You're offline, so the add-on price list isn't available. Note it on the
+                        visit and bill it when you have signal, or call the office.
+                      </>
+                    )}
                   </div>
                 );
               }
@@ -1332,7 +1354,7 @@ function VisitCard({
                         <Button
                           size="sm"
                           className="col-span-1"
-                          disabled={!addonSvcId || !svc || addonMut.isPending}
+                          disabled={!addonSvcId || !svc || addonMut.isPending || !cardOnline}
                         >
                           {addonMut.isPending ? "…" : "Bill"}
                         </Button>
@@ -1373,6 +1395,16 @@ function VisitCard({
                   {svc && (
                     <p className="text-[11px] font-medium">
                       Total: ${(totalCents / 100).toFixed(2)} at the catalog price
+                    </p>
+                  )}
+                  {!cardOnline && (
+                    // The list can still be on screen from a fetch made while
+                    // the signal was good; React Query keeps it in memory. So
+                    // the Bill button looks live, and pressing it used to fail
+                    // with a raw network error on a real charge.
+                    <p className="text-[11px] font-medium text-amber-600 dark:text-amber-500">
+                      You're offline. Unlike start, complete, skip and photos, an add-on charge is
+                      not queued — bill it when you have signal.
                     </p>
                   )}
                   <p className="text-[11px] text-muted-foreground">

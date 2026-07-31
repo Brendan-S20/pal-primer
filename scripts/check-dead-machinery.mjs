@@ -35,6 +35,15 @@
 // is recorded in dead-machinery-baseline.json WITH ITS REASON, and the check
 // starts green.
 //
+// Rule 4 proved the point on its first run: it reported five overload sets and
+// every one was its own type normalizer reading `public.addon_frequency` and
+// `addon_frequency` as different types. Zero were real. A new rule's first
+// output is evidence about the rule, not about the codebase.
+//
+// EVERY RULE HERE IS MUTATION-TESTED, because a check nobody has seen fail is
+// a check nobody has evidence about. Each is proven to flag the case it was
+// written for, and to go green again when that case is removed.
+//
 // Usage:
 //   node scripts/check-dead-machinery.mjs
 //   node scripts/check-dead-machinery.mjs --json      (machine-readable)
@@ -257,7 +266,79 @@ function sqlText() {
 
 // ── rule 1: RPCs granted to the app that nothing calls ─────────────────────
 
-function checkUncalledRpcs(baseline) {
+/**
+ * Type names as Postgres would compare them, not as they happen to be typed.
+ *
+ * This exists because the first version of the overload rule reported five
+ * findings and all five were wrong — it had read `public.addon_frequency` and
+ * `addon_frequency` as two different types, and `int` and `integer` likewise.
+ * The rule was measuring its own parser. Everything below is one of those five.
+ */
+const TYPE_ALIASES = new Map([
+  ["int", "integer"],
+  ["int4", "integer"],
+  ["int2", "smallint"],
+  ["int8", "bigint"],
+  ["bool", "boolean"],
+  ["float8", "double precision"],
+  ["float4", "real"],
+  ["varchar", "character varying"],
+  ["timestamptz", "timestamp with time zone"],
+  ["timetz", "time with time zone"],
+  ["decimal", "numeric"],
+]);
+
+function canonicalType(t) {
+  // A DROP writes `addon_frequency`; the CREATE that made it writes
+  // `public.addon_frequency`. Same type, and every type here is in public or
+  // pg_catalog, so the qualifier carries no information.
+  const bare = t.replace(/^(?:public|pg_catalog)\./i, "").toLowerCase();
+  return TYPE_ALIASES.get(bare) ?? bare;
+}
+
+/**
+ * The argument list of a CREATE or DROP, reduced to a comparable type list.
+ *
+ * `_visit_id uuid, _reason text, _code skip_reason_code DEFAULT 'other'`
+ * and `uuid, text, skip_reason_code` must come out the same, because the first
+ * is how a function is declared and the second is how it is dropped.
+ *
+ * Returns null when it cannot be confident — nested parentheses in a DEFAULT,
+ * an array or quoted type, anything unexpected. Callers treat null as "no
+ * signature information", which falls back to the older name-only behaviour.
+ * A wrong match here would exempt a live function from the check or fail CI on
+ * a correct one, so declining to answer has to be a first-class outcome. On
+ * this tree it declines for 8 of 300 declarations (array types, a jsonb
+ * default) — and it declines identically on the CREATE and the DROP, so those
+ * still pair up.
+ */
+function argTypes(raw) {
+  const s = (raw ?? "").trim();
+  if (s === "") return "";
+  if (/[()"[\]]/.test(s)) return null;
+  return s
+    .split(",")
+    .map((part) => {
+      let a = part.trim().replace(/\s+/g, " ");
+      a = a.replace(/\s+DEFAULT\s+.*$/i, "");
+      a = a.replace(/^(?:IN|OUT|INOUT|VARIADIC)\s+/i, "");
+      const words = a.split(" ");
+      // `name type` vs a bare `type`. A parameter name is always a plain
+      // identifier, and every single-word type this schema uses is one word.
+      if (words.length === 2) return canonicalType(words[1]);
+      if (words.length === 1) return canonicalType(words[0]);
+      return null;
+    })
+    .reduce((acc, t) => (acc === null || t === null ? null : [...acc, t]), [])
+    ?.join(",");
+}
+
+let functionScanCache = null;
+
+/** One pass over the migration tree, shared by rule 1 and rule 4 so the two
+ *  cannot form different opinions about what exists. */
+function scanFunctions() {
+  if (functionScanCache) return functionScanCache;
   const defined = new Map(); // name -> { file, returnsTrigger }
   const grantedToApp = new Set();
   // A function this repo has since DROPPED. Migrations are an append-only
@@ -269,21 +350,57 @@ function checkUncalledRpcs(baseline) {
   // Tracked in migration order, and a later CREATE un-drops it, so a
   // drop-and-recreate (the only way to change a function's signature) is not
   // mistaken for a removal.
-  const dropped = new Set();
+  //
+  // ── WHY THIS IS KEYED ON THE SIGNATURE AND NOT THE NAME ──────────────────
+  //
+  // It used to be a Set of names, and that was wrong in both directions.
+  //
+  // Postgres identifies a function by name AND argument types, so one name can
+  // be two functions. skip_visit was: skip_visit(uuid, text) shipped on
+  // 2026-07-01 and skip_visit(uuid, text, skip_reason_code) two days later.
+  // The app moved to the three-argument form; the two-argument one stayed
+  // granted to `authenticated` and reachable by nothing for a month. This rule
+  // could not see it, because the live overload's callers vouched for the dead
+  // one — not a rule that failed, a rule that could not ask the question.
+  //
+  // And dropping the dead one made it worse: a single `DROP FUNCTION
+  // public.skip_visit(uuid, text)` marked the whole NAME dropped, so the live
+  // three-argument function — granted, and the only way a tech skips a visit —
+  // fell out of the check's coverage entirely. Verified by reproducing the
+  // scan: `dropped.has("skip_visit")` came back true.
+  //
+  // So drops and creates are both tracked per signature. Where argTypes()
+  // declines to parse, the entry degrades to the old name-only behaviour
+  // rather than guessing.
+  const droppedSigs = new Set(); // "name(uuid,text)" or "name" when unparsed
+  const createdSigs = new Map(); // name -> Set of signature strings
+
+  const sigKey = (name, types) => (types === null ? name : `${name}(${types})`);
 
   for (const file of migrationFiles()) {
     const code = sqlCode(readFileSync(file, "utf8"));
 
-    const dropRe = /DROP\s+FUNCTION\s+(?:IF\s+EXISTS\s+)?public\.([a-z0-9_]+)/gi;
+    const dropRe =
+      /DROP\s+FUNCTION\s+(?:IF\s+EXISTS\s+)?public\.([a-z0-9_]+)\s*(?:\(([^)]*)\))?/gi;
     let d;
-    while ((d = dropRe.exec(code))) dropped.add(d[1]);
+    while ((d = dropRe.exec(code))) {
+      // A DROP with no argument list is unambiguous only when the name has one
+      // signature — but it is also how every pre-existing drop in this tree is
+      // written, so treat it as dropping the name.
+      droppedSigs.add(d[2] === undefined ? d[1] : sigKey(d[1], argTypes(d[2])));
+    }
 
     const defRe =
       /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.([a-z0-9_]+)\s*\(([\s\S]*?)\)\s*RETURNS\s+([a-z ]+)/gi;
     let m;
     while ((m = defRe.exec(code))) {
-      // Re-created after a drop: it is live again.
-      dropped.delete(m[1]);
+      const key = sigKey(m[1], argTypes(m[2]));
+      // Re-created after a drop: THIS signature is live again. A bare-name drop
+      // is cleared too, since the name demonstrably exists once more.
+      droppedSigs.delete(key);
+      droppedSigs.delete(m[1]);
+      if (!createdSigs.has(m[1])) createdSigs.set(m[1], new Set());
+      createdSigs.get(m[1]).add(key);
       defined.set(m[1], {
         file: relative(ROOT, file),
         // A trigger function is invoked by the trigger, never by name from the
@@ -298,6 +415,25 @@ function checkUncalledRpcs(baseline) {
       if (/\b(authenticated|service_role)\b/i.test(m[2])) grantedToApp.add(m[1]);
     }
   }
+
+  /** A name is gone only when every signature the repo created is dropped. */
+  const dropped = {
+    has(name) {
+      if (droppedSigs.has(name)) return true;
+      const sigs = createdSigs.get(name);
+      if (!sigs || sigs.size === 0) return false;
+      return [...sigs].every((s) => droppedSigs.has(s));
+    },
+  };
+
+  functionScanCache = { defined, grantedToApp, dropped, createdSigs, droppedSigs };
+  return functionScanCache;
+}
+
+// ── rule 1: RPCs granted to the app that nothing calls ─────────────────────
+
+function checkUncalledRpcs(baseline) {
+  const { defined, grantedToApp, dropped } = scanFunctions();
 
   // SQL calls SQL constantly — PERFORM f(), SELECT f(), a DEFAULT, a trigger
   // body. A function called only from other SQL is alive.
@@ -645,6 +781,53 @@ function checkWriteOnlyColumns(baseline) {
   return dead.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// ── rule 4: one name, two live functions ───────────────────────────────────
+//
+// This rule exists because the three above could not have found what it finds.
+//
+// skip_visit shipped twice: skip_visit(uuid, text) on 2026-07-01 and
+// skip_visit(uuid, text, skip_reason_code) two days later. Postgres keeps both
+// — a different argument list is a different function — and both were granted
+// to `authenticated`. The app moved to the three-argument form immediately, so
+// for a month there was a granted, reachable, never-called RPC sitting in the
+// schema, running a body that predated the org skip-billing rules.
+//
+// Rule 1 is name-keyed and therefore blind to it: the live overload's callers
+// vouch for the dead one. Rule 1 has to stay name-keyed, because a call site is
+// `.rpc("skip_visit", { … })` — named arguments, no signature to match against.
+// So the question gets asked here instead, and it is a different question:
+// not "does anything call this" but "is there more than one of it".
+//
+// An overload is not automatically wrong. It is automatically UNEXAMINED, and
+// the way it arises — add a parameter, ship, forget the old one is still there
+// — means it is usually an accident. So it needs a line in the baseline saying
+// which signatures are meant and why, and that line is cheap for a deliberate
+// overload and awkward for an accidental one, which is the intent.
+//
+// The whole schema had exactly one overload set when this was written, and it
+// was the accident. After the drop: zero. This rule starts green.
+
+function checkUndeclaredOverloads(baseline) {
+  const { createdSigs, droppedSigs, defined } = scanFunctions();
+  const found = [];
+  for (const [name, sigs] of createdSigs) {
+    const live = [...sigs].filter((s) => !droppedSigs.has(s) && !droppedSigs.has(name));
+    if (live.length < 2) continue;
+    if (baseline.function_overloads?.[name]) continue;
+    found.push({
+      kind: "overload",
+      name,
+      where: defined.get(name)?.file ?? "(unknown)",
+      why:
+        `declared with ${live.length} different argument lists — ${live.join(", ")}. ` +
+        `Postgres treats these as separate functions, and a caller that omits an ` +
+        `argument silently reaches the older body. If both are meant, say so in ` +
+        `the baseline; if one is left over, drop it.`,
+    });
+  }
+  return found.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // ── report ─────────────────────────────────────────────────────────────────
 
 function main() {
@@ -654,6 +837,7 @@ function main() {
     ...checkUncalledRpcs(baseline),
     ...checkUninvokedEndpoints(baseline),
     ...checkWriteOnlyColumns(baseline),
+    ...checkUndeclaredOverloads(baseline),
   ];
 
   if (process.argv.includes("--json")) {
@@ -670,6 +854,7 @@ function main() {
     ["uncalled_rpcs", "RPC"],
     ["endpoint_callers", "endpoint"],
     ["write_only_columns", "column"],
+    ["function_overloads", "overload"],
   ];
   const gaps = [];
   let exceptions = 0;

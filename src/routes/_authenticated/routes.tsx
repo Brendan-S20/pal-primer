@@ -731,8 +731,12 @@ function RoutesPage() {
       )}
 
       {/* Mobile Phase 2: below `md` the dnd board is replaced by a tap-through
-          day list (per-tech rows → VisitDetailDrawer). Reassignment/reschedule
-          happen via the drawer's existing controls — no drag on touch.
+          day list (per-tech rows → VisitDetailDrawer). This comment used to
+          claim reassignment and reschedule happen via "the drawer's existing
+          controls"; the drawer has neither, and saying so here is how the same
+          wrong claim got repeated into MobileDayList and into its user-facing
+          footer. Mobile is observe + close-out; moving work between techs or
+          between days is desktop-only (Q-12).
           Rendered at EVERY range (QA: week/month left phones with no visit
           list at all) — always the selected day's visits. */}
       <div className="md:hidden">

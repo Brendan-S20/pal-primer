@@ -33,6 +33,22 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      # `npm test` is `vitest run` — the whole suite, discovered.
+      #
+      # It used to be a hand-typed list of 48 filenames in package.json, and on
+      # 2026-07-31 there were 52 test files. The four that had never been added
+      # to the list had never run in CI, and one of them
+      # (stripe-connect.server.test.ts) had been failing since BUILD-6 changed
+      # the return shape it asserts on. CI was green the whole time, because a
+      # test file CI does not name is a test file CI cannot fail on.
+      #
+      # Do not reintroduce a list. If a test must be excluded, exclude it in
+      # vitest.config.ts where the exclusion is visible next to the discovery,
+      # not by omitting a filename nobody will notice is missing.
+      #
+      # The three tests/integration/*.db.test.ts files self-skip unless
+      # TEST_SUPABASE_URL / _ANON_KEY / _SERVICE_KEY are set, which this step
+      # deliberately does not set.
       - name: Tests
         run: npm test
 

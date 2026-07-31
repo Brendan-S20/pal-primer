@@ -12,7 +12,13 @@
     "The gap count jumped on 2026-07-31. It was not a new outbreak: rule 1 was",
     "counting TypeScript COMMENTS as callers and rule 3 could not fire at all.",
     "Everything added that day was already in this state and invisible, and each",
-    "entry was checked against the live database before being written down."
+    "entry was checked against the live database before being written down.",
+    "",
+    "A fourth group, function_overloads, was added on 2026-07-31. Postgres",
+    "identifies a function by name AND argument types, so one name can be two",
+    "functions — skip_visit was, for a month, and rule 1 could not see the dead",
+    "one because the live one had callers. An entry here means an overload set is",
+    "deliberate and says which signatures are meant. There are none today."
   ],
   "uncalled_rpcs": {
     "is_visit_tech": "Verified in the live database: used by the storage RLS policy 'assigned tech uploads visit photo files' on storage.objects. Policies from the consolidated bootstrap dump are not files in supabase/migrations, so the scanner cannot see them."
@@ -35,5 +41,6 @@
     "src/routes/email/unsubscribe.ts": "Target of the List-Unsubscribe header and the footer link in every marketing email.",
     "src/routes/email/suppression.ts": "Provider bounce/complaint webhook — writes the suppression list."
   },
-  "write_only_columns": {}
+  "write_only_columns": {},
+  "function_overloads": {}
 }
