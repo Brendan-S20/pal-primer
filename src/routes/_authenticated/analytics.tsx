@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { AlertTriangle } from "lucide-react";
 import { PlanGate } from "@/components/PlanGate";
 import { BusinessAdvisor } from "@/components/BusinessAdvisor";
 
@@ -588,6 +589,12 @@ function DigestTab() {
     setRecipient(settings.data!.recipientEmail ?? "");
   }
 
+  // What is SAVED, not what is typed. A half-entered address in the box does
+  // not make the Monday job able to send — only the stored value does, so the
+  // warning has to key off that or it would disappear as soon as someone
+  // started typing and stop telling the truth.
+  const savedRecipient = (settings.data?.recipientEmail ?? "").trim();
+
   const preview = useMutation({
     mutationFn: () => previewFn(),
     onError: (e: Error) => toast.error(e.message),
@@ -624,6 +631,26 @@ function DigestTab() {
             visits, new clients, at-risk accounts, and 2-3 AI-generated recommendations.
           </p>
 
+          {/* This panel promised a Monday email from the day it shipped, and for
+              months nothing was ever sent — no scheduler existed, and no
+              organization had a recipient. The schedule exists now; the second
+              half is this. A checkbox reading "Enabled" beside a promise the
+              product cannot keep is how a feature stays broken without anyone
+              filing a bug: the owner believes it is on, and the absence of an
+              email is indistinguishable from a quiet week. */}
+          {initialized && (enabled ?? true) && !savedRecipient && (
+            <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <div>
+                <p className="font-medium">No digest will be sent yet.</p>
+                <p className="mt-0.5 text-muted-foreground">
+                  This is switched on, but there is no address to send to. Add one below and save,
+                  and the first digest goes out on the next Monday.
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
             <div>
               <Label htmlFor="digest-email">Send to</Label>
@@ -652,11 +679,15 @@ function DigestTab() {
             </Button>
           </div>
 
-          {settings.data?.lastSentAt && (
+          {settings.data?.lastSentAt ? (
             <p className="text-xs text-muted-foreground">
               Last sent {new Date(settings.data.lastSentAt).toLocaleString()}.
             </p>
-          )}
+          ) : savedRecipient ? (
+            <p className="text-xs text-muted-foreground">
+              Not sent yet — the first one goes out on the next Monday.
+            </p>
+          ) : null}
 
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => preview.mutate()} disabled={preview.isPending}>

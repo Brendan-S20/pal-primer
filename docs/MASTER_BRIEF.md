@@ -578,6 +578,38 @@ than the weekly digest (`paid_at`), because a parent will compare the rollup's
 revenue against a royalty invoice for the same period and those two must
 reconcile. Two numbers that agree beat one that is arguably more correct alone.
 
+**BUILD-8b — the weekly digest is scheduled, and why that alone was not the
+fix.** The Analytics panel has promised "Every Monday morning, we email a
+plain-language summary of the past week" since it shipped, and it had never once
+run. Two independent causes, each sufficient on its own:
+
+1. **Nothing scheduled it.** pg_cron had jobs for the nightly automation and the
+   email queue; the digest endpoint existed, was reachable, was correct, and no
+   caller had ever been created.
+2. **No organization has a recipient.** `digest_recipient_email` is null for
+   every org, and the endpoint filters those out — correctly, since it has
+   nowhere to send. `notify_email_weekly_digest` defaults to TRUE, so the seven
+   orgs that looked opted-in are simply orgs that never touched the setting.
+
+Fixing only the first would have produced a job running every Monday forever and
+delivering nothing — the same failure, now with a cron entry making it look
+handled. So the settings panel now says plainly when a digest cannot send,
+instead of showing "Enabled" beside a promise it cannot keep. That is the part
+that made this invisible for months: the owner believes it is on, and the
+absence of an email is indistinguishable from a quiet week.
+
+**No fallback recipient was invented.** Defaulting to the owner's login address
+would start emailing seven real people a weekly AI summary they never asked for,
+on the strength of a checkbox that was on by default. The recipient stays the
+org's decision; this change makes that decision have an effect. It also makes
+the migration safe to apply immediately — with no recipients set, the first run
+sends nothing.
+
+**Still unscheduled and deliberately left so:** `announcement-emails`. Same
+shape — a platform admin can mark an announcement `send_email = true` and
+nothing will ever send it — but scheduling platform-wide outbound email is an
+owner's call, not a cleanup task.
+
 **BUG-28 — the public key authorized three cron endpoints.** The project's
 anon/publishable key ships in the browser bundle: anyone who has loaded the app
 once can read it out of their network tab. It identifies the project and
