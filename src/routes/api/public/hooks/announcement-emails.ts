@@ -10,22 +10,22 @@ export const Route = createFileRoute("/api/public/hooks/announcement-emails")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const cronSecret = process.env.CRON_SECRET;
-        const anonKey = process.env.SUPABASE_PUBLISHABLE_KEY;
-        const providedSecret =
-          request.headers.get("x-cron-secret") ??
-          new URL(request.url).searchParams.get("s");
-        const providedApiKey = request.headers.get("apikey");
-        const okSecret = cronSecret && providedSecret === cronSecret;
-        const okAnon = anonKey && providedApiKey === anonKey;
-        if (!okSecret && !okAnon) return json({ error: "unauthorized" }, 401);
+        // Was CRON_SECRET *or* the public anon key, which made the second half
+        // of that "or" the whole security of platform-wide outbound email. See
+        // cron-auth.server.ts. Safe to tighten: no pg_cron job targets this and
+        // no announcement has ever been emailed, so nothing depends on it.
+        const { authorizeCronRequest, cronUnauthorized } = await import("@/lib/cron-auth.server");
+        const auth = authorizeCronRequest(request);
+        if (!auth.ok) return cronUnauthorized("announcement-emails", auth);
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const now = new Date().toISOString();
 
         const { data: pending, error } = await supabaseAdmin
           .from("platform_announcements")
-          .select("id, title, body, severity, audience, starts_at, ends_at, send_email, email_sent_at")
+          .select(
+            "id, title, body, severity, audience, starts_at, ends_at, send_email, email_sent_at",
+          )
           .eq("send_email", true)
           .is("email_sent_at", null)
           .lte("starts_at", now)
@@ -46,7 +46,10 @@ export const Route = createFileRoute("/api/public/hooks/announcement-emails")({
             .not("contact_email", "is", null);
 
           if (["active", "past_due", "canceled", "free"].includes(a.audience)) {
-            orgQ = orgQ.eq("plan_status", a.audience as "active" | "past_due" | "canceled" | "free");
+            orgQ = orgQ.eq(
+              "plan_status",
+              a.audience as "active" | "past_due" | "canceled" | "free",
+            );
           } else if (a.audience === "trialing") {
             orgQ = orgQ.eq("plan_status", "free");
           }
@@ -58,16 +61,16 @@ export const Route = createFileRoute("/api/public/hooks/announcement-emails")({
 
           // Audience: admins → email platform admins by looking up user_roles.
           if (a.audience === "admins") {
-            const { data: admins } = await supabaseAdmin
-              .from("platform_admins")
-              .select("user_id");
+            const { data: admins } = await supabaseAdmin.from("platform_admins").select("user_id");
             const uids = Array.from(new Set((admins ?? []).map((r) => r.user_id)));
             const emails: Array<{ email: string; org_name: string }> = [];
             for (const uid of uids) {
               try {
                 const { data: u } = await supabaseAdmin.auth.admin.getUserById(uid);
                 if (u?.user?.email) emails.push({ email: u.user.email, org_name: "HoundStack" });
-              } catch { /* ignore */ }
+              } catch {
+                /* ignore */
+              }
             }
             recipients = emails;
           }
@@ -81,7 +84,10 @@ export const Route = createFileRoute("/api/public/hooks/announcement-emails")({
             ? await supabaseAdmin
                 .from("suppressed_emails")
                 .select("email")
-                .in("email", list.map((r) => r.email.toLowerCase()))
+                .in(
+                  "email",
+                  list.map((r) => r.email.toLowerCase()),
+                )
             : { data: [] as { email: string }[] };
           const suppressedSet = new Set((suppressed ?? []).map((s) => s.email.toLowerCase()));
 
@@ -137,10 +143,10 @@ function renderAnnouncementHtml(title: string, body: string, severity: string) {
     severity === "critical"
       ? "#dc2626"
       : severity === "warning"
-      ? "#d97706"
-      : severity === "success"
-      ? "#059669"
-      : "#2563eb";
+        ? "#d97706"
+        : severity === "success"
+          ? "#059669"
+          : "#2563eb";
   const safeBody = body.replace(/</g, "&lt;").replace(/\n/g, "<br/>");
   return `<!doctype html><html><body style="font-family:system-ui,sans-serif;background:#f8fafc;padding:24px;color:#0f172a">
   <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">

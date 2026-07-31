@@ -10,16 +10,22 @@ export const Route = createFileRoute("/api/public/hooks/weekly-digest")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const anonKey = process.env.SUPABASE_PUBLISHABLE_KEY;
-        const providedApiKey = request.headers.get("apikey");
-        if (!anonKey || providedApiKey !== anonKey) {
-          return json({ error: "unauthorized" }, 401);
-        }
+        // The anon key used to be the ONLY thing guarding this — the weakest of
+        // the three cron endpoints, and the one that spends AI allowance and
+        // emails every opted-in owner on each call. See cron-auth.server.ts.
+        //
+        // Safe to tighten: no pg_cron job targets this endpoint and
+        // `organizations.last_digest_sent_at` is null for all 7 opted-in orgs,
+        // so nothing is calling it today and nothing can break. That the digest
+        // has never once run despite those opt-ins is a separate problem —
+        // logged, not papered over here.
+        const { authorizeCronRequest, cronUnauthorized } = await import("@/lib/cron-auth.server");
+        const auth = authorizeCronRequest(request);
+        if (!auth.ok) return cronUnauthorized("weekly-digest", auth);
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { computeDigestMetrics, generateDigestInsights, sendDigestEmail } = await import(
-          "@/lib/digest.server"
-        );
+        const { computeDigestMetrics, generateDigestInsights, sendDigestEmail } =
+          await import("@/lib/digest.server");
 
         const { data: orgs, error } = await supabaseAdmin
           .from("organizations")

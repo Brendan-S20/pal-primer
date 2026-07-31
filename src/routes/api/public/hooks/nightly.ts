@@ -11,42 +11,29 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        // Auth: accept the generated CRON_SECRET, the service role key as a
-        // Bearer token (the same pattern pg_cron already uses for
-        // /email/queue/process, read from Supabase Vault), or the project anon
-        // key (per Lovable scheduled-jobs pattern). The work the anon key can
-        // reach is idempotent, so the worst case if someone triggers it is
-        // running an org's automation early — see `canCharge` below for the
-        // work that is not, and therefore is not reachable that way.
-        const cronSecret = process.env.CRON_SECRET;
-        const anonKey = process.env.SUPABASE_PUBLISHABLE_KEY;
-        const serviceKey = process.env.SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-        const providedSecret =
-          request.headers.get("x-cron-secret") ?? new URL(request.url).searchParams.get("s");
-        const providedApiKey = request.headers.get("apikey");
-        const authHeader = request.headers.get("authorization");
-        const bearer = authHeader?.startsWith("Bearer ")
-          ? authHeader.slice("Bearer ".length).trim()
-          : null;
-        const okSecret = !!(cronSecret && providedSecret === cronSecret);
-        const okService = !!(serviceKey && bearer === serviceKey);
-        const okAnon = !!(anonKey && providedApiKey === anonKey);
-        if (!okSecret && !okService && !okAnon) return json({ error: "unauthorized" }, 401);
-        // Security (C2): the anon key is public (shipped in the browser bundle),
-        // so it must NOT authorize real money movement. Autopay charges and
-        // franchise settlement generation run only under a private credential
-        // (CRON_SECRET or the service role key); the anon path can still drive
-        // the idempotent, non-charging automation.
+        // AUTH: a private credential only — see cron-auth.server.ts for what the
+        // anon key was, why it was accepted here, and why it is not a
+        // credential. The check is shared with the other cron endpoints because
+        // three copies of it had already drifted into three different strengths.
         //
-        // Settlements are on this side of the line because
-        // generate_franchise_settlements does not just compute — it flips every
-        // PENDING franchise_adjustments row to 'applied' and binds it to the
-        // draft statement it just wrote. Those adjustments are consumed once.
-        // With generation outside the gate, anyone holding the public key could
-        // curl this endpoint and burn every tenant's pending adjustments into a
-        // statement nobody asked for, on a date nobody chose, and there is no
-        // "un-apply".
-        const canCharge = okSecret || okService;
+        // VERIFIED BEFORE TIGHTENING THIS, because a silently dead cron would be
+        // worse than the hole it closes: the live pg_cron job already sends BOTH
+        // an anon `apikey` and `Authorization: Bearer <service role key>` from
+        // Vault, and `clients.autopay_last_attempt_at` carries 09:00:05Z against
+        // a `0 9 * * *` schedule. That stamp is written inside the charge path,
+        // which only ever ran when a PRIVATE credential had authorized the
+        // request — so the Bearer token is already doing the work here and
+        // nothing depended on the anon path.
+        const { authorizeCronRequest, cronUnauthorized } = await import("@/lib/cron-auth.server");
+        const auth = authorizeCronRequest(request);
+        if (!auth.ok) return cronUnauthorized("nightly", auth);
+
+        // Everything past this point holds a private credential, so the old
+        // `canCharge` split is gone — it would now be a variable that is always
+        // true. If a public entry point is ever added back, the money work
+        // (autopay charges, and settlement generation, which CONSUMES pending
+        // franchise adjustments with no un-apply) must be gated behind that
+        // split again rather than left to inherit this invariant.
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const today = new Date();
@@ -191,21 +178,21 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             perOrg.invoices_reconciled = `err: ${(e as Error).message}`;
           }
 
-          perOrg.autopay_charged = canCharge ? await runAutopayForOrg(supabaseAdmin, org.id) : 0;
+          perOrg.autopay_charged = await runAutopayForOrg(supabaseAdmin, org.id);
 
           // Franchise royalty billing (finding #16): on the 1st of the month,
           // generate last month's royalty invoices for each franchise parent's
-          // children. Idempotent per child+period, but NOT harmless — it
-          // consumes pending adjustments (see canCharge), so the public key
-          // cannot reach it.
-          //
-          // The skip is reported rather than dropped: a nightly run that
-          // silently did less than the run before it is how an owner discovers
-          // a missing month's statements weeks later, from the statements.
+          // locations. Idempotent per child+period, but NOT harmless — it
+          // CONSUMES pending adjustments, binding each to the draft statement it
+          // writes, and there is no un-apply. It ran behind the private-
+          // credential gate while a public one existed; now that only private
+          // credentials reach this handler at all, the gate is the front door.
           if (today.getUTCDate() === 1) {
-            perOrg.royalties_generated = canCharge
-              ? await generateRoyaltiesForParent(supabaseAdmin, org.id, today)
-              : "skipped: settlement generation needs CRON_SECRET or the service role key";
+            perOrg.royalties_generated = await generateRoyaltiesForParent(
+              supabaseAdmin,
+              org.id,
+              today,
+            );
           }
 
           // Seasonal deep-cleans: run on the 1st of each configured month.

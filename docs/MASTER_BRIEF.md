@@ -578,6 +578,37 @@ than the weekly digest (`paid_at`), because a parent will compare the rollup's
 revenue against a royalty invoice for the same period and those two must
 reconcile. Two numbers that agree beat one that is arguably more correct alone.
 
+**BUG-28 — the public key authorized three cron endpoints.** The project's
+anon/publishable key ships in the browser bundle: anyone who has loaded the app
+once can read it out of their network tab. It identifies the project and
+authenticates nobody. It was accepted by `nightly`, `weekly-digest` and
+`announcement-emails`, and the three had already drifted into three different
+strengths — `weekly-digest` had the anon key and *nothing else*.
+
+Money movement was already fenced off. What was not is that these endpoints send
+real messages to real people: overdue SMS dunning and invoice emails for **every
+organization on the platform**, an AI-generated digest to every opted-in owner
+(spending AI allowance per call), and platform-wide announcement email. Every
+step is idempotent, which is why it was tolerated — but idempotent is not
+harmless. Re-firing the dunning run texts every tenant's overdue customers
+again, and no amount of re-running undoes a message somebody received. There is
+no rate limit in front of any of it.
+
+Now one shared check (`cron-auth.server.ts`) taking a private credential only.
+
+*Verified before tightening, because a silently dead cron is worse than the
+hole.* The live pg_cron job already sends both an anon `apikey` **and**
+`Authorization: Bearer <service role key>` from Vault; `autopay_last_attempt_at`
+carries `09:00:05Z` against a `0 9 * * *` schedule, and that stamp is written
+inside the charge path, which only ran when a private credential had authorized
+the request. So the Bearer token was already doing the work. The other two
+endpoints have no cron job and have never run at all, so nothing could break.
+
+*Found on the way:* the weekly digest has **never once run** despite 7 orgs
+opting in — no scheduler targets it. That is a promised feature silently not
+delivering, and it is a scheduling gap rather than a security one, so it is
+logged here rather than quietly fixed alongside an auth change.
+
 **IMP-10 closed — the last three cash cards.** "How much did we take this month"
 had three implementations left, disagreeing on four axes at once:
 
