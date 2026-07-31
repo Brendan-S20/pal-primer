@@ -7,7 +7,11 @@ import { setLanguage, currentLanguage } from "@/lib/i18n";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -15,7 +19,13 @@ import { toast } from "sonner";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
 import { StandardPricingCard } from "@/components/StandardPricingCard";
 import { reseedDemoData } from "@/lib/demo.functions";
-import { getOrgBranding, updateOrgBranding, getMyOrg, setPortalSlug, suggestPortalSlug } from "@/lib/org.functions";
+import {
+  getOrgBranding,
+  updateOrgBranding,
+  getMyOrg,
+  setPortalSlug,
+  suggestPortalSlug,
+} from "@/lib/org.functions";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
@@ -66,7 +76,9 @@ function PreferencesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Label htmlFor="lang" className="text-xs">Interface language</Label>
+          <Label htmlFor="lang" className="text-xs">
+            Interface language
+          </Label>
           <Select
             value={lang}
             onValueChange={(v) => {
@@ -76,7 +88,9 @@ function PreferencesPage() {
               toast.success(t("common.language") + " updated");
             }}
           >
-            <SelectTrigger id="lang" className="mt-1 w-56"><SelectValue /></SelectTrigger>
+            <SelectTrigger id="lang" className="mt-1 w-56">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="en">English</SelectItem>
               <SelectItem value="es">Español</SelectItem>
@@ -100,7 +114,10 @@ function PreferencesPage() {
             </div>
             <Switch
               checked={haptics}
-              onCheckedChange={(v) => { setHaptics(v); setBool(HAPTICS_KEY, v); }}
+              onCheckedChange={(v) => {
+                setHaptics(v);
+                setBool(HAPTICS_KEY, v);
+              }}
             />
           </div>
           <div className="flex items-center justify-between">
@@ -112,16 +129,26 @@ function PreferencesPage() {
             </div>
             <Switch
               checked={awake}
-              onCheckedChange={(v) => { setAwake(v); setBool(AWAKE_KEY, v); }}
+              onCheckedChange={(v) => {
+                setAwake(v);
+                setBool(AWAKE_KEY, v);
+              }}
             />
           </div>
           <div>
-            <Label htmlFor="map" className="text-xs">Default map app for directions</Label>
+            <Label htmlFor="map" className="text-xs">
+              Default map app for directions
+            </Label>
             <Select
               value={mapApp}
-              onValueChange={(v) => { setMapApp(v); window.localStorage.setItem(MAP_KEY, v); }}
+              onValueChange={(v) => {
+                setMapApp(v);
+                window.localStorage.setItem(MAP_KEY, v);
+              }}
             >
-              <SelectTrigger id="map" className="mt-1 w-56"><SelectValue /></SelectTrigger>
+              <SelectTrigger id="map" className="mt-1 w-56">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="google">Google Maps</SelectItem>
                 <SelectItem value="apple">Apple Maps</SelectItem>
@@ -216,11 +243,17 @@ function PortalAddressCard() {
   const q = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
   const currentSlug = (q.data?.organization as any)?.portal_slug as string | undefined;
   const [slug, setSlug] = useState("");
-  useEffect(() => { if (currentSlug) setSlug(currentSlug); }, [currentSlug]);
+  useEffect(() => {
+    if (currentSlug) setSlug(currentSlug);
+  }, [currentSlug]);
 
   const mut = useMutation({
     mutationFn: () => setFn({ data: { slug } }),
-    onSuccess: (r) => { setSlug(r.slug); toast.success("Portal address saved"); qc.invalidateQueries({ queryKey: ["my-org"] }); },
+    onSuccess: (r) => {
+      setSlug(r.slug);
+      toast.success("Portal address saved");
+      qc.invalidateQueries({ queryKey: ["my-org"] });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const suggestMut = useMutation({
@@ -229,7 +262,8 @@ function PortalAddressCard() {
   });
 
   if (!canEdit) return null;
-  const base = typeof window !== "undefined" ? window.location.origin : "https://app.houndstack.com";
+  const base =
+    typeof window !== "undefined" ? window.location.origin : "https://app.houndstack.com";
 
   return (
     <Card>
@@ -251,10 +285,19 @@ function PortalAddressCard() {
           />
         </div>
         <div className="flex gap-2">
-          <Button size="sm" disabled={mut.isPending || !slug || slug === currentSlug} onClick={() => mut.mutate()}>
+          <Button
+            size="sm"
+            disabled={mut.isPending || !slug || slug === currentSlug}
+            onClick={() => mut.mutate()}
+          >
             {mut.isPending ? "Saving…" : "Save address"}
           </Button>
-          <Button size="sm" variant="outline" disabled={suggestMut.isPending} onClick={() => suggestMut.mutate()}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={suggestMut.isPending}
+            onClick={() => suggestMut.mutate()}
+          >
             Suggest from name
           </Button>
         </div>
@@ -298,18 +341,24 @@ function BrandingCard() {
   }, [q.data]);
 
   const mut = useMutation({
-    mutationFn: () => setFn({ data: {
-      brandColor: brandColor || null,
-      logoUrl: logoUrl.trim() || null,
-      contactPhone: contactPhone.trim() || null,
-      contactEmail: contactEmail.trim() || null,
-      portalRescheduleCutoffHours: cutoff,
-      portalAllowSelfReschedule: allowResched,
-      portalAllowVacationHold: allowHold,
-      portalAllowFrequencyChange: allowFreq,
-      portalAutoApplyChanges: autoApply,
-    } }),
-    onSuccess: () => { toast.success("Portal settings saved"); qc.invalidateQueries({ queryKey: ["org-branding"] }); },
+    mutationFn: () =>
+      setFn({
+        data: {
+          brandColor: brandColor || null,
+          logoUrl: logoUrl.trim() || null,
+          contactPhone: contactPhone.trim() || null,
+          contactEmail: contactEmail.trim() || null,
+          portalRescheduleCutoffHours: cutoff,
+          portalAllowSelfReschedule: allowResched,
+          portalAllowVacationHold: allowHold,
+          portalAllowFrequencyChange: allowFreq,
+          portalAutoApplyChanges: autoApply,
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Portal settings saved");
+      qc.invalidateQueries({ queryKey: ["org-branding"] });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -320,7 +369,8 @@ function BrandingCard() {
       <CardHeader>
         <CardTitle>Client portal branding & policy</CardTitle>
         <CardDescription>
-          What your clients see on their portal: colors, logo, contact info, and what they can change themselves.
+          What your clients see on their portal: colors, logo, contact info, and what they can
+          change themselves.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -328,29 +378,71 @@ function BrandingCard() {
           <div>
             <Label className="text-xs">Brand color</Label>
             <div className="mt-1 flex gap-2">
-              <Input type="color" value={brandColor} onChange={(e) => setBrandColor(e.target.value)} className="h-10 w-14 p-1" />
-              <Input value={brandColor} onChange={(e) => setBrandColor(e.target.value)} placeholder="#16a34a" />
+              <Input
+                type="color"
+                value={brandColor}
+                onChange={(e) => setBrandColor(e.target.value)}
+                className="h-10 w-14 p-1"
+              />
+              <Input
+                value={brandColor}
+                onChange={(e) => setBrandColor(e.target.value)}
+                placeholder="#16a34a"
+              />
             </div>
           </div>
           <div>
             <Label className="text-xs">Logo URL</Label>
-            <Input className="mt-1" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)}
-              placeholder="https://…/logo.png" />
+            <Input
+              className="mt-1"
+              value={logoUrl}
+              onChange={(e) => setLogoUrl(e.target.value)}
+              placeholder="https://…/logo.png"
+            />
           </div>
           <div>
             <Label className="text-xs">Office phone (tap-to-call in the portal)</Label>
-            <Input className="mt-1" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)}
-              placeholder="+1 555 123 4567" />
+            <Input
+              className="mt-1"
+              value={contactPhone}
+              onChange={(e) => setContactPhone(e.target.value)}
+              placeholder="+1 555 123 4567"
+            />
           </div>
           <div>
             <Label className="text-xs">Office email</Label>
-            <Input className="mt-1" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)}
-              placeholder="hello@your-company.com" />
+            <Input
+              className="mt-1"
+              value={contactEmail}
+              onChange={(e) => setContactEmail(e.target.value)}
+              placeholder="hello@your-company.com"
+            />
+            {/* BUILD-5: this is the reply-to on every email your customers get.
+                Without it their replies go to a noreply address nobody reads —
+                and they get no bounce, so they believe they reached you. Said
+                here rather than left as a blank optional field, because the
+                cost of leaving it empty is invisible from this screen. */}
+            {contactEmail.trim() ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Replies to invoices and reminders come back to this address.
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                Add one — invoices and reminders are sent from a no-reply address, so any customer
+                who hits Reply today is writing to nobody.
+              </p>
+            )}
           </div>
           <div>
             <Label className="text-xs">Change cutoff (hours before visit)</Label>
-            <Input className="mt-1" type="number" min={0} max={168} value={cutoff}
-              onChange={(e) => setCutoff(Math.max(0, Number(e.target.value) || 0))} />
+            <Input
+              className="mt-1"
+              type="number"
+              min={0}
+              max={168}
+              value={cutoff}
+              onChange={(e) => setCutoff(Math.max(0, Number(e.target.value) || 0))}
+            />
             <p className="mt-1 text-xs text-muted-foreground">
               Below this window clients can no longer self-serve reschedule or skip.
             </p>
@@ -399,7 +491,9 @@ function DemoDataCard() {
   const mut = useMutation({
     mutationFn: () => reseedFn({ data: {} }),
     onSuccess: (r) => {
-      toast.success(`Demo reset: ${r.clients} clients, ${r.visits_created} visits, ${r.invoices_created} invoices`);
+      toast.success(
+        `Demo reset: ${r.clients} clients, ${r.visits_created} visits, ${r.invoices_created} invoices`,
+      );
       setTimeout(() => window.location.reload(), 1500);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -413,11 +507,10 @@ function DemoDataCard() {
       <CardHeader>
         <CardTitle>Demo data</CardTitle>
         <CardDescription>
-          Wipes your organization's demo rows and rebuilds a rich fixture:
-          6 clients (residential + HOA), zones, sketched yards, subscriptions,
-          8 weeks of visits (including weather reschedules and skips), invoices in
-          multiple states, promo codes, a gift card, referrals, and QC tickets.
-          Safe to run repeatedly.
+          Wipes your organization's demo rows and rebuilds a rich fixture: 6 clients (residential +
+          HOA), zones, sketched yards, subscriptions, 8 weeks of visits (including weather
+          reschedules and skips), invoices in multiple states, promo codes, a gift card, referrals,
+          and QC tickets. Safe to run repeatedly.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -442,4 +535,3 @@ function DemoDataCard() {
     </Card>
   );
 }
-

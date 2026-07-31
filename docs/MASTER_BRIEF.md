@@ -607,6 +607,41 @@ generator limitation, not stale types), and roughly forty `(supabase as any)`
 sites that carry no stale-types comment and belong to the pre-existing
 `no-explicit-any` baseline CI already treats as non-blocking.
 
+**BUILD-5 detail — what white label already was, and the bug underneath it.**
+
+Unlike the trial, branding was NOT dead machinery. `brand_color` and `logo_url`
+are set from Settings → Preferences, applied to the app accent, and rendered on
+the client portal; three organizations have a brand colour set. That part works.
+
+The site sells the remaining two pieces as **add-ons, both marked "(coming
+soon)"** — `white-label-portal` and `white-label-emails`, $19/mo each, both
+`coming_soon` and `is_active = false`. So nothing is falsely promised, and
+nothing is sellable either until Stripe lands.
+
+*True white label is owner-blocked, not engineering-blocked.* "White-label
+emails" means sending from the tenant's own domain, which needs the Resend
+account and per-tenant SPF/DKIM verification. "White-label portal" means a
+custom domain, which needs DNS and hosting config. Neither can be built —
+let alone verified — without accounts I do not have. Building an unverifiable
+half would be worse than saying so.
+
+*What the survey found instead.* Client emails already carry the tenant's
+business name as the `from` display name — so a customer sees "Detroit Doo
+Disposal" on their invoice and reasonably hits Reply. There was **no `reply_to`
+anywhere in the pipeline**: not set when enqueuing, not forwarded to Resend. So
+every reply went to `noreply@notify.houndstack.com`, a mailbox nobody reads.
+Questions about a bill, a missed visit, a wrong charge — silently discarded, and
+because a no-reply address accepts mail rather than bouncing it, the customer
+believed they had reached their provider.
+
+Fixed end to end. And **completed rather than half-shipped**: `contact_email` is
+settable in Preferences but **zero organizations had set one**, so the fix alone
+would have helped nobody. The field now says plainly what an empty value costs,
+because that cost is otherwise invisible from that screen. Deliberately no
+fallback to the owner's login address — that is often personal, and putting it
+in front of every customer without being asked is not a default to pick for
+somebody.
+
 **BUILD-7 detail — the trial nobody ever had.**
 
 The ledger line was five words from v1.0 ("Trial → Growth + AI sandbox"), so
@@ -852,7 +887,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | BUILD-2 | ❓ Blocked | 🔴 | Usage metering — Q-7 answered (soft caps + overage); needs Stripe. **Now the only thing between us and unmetered AI spend** — see IMP-9 below | v1.3 |
 | BUILD-3 | ⏳ Waiting | 🟠 | Managed texting — Q-8 = per-tenant subaccount + own brand. In the 10DLC compliance queue; nothing to accelerate | v1.1 |
 | BUILD-4 | 🟢 Fixed | 🟠 | Managed AI — BYO deleted, inference runs on the platform key, and the product no longer asks for a key. The remaining gap is metering, which is BUILD-2, not BUILD-4 | v1.3 |
-| BUILD-5 | 🔵 Open | 🟠 | White label (real build) | v1.0 |
+| BUILD-5 | 🟠 Part-built | 🟠 | White label — the surveyable half is done and it turned up a live customer-facing bug: **every reply to an invoice or reminder went to a no-reply address nobody reads**, with no bounce, so the customer believed they had been in touch. Reply-to now carries the tenant's office email end to end. True white label (own sending domain, own portal domain) needs the Resend account and per-tenant DNS — owner-blocked like Stripe. Both add-ons are `coming_soon` and unsellable until then | v1.5 |
 | BUILD-6 | 🟠 Part-built | 🟠 | Enterprise tier — **phases 1–3 shipped**: consent-based linking end to end, repaired rollup, both sides' UI. The franchise feature works for the first time. Remaining: multi-org membership, drill-down, royalty *delivery*. See below | v1.4 |
 | BUILD-7 | 🟠 Part-built | 🟡 | Trial lifecycle built — and the finding is that **no organization has ever had a trial**, because `bootstrap_organization` never started one and nothing in the tenant app gates on billing status at all. New signups now get the 14 days the site promises; expiry is a state and a banner, NOT a lock, because Stripe cannot take a payment yet. AI is paid-only (owner decision). Enforcement is one constant, flipped when Stripe lands | v1.5 |
 | BUILD-8 | 🟢 Fixed | 🟡 | AI Business Advisor **built out** (owner reversed the retire instruction). On-demand, 7/30/90-day windows, evidence shown beside the advice. See below | v1.3 |
