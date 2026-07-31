@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -29,13 +29,29 @@ import type { AppRole } from "@/hooks/useMyRole";
 // silently passing, because a parity test that quietly stops checking is worse
 // than no test at all.
 
-const MIGRATION = join(
-  __dirname,
-  "..",
-  "supabase",
-  "migrations",
-  "20260718000000_phase8-impersonation-exit-and-perms.sql",
-);
+// The LATEST migration that defines has_permission, not a hard-coded one.
+//
+// This used to name 20260718000000 outright, and that broke quietly the moment
+// a later migration replaced the function: the test kept passing while parsing
+// a definition the database no longer used, so a drift introduced in the newer
+// file would sail through the very check built to catch drift. A parity test
+// anchored to superseded history is the failure it exists to prevent.
+const MIGRATIONS_DIR = join(__dirname, "..", "supabase", "migrations");
+const DEFINES_HAS_PERMISSION =
+  /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.has_permission\s*\(/i;
+
+function latestHasPermissionMigration(): string {
+  const hits = readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith(".sql"))
+    .sort() // timestamp-prefixed, so lexical order is chronological
+    .filter((f) => DEFINES_HAS_PERMISSION.test(readFileSync(join(MIGRATIONS_DIR, f), "utf8")));
+  if (!hits.length) {
+    throw new Error("No migration defines public.has_permission — parity cannot be checked.");
+  }
+  return join(MIGRATIONS_DIR, hits[hits.length - 1]);
+}
+
+const MIGRATION = latestHasPermissionMigration();
 
 /** Role clauses, as they appear inside the EXISTS predicate. */
 type SqlRule =
@@ -154,5 +170,69 @@ describe("TS ↔ SQL permission parity (IMP-3)", () => {
         );
       }
     }
+  });
+});
+
+// ── the primitives answer only about the caller ────────────────────────────
+//
+// Text assertions rather than live calls, because CI has no database. What is
+// pinned is the guard's PRESENCE and its two deliberate properties, since both
+// are easy to "simplify" away by someone who does not know why they are there.
+
+describe("the authorization primitives refuse to answer about a third party", () => {
+  const GUARDED = [
+    "has_role",
+    "is_org_member",
+    "has_permission",
+    "can_write_org",
+    "is_platform_admin",
+    "is_visit_tech",
+  ];
+  const guardSql = readFileSync(
+    join(MIGRATIONS_DIR, "20260731270000_the-permission-primitives-answered-about-anyone.sql"),
+    "utf8",
+  );
+
+  it("guards every one of the six", () => {
+    // They take the subject as an argument, so without this each is an oracle:
+    // any signed-in account could ask whether any user belongs to any org.
+    for (const fn of GUARDED) {
+      const body = guardSql.slice(
+        guardSql.indexOf(`FUNCTION public.${fn}(`),
+        guardSql.indexOf("$function$;", guardSql.indexOf(`FUNCTION public.${fn}(`)),
+      );
+      expect(body, `${fn} must be defined here`).toContain("RETURNS boolean");
+      expect(body, `${fn} must only answer about the caller`).toContain(
+        "auth.uid() IS NULL OR _user_id IS NOT DISTINCT FROM auth.uid()",
+      );
+    }
+  });
+
+  it("exempts callers with no identity, which is service-role code", () => {
+    // A trigger inside the nightly run has auth.uid() NULL and can read
+    // user_roles directly anyway; gating it would break internal callers to
+    // prevent nothing.
+    expect(guardSql).toContain("auth.uid() IS NULL OR");
+  });
+
+  it("compares with IS NOT DISTINCT FROM, so a NULL subject is false not NULL", () => {
+    // `= auth.uid()` would yield NULL for a NULL _user_id. A NULL in a policy
+    // is treated as no-access today, which makes the bug invisible until some
+    // caller starts relying on a real boolean.
+    expect(guardSql).not.toMatch(/_user_id\s*=\s*auth\.uid\(\)/);
+  });
+
+  it("returns false rather than raising", () => {
+    // These are predicates inside policy expressions. An exception would turn
+    // one probe into a broken query for the legitimate caller sharing that
+    // statement — and a raise is itself an oracle, since it distinguishes
+    // 'not you' from 'not a member'.
+    const bodies = GUARDED.map((fn) =>
+      guardSql.slice(
+        guardSql.indexOf(`FUNCTION public.${fn}(`),
+        guardSql.indexOf("$function$;", guardSql.indexOf(`FUNCTION public.${fn}(`)),
+      ),
+    ).join("\n");
+    expect(bodies).not.toMatch(/RAISE\s+EXCEPTION/i);
   });
 });
