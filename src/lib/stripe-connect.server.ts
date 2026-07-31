@@ -247,3 +247,31 @@ export function accountStateFrom(acct: {
   const status = chargesEnabled ? "active" : (acct.details_submitted ? "restricted" : "pending");
   return { chargesEnabled, status };
 }
+
+/**
+ * Which organization's Stripe account will actually receive money charged for
+ * this org — recorded on each payment as it is taken (BUILD-6).
+ *
+ * Stamped at charge time rather than derived at settlement time, because
+ * routing can change. A location that switches to franchise-collection
+ * mid-month has revenue on both sides of the switch, and settling the whole
+ * period by whatever is true on the 1st would misattribute every payment taken
+ * under the old arrangement — in a calculation that decides who owes whom
+ * money.
+ *
+ * Only for money that actually moved through Stripe. Cash or a cheque handed to
+ * the location was collected BY the location whatever the routing says, so
+ * those call sites pass the org's own id directly instead of calling this.
+ */
+export async function collectingOrgIdFor(orgId: string): Promise<string> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data } = await (supabaseAdmin as any)
+    .from("organizations")
+    .select("parent_organization_id, payments_collected_by_parent")
+    .eq("id", orgId)
+    .maybeSingle();
+  if (data?.payments_collected_by_parent && data?.parent_organization_id) {
+    return data.parent_organization_id as string;
+  }
+  return orgId;
+}

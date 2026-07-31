@@ -274,6 +274,12 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
       await supabase.from("payments").insert({
         invoice_id: id,
         organization_id: inv.organization_id,
+        // BUILD-6: deliberately the location itself, NOT the routing target.
+        // This is cash or a cheque handed to the location out of band; it never
+        // passed through anyone's Stripe account, so crediting the franchise
+        // with holding it would make the settlement claim they owe money they
+        // never received.
+        collected_by_organization_id: inv.organization_id,
         amount_cents: Math.max(
           (inv.total_cents ?? 0) - ((inv as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0),
           0,

@@ -317,8 +317,14 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 console.error("payment_failed webhook account mismatch", { invoiceId, eventAccount: event.account });
                 return new Response("ok", { status: 200 });
               }
+              // BUILD-6: a failed charge never counts toward revenue (settlement
+              // filters status='succeeded'), but leaving provenance null here
+              // would make the column mean "succeeded payments only" in
+              // practice while claiming to describe every row.
+              const { collectingOrgIdFor } = await import("@/lib/stripe-connect.server");
               await supabaseAdmin.from("payments").insert({
                 organization_id: (invOwner as any).organization_id,
+                collected_by_organization_id: await collectingOrgIdFor((invOwner as any).organization_id),
                 invoice_id: invoiceId,
                 amount_cents: pi.amount,
                 currency: pi.currency,

@@ -1382,17 +1382,73 @@ export type Database = {
           },
         ]
       }
+      franchise_link_codes: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string | null
+          expires_at: string
+          id: string
+          parent_organization_id: string
+          revoked_at: string | null
+          used_at: string | null
+          used_by_org_id: string | null
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          id?: string
+          parent_organization_id: string
+          revoked_at?: string | null
+          used_at?: string | null
+          used_by_org_id?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          id?: string
+          parent_organization_id?: string
+          revoked_at?: string | null
+          used_at?: string | null
+          used_by_org_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "franchise_link_codes_parent_organization_id_fkey"
+            columns: ["parent_organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "franchise_link_codes_used_by_org_id_fkey"
+            columns: ["used_by_org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       franchise_royalty_invoices: {
         Row: {
           amount_cents: number
           child_organization_id: string
           created_at: string
           created_by: string | null
+          direction: string
           id: string
+          net_due_cents: number
           parent_organization_id: string
           period_end: string
           period_start: string
           revenue_cents: number
+          revenue_collected_by_location_cents: number
+          revenue_collected_by_parent_cents: number
+          royalty_cents: number
           royalty_percent: number
           status: string
         }
@@ -1401,11 +1457,16 @@ export type Database = {
           child_organization_id: string
           created_at?: string
           created_by?: string | null
+          direction?: string
           id?: string
+          net_due_cents?: number
           parent_organization_id: string
           period_end: string
           period_start: string
           revenue_cents?: number
+          revenue_collected_by_location_cents?: number
+          revenue_collected_by_parent_cents?: number
+          royalty_cents?: number
           royalty_percent?: number
           status?: string
         }
@@ -1414,11 +1475,16 @@ export type Database = {
           child_organization_id?: string
           created_at?: string
           created_by?: string | null
+          direction?: string
           id?: string
+          net_due_cents?: number
           parent_organization_id?: string
           period_end?: string
           period_start?: string
           revenue_cents?: number
+          revenue_collected_by_location_cents?: number
+          revenue_collected_by_parent_cents?: number
+          royalty_cents?: number
           royalty_percent?: number
           status?: string
         }
@@ -2489,6 +2555,7 @@ export type Database = {
           auto_generate_visits: boolean
           auto_invoice_enabled: boolean
           avg_speed_kmh: number
+          billed_through_parent: boolean
           billing_status: Database["public"]["Enums"]["org_billing_status"]
           billing_tier: string | null
           brand_color: string | null
@@ -2535,6 +2602,7 @@ export type Database = {
           overdue_reminder_days: number
           overdue_reminders_enabled: boolean
           parent_organization_id: string | null
+          payments_collected_by_parent: boolean
           plan_id: string | null
           plan_status: Database["public"]["Enums"]["org_plan_status"]
           portal_allow_frequency_change: boolean
@@ -2590,6 +2658,7 @@ export type Database = {
           auto_generate_visits?: boolean
           auto_invoice_enabled?: boolean
           avg_speed_kmh?: number
+          billed_through_parent?: boolean
           billing_status?: Database["public"]["Enums"]["org_billing_status"]
           billing_tier?: string | null
           brand_color?: string | null
@@ -2636,6 +2705,7 @@ export type Database = {
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
           parent_organization_id?: string | null
+          payments_collected_by_parent?: boolean
           plan_id?: string | null
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
           portal_allow_frequency_change?: boolean
@@ -2691,6 +2761,7 @@ export type Database = {
           auto_generate_visits?: boolean
           auto_invoice_enabled?: boolean
           avg_speed_kmh?: number
+          billed_through_parent?: boolean
           billing_status?: Database["public"]["Enums"]["org_billing_status"]
           billing_tier?: string | null
           brand_color?: string | null
@@ -2737,6 +2808,7 @@ export type Database = {
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
           parent_organization_id?: string | null
+          payments_collected_by_parent?: boolean
           plan_id?: string | null
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
           portal_allow_frequency_change?: boolean
@@ -2808,6 +2880,7 @@ export type Database = {
         Row: {
           accounting_remote_id: string | null
           amount_cents: number
+          collected_by_organization_id: string | null
           created_at: string
           currency: string
           id: string
@@ -2823,6 +2896,7 @@ export type Database = {
         Insert: {
           accounting_remote_id?: string | null
           amount_cents: number
+          collected_by_organization_id?: string | null
           created_at?: string
           currency?: string
           id?: string
@@ -2838,6 +2912,7 @@ export type Database = {
         Update: {
           accounting_remote_id?: string | null
           amount_cents?: number
+          collected_by_organization_id?: string | null
           created_at?: string
           currency?: string
           id?: string
@@ -2851,6 +2926,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "payments_collected_by_organization_id_fkey"
+            columns: ["collected_by_organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "payments_invoice_id_fkey"
             columns: ["invoice_id"]
@@ -4115,6 +4197,59 @@ export type Database = {
           },
         ]
       }
+      review_items: {
+        Row: {
+          detail: Json
+          detected_at: string
+          id: string
+          kind: string
+          organization_id: string
+          reason: string
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          subject_id: string
+          subject_table: string
+        }
+        Insert: {
+          detail?: Json
+          detected_at?: string
+          id?: string
+          kind: string
+          organization_id: string
+          reason: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          subject_id: string
+          subject_table: string
+        }
+        Update: {
+          detail?: Json
+          detected_at?: string
+          id?: string
+          kind?: string
+          organization_id?: string
+          reason?: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          subject_id?: string
+          subject_table?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_items_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       roadmap_votes: {
         Row: {
           created_at: string
@@ -5366,6 +5501,7 @@ export type Database = {
         }
         Returns: string
       }
+      create_franchise_link_code: { Args: never; Returns: string }
       default_skip_billable_pct: {
         Args: { _code: Database["public"]["Enums"]["skip_reason_code"] }
         Returns: number
@@ -5374,6 +5510,7 @@ export type Database = {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
       }
+      detect_review_items: { Args: { _org_id?: string }; Returns: number }
       email_has_account: { Args: { _email: string }; Returns: boolean }
       email_queue_dispatch: { Args: never; Returns: undefined }
       enqueue_email: {
@@ -5383,6 +5520,13 @@ export type Database = {
       finalize_visit_completion: {
         Args: { _visit_id: string }
         Returns: undefined
+      }
+      franchise_children: {
+        Args: { _parent_org: string }
+        Returns: {
+          id: string
+          name: string
+        }[]
       }
       franchise_rollup: {
         Args: { _parent_org: string }
@@ -5397,8 +5541,25 @@ export type Database = {
           visits_today: number
         }[]
       }
+      franchise_signals: {
+        Args: never
+        Returns: {
+          already_linked: number
+          email_domain: string
+          org_count: number
+          org_names: string
+          organization_ids: string[]
+          state_count: number
+          states: string
+          stripe_accounts: number
+        }[]
+      }
       generate_addon_charges_through: {
         Args: { _org_id: string; _through: string }
+        Returns: number
+      }
+      generate_franchise_settlements: {
+        Args: { _end: string; _parent: string; _start: string }
         Returns: number
       }
       generate_invoice_for_client: {
@@ -5796,6 +5957,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      provision_franchise_location: {
+        Args: { _members?: Json; _name: string }
+        Returns: string
+      }
       public_get_org_by_slug: {
         Args: { _slug: string }
         Returns: {
@@ -5847,6 +6012,7 @@ export type Database = {
         Args: { _visit_id: string }
         Returns: number
       }
+      redeem_franchise_link_code: { Args: { _code: string }; Returns: string }
       redeem_gift_card: {
         Args: {
           _amount_cents: number
@@ -5890,6 +6056,14 @@ export type Database = {
         }[]
       }
       run_billing_cycles: { Args: { _org_id?: string }; Returns: number }
+      set_child_royalty_percent: {
+        Args: { _child_org_id: string; _percent: number }
+        Returns: undefined
+      }
+      set_location_payment_routing: {
+        Args: { _child_org_id: string; _collected_by_parent: boolean }
+        Returns: undefined
+      }
       set_staff_active: {
         Args: { _active: boolean; _staff_id: string }
         Returns: undefined
@@ -5906,6 +6080,10 @@ export type Database = {
           }
       slugify: { Args: { _txt: string }; Returns: string }
       start_visit: { Args: { _visit_id: string }; Returns: undefined }
+      unlink_franchise_child: {
+        Args: { _child_org_id: string }
+        Returns: undefined
+      }
       update_org_deepclean_settings: {
         Args: {
           _charge_cents: number
