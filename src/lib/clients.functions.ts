@@ -37,7 +37,12 @@ export const listClients = createServerFn({ method: "GET" })
         ? supabase.from("properties").select("id, client_id, dogs(id)").in("client_id", ids)
         : Promise.resolve({ data: [] as any[] }),
       ids.length
-        ? supabase.from("subscriptions").select("client_id, status, frequency").in("client_id", ids)
+        ? supabase
+            // ends_on is needed to tell an ended service from a running one —
+            // see the isServiceEnded note below.
+            .from("subscriptions")
+            .select("client_id, status, frequency, ends_on")
+            .in("client_id", ids)
         : Promise.resolve({ data: [] as any[] }),
       ids.length
         ? supabase
@@ -60,8 +65,24 @@ export const listClients = createServerFn({ method: "GET" })
     // Service-frequency label for the list view (punch list #15): distinct
     // active-subscription frequencies per client.
     const freqsByClient = new Map<string, string[]>();
+    // "Active" has to mean the same thing here as it does on the client's own
+    // Services tab, and it did not. This counted `status === 'active'` alone,
+    // while the tab uses isServiceEnded — status canceled OR ends_on passed.
+    // endSubscription only writes ends_on and leaves status 'active', so every
+    // service a tenant has ever ENDED still counted here as one they are
+    // running, and its frequency stayed in the client's chips.
+    //
+    // Latent until now: no row was in that state. Booking a one-off visit puts
+    // one there every time, because a one_time service is created with
+    // ends_on = the visit date — so from the day after each booking the client
+    // would read as having an extra active service, permanently, and be
+    // labelled "one_time" for a job finished months ago.
+    const { isServiceEnded } = await import("@/lib/subscription-form");
+    const todayISO = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000)
+      .toISOString()
+      .slice(0, 10);
     for (const s of subsRes.data ?? []) {
-      if (s.status === "active") {
+      if (!isServiceEnded(s as any, todayISO)) {
         activeSubsByClient.set(s.client_id, (activeSubsByClient.get(s.client_id) ?? 0) + 1);
         const f = (s as any).frequency as string | null;
         if (f) {

@@ -184,3 +184,43 @@ describe("serviceScheduleState — why there is no upcoming visit", () => {
     }
   });
 });
+
+// ── "active" has to mean one thing ─────────────────────────────────────────
+//
+// listClients counted `status === 'active'` while the client's own Services tab
+// used isServiceEnded. endSubscription only writes ends_on and leaves status
+// 'active', so every ENDED service still counted as one the tenant was running.
+// Latent — no row was in that state — until booking a one-off visit started
+// creating one every time, because a one_time service carries
+// ends_on = the visit date.
+//
+// These pin the contract listClients now shares with the tab.
+
+describe("isServiceEnded is the single definition of a finished service", () => {
+  const TODAY = "2026-07-31";
+
+  it("treats a one-off whose day has passed as ended", () => {
+    expect(isServiceEnded({ status: "active", ends_on: "2026-07-30" }, TODAY)).toBe(true);
+  });
+
+  it("treats a one-off booked for TODAY as ended once the day arrives", () => {
+    // ends_on is inclusive of the visit date, so the service closes the same
+    // day the work happens rather than lingering as an active service.
+    expect(isServiceEnded({ status: "active", ends_on: TODAY }, TODAY)).toBe(true);
+  });
+
+  it("still counts a one-off booked for a future date as live", () => {
+    expect(isServiceEnded({ status: "active", ends_on: "2026-08-05" }, TODAY)).toBe(false);
+  });
+
+  it("counts an ordinary open-ended service as live", () => {
+    expect(isServiceEnded({ status: "active", ends_on: null }, TODAY)).toBe(false);
+  });
+
+  it("is not fooled by status alone, in either direction", () => {
+    // The exact gap: status 'active' + a past ends_on is an ENDED service, and
+    // counting on status alone is what made every ended service look running.
+    expect(isServiceEnded({ status: "active", ends_on: "2020-01-01" }, TODAY)).toBe(true);
+    expect(isServiceEnded({ status: "canceled", ends_on: null }, TODAY)).toBe(true);
+  });
+});
