@@ -122,3 +122,20 @@ jobs:
           fi
           node scripts/check-migrations.mjs
         continue-on-error: ${{ github.event_name == 'pull_request' }}
+
+      - name: Check the database against the repo migrations
+        # The other direction. The step above asks "did production run
+        # everything the repo has"; this asks "does production have something
+        # the repo never wrote". Three functions had drifted in that direction
+        # undetected, one of them a SECURITY DEFINER routine reachable from a
+        # shipped screen — invisible until an environment gets rebuilt from the
+        # repo and it simply is not there.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not set — the undeclared-schema check cannot run."
+            exit 1
+          fi
+          node scripts/check-schema-declared.mjs
+        continue-on-error: ${{ github.event_name == 'pull_request' }}

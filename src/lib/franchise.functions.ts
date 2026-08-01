@@ -373,21 +373,18 @@ export const setRoyaltyInvoiceStatus = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    // Marking a royalty invoice paid is a money decision about the franchise
-    // relationship, and it had NO permission check — only resolveOrgId, which
-    // answers "which org are you in", not "may you do this". The table's RLS
-    // now refuses anyone without manage_franchise, but a refused UPDATE
-    // matches zero rows and PostgREST returns no error for that, so without
-    // this gate a dispatcher would be told the change was saved while nothing
-    // happened. That is BUG-30 exactly — a zero-row UPDATE is a successful
-    // UPDATE — and it is worth failing loudly here rather than relying on a
-    // silent row count.
-    const { requirePermission } = await import("@/lib/authz.server");
-    const { orgId } = await requirePermission(
-      context.supabase,
-      context.userId,
-      "manage_franchise",
-    );
+    // resolveOrgId in THIS file is not the bare org lookup the name has
+    // elsewhere in the repo — it is requirePermission('manage_franchise') plus
+    // the Enterprise entitlement, so this server function was already gated to
+    // the franchise owner. (I first read the name and reported it as ungated.
+    // It was not.)
+    //
+    // What was genuinely missing is below: the table's own RLS used to admit
+    // dispatchers, so this update was the only real gate, and PostgREST reports
+    // an UPDATE that RLS refused as a plain success with zero rows. Whoever
+    // gets past a future policy change would be told the invoice was marked
+    // paid while nothing moved. BUG-30 was exactly that.
+    const orgId = await resolveOrgId(context.supabase, context.userId);
     const { data: rows, error } = await (context.supabase as any)
       .from("franchise_royalty_invoices")
       .update({ status: data.status })

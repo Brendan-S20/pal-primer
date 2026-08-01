@@ -88,9 +88,18 @@ describe("the server function agrees with the table", () => {
   );
 
   it("requires manage_franchise before changing a royalty invoice's status", () => {
-    // It had no permission check at all — only resolveOrgId, which answers
-    // "which org are you in", not "may you do this".
-    expect(fn).toMatch(/requirePermission\([\s\S]*manage_franchise/);
+    // Via resolveOrgId, which in THIS file is requirePermission of
+    // 'manage_franchise' plus the Enterprise entitlement — not the bare org
+    // lookup the same name means elsewhere in the repo. I misread that once and
+    // reported this function as ungated; it never was. The RLS policy was the
+    // hole, not this.
+    expect(fn).toMatch(/resolveOrgId\(context\.supabase, context\.userId\)/);
+    const helper = src.slice(src.indexOf("async function resolveOrgId"));
+    // To the closing brace in column 0 — the first `}` in the body belongs to
+    // the `const { orgId }` destructuring, which is how this read wrong once
+    // already.
+    const body = helper.slice(0, helper.indexOf("\n}"));
+    expect(body).toMatch(/requirePermission\([\s\S]*"manage_franchise"/);
   });
 
   it("fails loudly when the update matches nothing", () => {
