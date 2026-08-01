@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.11** · Released 2026-08-01 · Supersedes: v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.12** · Released 2026-08-01 · Supersedes: v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,105 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+### v1.12 — 2026-08-01
+
+**An adversarial pass over the BUILD-6 franchise money paths. Six defects,
+three claims dismissed after probing, one correction to v1.11.**
+
+Every finding below was demonstrated as the actual role, against the live
+database, inside a transaction that rolled itself back — then re-probed after
+the fix to show both that the hole closed and that the legitimate path still
+works. Nothing here is a reading of the code alone.
+
+**Three ways to take or rewrite money, all in the RLS layer** (BUG-70, 71, 72).
+A franchise **dispatcher** could zero a $1,000 royalty invoice and then delete
+it outright. An **office manager** could re-point `stripe_connect_account_id`
+— the account that receives every customer charge — and, separately, rewrite
+`payments.status`, which is the revenue base `generate_franchise_settlements`
+sums, taking a location's royalty to zero. In all three the server function
+above was correct and the table underneath was open, so PostgREST was reachable
+directly. **That shape has now appeared five times** (BUG-33, 36, 42, 61, and
+these), and it is worth naming as the single most productive question to ask of
+this codebase: *not "is the routine guarded" but "what does the policy say".*
+
+**A field tech could read the franchise's money ledger and its live invite
+codes** (BUG-73). Both tables gated SELECT on `is_org_member`, the one
+membership helper that includes techs. The adjustment ledger is every refund
+and chargeback with its dispute notes; a link code is a bearer credential.
+`franchise_adjustment_ledger()` authorizes `view_financials` properly — and the
+table it reads did not, so the routine could simply be skipped.
+
+**Winning the second of two equal disputes repaid nothing** (BUG-74) — the
+first settlement-math finding to survive being probed. One payment, two
+separate Stripe disputes of $400, both lost, both settled, then both won: the
+location was charged $800 and repaid $400, silently. A repayment row wrote
+`cumulative_cents` as the amount coming back rather than a running total, so
+two disputes of the same size collided on the cumulative unique index and the
+second hit `ON CONFLICT DO NOTHING` — the clause written to make webhook
+redelivery harmless. It could not tell a redelivery from a second dispute
+because the key it arbitrated on cannot. Equal amounts are not a corner case: a
+location on a flat monthly rate disputes the same figure every time.
+
+**Three functions were live in production and defined in no migration**
+(BUG-75). A comment said `set_chargeback_responsibility` came from
+20260730200000; that migration defines one function and it is not this one. So
+rather than trust the correction either, the sweep ran against the whole schema:
+of 158 functions in `public`, three appeared in no migration file — including
+that one, which is SECURITY DEFINER, decides who absorbs every chargeback, and
+is called by a shipped screen. A rebuilt environment would not have had it.
+The third, `email_queue_wake`, was a Lovable scaffold leftover that POSTed a
+vaulted service_role key to a `lovable.app` host; it is dropped. It was inert,
+and all three reasons were checked rather than assumed.
+
+**The check that would have caught it** (IMP-12). `check-migrations.mjs` asks
+"did production run everything the repo has". Nothing asked the reverse, and
+that is the direction that stays invisible until an environment is rebuilt.
+`check-schema-declared.mjs` now asks it, in CI beside its counterpart. A GRANT
+mentioning a name does not count as a declaration — which is exactly how
+`email_queue_wake` hid, since a migration granted EXECUTE on a function no
+migration created.
+
+**A correction to v1.11's own commit.** I reported `setRoyaltyInvoiceStatus` as
+having no permission check, "only `resolveOrgId`". Wrong: in that file
+`resolveOrgId` is not the bare org lookup the same name means elsewhere in the
+repo — it is `requirePermission('manage_franchise')` plus the Enterprise
+entitlement, so the function was gated to the franchise owner all along. I read
+the name and not the definition, and the same misreading briefly produced three
+more "ungated function" findings that were all false. The RLS half of BUG-70
+stands and was proven live; only the server-function half of the story was
+wrong. The redundant check is removed and the test now pins what is actually
+true.
+
+**Three claims dismissed rather than fixed, each after being probed.**
+`record_franchise_adjustment` has no authorization check at all — true, and not
+a defect: it is not granted to `authenticated`, and a tech calling it got
+`DENIED`. The EXECUTE grant is the gate. A chargeback won and then lost again
+under the same dispute id files no deduction — that reproduces, but Stripe
+closes a dispute once and a second dispute on a charge gets a new id, so the
+scenario is unreachable while the redelivery the guard prevents is routine;
+loosening it would trade a bug that cannot happen for double-billing that can,
+and a test now pins that decision so it can only be reversed deliberately. And
+the live body of `record_franchise_adjustment` differs from the last migration
+that defines it — by one sentence of comment, so not drift worth reporting.
+
+**Exposure on everything franchise-related is latent.** There is not one
+franchise in the database: zero rows in `franchise_adjustments`,
+`franchise_link_codes` and `franchise_royalty_invoices`, and no organization
+with `is_franchise_parent` or a parent set. Every probe had to build a franchise
+before it had anything to attack. Said plainly rather than dressed up, as with
+BUG-53 and BUG-61.
+
+**Still unprobed from this pass:** seven settlement-math claims — cross-period
+double-billing, draft-settled reversals leaving deductions, period-blind
+adjustments, void stranding adjustments, royalty on refunded gross, live-rate
+vs frozen-share mismatch, parent-vs-child timezone boundaries, and rounding
+drift. None is treated as established.
+
+Fourteen mutations run across the new suites, all caught — including one
+against my own first receiver-scan, which passed a genuine violation because it
+looked for `supabaseAdmin` within 600 characters and an unrelated import
+upstream satisfied it. Proximity is not a receiver.
 
 ### v1.11 — 2026-08-01
 
@@ -629,6 +728,12 @@ were built. Repo search finds no such mechanism. Raised as BUILD-10.
 | BUG-44 | 🟢 Fixed | 🟠 | **New.** The app could not open offline at its own front door. `_authenticated.beforeLoad` called `supabase.auth.getUser()` — a **network call** — and read any failure as "not signed in", redirecting to `/auth`. No amount of caching could have helped. Now falls back to the local session, but only when the failure looks like lost network; a 4xx from the auth server is still a real rejection, and that distinction is tested, because getting it backwards would let an expired account in | v1.7 |
 | BUG-45 | 🟢 Fixed | 🟡 | **New.** The marketing site quoted an annual price the app does not charge. The app bills annual as ten months — `annual_price_cents` is exactly 10× monthly on every live tier, "two months free", 16.7% — while the site applied a flat 15% and said so in the FAQ. `/pricing` quoted Launch at $67.15/mo against an actual $65.83. Under-promising, so harmless in direction, but a published price that is not the price. Now derived from months-paid so the two cannot drift | v1.7 |
 | BUG-46 | 🟢 Fixed | 🟡 | **New.** `franchise_signals` returned organization names and ids as two parallel arrays that were not in the same order, so per-organization links would have pointed at the wrong tenant about half the time. Never mispaired anyone only because the screen noticed and rendered no links. Not fixed by adding `ORDER BY name` — that is not a total order (three organizations here are literally named "Test Test") and two aggregates sort independently. Replaced with one jsonb array of self-contained `{id, name, linked}` objects: nothing left to zip | v1.7 |
+| BUG-70 | 🟢 Fixed | 🔴 | **New, security.** A franchise **dispatcher could zero and then delete a royalty invoice** — the table that decides what a location owes, eight money columns and a status, with no trigger behind it unlike every other money surface here. One policy covered ALL commands on `can_write_org`, which includes dispatchers, though Q-1 answered this explicitly ("dispatchers ops-only, no billing") and the three routing setters already require the parent's owner. Proven live as a dispatcher, rolled back: `can_read=1 \| zeroed_a_$1000_royalty=1 \| DELETED_the_invoice=1`. Split by command — SELECT stays `can_write_org`, UPDATE narrows to `manage_franchise` (owner-only), INSERT and DELETE get no policy at all, since a settlement is produced by a SECURITY DEFINER generator and a statement you can delete after issuing is not evidence of anything. After: `DISPATCHER upd=0 del=0 ins=blocked \|\| OWNER read=1 upd=1 del=0`. **Latent** — zero rows | v1.12 |
+| BUG-71 | 🟢 Fixed | 🔴🔴 | **New, security.** An **office manager could redirect the organization's card payments.** `tg_orgs_protect_platform_columns` guarded nineteen columns including every franchise one, and not the four `stripe_connect_*` columns — while the `organizations` UPDATE policy is `manage_settings`, which office managers hold. `resolveOrgStripeAccount` reads `stripe_connect_account_id` to decide which Connect account receives every customer charge; an arbitrary `acct_` id only fails at Stripe, but a REAL connected account on this platform does not, and that is the embezzlement case. It also defeated the franchise routing guard: `set_location_payment_routing` refuses parent collection unless the parent's account can accept charges, and the parent could satisfy that by writing `stripe_connect_charges_enabled = true` on its own row. Proven live, rolled back: `rewrite_stripe_connect=ALLOWED (acct now acct_ATTACKER)`. After: all four columns BLOCKED, benign settings write still OK, and `service_role writes all four = OK` so Connect onboarding, refresh and disconnect are untouched | v1.12 |
+| BUG-72 | 🟢 Fixed | 🔴 | **New, security.** An **office manager could rewrite the revenue a royalty is computed from.** `payments` was writable FOR ALL by `manage_client_billing`, and `generate_franchise_settlements` sums that table for the period — so a franchise location's own office manager could flip its payments to a non-counted status and take the royalty base, and therefore the royalty, to zero. The settlement function is correct and SECURITY DEFINER; it reads a table the counterparty owns. Blast radius is wider than the franchise: payments feed AR, the revenue figures and the CPA pack. INSERT keeps its permission (manual cash/cheque/terminal payments are recorded from the app); UPDATE and DELETE lose theirs, since every status transition is written by the Stripe webhook through `supabaseAdmin` and nothing deletes a payment — a reversal is a new row. After: `pay_upd=0 pay_del=0 pay_ins=OK`, webhook path intact | v1.12 |
+| BUG-73 | 🟢 Fixed | 🟠 | **New, security.** A **field tech could read the franchise money ledger and its live invite codes.** Both `franchise_adjustments` and `franchise_link_codes` gated SELECT on `is_org_member` — the one membership helper that includes techs. The ledger is every refund and chargeback moving between a franchise and its locations, with shares and free-text dispute notes; a link code is a bearer credential that attaches an organization to the franchise. `franchise_adjustment_ledger()` authorizes `view_financials` and `create_franchise_link_code` requires the owner, so in both cases the routine was the real gate and the table underneath was open. Proven live by building a franchise inside a rolled-back transaction: `TECH adj=1 codes=1` → after: `TECH adj=0 codes=0 \|\| OFFICE_MGR adj=1 codes=0 \|\| OWNER adj=1 codes=1 ledger_rpc=1`. **Latent** — the probe had to build the franchise | v1.12 |
+| BUG-74 | 🟢 Fixed | 🔴 | **New, money.** **Winning the second of two equal disputes repaid nothing.** One payment, two separate Stripe disputes of $400 (dp_A, dp_B), both lost, both settled on an issued statement, then both won: `deducted=80000 repayments=1 repaid=40000`. The location was charged $800 and repaid $400 — no error, no row, nothing on the statement to reconcile against. A repayment writes `cumulative_cents = _orig.amount_cents`, not a running total, so two disputes of the same size produced the same key under the cumulative unique index and the second INSERT hit `ON CONFLICT DO NOTHING` — the clause written to make webhook redelivery harmless, unable to tell a redelivery from a second dispute because the key it arbitrates on cannot. Equal amounts are not a corner case: a location on a flat monthly rate disputes the same figure every time. The cumulative index is now partial on `dispute_ref IS NULL`, so refunds are identified by cumulative amount and disputes by dispute id, each row covered by exactly one rule. After: `repayments=2 repaid=80000 \|\| redelivered_dispute_deductions=2 \|\| refund_rows=1 refunded=30000 then=2 rows / 50000` — the two behaviours the old key protected both intact. **Latent** — zero rows | v1.12 |
+| BUG-75 | 🟢 Fixed | 🟠 | **New.** **Three functions were live in production and defined in no migration.** A comment claimed `set_chargeback_responsibility` came from 20260730200000; that migration defines one function and it is not this one — the fourth untrue comment in two cycles to be treated as a source before being checked. So the sweep ran against the whole schema rather than the one function: of 158 in `public`, three appeared in no migration file. (1) `set_chargeback_responsibility` — SECURITY DEFINER, decides who absorbs every chargeback, called by a shipped screen; its authorization was checked and is correct, and it is filed verbatim. (2) `rls_auto_enable` + the `ensure_rls` event trigger — enables RLS on every new `public` table; a rebuilt environment without it would let the next table ship readable by every signed-in user, silently. (3) `email_queue_wake` — a Lovable scaffold leftover that POSTed a vaulted service_role key to a `lovable.app` host on every invocation; **dropped**, with its body preserved in the migration comment. Inert, and all three reasons were checked rather than assumed: no trigger references it, it RETURNS trigger so a direct call is refused regardless of its grant, and the vault secret it reads does not exist. Not an incident — a loaded gun | v1.12 |
 | BUG-62 | 🟢 Fixed | 🔴🔴 | **New.** The native app would have received every server-function reply and **decoded all of them wrong**. CORS set no `Access-Control-Expose-Headers`, and a cross-origin `fetch()` exposes only the safelisted response headers — everything else is filtered out of the Headers object, not blocked. TanStack tags every reply `x-tss-serialized` (or `x-tss-raw`) and the client *dispatches on reading it back*, so an authorized HTTP 200 took the wrong decode branch and the caller got `undefined`; a thrown server error, also serialized, came back as a resolved value. Proven in a real browser: visible headers were `[content-length, content-type]` and the read was null. **v1.7's offline proof could not have caught it** — it blocked every off-origin request, so it never made a cross-origin RPC call at all | v1.11 |
 | BUG-63 | 🟢 Fixed | 🔴 | **New.** A queued photo was **destroyed before its upload succeeded**, and the retry reported success. `popPhoto` deleted the blob then uploaded; any throw after that left the action queued with its bytes gone, and the next replay found no blob, treated it as nothing to do, and counted it a SUCCESS. The tech saw *"Synced 1 queued action"* for a photo that no longer existed anywhere, and the visit lost its completion evidence silently | v1.11 |
 | BUG-64 | 🟢 Fixed | 🔴 | **New.** "Complete" unlocked on **any** queued action and then **wedged the whole queue**. The gate counted every pending action kind, not completion photos, so queueing a Start unlocked Complete offline. The server refuses (*"A completion photo is required"*), which is not a network error, so the sync loop breaks on it — and every action queued behind it stops for the rest of the day, with no UI to inspect or clear it | v1.11 |
@@ -1428,6 +1533,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | IMP-6 | ❓ Blocked | 🟡 | Payment test coverage — needs Stripe authorized | v1.1 |
 | IMP-7 | 🟢 Fixed | 🟡 | Supabase types regenerated. They had been stale since before this cycle and IMP-9's table drop made them wrong, not just incomplete. Four `any`/structural casts removed as a result | v1.3 |
 | IMP-11 | 🟢 Fixed | 🟠 | Dead-machinery detector — a hard CI gate for the failure this project keeps producing: something built, granted and correct that nothing ever calls. Turned on itself in v1.6 and found one rule that could not fire, one counting comments as callers, and one that would have failed CI on correct code; all three rewritten and mutation-proven in v1.7. **v1.8 adds a fourth rule and fixes a blind spot the first three shared:** rule 1 keys on a function's NAME, so two signatures of one name collapse and a dead overload is vouched for by the live one's callers — which is how a second `skip_visit` stayed granted and uncalled for a month (BUG-50). Drops and creates are now tracked per signature, and rule 4 flags any name with more than one live signature. Its first run reported five findings, all five false, all caused by its own type normalization — recorded in the header as the general rule. Green with 17 exceptions, no open known gaps. One residual: the cron schedules in rule 2's baseline are asserted by a human and checked by nothing | v1.5 |
+| IMP-12 | 🟢 Fixed | 🟠 | **New.** The other direction of schema drift. IMP-2's `check-migrations.mjs` compares migration files to Supabase's applied ledger — it answers "did production run everything the repo has", and cannot answer "does production have something the repo never wrote". That is the direction that stays invisible, because nothing fails until an environment is rebuilt and an object simply is not there; three functions had drifted that way undetected (BUG-75). `check-schema-declared.mjs` sweeps every function in `public` against every migration, wired into CI beside its counterpart. A GRANT mentioning a name does **not** count as a declaration — that is precisely how `email_queue_wake` hid, since a migration granted EXECUTE on a function no migration created. The allow-list is for platform-owned objects only and is currently empty; the check also fails on an allowance naming a function that no longer exists, so it cannot rot into a blanket exemption. Three mutations run, all caught. **Known gap:** it covers functions, not tables, policies, indexes or triggers | v1.12 |
 | IMP-10 | 🟢 Fixed | 🔴 | **Closed in v1.5, and it was worse than logged.** `src/lib/revenue.ts` is now the one definition — money that ARRIVED (`succeeded` or `refunded`), reversals deducted in their own period — mirrored in SQL with a parity test that fails on drift. Fixing it turned up BUG-21 (a real money error), a third copy of the royalty calculation in the nightly cron, and an AI-tools query with no status filter at all that counted declined cards as revenue. Invoice-based revenue stays separate and is reconciled by BUILD-13's bridge rather than conflated | v1.4 |
 | IMP-9 | 🟢 Fixed | 🟠 | Retire the BYOK surfaces — **done, and the "wait for BUILD-2/BUILD-3" ordering in v1.2 was wrong.** See below | v1.3 |
 | IMP-8 | 🟢 Fixed | 🟡 | **New.** Org timezone was built but buried in Routes; moved to Settings | v1.1 |
@@ -1436,7 +1542,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | BUILD-3 | ⏳ Waiting | 🟠 | Managed texting — Q-8 = per-tenant subaccount + own brand. In the 10DLC compliance queue; nothing to accelerate | v1.1 |
 | BUILD-4 | 🟢 Fixed | 🟠 | Managed AI — BYO deleted, inference runs on the platform key, and the product no longer asks for a key. The remaining gap is metering, which is BUILD-2, not BUILD-4 | v1.3 |
 | BUILD-5 | 🟠 Part-built | 🟠 | White label — the surveyable half is done and it turned up a live customer-facing bug: **every reply to an invoice or reminder went to a no-reply address nobody reads**, with no bounce, so the customer believed they had been in touch. Reply-to now carries the tenant's office email end to end. True white label (own sending domain, own portal domain) needs the Resend account and per-tenant DNS — owner-blocked like Stripe. Both add-ons are `coming_soon` and unsellable until then | v1.5 |
-| BUILD-6 | 🟠 Part-built | 🟠 | Enterprise tier — **phases 1–4 shipped**: consent-based linking, repaired rollup, both sides' UI, the money side, and now **a franchise can open a location from the product** — name it, name the staff, they get invites and sign themselves in. That was the flow the owner described, the SQL for it had existed unused since 2026-07-30, and it was the last piece the product could not do. Platform-side franchise sales signals now render too. Remaining: multi-org membership, drill-down, royalty *delivery* | v1.6 |
+| BUILD-6 | 🟠 Part-built | 🟠 | Enterprise tier — **phases 1–4 shipped**: consent-based linking, repaired rollup, both sides' UI, the money side, and now **a franchise can open a location from the product** — name it, name the staff, they get invites and sign themselves in. That was the flow the owner described, the SQL for it had existed unused since 2026-07-30, and it was the last piece the product could not do. Platform-side franchise sales signals now render too. **v1.12 attacked the money paths and found six defects** (BUG-70 through BUG-75) — three ways a non-owner could take or rewrite money, a tech reading the ledger and the invite codes, a repayment silently dropped, and three functions live in no migration. All fixed and re-probed; all latent, because no franchise exists yet. What held up under attack: the three routing setters correctly require the parent's owner, every `set_config('app.allow_protected_org_write')` call is transaction-local, `tg_orgs_protect_platform_columns` covers all franchise columns, and a child owner cannot cut its royalty, self-unlink or seize payments (proven live — royalty stayed 8.00). Remaining: multi-org membership, drill-down, royalty *delivery*, and **seven settlement-math claims still unprobed** | v1.6 |
 | BUILD-7 | 🟠 Part-built | 🟡 | Trial lifecycle built — and the finding was that **no organization had ever had a trial**, because `bootstrap_organization` never started one and nothing in the tenant app gated on billing status at all. New signups get the 14 days the site promises; expiry is a state and a banner, NOT a lock, because Stripe cannot take a payment yet. AI is paid-only (owner decision). Enforcement is one constant, flipped when Stripe lands. **v1.6:** an adversarial review found three ways a non-paying org still reached `paid` and kept the AI keys — see BUG-29. The state machine now reads both status columns and has a `lapsed` phase, because telling someone who cancelled a paid plan that their free trial ended reads as a product that lost track of what they bought | v1.6 |
 | BUILD-8 | 🟢 Fixed | 🟡 | AI Business Advisor **built out** (owner reversed the retire instruction). On-demand, 7/30/90-day windows, evidence shown beside the advice. See below | v1.3 |
 | BUILD-9 | 🟠 Part-built | 🟠 | Mobile Phase 2/3. **The native app now boots and runs with no network** — proven by serving the bundle as static files with every off-origin request blocked, loading it in headless Chromium, and watching it hydrate and render from 36 files on disk with zero off-origin requests. Getting there meant a client-bootable SPA shell (this is a server-rendered app; `.output/public` had no index.html, which is why the config pointed at a remote URL), an absolute server-function origin, CORS, CSRF, and an offline read cache — plus BUG-43 and BUG-44, both of which had to be fixed before "offline" could mean anything. Q-3's answer was NOT a config flag as the ledger implied. **v1.11 correction:** the offline half was proven and remains true, but the ONLINE half was never exercised by it — every cross-origin server-function reply would have decoded to `undefined` (BUG-62), because the proof blocked all off-origin requests. Fixed. Remaining: **a real device, in a real dead zone AND on real signal.** Q-4 closed in v1.9 (one-off visit built), Q-12 answered reassign-only in v1.8, Q-5 closed in v1.10 (field DNA sample logging) | v1.7 |
