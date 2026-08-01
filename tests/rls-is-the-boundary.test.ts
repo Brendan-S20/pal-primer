@@ -1,0 +1,143 @@
+import { describe, expect, it } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { ROLE_PERMISSIONS, type Permission } from "@/lib/permissions";
+
+// The single most productive question to ask of this codebase is not "is the
+// routine guarded" but "what does the policy say". Fourteen separate defects
+// have now been some version of: a server function authorizes correctly, and
+// the table underneath is open, so PostgREST is reachable directly with the
+// anon key and the user's own JWT.
+//
+// Proven live before this was written, in rolled-back transactions:
+//
+//   TECH mint_$5000_giftcard=ALLOWED
+//   DISPATCHER reads_quickbooks_token=TOKEN_SECRET
+//   DISPATCHER repriced_subscriptions=24
+//
+// After: TECH mint_giftcard=BLOCKED reads_giftcards=0 reads_promos=0
+//        || DISP qb_token=BLOCKED repriced=0
+//        || OM qb_token=readable(ok) can_still_price=24 can_still_issue=OK
+//
+// This file is deliberately a LIST rather than a rule. A rule ("no money table
+// may use is_org_member") needs a definition of "money table" that drifts; a
+// list of tables and the permission each one is entitled to has to be edited by
+// a human, and editing it is the moment to think.
+
+const ROOT = new URL("..", import.meta.url).pathname;
+const MIGRATIONS = join(ROOT, "supabase", "migrations");
+
+function migrationFiles(): string[] {
+  return readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();
+}
+
+/** Every policy on a table, from the LAST migration that creates one. */
+function policiesFor(table: string): string[] {
+  const re = new RegExp(`CREATE\\s+POLICY[^;]*ON\\s+public\\.${table}\\b`, "i");
+  let found = "";
+  for (const f of migrationFiles()) {
+    const sql = readFileSync(join(MIGRATIONS, f), "utf8");
+    if (re.test(sql)) found = sql;
+  }
+  if (!found) throw new Error(`no migration defines policies on ${table}`);
+  return (found.match(/CREATE\s+POLICY[\s\S]*?;/gi) ?? []).filter((p) =>
+    new RegExp(`ON\\s+public\\.${table}\\b`, "i").test(p),
+  );
+}
+
+/** `is_org_member` admits techs; `can_write_org` admits dispatchers. Neither is
+ *  a permission, and neither belongs on a surface the permission matrix has an
+ *  opinion about. */
+const MEMBERSHIP_HELPERS = /\bis_org_member\b|\bcan_write_org\b/;
+
+/**
+ * table → the permission its own server function already requires.
+ *
+ * Each entry was read out of the TypeScript, not chosen here: promotions
+ * .functions.ts:12 and accounting.functions.ts:14 both say manage_settings in
+ * so many words, subscriptions.functions.ts requires manage_pricing at every
+ * writer, neighbors.functions.ts requires view_client_directory.
+ */
+const GUARDED: Array<{
+  table: string;
+  permission: Permission;
+  /** The SELECT policy is deliberately wider than the write one. */
+  readMayBeWider?: boolean;
+  /** No tenant writes this at all — it is filled by a webhook on service_role,
+   *  which bypasses RLS. The absence of a write policy IS the property. */
+  readOnlyForTenants?: boolean;
+}> = [
+  { table: "gift_cards", permission: "manage_settings" },
+  { table: "gift_card_redemptions", permission: "manage_settings" },
+  { table: "promo_codes", permission: "manage_settings" },
+  { table: "accounting_connections", permission: "manage_settings" },
+  { table: "skip_billing_rules", permission: "manage_settings" },
+  { table: "neighbor_leads", permission: "view_client_directory" },
+  // Written by the Twilio voice webhook and the public signup flow, both on
+  // service_role. A tenant only ever reads these.
+  { table: "ai_receptionist_logs", permission: "manage_settings", readOnlyForTenants: true },
+  { table: "signup_requests", permission: "manage_settings", readOnlyForTenants: true },
+  // Reading a subscription tells a tech what service they are performing;
+  // repricing it is the risk. The read policy is deliberately wider.
+  { table: "subscriptions", permission: "manage_pricing", readMayBeWider: true },
+];
+
+describe.each(GUARDED)("$table", ({ table, permission, readMayBeWider, readOnlyForTenants }) => {
+  const policies = policiesFor(table);
+
+  it("has at least one policy to check", () => {
+    // Without this every assertion below is vacuous over an empty array —
+    // `[].every(...)` is true, and that is how a check ends up green while
+    // measuring nothing.
+    expect(policies.length).toBeGreaterThan(0);
+  });
+
+  it(`gates writes on ${permission}, not on bare membership`, () => {
+    const writes = policies.filter((p) => !/FOR\s+SELECT/i.test(p));
+    if (readOnlyForTenants) {
+      // Asserting the absence, which is the actual guarantee: a webhook fills
+      // this table on service_role and no tenant should be able to forge a row.
+      expect(writes).toEqual([]);
+      return;
+    }
+    expect(writes.length).toBeGreaterThan(0);
+    for (const p of writes) {
+      expect(p, p.slice(0, 80)).toMatch(new RegExp(`'${permission}'`));
+      expect(p, p.slice(0, 80)).not.toMatch(MEMBERSHIP_HELPERS);
+    }
+  });
+
+  it("does not let a membership helper stand in for a permission on reads", () => {
+    if (readMayBeWider) return;
+    for (const p of policies.filter((p) => /FOR\s+SELECT/i.test(p))) {
+      expect(p, p.slice(0, 80)).not.toMatch(MEMBERSHIP_HELPERS);
+    }
+  });
+
+  it(`grants ${permission} to nobody below the office`, () => {
+    // A policy is only as strict as the permission it names. If this were ever
+    // granted to a dispatcher or a tech, every rule above would silently widen
+    // without one line of policy changing.
+    expect(ROLE_PERMISSIONS.owner).toContain(permission);
+    expect(ROLE_PERMISSIONS.tech, "tech").not.toContain(permission);
+    if (permission !== "view_client_directory") {
+      // view_client_directory is deliberately held by dispatchers — they route
+      // the work, so they see the addresses.
+      expect(ROLE_PERMISSIONS.dispatcher, "dispatcher").not.toContain(permission);
+    }
+  });
+});
+
+describe("the push credential read", () => {
+  it("is own-row only", () => {
+    // A tech could read the OWNER's endpoint, p256dh and auth secret. Every path
+    // in push.functions.ts filters on user_id = auth.uid() and delivery runs on
+    // supabaseAdmin, so nothing needed the org-wide read.
+    const dropped = migrationFiles().some((f) =>
+      /DROP POLICY IF EXISTS "org staff view org push subs"/.test(
+        readFileSync(join(MIGRATIONS, f), "utf8"),
+      ),
+    );
+    expect(dropped).toBe(true);
+  });
+});

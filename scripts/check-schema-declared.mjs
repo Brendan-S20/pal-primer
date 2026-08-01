@@ -64,9 +64,19 @@ function allMigrationSql() {
 
 /** A GRANT or a comment mentioning the name is not a definition — the whole
  *  point is that email_queue_wake appeared in a migration's GRANT list while
- *  being defined nowhere. Only a CREATE FUNCTION counts. */
+ *  being defined nowhere. Only a CREATE FUNCTION counts.
+ *
+ *  The first version of this said exactly that in the comment and then matched
+ *  /FUNCTION\s+(public\.)?name\s*\(/ — which `GRANT EXECUTE ON FUNCTION
+ *  public.name(uuid) TO authenticated` satisfies, and so does `DROP FUNCTION`.
+ *  So the check shipped with the precise hole it was written to close, and two
+ *  live functions (cast_roadmap_vote, roadmap_vote_counts) were passing through
+ *  it while being defined in no migration at all. The CREATE is the part that
+ *  makes an object exist in a rebuilt database; nothing else counts. */
 function isDeclared(sql, fn) {
-  return new RegExp(`FUNCTION\\s+(public\\.)?${fn}\\s*\\(`, "i").test(sql);
+  return new RegExp(`CREATE\\s+(OR\\s+REPLACE\\s+)?FUNCTION\\s+(public\\.)?${fn}\\s*\\(`, "i").test(
+    sql,
+  );
 }
 
 function main() {
