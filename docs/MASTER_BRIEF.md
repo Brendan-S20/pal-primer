@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.15** · Released 2026-08-01 · Supersedes: v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.16** · Released 2026-08-01 · Supersedes: v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,131 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+### v1.16 — 2026-08-01
+
+**BUILD-2 shipped. Every AI feature in this product ran on HoundStack's own
+API keys and nothing counted a single call.**
+
+**The meter.** One row per invocation, attributed to an org and to the org's
+own calendar month, with tokens and our estimated provider cost recorded
+alongside. All three doors are covered — the Anthropic tools, the weekly
+digest and the AI receptionist — and the two that matter most are the ones
+nobody watches: the digest fires from cron, the receptionist answers inbound
+texts and phone calls.
+
+**Actions, not tokens.** One AI request is one action however many model
+round-trips it takes internally. The receptionist runs up to six steps to
+answer a single text; billing six actions for one text is not a sentence
+anyone can defend. Tokens are still summed across every step, because that is
+what the turn cost US, and the gap between the two is the evidence for
+whether the receptionist's $49/mo is priced right.
+
+**A soft cap that bills and a ceiling that stops.** Past the allowance nothing
+is blocked; at 3× — owner-adjustable, floored at 1× so it can never sit below
+allowance already paid for — AI refuses. Without the ceiling "soft cap plus
+overage" has no upper bound, and the unbounded case is not hypothetical: a
+loop between two automated systems spends real money at machine speed.
+
+**The period is the ORG's calendar month, not the subscription anniversary.**
+The anniversary shape lines up neatly with the invoice, and was rejected: it
+depends on `current_period_end` being kept fresh by a webhook, so a missed
+webhook silently re-opens a billing window; and it has no answer at all for a
+trial or free org, which are the accounts most likely to run up unattended
+spend. "Your July AI usage" is also a sentence a customer can check.
+
+**Overage reaches the bill as one invoice item per closed month**, claimed in
+the database before Stripe is called and idempotency-keyed on org+month.
+Deliberately NOT a subscription quantity like seat overage: seats are a level,
+usage is cumulative, and modelling cumulative usage as a quantity means a
+reset step that bills last month again every month if it is ever missed.
+
+**Four mutations passed on the first sweep, and each was a real gap.** 34
+mutations across the four suites:
+
+  * removing the atomic claim from the overage run changed nothing, because
+    the run's own unbilled-filter stops the SEQUENTIAL case. The claim only
+    matters when two runs overlap. Now tested concurrently.
+  * "bills nothing on an unlimited plan" passed against a version that had
+    stopped refusing on principle — null coerces to 0, so the arithmetic
+    produced a zero charge anyway. One plan-price change away from billing an
+    Enterprise account. It now asserts the REASON, not just the amount.
+  * a cache assertion required `new Map(` and the mutation wrote
+    `new Map<string, AiBudget>(`.
+  * a call-site assertion matched a single-line call shape and broke when
+    prettier wrapped the arguments — a test tracking formatting, not
+    behaviour.
+
+**A concurrency test that was green for the wrong reason, twice.** Vitest's
+mocker loses a race between two concurrent `await import()` calls and hands
+one of them the real client. The first version failed on an unmocked
+Supabase, the second on an unmocked Stripe, and both looked exactly like
+"only one run billed". This is the same trap that caught the Stripe webhook
+work in v1.15 and it is now recorded as a pattern: **a concurrency test must
+assert that both participants completed**, or it cannot tell a working guard
+from a crash.
+
+**Two written claims made true rather than deleted.** `resolveOrgAiConfig`
+had kept an unused `orgId` parameter with a comment reserving it for BUILD-2;
+`BusinessAdvisor.tsx` has told users "Uses part of your plan's AI allowance"
+since before an allowance existed. The second was the ledger's recurring
+failure — a written claim treated as a fact — and both are now backed by
+something real. The settings page's "metering arrives later" copy is gone,
+replaced by the meter it was promising.
+
+**The generated Supabase types were stale** and still declared
+`platform_org_stats` and `email_queue_dispatch`, both dropped earlier this
+cycle. Regenerated.
+
+**A live browser QA pass ran alongside this** and found four defects that are
+NOT yet fixed, filed here so they are not rediscovered:
+
+  * **QA-P4 — offline writes never reach the durable queue.** Offline, tapping
+    Start on `/my-day` produces no toast, no optimistic state, and
+    `scoop-offline.actions` stays at zero rows. If the app is closed while
+    offline the action is silently LOST. Reproduced across three runs. This is
+    the entire point of the offline queue, and the v1.15 dead-letter work sits
+    on top of a queue nothing is reaching. `enqueueAction()` and
+    `auth.getSession()` both resolve fast when called directly, so the obvious
+    suspect is cleared and the mechanism is not yet isolated. **Highest
+    priority of the four.**
+  * **QA-P3 — the weekly digest EMAILS a wrong number.**
+    `digest.server.ts` renders "N overdue invoices totaling $X" where X is
+    total open A/R, including invoices not yet due. Live: 10 genuinely overdue
+    invoices totalling $2,550, reported as $2,725. Shown on `/analytics` and
+    sent in the email.
+  * **QA-P1 — `/my-day` shows a false stale-route warning for 60s after every
+    load.** `nowTick` only advances on a 60-second interval, so data fetched
+    after mount has a NEGATIVE age, `clockSuspect` trips, and the escalated
+    "this route may have changed — confirm before driving it" banner fires
+    against correct live data. On the screen a tech reads at a customer's
+    fence, which is exactly where a false warning trains people to ignore a
+    real one.
+  * **QA-P2 — `/settings/payments` blank-renders on roughly 1 in 4 cold
+    loads.** Observed on the dev server only. It matters because that stub
+    exists to catch in-flight Stripe onboarding return URLs, so the failure
+    lands on someone mid-onboarding.
+
+Two of the run's three headline claims were also re-tested and one was
+REFUTED: `/platform/overview` does not spin forever — it renders in under 3
+seconds with real figures, and has an error state in both the working and the
+misconfigured case. The hydration-mismatch warning is real but comes from
+Lovable's dev-only `componentTagger` and is absent from production builds.
+The raw-config-error leak into the sign-in form is real but only occurs in a
+deployment missing `SERVICE_ROLE_KEY`.
+
+**One screenshot must not ship.**
+`06b-my-day-mobile-390x844-full.png` shows three access codes in the clear
+(`Gate: 2244`, `Gate: #5500`, `Lock box: 2580`) plus customer names and full
+street addresses. The 390×844 viewport variant was recaptured clean; this
+full-page variant was not.
+
+**Allowances are PROVISIONAL and live in `platform_plans`, not in code**:
+Launch 200, Growth 750, Scale 2,500, Enterprise unlimited, overage 10¢ per
+action. These are engineering defaults chosen so the feature is complete and
+observable end to end. Nothing published advertises an AI allowance, so there
+is no external commitment to contradict — but they are a pricing decision and
+changing them is an UPDATE, not a deploy.
 
 ### v1.15 — 2026-08-01
 
@@ -1768,9 +1893,9 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | IMP-9 | 🟢 Fixed | 🟠 | Retire the BYOK surfaces — **done, and the "wait for BUILD-2/BUILD-3" ordering in v1.2 was wrong.** See below | v1.3 |
 | IMP-8 | 🟢 Fixed | 🟡 | **New.** Org timezone was built but buried in Routes; moved to Settings | v1.1 |
 | BUILD-1 | 🟢 Fixed | 🔴 | Per-feature entitlements — plan tiers now enforced server-side; the published pricing matrix was being ignored by the app. See below | v1.2 |
-| BUILD-2 | 🔵 Ready | 🔴 | Usage metering — Q-7 answered (soft caps + overage). **No longer blocked**: Stripe was authorized 2026-08-01. Still **the only thing between us and unmetered AI spend** — see IMP-9 below. Next up | v1.15 |
+| BUILD-2 | 🟢 Fixed | 🔴 | **Done.** Usage metering, soft caps, overage and the 80% alert. `ai_usage_events` (one row per invocation, org-local month, tokens + our estimated cost) → `ai_usage_periods` (RECOUNTED, never incremented — the BUG-81 pattern applied before it could happen). `ai_usage_state()` is the one definition of where an org stands, called by both the request path and Settings. All three doors metered, including the two unattended ones. Ceiling at 3× allowance, owner-adjustable, floored at 1×. Overage bills as one invoice item per closed month, claimed before Stripe is called and idempotency-keyed. 57 tests, 34 mutations, four of which passed first time and are written up in the v1.16 changelog. Allowances are provisional and live in `platform_plans` | v1.16 |
 | BUILD-3 | ⏳ Waiting | 🟠 | Managed texting — Q-8 = per-tenant subaccount + own brand. In the 10DLC compliance queue; nothing to accelerate | v1.1 |
-| BUILD-4 | 🟢 Fixed | 🟠 | Managed AI — BYO deleted, inference runs on the platform key, and the product no longer asks for a key. The remaining gap is metering, which is BUILD-2, not BUILD-4 | v1.3 |
+| BUILD-4 | 🟢 Fixed | 🟠 | Managed AI — BYO deleted, inference runs on the platform key, and the product no longer asks for a key. The metering gap this row named is closed: BUILD-2 shipped in v1.16 | v1.3 |
 | BUILD-5 | 🟠 Part-built | 🟠 | White label — the surveyable half is done and it turned up a live customer-facing bug: **every reply to an invoice or reminder went to a no-reply address nobody reads**, with no bounce, so the customer believed they had been in touch. Reply-to now carries the tenant's office email end to end. True white label (own sending domain, own portal domain) needs the Resend account and per-tenant DNS — owner-blocked like Stripe. Both add-ons are `coming_soon` and unsellable until then | v1.5 |
 | BUILD-6 | 🟠 Part-built | 🟠 | Enterprise tier — **phases 1–4 shipped**: consent-based linking, repaired rollup, both sides' UI, the money side, and now **a franchise can open a location from the product** — name it, name the staff, they get invites and sign themselves in. That was the flow the owner described, the SQL for it had existed unused since 2026-07-30, and it was the last piece the product could not do. Platform-side franchise sales signals now render too. **v1.12 attacked the money paths and found six defects** (BUG-70 through BUG-75) — three ways a non-owner could take or rewrite money, a tech reading the ledger and the invite codes, a repayment silently dropped, and three functions live in no migration. All fixed and re-probed; all latent, because no franchise exists yet. What held up under attack: the three routing setters correctly require the parent's owner, every `set_config('app.allow_protected_org_write')` call is transaction-local, `tg_orgs_protect_platform_columns` covers all franchise columns, and a child owner cannot cut its royalty, self-unlink or seize payments (proven live — royalty stayed 8.00). **v1.13 closed the settlement-math pass** (BUG-76 through BUG-79): four more defects, three claims dismissed on evidence, and one of my own fixes caught wrong by the probe of the fix. Remaining: multi-org membership, drill-down, and royalty *delivery* | v1.6 |
 | BUILD-7 | 🟠 Part-built | 🟡 | Trial lifecycle built — and the finding was that **no organization had ever had a trial**, because `bootstrap_organization` never started one and nothing in the tenant app gated on billing status at all. New signups get the 14 days the site promises; expiry is a state and a banner, NOT a lock, because Stripe cannot take a payment yet. AI is paid-only (owner decision). Enforcement is one constant, flipped when Stripe lands. **v1.6:** an adversarial review found three ways a non-paying org still reached `paid` and kept the AI keys — see BUG-29. The state machine now reads both status columns and has a `lapsed` phase, because telling someone who cancelled a paid plan that their free trial ended reads as a product that lost track of what they bought | v1.6 |
