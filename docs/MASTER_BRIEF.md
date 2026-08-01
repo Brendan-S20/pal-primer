@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.19** · Released 2026-08-01 · Supersedes: v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.20** · Released 2026-08-01 · Supersedes: v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,67 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+### v1.20 — 2026-08-01
+
+**QA-P2 fixed, and a screenshot finding CORRECTED — including one I repeated
+and made worse.**
+
+**The screenshots are not a data leak.** v1.16 recorded, from the QA run, that
+`06b-my-day-mobile-390x844-full.png` exposed gate codes, customer names and
+street addresses, and I described it as effectively a break-in kit. Checked
+properly: every client in those images belongs to **Demo Pet Waste Co**, and
+22 of its 24 clients use `example.com`, `qa.invalid` or other reserved
+documentation domains, with no import source. It is seed data. There is no
+customer PII in any of it, nothing has ever been placed in the marketing repo
+(`HoundStack/public` holds only icons and the OG image), so nothing was ever
+exposed. The characterization was wrong and is withdrawn.
+
+**What the QA run actually missed is the opposite of what it reported.** It
+checked `06` and `06b` because those were the files it was asked about.
+`07-my-day-desktop-1440x900.png` — a NUMBERED shot, squarely in the intended
+marketing set — carries the same `Gate: 2244` and `Gate: #5500`. Acting on
+the QA report alone would have deleted the flagged file and published the
+unflagged one. The redundant `06b` has been removed; `06` is clean; **07 is
+still to be recaptured or cropped, and that is a marketing judgment, not a
+security fix** — showing an access code in a product screenshot invites "does
+your app show my gate code to anyone holding the tablet", whether or not the
+code is real.
+
+**One housekeeping item:** the demo org contains a client on
+`thenorth.consulting`, a real domain and the owner's own. It does not appear
+in any of the numbered shots, but it has 7 upcoming visits, so a future
+recapture could surface it.
+
+**QA-P2 — five redirect routes had nothing to render.**
+`/settings/payments` blank-rendered on roughly one cold load in four, with an
+unhandled `undefined` and React's `<MatchInnerImpl>` error. It is a pure
+alias — `beforeLoad` throws a redirect, nothing else — so it was written with
+no component. Five were. A route with no component gets the router's default,
+which renders an `<Outlet />`, and on a LEAF route that Outlet has nothing
+beneath it: the page is empty by construction the moment anything renders the
+match instead of redirecting.
+
+**This does NOT claim to have found the race.** It was intermittent, on a dev
+server, and is a timing interaction this environment has no browser to
+reproduce. What shipped makes the symptom impossible and recovers — the route
+renders a sentence, retries the navigation from the client, and offers a link
+— rather than guessing at a mechanism and calling a plausible edit a fix.
+
+The pattern already existed and had not been applied where it mattered:
+`platform.index` used `() => null` and `portal.$slug` an `<Outlet />`, and
+neither was reported blank. `() => null` is not enough — it silences the
+router error and still leaves a blank page.
+
+**It matters because of where it lands.** That stub exists to catch Stripe
+Connect onboarding return URLs, so the one in four hits someone coming back
+from Stripe mid-onboarding, deciding whether to trust us with their payouts,
+as a white screen with no message and no way forward.
+
+The test asserts the invariant rather than the incident — every route whose
+`beforeLoad` throws a redirect must declare a component — because that is
+checkable, it was violated five times, and the next alias will be written the
+way the last five were.
 
 ### v1.19 — 2026-08-01
 
@@ -274,8 +335,8 @@ NOT yet fixed, filed here so they are not rediscovered:
     against correct live data. On the screen a tech reads at a customer's
     fence, which is exactly where a false warning trains people to ignore a
     real one.
-  * **QA-P2 — `/settings/payments` blank-renders on roughly 1 in 4 cold
-    loads.** Observed on the dev server only. It matters because that stub
+  * ~~**QA-P2 — `/settings/payments` blank-renders on roughly 1 in 4 cold
+    loads.**~~ ✅ **FIXED in v1.20.** Observed on the dev server only. It matters because that stub
     exists to catch in-flight Stripe onboarding return URLs, so the failure
     lands on someone mid-onboarding.
 
@@ -287,7 +348,12 @@ Lovable's dev-only `componentTagger` and is absent from production builds.
 The raw-config-error leak into the sign-in form is real but only occurs in a
 deployment missing `SERVICE_ROLE_KEY`.
 
-**One screenshot must not ship.**
+**One screenshot must not ship.** *(CORRECTED in v1.20 — see that entry. The
+data is synthetic demo seed data, not customer PII, and nothing had reached
+the marketing repo. The characterization below overstated it. What the entry
+got RIGHT is that an access code should not appear in a published product
+image; what it missed is that `07-my-day-desktop` carries the same codes and
+was never checked.)*
 `06b-my-day-mobile-390x844-full.png` shows three access codes in the clear
 (`Gate: 2244`, `Gate: #5500`, `Lock box: 2580`) plus customer names and full
 street addresses. The 390×844 viewport variant was recaptured clean; this
