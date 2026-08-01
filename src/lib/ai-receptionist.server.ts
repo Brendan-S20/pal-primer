@@ -179,6 +179,29 @@ export async function runAiReceptionist(input: AiReceptionistInput): Promise<AiR
     const raw = (result.text ?? "").trim();
     const reply = raw ? raw.slice(0, maxLen) : null;
 
+    // BUILD-2. ONE action for the whole conversation turn, not one per model
+    // step — a customer cannot be told they were billed six times for one
+    // text. The TOKENS are summed across every step, because that is what the
+    // turn actually cost us, and the gap between the two is the number that
+    // tells us whether the receptionist's $49/mo is priced right.
+    //
+    // This is the call site the hard ceiling exists for: it is triggered by an
+    // inbound message, so nobody is watching, and a loop between two automated
+    // systems spends real money at machine speed.
+    void (async () => {
+      const [{ tokensFromAiSdkResult }, { recordAiUsage }] = await Promise.all([
+        import("@/lib/ai-usage"),
+        import("@/lib/ai-usage.server"),
+      ]);
+      await recordAiUsage({
+        orgId: input.organizationId,
+        feature: "ai_receptionist",
+        provider: "lovable-gateway",
+        model: MODEL_ID,
+        ...tokensFromAiSdkResult(result),
+      });
+    })().catch((e) => console.error("[receptionist] metering failed", e));
+
     return { reply, toolCalls, escalated, latencyMs, model: MODEL_ID, error: null };
   } catch (e: any) {
     return {

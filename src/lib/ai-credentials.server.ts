@@ -42,8 +42,35 @@ export async function resolveOrgAiConfig(_orgId: string): Promise<AiConfig | nul
   //
   // null still means what it always meant: the DEPLOYMENT has no key. That is
   // our problem, not the tenant's, and it keeps the wording it had.
-  const { checkAiAccess } = await import("@/lib/ai-access.server");
-  const { allowed, reason } = await checkAiAccess(_orgId);
+  const { clearAiCall } = await import("@/lib/ai-access.server");
+  const { allowed, reason } = await clearAiCall(_orgId);
   if (!allowed) throw new Error(reason ?? "AI features need a paid plan.");
   return resolveAiConfigFromEnv();
+}
+
+/**
+ * BUILD-2: resolve the config AND the metering context in one step.
+ *
+ * The two have to be resolved together or they disagree. `clearAiCall` is the
+ * read that decides whether this call is inside the allowance; recording that
+ * verdict on the usage row is what makes an overage line on an invoice
+ * traceable back to the individual calls that caused it. Resolving them
+ * separately means a second read, a different answer, and a bill nobody can
+ * reconcile.
+ *
+ * Every tenant-facing AI call site uses this. `resolveOrgAiConfig` remains for
+ * the one caller that genuinely has nothing to meter — the Settings health
+ * check, which spends 32 tokens proving our own configuration works.
+ */
+export async function resolveOrgAiCall(
+  orgId: string,
+  feature: import("@/lib/ai-usage").AiFeature,
+): Promise<{ config: AiConfig | null; meter: import("@/lib/ai.server").AiMeter }> {
+  const { clearAiCall } = await import("@/lib/ai-access.server");
+  const { allowed, reason, overAllowance } = await clearAiCall(orgId);
+  if (!allowed) throw new Error(reason ?? "AI features need a paid plan.");
+  return {
+    config: resolveAiConfigFromEnv(),
+    meter: { orgId, feature, overAllowance },
+  };
 }

@@ -26,6 +26,10 @@ export type Builder = PromiseLike<Result> & {
   eq: (k: string, v: unknown) => Builder;
   neq: (k: string, v: unknown) => Builder;
   in: (k: string, v: unknown[]) => Builder;
+  /** PostgREST `.is(col, null)` — IS NULL. Used by every conditional claim in
+   *  this codebase (`.is("billed_at", null)`, `.is("warned_at", null)`), which
+   *  is how a job that must run once proves it is the one running it. */
+  is: (k: string, v: null) => Builder;
   maybeSingle: () => Promise<Result>;
   single: () => Promise<Result>;
 };
@@ -57,7 +61,7 @@ export function createFakeAdmin(): Fake {
   const rpcImpls = new Map<string, (args: Record<string, unknown>) => unknown>();
 
   function builder(table: string): Builder {
-    const filters: Array<[string, "eq" | "neq" | "in", unknown]> = [];
+    const filters: Array<[string, "eq" | "neq" | "in" | "is", unknown]> = [];
     let op: "select" | "update" | "insert" | "upsert" = "select";
     let payload: Row | Row[] = {};
     let conflictKey: string | undefined;
@@ -69,7 +73,13 @@ export function createFakeAdmin(): Fake {
             ? r[k] === v
             : kind === "neq"
               ? r[k] !== v
-              : (v as unknown[]).includes(r[k]),
+              : kind === "is"
+                ? // `.is(col, null)` matches SQL NULL. A column absent from a
+                  // fixture row is null in the database's terms, so `?? null`
+                  // — otherwise a claim like `.is("billed_at", null)` matches
+                  // nothing and every "runs once" test passes vacuously.
+                  (r[k] ?? null) === v
+                : (v as unknown[]).includes(r[k]),
         ),
       );
 
@@ -115,6 +125,7 @@ export function createFakeAdmin(): Fake {
       eq: (k, v) => (filters.push([k, "eq", v]), api),
       neq: (k, v) => (filters.push([k, "neq", v]), api),
       in: (k, v) => (filters.push([k, "in", v]), api),
+      is: (k, v) => (filters.push([k, "is", v]), api),
       maybeSingle: async () => ({ data: matched()[0] ?? null, error: null }),
       single: async () => {
         const rows = matched();

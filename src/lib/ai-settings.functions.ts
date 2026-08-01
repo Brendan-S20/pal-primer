@@ -43,11 +43,7 @@ export const getOrgAiSettings = createServerFn({ method: "GET" })
     //
     // Still permission-gated: this reports on the org's paid service, so it
     // belongs behind manage_settings like the rest of the settings surface.
-    const { orgId } = await requirePermission(
-      context.supabase,
-      context.userId,
-      "manage_settings",
-    );
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
     const { checkAiAccess } = await import("@/lib/ai-access.server");
     const { allowed: planAllowsAi, reason: planReason } = await checkAiAccess(orgId);
 
@@ -57,10 +53,108 @@ export const getOrgAiSettings = createServerFn({ method: "GET" })
       toolsAvailable: !!process.env.ANTHROPIC_API_KEY,
       assistantAvailable: !!process.env.LOVABLE_API_KEY,
       model: DEFAULT_MODELS.anthropic,
-      /** Usage, allowance, and overage reporting arrive with BUILD-2. Saying so
-       *  explicitly beats rendering a zero that looks like a real measurement. */
-      meteringAvailable: false,
+      /** BUILD-2 shipped. The numbers come from getAiUsage(), which reads the
+       *  same ai_usage_state the request path enforces against. */
+      meteringAvailable: true,
     };
+  });
+
+/**
+ * BUILD-2 — where this organization stands against its AI allowance.
+ *
+ * Reads `ai_usage_state`, the SAME function the request path enforces against,
+ * plus the per-feature breakdown. Deriving the numbers a second way here is
+ * exactly how a settings page ends up telling an owner they have allowance
+ * left while the product refuses their next call.
+ *
+ * Gated on `manage_org_billing` rather than `manage_settings`: this is money
+ * owed, and it matches the RLS on the underlying tables.
+ */
+export const getAiUsage = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_org_billing",
+    );
+    const { readAiUsageState } = await import("@/lib/ai-usage.server");
+    const state = await readAiUsageState(orgId);
+    if (!state) return { available: false as const };
+
+    // What used it. The first question an owner asks about an unexpected line.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: rows } = await (
+      supabaseAdmin as never as {
+        from: (t: string) => {
+          select: (c: string) => {
+            eq: (
+              k: string,
+              v: unknown,
+            ) => {
+              eq: (k: string, v: unknown) => Promise<{ data: unknown[] | null }>;
+            };
+          };
+        };
+      }
+    )
+      .from("ai_usage_events")
+      .select("feature, actions, input_tokens, output_tokens")
+      .eq("organization_id", orgId)
+      .eq("period_month", state.periodMonth);
+
+    const byFeature = new Map<string, { actions: number; tokens: number }>();
+    for (const r of (rows ?? []) as Array<Record<string, number | string>>) {
+      const key = String(r.feature);
+      const e = byFeature.get(key) ?? { actions: 0, tokens: 0 };
+      e.actions += Number(r.actions ?? 0);
+      e.tokens += Number(r.input_tokens ?? 0) + Number(r.output_tokens ?? 0);
+      byFeature.set(key, e);
+    }
+
+    const { organizationsHardCapMultiplier } = await import("@/lib/ai-usage.server");
+    return {
+      available: true as const,
+      ...state,
+      hardCapMultiplier: await organizationsHardCapMultiplier(orgId),
+      breakdown: [...byFeature.entries()]
+        .map(([feature, v]) => ({ feature, ...v }))
+        .sort((a, b) => b.actions - a.actions),
+    };
+  });
+
+/**
+ * BUILD-2 — move the ceiling.
+ *
+ * The owner's control over their own exposure. Constrained to the same range
+ * the CHECK constraint enforces, and refused below 1.0 in both places: a
+ * ceiling under the allowance would pause AI the org has already paid for,
+ * which is a worse outcome than the surprise bill it is meant to prevent.
+ */
+export const setAiHardCapMultiplier = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator(z.object({ multiplier: z.number().min(1).max(100) }))
+  .handler(async ({ context, data }) => {
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_org_billing",
+    );
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await (
+      supabaseAdmin as never as {
+        from: (t: string) => {
+          update: (p: Record<string, unknown>) => {
+            eq: (k: string, v: unknown) => Promise<{ error: unknown }>;
+          };
+        };
+      }
+    )
+      .from("organizations")
+      .update({ ai_hard_cap_multiplier: data.multiplier })
+      .eq("id", orgId);
+    if (error) throw new Error("Could not update the AI ceiling.");
+    return { ok: true as const, multiplier: data.multiplier };
   });
 
 /** Health check: a tiny structured call on the platform key, so a revoked or
@@ -92,8 +186,17 @@ export const testOrgAiKey = createServerFn({ method: "POST" })
         label: "AI health check",
         prompt: "Respond with status set to the string ok.",
         schema: z.object({ status: z.string() }),
-        jsonSchema: { type: "object", properties: { status: { type: "string" } }, required: ["status"] },
+        jsonSchema: {
+          type: "object",
+          properties: { status: { type: "string" } },
+          required: ["status"],
+        },
         maxTokens: 32,
+        // BUILD-2: recorded, but with actions = 0 (UNBILLED_FEATURES). This is
+        // OUR diagnostic — billing a customer's allowance for us proving our
+        // own key works is indefensible — but a call that leaves no trace at
+        // all is indistinguishable from a meter that missed it.
+        meter: { orgId, feature: "connection_test" },
       });
       return { ok: true as const, provider: config.provider, model: config.model };
     } catch (e) {

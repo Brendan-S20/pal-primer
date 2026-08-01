@@ -620,6 +620,115 @@ export type Database = {
           },
         ]
       }
+      ai_usage_events: {
+        Row: {
+          actions: number
+          cost_micros: number
+          created_at: string
+          feature: string
+          id: string
+          input_tokens: number
+          model: string | null
+          occurred_at: string
+          organization_id: string
+          output_tokens: number
+          over_allowance: boolean
+          period_month: string
+          provider: string
+        }
+        Insert: {
+          actions?: number
+          cost_micros?: number
+          created_at?: string
+          feature: string
+          id?: string
+          input_tokens?: number
+          model?: string | null
+          occurred_at?: string
+          organization_id: string
+          output_tokens?: number
+          over_allowance?: boolean
+          period_month: string
+          provider: string
+        }
+        Update: {
+          actions?: number
+          cost_micros?: number
+          created_at?: string
+          feature?: string
+          id?: string
+          input_tokens?: number
+          model?: string | null
+          occurred_at?: string
+          organization_id?: string
+          output_tokens?: number
+          over_allowance?: boolean
+          period_month?: string
+          provider?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_usage_periods: {
+        Row: {
+          actions: number
+          billed_actions: number | null
+          billed_at: string | null
+          billed_cents: number | null
+          cost_micros: number
+          input_tokens: number
+          organization_id: string
+          output_tokens: number
+          period_month: string
+          stripe_invoice_item_id: string | null
+          updated_at: string
+          warned_at: string | null
+        }
+        Insert: {
+          actions?: number
+          billed_actions?: number | null
+          billed_at?: string | null
+          billed_cents?: number | null
+          cost_micros?: number
+          input_tokens?: number
+          organization_id: string
+          output_tokens?: number
+          period_month: string
+          stripe_invoice_item_id?: string | null
+          updated_at?: string
+          warned_at?: string | null
+        }
+        Update: {
+          actions?: number
+          billed_actions?: number | null
+          billed_at?: string | null
+          billed_cents?: number | null
+          cost_micros?: number
+          input_tokens?: number
+          organization_id?: string
+          output_tokens?: number
+          period_month?: string
+          stripe_invoice_item_id?: string | null
+          updated_at?: string
+          warned_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_periods_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       app_notification_prefs: {
         Row: {
           muted_types: string[]
@@ -2661,6 +2770,7 @@ export type Database = {
         Row: {
           active_client_count: number
           active_seat_count: number
+          ai_hard_cap_multiplier: number
           ai_receptionist_enabled: boolean
           ai_receptionist_faq: string | null
           ai_receptionist_persona: string | null
@@ -2682,6 +2792,7 @@ export type Database = {
           current_period_end: string | null
           deleted_at: string | null
           digest_recipient_email: string | null
+          disputes_in_analytics: boolean
           dunning_pause_after_failures: number
           dunning_retry_days: number[]
           email_verified_at: string | null
@@ -2765,6 +2876,7 @@ export type Database = {
         Insert: {
           active_client_count?: number
           active_seat_count?: number
+          ai_hard_cap_multiplier?: number
           ai_receptionist_enabled?: boolean
           ai_receptionist_faq?: string | null
           ai_receptionist_persona?: string | null
@@ -2786,6 +2898,7 @@ export type Database = {
           current_period_end?: string | null
           deleted_at?: string | null
           digest_recipient_email?: string | null
+          disputes_in_analytics?: boolean
           dunning_pause_after_failures?: number
           dunning_retry_days?: number[]
           email_verified_at?: string | null
@@ -2869,6 +2982,7 @@ export type Database = {
         Update: {
           active_client_count?: number
           active_seat_count?: number
+          ai_hard_cap_multiplier?: number
           ai_receptionist_enabled?: boolean
           ai_receptionist_faq?: string | null
           ai_receptionist_persona?: string | null
@@ -2890,6 +3004,7 @@ export type Database = {
           current_period_end?: string | null
           deleted_at?: string | null
           digest_recipient_email?: string | null
+          disputes_in_analytics?: boolean
           dunning_pause_after_failures?: number
           dunning_retry_days?: number[]
           email_verified_at?: string | null
@@ -3500,6 +3615,8 @@ export type Database = {
       }
       platform_plans: {
         Row: {
+          ai_actions_included: number | null
+          ai_overage_cents_per_action: number | null
           annual_price_cents: number | null
           client_limit_max: number | null
           client_limit_min: number
@@ -3527,6 +3644,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ai_actions_included?: number | null
+          ai_overage_cents_per_action?: number | null
           annual_price_cents?: number | null
           client_limit_max?: number | null
           client_limit_min: number
@@ -3554,6 +3673,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ai_actions_included?: number | null
+          ai_overage_cents_per_action?: number | null
           annual_price_cents?: number | null
           client_limit_max?: number | null
           client_limit_min?: number
@@ -5514,6 +5635,19 @@ export type Database = {
         Args: { _org_id: string }
         Returns: number
       }
+      ai_usage_state: {
+        Args: { _org_id: string }
+        Returns: {
+          actions_included: number
+          actions_used: number
+          hard_cap_actions: number
+          over_allowance: boolean
+          over_hard_cap: boolean
+          overage_cents: number
+          overage_cents_per_action: number
+          period_month: string
+        }[]
+      }
       apply_credit_to_invoice: { Args: { _invoice_id: string }; Returns: Json }
       apply_referral_code: {
         Args: { _code: string; _new_client_id: string }
@@ -5629,7 +5763,6 @@ export type Database = {
       }
       detect_review_items: { Args: { _org_id?: string }; Returns: number }
       email_has_account: { Args: { _email: string }; Returns: boolean }
-      email_queue_dispatch: { Args: never; Returns: undefined }
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
@@ -5648,6 +5781,41 @@ export type Database = {
       finalize_visit_completion: {
         Args: { _visit_id: string }
         Returns: undefined
+      }
+      franchise_adjustment_ledger: {
+        Args: { _org_id: string }
+        Returns: {
+          amount_cents: number
+          child_name: string
+          child_organization_id: string
+          collected_by_parent: boolean
+          created_at: string
+          dispute_ref: string
+          franchise_share_cents: number
+          id: string
+          kind: string
+          location_share_cents: number
+          note: string
+          payment_id: string
+          repaid_amount_cents: number
+          repaid_at: string
+          repaid_settlement_id: string
+          repaid_settlement_period_end: string
+          repaid_settlement_period_start: string
+          repaid_settlement_status: string
+          repays_adjustment_id: string
+          repays_amount_cents: number
+          repays_created_at: string
+          repays_settlement_period_end: string
+          repays_settlement_period_start: string
+          reversed_at: string
+          reversed_by_adjustment_id: string
+          settlement_id: string
+          settlement_period_end: string
+          settlement_period_start: string
+          settlement_status: string
+          status: string
+        }[]
       }
       franchise_children: {
         Args: { _parent_org: string }
@@ -5716,7 +5884,11 @@ export type Database = {
         Returns: string
       }
       generate_visits_core: {
-        Args: { _org_id: string; _through: string }
+        Args: { _org_id: string; _subscription_id?: string; _through: string }
+        Returns: number
+      }
+      generate_visits_for_subscription: {
+        Args: { _org_id: string; _subscription_id: string; _through: string }
         Returns: number
       }
       generate_visits_through: {
@@ -5784,6 +5956,16 @@ export type Database = {
           user_id: string
         }[]
       }
+      log_dna_sample_from_field: {
+        Args: {
+          _location_note?: string
+          _sample_kind?: string
+          _sample_photo_path?: string
+          _unit_id?: string
+          _visit_id: string
+        }
+        Returns: string
+      }
       log_station_service: {
         Args: {
           _bags_collected?: number
@@ -5845,20 +6027,6 @@ export type Database = {
       org_seat_overage_cents: { Args: { _org_id: string }; Returns: number }
       phone_digits: { Args: { _p: string }; Returns: string }
       plan_tier_for_org: { Args: { _org_id: string }; Returns: string }
-      platform_org_stats: {
-        Args: never
-        Returns: {
-          active_clients: number
-          ar_open_cents: number
-          billing_tier: string
-          created_at: string
-          organization_id: string
-          organization_name: string
-          plan_status: string
-          revenue_mtd_cents: number
-          users_count: number
-        }[]
-      }
       portal_cancel_addon: {
         Args: { _addon_subscription_id: string; _token: string }
         Returns: undefined
@@ -6203,16 +6371,14 @@ export type Database = {
         Args: { _active: boolean; _staff_id: string }
         Returns: undefined
       }
-      skip_visit:
-        | { Args: { _reason: string; _visit_id: string }; Returns: undefined }
-        | {
-            Args: {
-              _code?: Database["public"]["Enums"]["skip_reason_code"]
-              _reason: string
-              _visit_id: string
-            }
-            Returns: undefined
-          }
+      skip_visit: {
+        Args: {
+          _code?: Database["public"]["Enums"]["skip_reason_code"]
+          _reason: string
+          _visit_id: string
+        }
+        Returns: undefined
+      }
       slugify: { Args: { _txt: string }; Returns: string }
       start_visit: { Args: { _visit_id: string }; Returns: undefined }
       unlink_franchise_child: {

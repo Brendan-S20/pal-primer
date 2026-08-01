@@ -216,7 +216,40 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           summary.push(perOrg);
         }
 
-        return json({ ok: true, ran_at: new Date().toISOString(), orgs: summary });
+        // BUILD-2: bill last month's AI overage. Runs once, AFTER the per-org
+        // loop, because it is driven by the usage rollup rather than by the
+        // org list — an org with no usage rows has nothing to bill, and
+        // iterating every org to discover that would be the slow way round.
+        //
+        // Outside the loop's try/catch as well: a failure here must not be
+        // attributed to whichever org happened to be last, and the run's own
+        // summary is where an operator looks for "did anyone get billed".
+        let aiOverage: Record<string, unknown>;
+        try {
+          const { runAiOverageBilling } = await import("@/lib/ai-overage-billing.server");
+          const r = await runAiOverageBilling();
+          aiOverage = {
+            billed: r.billed,
+            cents_total: r.centsTotal,
+            // The reasons, counted. A run that skips everything for the same
+            // reason every night is a broken run wearing a green summary.
+            skipped_reasons: r.outcomes.reduce<Record<string, number>>((acc, o) => {
+              if ("skipped" in o)
+                acc[o.skipped.split(":")[0]] = (acc[o.skipped.split(":")[0]] ?? 0) + 1;
+              return acc;
+            }, {}),
+          };
+        } catch (e) {
+          console.error("[nightly] ai overage billing failed", e);
+          aiOverage = { error: (e as Error).message };
+        }
+
+        return json({
+          ok: true,
+          ran_at: new Date().toISOString(),
+          orgs: summary,
+          ai_overage: aiOverage,
+        });
       },
     },
   },

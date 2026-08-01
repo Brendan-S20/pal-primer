@@ -70,6 +70,8 @@ export const getAdvisorInsights = createServerFn({ method: "POST" })
     // model is unreachable, and it does so silently — right for an email that
     // must go out regardless, wrong for a screen that would otherwise imply an
     // AI read the business. It reports which one ran.
-    const insights = await generateDigestInsights(metrics);
+    // BUILD-2: the Advisor is its own line on the usage breakdown — the
+    // owner asked for this one, unlike the weekly digest.
+    const insights = await generateDigestInsights(metrics, "business_advisor");
     return { insights, aiGenerated: insights.aiGenerated, windowDays: data.windowDays };
   });

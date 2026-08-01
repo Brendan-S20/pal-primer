@@ -1,8 +1,14 @@
 // BUILD-7 — the one gate on whether an organization may use AI.
 //
-// Owner decision: AI is paid-only. It runs on HoundStack's own keys and there
-// is no usage metering yet (BUILD-2, blocked on Stripe), so a trial with AI is
-// unbounded spend on our account with nothing in place to notice it.
+// Owner decision: AI is paid-only. It runs on HoundStack's own keys, so before
+// BUILD-2 a trial with AI was unbounded spend on our account with nothing in
+// place to notice it.
+//
+// BUILD-2 added the second half. This module now answers two questions, not
+// one: MAY they (plan, cached) and CAN THEY AFFORD IT (budget, never cached).
+// `clearAiCall` composes both, and `requireAiAccess` / `orgMayUseAi` — the two
+// functions all three doors already called — go through it, so the ceiling
+// reaches every door without any call site being asked to remember it.
 //
 // ── WHY THIS IS ITS OWN MODULE ─────────────────────────────────────────────
 //
@@ -84,14 +90,45 @@ export async function checkAiAccess(orgId: string): Promise<AiAccess> {
   return { allowed, reason };
 }
 
+/**
+ * May this organization call the model right now?
+ *
+ * `checkAiAccess` answers the PLAN question and is cached for a minute.
+ * BUILD-2's budget question cannot be cached — it changes with every call, and
+ * a minute of an automated loop past the ceiling is the exact spend the
+ * ceiling exists to prevent. So the two are separate reads, composed here.
+ *
+ * Order matters: the plan check runs first and is the cheap cached one, so an
+ * org with no AI at all never reaches the database for a budget it cannot
+ * spend.
+ *
+ * The returned `overAllowance` is passed through to `recordAiUsage` by callers
+ * that meter, so the event row records whether that particular call was inside
+ * the allowance or billable as overage.
+ */
+export type AiClearance = { allowed: boolean; reason: string | null; overAllowance: boolean };
+
+export async function clearAiCall(orgId: string): Promise<AiClearance> {
+  const plan = await checkAiAccess(orgId);
+  if (!plan.allowed) {
+    return { allowed: false, reason: plan.reason, overAllowance: false };
+  }
+  const { checkAiBudget } = await import("@/lib/ai-usage.server");
+  return await checkAiBudget(orgId);
+}
+
 /** Throwing form, for call sites that surface an error to a person. */
 export async function requireAiAccess(orgId: string): Promise<void> {
-  const { allowed, reason } = await checkAiAccess(orgId);
+  const { allowed, reason } = await clearAiCall(orgId);
   if (!allowed) throw new Error(reason ?? "AI features need a paid plan.");
 }
 
 /** Boolean form, for unattended jobs that must skip quietly rather than throw
- *  — a cron that raises on every trial org would bury its real errors. */
+ *  — a cron that raises on every trial org would bury its real errors.
+ *
+ *  This is the form the receptionist and the digest use, which makes it the
+ *  one that matters most for BUILD-2: they are the callers with no human to
+ *  notice the bill, so they are the ones the ceiling has to stop. */
 export async function orgMayUseAi(orgId: string): Promise<boolean> {
-  return (await checkAiAccess(orgId)).allowed;
+  return (await clearAiCall(orgId)).allowed;
 }

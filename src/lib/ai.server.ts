@@ -28,6 +28,21 @@ export interface AiConfig {
   model: string;
 }
 
+/** BUILD-2. Who to bill and what for.
+ *
+ *  Optional, because two callers legitimately have no org: the Settings health
+ *  check before an org exists, and any future platform-side use. Absent means
+ *  "not metered", which is only ever correct when there is nobody to meter —
+ *  every tenant-facing call site passes it, and tests/ai-metering.test.ts is
+ *  what stops a new one from quietly not. */
+export interface AiMeter {
+  orgId: string;
+  feature: import("@/lib/ai-usage").AiFeature;
+  /** From clearAiCall — recorded on the event so an overage line is traceable
+   *  to the individual calls that caused it. */
+  overAllowance?: boolean;
+}
+
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
@@ -45,7 +60,11 @@ export const DEFAULT_MODELS: Record<AiProvider, string> = {
 export function resolveAiConfigFromEnv(): AiConfig | null {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return null;
-  return { provider: "anthropic", apiKey: key, model: process.env.ANTHROPIC_MODEL || DEFAULT_MODELS.anthropic };
+  return {
+    provider: "anthropic",
+    apiKey: key,
+    model: process.env.ANTHROPIC_MODEL || DEFAULT_MODELS.anthropic,
+  };
 }
 
 function sleep(ms: number) {
@@ -68,11 +87,53 @@ function requireConfig(label: string, config: AiConfig | null): AiConfig {
   return config;
 }
 
-async function callProvider(label: string, config: AiConfig, body: Record<string, unknown>): Promise<any> {
+/**
+ * BUILD-2: the one place a Path-A response body exists in full, and therefore
+ * the one place its token counts can be read.
+ *
+ * Metering happens HERE rather than in the two public functions because both
+ * of them go through this, and a meter attached to the callers is a meter the
+ * third caller forgets. It runs only on a SUCCESSFUL response: a request that
+ * was rejected or that ran out of retries spent nothing the customer asked for,
+ * and billing for a failure we could not deliver is not defensible.
+ *
+ * `void`, not `await`. The customer's result must not wait on our bookkeeping,
+ * and recordAiUsage never throws.
+ */
+function meter(meterOpts: AiMeter | undefined, config: AiConfig, body: unknown): void {
+  if (!meterOpts) return;
+  void (async () => {
+    const [{ tokensFromResponse }, { recordAiUsage }] = await Promise.all([
+      import("@/lib/ai-usage"),
+      import("@/lib/ai-usage.server"),
+    ]);
+    const { inputTokens, outputTokens } = tokensFromResponse(body);
+    await recordAiUsage({
+      orgId: meterOpts.orgId,
+      feature: meterOpts.feature,
+      provider: config.provider,
+      model: config.model,
+      inputTokens,
+      outputTokens,
+      overAllowance: meterOpts.overAllowance,
+    });
+  })().catch((e) => console.error("[ai] metering failed", meterOpts.feature, e));
+}
+
+async function callProvider(
+  label: string,
+  config: AiConfig,
+  body: Record<string, unknown>,
+  meterOpts?: AiMeter,
+): Promise<any> {
   const isAnthropic = config.provider === "anthropic";
   const url = isAnthropic ? ANTHROPIC_URL : OPENAI_URL;
   const headers: Record<string, string> = isAnthropic
-    ? { "content-type": "application/json", "x-api-key": config.apiKey, "anthropic-version": ANTHROPIC_VERSION }
+    ? {
+        "content-type": "application/json",
+        "x-api-key": config.apiKey,
+        "anthropic-version": ANTHROPIC_VERSION,
+      }
     : { "content-type": "application/json", authorization: `Bearer ${config.apiKey}` };
 
   let lastErr: unknown;
@@ -80,7 +141,11 @@ async function callProvider(label: string, config: AiConfig, body: Record<string
     if (attempt > 0) await sleep(500 * 2 ** attempt);
     let res: Response;
     try {
-      res = await fetch(url, { method: "POST", headers, body: JSON.stringify({ model: config.model, ...body }) });
+      res = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ model: config.model, ...body }),
+      });
     } catch (err) {
       lastErr = err; // network hiccup — retry
       continue;
@@ -91,14 +156,25 @@ async function callProvider(label: string, config: AiConfig, body: Record<string
     }
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
-      console.error(`[ai] ${label} request rejected`, config.provider, res.status, detail.slice(0, 1000));
+      console.error(
+        `[ai] ${label} request rejected`,
+        config.provider,
+        res.status,
+        detail.slice(0, 1000),
+      );
       const hint = res.status === 401 ? " (check your API key in Settings → AI)" : "";
       throw new AiGenerationError(label, `The AI request was rejected (${res.status})${hint}.`);
     }
-    return await res.json();
+    const json = await res.json();
+    meter(meterOpts, config, json);
+    return json;
   }
   console.error(`[ai] ${label} unavailable after retries`, config.provider, lastErr);
-  throw new AiGenerationError(label, "The AI service is unavailable right now. Try again in a minute.", lastErr);
+  throw new AiGenerationError(
+    label,
+    "The AI service is unavailable right now. Try again in a minute.",
+    lastErr,
+  );
 }
 
 /**
@@ -114,58 +190,82 @@ export async function generateStructured<T>(opts: {
   schema: z.ZodType<T>;
   jsonSchema: JsonSchema;
   maxTokens?: number;
+  /** BUILD-2. Omit ONLY when there is no organization to attribute the call to. */
+  meter?: AiMeter;
 }): Promise<T> {
   const config = requireConfig(opts.label, opts.config);
   const maxTokens = opts.maxTokens ?? 4096;
 
   let rawInput: unknown;
   if (config.provider === "anthropic") {
-    const data = await callProvider(opts.label, config, {
-      max_tokens: maxTokens,
-      tools: [
-        {
-          name: "emit_result",
-          description: "Emit the final structured result. Always call this exactly once.",
-          input_schema: opts.jsonSchema,
-        },
-      ],
-      tool_choice: { type: "tool", name: "emit_result" },
-      messages: [{ role: "user", content: opts.prompt }],
-    });
+    const data = await callProvider(
+      opts.label,
+      config,
+      {
+        max_tokens: maxTokens,
+        tools: [
+          {
+            name: "emit_result",
+            description: "Emit the final structured result. Always call this exactly once.",
+            input_schema: opts.jsonSchema,
+          },
+        ],
+        tool_choice: { type: "tool", name: "emit_result" },
+        messages: [{ role: "user", content: opts.prompt }],
+      },
+      opts.meter,
+    );
     if (data?.stop_reason === "max_tokens") {
       console.error(`[ai] ${opts.label} hit max_tokens — output truncated`);
-      throw new AiGenerationError(opts.label, "The AI response was cut off before completing. Try a smaller batch.");
+      throw new AiGenerationError(
+        opts.label,
+        "The AI response was cut off before completing. Try a smaller batch.",
+      );
     }
     const toolUse = (data?.content ?? []).find((b: any) => b?.type === "tool_use");
     if (!toolUse) {
-      console.error(`[ai] ${opts.label} returned no tool_use block`, JSON.stringify(data?.content ?? []).slice(0, 1000));
+      console.error(
+        `[ai] ${opts.label} returned no tool_use block`,
+        JSON.stringify(data?.content ?? []).slice(0, 1000),
+      );
       throw new AiGenerationError(opts.label, "The AI returned no structured result.");
     }
     rawInput = toolUse.input;
   } else {
-    const data = await callProvider(opts.label, config, {
-      max_tokens: maxTokens,
-      tools: [
-        {
-          type: "function",
-          function: {
-            name: "emit_result",
-            description: "Emit the final structured result. Always call this exactly once.",
-            parameters: opts.jsonSchema,
+    const data = await callProvider(
+      opts.label,
+      config,
+      {
+        max_tokens: maxTokens,
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "emit_result",
+              description: "Emit the final structured result. Always call this exactly once.",
+              parameters: opts.jsonSchema,
+            },
           },
-        },
-      ],
-      tool_choice: { type: "function", function: { name: "emit_result" } },
-      messages: [{ role: "user", content: opts.prompt }],
-    });
+        ],
+        tool_choice: { type: "function", function: { name: "emit_result" } },
+        messages: [{ role: "user", content: opts.prompt }],
+      },
+      opts.meter,
+    );
     const choice = data?.choices?.[0];
     if (choice?.finish_reason === "length") {
       console.error(`[ai] ${opts.label} hit token limit — output truncated`);
-      throw new AiGenerationError(opts.label, "The AI response was cut off before completing. Try a smaller batch.");
+      throw new AiGenerationError(
+        opts.label,
+        "The AI response was cut off before completing. Try a smaller batch.",
+      );
     }
     const call = choice?.message?.tool_calls?.[0]?.function?.arguments;
     if (!call) {
-      console.error(`[ai] ${opts.label} returned no function call`, JSON.stringify(choice ?? {}).slice(0, 1000));
+      console.error(
+        `[ai] ${opts.label} returned no function call`,
+        JSON.stringify(choice ?? {}).slice(0, 1000),
+      );
       throw new AiGenerationError(opts.label, "The AI returned no structured result.");
     }
     try {
@@ -193,26 +293,38 @@ export async function generateAiText(opts: {
   label: string;
   prompt: string;
   maxTokens?: number;
+  /** BUILD-2. Omit ONLY when there is no organization to attribute the call to. */
+  meter?: AiMeter;
 }): Promise<string> {
   const config = requireConfig(opts.label, opts.config);
   const maxTokens = opts.maxTokens ?? 2048;
 
   let text = "";
   if (config.provider === "anthropic") {
-    const data = await callProvider(opts.label, config, {
-      max_tokens: maxTokens,
-      messages: [{ role: "user", content: opts.prompt }],
-    });
+    const data = await callProvider(
+      opts.label,
+      config,
+      {
+        max_tokens: maxTokens,
+        messages: [{ role: "user", content: opts.prompt }],
+      },
+      opts.meter,
+    );
     text = (data?.content ?? [])
       .filter((b: any) => b?.type === "text")
       .map((b: any) => b.text)
       .join("\n")
       .trim();
   } else {
-    const data = await callProvider(opts.label, config, {
-      max_tokens: maxTokens,
-      messages: [{ role: "user", content: opts.prompt }],
-    });
+    const data = await callProvider(
+      opts.label,
+      config,
+      {
+        max_tokens: maxTokens,
+        messages: [{ role: "user", content: opts.prompt }],
+      },
+      opts.meter,
+    );
     text = (data?.choices?.[0]?.message?.content ?? "").trim();
   }
   if (!text) {

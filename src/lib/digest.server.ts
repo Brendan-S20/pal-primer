@@ -90,7 +90,6 @@ function orgLocalDate(ms: number, tz: string): string {
   return orgLocalDay(ms, tz);
 }
 
-
 export async function computeDigestMetrics(
   orgId: string,
   windowDays: AdvisorWindowDays = 7,
@@ -321,7 +320,16 @@ export interface DigestInsights {
   aiGenerated: boolean;
 }
 
-export async function generateDigestInsights(m: DigestMetrics): Promise<DigestInsights> {
+/**
+ * @param feature BUILD-2: which allowance this call spends. The same analysis
+ *   engine backs the weekly digest and the on-demand Business Advisor, and an
+ *   owner asking "what used my allowance" deserves the two told apart —
+ *   especially since one of them fires from cron without being asked.
+ */
+export async function generateDigestInsights(
+  m: DigestMetrics,
+  feature: import("@/lib/ai-usage").AiFeature = "weekly_digest",
+): Promise<DigestInsights> {
   const key = process.env.LOVABLE_API_KEY;
   const fallback: DigestInsights = {
     aiGenerated: false,
@@ -380,7 +388,7 @@ export async function generateDigestInsights(m: DigestMetrics): Promise<DigestIn
       .filter(Boolean)
       .join("\n");
 
-    const { experimental_output } = (await generateText({
+    const result = (await generateText({
       model: gateway(MODEL_ID),
       prompt,
       experimental_output: Output.object({
@@ -391,6 +399,25 @@ export async function generateDigestInsights(m: DigestMetrics): Promise<DigestIn
         }),
       }),
     } as any)) as any;
+    const { experimental_output } = result;
+
+    // BUILD-2. After the call, so a provider failure that drops into the
+    // deterministic fallback below spends no allowance — the org got
+    // arithmetic, not analysis, and billing for that would be charging for the
+    // thing we failed to deliver.
+    void (async () => {
+      const [{ tokensFromAiSdkResult }, { recordAiUsage }] = await Promise.all([
+        import("@/lib/ai-usage"),
+        import("@/lib/ai-usage.server"),
+      ]);
+      await recordAiUsage({
+        orgId: m.orgId,
+        feature,
+        provider: "lovable-gateway",
+        model: MODEL_ID,
+        ...tokensFromAiSdkResult(result),
+      });
+    })().catch((e) => console.error("[digest] metering failed", e));
 
     if (experimental_output) {
       return {
