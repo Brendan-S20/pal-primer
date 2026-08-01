@@ -185,10 +185,31 @@ function writeNow(queryClient: QueryClient, userId: string): void {
     return;
   }
 
+  // ── savedAt is when the DATA was fetched, not when this file was written ──
+  //
+  // It used to be Date.now(). Restoring a store immediately re-persists it
+  // (ensureReadCachePersistence: restore() then writeNow()), so every launch
+  // re-stamped savedAt — and a device that is OPENED never aged. The 3-day
+  // maximum measured "time since the app was last opened", which for a tech who
+  // opens it every morning in a dead zone is always ~0, so the branch that
+  // deletes a stale store was unreachable. The documented guarantee — a device
+  // that has sat in a drawer comes back with nothing to show — held only for a
+  // device nobody touched.
+  //
+  // The newest dataUpdatedAt across the persisted queries is the real answer:
+  // it survives a restore-and-rewrite unchanged, because hydrate() carries it,
+  // so age now advances even while the app is used offline.
+  const newestFetch = queries.reduce((max, q) => {
+    const at = (q as { state?: { dataUpdatedAt?: number } }).state?.dataUpdatedAt;
+    return typeof at === "number" && Number.isFinite(at) && at > max ? at : max;
+  }, 0);
+
   const envelope: ReadCacheEnvelope = {
     version: READ_CACHE_VERSION,
     userId,
-    savedAt: Date.now(),
+    // Fall back to now only if nothing carried a fetch time — a store with no
+    // measurable age should expire on schedule, not live for ever.
+    savedAt: newestFetch > 0 ? newestFetch : Date.now(),
     state: { mutations: [], queries },
   };
 

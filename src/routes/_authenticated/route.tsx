@@ -10,6 +10,7 @@ import { useEffect } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import {
+  clearPersistedReadCaches,
   ensureReadCachePersistence,
   readLastUser,
   signOutAndClearDevice,
@@ -39,7 +40,23 @@ export const Route = createFileRoute("/_authenticated")({
   beforeLoad: async ({ context }) => {
     const online = typeof navigator === "undefined" || navigator.onLine !== false;
     const identity = await resolveIdentity(online);
-    if (!identity) throw redirect({ to: "/auth" });
+    if (!identity.ok) {
+      // A REJECTED identity has to take the device copy with it.
+      //
+      // Revoking a session server-side (a tech leaves, an account is disabled)
+      // did not reach the device: this redirect fires before
+      // ensureReadCachePersistence below, so the onAuthStateChange SIGNED_OUT
+      // backstop registered in there was never armed on that boot, and nothing
+      // else sweeps at launch. The previous tech's route — addresses, gate
+      // codes, lock box codes, access notes — stayed readable in localStorage
+      // on the crew tablet until someone happened to sign out through the app.
+      //
+      // Only on `rejected`. A failure we could not reach the network to make
+      // means we do not know anything, and deleting the day then would erase
+      // the tech's route exactly when they need it most.
+      if (identity.rejected) clearPersistedReadCaches();
+      throw redirect({ to: "/auth" });
+    }
 
     // Put this user's persisted reads back into the query cache before anything
     // asks it a question. On a cold offline launch the ensureQueryData below
@@ -100,24 +117,33 @@ export const Route = createFileRoute("/_authenticated")({
  * the auth server), and they grant nothing but a read of data already on this
  * device; every server call still needs a real token.
  */
-async function resolveIdentity(
-  online: boolean,
-): Promise<{ userId: string; user: User | null } | null> {
+type IdentityResult =
+  | { ok: true; userId: string; user: User | null }
+  /** `rejected` distinguishes "the server said no" from "we could not ask".
+   *  Only the first should wipe the device — wiping on the second would delete
+   *  the tech's day every time they open the app in a dead zone, which is the
+   *  case this whole feature exists for. */
+  | { ok: false; rejected: boolean };
+
+async function resolveIdentity(online: boolean): Promise<IdentityResult> {
   let authError: unknown = null;
   try {
     const { data, error } = await supabase.auth.getUser();
-    if (data?.user) return { userId: data.user.id, user: data.user };
+    if (data?.user) return { ok: true, userId: data.user.id, user: data.user };
     authError = error;
   } catch (e) {
     authError = e;
   }
-  if (!isOfflineAuthFailure(authError, { online })) return null;
+  // Not a transport failure: the server answered, and the answer was no.
+  if (!isOfflineAuthFailure(authError, { online })) return { ok: false, rejected: true };
 
   // Local read of the persisted session — no network, still authoritative
   // about which account this device belongs to.
   try {
     const { data } = await supabase.auth.getSession();
-    if (data.session?.user) return { userId: data.session.user.id, user: data.session.user };
+    if (data.session?.user) {
+      return { ok: true, userId: data.session.user.id, user: data.session.user };
+    }
   } catch {
     /* fall through to the pointer below */
   }
@@ -127,7 +153,9 @@ async function resolveIdentity(
   // The pointer is written only on a verified sign-in and deleted on sign-out,
   // so it can only name a user whose session is still on this device.
   const lastUser = readLastUser();
-  return lastUser ? { userId: lastUser, user: null } : null;
+  return lastUser
+    ? { ok: true, userId: lastUser, user: null }
+    : { ok: false, rejected: false };
 }
 
 function openPalette() {

@@ -239,7 +239,11 @@ describe("telling the tech the data is old", () => {
     expect(formatCacheAge(HOUR)).toBe("1 hr ago");
     expect(formatCacheAge(23 * HOUR + 59 * 60_000)).toBe("23 hr ago");
     expect(formatCacheAge(25 * HOUR)).toBe("1 day ago");
-    expect(formatCacheAge(-5)).toBe("just now");
+    // A negative age means the device clock moved backward since the fetch.
+    // This used to assert "just now" — the most reassuring thing the banner
+    // could possibly say about data whose age is unknown, and the assertion
+    // that made the misreport look intentional.
+    expect(formatCacheAge(-5)).toBe("at an unknown time");
   });
 });
 
@@ -426,5 +430,73 @@ describe("the store on a shared device", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+});
+
+// ── three ways the device could lie about how old its copy was ─────────────
+//
+// All three shipped in v1.7 and all three failed OPEN: the stale copy looked
+// current, which is the exact outcome the freshness banner exists to prevent.
+
+describe("a backward clock never makes stale data look fresh", () => {
+  const base = {
+    hasData: true,
+    isError: false,
+    online: false,
+    sessionStartedAt: 10_000_000,
+  };
+
+  it("refuses to call a future-dated fetch 'live'", () => {
+    // restoredFromDisk is `fetchedAt < sessionStartedAt`, measured against the
+    // same skewed clock — so a restored copy could satisfy it and the whole
+    // function returned {status:"live"}, rendering no banner at all.
+    const r = describeReadFreshness({
+      ...base,
+      online: true,
+      dataUpdatedAt: 20_000_000, // "fetched" after now
+      now: 15_000_000,
+    });
+    expect(r?.status).toBe("cached");
+  });
+
+  it("marks an unmeasurable age as beyond the trust horizon, not within it", () => {
+    const r = describeReadFreshness({ ...base, dataUpdatedAt: 20_000_000, now: 15_000_000 });
+    expect(r?.status).toBe("cached");
+    if (r?.status !== "cached") throw new Error("unreachable");
+    expect(r.clockSuspect).toBe(true);
+    // The subtraction went negative, so `> horizon` was false and the red
+    // "this route may have changed" escalation never fired.
+    expect(r.beyondTrustHorizon).toBe(true);
+  });
+
+  it("still reports an ordinary age normally", () => {
+    const r = describeReadFreshness({ ...base, dataUpdatedAt: 9_000_000, now: 15_000_000 });
+    if (r?.status !== "cached") throw new Error("unreachable");
+    expect(r.clockSuspect).toBe(false);
+    expect(r.ageMs).toBe(6_000_000);
+  });
+});
+
+describe("a store written under a fast clock still expires", () => {
+  it("refuses an envelope claiming to be from the future", () => {
+    // now - savedAt goes negative, so the max-age check passed trivially and
+    // the store could never be aged out.
+    const envelope = {
+      version: READ_CACHE_VERSION,
+      userId: "u1",
+      savedAt: 20_000_000,
+      state: { mutations: [], queries: [] },
+    };
+    expect(isRestorableEnvelope(envelope, { userId: "u1", now: 15_000_000 })).toBe(false);
+  });
+
+  it("still accepts a normal, recent envelope", () => {
+    const envelope = {
+      version: READ_CACHE_VERSION,
+      userId: "u1",
+      savedAt: 14_999_000,
+      state: { mutations: [], queries: [] },
+    };
+    expect(isRestorableEnvelope(envelope, { userId: "u1", now: 15_000_000 })).toBe(true);
   });
 });

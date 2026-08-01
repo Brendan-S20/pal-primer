@@ -169,8 +169,11 @@ export function isRestorableEnvelope(
   if (e.version !== READ_CACHE_VERSION) return false;
   if (typeof e.userId !== "string" || e.userId !== args.userId) return false;
   if (typeof e.savedAt !== "number" || !Number.isFinite(e.savedAt)) return false;
-  // A savedAt in the future means a clock change (or a tampered store); trust
-  // it as far as "not older than max age" and no further.
+  // A savedAt in the FUTURE is a clock change or a tampered store. The
+  // subtraction goes negative and the age check passes trivially, so a store
+  // written under a fast clock could never be aged out. Refuse it instead —
+  // an unmeasurable age is not a young one.
+  if (e.savedAt > args.now) return false;
   if (args.now - e.savedAt > maxAgeMs) return false;
   if (!e.state || typeof e.state !== "object" || !Array.isArray(e.state.queries)) return false;
   return true;
@@ -178,7 +181,15 @@ export function isRestorableEnvelope(
 
 export type ReadFreshness =
   | { status: "live" }
-  | { status: "cached"; fetchedAt: number; ageMs: number; beyondTrustHorizon: boolean };
+  | {
+      status: "cached";
+      fetchedAt: number;
+      ageMs: number;
+      beyondTrustHorizon: boolean;
+      /** The data claims to have been fetched in the FUTURE, so its age cannot
+       *  be computed. Never treated as fresh — see describeReadFreshness. */
+      clockSuspect: boolean;
+    };
 
 /**
  * What the my-day header must say about the data currently on screen.
@@ -205,24 +216,51 @@ export function describeReadFreshness(input: {
   if (!input.hasData) return null;
 
   const fetchedAt = Number.isFinite(input.dataUpdatedAt) ? input.dataUpdatedAt : 0;
-  const restoredFromDisk = fetchedAt < input.sessionStartedAt;
   const refreshFailed = input.isError;
 
+  // ── a backward clock step used to make stale data read as current ────────
+  //
+  // Every comparison here is a subtraction against the device clock, and all of
+  // them failed OPEN when that clock moved backward — an Android tablet with a
+  // dead RTC booting to a wrong date then NTP-correcting, or someone fixing the
+  // date by hand:
+  //
+  //   * ageMs was Math.max(0, now - fetchedAt), so a three-day-old route
+  //     rendered as "saved just now";
+  //   * beyondTrustHorizon went negative, so the red "this route may have
+  //     changed" escalation never fired;
+  //   * restoredFromDisk (fetchedAt < sessionStartedAt) went false against the
+  //     same skewed clock, so the whole thing returned "live" and NO banner
+  //     rendered at all.
+  //
+  // A negative age is not a small age; it is an unmeasurable one. It is now the
+  // most suspicious state, not the least.
+  const rawAgeMs = input.now - fetchedAt;
+  const clockSuspect = rawAgeMs < 0;
+  const restoredFromDisk = fetchedAt < input.sessionStartedAt;
+
   // Online, refreshed successfully in this session: nothing to warn about.
-  if (input.online && !refreshFailed && !restoredFromDisk) return { status: "live" };
+  if (input.online && !refreshFailed && !restoredFromDisk && !clockSuspect) {
+    return { status: "live" };
+  }
 
   return {
     status: "cached",
     fetchedAt,
-    ageMs: Math.max(0, input.now - fetchedAt),
+    ageMs: Math.max(0, rawAgeMs),
     beyondTrustHorizon:
-      input.now - fetchedAt > (input.trustHorizonMs ?? READ_CACHE_TRUST_HORIZON_MS),
+      clockSuspect || rawAgeMs > (input.trustHorizonMs ?? READ_CACHE_TRUST_HORIZON_MS),
+    clockSuspect,
   };
 }
 
 /** Compact age for the banner. Rounds DOWN so the copy never claims the data is
  * fresher than it is (59 minutes reads as "59 min", never "1 hour"). */
 export function formatCacheAge(ageMs: number): string {
+  // A negative age means the device clock moved backward since the fetch. It
+  // used to clamp to 0 and print "just now" — the most reassuring thing it
+  // could possibly say about data whose age is unknown.
+  if (ageMs < 0) return "at an unknown time";
   const ms = Math.max(0, ageMs);
   const minutes = Math.floor(ms / 60_000);
   if (minutes < 1) return "just now";
