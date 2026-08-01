@@ -80,8 +80,20 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   "/settings": ["owner", "office_manager", "tech"],
   "/neighbors": ["owner", "office_manager", "dispatcher", "tech"],
   // H1: the DNA compliance workspace (cross-client registry, fines, violation
-  // notices) is office/dispatch only. Techs are scoped to sample logging and
-  // are redirected to /my-day; the DNA read server fns also reject them (I7).
+  // notices) is office/dispatch only. Techs are redirected to /my-day and the
+  // DNA read server fns reject them (I7).
+  //
+  // This comment used to say techs "are scoped to sample logging". They are
+  // not — no tech-facing DNA affordance exists anywhere in the product, and
+  // setDogDna requires can_write_org. The plan for it is in
+  // docs/mobile-ux-audit.md §3.2 and it was never built (Q-5).
+  //
+  // Chasing that claim found something worse: every RLS policy on dna_matches
+  // was `is_org_member`, which techs pass. Proven live — a tech could re-point
+  // a $250 violation onto another client's dog, close it, and delete a sample
+  // sitting at the lab, all without touching fine_cents, so the billing
+  // trigger never fired. Closed in
+  // 20260801021000_a-tech-could-rewrite-any-dna-violation.sql.
   "/dna": ["owner", "office_manager", "dispatcher"],
   "/help": ["owner", "office_manager", "dispatcher", "tech"],
 };
