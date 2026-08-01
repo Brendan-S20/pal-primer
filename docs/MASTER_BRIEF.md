@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.10** · Released 2026-08-01 · Supersedes: v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.11** · Released 2026-08-01 · Supersedes: v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,67 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+### v1.11 — 2026-08-01
+
+**An adversarial pass over the v1.7 offline work. Eight defects, all mine.**
+The ledger had no non-blocking engineering work left, so this went at the
+largest thing shipped recently that had never been attacked.
+
+**The native app would have received every reply and decoded all of them wrong**
+(BUG-62). CORS set no `Access-Control-Expose-Headers`. A cross-origin `fetch()`
+exposes only the safelisted response headers; everything else is filtered out
+of the Headers object — not blocked, simply absent. TanStack tags every
+server-function reply with `x-tss-serialized` and the client *dispatches on
+reading it back*, so an authorized HTTP 200 took the wrong decode branch and
+returned `undefined`. A thrown server error, also serialized, came back as a
+resolved value.
+
+**Why v1.7's proof could not have caught it, stated plainly.** That release
+claimed the native app "boots and runs with no network", proven by serving the
+bundle as static files with every off-origin request BLOCKED. The claim is true
+and the proof stands — and it never makes a single cross-origin server-function
+call, so the RPC path it was taken to validate was never exercised. The CORS
+tests assert what `corsDecision` RETURNS, not what a browser can read off the
+wire. A proof of one property was read as a proof of the feature.
+
+**Three defects in the offline queue, which had no tests at all** (BUG-63, 64,
+65): a photo destroyed before its upload succeeded and then reported as synced;
+"Complete" unlocking on any queued action and wedging the whole queue behind a
+non-network error; and the queue neither user-scoped nor cleared on sign-out —
+BUG-43 relocated from localStorage to IndexedDB, with the added twist that
+replay runs as whoever is signed in now, so one tech's work is replayed under
+another's identity.
+
+**Three ways the device could lie about how old its copy was** (BUG-67, 68, 69),
+and all of them failed OPEN — the stale copy looked current, which is the exact
+outcome the freshness banner exists to prevent. The 3-day age limit measured
+time since the app was last opened rather than the age of the data. A backward
+clock made a three-day-old route read as "saved just now" and, in one branch,
+suppressed the banner entirely. And revoking a session server-side never
+reached the device.
+
+**CI never built the app** (BUG-66) — which is why a whole class of this was
+invisible. `tsc --noEmit` does not run Vite, and `check-pwa-output.mjs`, written
+to stop `/sw.js` regressing, is wired into `npm run build` and had never run
+automatically once. It also skips silently when there is no output, so it could
+not complain about its own absence. That is the seventh check this cycle found
+green while measuring nothing, and the third I wrote myself.
+
+**A hypothesis of mine that was wrong, recorded because it nearly went in here.**
+I believed `isImpersonationTab()` was fragile because browsers clear
+`window.name` on cross-origin navigation — which would matter, since that value
+also decides whether the auth session lives in sessionStorage or localStorage,
+and the app has two same-tab OAuth round-trips. Three Chromium probes —
+cross-origin, cross-site, and a faithful script-initiated round trip with a 302
+back — all show `window.name` surviving. No defect. Dropped rather than
+reported, after the first probe was itself mis-designed (two ports on one host
+are the same *site*), which I caught before drawing a conclusion from it.
+
+**Still open from this pass, verified but not fixed:** the queue has no retry
+cap or dead-letter, so a permanently-failing action still blocks everything
+behind it — though all three causes found here are now gone — and photo storage
+is unbounded with no quota handling.
 
 ### v1.10 — 2026-08-01
 
@@ -568,6 +629,14 @@ were built. Repo search finds no such mechanism. Raised as BUILD-10.
 | BUG-44 | 🟢 Fixed | 🟠 | **New.** The app could not open offline at its own front door. `_authenticated.beforeLoad` called `supabase.auth.getUser()` — a **network call** — and read any failure as "not signed in", redirecting to `/auth`. No amount of caching could have helped. Now falls back to the local session, but only when the failure looks like lost network; a 4xx from the auth server is still a real rejection, and that distinction is tested, because getting it backwards would let an expired account in | v1.7 |
 | BUG-45 | 🟢 Fixed | 🟡 | **New.** The marketing site quoted an annual price the app does not charge. The app bills annual as ten months — `annual_price_cents` is exactly 10× monthly on every live tier, "two months free", 16.7% — while the site applied a flat 15% and said so in the FAQ. `/pricing` quoted Launch at $67.15/mo against an actual $65.83. Under-promising, so harmless in direction, but a published price that is not the price. Now derived from months-paid so the two cannot drift | v1.7 |
 | BUG-46 | 🟢 Fixed | 🟡 | **New.** `franchise_signals` returned organization names and ids as two parallel arrays that were not in the same order, so per-organization links would have pointed at the wrong tenant about half the time. Never mispaired anyone only because the screen noticed and rendered no links. Not fixed by adding `ORDER BY name` — that is not a total order (three organizations here are literally named "Test Test") and two aggregates sort independently. Replaced with one jsonb array of self-contained `{id, name, linked}` objects: nothing left to zip | v1.7 |
+| BUG-62 | 🟢 Fixed | 🔴🔴 | **New.** The native app would have received every server-function reply and **decoded all of them wrong**. CORS set no `Access-Control-Expose-Headers`, and a cross-origin `fetch()` exposes only the safelisted response headers — everything else is filtered out of the Headers object, not blocked. TanStack tags every reply `x-tss-serialized` (or `x-tss-raw`) and the client *dispatches on reading it back*, so an authorized HTTP 200 took the wrong decode branch and the caller got `undefined`; a thrown server error, also serialized, came back as a resolved value. Proven in a real browser: visible headers were `[content-length, content-type]` and the read was null. **v1.7's offline proof could not have caught it** — it blocked every off-origin request, so it never made a cross-origin RPC call at all | v1.11 |
+| BUG-63 | 🟢 Fixed | 🔴 | **New.** A queued photo was **destroyed before its upload succeeded**, and the retry reported success. `popPhoto` deleted the blob then uploaded; any throw after that left the action queued with its bytes gone, and the next replay found no blob, treated it as nothing to do, and counted it a SUCCESS. The tech saw *"Synced 1 queued action"* for a photo that no longer existed anywhere, and the visit lost its completion evidence silently | v1.11 |
+| BUG-64 | 🟢 Fixed | 🔴 | **New.** "Complete" unlocked on **any** queued action and then **wedged the whole queue**. The gate counted every pending action kind, not completion photos, so queueing a Start unlocked Complete offline. The server refuses (*"A completion photo is required"*), which is not a network error, so the sync loop breaks on it — and every action queued behind it stops for the rest of the day, with no UI to inspect or clear it | v1.11 |
+| BUG-65 | 🟢 Fixed | 🔴 | **New. BUG-43 relocated.** The offline queue was **not user-scoped and survived sign-out** — `signOutAndClearDevice` swept localStorage only, while actions and photo blobs of customer property sat in IndexedDB unscoped, despite that function's own comment promising to "destroy the persisted day". Worse than data at rest: replay runs as whoever is signed in *now*, so tech B picking up the tablet replayed tech A's completions under B's identity — every one rejected by `is_visit_tech`, wedging B's queue from B's first minute | v1.11 |
+| BUG-66 | 🟢 Fixed | 🟠 | **New.** **CI never built the app.** `tsc --noEmit` does not run Vite, so a build-breaking change reached deploy unseen — and `check-pwa-output.mjs`, which exists because `/sw.js` 404'd for the entire life of the PWA, is wired into `npm run build` and had therefore **never run automatically once**. It also skips silently with no output, so it could never complain about its own absence | v1.11 |
+| BUG-67 | 🟢 Fixed | 🟠 | **New.** The offline cache's **3-day maximum age could never fire on a device that was used**. `savedAt` was the write time, and restoring immediately re-persists, so every launch re-stamped it — the quantity measured was "time since the app was last opened", always ~0 for a tech opening it each morning. The guarantee that a device left in a drawer comes back with nothing to show held only for a device nobody touched | v1.11 |
+| BUG-68 | 🟢 Fixed | 🟠 | **New.** A **backward device clock made stale data read as current** — and every one of the three checks failed open: `ageMs` clamped to 0 so a three-day-old route rendered *"saved just now"*; `beyondTrustHorizon` went negative so the red escalation never fired; and `restoredFromDisk`, measured against the same skewed clock, could return `{status:"live"}` so **no banner rendered at all**. A test asserting `formatCacheAge(-5) === "just now"` had enshrined the misreport as intended | v1.11 |
+| BUG-69 | 🟢 Fixed | 🟠 | **New.** **Revoking a session did not reach the device.** On a genuine auth rejection `beforeLoad` redirects before `ensureReadCachePersistence`, so the `SIGNED_OUT` backstop was never armed on that boot and nothing sweeps at launch. A terminated tech's route — addresses, gate codes, lock box codes, access notes — stayed readable in localStorage on the crew tablet until someone happened to sign out through the app | v1.11 |
 | BUG-61 | 🟢 Fixed | 🔴 | **New, security.** A **tech could rewrite any DNA violation** in their organization. Every RLS policy on `dna_matches` was `is_org_member` — read, insert, update *and* delete — and techs pass it, while holding neither `can_write_org` nor `manage_dna_billing` and being unable to open `/dna` at all. Two triggers were doing the real authorization and they guard the **money column** precisely (`fine_cents`, the move to `billed`, deleting a *processed* sample). Neither covers **who a violation blames** or **whether it is still open**. Proven live as a real tech, rolled back: re-pointed a $250 violation onto another client's dog, closed it, and deleted a sample sitting at the lab — `fine_cents` untouched in all three, so the billing trigger never fired once. Baseline moved to `can_write_org`, both triggers kept on top. **Latent:** `dna_matches` holds zero rows | v1.10 |
 | BUG-52 | 🟢 Fixed | 🔴 | **New.** Booking a one-off visit silently converted a **PREPAID client to postpaid**. The insert omitted `billing_cadence` and took the table default; `client_default_billing_cadence` answers with the newest-started *active* subscription's cadence, and a one-off booked for today or later **is** that row. The client's add-on charges then stop drawing down credit they have already paid and start landing on postpaid invoices — money funded once, billed twice. Proven live: `cadence_before=prepaid, cadence_after_one_off=postpaid`. Two prepaid clients exist today | v1.9 |
 | BUG-53 | 🟢 Fixed | 🔴 | **New, and not about one-offs.** `admin_generate_seasonal_deepcleans` selected `status = 'active'` and nothing else — but **ending a service writes `ends_on` and LEAVES status active**. So every plan a tenant had ever cancelled stayed a deep-clean candidate, twice a year, for ever, billed as the subscription price **plus** the surcharge (default $49) against a client with no service, with a tech routed to them. Found only because a *finished one-off* received one. Fixed in SQL; verified three ways — finished one-off 0, ended weekly 0, live weekly still 1. **Latent:** zero orgs have the feature enabled, so nobody was billed | v1.9 |
@@ -1370,7 +1439,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | BUILD-6 | 🟠 Part-built | 🟠 | Enterprise tier — **phases 1–4 shipped**: consent-based linking, repaired rollup, both sides' UI, the money side, and now **a franchise can open a location from the product** — name it, name the staff, they get invites and sign themselves in. That was the flow the owner described, the SQL for it had existed unused since 2026-07-30, and it was the last piece the product could not do. Platform-side franchise sales signals now render too. Remaining: multi-org membership, drill-down, royalty *delivery* | v1.6 |
 | BUILD-7 | 🟠 Part-built | 🟡 | Trial lifecycle built — and the finding was that **no organization had ever had a trial**, because `bootstrap_organization` never started one and nothing in the tenant app gated on billing status at all. New signups get the 14 days the site promises; expiry is a state and a banner, NOT a lock, because Stripe cannot take a payment yet. AI is paid-only (owner decision). Enforcement is one constant, flipped when Stripe lands. **v1.6:** an adversarial review found three ways a non-paying org still reached `paid` and kept the AI keys — see BUG-29. The state machine now reads both status columns and has a `lapsed` phase, because telling someone who cancelled a paid plan that their free trial ended reads as a product that lost track of what they bought | v1.6 |
 | BUILD-8 | 🟢 Fixed | 🟡 | AI Business Advisor **built out** (owner reversed the retire instruction). On-demand, 7/30/90-day windows, evidence shown beside the advice. See below | v1.3 |
-| BUILD-9 | 🟠 Part-built | 🟠 | Mobile Phase 2/3. **The native app now boots and runs with no network** — proven by serving the bundle as static files with every off-origin request blocked, loading it in headless Chromium, and watching it hydrate and render from 36 files on disk with zero off-origin requests. Getting there meant a client-bootable SPA shell (this is a server-rendered app; `.output/public` had no index.html, which is why the config pointed at a remote URL), an absolute server-function origin, CORS, CSRF, and an offline read cache — plus BUG-43 and BUG-44, both of which had to be fixed before "offline" could mean anything. Q-3's answer was NOT a config flag as the ledger implied. Remaining: **a real device in a real dead zone, and nothing else.** Q-4 closed in v1.9 (one-off visit built), Q-12 answered reassign-only in v1.8, Q-5 closed in v1.10 (field DNA sample logging) | v1.7 |
+| BUILD-9 | 🟠 Part-built | 🟠 | Mobile Phase 2/3. **The native app now boots and runs with no network** — proven by serving the bundle as static files with every off-origin request blocked, loading it in headless Chromium, and watching it hydrate and render from 36 files on disk with zero off-origin requests. Getting there meant a client-bootable SPA shell (this is a server-rendered app; `.output/public` had no index.html, which is why the config pointed at a remote URL), an absolute server-function origin, CORS, CSRF, and an offline read cache — plus BUG-43 and BUG-44, both of which had to be fixed before "offline" could mean anything. Q-3's answer was NOT a config flag as the ledger implied. **v1.11 correction:** the offline half was proven and remains true, but the ONLINE half was never exercised by it — every cross-origin server-function reply would have decoded to `undefined` (BUG-62), because the proof blocked all off-origin requests. Fixed. Remaining: **a real device, in a real dead zone AND on real signal.** Q-4 closed in v1.9 (one-off visit built), Q-12 answered reassign-only in v1.8, Q-5 closed in v1.10 (field DNA sample logging) | v1.7 |
 | BUILD-10 | 🟢 Fixed | 🟠 | Review queue built. §10.5's rule pointed at a mechanism nobody had made, so every place that "honored" it honored it by doing nothing. See below | v1.4 |
 | BUILD-11 | 🟢 Fixed | 🟠 | **New.** End-of-day close-out for visits left open | v1.1 |
 | BUILD-13 | 🟢 Fixed | 🟠 | **New.** CPA / tax report pack — ten reports, each declaring its basis and carrying its caveats into the CSV. Cash and accrual income, the bridge between them, point-in-time AR aging, refunds, write-offs, 1099-K reconciliation, franchise settlements, referral rewards. Also the 1099-K explanation the owner asked for, keyed to how payments are actually routed. See below | v1.5 |
@@ -1572,12 +1641,18 @@ rather than the following January.
 
 **Two things only you can confirm, because this sandbox cannot:**
 
-6. **One curl against the real deployment**, once the CSRF and CORS work is
-   live: `curl -i -X OPTIONS https://app.houndstack.com/_serverFn/getMyDay -H
+6. **Two curls against the real deployment**, once the CSRF and CORS work is
+   live. The preflight:
+   `curl -i -X OPTIONS https://app.houndstack.com/_serverFn/getMyDay -H
    'Origin: capacitor://localhost' -H 'Access-Control-Request-Method: POST'`
    should answer 204 with `access-control-allow-origin: capacitor://localhost`.
-   The rules are unit-tested and the middleware is wired, but nothing here has
-   seen a preflight cross a real edge.
+   And the ACTUAL response, which is the one BUG-62 was hiding in — the same
+   URL as a POST must come back carrying
+   `access-control-expose-headers: x-tss-serialized, x-tss-raw`. Without that
+   header the app receives every reply successfully and decodes all of them
+   wrongly, with nothing anywhere reporting a problem. The rules are unit-tested
+   and the middleware is wired, but nothing here has seen a response cross a
+   real edge.
 
 7. **The native app on a real device with no signal.** Offline boot was proved
    in headless Chromium against static files with every off-origin request
