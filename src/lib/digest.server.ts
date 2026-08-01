@@ -10,6 +10,7 @@ import { z } from "zod";
 import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
 import { TEMPLATES } from "@/lib/email-templates/registry";
 import { grossReceivedCents, receivedPaymentStatuses } from "@/lib/revenue";
+import { buildDigestAlerts } from "@/lib/digest-alerts";
 
 const MODEL_ID = "google/gemini-3-flash-preview";
 const SITE_NAME = "HoundStack";
@@ -45,6 +46,10 @@ export interface DigestMetrics {
     visitsSkipped: number;
     newClients: number;
     openArCents: number;
+    /** What the OVERDUE invoices come to. Distinct from openArCents, which
+     *  includes invoices that are open but not yet due — see the alert below
+     *  for why the difference is not cosmetic. */
+    overdueCents: number;
     atRiskCount: number;
     complaintsCount: number;
     overdueInvoices: number;
@@ -212,6 +217,10 @@ export async function computeDigestMetrics(
   const arSummary = summarizeAr((openInvoices ?? []) as any[], orgLocalDate(Date.now(), tz));
   const openArCents = arSummary.arOpenCents;
   const overdueInvoices = arSummary.overdueCount;
+  // QA-P3: this was never read, and the alert below paired the overdue COUNT
+  // with the total open balance instead. summarizeAr has returned both figures
+  // all along.
+  const overdueCents = arSummary.overdueCents;
 
   // At-risk (churn score >= 60)
   const { count: atRiskCount } = await supabaseAdmin
@@ -232,25 +241,21 @@ export async function computeDigestMetrics(
   // Top zones intentionally omitted — visits schema has no zone_id.
   const topZones: Array<{ name: string; revenueCents: number }> = [];
 
-  const alerts: string[] = [];
-  if (overdueInvoices > 0) {
-    alerts.push(
-      `${overdueInvoices} overdue invoice${overdueInvoices > 1 ? "s" : ""} totaling ${fmt(openArCents)}.`,
-    );
-  }
-  if (complaintsCount > 0) {
-    alerts.push(
-      `${complaintsCount} client complaint${complaintsCount > 1 ? "s" : ""} logged this week.`,
-    );
-  }
-  if (
-    visitsSkipped > 0 &&
-    visitsCompleted > 0 &&
-    visitsSkipped / (visitsSkipped + visitsCompleted) > 0.1
-  ) {
-    const rate = Math.round((visitsSkipped / (visitsSkipped + visitsCompleted)) * 100);
-    alerts.push(`Skip rate is ${rate}%, above the 10% threshold.`);
-  }
+  // QA-P3: these sentences live in lib/digest-alerts.ts now, pure and tested.
+  // The one that was wrong — the overdue figure — was wrong in an EMAILED
+  // report with nothing able to notice, because computeDigestMetrics needs a
+  // database and a live org to run, so every string it produced was only ever
+  // checked by reading it.
+  const alerts = buildDigestAlerts({
+    overdueCount: overdueInvoices,
+    // Was `openArCents`. The count of overdue invoices with the total of ALL
+    // open ones attached: "10 overdue invoices totaling $2,725.00" when the
+    // ten came to $2,550.00.
+    overdueCents,
+    complaintsCount,
+    visitsSkipped,
+    visitsCompleted,
+  });
 
   // The refund gets its own tile whenever there is one, the same way /reports
   // splits gross / refunds / net. A single number that is simply smaller this
@@ -279,6 +284,12 @@ export async function computeDigestMetrics(
     { label: "Visits done", value: String(visitsCompleted) },
     { label: "New clients", value: String(newClients ?? 0) },
     { label: "Open A/R", value: fmt(openArCents) },
+    // Shown alongside Open A/R rather than instead of it. With the alert now
+    // quoting the overdue figure and the table quoting the open one, an owner
+    // reading "$2,550.00 overdue" above "$2,725.00 open" would otherwise have
+    // two numbers and no way to tell whether they disagree. Only rendered when
+    // something IS overdue, so a healthy week does not grow a "$0.00" row.
+    ...(overdueInvoices > 0 ? [{ label: "Of which overdue", value: fmt(overdueCents) }] : []),
     { label: "At-risk", value: String(atRiskCount ?? 0) },
     { label: "Complaints", value: String(complaintsCount) },
   ];
@@ -299,6 +310,7 @@ export async function computeDigestMetrics(
       visitsSkipped,
       newClients: newClients ?? 0,
       openArCents,
+      overdueCents,
       atRiskCount: atRiskCount ?? 0,
       complaintsCount,
       overdueInvoices,
@@ -372,7 +384,11 @@ export async function generateDigestInsights(
       `- Visits completed: ${m.raw.visitsCompleted}`,
       `- Visits skipped/no-show: ${m.raw.visitsSkipped}`,
       `- New clients: ${m.raw.newClients}`,
-      `- Open A/R: ${fmt(m.raw.openArCents)} across ${m.raw.overdueInvoices} overdue invoices`,
+      // Both figures, separately labelled. "Open A/R X across N overdue
+      // invoices" told the model that X was the overdue amount, so its advice
+      // was reasoned from a relationship that does not hold — and unlike the
+      // alert string, a wrong premise here is laundered into confident prose.
+      `- Open A/R: ${fmt(m.raw.openArCents)} total, of which ${fmt(m.raw.overdueCents)} is overdue across ${m.raw.overdueInvoices} invoice${m.raw.overdueInvoices === 1 ? "" : "s"}`,
       `- At-risk clients (churn score ≥ 60): ${m.raw.atRiskCount}`,
       `- Complaints logged: ${m.raw.complaintsCount}`,
       m.raw.topZones.length
