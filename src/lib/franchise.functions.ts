@@ -373,13 +373,31 @@ export const setRoyaltyInvoiceStatus = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
-    const { error } = await (context.supabase as any)
+    // Marking a royalty invoice paid is a money decision about the franchise
+    // relationship, and it had NO permission check — only resolveOrgId, which
+    // answers "which org are you in", not "may you do this". The table's RLS
+    // now refuses anyone without manage_franchise, but a refused UPDATE
+    // matches zero rows and PostgREST returns no error for that, so without
+    // this gate a dispatcher would be told the change was saved while nothing
+    // happened. That is BUG-30 exactly — a zero-row UPDATE is a successful
+    // UPDATE — and it is worth failing loudly here rather than relying on a
+    // silent row count.
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_franchise",
+    );
+    const { data: rows, error } = await (context.supabase as any)
       .from("franchise_royalty_invoices")
       .update({ status: data.status })
       .eq("id", data.invoiceId)
-      .eq("parent_organization_id", orgId);
+      .eq("parent_organization_id", orgId)
+      .select("id");
     if (error) throw new Error(error.message);
+    if (!rows?.length) {
+      throw new Error("That royalty invoice is not yours to change, or no longer exists.");
+    }
     return { ok: true };
   });
 
