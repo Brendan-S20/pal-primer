@@ -721,3 +721,53 @@ export const listDnaComplianceClients = createServerFn({ method: "GET" })
     };
   });
 
+
+/**
+ * Log a DNA sample from the field — the tech-facing half of DNA compliance.
+ *
+ * ── WHY IT TAKES A VISIT AND ALMOST NOTHING ELSE ───────────────────────────
+ *
+ * Q-5's spec (docs/mobile-ux-audit.md) listed DNA sample logging as a tech
+ * capability. It was never built, and a comment in useMyRole.ts claimed for
+ * months that it had been. Chasing that claim found that every RLS policy on
+ * dna_matches was `is_org_member`, which techs pass — so a tech could re-point
+ * a violation onto another client's dog, close it, or delete a sample at the
+ * lab. That is closed; this is the capability the spec actually asked for,
+ * built so that closing it stays closed.
+ *
+ * Everything the record needs is DERIVED from the visit inside
+ * `log_dna_sample_from_field` (SECURITY DEFINER, guarded by `is_visit_tech`):
+ * organization, property, client, and the collecting staff member. The
+ * parameters below are the entire allowlist, and there is deliberately no
+ * fine, no matched dog and no status among them — a field sample is always
+ * `new`, unmatched and unpriced. Deciding what it costs and whose dog it was
+ * remains an office action behind can_write_org and manage_dna_billing.
+ *
+ * NOT queued offline, like the field add-on charge: this creates a record the
+ * office acts on, and a sample that syncs hours later is one the tech has
+ * already forgotten the context of. The UI says so rather than failing with a
+ * network error.
+ */
+export const logDnaSampleFromField = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        visitId: z.string().uuid(),
+        sampleKind: z.enum(["pile_sample", "cheek_swab"]).default("pile_sample"),
+        locationNote: z.string().max(300).optional(),
+        unitId: z.string().uuid().nullable().optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: id, error } = await (context.supabase as any).rpc("log_dna_sample_from_field", {
+      _visit_id: data.visitId,
+      _sample_kind: data.sampleKind,
+      _location_note: data.locationNote ?? null,
+      _unit_id: data.unitId ?? null,
+      _sample_photo_path: null,
+    });
+    if (error) throw new Error(error.message);
+    return { id: id as string };
+  });

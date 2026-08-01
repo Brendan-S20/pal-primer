@@ -27,6 +27,7 @@ import {
 } from "@/lib/my-day.functions";
 import { listAddonServices, createAddonCharge } from "@/lib/addons.functions";
 import { getVisitStations, logStationService } from "@/lib/stations.functions";
+import { logDnaSampleFromField } from "@/lib/dna.functions";
 import { sendVisitStatusSms } from "@/lib/messages.functions";
 import { SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
 import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
@@ -806,6 +807,12 @@ function VisitCard({
   const [showSkip, setShowSkip] = useState(false);
   const [showAddon, setShowAddon] = useState(false);
   const [showStations, setShowStations] = useState(false);
+  // Q-5. Only for clients the office has actually enrolled — a sample against
+  // a client who never opted in is a record nobody can act on and the client
+  // never agreed to. The server refuses it too; this keeps the button from
+  // appearing at all.
+  const [showDna, setShowDna] = useState(false);
+  const dnaEnrolled = !!visit.clients?.dna_compliance_enabled;
   const [addonSvcId, setAddonSvcId] = useState("");
   const [addonQty, setAddonQty] = useState("1");
   const addonListFn = useServerFn(listAddonServices);
@@ -1216,6 +1223,16 @@ function VisitCard({
                 Stations
               </Button>
             )}
+            {dnaEnrolled && canPerformVisit && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-11 px-4 sm:h-8 sm:px-3"
+                onClick={() => setShowDna((s) => !s)}
+              >
+                DNA sample
+              </Button>
+            )}
             {visit.clients?.primary_phone && (
               <>
                 <Button
@@ -1415,10 +1432,88 @@ function VisitCard({
                 </div>
               );
             })()}
+          {showDna && (
+            <DnaSamplePanel
+              visitId={visit.id}
+              hasUnits={!!p?.has_units}
+              onDone={() => setShowDna(false)}
+            />
+          )}
           {showStations && <StationsSubpanel visitId={visit.id} />}
         </div>
       )}
     </li>
+  );
+}
+
+/**
+ * Q-5: the tech-facing half of DNA compliance.
+ *
+ * It asks for what the tech can actually see standing in the yard — what kind
+ * of sample and where they found it — and nothing else. Whose dog it was and
+ * what it costs are office decisions, and the RPC behind this refuses to
+ * accept either, so there is no way for this panel to grow into them by
+ * accident.
+ */
+function DnaSamplePanel({
+  visitId,
+  hasUnits,
+  onDone,
+}: {
+  visitId: string;
+  hasUnits: boolean;
+  onDone: () => void;
+}) {
+  const logFn = useServerFn(logDnaSampleFromField);
+  const online = useOnline();
+  const [kind, setKind] = useState<"pile_sample" | "cheek_swab">("pile_sample");
+  const [where, setWhere] = useState("");
+  const mut = useMutation({
+    mutationFn: () =>
+      logFn({ data: { visitId, sampleKind: kind, locationNote: where.trim() || undefined } }),
+    onSuccess: () => {
+      toast.success("Sample logged. The office will send it to the lab.");
+      onDone();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <div className="mt-2 space-y-2 rounded-md border bg-muted/30 p-3">
+      <div className="text-xs font-medium text-muted-foreground">Log a DNA sample</div>
+      <div className="flex gap-2">
+        <select
+          className="h-9 flex-1 rounded-md border bg-background px-2 text-sm"
+          value={kind}
+          onChange={(e) => setKind(e.target.value as "pile_sample" | "cheek_swab")}
+        >
+          <option value="pile_sample">Waste sample</option>
+          <option value="cheek_swab">Cheek swab</option>
+        </select>
+      </div>
+      <input
+        className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+        maxLength={300}
+        placeholder={hasUnits ? "Where — e.g. by building C bins" : "Where — e.g. side yard"}
+        value={where}
+        onChange={(e) => setWhere(e.target.value)}
+      />
+      {!online && (
+        // Same honesty as the field add-on charge: this is not one of the
+        // queued actions, and a live-looking button that fails with a raw
+        // network error is worse than one that says why.
+        <p className="text-[11px] font-medium text-amber-600 dark:text-amber-500">
+          You're offline. A sample isn't queued like start, complete and photos — log it when you
+          have signal.
+        </p>
+      )}
+      <Button size="sm" disabled={mut.isPending || !online} onClick={() => mut.mutate()}>
+        {mut.isPending ? "Logging…" : "Log sample"}
+      </Button>
+      <p className="text-[11px] text-muted-foreground">
+        Goes to the office unmatched and unpriced — they decide whose dog it was.
+      </p>
+    </div>
   );
 }
 

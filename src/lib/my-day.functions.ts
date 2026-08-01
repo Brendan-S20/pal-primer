@@ -58,7 +58,7 @@ export const getMyDay = createServerFn({ method: "GET" })
     const { data: visits, error } = await supabase
       .from("visits")
       .select(
-        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, eta_start, eta_end, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone), properties(street, city, postal_code, account_type, has_units, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, dogs(name, temperament)), zones(name), visit_photos(id, storage_path, kind)",
+        "id, organization_id, scheduled_on, status, sequence, started_at, completed_at, eta_start, eta_end, skip_reason, skip_reason_code, client_id, property_id, clients(display_name, primary_phone, dna_compliance_enabled), properties(street, city, postal_code, account_type, has_units, gate_code, lock_box_code, key_location, parking_notes, access_notes, yard_size, earliest_service_time, latest_service_time, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, dogs(name, temperament)), zones(name), visit_photos(id, storage_path, kind)",
       )
       .eq("assigned_staff_id", targetStaff.id)
       .eq("scheduled_on", data.day)
