@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.8** · Released 2026-07-31 · Supersedes: v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.9** · Released 2026-08-01 · Supersedes: v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,91 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+### v1.9 — 2026-08-01
+
+**A one-off visit can be booked, and it bills.** An emergency call-out, a
+make-up after a skip, a one-time clean — from `/routes`, the mobile ➕ sheet, or
+the client's Visits tab. Verified live end to end and rolled back: booking
+generates exactly one visit on that date; the same booking on a blackout day
+generates zero and says which of blackout / work days / client hold to check;
+completed, it invoices one line at exactly the price set — 7500 cents in, 7500
+cents out.
+
+**The claim that made this a task was mine, and it was false.** I reported that
+there was *no way to create a one-off visit anywhere in the product*. Client →
+Services → Add service → "One time" has existed all along, `service_frequency`
+carries a `one_time` value, and `generate_visits_core` has a complete branch for
+it honouring blackouts, work days and client holds. I had repeated a code
+comment's phrasing without checking whether another route created one.
+
+That comment did not stay contained. A later research pass over the codebase
+**quoted my own comment back as its evidence** for the same claim, and reasoned
+from there to two designs that both required making `visits.subscription_id`
+nullable — which would have made a visit that no invoicing query can see. The
+corrected comment stays in `CreateSheet.tsx` with that story attached. A wrong
+comment becomes a source.
+
+*What was actually broken* was narrower and worse: saving a service has never
+generated its visits (the nightly run does), and the per-service "Generate
+schedule" button was explicitly withheld from `one_time`. So booking for TODAY
+produced a service with no visit, no button, and a banner reading "Its one-time
+visit is in the past" — about a visit booked for today.
+
+**Then an adversarial pass over that feature returned twelve findings, and nine
+were real** (BUG-52 … BUG-60). Five were mine, one was pre-existing and billed
+money, and three more were the same defect wearing different clothes.
+
+**One rule, wrong in four places.** This schema does not record ending as a
+status: `endSubscription` writes `ends_on` and *leaves* `status = 'active'`. So
+`status = 'active'` answers a different question from "is this service still
+running" — and four separate places asked the first while meaning the second:
+the client list (BUG-54), the seasonal deep-clean generator in SQL where it
+**billed** (BUG-53), the property service-time estimate that drives routing
+(BUG-58), and the customer-facing portal plan (BUG-59). Every one was invisible
+until one-off bookings started creating that state deliberately. There is one
+shared rule now, and a test that each site applies it.
+
+**Severity corrected downward, deliberately.** The review called the deep-clean
+and weekend-booking findings CRITICAL and billing "$89 forever". Checked before
+repeating it: **zero organizations have `seasonal_deepclean_enabled`** and every
+org currently works all seven days, so both were latent and nobody has been
+billed. Real bugs waiting on a setting change — not money going out the door.
+This is the third time this cycle that repeating an agent's framing unchecked
+would have put a wrong number in this ledger.
+
+**Corrections to my own work this release**, continuing the practice:
+
+*A fix of mine that did nothing.* The first cadence repair called
+`client_default_billing_cadence` over RPC. It is not granted to `authenticated`,
+so the call fails, the result is neither literal, and the fallback quietly
+restores the exact `'postpaid'` the fix existed to prevent. Granting it would
+have been wrong — SECURITY DEFINER, so it would then answer about any client id
+in any tenant, the BUG-42 shape. The ordering is mirrored under RLS instead,
+checked against all 267 clients with 0 disagreements, and a parity test parses
+the shipped SQL to keep the copies honest.
+
+*A guard of mine that measured nothing.* `tests/live-service-filter-applied`
+asserted `toContain("liveServiceOrFilter")` against the whole FILE — which the
+import line alone satisfies — so it passed a mutation that deleted the filter
+from the query. That is the dead-machinery rule counting comments as callers,
+committed by me, inside the test written to stop exactly that class of thing.
+Caught only by mutation-testing it. This is the sixth check this cycle found
+green while measuring nothing, and the second one I wrote myself.
+
+*A probe of mine that measured the wrong thing.* The first check that scoped
+generation worked counted absolute visits beyond 60 days rather than the delta,
+and 77 already existed. Re-run as a before/after it gave the real answer: scoped
+inserts 1 with 0 collateral, org-wide still inserts 14.
+
+**Transcribing live SQL is now checked, not trusted.** Scoping the generator
+meant reproducing 140 lines of plpgsql. Earlier in this cycle I broke
+`run_billing_cycles` in production by rebuilding a body from a fragment. So the
+new body, with the one intended predicate removed, was hashed and compared
+against the body captured before the migration — identical
+(`d0bd3f4b5b424adf9d2bee4eb56cc3f7`). The technique is worth keeping.
+
+**Q-4 closes**, and BUILD-9's tail is down to Q-5 and a real device.
 
 ### v1.8 — 2026-07-31
 
@@ -429,6 +514,15 @@ were built. Repo search finds no such mechanism. Raised as BUILD-10.
 | BUG-44 | 🟢 Fixed | 🟠 | **New.** The app could not open offline at its own front door. `_authenticated.beforeLoad` called `supabase.auth.getUser()` — a **network call** — and read any failure as "not signed in", redirecting to `/auth`. No amount of caching could have helped. Now falls back to the local session, but only when the failure looks like lost network; a 4xx from the auth server is still a real rejection, and that distinction is tested, because getting it backwards would let an expired account in | v1.7 |
 | BUG-45 | 🟢 Fixed | 🟡 | **New.** The marketing site quoted an annual price the app does not charge. The app bills annual as ten months — `annual_price_cents` is exactly 10× monthly on every live tier, "two months free", 16.7% — while the site applied a flat 15% and said so in the FAQ. `/pricing` quoted Launch at $67.15/mo against an actual $65.83. Under-promising, so harmless in direction, but a published price that is not the price. Now derived from months-paid so the two cannot drift | v1.7 |
 | BUG-46 | 🟢 Fixed | 🟡 | **New.** `franchise_signals` returned organization names and ids as two parallel arrays that were not in the same order, so per-organization links would have pointed at the wrong tenant about half the time. Never mispaired anyone only because the screen noticed and rendered no links. Not fixed by adding `ORDER BY name` — that is not a total order (three organizations here are literally named "Test Test") and two aggregates sort independently. Replaced with one jsonb array of self-contained `{id, name, linked}` objects: nothing left to zip | v1.7 |
+| BUG-52 | 🟢 Fixed | 🔴 | **New.** Booking a one-off visit silently converted a **PREPAID client to postpaid**. The insert omitted `billing_cadence` and took the table default; `client_default_billing_cadence` answers with the newest-started *active* subscription's cadence, and a one-off booked for today or later **is** that row. The client's add-on charges then stop drawing down credit they have already paid and start landing on postpaid invoices — money funded once, billed twice. Proven live: `cadence_before=prepaid, cadence_after_one_off=postpaid`. Two prepaid clients exist today | v1.9 |
+| BUG-53 | 🟢 Fixed | 🔴 | **New, and not about one-offs.** `admin_generate_seasonal_deepcleans` selected `status = 'active'` and nothing else — but **ending a service writes `ends_on` and LEAVES status active**. So every plan a tenant had ever cancelled stayed a deep-clean candidate, twice a year, for ever, billed as the subscription price **plus** the surcharge (default $49) against a client with no service, with a tech routed to them. Found only because a *finished one-off* received one. Fixed in SQL; verified three ways — finished one-off 0, ended weekly 0, live weekly still 1. **Latent:** zero orgs have the feature enabled, so nobody was billed | v1.9 |
+| BUG-54 | 🟢 Fixed | 🟠 | **New.** "Active services" meant two different things. `listClients` counted `status = 'active'` while the client's own Services tab used `isServiceEnded` (canceled **or** `ends_on` passed). Every ended service therefore counted on the client list as one the tenant was running, and its frequency stayed in their chips. Latent — zero rows were in that state — until one-off bookings started creating one every time | v1.9 |
+| BUG-55 | 🟢 Fixed | 🟠 | **New.** The one-off refusal path left an **orphan**. No transaction, so throwing after the subscription insert left a priced, `status='active'` service with no visit — and every failed attempt left another. Orphans are not inert: they are what the cadence lookup reads, what the portal shows as "your plan", and what the deep-clean generator bills. Now deleted before the throw | v1.9 |
+| BUG-56 | 🟢 Fixed | 🟠 | **New.** Failing to assign a tech failed the **whole booking** — for a visit that already existed and was already billable. The dialog stayed open with every field filled, so pressing the button again (the natural response to an error) created a second subscription and a second visit for the same client, property and date. Nothing dedupes that: the unique index is `(subscription_id, scheduled_on)` and these are two different subscriptions. Assignment is best-effort now and says so | v1.9 |
+| BUG-57 | 🟢 Fixed | 🟠 | **New.** A **past-dated** one-off became `missed` overnight and was never invoiced. `admin_transition_missed_visits` flips every past-dated `scheduled` visit, and neither invoicing path bills a missed visit — so "log the make-up we did yesterday" produced free work recorded on the client's history as a service failure. The date field has a `min` | v1.9 |
+| BUG-58 | 🟢 Fixed | 🟠 | **New.** A one-off **poisoned the property's routing time**. `recomputePropertyEstimate` took the newest active subscription, so a finished call-out became the property's cadence — and `computeEstimatedMinutes` multiplies by `initialCleanupFactor` (**2**) for `one_time`. It did not move at booking time; it detonated on the next dog change or property edit that triggered a recompute, and `service_duration_min` drives routing, ETAs and capacity | v1.9 |
+| BUG-59 | 🟢 Fixed | 🟠 | **New, customer-facing.** The **client portal showed a dead one-off as "your plan"** — same query shape. Worse than cosmetic: the `subscriptionId` handed to `portalChangeFrequency` was that finished call-out, so a client switching to biweekly would have rewritten a completed one-off, left their real weekly service untouched, and sent the office a review ticket about a service that does not exist | v1.9 |
+| BUG-60 | 🟢 Fixed | 🟡 | **New.** Booking a one-off **regenerated the whole organization's schedule**. `generate_visits_through` is org-wide and was called with the booking date. Harmless inside the 60-day horizon; past it, one booking materialised visits for every active subscription across a window whose blackouts nobody had entered — and `addBlackout` only inserts a row, it does not remove visits already generated, so they stay routed on top of the holiday | v1.9 |
 | BUG-47 | 🟢 Fixed | 🟠 | **New.** CI ran **48 of the 52 test files**. `npm test` was a hand-typed list of filenames in `package.json`; four files had never been added and so had never run, and `tests/stripe-connect.server.test.ts` had been **failing since BUILD-6** changed the return shape it asserts on. CI was green throughout — a test file CI does not name is a test file CI cannot fail on. `npm test` is now `vitest run`, and a drift guard (`tests/ci-runs-every-test.test.ts`) now fails if a list comes back — in `package.json`, in the workflow, or as a test file hidden outside `tests/`. Mutation-tested on all three. Fixing that test also revealed the BUILD-6 branch had **no coverage at all** — the half that decides whose bank account a customer's money lands in. Added, mutation-tested both ways | v1.8 |
 | BUG-48 | 🟢 Fixed | 🟠 | **New.** Every button in `VisitDetailDrawer` was guaranteed to fail. It opens from `/routes` and `/dashboard`, and `ROUTE_ROLES` excludes techs from both — so nobody who could see it was ever the assigned tech, and it called the tech RPCs, which authorize on `is_visit_tech()`. Proven live on a real scheduled visit: the org's own owner returns **false** for that guard and **true** for `can_write_org`. Now uses the `office_*` variants like the desktop board, hides the controls from a dispatcher instead of showing buttons that throw, and drops Start entirely — there is no `office_start_visit`, because the office has no honest arrival time to stamp | v1.8 |
 | BUG-49 | 🟢 Fixed | 🟡 | **New.** The mobile schedule told users to *"tap a visit to view details, reassign, or reschedule"*. The drawer has no staff picker and no date field and never did. The same wrong claim sat in three places — the component header, the user-facing footer, and the comment in `routes.tsx` that seeded both. Corrected, and a reassign control was actually built (Q-12) | v1.8 |
@@ -1221,7 +1315,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | BUILD-6 | 🟠 Part-built | 🟠 | Enterprise tier — **phases 1–4 shipped**: consent-based linking, repaired rollup, both sides' UI, the money side, and now **a franchise can open a location from the product** — name it, name the staff, they get invites and sign themselves in. That was the flow the owner described, the SQL for it had existed unused since 2026-07-30, and it was the last piece the product could not do. Platform-side franchise sales signals now render too. Remaining: multi-org membership, drill-down, royalty *delivery* | v1.6 |
 | BUILD-7 | 🟠 Part-built | 🟡 | Trial lifecycle built — and the finding was that **no organization had ever had a trial**, because `bootstrap_organization` never started one and nothing in the tenant app gated on billing status at all. New signups get the 14 days the site promises; expiry is a state and a banner, NOT a lock, because Stripe cannot take a payment yet. AI is paid-only (owner decision). Enforcement is one constant, flipped when Stripe lands. **v1.6:** an adversarial review found three ways a non-paying org still reached `paid` and kept the AI keys — see BUG-29. The state machine now reads both status columns and has a `lapsed` phase, because telling someone who cancelled a paid plan that their free trial ended reads as a product that lost track of what they bought | v1.6 |
 | BUILD-8 | 🟢 Fixed | 🟡 | AI Business Advisor **built out** (owner reversed the retire instruction). On-demand, 7/30/90-day windows, evidence shown beside the advice. See below | v1.3 |
-| BUILD-9 | 🟠 Part-built | 🟠 | Mobile Phase 2/3. **The native app now boots and runs with no network** — proven by serving the bundle as static files with every off-origin request blocked, loading it in headless Chromium, and watching it hydrate and render from 36 files on disk with zero off-origin requests. Getting there meant a client-bootable SPA shell (this is a server-rendered app; `.output/public` had no index.html, which is why the config pointed at a remote URL), an absolute server-function origin, CORS, CSRF, and an offline read cache — plus BUG-43 and BUG-44, both of which had to be fixed before "offline" could mean anything. Q-3's answer was NOT a config flag as the ledger implied. Remaining: Q-4, Q-5 and Q-12 (create-sheet contents, tech "More" ceiling, dispatch depth), all marked non-blocking, and a real device in a real dead zone | v1.7 |
+| BUILD-9 | 🟠 Part-built | 🟠 | Mobile Phase 2/3. **The native app now boots and runs with no network** — proven by serving the bundle as static files with every off-origin request blocked, loading it in headless Chromium, and watching it hydrate and render from 36 files on disk with zero off-origin requests. Getting there meant a client-bootable SPA shell (this is a server-rendered app; `.output/public` had no index.html, which is why the config pointed at a remote URL), an absolute server-function origin, CORS, CSRF, and an offline read cache — plus BUG-43 and BUG-44, both of which had to be fixed before "offline" could mean anything. Q-3's answer was NOT a config flag as the ledger implied. Remaining: **Q-5 only** (tech "More" ceiling, non-blocking) and a real device in a real dead zone. Q-4 closed in v1.9 (one-off visit built); Q-12 answered reassign-only in v1.8 | v1.7 |
 | BUILD-10 | 🟢 Fixed | 🟠 | Review queue built. §10.5's rule pointed at a mechanism nobody had made, so every place that "honored" it honored it by doing nothing. See below | v1.4 |
 | BUILD-11 | 🟢 Fixed | 🟠 | **New.** End-of-day close-out for visits left open | v1.1 |
 | BUILD-13 | 🟢 Fixed | 🟠 | **New.** CPA / tax report pack — ten reports, each declaring its basis and carrying its caveats into the CSV. Cash and accrual income, the bridge between them, point-in-time AR aging, refunds, write-offs, 1099-K reconciliation, franchise settlements, referral rewards. Also the 1099-K explanation the owner asked for, keyed to how payments are actually routed. See below | v1.5 |
@@ -1382,7 +1476,7 @@ rather than the following January.
 | Q-1 | ✅ | Dispatchers ops-only, no billing | v1.1 |
 | Q-2 | ⚠️ Answered, never built | The answer was a dedicated tablet tier at 768–1024px. **There is one breakpoint in this app (768px) and no tablet tier exists.** The mobile tab bar is `md:hidden`, so it vanishes at exactly 768 — a tech on a crew tablet gets the desktop sidebar and none of the tech nav, while the offline-cache code repeatedly assumes crew tablets. Not fixed by a blunt breakpoint move: pushing the bar to `lg` would also hide the dispatch board from an iPad, where it renders today and is arguably right. The two halves want different answers, which makes it a real tablet tier or nothing | v1.1, reopened v1.8 |
 | Q-3 | ✅ | Bundled Capacitor assets | v1.1 |
-| Q-4 | 🟠 Part-answered | Sheet relabelled: it had three rows and one of them created anything. **The real finding is bigger and still open — there is no way to create a one-off visit anywhere in the product, on any device.** Visits exist only as output of `generate_visits_through` from a subscription, so an emergency call-out, a make-up visit after a skip, or a one-time deep clean cannot be scheduled at all. Building it is a capability decision, not a label fix | v1.8 |
+| Q-4 | ✅ | Sheet relabelled, and **the one-off visit is built** — bookable from `/routes`, the mobile ➕ sheet, and the client's Visits tab. **The claim that made this a question was mine and it was wrong:** there was never "no way to create a one-off visit" — Client → Services → Add service → "One time" has existed all along. What did not work was booking one for TODAY. See the v1.9 changelog | v1.9 |
 | Q-5 | 🔵 Open | Tech "More" ceiling — non-blocking | — |
 | Q-6 | ✅ | Plan-gated existing roles | v1.1 |
 | Q-7 | ✅ | Soft caps + overage billing | v1.1 |
