@@ -1,3 +1,4 @@
+import { orgToday } from "@/lib/org-day";
 // Shared accounts-receivable math — the ONE authoritative computation behind
 // the Dashboard "AR open"/overdue cards, the Reports "Outstanding" + aging
 // figures, the Invoices index "Outstanding" stat, and the Clients list
@@ -38,7 +39,10 @@ export function invoiceOutstandingCents(inv: ArInvoice): number {
 
 /** Whether this invoice is overdue: open and past its due date. */
 export function isInvoiceOverdue(inv: ArInvoice, todayISO?: string): boolean {
-  const today = todayISO ?? new Date().toISOString().slice(0, 10);
+  // The fallback is the ORG default, not the server's day. Callers that know
+  // the organization should pass its today; those that do not at least land on
+  // the same calendar the database uses, rather than one five hours ahead.
+  const today = todayISO ?? orgToday();
   return isOutstanding(inv) && !!inv.due_on && inv.due_on < today;
 }
 
@@ -57,7 +61,7 @@ export type ArSummary = {
 /** The dashboard/reports rollup: open AR and overdue figures from one pass
  * over the invoice ledger, so every surface shows the same numbers. */
 export function summarizeAr(invoices: ArInvoice[], todayISO?: string): ArSummary {
-  const today = todayISO ?? new Date().toISOString().slice(0, 10);
+  const today = todayISO ?? orgToday();
   const summary: ArSummary = { arOpenCents: 0, openCount: 0, overdueCents: 0, overdueCount: 0 };
   for (const inv of invoices) {
     const owed = invoiceOutstandingCents(inv);

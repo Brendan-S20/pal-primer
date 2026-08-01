@@ -305,16 +305,8 @@ export function reducesIncome(kind: string): boolean {
  *  cosmetic off-by-one.
  *
  *  en-CA formats as YYYY-MM-DD, which is the shape every date column here uses. */
-export function orgLocalDay(iso: string | number | Date, tz: string): string {
-  const d = iso instanceof Date ? iso : new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d);
-}
+export { orgLocalDay } from "@/lib/org-day";
+
 
 /** "2026-03-14" → "2026-03". */
 export function monthKey(day: string): string {

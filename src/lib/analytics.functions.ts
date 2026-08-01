@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
@@ -82,9 +83,11 @@ export const getClientLtv = createServerFn({ method: "POST" })
       .select("timezone, created_at")
       .eq("id", orgId)
       .maybeSingle();
-    const timezone = (org as any)?.timezone || "UTC";
+    // "UTC" here while every other layer defaults to America/Chicago is a
+    // disagreement in itself, and the window's end was the server's day.
+    const timezone = (org as any)?.timezone || DEFAULT_ORG_TIMEZONE;
     const from = ((org as any)?.created_at ?? "2000-01-01").slice(0, 10);
-    const to = new Date().toISOString().slice(0, 10);
+    const to = orgToday(timezone);
 
     const reversalRows = await loadOrgReversals(context.supabase, { orgId, timezone, from, to });
     const byClient = await reversalsByClient(context.supabase, orgId, reversalRows);

@@ -3,6 +3,7 @@
 // insights, and enqueues a digest email to the configured recipient.
 
 import * as React from "react";
+import { orgLocalDay } from "@/lib/org-day";
 import { render } from "react-email";
 import { generateText, Output } from "ai";
 import { z } from "zod";
@@ -84,13 +85,11 @@ export type AdvisorWindowDays = 7 | 30 | 90;
  *  to a day early, quietly shifting which visits count as inside the window.
  *  en-CA formats as YYYY-MM-DD, which is what the column wants. */
 function orgLocalDate(ms: number, tz: string): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(ms));
+  // The third copy of this was about to be written, so it is one definition
+  // now. See src/lib/org-day.ts for why the server's clock is the wrong clock.
+  return orgLocalDay(ms, tz);
 }
+
 
 export async function computeDigestMetrics(
   orgId: string,
@@ -208,7 +207,10 @@ export async function computeDigestMetrics(
     .eq("organization_id", orgId)
     .eq("status", "open");
   const { summarizeAr } = await import("@/lib/ar");
-  const arSummary = summarizeAr((openInvoices ?? []) as any[]);
+  // `today` was omitted here while `tz` sat in scope ninety lines above, so the
+  // weekly digest counted overdue against the SERVER's day and mailed the owner
+  // a number that disagreed with their own dashboard.
+  const arSummary = summarizeAr((openInvoices ?? []) as any[], orgLocalDate(Date.now(), tz));
   const openArCents = arSummary.arOpenCents;
   const overdueInvoices = arSummary.overdueCount;
 

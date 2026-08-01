@@ -1,3 +1,5 @@
+import { DEFAULT_ORG_TIMEZONE, orgLocalDay } from "@/lib/org-day";
+
 /**
  * Provider-specific accounting drivers.
  * Server-only: never import from client bundles.
@@ -85,6 +87,10 @@ export async function ensureFreshToken(conn: Conn): Promise<Conn> {
 
 type InvoicePayload = {
   id: string;
+  /** The organization's timezone. Required because `issued_at` is an instant
+   *  and the provider wants a calendar DAY — and the day it lands on decides
+   *  which tax year the invoice belongs to in the customer's own books. */
+  timezone?: string | null;
   total_cents: number;
   currency: string;
   issued_at: string | null;
@@ -134,7 +140,13 @@ async function pushInvoiceQBO(conn: Conn, invoice: InvoicePayload): Promise<stri
     },
     body: JSON.stringify({
       CustomerRef: { value: customerRef },
-      TxnDate: invoice.issued_at?.slice(0, 10),
+      // The date this lands on in the customer's QuickBooks. `.slice(0,10)` on
+      // an ISO string is the UTC day, so an invoice issued 2025-12-31 21:00
+      // Chicago posted as 2026-01-01 — the wrong TAX YEAR, permanently, in
+      // books this product does not own and cannot correct.
+      TxnDate: invoice.issued_at
+        ? orgLocalDay(invoice.issued_at, invoice.timezone || DEFAULT_ORG_TIMEZONE)
+        : undefined,
       Line: lines,
       CurrencyRef: { value: (invoice.currency ?? "USD").toUpperCase() },
     }),
@@ -191,7 +203,11 @@ async function pushInvoiceXero(conn: Conn, invoice: InvoicePayload): Promise<str
     body: JSON.stringify({
       Type: "ACCREC",
       Contact: contact,
-      Date: invoice.issued_at?.slice(0, 10),
+      // Same as the QuickBooks branch — the org's calendar day, not the
+      // server's.
+      Date: invoice.issued_at
+        ? orgLocalDay(invoice.issued_at, invoice.timezone || DEFAULT_ORG_TIMEZONE)
+        : undefined,
       LineItems: lineItems,
       Status: "AUTHORISED",
       CurrencyCode: (invoice.currency ?? "USD").toUpperCase(),

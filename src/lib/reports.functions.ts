@@ -1,4 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
+import {
+  DEFAULT_ORG_TIMEZONE,
+  daysBetweenOrgDays,
+  orgLocalDay,
+  orgToday,
+} from "@/lib/org-day";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
@@ -137,7 +143,11 @@ export const getReports = createServerFn({ method: "POST" })
       .select("timezone")
       .eq("id", orgId)
       .maybeSingle();
-    const timezone = (orgRow as { timezone?: string | null } | null)?.timezone || "UTC";
+    // Falling back to UTC here while every other layer falls back to
+    // America/Chicago is itself a disagreement: the same org would be dated
+    // one way on this page and another in the CPA pack.
+    const timezone =
+      (orgRow as { timezone?: string | null } | null)?.timezone || DEFAULT_ORG_TIMEZONE;
 
     const { loadOrgReversals, totalReversals, reversalsByClient } =
       await import("@/lib/reversals.server");
@@ -149,10 +159,14 @@ export const getReports = createServerFn({ method: "POST" })
     let outstandingCents = 0;
     const perClient: Record<string, number> = {};
     const aging = { current: 0, d30: 0, d60: 0, d90: 0 };
-    const today = new Date();
+    // The org's today, and the org's calendar. Subtracting two timestamps and
+    // dividing by 86,400,000 answers "how much time has passed", which is not
+    // what an aging bucket asks: an invoice issued at 23:00 yesterday is one
+    // day old on an accountant's schedule, not zero.
+    const today = orgToday(timezone);
 
     for (const inv of invoices ?? []) {
-      const issued = inv.issued_at ? inv.issued_at.slice(0, 10) : null;
+      const issued = inv.issued_at ? orgLocalDay(inv.issued_at, timezone) : null;
       const inRange = issued && issued >= from && issued <= to;
       if (inv.status === "paid" && inRange) {
         revenuePaidCents += inv.total_cents ?? 0;
@@ -165,7 +179,7 @@ export const getReports = createServerFn({ method: "POST" })
         outstandingCents += owed;
         const ref = inv.issued_at;
         if (ref) {
-          const days = Math.floor((today.getTime() - new Date(ref).getTime()) / 86400000);
+          const days = daysBetweenOrgDays(orgLocalDay(ref, timezone), today);
           if (days <= 0) aging.current += owed;
           else if (days <= 30) aging.d30 += owed;
           else if (days <= 60) aging.d60 += owed;

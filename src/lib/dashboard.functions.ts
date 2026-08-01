@@ -3,10 +3,12 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveCaller } from "@/lib/authz.server";
 import { hasPermission } from "@/lib/permissions";
 import { invoiceOutstandingCents, isInvoiceOverdue, summarizeAr } from "@/lib/ar";
+import { orgToday } from "@/lib/org-day";
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+// `new Date().toISOString()` is the SERVER's day. For an org in
+// America/Chicago that is tomorrow from 19:00 local, so "visits today" and
+// every overdue figure on this dashboard flipped five hours early. See
+// src/lib/org-day.ts.
 
 export const getDashboardSummary = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -16,7 +18,12 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
     // Financial KPIs are scoped server-side: roles without view_financials
     // (e.g. dispatcher) get null for these fields, and the queries never run.
     const canViewFinancials = hasPermission(role, "view_financials");
-    const today = todayISO();
+    const { data: orgRow } = await supabase
+      .from("organizations")
+      .select("timezone")
+      .eq("id", orgId)
+      .maybeSingle();
+    const today = orgToday((orgRow as { timezone?: string | null } | null)?.timezone || undefined);
     const emptyRes = { data: [] as any[], error: null as any };
 
     const [activeClientsRes, todayVisitsRes, collected, openInvoicesRes, staffRes, openTicketsRes] =

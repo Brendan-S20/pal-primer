@@ -149,7 +149,17 @@ export const syncInvoice = createServerFn({ method: "POST" })
     let message: string | null = null;
     try {
       const fresh = await ensureFreshToken(conn as any);
-      remoteId = await pushInvoice(fresh, invoice as any);
+      // The driver needs the org's timezone to date the invoice in the
+      // customer's books; without it the day comes from the server's clock.
+      const { data: orgRow } = await supabase
+        .from("organizations")
+        .select("timezone")
+        .eq("id", orgId)
+        .maybeSingle();
+      remoteId = await pushInvoice(fresh, {
+        ...(invoice as any),
+        timezone: (orgRow as { timezone?: string | null } | null)?.timezone ?? null,
+      });
       await supabase
         .from("invoices")
         .update({ accounting_remote_id: remoteId })

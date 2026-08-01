@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { orgToday } from "@/lib/org-day";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
@@ -363,12 +364,8 @@ export const listVisitsAwaitingCloseOut = createServerFn({ method: "GET" })
     const { DEFAULT_TIMEZONE } = await import("@/lib/route-window");
     const tz = org?.timezone || DEFAULT_TIMEZONE;
     const now = new Date();
-    const orgLocalToday = new Intl.DateTimeFormat("en-CA", {
-      timeZone: tz,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(now);
+    // The third hand-rolled copy of this formatter. One definition now.
+    const orgLocalToday = orgToday(tz, now);
     const orgLocalTime = new Intl.DateTimeFormat("en-GB", {
       timeZone: tz,
       hour: "2-digit",
