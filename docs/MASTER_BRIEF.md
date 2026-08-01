@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.13** · Released 2026-08-01 · Supersedes: v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.14** · Released 2026-08-01 · Supersedes: v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,101 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+### v1.14 — 2026-08-01
+
+**A director-level QA pass over everything this ledger calls done, and the
+close-out of what it calls open. Four QA agents, every finding re-proven
+before it was acted on, and two of their claims discarded because they did not
+survive that.**
+
+**Nine tables where the server function was the only gate** (BUG-80). A full
+RLS sweep of `public`. Proven live: a field TECH could mint a $5,000 gift card
+and a 100%-off promo code; a DISPATCHER could read and overwrite the tenant's
+live QuickBooks/Xero OAuth tokens, and reprice all 24 of an org's
+subscriptions to $0.01. In every case the correct predicate was already
+written in the TypeScript — `promotions.functions.ts` says in so many words
+that "RLS alone only tenant-scopes the write — it does not check role". True
+about the function, false about the system. Each policy is now the permission
+its own writer requires.
+
+**The credit balance and its ledger disagreed, and the product spends the
+balance** (BUG-81). $210 of live drift. Three of the five ledger writers never
+touched `clients.credit_balance_cents`, so on a prepaid client an add-on
+debited the ledger, left the balance alone, and stamped the charge
+`paid_from_credit` — then the same dollars were spent again by
+`apply_credit_to_invoice`. $445 out of a $500 top-up, twice over. Fixed with
+the pattern that already works here: a trigger that RECOUNTS from the ledger,
+the same reason the seat counters audit at zero drift. Found alongside it:
+`portal_redeem_promo` inserts a `kind` the check constraint has never allowed,
+so **every promo code redeemed from the client portal has thrown** for the
+life of the feature.
+
+**Nine surfaces decided what day it was using the server's clock** (BUG-82).
+Seventh occurrence. Every invoice raised after 7pm local was due a day late —
+and `due_on` is the only input to overdue status, dunning, aging and the
+reminder emails. The QuickBooks/Xero posting date was the expensive one: an
+invoice issued 2025-12-31 21:00 Chicago posted as 2026-01-01, the wrong TAX
+YEAR, in books this product does not own. There were THREE hand-rolled copies
+of the same formatter; `src/lib/org-day.ts` is the one definition now and a
+test fails if a fourth appears.
+
+**Eight protections could be switched off with the suite green** (IMP-13). The
+most important finding of the pass, because it means the rest of this ledger
+was less verified than it read. With `vitest run` at 752 passed, a mutation
+could unregister CSRF entirely, stop the nightly cron enforcing its auth,
+return OAuth tokens to plaintext, detach the platform-column trigger, disable
+RLS on `payments`, multiply every royalty by ten, invert the settlement
+balance, and redefine `is_org_member` into an oracle. Several were tests I had
+written the same day. A new `the-wiring-is-connected` suite asserts only that
+guards are PLUGGED IN; the weak tests are repaired in place.
+
+**/reports and the CPA pack gave an owner two different answers** (BUG-83).
+$3,200 vs $3,185 on July revenue — an invoice settled entirely from account
+credit counted as cash received — and $2,655 vs $2,550 outstanding, because
+receivables were never bounded by the period. `outstandingAsOf` and
+`billedDay` moved out of the pack into `ar.ts` and both surfaces import them,
+so the header's long-standing claim that the two "cannot disagree" is finally
+true by construction rather than by assertion.
+
+**Q-2 closed: the tablet tier is built.** Driven by ROLE, not width — that is
+why a breakpoint move never worked. A tech keeps the tab bar through
+768–1024px; an office user does not, because the dispatch board is there. The
+bar's reach and the main content's bottom padding are one decision and read
+one hook, or the bar lands on top of My Day's Complete button.
+
+**The offline queue can no longer be blocked by one bad action** (BUG-84).
+Deferred in v1.11 and closed here: five refusals *while online* dead-letters an
+action so the queue behind it moves, and the tech is told loudly. Failures in
+a dead zone do not count — losing a tech's work because the yard has no signal
+is the opposite of the point.
+
+**Also closed:** `platform_org_stats` selected a column that does not exist and
+had thrown on every call it ever received, with no caller — dropped rather
+than repaired, because fixing it meant inventing a third definition of
+revenue. The marketing site's hostname is settled on `www` across canonicals,
+Plausible and the deploy notes.
+
+**What the QA agents got wrong, recorded because a false finding costs more
+than a missed one.** One reported `record_franchise_adjustment` as an
+unguarded SECURITY DEFINER routine; it is not granted to `authenticated` and a
+tech calling it is refused. One reported the `stripe_connect` trigger as
+bypassable, having tested it with values identical to the current ones so
+`IS DISTINCT FROM` never fired. And the reconciliation agent shipped its
+change with **no tests at all** — fifteen were added afterwards, and one of
+them initially passed a real mutation because no invoice in its fixture landed
+in the bucket being tested.
+
+**My own errors this cycle, in order:** a drift check that counted a GRANT as a
+definition, which is the exact hole it was written to close and which had been
+hiding three undeclared functions; a credential scan that flagged a zod schema
+as a plaintext token write; a comment-blind checker that failed on its own
+prose; a `portal_redeem_promo` replacement declared with `text` where the live
+signature is `uuid`, which would have created a dead overload rather than
+replacing the function; and a tablet-tier assertion that missed a hard-coded
+class because it only matched double-quoted attributes and the fix uses
+template literals.
+
 
 ### v1.13 — 2026-08-01
 
@@ -787,6 +882,11 @@ were built. Repo search finds no such mechanism. Raised as BUILD-10.
 | BUG-44 | 🟢 Fixed | 🟠 | **New.** The app could not open offline at its own front door. `_authenticated.beforeLoad` called `supabase.auth.getUser()` — a **network call** — and read any failure as "not signed in", redirecting to `/auth`. No amount of caching could have helped. Now falls back to the local session, but only when the failure looks like lost network; a 4xx from the auth server is still a real rejection, and that distinction is tested, because getting it backwards would let an expired account in | v1.7 |
 | BUG-45 | 🟢 Fixed | 🟡 | **New.** The marketing site quoted an annual price the app does not charge. The app bills annual as ten months — `annual_price_cents` is exactly 10× monthly on every live tier, "two months free", 16.7% — while the site applied a flat 15% and said so in the FAQ. `/pricing` quoted Launch at $67.15/mo against an actual $65.83. Under-promising, so harmless in direction, but a published price that is not the price. Now derived from months-paid so the two cannot drift | v1.7 |
 | BUG-46 | 🟢 Fixed | 🟡 | **New.** `franchise_signals` returned organization names and ids as two parallel arrays that were not in the same order, so per-organization links would have pointed at the wrong tenant about half the time. Never mispaired anyone only because the screen noticed and rendered no links. Not fixed by adding `ORDER BY name` — that is not a total order (three organizations here are literally named "Test Test") and two aggregates sort independently. Replaced with one jsonb array of self-contained `{id, name, linked}` objects: nothing left to zip | v1.7 |
+| BUG-80 | 🟢 Fixed | 🔴🔴 | **New, security.** **Nine tables where the server function was the only gate.** A full RLS sweep of `public`. Proven live in rolled-back transactions: `TECH mint_$5000_giftcard=ALLOWED`, `DISPATCHER reads_quickbooks_token=TOKEN_SECRET`, `DISPATCHER repriced_subscriptions=24`. gift_cards, gift_card_redemptions and promo_codes were `FOR ALL` on bare membership — a field tech could mint a $5,000 gift card, post a redemption against an invoice, issue a 100%-off code for the whole customer base, or delete cards customers had paid for, with `redeem_gift_card` bypassed entirely. accounting_connections was `can_write_org` for READ and WRITE, so a dispatcher could exfiltrate and overwrite live QuickBooks/Xero OAuth access and refresh tokens — control of the company's books outside this app and outside its audit log, and refresh tokens survive a password change. subscriptions was `can_write_org`, so a dispatcher could set a recurring price to $0.01. skip_billing_rules, ai_receptionist_logs, signup_requests, neighbor_leads and the org-wide push_subscriptions read were the same shape. In every case the correct predicate was already written in the TypeScript. After: `TECH mint=BLOCKED reads_giftcards=0 reads_promos=0 \|\| DISP qb_token=BLOCKED repriced=0 \|\| OM qb_token=readable(ok) can_still_price=24 can_still_issue=OK`. Tenant isolation was never broken — all of it is intra-org escalation | v1.14 |
+| BUG-81 | 🟢 Fixed | 🔴 | **New, money.** **A client's credit balance and the ledger behind it disagreed, and the product spends the balance.** $210 of live drift (Emily Rodriguez cached −18000 / ledger −30000; Chris Williams −6000 / −15000). Five routines write `credit_ledger` and only two maintained `clients.credit_balance_cents`, so on a PREPAID client an add-on debited the ledger, left the balance untouched, and stamped the charge `paid_from_credit` — then `apply_credit_to_invoice`, which reads the cached balance, spent the same dollars again. Proven: $445 out of a $500 top-up, twice over. Fixed with the pattern that already works here rather than by patching three more writers — a trigger that RECOUNTS from the ledger on insert, update and delete, the same reason `refresh_active_client_count` and `refresh_active_seat_count` audit at exactly zero drift. Balances backfilled to the ledger (safe: `clients_with_balance_but_no_ledger = 0`). **Found while reading it:** `portal_redeem_promo` inserts `kind = 'promo'`, which the check constraint has never allowed — so every promo code redeemed from the client portal has thrown for the life of the feature | v1.14 |
+| BUG-82 | 🟢 Fixed | 🔴 | **New, money.** **Nine surfaces decided what day it was using the server's clock** — the seventh occurrence of this in the codebase. For an org in America/Chicago, UTC is a day ahead from 19:00 local: five hours of every day, 21% of the clock. `tg_set_invoice_due_on` cast `issued_at::date` in the SESSION timezone, so every invoice raised in the evening was due a day late (`due_on WRITTEN=2026-08-16 SHOULD BE=2026-08-15`) — and `due_on` is the only input to overdue status, the dunning ladder, the aging buckets and the reminder emails. The nightly batch runs at 01:10 Chicago so ITS invoices were fine; the wrong ones are the ones a human typed, which is the worst shape for a bug. `run_billing_cycles` took `current_date` four times. Seven TypeScript surfaces followed, including the QuickBooks TxnDate and Xero Date — an invoice issued 2025-12-31 21:00 Chicago posted as 2026-01-01, the wrong TAX YEAR, permanently, in books this product does not own. `ar.ts` was the root: both overdue helpers fell back to the server day when no `today` was passed. THREE hand-rolled copies of the same formatter existed; `src/lib/org-day.ts` is the one definition and a test fails if a fourth appears. Not backfilled — zero live invoices fall inside the disagreement window | v1.14 |
+| BUG-83 | 🟢 Fixed | 🟠 | **New, money.** **/reports and the CPA pack gave an owner two different answers**, and an owner hands one to their accountant and reads the other over coffee. July revenue $3,200.00 vs $3,185.00 — the $15.00 was one invoice settled entirely from account credit, counted as revenue received though no money arrived; the same expression never subtracted `credit_applied_cents` and then subtracted refunds, a CASH contra, from an issue-dated ACCRUAL base. July outstanding $2,655.00 vs $2,550.00 — receivables were never bounded by the period, so three invoices issued 1 August sat in a July figure. `outstandingAsOf` and `billedDay` moved OUT of the pack into `ar.ts` and both surfaces import them, making the file header's long-standing claim that the two "cannot disagree" true by construction rather than by assertion. Verified live: the shared rule at 2026-07-31 returns 255000, the pack's figure, against the old rule's 265500. The aging SPLIT still differs deliberately (due date vs issue date); the TOTAL no longer can | v1.14 |
+| BUG-84 | 🟢 Fixed | 🟠 | **Verified in v1.11, deferred, closed here.** **One permanently-failing action blocked the offline queue for the rest of a tech's day.** The sync loop `break`s at the first failure so it does not hammer a broken network, and there was no retry cap — so a single action the server would never accept stopped everything queued behind it, with nothing on screen to explain why. Five refusals **while online** now dead-letter the action so the queue moves, and the tech is told in a long-lived error toast naming what was discarded. Failures in a dead zone do not count against the cap: losing a tech's work because the yard has no signal is the opposite of the point. The photo blob is freed with the action, or it would outlive the only thing pointing at it. Residual risk stated rather than hidden — `navigator.onLine` reports reachability, not server health, so five cycles against a reachable-but-refusing server would still discard work | v1.14 |
 | BUG-76 | 🟢 Fixed | 🔴 | **New, money.** **Voiding a settlement statement stranded its adjustments forever.** A swept adjustment is marked `applied` and linked to the statement; the generator only reconsiders one whose statement is still a DRAFT for the period being settled, and a voided statement is neither. Proven live, rolled back: `JULY: adj=20000` then `AFTER VOID: aug_adj=0 \| july_status=void \| adj_now=applied linked_void=true` — a $200 chargeback the location owed counted on nothing, ever again. Voiding is the one action whose entire purpose is *undo this statement*, and it undid everything except the part that moves money. Fixed with a trigger on the table rather than in the void call site, because the table takes UPDATEs directly from anyone holding `manage_franchise`; reversed adjustments are deliberately left alone, since a reversed deduction is finished, not owed. After: `after_void=pending/unlinked -> aug_adj=20000` | v1.13 |
 | BUG-77 | 🟢 Fixed | 🔴 | **New, money.** **A reversed deduction stayed on the draft it was applied to.** Winning a chargeback whose statement is still a draft correctly marks the deduction `reversed` and stops — a draft has not been sent, so there is nothing to repay — but the draft ROW keeps the numbers it was generated with. Proven live: `draft after settle: adj=20000 net=70000`, then `after winning: adj_now=reversed`, and `DRAFT STILL SAYS: adj=20000 net=70000`. Regenerating corrects it (`adj=0 net=90000`) and nothing requires anyone to regenerate: generate on the 1st, win the dispute on the 5th, issue on the 10th, and the location is billed $200 for a chargeback it won. Fixed by refusing to ISSUE a statement that disagrees with the adjustments underneath it, rather than silently recomputing on the way out — the numbers on a statement should change only when someone regenerates it; what must not happen is sending one already known to be stale. After: `stale_issue=BLOCKED after_regen adj=0 then_issue=OK/issued` | v1.13 |
 | BUG-78 | 🟢 Fixed | 🟠 | **New, money.** **An adjustment landed on whichever statement was cut first.** The sweep filtered on `status = 'pending'` and nothing else — no period at all — so a chargeback on a July payment went onto an August statement if August happened to be settled first, and July's own statement showed none: `aug_adj=20000 july_adj=0`. The nightly cron settles last month, so the natural order usually hides it; re-running an old period, or backfilling after onboarding a location, does not. **Precisely what the fix guarantees, since the after-probe shows both halves:** a statement can no longer carry an event that happened after its period closed — the property that makes it reconcilable against a franchisee's own books. Settling August before July still carries July's outstanding chargeback onto August (`aug_first: aug_adj=50000`), which is carry-forward and is correct. In the normal order the periods separate cleanly: `july_adj=20000 aug_adj=30000`. The consume step got the same filter, without which an adjustment would be marked applied while being counted by nothing — BUG-76 by another route | v1.13 |
@@ -1596,6 +1696,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | IMP-6 | ❓ Blocked | 🟡 | Payment test coverage — needs Stripe authorized | v1.1 |
 | IMP-7 | 🟢 Fixed | 🟡 | Supabase types regenerated. They had been stale since before this cycle and IMP-9's table drop made them wrong, not just incomplete. Four `any`/structural casts removed as a result | v1.3 |
 | IMP-11 | 🟢 Fixed | 🟠 | Dead-machinery detector — a hard CI gate for the failure this project keeps producing: something built, granted and correct that nothing ever calls. Turned on itself in v1.6 and found one rule that could not fire, one counting comments as callers, and one that would have failed CI on correct code; all three rewritten and mutation-proven in v1.7. **v1.8 adds a fourth rule and fixes a blind spot the first three shared:** rule 1 keys on a function's NAME, so two signatures of one name collapse and a dead overload is vouched for by the live one's callers — which is how a second `skip_visit` stayed granted and uncalled for a month (BUG-50). Drops and creates are now tracked per signature, and rule 4 flags any name with more than one live signature. Its first run reported five findings, all five false, all caused by its own type normalization — recorded in the header as the general rule. Green with 17 exceptions, no open known gaps. One residual: the cron schedules in rule 2's baseline are asserted by a human and checked by nothing | v1.5 |
+| IMP-13 | 🟢 Fixed | 🔴 | **New.** **Eight protections could be switched off with the full suite green** — the most consequential finding of the QA pass, because it means everything else in this ledger was less verified than it read. At `vitest run` 752 passed, a mutation could: delete the CSRF middleware from `requestMiddleware`, leaving the app with no CSRF protection at all; replace the nightly cron's `if (!auth.ok) return cronUnauthorized(...)` with `void auth`, opening autopay charges and invoice generation to anyone who can POST; swap `encryptSecret(token)` for `token` at the accounting write site, undoing IMP-1; comment out the `CREATE TRIGGER` for `tg_orgs_protect_platform_columns`, detaching the guard while leaving the body every test reads; `ALTER TABLE payments DISABLE ROW LEVEL SECURITY`, invisible to every policy-text scan; change the royalty divisor from 100.0 to 10.0 and invert the settlement balance signs; widen `generate_franchise_settlements` to `is_org_member`; and redefine `is_org_member` in a later migration without its caller guard, because `permission-parity.test.ts` read one hard-coded filename. Every one was a guard whose EXISTENCE was checked while nothing checked it was CONNECTED. New `tests/the-wiring-is-connected.test.ts` asserts only wiring; the weak tests are repaired in place. Also closed two discovery holes: vitest never ran `.test.tsx` files, and an `exclude:` entry could silently drop real ones. Twelve mutations, all now caught | v1.14 |
 | IMP-12 | 🟢 Fixed | 🟠 | **New.** The other direction of schema drift. IMP-2's `check-migrations.mjs` compares migration files to Supabase's applied ledger — it answers "did production run everything the repo has", and cannot answer "does production have something the repo never wrote". That is the direction that stays invisible, because nothing fails until an environment is rebuilt and an object simply is not there; three functions had drifted that way undetected (BUG-75). `check-schema-declared.mjs` sweeps every function in `public` against every migration, wired into CI beside its counterpart. A GRANT mentioning a name does **not** count as a declaration — that is precisely how `email_queue_wake` hid, since a migration granted EXECUTE on a function no migration created. The allow-list is for platform-owned objects only and is currently empty; the check also fails on an allowance naming a function that no longer exists, so it cannot rot into a blanket exemption. Three mutations run, all caught. **Known gap:** it covers functions, not tables, policies, indexes or triggers | v1.12 |
 | IMP-10 | 🟢 Fixed | 🔴 | **Closed in v1.5, and it was worse than logged.** `src/lib/revenue.ts` is now the one definition — money that ARRIVED (`succeeded` or `refunded`), reversals deducted in their own period — mirrored in SQL with a parity test that fails on drift. Fixing it turned up BUG-21 (a real money error), a third copy of the royalty calculation in the nightly cron, and an AI-tools query with no status filter at all that counted declined cards as revenue. Invoice-based revenue stays separate and is reconciled by BUILD-13's bridge rather than conflated | v1.4 |
 | IMP-9 | 🟢 Fixed | 🟠 | Retire the BYOK surfaces — **done, and the "wait for BUILD-2/BUILD-3" ordering in v1.2 was wrong.** See below | v1.3 |
@@ -1767,7 +1868,7 @@ rather than the following January.
 | ID | Status | Answer | Answered in |
 |---|---|---|---|
 | Q-1 | ✅ | Dispatchers ops-only, no billing | v1.1 |
-| Q-2 | ⚠️ Answered, never built | The answer was a dedicated tablet tier at 768–1024px. **There is one breakpoint in this app (768px) and no tablet tier exists.** The mobile tab bar is `md:hidden`, so it vanishes at exactly 768 — a tech on a crew tablet gets the desktop sidebar and none of the tech nav, while the offline-cache code repeatedly assumes crew tablets. Not fixed by a blunt breakpoint move: pushing the bar to `lg` would also hide the dispatch board from an iPad, where it renders today and is arguably right. The two halves want different answers, which makes it a real tablet tier or nothing | v1.1, reopened v1.8 |
+| Q-2 | ✅ | **Built in v1.14, and the answer was righter than the question.** The tablet tier exists — but driven by ROLE rather than width, which is why every earlier attempt to move a breakpoint failed. A tech keeps the tab bar through 768–1024px; an office user does not, because the dispatch board renders there and a bottom bar would cover it. Width was standing in for role and it is the wrong proxy. The bar's reach and the main content's bottom padding read one hook, or the bar lands on My Day's Complete button. Original wording follows: The answer was a dedicated tablet tier at 768–1024px. **There is one breakpoint in this app (768px) and no tablet tier exists.** The mobile tab bar is `md:hidden`, so it vanishes at exactly 768 — a tech on a crew tablet gets the desktop sidebar and none of the tech nav, while the offline-cache code repeatedly assumes crew tablets. Not fixed by a blunt breakpoint move: pushing the bar to `lg` would also hide the dispatch board from an iPad, where it renders today and is arguably right. The two halves want different answers, which makes it a real tablet tier or nothing | v1.1, reopened v1.8 |
 | Q-3 | ✅ | Bundled Capacitor assets | v1.1 |
 | Q-4 | ✅ | Sheet relabelled, and **the one-off visit is built** — bookable from `/routes`, the mobile ➕ sheet, and the client's Visits tab. **The claim that made this a question was mine and it was wrong:** there was never "no way to create a one-off visit" — Client → Services → Add service → "One time" has existed all along. What did not work was booking one for TODAY. See the v1.9 changelog | v1.9 |
 | Q-5 | ✅ | The ceiling was never the question. A tech's More sheet holds 6 rows and the only real divergence from the spec was **DNA sample logging — specified, never built**, while a comment asserted for months that it had been. Now built: `log_dna_sample_from_field`, guarded by `is_visit_tech`, on the my-day visit card. Chasing the false comment is what found BUG-61 | v1.10 |
@@ -1776,7 +1877,7 @@ rather than the following January.
 | Q-8 | ✅ | Per-tenant subaccount + own 10DLC brand | v1.1 |
 | Q-9 | ✅ | Grandfather existing multi-entity tenants indefinitely | v1.1 |
 | Q-10 | 🔄 | Cancel with credit/refund — **moot**, no external subscribers exist | v1.1 |
-| Q-11 | 🟠 Part-answered | The UI is honest now (BUG-51): an add-on charge is the one field action that is not queued, and it says so. Whether it *should* queue is still yours. My recommendation is no — the other four queued actions record what happened; this one moves money against a price the device cached earlier | v1.8 |
+| Q-11 | ✅ | The UI is honest now (BUG-51): an add-on charge is the one field action that is not queued, and it says so. Whether it *should* queue is still yours. **Owner answered v1.14: no, it stays online-only.** The other four queued actions record what already happened; this one moves money against a price the device cached earlier, and a replay hours later could bill a customer at a price that changed while the device was in a dead zone. The UI already says so | v1.8 |
 | Q-12 | 🟠 Part-answered | **Reassign only, and it is built.** Below 768px the drag board is `display:none` and there was no other way to move a visit, so a dispatcher could not redistribute a sick tech's day from a phone. The drawer now has a tech picker. Reschedule and reorder stay desktop — reorder is meaningless without the board, and reschedule needs `manage_client_billing`, which a dispatcher does not hold | v1.8 |
 | Q-13 | ✅ | Every add-on available at launch, after QA. Site updated; the app's `platform_addons` are still `coming_soon`/inactive and stay that way until live Stripe (owner: Stripe last) | v1.2 |
 

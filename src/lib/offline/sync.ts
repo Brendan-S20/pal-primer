@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   deleteAction,
   deletePhoto,
+  recordAttempt,
   getPhoto,
   listPending,
   type PendingAction,
@@ -76,12 +77,36 @@ export interface SyncResult {
   /** Actions discarded because they can never succeed. Surfaced separately so
    *  a loss is never reported as a sync. */
   dropped: number;
+  /** Actions the server refused MAX_ATTEMPTS times in a row while the device
+   *  was online. Given up on, so the queue behind them can move. */
+  deadLettered: number;
 }
 
+/** How many server refusals before an action is given up on.
+ *
+ *  Only failures that happened WHILE ONLINE count. A tech in a dead zone can
+ *  retry all day without burning the budget — losing their work because the
+ *  yard has no signal is the opposite of what this is for. The heuristic is
+ *  `navigator.onLine`, which is honest about reachability rather than about
+ *  whether the server is healthy, so a server outage lasting five sync cycles
+ *  could still discard work. That is the residual risk, stated rather than
+ *  hidden; five cycles of a reachable-but-refusing server is also a fair
+ *  description of "this will never succeed".
+ *
+ *  The alternative — the previous behaviour — is one bad action blocking a
+ *  tech's entire day with nothing on screen to explain it. */
+export const MAX_ATTEMPTS = 5;
+
 export async function syncQueue(callers: SyncCallers, userId: string): Promise<SyncResult> {
-  if (running) return { attempted: 0, succeeded: 0, failed: 0, dropped: 0 };
+  if (running) return { attempted: 0, succeeded: 0, failed: 0, dropped: 0, deadLettered: 0 };
   running = true;
-  const result: SyncResult = { attempted: 0, succeeded: 0, failed: 0, dropped: 0 };
+  const result: SyncResult = {
+    attempted: 0,
+    succeeded: 0,
+    failed: 0,
+    dropped: 0,
+    deadLettered: 0,
+  };
   try {
     // Only this user's actions. Replaying another tech's work under the
     // signed-in tech's identity fails every authorization check and wedges the
@@ -101,6 +126,23 @@ export async function syncQueue(callers: SyncCallers, userId: string): Promise<S
           result.dropped++;
           console.error("offline sync dropped an action", action, e);
           continue;
+        }
+        // A failure with no network is not the action's fault. Only count it
+        // against the action when the device believes it can reach the server.
+        const online = typeof navigator === "undefined" || navigator.onLine;
+        if (online) {
+          const attempts = await recordAttempt(action.id);
+          if (attempts >= MAX_ATTEMPTS) {
+            // Give up on THIS action so everything queued behind it can move.
+            // Reported separately and loudly: the tech is the only person who
+            // can redo the work, and silently discarding it would be worse
+            // than the blockage this replaces.
+            await deleteAction(action.id);
+            if (action.kind === "photo") await deletePhoto(action.photoId);
+            result.deadLettered++;
+            console.error("offline sync gave up on an action", action, e);
+            continue;
+          }
         }
         result.failed++;
         console.warn("offline sync failed", action, e);

@@ -224,6 +224,16 @@ function MyDay() {
       );
       qc.invalidateQueries({ queryKey: ["my-day"] });
     }
+    if (res.deadLettered > 0) {
+      // Loud, specific, and never folded into any other count. The queue was
+      // blocking everything behind this; giving up unblocks the day, but the
+      // work itself is gone and only the tech can redo it.
+      toast.error(
+        `${res.deadLettered} queued action${res.deadLettered === 1 ? "" : "s"} the server kept refusing ${res.deadLettered === 1 ? "has" : "have"} been discarded so the rest could sync — check the visit and redo it if needed`,
+        { duration: 12_000 },
+      );
+      qc.invalidateQueries({ queryKey: ["my-day"] });
+    }
     if (res.failed > 0) {
       toast.error(`Sync stalled on 1 action, will retry`);
     }

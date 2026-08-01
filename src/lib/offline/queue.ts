@@ -30,6 +30,14 @@ type ActionBase = {
   /** Who queued it. Replay runs as whoever is signed in, so an action without
    *  an owner is an action that can be replayed by the wrong person. */
   userId: string;
+  /** How many times replay has reached the server and been refused.
+   *
+   *  The sync loop stops at the first failure so it does not hammer a broken
+   *  network, which means ONE permanently-failing action blocks every action
+   *  behind it for the rest of the day, with nothing on screen to say so. A
+   *  count is what lets the loop tell "the network is down" from "the server
+   *  will never accept this". */
+  attempts?: number;
 };
 
 export type PendingAction =
@@ -67,7 +75,11 @@ function getDb() {
     // them rather than leaving actions that either replay as the wrong person
     // or sit unsyncable for ever. A queue is a few hours of one tech's work at
     // most, and guessing its owner is the failure this version exists to stop.
-    dbPromise = openDB<OfflineDB>("scoop-offline", 2, {
+    // v3 adds `attempts`. Unlike the v1→v2 upgrade there is nothing unsafe
+    // about an existing row — a missing count simply means zero — so v2 rows
+    // are KEPT. Dropping a tech's queued work to add a counter would be a
+    // worse bug than the one being fixed.
+    dbPromise = openDB<OfflineDB>("scoop-offline", 3, {
       upgrade(db, oldVersion) {
         if (oldVersion < 1) {
           const actions = db.createObjectStore("actions", { keyPath: "id" });
@@ -84,6 +96,7 @@ function getDb() {
           actions.createIndex("by-user", "userId");
           db.createObjectStore("photos", { keyPath: "id" });
         }
+        // v3 needs no migration: `attempts` is optional and absent means 0.
       },
     });
   }
@@ -124,6 +137,17 @@ export async function storePhoto(
  * one rejected by is_visit_tech, and the first rejection wedges the queue for
  * the person actually holding the device.
  */
+/** Record that replay reached the server and was refused. Returns the new
+ *  count so the caller can decide whether the action is beyond saving. */
+export async function recordAttempt(id: string): Promise<number> {
+  const db = await getDb();
+  const existing = await db.get("actions", id);
+  if (!existing) return 0;
+  const attempts = (existing.attempts ?? 0) + 1;
+  await db.put("actions", { ...existing, attempts });
+  return attempts;
+}
+
 export async function listPending(userId: string): Promise<PendingAction[]> {
   const db = await getDb();
   const all = await db.getAllFromIndex("actions", "by-ts");
