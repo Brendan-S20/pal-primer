@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.18** · Released 2026-08-01 · Supersedes: v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.19** · Released 2026-08-01 · Supersedes: v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,47 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+### v1.19 — 2026-08-01
+
+**QA-P1 fixed. The stale-route warning fired against live data on every
+load.**
+
+For the first minute of every `/my-day` load a tech saw *"Couldn't refresh —
+saved copy"* and *"this route may have changed. Confirm before driving it."*
+Online, on a successful fetch, against data seconds old.
+
+**The guard was right; the input was wrong.** `describeReadFreshness` treats
+a negative age as `clockSuspect` — added deliberately, because a device whose
+clock steps backward used to make three-day-old routes render as "saved just
+now". my-day held `Date.now()` in state and refreshed it on a 60-second
+interval, then passed that stored value in. Between ticks it was up to a
+minute BEHIND, so anything fetched after mount had a negative age against it.
+
+**Why this is not cosmetic.** That warning is the app telling someone
+standing at a customer's fence not to trust the screen. Firing it on every
+load is how it stops being read at all — and the one time the route really
+has changed is the time it gets ignored. A false alarm on a safety message
+costs more than no message.
+
+**The fix went into the signature, not just the caller.** `now` is now
+optional and defaults to `Date.now()` read at call time. Fixing only my-day
+would have left the next caller free to make the same mistake by writing the
+obvious thing: a parameter that merely REQUIRES a number cannot say "and it
+must be current". A stale clock now has to be passed deliberately, and the
+only callers that do are tests.
+
+The 60-second interval stays — "saved 4 hr ago" freezing reads as if the app
+just refreshed — but it triggers a repaint rather than carrying the value.
+
+**Two mistakes of mine worth recording.** My first version of the test
+modelled "fetched after mount" as a FUTURE timestamp, which correctly trips
+the guard, so it failed for the right reason against the right code; the real
+timeline has to be played out with fake timers. And one mutation initially
+passed because the assertion matched a bare `setInterval(` — this file has
+another one, the elapsed-visit timer — so deleting the freshness repaint
+proved nothing. An assertion that matches SOME interval says nothing about
+THIS one. Seven mutations, all caught after that.
 
 ### v1.18 — 2026-08-01
 
@@ -226,8 +267,8 @@ NOT yet fixed, filed here so they are not rediscovered:
     total open A/R, including invoices not yet due. Live: 10 genuinely overdue
     invoices totalling $2,550, reported as $2,725. Shown on `/analytics` and
     sent in the email.
-  * **QA-P1 — `/my-day` shows a false stale-route warning for 60s after every
-    load.** `nowTick` only advances on a 60-second interval, so data fetched
+  * ~~**QA-P1 — `/my-day` shows a false stale-route warning for 60s after
+    every load.**~~ ✅ **FIXED in v1.19.** `nowTick` only advances on a 60-second interval, so data fetched
     after mount has a NEGATIVE age, `clockSuspect` trips, and the escalated
     "this route may have changed — confirm before driving it" banner fires
     against correct live data. On the screen a tech reads at a customer's
