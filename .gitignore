@@ -33,3 +33,10 @@ dist-native
 *.njsproj
 *.sln
 *.sw?
+
+# Secrets. .env was TRACKED and committed (4bcc94c) with no ignore rule —
+# one `git add -A` away from pushing a service_role key, which bypasses every
+# RLS policy in the database. Untracked in this commit; use .env.example.
+.env
+.env.local
+.env.*.local
