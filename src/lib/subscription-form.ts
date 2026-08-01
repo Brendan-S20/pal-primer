@@ -239,3 +239,29 @@ export function serviceScheduleState(
   const canGenerate = !startsLater && (!isOneTime || oneTimeStillAhead);
   return { reason, canGenerate };
 }
+
+// ── the query-side twin of isServiceEnded ──────────────────────────────────
+//
+// This rule has now been got wrong in four separate places: listClients,
+// admin_generate_seasonal_deepcleans (in SQL, where it billed), the property
+// service-time estimate, and the client portal's "your plan". Every one of
+// them asked `status = 'active'` and stopped there.
+//
+// The schema does not record ending as a status. endSubscription writes
+// `ends_on` and LEAVES status 'active' — so "status is active" answers a
+// different question from "this service is still running", and the difference
+// only shows up once a tenant ends something. Booking a one-off visit creates
+// that state deliberately (ends_on = the visit date), which is what finally
+// made all four visible.
+//
+// A PostgREST `.or()` string rather than a predicate, because these are
+// database queries and filtering after the fact would still pick the wrong
+// single row under `.limit(1)`.
+export function liveServiceOrFilter(todayISO: string): string {
+  return `ends_on.is.null,ends_on.gte.${todayISO}`;
+}
+
+/** Today in the local zone, as YYYY-MM-DD. */
+export function todayLocalISO(): string {
+  return localTodayISO();
+}

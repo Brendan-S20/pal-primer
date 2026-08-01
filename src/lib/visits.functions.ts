@@ -608,13 +608,18 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
     // reading "Its one-time visit is in the past" — which was false. The
     // emergency case was the one case that could not work.
     //
-    // `generate_visits_through` is org-wide, so this also fills in anything
-    // else due on or before this date. That is the same work the nightly run
-    // and the dispatch board's "Generate visits" button already do, and it is
-    // idempotent, so the side effect is that the schedule is slightly more
-    // up to date than it was.
-    const { error: gErr } = await (supabase as any).rpc("generate_visits_through", {
+    // Scoped to THIS subscription. It used to call the org-wide
+    // generate_visits_through, and I wrote here that the side effect was
+    // harmless because the nightly run does the same work. That was true only
+    // inside the org's 60-day horizon. Past it, one booking materialised
+    // visits for every active subscription across a window whose blackouts
+    // nobody had entered yet — and addBlackout only inserts a blackout row, it
+    // does not remove visits already generated, so those stay routed on top of
+    // the holiday. generate_visits_for_subscription runs the identical code
+    // path (same blackout, work-day, hold and ends_on rules) over one row.
+    const { error: gErr } = await (supabase as any).rpc("generate_visits_for_subscription", {
       _org_id: orgId,
+      _subscription_id: sub.id,
       _through: data.scheduledOn,
     });
     if (gErr) throw new Error(gErr.message);

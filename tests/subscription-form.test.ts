@@ -4,6 +4,7 @@ import {
   blankSubscriptionFormValues,
   isServiceEnded,
   serviceScheduleState,
+  liveServiceOrFilter,
 } from "@/lib/subscription-form";
 
 // Finding #8: the edit form must mirror the actual subscription record, not
@@ -222,5 +223,31 @@ describe("isServiceEnded is the single definition of a finished service", () => 
     // counting on status alone is what made every ended service look running.
     expect(isServiceEnded({ status: "active", ends_on: "2020-01-01" }, TODAY)).toBe(true);
     expect(isServiceEnded({ status: "canceled", ends_on: null }, TODAY)).toBe(true);
+  });
+});
+
+// ── the same rule, got wrong in four places ────────────────────────────────
+//
+// listClients, admin_generate_seasonal_deepcleans (in SQL, where it billed),
+// the property service-time estimate, and the portal's "your plan" all asked
+// `status = 'active'` and stopped. Ending a service writes ends_on and LEAVES
+// status active, so that question has a different answer from "is this service
+// still running". liveServiceOrFilter is the query-side twin of isServiceEnded.
+
+describe("liveServiceOrFilter", () => {
+  it("keeps open-ended services and those ending today or later", () => {
+    // PostgREST `.or()` syntax: null OR ends_on >= today. `gte`, not `gt` —
+    // a service ending TODAY is still running today.
+    expect(liveServiceOrFilter("2026-07-31")).toBe("ends_on.is.null,ends_on.gte.2026-07-31");
+  });
+
+  it("agrees with isServiceEnded at the boundary", () => {
+    // The two must not disagree about the same day, or a service is live to one
+    // surface and finished to another — which is exactly the bug.
+    const today = "2026-07-31";
+    expect(liveServiceOrFilter(today)).toContain(`gte.${today}`);
+    // isServiceEnded says a service ending BEFORE today is over...
+    expect(isServiceEnded({ status: "active", ends_on: "2026-07-30" }, today)).toBe(true);
+    // ...and the filter's gte excludes exactly those.
   });
 });

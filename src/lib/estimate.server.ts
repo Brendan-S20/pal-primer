@@ -12,6 +12,7 @@ import {
   countPropertyHazards,
   resolveEstTimeConfig,
 } from "@/lib/estimated-time";
+import { liveServiceOrFilter, todayLocalISO } from "@/lib/subscription-form";
 
 export async function recomputePropertyEstimate(
   supabase: any,
@@ -33,11 +34,26 @@ export async function recomputePropertyEstimate(
       .select("id", { count: "exact", head: true })
       .eq("property_id", propertyId)
       .eq("active", true),
+    // The property's routine service time must come from the RECURRING service
+    // that defines its routine — not from whatever row was created last.
+    //
+    // Two filters, both load-bearing:
+    //   * ends_on — a service the tenant ENDED keeps status 'active' in this
+    //     schema, so status alone picks up finished work.
+    //   * frequency — computeEstimatedMinutes multiplies by initialCleanupFactor
+    //     (default 2) for one_time. A single call-out is genuinely a
+    //     cleanup-sized job, but it is not this property's ongoing cadence, and
+    //     booking one used to make it the newest active subscription for ever.
+    //     The estimate would then DOUBLE — not at booking time, but silently on
+    //     the next dog change or property edit that triggered a recompute — and
+    //     service_duration_min drives routing, ETAs and capacity.
     supabase
       .from("subscriptions")
-      .select("frequency, interval_weeks, interval_days, status")
+      .select("frequency, interval_weeks, interval_days, status, ends_on")
       .eq("property_id", propertyId)
       .eq("status", "active")
+      .neq("frequency", "one_time")
+      .or(liveServiceOrFilter(todayLocalISO()))
       .order("created_at", { ascending: false })
       .limit(1),
     supabase
