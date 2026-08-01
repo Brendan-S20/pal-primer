@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.9** · Released 2026-08-01 · Supersedes: v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.10** · Released 2026-08-01 · Supersedes: v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,60 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+### v1.10 — 2026-08-01
+
+**A tech could rewrite any DNA violation in their organization** (BUG-61). Every
+RLS policy on `dna_matches` — read, insert, update and delete — was
+`is_org_member`, which techs pass. Two BEFORE triggers were doing the real
+authorization, and they are good triggers: they guard `fine_cents`, the move to
+status `billed`, and deleting a sample past `new`/`sent_to_lab`, all behind
+`manage_dna_billing`.
+
+What they guard is the **money column**. What they do not guard is **who a
+violation blames** and **whether it is still open**. Proven live as a real tech
+user, rolled back: re-pointed a $250 violation onto another client's dog, closed
+it, and deleted a sample still with the lab. `fine_cents` was never touched in
+any of the three, so the billing trigger never fired once.
+
+That is the fourth time this cycle the same lesson has arrived: a server
+function or a trigger was the only real gate, and the table underneath was open
+to anyone who went around it (BUG-33, BUG-36, BUG-42, now this). The tech is
+also the one party with a motive — a DNA violation is evidence about a property
+they service.
+
+*Latent.* `dna_matches` holds zero rows; no tenant has used DNA compliance and
+nothing was tampered with. Recorded that way rather than dressed up.
+
+**Q-5 closes, and it was never about a ceiling.** The question was filed as the
+tech "More" menu's item limit. There is no limit — the sheet is a scroll
+container, and a tech's holds six rows. The only real divergence from
+`docs/mobile-ux-audit.md` was one entry: **DNA sample logging, specified and
+never built**, while a comment in `useMyRole.ts` asserted for months that techs
+"are scoped to sample logging". Chasing that false comment is what found BUG-61.
+
+**Field DNA sample logging is now built**, and shaped so the hole beside it
+stays closed. `log_dna_sample_from_field` takes a VISIT, not a property: it is
+guarded by `is_visit_tech`, and organization, property, client and collecting
+staff are all derived from that row. The parameter list is the entire
+allowlist — no fine, no matched dog, no status, no staff id — so a field sample
+always lands `new`, unmatched, unpriced, attributed to whoever collected it.
+Matching and pricing stay office actions. An RLS policy was the obvious
+alternative and was rejected: reopening INSERT to techs org-wide would hand back
+part of what BUG-61's fix had just taken away.
+
+**A third untrue comment.** `useMyRole.ts` claiming a capability that did not
+exist joins `CreateSheet.tsx` claiming no one-off visit could be created (v1.9)
+and `routes.tsx` claiming the visit drawer had reassign and reschedule controls
+(v1.8). Two of the three sent an investigation down a wrong path before being
+caught, and one was quoted back to me as evidence by a research pass. Comments
+in this codebase are load-bearing, and a wrong one is not inert.
+
+**The engineering ledger is now empty of non-blocking work.** BUILD-9's tail is
+a real device in a real dead zone. Everything else open needs the owner: Stripe,
+Resend and per-tenant DNS, 10DLC, legal review, the Plausible account,
+screenshots, hardware — plus the Q-2 tablet decision and the one curl that
+proves a CORS preflight crosses the real edge.
 
 ### v1.9 — 2026-08-01
 
@@ -514,6 +568,7 @@ were built. Repo search finds no such mechanism. Raised as BUILD-10.
 | BUG-44 | 🟢 Fixed | 🟠 | **New.** The app could not open offline at its own front door. `_authenticated.beforeLoad` called `supabase.auth.getUser()` — a **network call** — and read any failure as "not signed in", redirecting to `/auth`. No amount of caching could have helped. Now falls back to the local session, but only when the failure looks like lost network; a 4xx from the auth server is still a real rejection, and that distinction is tested, because getting it backwards would let an expired account in | v1.7 |
 | BUG-45 | 🟢 Fixed | 🟡 | **New.** The marketing site quoted an annual price the app does not charge. The app bills annual as ten months — `annual_price_cents` is exactly 10× monthly on every live tier, "two months free", 16.7% — while the site applied a flat 15% and said so in the FAQ. `/pricing` quoted Launch at $67.15/mo against an actual $65.83. Under-promising, so harmless in direction, but a published price that is not the price. Now derived from months-paid so the two cannot drift | v1.7 |
 | BUG-46 | 🟢 Fixed | 🟡 | **New.** `franchise_signals` returned organization names and ids as two parallel arrays that were not in the same order, so per-organization links would have pointed at the wrong tenant about half the time. Never mispaired anyone only because the screen noticed and rendered no links. Not fixed by adding `ORDER BY name` — that is not a total order (three organizations here are literally named "Test Test") and two aggregates sort independently. Replaced with one jsonb array of self-contained `{id, name, linked}` objects: nothing left to zip | v1.7 |
+| BUG-61 | 🟢 Fixed | 🔴 | **New, security.** A **tech could rewrite any DNA violation** in their organization. Every RLS policy on `dna_matches` was `is_org_member` — read, insert, update *and* delete — and techs pass it, while holding neither `can_write_org` nor `manage_dna_billing` and being unable to open `/dna` at all. Two triggers were doing the real authorization and they guard the **money column** precisely (`fine_cents`, the move to `billed`, deleting a *processed* sample). Neither covers **who a violation blames** or **whether it is still open**. Proven live as a real tech, rolled back: re-pointed a $250 violation onto another client's dog, closed it, and deleted a sample sitting at the lab — `fine_cents` untouched in all three, so the billing trigger never fired once. Baseline moved to `can_write_org`, both triggers kept on top. **Latent:** `dna_matches` holds zero rows | v1.10 |
 | BUG-52 | 🟢 Fixed | 🔴 | **New.** Booking a one-off visit silently converted a **PREPAID client to postpaid**. The insert omitted `billing_cadence` and took the table default; `client_default_billing_cadence` answers with the newest-started *active* subscription's cadence, and a one-off booked for today or later **is** that row. The client's add-on charges then stop drawing down credit they have already paid and start landing on postpaid invoices — money funded once, billed twice. Proven live: `cadence_before=prepaid, cadence_after_one_off=postpaid`. Two prepaid clients exist today | v1.9 |
 | BUG-53 | 🟢 Fixed | 🔴 | **New, and not about one-offs.** `admin_generate_seasonal_deepcleans` selected `status = 'active'` and nothing else — but **ending a service writes `ends_on` and LEAVES status active**. So every plan a tenant had ever cancelled stayed a deep-clean candidate, twice a year, for ever, billed as the subscription price **plus** the surcharge (default $49) against a client with no service, with a tech routed to them. Found only because a *finished one-off* received one. Fixed in SQL; verified three ways — finished one-off 0, ended weekly 0, live weekly still 1. **Latent:** zero orgs have the feature enabled, so nobody was billed | v1.9 |
 | BUG-54 | 🟢 Fixed | 🟠 | **New.** "Active services" meant two different things. `listClients` counted `status = 'active'` while the client's own Services tab used `isServiceEnded` (canceled **or** `ends_on` passed). Every ended service therefore counted on the client list as one the tenant was running, and its frequency stayed in their chips. Latent — zero rows were in that state — until one-off bookings started creating one every time | v1.9 |
@@ -1315,7 +1370,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | BUILD-6 | 🟠 Part-built | 🟠 | Enterprise tier — **phases 1–4 shipped**: consent-based linking, repaired rollup, both sides' UI, the money side, and now **a franchise can open a location from the product** — name it, name the staff, they get invites and sign themselves in. That was the flow the owner described, the SQL for it had existed unused since 2026-07-30, and it was the last piece the product could not do. Platform-side franchise sales signals now render too. Remaining: multi-org membership, drill-down, royalty *delivery* | v1.6 |
 | BUILD-7 | 🟠 Part-built | 🟡 | Trial lifecycle built — and the finding was that **no organization had ever had a trial**, because `bootstrap_organization` never started one and nothing in the tenant app gated on billing status at all. New signups get the 14 days the site promises; expiry is a state and a banner, NOT a lock, because Stripe cannot take a payment yet. AI is paid-only (owner decision). Enforcement is one constant, flipped when Stripe lands. **v1.6:** an adversarial review found three ways a non-paying org still reached `paid` and kept the AI keys — see BUG-29. The state machine now reads both status columns and has a `lapsed` phase, because telling someone who cancelled a paid plan that their free trial ended reads as a product that lost track of what they bought | v1.6 |
 | BUILD-8 | 🟢 Fixed | 🟡 | AI Business Advisor **built out** (owner reversed the retire instruction). On-demand, 7/30/90-day windows, evidence shown beside the advice. See below | v1.3 |
-| BUILD-9 | 🟠 Part-built | 🟠 | Mobile Phase 2/3. **The native app now boots and runs with no network** — proven by serving the bundle as static files with every off-origin request blocked, loading it in headless Chromium, and watching it hydrate and render from 36 files on disk with zero off-origin requests. Getting there meant a client-bootable SPA shell (this is a server-rendered app; `.output/public` had no index.html, which is why the config pointed at a remote URL), an absolute server-function origin, CORS, CSRF, and an offline read cache — plus BUG-43 and BUG-44, both of which had to be fixed before "offline" could mean anything. Q-3's answer was NOT a config flag as the ledger implied. Remaining: **Q-5 only** (tech "More" ceiling, non-blocking) and a real device in a real dead zone. Q-4 closed in v1.9 (one-off visit built); Q-12 answered reassign-only in v1.8 | v1.7 |
+| BUILD-9 | 🟠 Part-built | 🟠 | Mobile Phase 2/3. **The native app now boots and runs with no network** — proven by serving the bundle as static files with every off-origin request blocked, loading it in headless Chromium, and watching it hydrate and render from 36 files on disk with zero off-origin requests. Getting there meant a client-bootable SPA shell (this is a server-rendered app; `.output/public` had no index.html, which is why the config pointed at a remote URL), an absolute server-function origin, CORS, CSRF, and an offline read cache — plus BUG-43 and BUG-44, both of which had to be fixed before "offline" could mean anything. Q-3's answer was NOT a config flag as the ledger implied. Remaining: **a real device in a real dead zone, and nothing else.** Q-4 closed in v1.9 (one-off visit built), Q-12 answered reassign-only in v1.8, Q-5 closed in v1.10 (field DNA sample logging) | v1.7 |
 | BUILD-10 | 🟢 Fixed | 🟠 | Review queue built. §10.5's rule pointed at a mechanism nobody had made, so every place that "honored" it honored it by doing nothing. See below | v1.4 |
 | BUILD-11 | 🟢 Fixed | 🟠 | **New.** End-of-day close-out for visits left open | v1.1 |
 | BUILD-13 | 🟢 Fixed | 🟠 | **New.** CPA / tax report pack — ten reports, each declaring its basis and carrying its caveats into the CSV. Cash and accrual income, the bridge between them, point-in-time AR aging, refunds, write-offs, 1099-K reconciliation, franchise settlements, referral rewards. Also the 1099-K explanation the owner asked for, keyed to how payments are actually routed. See below | v1.5 |
@@ -1477,7 +1532,7 @@ rather than the following January.
 | Q-2 | ⚠️ Answered, never built | The answer was a dedicated tablet tier at 768–1024px. **There is one breakpoint in this app (768px) and no tablet tier exists.** The mobile tab bar is `md:hidden`, so it vanishes at exactly 768 — a tech on a crew tablet gets the desktop sidebar and none of the tech nav, while the offline-cache code repeatedly assumes crew tablets. Not fixed by a blunt breakpoint move: pushing the bar to `lg` would also hide the dispatch board from an iPad, where it renders today and is arguably right. The two halves want different answers, which makes it a real tablet tier or nothing | v1.1, reopened v1.8 |
 | Q-3 | ✅ | Bundled Capacitor assets | v1.1 |
 | Q-4 | ✅ | Sheet relabelled, and **the one-off visit is built** — bookable from `/routes`, the mobile ➕ sheet, and the client's Visits tab. **The claim that made this a question was mine and it was wrong:** there was never "no way to create a one-off visit" — Client → Services → Add service → "One time" has existed all along. What did not work was booking one for TODAY. See the v1.9 changelog | v1.9 |
-| Q-5 | 🔵 Open | Tech "More" ceiling — non-blocking | — |
+| Q-5 | ✅ | The ceiling was never the question. A tech's More sheet holds 6 rows and the only real divergence from the spec was **DNA sample logging — specified, never built**, while a comment asserted for months that it had been. Now built: `log_dna_sample_from_field`, guarded by `is_visit_tech`, on the my-day visit card. Chasing the false comment is what found BUG-61 | v1.10 |
 | Q-6 | ✅ | Plan-gated existing roles | v1.1 |
 | Q-7 | ✅ | Soft caps + overage billing | v1.1 |
 | Q-8 | ✅ | Per-tenant subaccount + own 10DLC brand | v1.1 |
