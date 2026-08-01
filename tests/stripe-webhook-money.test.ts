@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { createHmac } from "node:crypto";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createFakeAdmin, stripeSignature } from "./helpers/fake-supabase";
 
 // IMP-6, second half. tests/stripe-webhook.test.ts proves the handler refuses
 // what it cannot verify. This file proves what it DOES with what it accepts —
@@ -38,80 +39,7 @@ const ACCOUNTS: Record<string, string> = {
 
 // ── the fake ───────────────────────────────────────────────────────────────
 
-type Row = Record<string, unknown>;
-type Write = { table: string; op: string; payload: unknown };
-type Result = { data: Row[] | Row | null; error: { message: string } | null };
-
-/** Enough of PostgREST's builder for what this handler does: chained eq/neq/in
- *  filters, single/maybeSingle, and `update(...).select()` returning the rows
- *  it actually changed — which is the whole idempotency mechanism. */
-type Builder = PromiseLike<Result> & {
-  select: () => Builder;
-  update: (p: Row) => Builder;
-  insert: (p: Row | Row[]) => Builder;
-  eq: (k: string, v: unknown) => Builder;
-  neq: (k: string, v: unknown) => Builder;
-  in: (k: string, v: unknown[]) => Builder;
-  maybeSingle: () => Promise<Result>;
-  single: () => Promise<Result>;
-};
-
-type FakeAdmin = {
-  from: (table: string) => Builder;
-  rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: null }>;
-};
-
-let tables: Record<string, Row[]>;
-let writes: Write[];
-let rpcs: Array<{ fn: string; args: Record<string, unknown> }>;
-
-function builder(table: string): Builder {
-  const filters: Array<[string, "eq" | "neq" | "in", unknown]> = [];
-  let op: "select" | "update" | "insert" = "select";
-  let payload: Row | Row[] = {};
-
-  const matched = () =>
-    (tables[table] ?? []).filter((r) =>
-      filters.every(([k, kind, v]) =>
-        kind === "eq" ? r[k] === v : kind === "neq" ? r[k] !== v : (v as unknown[]).includes(r[k]),
-      ),
-    );
-
-  const run = async (): Promise<Result> => {
-    if (op === "select") return { data: matched(), error: null };
-    if (op === "insert") {
-      const rows = Array.isArray(payload) ? payload : [payload];
-      (tables[table] ??= []).push(...rows.map((r) => ({ ...r })));
-      writes.push({ table, op, payload });
-      return { data: null, error: null };
-    }
-    // update: the filtered set is captured BEFORE the patch is applied, so a
-    // `.neq("status","paid")` claim sees the pre-update state exactly as
-    // Postgres does.
-    const hit = matched();
-    for (const r of hit) Object.assign(r, payload);
-    writes.push({ table, op, payload });
-    return { data: hit.map((r) => ({ ...r })), error: null };
-  };
-
-  const api: Builder = {
-    select: () => api,
-    update: (p) => ((op = "update"), (payload = p), api),
-    insert: (p) => ((op = "insert"), (payload = p), api),
-    eq: (k, v) => (filters.push([k, "eq", v]), api),
-    neq: (k, v) => (filters.push([k, "neq", v]), api),
-    in: (k, v) => (filters.push([k, "in", v]), api),
-    maybeSingle: async () => ({ data: matched()[0] ?? null, error: null }),
-    single: async () => {
-      const rows = matched();
-      return rows.length === 1
-        ? { data: rows[0], error: null }
-        : { data: null, error: { message: "no rows" } };
-    },
-    then: (res, rej) => run().then(res, rej),
-  };
-  return api;
-}
+const fake = createFakeAdmin();
 
 /** Mirrors the SQL's kind mapping (20260731170000). A kind the SQL maps to
  *  NULL files nothing, which is what makes the inquiry cases meaningful. */
@@ -124,28 +52,26 @@ const ITEM_KIND: Record<string, string> = {
   dispute_inquiry_closed: "payment_dispute_inquiry_closed",
 };
 
-const admin: FakeAdmin = {
-  from: (t) => builder(t),
-  rpc: async (fn, args) => {
-    rpcs.push({ fn, args });
-    if (fn === "file_reversal_review_item") {
-      const kind = ITEM_KIND[String(args._kind)];
-      if (!kind) return { data: null, error: null };
-      (tables.review_items ??= []).push({
-        organization_id: args._org_id,
-        kind,
-        subject_id: args._payment_id,
-        dispute_ref: args._dispute_ref ?? null,
-        detected_at: "2026-08-01T00:00:00Z",
-        detail: { amount_cents: args._amount_cents },
-      });
-    }
-    return { data: fn === "record_franchise_adjustment" ? "adj_1" : null, error: null };
-  },
-};
+// The reversal ledger the handler reads back to decide the payment's status is
+// the one this RPC writes, so the fake has to write it too — otherwise the
+// "second dispute still open" case can never arise.
+fake.onRpc("file_reversal_review_item", (args) => {
+  const kind = ITEM_KIND[String(args._kind)];
+  if (!kind) return null;
+  (fake.tables.review_items ??= []).push({
+    organization_id: args._org_id,
+    kind,
+    subject_id: args._payment_id,
+    dispute_ref: args._dispute_ref ?? null,
+    detected_at: "2026-08-01T00:00:00Z",
+    detail: { amount_cents: args._amount_cents },
+  });
+  return null;
+});
+fake.onRpc("record_franchise_adjustment", () => "adj_1");
 
 vi.mock("@/integrations/supabase/client.server", () => ({
-  supabaseAdmin: new Proxy({}, { get: (_t, p) => admin[p as keyof FakeAdmin] }),
+  supabaseAdmin: new Proxy({}, { get: (_t, p) => fake.admin[p as keyof typeof fake.admin] }),
 }));
 
 vi.mock("@/lib/stripe-connect.server", async (importOriginal) => ({
@@ -161,12 +87,6 @@ vi.mock("@/lib/activity.server", () => ({ logActivity: async () => {} }));
 vi.mock("@/lib/email/enqueue.server", () => ({ enqueueAppEmail: async () => {} }));
 
 // ── driving the shipped handler ────────────────────────────────────────────
-
-function signedHeader(payload: string) {
-  const at = Math.floor(Date.now() / 1000);
-  const sig = createHmac("sha256", WEBHOOK_SECRET).update(`${at}.${payload}`).digest("hex");
-  return `t=${at},v1=${sig}`;
-}
 
 async function deliver(type: string, object: Record<string, unknown>, account: string) {
   const body = JSON.stringify({
@@ -185,7 +105,10 @@ async function deliver(type: string, object: Record<string, unknown>, account: s
   const res = (await POST({
     request: new Request("https://app.houndstack.com/api/public/hooks/stripe", {
       method: "POST",
-      headers: { "content-type": "application/json", "stripe-signature": signedHeader(body) },
+      headers: {
+        "content-type": "application/json",
+        "stripe-signature": stripeSignature(body, WEBHOOK_SECRET),
+      },
       body,
     }),
   })) as Response;
@@ -221,15 +144,18 @@ beforeAll(async () => {
   await import("@/lib/invoice-reconcile.server");
 });
 
-const paymentRows = () => tables.payments ?? [];
-const invoice = () => tables.invoices[0];
+const paymentRows = () => fake.tables.payments ?? [];
+const invoice = () => fake.tables.invoices[0];
 
 beforeEach(() => {
   process.env.STRIPE_CONNECT_SECRET_KEY = "sk_test_imp6_placeholder";
   process.env.STRIPE_CONNECT_WEBHOOK_SECRET = WEBHOOK_SECRET;
-  tables = { invoices: [openInvoice()], payments: [], clients: [{ id: CLIENT }], review_items: [] };
-  writes = [];
-  rpcs = [];
+  fake.reset({
+    invoices: [openInvoice()],
+    payments: [],
+    clients: [{ id: CLIENT }],
+    review_items: [],
+  });
 });
 
 describe("paying an invoice", () => {
@@ -333,8 +259,8 @@ describe("two writers arriving at once", () => {
       raw: {},
     };
     const [first, second] = await Promise.all([
-      markInvoicePaidFromStripe(admin, args),
-      markInvoicePaidFromStripe(admin, args),
+      markInvoicePaidFromStripe(fake.admin as unknown as SupabaseClient, args),
+      markInvoicePaidFromStripe(fake.admin as unknown as SupabaseClient, args),
     ]);
     // Exactly one writer may claim it. Both true is a double payment; both
     // false means nothing was ever recorded.
@@ -432,11 +358,11 @@ describe("a reversal", () => {
   });
 
   beforeEach(() => {
-    tables.payments = [succeeded()];
+    fake.tables.payments = [succeeded()];
   });
 
-  const payment = () => tables.payments[0];
-  const adjustments = () => rpcs.filter((r) => r.fn === "record_franchise_adjustment");
+  const payment = () => fake.tables.payments[0];
+  const adjustments = () => fake.rpcs.filter((r) => r.fn === "record_franchise_adjustment");
 
   it("bills the franchise and marks the payment refunded on a real chargeback", async () => {
     await deliver(
@@ -470,7 +396,7 @@ describe("a reversal", () => {
     expect(payment().status).toBe("succeeded");
     // It is still filed, because the owner has to answer it — an unanswered
     // inquiry is what becomes a chargeback.
-    expect(rpcs.some((r) => r.fn === "file_reversal_review_item")).toBe(true);
+    expect(fake.rpcs.some((r) => r.fn === "file_reversal_review_item")).toBe(true);
   });
 
   it("takes no money when a dropped inquiry closes", async () => {
@@ -485,8 +411,8 @@ describe("a reversal", () => {
 
   it("restores the payment when a chargeback is won", async () => {
     // The money comes back, so the payment is revenue again.
-    tables.payments = [{ ...succeeded(), status: "refunded" }];
-    tables.review_items = [
+    fake.tables.payments = [{ ...succeeded(), status: "refunded" }];
+    fake.tables.review_items = [
       {
         organization_id: VICTIM_ORG,
         kind: "payment_chargeback",
@@ -508,8 +434,8 @@ describe("a reversal", () => {
     // Deriving the status from the WHOLE ledger rather than from this one
     // event. Flipping straight to 'succeeded' on a win restored the full gross
     // of a payment the bank was still holding money against.
-    tables.payments = [{ ...succeeded(), status: "refunded" }];
-    tables.review_items = [
+    fake.tables.payments = [{ ...succeeded(), status: "refunded" }];
+    fake.tables.review_items = [
       {
         organization_id: VICTIM_ORG,
         kind: "payment_chargeback",
@@ -556,20 +482,20 @@ describe("a reversal", () => {
   });
 
   it("ignores a reversal for a payment intent this system never recorded", async () => {
-    tables.payments = [];
+    fake.tables.payments = [];
     const res = await deliver(
       "charge.dispute.created",
       { id: "dp_8", status: "needs_response", amount: 12_500, payment_intent: "pi_unknown" },
       VICTIM_ACCOUNT,
     );
     expect(res.status).toBe(200);
-    expect(rpcs).toHaveLength(0);
+    expect(fake.rpcs).toHaveLength(0);
   });
 });
 
 describe("connect account state", () => {
   it("keys charge-readiness on the account id, never on metadata", async () => {
-    tables.organizations = [
+    fake.tables.organizations = [
       { stripe_connect_account_id: VICTIM_ACCOUNT, stripe_connect_charges_enabled: false },
     ];
     await deliver(
@@ -577,8 +503,8 @@ describe("connect account state", () => {
       { id: VICTIM_ACCOUNT, charges_enabled: true, payouts_enabled: true, details_submitted: true },
       VICTIM_ACCOUNT,
     );
-    expect(tables.organizations[0].stripe_connect_charges_enabled).toBe(true);
-    const update = writes.find((w) => w.table === "organizations" && w.op === "update");
+    expect(fake.tables.organizations[0].stripe_connect_charges_enabled).toBe(true);
+    const update = fake.writes.find((w) => w.table === "organizations" && w.op === "update");
     expect(update?.payload).toHaveProperty("stripe_connect_status");
   });
 });
