@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.17** · Released 2026-08-01 · Supersedes: v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.18** · Released 2026-08-01 · Supersedes: v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,49 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+### v1.18 — 2026-08-01
+
+**QA-P3 fixed. The weekly digest emailed a wrong number.**
+
+    "10 overdue invoices totaling $2,725.00."
+
+Ten invoices really were overdue. They came to **$2,550.00**. The $2,725.00
+was every OPEN invoice, including five that were not due yet — the count
+taken from one figure and the money from another. `summarizeAr` had returned
+both all along; the alert read `overdueCount` off it and then reached for
+`arOpenCents`.
+
+**Not a display bug.** That sentence exists so an owner can decide who to
+chase this week, and the figure is their sense of how big the problem is.
+Inflating it by everything not yet due points them at customers who are not
+late. And it is emailed weekly, so the wrong number left the building rather
+than merely appearing on a screen — the same distinction that made BUG-11
+and IMP-10 worth fixing quickly.
+
+**The AI prompt had the same conflation somewhere worse.** It read `Open A/R
+$X across N overdue invoices`, telling the model that X was the overdue
+amount, so the advice was reasoned from a relationship that does not hold.
+A wrong number on a page is a wrong number; a wrong premise in a prompt
+comes back as confident prose with no trace of where it went wrong. Both
+figures now go in, separately labelled.
+
+**The stat table gained an "Of which overdue" line.** Without it the alert
+would quote $2,550.00 directly above a table quoting $2,725.00, and an owner
+would have two numbers and no way to tell whether they disagree — a fix that
+creates a new contradiction is not finished.
+
+**Why it survived.** `computeDigestMetrics` needs a database and a live org,
+so every sentence it produced was only ever checked by reading it. The
+alerts are pure now (`lib/digest-alerts.ts`), which is what makes the test
+fixture possible: the actual ledger from the QA run, reproducing $2,550
+against $2,725 so the two figures are demonstrably different rather than
+asserted to be. Eight mutations, each caught, including reintroducing the
+original bug.
+
+**Checked and clean:** the dashboard and the client portal both state the
+overdue COUNT on its own without attaching a total, so this was one place
+rather than three.
 
 ### v1.17 — 2026-08-01
 
@@ -177,7 +220,8 @@ NOT yet fixed, filed here so they are not rediscovered:
     `auth.getSession()` both resolve fast when called directly, so the obvious
     suspect is cleared and the mechanism is not yet isolated. **Highest
     priority of the four.**
-  * **QA-P3 — the weekly digest EMAILS a wrong number.**
+  * ~~**QA-P3 — the weekly digest EMAILS a wrong number.**~~ ✅ **FIXED in
+    v1.18.**
     `digest.server.ts` renders "N overdue invoices totaling $X" where X is
     total open A/R, including invoices not yet due. Live: 10 genuinely overdue
     invoices totalling $2,550, reported as $2,725. Shown on `/analytics` and
