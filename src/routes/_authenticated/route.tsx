@@ -24,6 +24,7 @@ import { InstallBanner } from "@/components/InstallBanner";
 import { AppSidebar } from "@/components/AppSidebar";
 import { TrialBanner } from "@/components/TrialBanner";
 import { MobileTabBar } from "@/components/MobileTabBar";
+import { useTabletTier } from "@/hooks/useTabletTier";
 import { RoleGuard } from "@/components/RoleGuard";
 import { CommandPalette } from "@/components/CommandPalette";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -220,6 +221,8 @@ function AppShell() {
   const isMyDay = pathname === "/my-day" || pathname.startsWith("/my-day/");
 
   const brand = useBrandAccent();
+  // Q-2's tablet tier: the tab bar's reach and this padding are one decision.
+  const { mainBottomPadding } = useTabletTier();
   // Scope the tenant brand color to the internal staff app only. Platform-admin
   // routes and the sign-in page live outside this shell and stay HoundStack-branded.
   const brandStyle = brand
@@ -281,9 +284,13 @@ function AppShell() {
               front of it. */}
           <TrialBanner />
           <AnnouncementBanner />
-          {/* Below `md` the bottom padding keeps content clear of the fixed tab
-              bar; md:pb-8 restores the original desktop padding. */}
-          <main className="min-w-0 flex-1 px-4 pt-6 pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:px-6 sm:pt-8 md:pb-8">
+          {/* The bottom padding clears the fixed tab bar for exactly as long
+              as the bar is on screen — which now depends on the role, not only
+              the width (Q-2). Both read useTabletTier so they cannot disagree:
+              a mismatch puts the bar on top of My Day's Complete button. */}
+          <main
+            className={`min-w-0 flex-1 px-4 pt-6 sm:px-6 sm:pt-8 ${mainBottomPadding}`}
+          >
             <div className="mx-auto w-full max-w-[1200px]">
               <Outlet />
             </div>
