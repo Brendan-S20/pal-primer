@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.14** · Released 2026-08-01 · Supersedes: v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.15** · Released 2026-08-01 · Supersedes: v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,72 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+### v1.15 — 2026-08-01
+
+**Stripe was authorized, which unblocked IMP-6. Both money webhooks — the one
+that takes a client's payment and the one that takes ours — turned out to have
+no tests at all. They have 49 now, and every assertion in them has been
+mutation-tested against the shipped source.**
+
+**The payment webhook had no tests** (IMP-6). `/api/public/hooks/stripe` is the
+only writer of `payments.status` — the migration that made payments append-only
+for tenants (BUG-72) rests entirely on that being true — and it is the caller of
+`record_franchise_adjustment`, so it decides what a franchise location is
+charged back for. It is 610 lines inline in a route handler with no exported
+seam. The tests drive the SHIPPED handler through
+`Route.options.server.handlers.POST` rather than a refactored seam, because
+refactoring money code that has no tests is the wrong order. Signing needs no
+Stripe account: verification is an HMAC against whatever the webhook secret is
+set to, so the test sets it and signs with the same value. No network, runs in
+CI.
+
+**The platform billing webhook had none either** (IMP-6). `platform-stripe` is
+the only writer of `organizations.plan_status`. Its failure modes are
+asymmetric: wrongly `active` costs revenue quietly, wrongly `canceled` locks a
+paying customer out of their own business. The refusals are the valuable half —
+an `incomplete` subscription (the Payment Element's pre-payment state) changes
+nothing, so an abandoned plan form cannot suspend a live org; `deleted` for a
+subscription id the org never recorded changes nothing, so cancelling a stale
+payment attempt cannot cancel a real plan and take its paid add-ons with it.
+
+**Two mutations that passed, and what they were telling us.** Every assertion
+was checked by breaking the guard it claims to protect and confirming the test
+goes red. Twenty-three mutations; twenty-one were caught first time. The two
+that were not are the findings:
+
+  * Removing the cross-tenant guard from `checkout.session.completed` changed
+    nothing, because only `payment_intent.succeeded` had been covered. BOTH pay
+    paths read the invoice id from attacker-controlled metadata. Both are now
+    tested, including the `client_reference_id` fallback.
+  * Removing `.neq("status","paid")` — the atomic paid-claim — changed nothing,
+    because a sequential redelivery is stopped earlier by a plain status check.
+    The claim only matters when two writers read the invoice while it is still
+    open, which is what happens when the webhook and the reconcile fallback
+    arrive together. That is now tested concurrently.
+
+**A test that was green for the wrong reason.** The first version of that
+concurrency test fired two HTTP deliveries at once. It passed — one payment row,
+as required — but only because the handler re-resolves its modules with
+`await import()` on every request, two of those in flight raced vitest's mocker,
+and one delivery was handed the real Supabase client and threw. A pass proving
+the opposite of its claim. Same family as "a check green while measuring
+nothing", and worth recording because it was caught by asserting that both
+deliveries returned 200, not by reading the code.
+
+**`.env` was tracked in git.** Found while wiring the service-role key for live
+verification. There was no ignore rule, so writing the key where the app expects
+it would have pushed a full RLS bypass to a repository. `.env` is now untracked
+and ignored, and `.env.example` documents `SERVICE_ROLE_KEY` without carrying a
+value. The key itself was never written to any file in the repo — process
+environment only, and every live probe was wrapped in a rolled-back transaction.
+
+**Two Stripe claims I made and had to withdraw.** A first catalog read returned
+zero products and I reported "no products exist, this blocks go-live", then
+asked a question resting on it. Re-reading with explicit `active` and `limit`
+returned 12 products, and the Launch price exists and is active. Nothing was
+blocked. Recorded because the ledger's own recurring lesson is that a confident
+report is not evidence, and this time the false report was mine.
 
 ### v1.14 — 2026-08-01
 
@@ -1693,7 +1759,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | IMP-3 | 🟢 Fixed | 🟡 | TS↔SQL permission parity test — proven to fail on a TS-only grant, a SQL-only grant, and unparseable SQL | v1.2 |
 | IMP-4 | 🟢 Fixed | 🟡 | Type the authz boundary — `any` removed from `resolveCaller` | v1.2 |
 | IMP-5 | 🟢 Fixed | ⚪ | Repo housekeeping — ~20 stale `as any` casts removed across 14 files, each verified against the regenerated types first and probed to confirm a REAL type flowed rather than degrading to `any`. That probe found a live dead branch: `StaffInvoicePayForm` tested `payment.status === "paid"`, a value the `payment_status` enum has never had. See below | v1.5 |
-| IMP-6 | ❓ Blocked | 🟡 | Payment test coverage — needs Stripe authorized | v1.1 |
+| IMP-6 | 🟢 Fixed | 🟡 | **Unblocked and done.** Payment test coverage: 49 tests across both money webhooks, which had **zero** between them. `/api/public/hooks/stripe` — signature verification (no signature, wrong secret, valid signature over a different body, an hour-stale replay), fail-closed when unconfigured, both pay paths, the C1 cross-tenant guard on each, the source allowlist, the atomic paid-claim under concurrency, and the whole reversal ladder (a real chargeback bills the franchise and keys the adjustment on the DISPUTE id; an inquiry bills nobody; a win restores the payment unless a second dispute is still open). `/api/public/hooks/platform-stripe` — the only writer of `plan_status`: an `incomplete` subscription cannot suspend a live org, a stale payment attempt's `deleted` cannot cancel a real plan or its add-ons, an unmapped customer writes nothing, `unpaid`→past_due not canceled, a metadata plan id is adopted only if the catalog has it, and a redelivery cannot re-cancel add-ons. All 23 mutations caught; the two that initially passed are written up in the v1.15 changelog. Fake service-role client shared at `tests/helpers/fake-supabase.ts` rather than copied | v1.15 |
 | IMP-7 | 🟢 Fixed | 🟡 | Supabase types regenerated. They had been stale since before this cycle and IMP-9's table drop made them wrong, not just incomplete. Four `any`/structural casts removed as a result | v1.3 |
 | IMP-11 | 🟢 Fixed | 🟠 | Dead-machinery detector — a hard CI gate for the failure this project keeps producing: something built, granted and correct that nothing ever calls. Turned on itself in v1.6 and found one rule that could not fire, one counting comments as callers, and one that would have failed CI on correct code; all three rewritten and mutation-proven in v1.7. **v1.8 adds a fourth rule and fixes a blind spot the first three shared:** rule 1 keys on a function's NAME, so two signatures of one name collapse and a dead overload is vouched for by the live one's callers — which is how a second `skip_visit` stayed granted and uncalled for a month (BUG-50). Drops and creates are now tracked per signature, and rule 4 flags any name with more than one live signature. Its first run reported five findings, all five false, all caused by its own type normalization — recorded in the header as the general rule. Green with 17 exceptions, no open known gaps. One residual: the cron schedules in rule 2's baseline are asserted by a human and checked by nothing | v1.5 |
 | IMP-13 | 🟢 Fixed | 🔴 | **New.** **Eight protections could be switched off with the full suite green** — the most consequential finding of the QA pass, because it means everything else in this ledger was less verified than it read. At `vitest run` 752 passed, a mutation could: delete the CSRF middleware from `requestMiddleware`, leaving the app with no CSRF protection at all; replace the nightly cron's `if (!auth.ok) return cronUnauthorized(...)` with `void auth`, opening autopay charges and invoice generation to anyone who can POST; swap `encryptSecret(token)` for `token` at the accounting write site, undoing IMP-1; comment out the `CREATE TRIGGER` for `tg_orgs_protect_platform_columns`, detaching the guard while leaving the body every test reads; `ALTER TABLE payments DISABLE ROW LEVEL SECURITY`, invisible to every policy-text scan; change the royalty divisor from 100.0 to 10.0 and invert the settlement balance signs; widen `generate_franchise_settlements` to `is_org_member`; and redefine `is_org_member` in a later migration without its caller guard, because `permission-parity.test.ts` read one hard-coded filename. Every one was a guard whose EXISTENCE was checked while nothing checked it was CONNECTED. New `tests/the-wiring-is-connected.test.ts` asserts only wiring; the weak tests are repaired in place. Also closed two discovery holes: vitest never ran `.test.tsx` files, and an `exclude:` entry could silently drop real ones. Twelve mutations, all now caught | v1.14 |
@@ -1702,7 +1768,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | IMP-9 | 🟢 Fixed | 🟠 | Retire the BYOK surfaces — **done, and the "wait for BUILD-2/BUILD-3" ordering in v1.2 was wrong.** See below | v1.3 |
 | IMP-8 | 🟢 Fixed | 🟡 | **New.** Org timezone was built but buried in Routes; moved to Settings | v1.1 |
 | BUILD-1 | 🟢 Fixed | 🔴 | Per-feature entitlements — plan tiers now enforced server-side; the published pricing matrix was being ignored by the app. See below | v1.2 |
-| BUILD-2 | ❓ Blocked | 🔴 | Usage metering — Q-7 answered (soft caps + overage); needs Stripe. **Now the only thing between us and unmetered AI spend** — see IMP-9 below | v1.3 |
+| BUILD-2 | 🔵 Ready | 🔴 | Usage metering — Q-7 answered (soft caps + overage). **No longer blocked**: Stripe was authorized 2026-08-01. Still **the only thing between us and unmetered AI spend** — see IMP-9 below. Next up | v1.15 |
 | BUILD-3 | ⏳ Waiting | 🟠 | Managed texting — Q-8 = per-tenant subaccount + own brand. In the 10DLC compliance queue; nothing to accelerate | v1.1 |
 | BUILD-4 | 🟢 Fixed | 🟠 | Managed AI — BYO deleted, inference runs on the platform key, and the product no longer asks for a key. The remaining gap is metering, which is BUILD-2, not BUILD-4 | v1.3 |
 | BUILD-5 | 🟠 Part-built | 🟠 | White label — the surveyable half is done and it turned up a live customer-facing bug: **every reply to an invoice or reminder went to a no-reply address nobody reads**, with no bounce, so the customer believed they had been in touch. Reply-to now carries the tenant's office email end to end. True white label (own sending domain, own portal domain) needs the Resend account and per-tenant DNS — owner-blocked like Stripe. Both add-ons are `coming_soon` and unsellable until then | v1.5 |
@@ -1903,7 +1969,11 @@ rather than the following January.
    failures. One line to fix once you say which is authoritative.
 
 
-1. **Authorize Stripe** — OAuth can't run in a headless session. Blocks BUILD-2, BUILD-8, IMP-6.
+1. ~~**Authorize Stripe**~~ — ✅ authorized 2026-08-01. IMP-6 is done. BUILD-2
+   and BUILD-8 are now ordinary engineering work, not blocked. Everything so far
+   has been done in **test mode** at your instruction; going live still needs a
+   live-mode catalog and `platform_plans` pointed at the live price ids, which
+   is a deliberate switch and not something to do incidentally.
 2. ~~**Formspree contact form ID**~~ — ✅ supplied and wired (MKT-4 closed).
 3. **`SUPABASE_DB_URL` secret** — ✅ added, and verified working end-to-end in CI.
 4. ~~**Q-13**~~ — ✅ answered: every add-on available at launch, after QA.
