@@ -188,10 +188,20 @@ describe("the authorization primitives refuse to answer about a third party", ()
     "is_platform_admin",
     "is_visit_tech",
   ];
-  const guardSql = readFileSync(
-    join(MIGRATIONS_DIR, "20260731270000_the-permission-primitives-answered-about-anyone.sql"),
-    "utf8",
-  );
+  // The LAST migration defining these is the one that runs. This was pinned to
+  // one filename, so a later CREATE OR REPLACE that removed the caller guard —
+  // turning the primitives back into an oracle any signed-in account can query
+  // about any user — walked straight past it with the whole suite green.
+  const guardSql = (() => {
+    const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
+    let found = "";
+    for (const f of files) {
+      const sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
+      if (/CREATE\s+(OR\s+REPLACE\s+)?FUNCTION\s+public\.is_org_member\s*\(/i.test(sql)) found = sql;
+    }
+    if (!found) throw new Error("no migration defines is_org_member");
+    return found;
+  })();
 
   it("guards every one of the six", () => {
     // They take the subject as an argument, so without this each is an oracle:

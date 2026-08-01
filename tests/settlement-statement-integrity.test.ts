@@ -92,6 +92,33 @@ describe("generate_franchise_settlements", () => {
     expect(body).toMatch(/p\.status IN \('succeeded', 'refunded'\)/);
   });
 
+  it("computes the royalty as a percentage of the period total", () => {
+    // Added after a QA pass changed `/ 100.0` to `/ 10.0` — billing every
+    // location TEN TIMES its royalty — and all 14 assertions here stayed green.
+    // This file was 156 lines of prose about settlement arithmetic that
+    // asserted nothing about the arithmetic.
+    expect(body).toMatch(/round\(\s*r\.total\s*\*\s*r\.pct\s*\/\s*100\.0\s*\)/);
+    expect(body.match(/r\.total\s*\*\s*r\.pct\s*\/\s*100\.0/g)?.length).toBe(2);
+  });
+
+  it("nets the balance in the right direction", () => {
+    // Swapping these two signs inverts every statement — a location owed money
+    // is billed instead, and vice versa. Also unmeasured until now.
+    const balance = /\(r\.by_parent[\s\S]*?AS balance/.exec(body)?.[0];
+    expect(balance, "no balance expression found").toBeTruthy();
+    expect(balance!).toMatch(/-\s*round\(r\.total \* r\.pct \/ 100\.0\)/);
+    expect(balance!).toMatch(/-\s*coalesce\(a\.loc_owes, 0\)/);
+    expect(balance!).toMatch(/\+\s*coalesce\(a\.fran_owes, 0\)/);
+  });
+
+  it("lets only the franchise owner generate settlements", () => {
+    // Widening this to is_org_member lets any member — including a field tech —
+    // cut settlement statements for the whole franchise. It passed too.
+    const gate = body.slice(0, body.indexOf("IF _end <= _start"));
+    expect(gate).toMatch(/has_role\(\s*auth\.uid\(\),\s*_parent,\s*'owner'::public\.app_role\)/);
+    expect(gate).not.toMatch(/is_org_member|can_write_org/);
+  });
+
   it("keeps the period end EXCLUSIVE", () => {
     // Checked and correct: lastMonthRange() returns the first of the NEXT
     // month, and cpa-reports.ts states the same. A flip to <= here would

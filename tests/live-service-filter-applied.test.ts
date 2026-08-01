@@ -58,7 +58,12 @@ describe("every 'is this service live' query uses the shared rule", () => {
 
   it("the client list uses isServiceEnded rather than status alone", () => {
     const src = read("src/lib/clients.functions.ts");
-    expect(src).toContain("isServiceEnded");
+    // NOT a whole-file toContain — this file's own header explains that such an
+    // assertion is satisfied by the import line, and then line 61 did exactly
+    // that. It was satisfied by the COMMENT above it, and a mutation neutering
+    // the only real call (`!(!!false && isServiceEnded(...))`, which counts
+    // every ended service as live) passed. The call has to be a call.
+    expect(src).toMatch(/if\s*\(\s*!\s*isServiceEnded\s*\(/);
     // It also has to SELECT ends_on, or it is judging on a column it did not
     // fetch — which reads as "never ended" for every row.
     expect(src).toMatch(/select\([^)]*ends_on/i);
