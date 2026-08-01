@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.16** · Released 2026-08-01 · Supersedes: v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.17** · Released 2026-08-01 · Supersedes: v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,80 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+### v1.17 — 2026-08-01
+
+**QA-P4 fixed. The offline queue was never the problem.**
+
+The queue, its replay loop, the retry cap, the dead-letter path and the UI
+that reports it were all built and all correct. Nothing reached them. The
+decision to queue was `if (navigator.onLine) { try the server } else
+{ queue }` — and `navigator.onLine` does not mean "the server is reachable".
+It means "this device has an interface that thinks it is up", which is true
+for one bar in a back yard, a van whose data session has dropped, and a café
+captive portal. In that state the request neither resolves nor rejects. It
+hangs, so the `catch` that queues is never reached.
+
+**Every symptom followed from the hang, and none from the queue.** No toast,
+because the mutation never settled. A permanently disabled button, because
+`isPending` never cleared. Zero rows in IndexedDB, because the queue write
+was never attempted. And the visit starting five to ten seconds after signal
+returned, because the original request had been in flight the whole time —
+which is the detail that gave it away.
+
+**The fix is a deadline**, and it is safe because all three RPCs are
+idempotent on replay: `start_visit` uses `COALESCE(started_at, now())` and
+all three filter their UPDATE on status, with `complete_visit` returning
+early when nothing matched so `finalize_visit_completion` cannot run twice.
+Verified against the live definitions BEFORE the change, because "queue it
+anyway and let it land twice" is only acceptable if that holds. A server
+rejection still surfaces — queueing "Not authorized for this visit" reports
+success for an action that can never apply.
+
+**A second unbounded network call was hiding inside the offline path.** The
+queue write records who made the action, read with `getSession()`. That
+reads local storage — unless the access token has expired, in which case
+supabase-js refreshes it over the network first. So the ownership lookup, on
+the path whose entire purpose is to work without a network, could block the
+queue write indefinitely — in precisely the case the queue exists for: a
+tech out of signal long enough for their token to age out. A short dead zone
+worked; an hour in a yard did not.
+
+**That resolver already had a name and had never been written.**
+`read-cache.ts` documents `rememberLastUser` as *"read ONLY when the network
+is gone and Supabase can no longer answer who is signed in — see
+resolveOfflineUserId"*. There was no `resolveOfflineUserId`. The storage
+half was maintained and used; the reader the comment promised did not exist,
+so the fallback it described could never happen. This is the fifth instance
+this cycle of a written claim treated as a fact. It is written now, under
+that name, and reuses `LAST_USER_KEY` rather than a key of its own — that
+key is cleared by sign-out specifically so the next tech to unlock a shared
+crew tablet cannot inherit an identity, and a second key would have survived
+it. I had drafted exactly that second key before finding the first.
+
+**The drain path had the same hang.** `runOne` had no deadline either, and
+`running` is only cleared in the `finally` — so a replay that hung wedged
+the whole sync loop for the rest of the session, with every later call
+returning zeros immediately. The queue would fill and never drain, which is
+the same outcome for the tech as never queueing at all.
+
+**And a documented risk of DISCARDING work is now closed.** The dead-letter
+cap counted an attempt whenever `navigator.onLine` was true. Since that can
+be true while nothing is reachable, five cycles in a dead zone could burn an
+action's whole budget and throw a tech's work away for a network problem —
+the residual risk the module's own comment stated and accepted. An attempt
+now counts only when the device is online AND the failure was the server's
+answer rather than the absence of one.
+
+**One implementation, where there were four.** The decision lived four times
+over in `useOfflineVisitActions`, once per action, the same eight lines
+copied each time — so this fix would have gone into one and left three. It
+is also the only way any of it could be tested without a browser.
+
+11 mutations, each applied to the shipped source, each caught. Two were bad
+mutations of mine and were rewritten rather than accepted: one used `&&` on
+a promise, which is a no-op, and one targeted a line the fix had already
+removed.
 
 ### v1.16 — 2026-08-01
 
@@ -93,7 +167,8 @@ cycle. Regenerated.
 **A live browser QA pass ran alongside this** and found four defects that are
 NOT yet fixed, filed here so they are not rediscovered:
 
-  * **QA-P4 — offline writes never reach the durable queue.** Offline, tapping
+  * ~~**QA-P4 — offline writes never reach the durable queue.**~~ ✅ **FIXED
+    in v1.17** — the cause was not the queue. Kept below as it was written. Offline, tapping
     Start on `/my-day` produces no toast, no optimistic state, and
     `scoop-offline.actions` stays at zero rows. If the app is closed while
     offline the action is silently LOST. Reproduced across three runs. This is
