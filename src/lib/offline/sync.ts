@@ -3,6 +3,7 @@
 // this module stays free of TanStack imports and remains easy to unit-test.
 
 import { supabase } from "@/integrations/supabase/client";
+import { isTransportFailure, withDeadline } from "@/lib/offline/run-or-queue";
 import {
   deleteAction,
   deletePhoto,
@@ -15,9 +16,7 @@ import {
 export interface SyncCallers {
   startVisit: (args: { data: { visitId: string } }) => Promise<unknown>;
   completeVisit: (args: { data: { visitId: string } }) => Promise<unknown>;
-  skipVisit: (args: {
-    data: { visitId: string; reason: string; code: any };
-  }) => Promise<unknown>;
+  skipVisit: (args: { data: { visitId: string; reason: string; code: any } }) => Promise<unknown>;
   recordVisitPhoto: (args: {
     data: { visitId: string; storagePath: string; kind: "before" | "completion" | "issue" };
   }) => Promise<unknown>;
@@ -97,6 +96,11 @@ export interface SyncResult {
  *  tech's entire day with nothing on screen to explain it. */
 export const MAX_ATTEMPTS = 5;
 
+/** Longer than a field action's own deadline: a replay runs unattended, with
+ *  nobody watching a button, so there is no impatience to serve — only the
+ *  need to never wait for ever. Photos ride this path too. */
+export const REPLAY_DEADLINE_MS = 60_000;
+
 export async function syncQueue(callers: SyncCallers, userId: string): Promise<SyncResult> {
   if (running) return { attempted: 0, succeeded: 0, failed: 0, dropped: 0, deadLettered: 0 };
   running = true;
@@ -115,7 +119,14 @@ export async function syncQueue(callers: SyncCallers, userId: string): Promise<S
     for (const action of pending) {
       result.attempted++;
       try {
-        await runOne(action, callers);
+        // QA-P4: a deadline, for the same reason the WRITE path needed one.
+        // `runOne` had none, so a replay against a network that reports itself
+        // up but answers nothing hung for ever — and because `running` is only
+        // cleared in the `finally` below, the whole sync loop was wedged for
+        // the rest of the session. Every later call returned zeros
+        // immediately. The queue would fill and never drain, silently, which
+        // is the same outcome for the tech as never queueing at all.
+        await withDeadline(runOne(action, callers), REPLAY_DEADLINE_MS, `replay ${action.kind}`);
         await deleteAction(action.id);
         result.succeeded++;
       } catch (e) {
@@ -128,9 +139,18 @@ export async function syncQueue(callers: SyncCallers, userId: string): Promise<S
           continue;
         }
         // A failure with no network is not the action's fault. Only count it
-        // against the action when the device believes it can reach the server.
+        // against the action when the device believes it can reach the server
+        // AND the failure was the server's answer rather than the absence of
+        // one.
+        //
+        // The second half is new, and it closes the residual risk this comment
+        // used to state and accept: `navigator.onLine` can be true while
+        // nothing is reachable, so five cycles in a dead zone could burn an
+        // action's whole budget and DISCARD a tech's work for a network
+        // problem. A transport failure or a timeout is not evidence that an
+        // action will never succeed — it is evidence that we could not ask.
         const online = typeof navigator === "undefined" || navigator.onLine;
-        if (online) {
+        if (online && !isTransportFailure(e)) {
           const attempts = await recordAttempt(action.id);
           if (attempts >= MAX_ATTEMPTS) {
             // Give up on THIS action so everything queued behind it can move.

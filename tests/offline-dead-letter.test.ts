@@ -71,7 +71,28 @@ describe("the sync loop gives up only on a reachable server", () => {
     // The whole distinction. Without this, a tech working a dead zone burns
     // five attempts on their first completion and loses it.
     expect(body).toMatch(/navigator\.onLine/);
-    expect(body).toMatch(/if \(online\)/);
+    expect(body).toMatch(/if \(online/);
+  });
+
+  it("does not count a failure it could not even ask about", () => {
+    // QA-P4 strengthened this. `navigator.onLine` can be true while nothing is
+    // reachable, so the ONLINE check alone still let five cycles in a dead
+    // zone burn an action's whole budget and discard a tech's work — the
+    // residual risk the module's own comment used to state and accept.
+    //
+    // A transport failure or a timeout is not evidence that an action will
+    // never succeed. It is evidence that we could not ask.
+    expect(body).toMatch(/if \(online && !isTransportFailure\(e\)\)/);
+  });
+
+  it("puts a deadline on the replay itself", () => {
+    // Without one, a replay against a network that reports itself up but
+    // answers nothing hangs for ever — and `running` is only cleared in the
+    // `finally`, so the whole sync loop wedges for the rest of the session
+    // and every later call returns zeros. The queue fills and never drains,
+    // which is the same outcome for the tech as never queueing at all.
+    expect(body).toMatch(/withDeadline\(runOne\(action, callers\), REPLAY_DEADLINE_MS/);
+    expect(src).toMatch(/export const REPLAY_DEADLINE_MS = \d[\d_]*/);
   });
 
   it("continues past the action it gave up on rather than breaking", () => {
