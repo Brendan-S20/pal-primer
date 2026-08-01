@@ -3,17 +3,6 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { fetchPlatformSaasMetrics } from "@/lib/platform-metrics.server";
 
-export type PlatformOrgRow = {
-  organization_id: string;
-  organization_name: string;
-  billing_tier: string | null;
-  plan_status: string | null;
-  active_clients: number;
-  users_count: number;
-  revenue_mtd_cents: number;
-  ar_open_cents: number;
-  created_at: string;
-};
 
 async function assertPlatformAdmin(supabase: any, userId: string) {
   const { data, error } = await supabase.rpc("is_platform_admin", { _user_id: userId });
@@ -29,15 +18,6 @@ export const getPlatformContext = createServerFn({ method: "GET" })
     });
     if (error) throw new Error(error.message);
     return { isPlatformAdmin: !!data };
-  });
-
-export const getPlatformStats = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    await assertPlatformAdmin(context.supabase, context.userId);
-    const { data, error } = await context.supabase.rpc("platform_org_stats");
-    if (error) throw new Error(error.message);
-    return { rows: (data ?? []) as PlatformOrgRow[] };
   });
 
 const updatePlanSchema = z.object({

@@ -25,6 +25,12 @@ import {
 // the pure arithmetic half of that module (no service-role client behind it),
 // and every sheet below needs it.
 import { totalReversals, type Reversal } from "@/lib/reversals.server";
+// The point-in-time receivables position and the accrual billing rule both live
+// in the shared AR module. They used to live HERE, privately, while /reports
+// answered the same two questions its own way — which is how the pack reported
+// $2,550.00 open for July and the page reported $2,655.00. One implementation,
+// two callers.
+import { billedDay, outstandingAsOf } from "@/lib/ar";
 import { fetchAllPages as fetchAll } from "@/lib/supabase-paging.server";
 import type { AppRole } from "@/hooks/useMyRole";
 
@@ -251,27 +257,6 @@ async function clientNames(supabase: any, ctx: OrgContext, ids: string[]) {
   return map;
 }
 
-/** Was this invoice an open receivable at the end of `day`?
- *
- *  Reconstructed from the timestamps rather than the current status, because
- *  the status only tells you about today. Point-in-time is the whole job here:
- *  a December balance sheet prepared in March must show December. */
-function outstandingAsOf(inv: InvoiceRow, day: string, tz: string): number {
-  const issued = inv.issued_at ? orgLocalDay(inv.issued_at, tz) : null;
-  if (!issued || issued > day) return 0;
-  const paid = inv.paid_at ? orgLocalDay(inv.paid_at, tz) : null;
-  if (paid && paid <= day) return 0;
-  const voided = inv.voided_at ? orgLocalDay(inv.voided_at, tz) : null;
-  if (voided && voided <= day) return 0;
-  // 'uncollectible' is written-off debt, not a receivable — but only from the
-  // day it was written off, which is the best date available for it.
-  if (inv.status === "uncollectible") {
-    const off = inv.updated_at ? orgLocalDay(inv.updated_at, tz) : null;
-    if (off && off <= day) return 0;
-  }
-  return Math.max((inv.total_cents ?? 0) - (inv.credit_applied_cents ?? 0), 0);
-}
-
 // ── The reports ────────────────────────────────────────────────────────────
 
 async function buildIncomeCash(supabase: any, ctx: OrgContext, from: string, to: string) {
@@ -346,9 +331,9 @@ async function buildIncomeAccrual(supabase: any, ctx: OrgContext, from: string, 
   for (const m of monthsBetween(from, to)) byMonth.set(m, { invoiced: 0, credits: 0, count: 0 });
 
   for (const inv of invoices) {
-    if (inv.status === "void" || !inv.issued_at) continue;
-    const day = orgLocalDay(inv.issued_at, ctx.timezone);
-    if (!inRange(day, from, to)) continue;
+    // Shared with /reports: one definition of what "billed in a period" means.
+    const day = billedDay(inv, ctx.timezone);
+    if (!day || !inRange(day, from, to)) continue;
     const m = monthKey(day);
     let b = byMonth.get(m);
     if (!b) {

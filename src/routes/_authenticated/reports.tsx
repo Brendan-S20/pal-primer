@@ -73,16 +73,23 @@ function ReportsPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        {/* IMP-10: gross, then what came back, then net — three tiles rather
+        {/* Every money tile says which basis it is on, in its own label.
+            "Revenue" said neither, and meant paid-invoices-dated-by-issue minus
+            a cash refund — a figure that could be reconciled to nothing. Cash
+            and accrual now sit side by side and are never subtracted from each
+            other.
+
+            IMP-10: gross, then what came back, then net — three tiles rather
             than one adjusted number. A single "revenue" figure that silently
             moved when a dispute landed is exactly what this replaces, and
             netting in place would have reproduced it more quietly. */}
         <Metric
-          label="Revenue (billed)"
-          value={fmtMoney(data.revenuePaidCents)}
+          label="Collected · cash"
+          value={fmtMoney(data.collectedGrossCents)}
           valueClass={
-            data.revenuePaidCents > 0 ? "text-emerald-700 dark:text-emerald-400" : undefined
+            data.collectedGrossCents > 0 ? "text-emerald-700 dark:text-emerald-400" : undefined
           }
+          hint={`${data.paymentCount} payment${data.paymentCount === 1 ? "" : "s"} received`}
         />
         <Metric
           label="Refunds & chargebacks"
@@ -97,16 +104,27 @@ function ReportsPage() {
           }
         />
         <Metric
-          label="Net revenue"
-          value={fmtMoney(data.revenueNetCents)}
+          label="Net collected · cash"
+          value={fmtMoney(data.collectedNetCents)}
           valueClass={
-            data.revenueNetCents > 0 ? "text-emerald-700 dark:text-emerald-400" : undefined
+            data.collectedNetCents > 0 ? "text-emerald-700 dark:text-emerald-400" : undefined
+          }
+        />
+        <Metric
+          label="Billed · accrual"
+          value={fmtMoney(data.netBilledCents)}
+          valueClass={data.netBilledCents > 0 ? "text-sky-700 dark:text-sky-400" : undefined}
+          hint={
+            data.creditsAppliedCents > 0
+              ? `${fmtMoney(data.billedCents)} invoiced, less ${fmtMoney(data.creditsAppliedCents)} of credit`
+              : `${data.invoiceCount} invoice${data.invoiceCount === 1 ? "" : "s"} issued`
           }
         />
         <Metric
           label="Outstanding"
           value={fmtMoney(data.outstandingCents)}
           valueClass={data.outstandingCents > 0 ? "text-amber-600 dark:text-amber-400" : undefined}
+          hint={`Open as at ${data.arAsOf}`}
         />
         <Metric label="Completed visits" value={String(data.visitCounts.completed ?? 0)} />
         <Metric
@@ -122,7 +140,18 @@ function ReportsPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>AR aging (open)</CardTitle>
+            <CardTitle>AR aging as at {data.arAsOf}</CardTitle>
+            {/* The date is in the title, not a footnote. A receivables figure
+                without an "as at" is the ambiguity that let this card and the
+                CPA pack's aging sheet print different totals for July: this one
+                was a live position, that one was point-in-time, and neither
+                said so. They now total the same. The BUCKETS still differ on
+                purpose — this ages from the issue date, the pack from the due
+                date, which is documented in cpa-reports.agingBucket. */}
+            <p className="text-xs text-muted-foreground">
+              Open balances, aged from the invoice date. Your accountant's pack ages the same
+              balances from their due date.
+            </p>
           </CardHeader>
           <CardContent>
             <table className="w-full text-sm">
@@ -241,23 +270,31 @@ function ReportsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Top clients by revenue</CardTitle>
+          <CardTitle>Top clients by money collected</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Cash basis — what each customer actually paid in this range. Adds up to the Collected
+            tile above, less anything paid without an invoice.
+          </p>
         </CardHeader>
         <CardContent>
           {data.topClients.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No paid invoices in this range.</p>
+            <p className="text-sm text-muted-foreground">No payments received in this range.</p>
           ) : (
             <table className="w-full text-sm">
               {/* Ranked on NET. Ranking on gross while the tiles above show net
                   is how a customer who refunded everything stays at the top of
                   the list. The refund column only appears when there is one, so
-                  an ordinary month keeps a two-column table. */}
+                  an ordinary month keeps a two-column table.
+
+                  Both columns are CASH. They used to be issue-dated billing
+                  minus a cash refund, which is the mixed-basis subtraction the
+                  headline was making, repeated per customer. */}
               <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="py-1">Client</th>
-                  {data.refundsCount > 0 && <th className="py-1 text-right">Billed</th>}
+                  {data.refundsCount > 0 && <th className="py-1 text-right">Collected</th>}
                   {data.refundsCount > 0 && <th className="py-1 text-right">Refunded</th>}
-                  <th className="py-1 text-right">{data.refundsCount > 0 ? "Net" : "Revenue"}</th>
+                  <th className="py-1 text-right">{data.refundsCount > 0 ? "Net" : "Collected"}</th>
                 </tr>
               </thead>
               <tbody>
@@ -266,7 +303,7 @@ function ReportsPage() {
                     <td className="py-1">{c.name}</td>
                     {data.refundsCount > 0 && (
                       <td className="py-1 text-right tabular-nums text-muted-foreground">
-                        {fmtMoney(c.revenueCents)}
+                        {fmtMoney(c.collectedCents)}
                       </td>
                     )}
                     {data.refundsCount > 0 && (
@@ -279,7 +316,7 @@ function ReportsPage() {
                       </td>
                     )}
                     <td className="py-1 text-right font-medium tabular-nums">
-                      {fmtMoney(c.netRevenueCents)}
+                      {fmtMoney(c.netCollectedCents)}
                     </td>
                   </tr>
                 ))}

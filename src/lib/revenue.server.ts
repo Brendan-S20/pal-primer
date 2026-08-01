@@ -35,13 +35,25 @@
 // that shrank with nothing to explain it — the exact complaint the review queue
 // exists to answer.
 
-import { grossReceivedCents, receivedPaymentStatuses } from "@/lib/revenue";
+import { grossReceivedCents, paymentWasReceived, receivedPaymentStatuses } from "@/lib/revenue";
 import { orgLocalDay } from "@/lib/cpa-reports";
 import {
   loadOrgReversals,
   resolveDisputeOutcomes,
   totalReversals,
+  type Reversal,
 } from "@/lib/reversals.server";
+
+/** One receipt, reduced to what a caller needs to break the total down without
+ *  re-querying the ledger and re-deciding which rows count. `day` is already
+ *  the ORG-LOCAL day the money moved, so a caller grouping by month or by
+ *  client cannot reintroduce the UTC-slice bug at its own end. */
+export type Receipt = {
+  id: string;
+  invoiceId: string | null;
+  amountCents: number;
+  day: string;
+};
 
 export type CollectedSummary = {
   /** Money that reached the account in the period, before reversals. */
@@ -53,6 +65,15 @@ export type CollectedSummary = {
   netCents: number;
   paymentCount: number;
   reversalCount: number;
+  /** The receipts and reversals the three figures above were computed FROM.
+   *
+   *  Returned rather than left for the caller to fetch again: /reports needs a
+   *  per-client split of the same money, and a second query with a second copy
+   *  of "which payments count" is precisely the shape that gave one period
+   *  three different revenue figures. A breakdown built from these rows adds up
+   *  to the total above by construction. */
+  receipts: Receipt[];
+  reversals: Reversal[];
   /** Echoed back so a caller can label the card with the range it actually
    *  measured rather than the one it thinks it asked for. */
   from: string;
@@ -117,6 +138,8 @@ export async function collectedInPeriod(
 
   const PAGE = 1000;
   const rows: Array<{
+    id: string;
+    invoice_id: string | null;
     amount_cents: number | null;
     status: string;
     paid_at: string | null;
@@ -125,7 +148,7 @@ export async function collectedInPeriod(
   for (let offset = 0; ; offset += PAGE) {
     const { data, error } = await supabase
       .from("payments")
-      .select("id, amount_cents, status, paid_at, created_at")
+      .select("id, invoice_id, amount_cents, status, paid_at, created_at")
       .eq("organization_id", orgId)
       .in("status", receivedPaymentStatuses())
       .gte("created_at", lo.toISOString())
@@ -150,6 +173,16 @@ export async function collectedInPeriod(
     const day = orgLocalDay(p.paid_at ?? p.created_at, timezone);
     return !!day && day >= from && day <= to;
   });
+  const receipts: Receipt[] = inPeriod
+    // Same filter grossReceivedCents applies, applied once here so the rows a
+    // caller breaks down are exactly the rows the total was built from.
+    .filter((p) => paymentWasReceived(p.status))
+    .map((p) => ({
+      id: p.id,
+      invoiceId: p.invoice_id ?? null,
+      amountCents: p.amount_cents ?? 0,
+      day: orgLocalDay(p.paid_at ?? p.created_at, timezone),
+    }));
 
   let reversalRows = await loadOrgReversals(supabase, { orgId, timezone, from, to });
 
@@ -185,6 +218,8 @@ export async function collectedInPeriod(
     netCents: grossCents - reversals.netCents,
     paymentCount: inPeriod.length,
     reversalCount: reversals.count,
+    receipts,
+    reversals: reversalRows,
     from,
     to,
     timezone,
