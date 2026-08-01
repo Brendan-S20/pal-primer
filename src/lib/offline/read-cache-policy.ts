@@ -208,13 +208,30 @@ export function describeReadFreshness(input: {
   dataUpdatedAt: number;
   isError: boolean;
   online: boolean;
-  now: number;
+  /**
+   * The current time. OPTIONAL, and callers should leave it out.
+   *
+   * QA-P1: my-day passed a `Date.now()` it had stored in state and refreshed
+   * on a 60-second interval, so between ticks it was up to a minute BEHIND.
+   * Every comparison below is a subtraction against this value, and a `now`
+   * that trails `dataUpdatedAt` produces a negative age — which is exactly
+   * what `clockSuspect` exists to detect. So the escalated "this route may
+   * have changed" warning fired against correct, live, just-fetched data for
+   * the first minute of every load.
+   *
+   * The guard was right. The input was wrong, and nothing in a signature that
+   * merely REQUIRED a number could have said so. Defaulting it means a caller
+   * has to pass a stale clock deliberately rather than by writing the obvious
+   * thing, and the only callers that pass it now are tests.
+   */
+  now?: number;
   sessionStartedAt: number;
   trustHorizonMs?: number;
 }): ReadFreshness | null {
   // No data at all is not a staleness question — the caller owns that screen.
   if (!input.hasData) return null;
 
+  const now = input.now ?? Date.now();
   const fetchedAt = Number.isFinite(input.dataUpdatedAt) ? input.dataUpdatedAt : 0;
   const refreshFailed = input.isError;
 
@@ -235,7 +252,7 @@ export function describeReadFreshness(input: {
   //
   // A negative age is not a small age; it is an unmeasurable one. It is now the
   // most suspicious state, not the least.
-  const rawAgeMs = input.now - fetchedAt;
+  const rawAgeMs = now - fetchedAt;
   const clockSuspect = rawAgeMs < 0;
   const restoredFromDisk = fetchedAt < input.sessionStartedAt;
 

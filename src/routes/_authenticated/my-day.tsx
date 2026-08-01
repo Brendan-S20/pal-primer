@@ -145,9 +145,27 @@ function MyDay() {
   const online = useOnline();
   // "Saved 4 hr ago" has to keep counting while a tech sits in a dead zone —
   // a frozen age reads as if the app just refreshed.
-  const [nowTick, setNowTick] = useState(() => Date.now());
+  //
+  // QA-P1: this used to STORE `Date.now()` and pass the stored value to
+  // describeReadFreshness. Between ticks it was up to 60 seconds behind, so
+  // data fetched after mount had a NEGATIVE age against it — and a negative
+  // age is precisely what that function reads as `clockSuspect`, its guard
+  // against a device whose clock has stepped backward. The result was the
+  // escalated red "this route may have changed — confirm before driving it"
+  // banner firing against correct, live, just-fetched data, for the first
+  // minute of every single load.
+  //
+  // The guard is right; it was being fed a clock reading it had no way to know
+  // was stale. So the interval now only forces a re-render, and the clock is
+  // read at render — there is no stored `now` left to go stale.
+  //
+  // It matters more than a cosmetic wrong banner. That warning is the app
+  // telling a tech standing at a customer's fence not to trust what is on the
+  // screen. Firing it on every load is how it stops being read at all, and
+  // the one time the route really has changed is the time it is ignored.
+  const [, forceAgeRepaint] = useState(0);
   useEffect(() => {
-    const id = window.setInterval(() => setNowTick(Date.now()), 60_000);
+    const id = window.setInterval(() => forceAgeRepaint((n) => n + 1), 60_000);
     return () => window.clearInterval(id);
   }, []);
   const pending = usePendingCount();
@@ -176,7 +194,10 @@ function MyDay() {
     dataUpdatedAt,
     isError,
     online,
-    now: nowTick,
+    // `now` is deliberately NOT passed. It defaults to a live Date.now()
+    // inside describeReadFreshness — see the note on that parameter, and on
+    // forceAgeRepaint above, for why a stored clock reading here produced a
+    // red warning against correct data.
     sessionStartedAt: SESSION_STARTED_AT,
   });
   const previewing = !!data?.previewing;

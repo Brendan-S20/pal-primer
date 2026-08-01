@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   describeReadFreshness,
   formatCacheAge,
@@ -469,6 +471,22 @@ describe("a backward clock never makes stale data look fresh", () => {
     expect(r.beyondTrustHorizon).toBe(true);
   });
 
+  it("treats a `now` that merely LAGS the same way as a backward clock", () => {
+    // QA-P1, the mechanism. This is not a broken device clock — it is a
+    // correct clock read a moment too early. my-day stored `Date.now()` in
+    // state and refreshed it on a 60-second interval, so any data fetched
+    // after mount had a negative age against it.
+    //
+    // Two seconds is enough. The function cannot tell this apart from a real
+    // backward step, and it should not try: the answer is not to weaken the
+    // guard but to stop feeding it a stale reading.
+    const fetchedAt = 15_002_000;
+    const r = describeReadFreshness({ ...base, dataUpdatedAt: fetchedAt, now: 15_000_000 });
+    if (r?.status !== "cached") throw new Error("unreachable");
+    expect(r.clockSuspect).toBe(true);
+    expect(r.beyondTrustHorizon).toBe(true);
+  });
+
   it("still reports an ordinary age normally", () => {
     const r = describeReadFreshness({ ...base, dataUpdatedAt: 9_000_000, now: 15_000_000 });
     if (r?.status !== "cached") throw new Error("unreachable");
@@ -498,5 +516,140 @@ describe("a store written under a fast clock still expires", () => {
       state: { mutations: [], queries: [] },
     };
     expect(isRestorableEnvelope(envelope, { userId: "u1", now: 15_000_000 })).toBe(true);
+  });
+});
+
+// ── QA-P1 ──────────────────────────────────────────────────────────────────
+//
+// For the first minute of every /my-day load, a tech saw:
+//
+//     Couldn't refresh — saved copy, just now
+//     Last updated … — this route may have changed. Confirm before driving it.
+//
+// Online, on a successful fetch, against live data. Measured present at t+5s,
+// +15s, +30s and +45s; gone by t+62s.
+//
+// The cause was not in describeReadFreshness. my-day held `Date.now()` in
+// state, refreshed on a 60-second interval, and passed that stored value in.
+// Between ticks it was up to a minute behind, so data fetched after mount had
+// a negative age — which is exactly what `clockSuspect` is for.
+//
+// It matters beyond a wrong banner. That warning is the app telling someone
+// standing at a customer's fence not to trust the screen. Firing it on every
+// load is how it stops being read, and the one time the route really has
+// changed is the time it is ignored.
+
+describe("the freshness check reads the clock itself", () => {
+  it("calls a fetch from a moment ago live, with no `now` supplied", () => {
+    const started = Date.now() - 5_000;
+    expect(
+      describeReadFreshness({
+        hasData: true,
+        isError: false,
+        online: true,
+        sessionStartedAt: started,
+        dataUpdatedAt: Date.now() - 1_000,
+      }),
+    ).toEqual({ status: "live" });
+  });
+
+  it("does not fire the warning against data fetched after the page loaded", () => {
+    // The exact timeline of the bug, played out rather than approximated:
+    //
+    //   t+0s  the page mounts. The old code captured Date.now() here.
+    //   t+2s  the query resolves. dataUpdatedAt is NEWER than that capture.
+    //   t+3s  a render happens and the freshness is computed.
+    //
+    // With a stored `now` the age at t+3s is still measured from t+0s, so it
+    // is -2s and the escalation fires. Reading the clock at call time gives
+    // +1s, which is what it actually is.
+    vi.useFakeTimers();
+    try {
+      const mounted = new Date("2026-08-01T09:00:00Z").getTime();
+      vi.setSystemTime(mounted);
+
+      vi.setSystemTime(mounted + 2_000);
+      const fetchedAt = Date.now();
+
+      vi.setSystemTime(mounted + 3_000);
+      const args = {
+        hasData: true,
+        isError: false,
+        online: true,
+        sessionStartedAt: mounted,
+        dataUpdatedAt: fetchedAt,
+      };
+
+      // `now` omitted — read at call time.
+      expect(
+        describeReadFreshness(args),
+        "the stale-route warning fired against live data",
+      ).toEqual({ status: "live" });
+
+      // And the bug, for contrast: the same moment, judged by a clock reading
+      // taken when the page mounted.
+      expect(describeReadFreshness({ ...args, now: mounted })).toMatchObject({
+        status: "cached",
+        clockSuspect: true,
+        beyondTrustHorizon: true,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still detects a genuinely backward clock when one is supplied", () => {
+    // Defaulting must not disable the guard — it only removes the way to trip
+    // it by accident.
+    const r = describeReadFreshness({
+      hasData: true,
+      isError: false,
+      online: true,
+      sessionStartedAt: 10_000_000,
+      dataUpdatedAt: 20_000_000,
+      now: 15_000_000,
+    });
+    expect(r).toMatchObject({ status: "cached", clockSuspect: true });
+  });
+});
+
+describe("my-day does not hand it a stored clock", () => {
+  const src = readFileSync(
+    join(new URL("..", import.meta.url).pathname, "src/routes/_authenticated/my-day.tsx"),
+    "utf8",
+  );
+  const call = (() => {
+    const i = src.indexOf("describeReadFreshness({");
+    if (i < 0) return "";
+    const start = src.indexOf("{", i);
+    let depth = 0;
+    for (let j = start; j < src.length; j++) {
+      if (src[j] === "{") depth++;
+      else if (src[j] === "}") {
+        depth--;
+        if (depth === 0) return src.slice(start, j + 1);
+      }
+    }
+    return "";
+  })();
+
+  it("passes no `now` at all", () => {
+    expect(call, "describeReadFreshness call not found").not.toBe("");
+    expect(call, "a clock reading is being passed in again").not.toMatch(/^\s*now:/m);
+  });
+
+  it("keeps the minute repaint, because the age still has to keep counting", () => {
+    // "Saved 4 hr ago" freezing reads as if the app just refreshed. The
+    // interval is still needed — it just triggers a repaint rather than
+    // carrying the value.
+    //
+    // Named specifically. A bare /setInterval\(/ passed even with this one
+    // deleted, because the elapsed-visit timer further down the file has its
+    // own — an assertion that matches SOME interval proves nothing about THIS
+    // one.
+    expect(src, "the freshness repaint interval is gone — the age will freeze").toMatch(
+      /setInterval\(\(\) => forceAgeRepaint\([\s\S]{0,40}?60_000\)/,
+    );
+    expect(src, "the stored tick is back").not.toMatch(/setNowTick\(Date\.now\(\)\)/);
   });
 });
