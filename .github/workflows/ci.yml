@@ -52,6 +52,26 @@ jobs:
       - name: Tests
         run: npm test
 
+      # The app was never BUILT in CI — only type-checked. Two things went
+      # unwatched because of it:
+      #
+      #   * `tsc --noEmit` does not run Vite, so a build-breaking change (a bad
+      #     plugin config, an SSR-only import pulled into a client file, a
+      #     failed Nitro preset) passed CI and would have surfaced at deploy.
+      #
+      #   * scripts/check-pwa-output.mjs is wired into `npm run build`, and it
+      #     exists because /sw.js 404'd in production for the entire life of the
+      #     PWA (BUG-41). It asserts against build OUTPUT, which is the only
+      #     place those defects are visible. With no build step it had never run
+      #     automatically once — a check written to stop a regression, that
+      #     nothing invoked. It also skips silently when there is no output, so
+      #     it could never have complained about its own absence.
+      #
+      # ~40s. Runs after the tests so a broken build is not the first thing a
+      # reviewer sees when the real failure is a unit test.
+      - name: Build (and verify the service worker is real)
+        run: npm run build
+
       # IMP-11: catches the failure this project keeps producing — something
       # built, granted and correct that nothing ever calls. Six instances in one
       # cycle, every one invisible to tests and types because an uncalled

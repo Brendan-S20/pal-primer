@@ -83,6 +83,43 @@ export const CORS_PATH_PREFIX = "/_serverFn/";
 const ALLOWED_REQUEST_HEADERS = "authorization, content-type, x-tsr-serverfn";
 
 /**
+ * Response headers the CLIENT must be able to read back.
+ *
+ * ── WHY THIS EXISTS, AND WHY ITS ABSENCE WAS INVISIBLE ─────────────────────
+ *
+ * A cross-origin `fetch()` exposes only the CORS-safelisted response headers —
+ * Cache-Control, Content-Language, Content-Length, Content-Type, Expires,
+ * Last-Modified, Pragma. Everything else is filtered out of the Headers object
+ * unless it is named here. Not blocked, not an error: simply absent.
+ *
+ * TanStack tags every server-function reply with `x-tss-serialized: true` (or
+ * `x-tss-raw: true` for a passthrough Response) — see start-server-core's
+ * server-functions-handler — and the client dispatches on reading them back:
+ *
+ *     if (response.headers.get("x-tss-raw") === "true") return response
+ *     if (!!response.headers.get("x-tss-serialized")) …decode…
+ *
+ * Without this header both reads return null in the native WebView, so a
+ * successful, authorized, HTTP 200 reply takes the wrong decode branch and the
+ * caller receives the raw seroval wire node instead of the value — `undefined`
+ * in practice. A thrown server error, which is also serialized, comes back as
+ * a resolved value. The app renders an empty day and nothing reports a problem,
+ * because at the HTTP level nothing went wrong.
+ *
+ * Verified in a real browser rather than reasoned from the spec: with only
+ * allow-origin and vary set, a cross-origin response's visible header list is
+ * ["content-length", "content-type"] and `get("x-tss-serialized")` is null;
+ * adding this header makes it "true".
+ *
+ * The v1.7 offline proof could not have caught this. It served the bundle as
+ * static files with every off-origin request BLOCKED, which proves the app
+ * boots and renders with no network — and never makes a single cross-origin
+ * server-function call. The CORS unit tests check what corsDecision RETURNS,
+ * not what a browser can read off the wire.
+ */
+const EXPOSED_RESPONSE_HEADERS = "x-tss-serialized, x-tss-raw";
+
+/**
  * Is this an origin the native app legitimately runs on?
  *
  * Shared with the CSRF middleware in src/start.ts deliberately: CSRF has to
@@ -123,6 +160,9 @@ export function corsDecision(input: {
 
   const base: Record<string, string> = {
     "access-control-allow-origin": origin,
+    // Without this the native app receives every reply successfully and decodes
+    // all of them wrongly. See EXPOSED_RESPONSE_HEADERS.
+    "access-control-expose-headers": EXPOSED_RESPONSE_HEADERS,
     // Without this a shared cache could hand a response carrying one origin's
     // CORS header to a request from another, which reads as a random failure.
     vary: "Origin",

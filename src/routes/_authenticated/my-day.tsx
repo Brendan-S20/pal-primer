@@ -33,7 +33,7 @@ import { SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.function
 import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
 import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { syncQueue } from "@/lib/offline/sync";
-import { countPendingForVisit } from "@/lib/offline/queue";
+import { countPendingForVisit, countQueuedCompletionPhotos } from "@/lib/offline/queue";
 import { describeReadFreshness, formatCacheAge } from "@/lib/offline/read-cache-policy";
 import { toast } from "sonner";
 import {
@@ -207,9 +207,21 @@ function MyDay() {
   );
 
   const runSync = useCallback(async () => {
-    const res = await syncQueue(callers);
+    // Replay only the signed-in tech's own queued work — see lib/offline/queue.
+    const { data: sess } = await supabase.auth.getSession();
+    const uid = sess.session?.user?.id;
+    if (!uid) return;
+    const res = await syncQueue(callers, uid);
     if (res.succeeded > 0) {
       toast.success(`Synced ${res.succeeded} queued action${res.succeeded === 1 ? "" : "s"}`);
+      qc.invalidateQueries({ queryKey: ["my-day"] });
+    }
+    if (res.dropped > 0) {
+      // Never folded into the success count: this is a photo whose bytes are
+      // gone, and the tech is the only person who can retake it.
+      toast.error(
+        `${res.dropped} queued photo${res.dropped === 1 ? "" : "s"} could not be recovered from this device — retake if the visit still needs one`,
+      );
       qc.invalidateQueries({ queryKey: ["my-day"] });
     }
     if (res.failed > 0) {
@@ -847,6 +859,13 @@ function VisitCard({
   const [uploading, setUploading] = useState(false);
   const [photoKind, setPhotoKind] = useState<"before" | "completion" | "issue">("completion");
   const [pendingLocal, setPendingLocal] = useState(0);
+  // Counted SEPARATELY from pendingLocal. The Complete button is unlocked
+  // offline on the strength of a completion photo waiting to sync; it used to
+  // be gated on the count of ALL pending actions, so queueing a Start unlocked
+  // Complete. The server then refuses ("A completion photo is required"),
+  // which is not a network error, so the sync loop breaks on it and every
+  // action queued behind it stops for good.
+  const [queuedCompletionPhotos, setQueuedCompletionPhotos] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
 
   // Refresh per-visit pending count so cards can show a subtle "queued" chip.
@@ -854,6 +873,9 @@ function VisitCard({
     let cancelled = false;
     const refresh = () => {
       countPendingForVisit(visit.id).then((c) => !cancelled && setPendingLocal(c));
+      countQueuedCompletionPhotos(visit.id).then(
+        (c) => !cancelled && setQueuedCompletionPhotos(c),
+      );
     };
     refresh();
     window.addEventListener("offline-queue-change", refresh);
@@ -939,7 +961,7 @@ function VisitCard({
   const hasCompletionPhoto = photos.some((p: any) => p.kind === "completion");
   // If a completion photo is queued locally, allow "Complete" — the sync
   // driver replays photos first (older ts) then complete (newer ts).
-  const hasQueuedCompletionPhoto = pendingLocal > 0;
+  const hasQueuedCompletionPhoto = queuedCompletionPhotos > 0;
   const done = visit.status === "completed";
   const skipped = visit.status === "skipped";
   const inProg = visit.status === "in_progress";

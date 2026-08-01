@@ -121,3 +121,72 @@ describe("configured extra origins", () => {
     expect(list).toContain(ANDROID);
   });
 });
+
+// ── the headers the client has to READ BACK ────────────────────────────────
+//
+// The whole allowlist was correct and the native app would still have been
+// broken: a cross-origin fetch() exposes only the CORS-safelisted response
+// headers, and TanStack tags every server-function reply with
+// `x-tss-serialized` (or `x-tss-raw`) and dispatches on reading it back. With
+// no Access-Control-Expose-Headers those reads return null, so an authorized
+// HTTP 200 takes the wrong decode branch and the caller gets `undefined`.
+//
+// Nothing here could have caught it before: these tests assert what
+// corsDecision RETURNS, and the v1.7 offline proof blocked every off-origin
+// request, so it never made a cross-origin server-function call at all.
+//
+// This reads the header names out of the INSTALLED LIBRARY rather than
+// restating them, so adding a new framing header upstream fails here instead
+// of silently breaking decoding on device.
+
+describe("the response headers the native client must be able to read", () => {
+  const headersOf = (d: ReturnType<typeof corsDecision>) =>
+    d.kind === "actual" || d.kind === "preflight" ? d.headers : {};
+
+  /** Every response header serverFnFetcher does `.headers.get(...)` on. */
+  function headersTheClientReads(): string[] {
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const src = readFileSync(
+      new URL(
+        "../node_modules/@tanstack/start-client-core/dist/esm/client-rpc/serverFnFetcher.js",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    return [...src.matchAll(/headers\.get\("([^"]+)"\)/g)].map((m) => m[1].toLowerCase());
+  }
+
+  // Safelisted by CORS, so they need no exposing.
+  const SAFELISTED = new Set([
+    "cache-control",
+    "content-language",
+    "content-length",
+    "content-type",
+    "expires",
+    "last-modified",
+    "pragma",
+  ]);
+
+  it("exposes every non-safelisted header the library reads", () => {
+    const needed = headersTheClientReads().filter((h) => !SAFELISTED.has(h));
+    // If this is empty the extraction broke and the test would pass vacuously.
+    expect(needed.length, "extracted no header reads from serverFnFetcher").toBeGreaterThan(0);
+
+    const exposed = (headersOf(corsDecision({ method: "POST", path: RPC, origin: IOS }))[
+      "access-control-expose-headers"
+    ] ?? "")
+      .split(",")
+      .map((h) => h.trim().toLowerCase());
+
+    for (const h of needed) {
+      expect(exposed, `${h} is unreadable cross-origin unless exposed`).toContain(h);
+    }
+  });
+
+  it("exposes them on the actual response, where they are read", () => {
+    // The preflight answer is about the REQUEST; expose-headers only has an
+    // effect on the actual response, so that is the one that must carry it.
+    const actual = headersOf(corsDecision({ method: "POST", path: RPC, origin: IOS }));
+    expect(actual["access-control-expose-headers"]).toBeTruthy();
+  });
+});

@@ -50,6 +50,16 @@ export function useOfflineVisitActions(
   visitId: string,
   cachedOrgId: string | undefined,
 ): OfflineVisitActions {
+  // Every queued action records who made it. Replay runs as whoever is signed
+  // in at the time, so an unowned action is one the wrong tech can replay —
+  // see the header of lib/offline/queue.ts. Read at enqueue time rather than
+  // hook time: the session is what it is when the tech presses the button.
+  const currentUserId = async (): Promise<string> => {
+    const { data } = await supabase.auth.getSession();
+    const id = data.session?.user?.id;
+    if (!id) throw new Error("Not signed in");
+    return id;
+  };
   const startFn = useServerFn(startVisit);
   const completeFn = useServerFn(completeVisit);
   const skipFn = useServerFn(skipVisit);
@@ -64,7 +74,7 @@ export function useOfflineVisitActions(
         if (!isNetworkError(e)) throw e;
       }
     }
-    await enqueueAction({ kind: "start", visitId });
+    await enqueueAction({ kind: "start", visitId, userId: await currentUserId() });
     return { queued: true };
   }, [startFn, visitId]);
 
@@ -77,7 +87,7 @@ export function useOfflineVisitActions(
         if (!isNetworkError(e)) throw e;
       }
     }
-    await enqueueAction({ kind: "complete", visitId });
+    await enqueueAction({ kind: "complete", visitId, userId: await currentUserId() });
     return { queued: true };
   }, [completeFn, visitId]);
 
@@ -91,7 +101,7 @@ export function useOfflineVisitActions(
           if (!isNetworkError(e)) throw e;
         }
       }
-      await enqueueAction({ kind: "skip", visitId, reason, code });
+      await enqueueAction({ kind: "skip", visitId, reason, code, userId: await currentUserId() });
       return { queued: true };
     },
     [skipFn, visitId],
@@ -127,14 +137,28 @@ export function useOfflineVisitActions(
           "Can't queue this photo offline. Reload My Day while online first.",
         );
       }
+      // Owner resolved BEFORE the blob is written. storePhoto then
+      // enqueueAction was the order, and if the enqueue failed the blob was
+      // already in IndexedDB with nothing referencing it — unreachable, never
+      // collected, eating quota for ever. Anything that can throw now happens
+      // first.
+      const userId = await currentUserId();
       const photoId = await storePhoto(file, contentType, ext);
-      await enqueueAction({
-        kind: "photo",
-        visitId,
-        photoKind: kind,
-        photoId,
-        organizationId: cachedOrgId,
-      });
+      try {
+        await enqueueAction({
+          kind: "photo",
+          visitId,
+          photoKind: kind,
+          photoId,
+          organizationId: cachedOrgId,
+          userId,
+        });
+      } catch (e) {
+        // Do not leave an orphan behind.
+        const { deletePhoto } = await import("@/lib/offline/queue");
+        await deletePhoto(photoId).catch(() => {});
+        throw e;
+      }
       return { queued: true };
     },
     [photoFn, visitId, cachedOrgId],

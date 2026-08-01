@@ -5,8 +5,9 @@
 import { supabase } from "@/integrations/supabase/client";
 import {
   deleteAction,
+  deletePhoto,
+  getPhoto,
   listPending,
-  popPhoto,
   type PendingAction,
 } from "./queue";
 
@@ -35,8 +36,11 @@ async function runOne(action: PendingAction, callers: SyncCallers): Promise<void
       });
       return;
     case "photo": {
-      const photo = await popPhoto(action.photoId);
-      if (!photo) return; // blob is gone; drop the action
+      const photo = await getPhoto(action.photoId);
+      // A missing blob is DATA LOSS, not a no-op. It used to `return`, which the
+      // caller read as success — so the one path where a photo had been
+      // destroyed was also the path that reported "synced". Say so instead.
+      if (!photo) throw new MissingPhotoError(action.photoId);
       const path = `${action.organizationId}/${action.visitId}/${Date.now()}.${photo.ext}`;
       const { error } = await supabase.storage
         .from("visit-photos")
@@ -45,6 +49,9 @@ async function runOne(action: PendingAction, callers: SyncCallers): Promise<void
       await callers.recordVisitPhoto({
         data: { visitId: action.visitId, storagePath: path, kind: action.photoKind },
       });
+      // Only now. Everything above can throw, and until this line the blob is
+      // the only copy that exists.
+      await deletePhoto(action.photoId);
       return;
     }
   }
@@ -52,18 +59,34 @@ async function runOne(action: PendingAction, callers: SyncCallers): Promise<void
 
 let running = false;
 
+/** The blob a queued photo points at is gone. Unrecoverable, so retrying it for
+ *  ever would wedge everything behind it — it is dropped and COUNTED, never
+ *  folded into the success total. */
+export class MissingPhotoError extends Error {
+  constructor(photoId: string) {
+    super(`Queued photo ${photoId} is missing from device storage`);
+    this.name = "MissingPhotoError";
+  }
+}
+
 export interface SyncResult {
   attempted: number;
   succeeded: number;
   failed: number;
+  /** Actions discarded because they can never succeed. Surfaced separately so
+   *  a loss is never reported as a sync. */
+  dropped: number;
 }
 
-export async function syncQueue(callers: SyncCallers): Promise<SyncResult> {
-  if (running) return { attempted: 0, succeeded: 0, failed: 0 };
+export async function syncQueue(callers: SyncCallers, userId: string): Promise<SyncResult> {
+  if (running) return { attempted: 0, succeeded: 0, failed: 0, dropped: 0 };
   running = true;
-  const result: SyncResult = { attempted: 0, succeeded: 0, failed: 0 };
+  const result: SyncResult = { attempted: 0, succeeded: 0, failed: 0, dropped: 0 };
   try {
-    const pending = await listPending();
+    // Only this user's actions. Replaying another tech's work under the
+    // signed-in tech's identity fails every authorization check and wedges the
+    // queue for the person actually holding the device.
+    const pending = await listPending(userId);
     for (const action of pending) {
       result.attempted++;
       try {
@@ -71,6 +94,14 @@ export async function syncQueue(callers: SyncCallers): Promise<SyncResult> {
         await deleteAction(action.id);
         result.succeeded++;
       } catch (e) {
+        if (e instanceof MissingPhotoError) {
+          // Nothing to retry — the bytes are gone. Drop it so the rest of the
+          // queue can move, and report it as a loss rather than a success.
+          await deleteAction(action.id);
+          result.dropped++;
+          console.error("offline sync dropped an action", action, e);
+          continue;
+        }
         result.failed++;
         console.warn("offline sync failed", action, e);
         // Stop on failure so we don't hammer a broken network / server. The
