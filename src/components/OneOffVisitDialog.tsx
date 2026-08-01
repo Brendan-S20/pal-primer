@@ -96,9 +96,15 @@ export function OneOffVisitDialog({
 
   // One property is the common case — pick it rather than making someone
   // choose from a list of one.
+  //
+  // `open` is in the deps on purpose. The reset effect above clears propertyId
+  // every time the dialog opens, but on the SECOND open the property query is
+  // already cached, so `propsData` is the same reference, the memo does not
+  // re-run, and this effect would never fire again — leaving a one-property
+  // client having to pick their only option by hand from the second booking on.
   useEffect(() => {
-    if (properties.length === 1) setPropertyId(properties[0].id);
-  }, [properties]);
+    if (open && properties.length === 1) setPropertyId(properties[0].id);
+  }, [open, properties]);
 
   const { data: staffData } = useQuery({
     enabled: open,
@@ -124,7 +130,14 @@ export function OneOffVisitDialog({
         },
       }),
     onSuccess: (r: any) => {
-      toast.success(`Visit booked for ${r.scheduledOn}`);
+      // Assignment is best-effort on the server: the visit exists either way,
+      // and failing the whole booking over it used to invite a second booking
+      // (and a second bill). Say what actually happened.
+      if (r.assignWarning) {
+        toast.warning(`Visit booked for ${r.scheduledOn}, but left unassigned: ${r.assignWarning}`);
+      } else {
+        toast.success(`Visit booked for ${r.scheduledOn}`);
+      }
       // The board, the mobile day list and the client's own tabs all read these.
       qc.invalidateQueries({ queryKey: ["visits"] });
       qc.invalidateQueries({ queryKey: ["client-detail"] });
@@ -200,6 +213,14 @@ export function OneOffVisitDialog({
               <Input
                 id="oo-date"
                 type="date"
+                // A past-dated visit is created as `scheduled`, and
+                // admin_transition_missed_visits flips every past-dated
+                // scheduled visit to `missed` that night. Both invoicing paths
+                // bill only completed or billable-skipped, so "log the make-up
+                // we did yesterday" produced work that is never invoiced and
+                // shows on the client's history as a service failure. Book it
+                // for today and close it out instead.
+                min={todayISO()}
                 value={scheduledOn}
                 onChange={(e) => setScheduledOn(e.target.value)}
               />

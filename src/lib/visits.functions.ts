@@ -527,6 +527,54 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
             .then((r: any) => Math.max(1, r.count ?? 1))
         : null;
 
+    // ── billing_cadence must be INHERITED, never defaulted ──────────────────
+    //
+    // Omitting it takes the table default 'postpaid', and that is not a
+    // cosmetic difference. client_default_billing_cadence answers "what is this
+    // client's cadence" with the cadence of their newest-started ACTIVE
+    // subscription — and a one-off booked for today or later is exactly that
+    // row. So booking a $40 call-out for a PREPAID client silently converted
+    // the whole client to postpaid: their add-on charges stopped drawing down
+    // the credit they had already paid, and started landing on postpaid
+    // invoices instead. Money they had funded once, billed again.
+    //
+    // Confirmed live before this was written: cadence_before=prepaid,
+    // cadence_after_one_off=postpaid.
+    //
+    // ── why this mirrors client_default_billing_cadence instead of calling it ──
+    //
+    // The first version of this fix DID call the RPC, and it would not have
+    // worked: client_default_billing_cadence is not granted to `authenticated`,
+    // so the call fails, the result is not one of the two literals, and the
+    // fallback below quietly restores the very 'postpaid' this exists to
+    // prevent. A fix that reports success and changes nothing.
+    //
+    // Granting it is the wrong repair. It is SECURITY DEFINER, so it would
+    // answer about ANY client id from any tenant — the same shape as BUG-42,
+    // where six authorization primitives answered about anyone who was asked
+    // about. Not worth widening for a convenience.
+    //
+    // So the ordering is restated here against the caller's own RLS-scoped
+    // client, which can only see its own organization's rows. That is a second
+    // copy of a rule, which I would normally refuse; the SQL definition is
+    // `status='active' ORDER BY started_on DESC NULLS LAST LIMIT 1` and this
+    // matches it exactly. It is read BEFORE the insert on purpose — a moment
+    // later, the one-off itself would be the newest active subscription and
+    // would answer about itself.
+    let cadence: "postpaid" | "prepaid" = "postpaid";
+    {
+      const { data: newest } = await supabase
+        .from("subscriptions")
+        .select("billing_cadence")
+        .eq("client_id", data.clientId)
+        .eq("status", "active")
+        .order("started_on", { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
+      const c = (newest as { billing_cadence?: string } | null)?.billing_cadence;
+      if (c === "prepaid" || c === "postpaid") cadence = c;
+    }
+
     const { data: sub, error: sErr } = await supabase
       .from("subscriptions")
       .insert({
@@ -536,6 +584,7 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
         account_type: accountType,
         frequency: "one_time",
         price_cents: data.priceCents,
+        billing_cadence: cadence,
         dog_count: dogCount,
         unit_count: accountType === "commercial" ? Math.max(1, prop.total_units ?? 1) : null,
         zone_id: prop.zone_id ?? prop.auto_zone_id ?? null,
@@ -580,17 +629,42 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
     // days, or inside a client hold — all of which are correct refusals, and
     // all of which would otherwise look like the booking silently vanishing.
     if (!visit) {
+      // Take the subscription back out. There is no transaction across these
+      // statements, so throwing on its own left a priced, status='active'
+      // service behind with no visit — and every failed attempt left another.
+      // Those orphans are not inert: an active subscription is what
+      // client_default_billing_cadence reads, what the client portal shows as
+      // "your plan", and what the seasonal deep-clean generator bills.
+      //
+      // Delete rather than mark ended: nothing happened, so there is nothing
+      // to keep a record of, and a canceled service in the client's history
+      // would be a service they never had.
+      await supabase.from("subscriptions").delete().eq("id", sub.id);
       throw new Error(
-        "The service was created but no visit could be scheduled on that date — it may be a blackout day, outside your work days, or inside a hold on this client. Pick another date.",
+        `Nothing could be scheduled on ${data.scheduledOn}. It is a blackout day, outside your work days, or inside a hold on this client — the booking was not saved, so pick another date and try again.`,
       );
     }
 
+    // Assignment failing must NOT fail the booking. The visit already exists
+    // and is already billable at this point, so throwing here reported failure
+    // for work that had succeeded — and the dialog stays open with every field
+    // still filled in, so the natural response (press the button again) created
+    // a SECOND subscription and a SECOND visit for the same client, property
+    // and date, which invoices as two visits at full price. Nothing dedupes
+    // that: the unique index is (subscription_id, scheduled_on), and these are
+    // two different subscriptions.
+    //
+    // So an unassignable tech leaves the visit unassigned — the state it would
+    // have been in anyway had the caller not picked one — and says so.
+    let assigned = false;
+    let assignWarning: string | null = null;
     if (data.staffId) {
       const { error: rErr } = await (supabase as any).rpc("reassign_visit", {
         _visit_id: visit.id,
         _staff_id: data.staffId,
       });
-      if (rErr) throw new Error(rErr.message);
+      if (rErr) assignWarning = rErr.message;
+      else assigned = true;
     }
 
     try {
@@ -607,7 +681,13 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
       });
     } catch {}
 
-    return { visitId: visit.id as string, subscriptionId: sub.id as string, scheduledOn: visit.scheduled_on as string };
+    return {
+      visitId: visit.id as string,
+      subscriptionId: sub.id as string,
+      scheduledOn: visit.scheduled_on as string,
+      assigned,
+      assignWarning,
+    };
   });
 
 export const reassignVisit = createServerFn({ method: "POST" })
