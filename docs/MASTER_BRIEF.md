@@ -2720,3 +2720,18 @@ credential the product stores.
 `CREDENTIAL_ENCRYPTION_KEY` is still required in production before any
 accounting connection or Twilio subaccount is saved.
 
+**Checked live on 2026-08-02, and the answer is "nothing to check yet":**
+`accounting_connections` and `org_twilio_credentials` hold **zero rows**. So
+there is no plaintext credential sitting in the database — and equally, nothing
+has ever exercised the write path in production, so the key being present has
+never been demonstrated. A checker for plaintext credentials was considered and
+**deliberately not written**: against zero rows it would return a green tick
+having compared nothing, which is the failure mode this cycle keeps finding
+rather than a guard against it. Worth adding the moment the first connection is
+saved.
+
+The module's behaviour is already correct either way: `encryptSecret` throws
+`MissingEncryptionKeyError` rather than silently storing plaintext, and reads
+still serve legacy plaintext, so a missing key is a loud failure at the moment
+someone tries to connect QuickBooks — not a silent downgrade.
+
