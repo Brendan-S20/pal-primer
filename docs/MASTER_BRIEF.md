@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.20** · Released 2026-08-01 · Supersedes: v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.21** · Released 2026-08-02 · Supersedes: v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,120 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+### v1.21 — 2026-08-02
+
+**The demo org was reseeded. The reseeder did not exist.**
+
+The ask was "reseed the demo org so MKT-7 unblocks" — `/reports` read
+`COMPLETION RATE 1%`, the dashboard read `COLLECTED MTD $0.00`, and 78 of
+July's 89 visits sat in `missed`. The expected shape of the work was: run the
+reseeder, recapture the screenshots.
+
+**`public.seed_demo_org(uuid)` was not in the database.** It is defined twice
+in this repo's history (both 2026-07-03) and exists in neither copy live.
+`src/lib/demo.functions.ts` calls it by name, so the app's own *Reseed demo
+data* button in Settings → Preferences has returned PGRST202 for a month.
+Nobody noticed because nobody pressed it.
+
+**The drift check could not have caught this, and still cannot.** Both files
+predate the 2026-07-09 consolidated bootstrap dump, so both are inside the
+blanket entry in `migrations-baseline.json`. That baseline is a per-FILE
+exemption — §4 records that each file in it was verified by confirming the
+objects it creates exist. This one defines two functions;
+`assign_demo_visits_to_staff` is live and `seed_demo_org` is not, and a
+file-level pass/fail has nowhere to record "half of it landed". **This is a
+known, still-open hole in IMP-2**, not something v1.21 closed. What v1.21 does
+is remove one instance of it.
+
+**And the committed version could not have been run as written.** Three
+defects, found by reading it against the live schema rather than trusting that
+a committed function works:
+
+1. **A cross-tenant delete.** `DELETE FROM public.leads;` — no WHERE clause, in
+   a `SECURITY DEFINER` function granted to `authenticated`, on a table that
+   has an `organization_id`. Any owner or office_manager of any tenant could
+   call `seed_demo_org(their_own_org)` and empty **every other tenant's lead
+   pipeline**. Same shape as the nine-tables finding: one gate at the top, the
+   table underneath open to anyone who gets past it. Fixed regardless of
+   whether anyone ever reseeds anything.
+2. **A wipe that half-deletes.** It deleted every visit, invoice, payment,
+   property and subscription in the org unconditionally, but deleted clients
+   only `WHERE import_external_id LIKE 'DEMO-%'`. Not one client in the live
+   demo org had a non-null `import_external_id` — they were made by hand and by
+   QA. Running it would have left 24 clients with nothing attached to them.
+3. **No visit on `current_date`.** History at `current_date - 7×wk`, future at
+   `current_date + 7×wk`, nothing between. `/my-day` would have been empty the
+   moment the reseed finished — the one screen a field-service demo cannot have
+   empty. It is also why the existing `07` screenshot was captured against
+   `?date=2026-08-03` rather than today.
+
+**What the replacement does differently.** Visits come from
+`generate_visits_core`, invoices from `admin_generate_invoice_for_client`,
+completions from `finalize_visit_completion` — the product's own scheduler,
+biller and completion path instead of ~200 lines of hand-written INSERTs that
+had to be kept in step with them by hand. `finalize_visit_completion` matters
+specifically: it posts the prepaid credit debit, and `credit_balance_cents` is
+maintained by a trigger that recounts the ledger, so a bulk
+`SET status = 'completed'` seeds exactly the drift v1.18 removed.
+
+Preferred weekdays are offsets from `EXTRACT(DOW FROM current_date)`, so a
+reseed on any weekday produces a route for that day — the fixed arrays managed
+it one day in seven, and today is a Sunday. At least one payment lands inside
+the current calendar month, because Collected MTD otherwise reads $0.00 for the
+first days of every month, which is the state the org was found in on the 2nd.
+Payments get an explicit `created_at` beside `paid_at`: `collectedInPeriod`
+pre-filters on a padded `created_at` window before filtering on the org-local
+`paid_at` day, so a backdated payment written with a default `created_at` is
+invisible to any report range more than a few days from when the seed ran.
+
+**Nothing seeded is a credential.** The old data carried `gate_code '4213'` and
+`'9911'` and those numbers reached `07-my-day-desktop`. No seeded property has
+a `gate_code`, `lock_box_code` or `key_location`; the operational meaning lives
+in `access_notes` as prose with no digits in it. That closes the v1.20 item at
+the source rather than at the capture script — a screenshot of the demo org is
+now safe by construction.
+
+**One duplicate implementation removed.** `demo.functions.ts` called
+`assign_demo_visits_to_staff` after `seed_demo_org`. The RPC now calls it
+itself and then hands today's route to the tech; the caller's second call
+re-ran the round-robin and undid that. Two implementations of "who is this
+visit assigned to", with the winner decided by call order.
+
+**Verified against the live database before committing to it.** The seeder ran
+twice inside a `DO` block ending in `RAISE EXCEPTION`, so both dry runs rolled
+back; the second one computed the metrics before rolling back. Three dry runs
+found three real defects — an FK on `addon_subscriptions`, two plpgsql record
+variables shadowing SQL aliases (`v`, `c`), and three literals that violate
+CHECK constraints the old seeder would also have violated (`'topup'`,
+`'amount'`, `'in_review'`, plus `completion_source = 'app'`). The function body
+in `pg_proc` was then md5-compared against the repo file on every upload, so
+"what is deployed" and "what is committed" are the same bytes, not the same
+intent.
+
+| | before | after |
+|---|---|---|
+| Completion rate, last 30d | 1% | **93.3%** |
+| Collected MTD | $0.00 | **$1,526.00** |
+| Visits today | 0 | **6** (4 done, 1 in progress, 1 to go) |
+| Today's route assigned to the tech | — | **6 of 6** |
+| Per-tech comparison on /reports | empty | **17 / 14 / 11** |
+| Clients | 24 (10 of them QA residue) | **10** |
+| Properties carrying an access code | 2 | **0** |
+| Credit-balance drift | 0 rows | **0 rows** |
+
+`tests/the-reseeder-cannot-cross-tenants.test.ts` — 36 tests — pins the shape
+without needing a database: every `DELETE` in the function names `_org_id`, the
+client wipe is org-scoped rather than tag-scoped, no credential column is
+written, the scheduler/biller/completion path are used rather than reimplemented,
+and the caller does not re-run the assignment. Five mutations were checked and
+all five fail the suite.
+
+**Still open.** The QA-residue clients are gone, including the one on
+`thenorth.consulting` flagged in v1.20. The screenshots in
+`HoundStack/public/screenshots/` still show the OLD roster (Robert Kim, Sarah
+Chen, Sunset Ridge Apartments) — those clients no longer exist, so the set is
+stale as a whole and wants recapturing together rather than piecemeal.
 
 ### v1.20 — 2026-08-01
 
