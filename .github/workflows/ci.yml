@@ -139,3 +139,26 @@ jobs:
           fi
           node scripts/check-schema-declared.mjs
         continue-on-error: ${{ github.event_name == 'pull_request' }}
+
+      - name: Check every object the migrations create still exists
+        # IMP-2b. The two steps above compare NAMES: repo files against the
+        # applied ledger, and live objects against declared ones. Neither can
+        # see inside a file. 82 migrations are exempt from the name comparison
+        # via migrations-baseline.json, whose comment claimed each was verified
+        # by confirming the objects it creates exist — and seed_demo_org was
+        # defined in two of those files and present in neither copy of the live
+        # database for a month, with the app calling it by name the whole time.
+        #
+        # A per-FILE exemption has nowhere to record "five of the six functions
+        # in this file landed". This step replays every CREATE and DROP across
+        # every migration and asserts each surviving object is in the catalog,
+        # so a half-applied migration is a failure rather than a rounding error.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not set — the per-object check cannot run."
+            exit 1
+          fi
+          node scripts/check-baseline-objects.mjs
+        continue-on-error: ${{ github.event_name == 'pull_request' }}

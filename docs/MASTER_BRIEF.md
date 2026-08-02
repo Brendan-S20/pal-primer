@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.21** · Released 2026-08-02 · Supersedes: v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.21b** · Released 2026-08-02 · Supersedes: v1.21, v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -157,6 +157,53 @@ the real dashboard, so the sentence says which is which. And `field-app.astro`
 said its capture was "framed on properties that carry none", meaning gate codes;
 the seeder no longer writes those columns at all, so the framing is not
 protecting anything and the note said otherwise.
+
+### v1.21b — 2026-08-02
+
+**IMP-2b — the baseline said it had been verified per object. It had not.**
+
+v1.21 closed one instance of a hole and named the hole. This closes the hole.
+
+`migrations-baseline.json` exempts 82 migration files from the name comparison,
+and its comment claimed each had been "verified individually by checking that
+the objects they create exist". That claim was **not true**, and the check had
+no way to notice: `20260703051513` defines six functions, five of which landed.
+"Was this file applied?" has no answer that separates those cases, so the honest
+answer — *mostly* — was recorded as a pass. The comment is now corrected in
+place rather than quietly rewritten.
+
+`scripts/check-baseline-objects.mjs` replays every `CREATE` and `DROP` across
+all 231 migrations in filename and document order, and asserts every surviving
+object exists in the live catalog. **567 objects — 27 enum types, 86
+tables/views, 294 added columns, 160 functions — all present.** Wired into CI
+beside the two existing directions (repo→ledger, live→declared), advisory on
+pull requests and a hard gate on `main`, and failing loudly when
+`SUPABASE_DB_URL` is absent rather than skipping.
+
+**Two bugs in the checker, both found by running it rather than reading it:**
+
+1. It reported a missing table called `as`, parsed out of the string literal
+   `command_tag IN ('CREATE TABLE', 'CREATE TABLE AS')` inside an event-trigger
+   body. One bogus finding is enough to get a check waved through — §4 is about
+   exactly that.
+2. It applied every `CREATE` in a file before every `DROP`. Migrations routinely
+   write `DROP FUNCTION IF EXISTS f(uuid); CREATE OR REPLACE FUNCTION
+   f(_token uuid) ...` to change a signature, so the drop won and **ten live
+   functions fell out of the checked set**. That is the quieter failure: a pass
+   over less than the check claims to cover — the same shape as the bug it was
+   written to catch.
+
+`tests/baseline-objects-replay.test.ts` — 21 tests — pins the replay itself:
+literals and comments create no expectations, document order decides
+create-vs-drop, multi-column `ALTER` catches every column, renames move rather
+than duplicate, and the whole-repo replay is non-empty and still excludes what
+this repo deliberately dropped. Four mutations checked, four caught.
+
+**What it does NOT cover, said plainly:** policies, triggers, indexes and
+grants. Their names are frequently rewritten in place and replaying their
+lifecycle would be guesswork; RLS coverage is asserted directly elsewhere and
+permission parity has its own test. A check that quietly covers less than its
+name implies is how "verified" came to mean "assumed" the first time.
 
 ### v1.20 — 2026-08-01
 
@@ -2255,6 +2302,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | IMP-5 | 🟢 Fixed | ⚪ | Repo housekeeping — ~20 stale `as any` casts removed across 14 files, each verified against the regenerated types first and probed to confirm a REAL type flowed rather than degrading to `any`. That probe found a live dead branch: `StaffInvoicePayForm` tested `payment.status === "paid"`, a value the `payment_status` enum has never had. See below | v1.5 |
 | IMP-6 | 🟢 Fixed | 🟡 | **Unblocked and done.** Payment test coverage: 49 tests across both money webhooks, which had **zero** between them. `/api/public/hooks/stripe` — signature verification (no signature, wrong secret, valid signature over a different body, an hour-stale replay), fail-closed when unconfigured, both pay paths, the C1 cross-tenant guard on each, the source allowlist, the atomic paid-claim under concurrency, and the whole reversal ladder (a real chargeback bills the franchise and keys the adjustment on the DISPUTE id; an inquiry bills nobody; a win restores the payment unless a second dispute is still open). `/api/public/hooks/platform-stripe` — the only writer of `plan_status`: an `incomplete` subscription cannot suspend a live org, a stale payment attempt's `deleted` cannot cancel a real plan or its add-ons, an unmapped customer writes nothing, `unpaid`→past_due not canceled, a metadata plan id is adopted only if the catalog has it, and a redelivery cannot re-cancel add-ons. All 23 mutations caught; the two that initially passed are written up in the v1.15 changelog. Fake service-role client shared at `tests/helpers/fake-supabase.ts` rather than copied | v1.15 |
 | IMP-7 | 🟢 Fixed | 🟡 | Supabase types regenerated. They had been stale since before this cycle and IMP-9's table drop made them wrong, not just incomplete. Four `any`/structural casts removed as a result | v1.3 |
+| IMP-2b | 🟢 Fixed | 🔴 | **New.** The migration baseline was a per-FILE exemption claiming each file's objects had been confirmed present. It had not been, and could not have been at that granularity: `seed_demo_org` is defined in two baselined files and existed in neither copy live for a month. `scripts/check-baseline-objects.mjs` replays every CREATE and DROP across all 231 migrations and asserts each surviving object is in the live catalog — **567 objects, all present**. Two bugs in the checker itself were found by running it: a string literal `'CREATE TABLE AS'` parsed as a table, and applying all CREATEs before all DROPs, which silently dropped ten live functions from the checked set | v1.21 |
 | IMP-11 | 🟢 Fixed | 🟠 | Dead-machinery detector — a hard CI gate for the failure this project keeps producing: something built, granted and correct that nothing ever calls. Turned on itself in v1.6 and found one rule that could not fire, one counting comments as callers, and one that would have failed CI on correct code; all three rewritten and mutation-proven in v1.7. **v1.8 adds a fourth rule and fixes a blind spot the first three shared:** rule 1 keys on a function's NAME, so two signatures of one name collapse and a dead overload is vouched for by the live one's callers — which is how a second `skip_visit` stayed granted and uncalled for a month (BUG-50). Drops and creates are now tracked per signature, and rule 4 flags any name with more than one live signature. Its first run reported five findings, all five false, all caused by its own type normalization — recorded in the header as the general rule. Green with 17 exceptions, no open known gaps. One residual: the cron schedules in rule 2's baseline are asserted by a human and checked by nothing | v1.5 |
 | IMP-13 | 🟢 Fixed | 🔴 | **New.** **Eight protections could be switched off with the full suite green** — the most consequential finding of the QA pass, because it means everything else in this ledger was less verified than it read. At `vitest run` 752 passed, a mutation could: delete the CSRF middleware from `requestMiddleware`, leaving the app with no CSRF protection at all; replace the nightly cron's `if (!auth.ok) return cronUnauthorized(...)` with `void auth`, opening autopay charges and invoice generation to anyone who can POST; swap `encryptSecret(token)` for `token` at the accounting write site, undoing IMP-1; comment out the `CREATE TRIGGER` for `tg_orgs_protect_platform_columns`, detaching the guard while leaving the body every test reads; `ALTER TABLE payments DISABLE ROW LEVEL SECURITY`, invisible to every policy-text scan; change the royalty divisor from 100.0 to 10.0 and invert the settlement balance signs; widen `generate_franchise_settlements` to `is_org_member`; and redefine `is_org_member` in a later migration without its caller guard, because `permission-parity.test.ts` read one hard-coded filename. Every one was a guard whose EXISTENCE was checked while nothing checked it was CONNECTED. New `tests/the-wiring-is-connected.test.ts` asserts only wiring; the weak tests are repaired in place. Also closed two discovery holes: vitest never ran `.test.tsx` files, and an `exclude:` entry could silently drop real ones. Twelve mutations, all now caught | v1.14 |
 | IMP-12 | 🟢 Fixed | 🟠 | **New.** The other direction of schema drift. IMP-2's `check-migrations.mjs` compares migration files to Supabase's applied ledger — it answers "did production run everything the repo has", and cannot answer "does production have something the repo never wrote". That is the direction that stays invisible, because nothing fails until an environment is rebuilt and an object simply is not there; three functions had drifted that way undetected (BUG-75). `check-schema-declared.mjs` sweeps every function in `public` against every migration, wired into CI beside its counterpart. A GRANT mentioning a name does **not** count as a declaration — that is precisely how `email_queue_wake` hid, since a migration granted EXECUTE on a function no migration created. The allow-list is for platform-owned objects only and is currently empty; the check also fails on an allowance naming a function that no longer exists, so it cannot rot into a blanket exemption. Three mutations run, all caught. **Known gap:** it covers functions, not tables, policies, indexes or triggers | v1.12 |
@@ -2281,7 +2329,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | MKT-4 | 🟢 Fixed | 🔴 | Contact form wired to the real Formspree endpoint, with `_subject` and a `form` field so the two forms are distinguishable in one inbox | v1.2 |
 | MKT-5 | 🟢 Closed | 🟠 | **The ledger was wrong, not the site.** This entry said `/privacy` and `/terms` were drafts pending review. Checked in v1.14 against both the source and the built HTML: neither page carries a draft notice and neither ever did. They are complete documents, dated, ported from the app's canonical copies at `/legal/privacy` and `/legal/terms`. Owner decision 2026-08-01: publish as they stand, continue formal review after payments begin. There was nothing to remove — the entry was the error, which is the third time this cycle a ledger line has been treated as a fact about the product | v1.14 |
 | MKT-6 | 🟠 Part-built | 🟡 | SEO gaps closed: a double-escaped title, TWO identical FAQPage blocks on two pages, four separate Organization nodes and two contradicting SoftwareApplication entities, all now single-`@id`. Offers say PreOrder, not InStock — nothing is buyable yet. **Analytics needs you:** Plausible is already installed and firing events; registering the domain and creating goals needs your account | v1.5 |
-| MKT-7 | 🔵 Open | 🟡 | Real product screenshots | v1.0 |
+| MKT-7 | 🟢 Fixed | 🟡 | **Done.** Seven real screenshots, recaptured together against the reseeded demo org and each wired to a page — `01` home, `02` scheduling-and-routes, `03` the features hub, `04` billing, `05` reporting, `06`+`07` field-app. `04` and `05` replace MockFrame recreations; `components/Screenshot.astro` frames them the way MockFrame frames a recreation. The blocker was never capture technique: /reports read COMPLETION RATE 1% and the dashboard $0.00, which is why `01` and `05` had never been committed | v1.21 |
 | MKT-8 | ⚪ Deferred | ⚪ | `/customers` stub | v1.0 |
 | MKT-9 | 🟢 Fixed | 🟡 | Annual billing was already built on BOTH sides — the app has the interval toggle and switch confirmation, the site has the monthly/yearly switch. What no ledger entry caught is that they disagreed on the number; see BUG-45 | v1.7 |
 
