@@ -552,6 +552,20 @@ BEGIN
      AND COALESCE(ii.paid_at, ii.issued_at) IS NOT NULL;
 
   -- ── STAFF ───────────────────────────────────────────────────────────────
+  -- Staff rows are NOT wiped: they carry user_id and are what the demo logins
+  -- resolve to. But the seeder decides where this org's work is, so it owns
+  -- the depot too. Taylor Tech's start and end address were left at
+  -- `1100 E 5th St, Austin, TX 78702` by earlier testing while every seeded
+  -- property is in New York — the dispatch map opened zoomed out to the whole
+  -- continent with one pin in Texas, and every drive-time estimate was
+  -- computed against a depot 1,700 miles from the route.
+  UPDATE public.staff
+     SET start_latitude  = 40.7484, start_longitude = -73.9857,
+         start_address   = 'Depot — 20 W 34th St, New York, NY 10001',
+         end_latitude    = 40.7484, end_longitude   = -73.9857,
+         end_address     = 'Depot — 20 W 34th St, New York, NY 10001'
+   WHERE organization_id = _org_id AND active;
+
   -- History is assigned here; today and forward are left to
   -- assign_demo_visits_to_staff, which already owns that half and is what the
   -- app calls on its own. Per-tech figures on /reports read from completed

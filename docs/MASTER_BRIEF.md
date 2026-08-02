@@ -81,6 +81,15 @@ pre-filters on a padded `created_at` window before filtering on the org-local
 `paid_at` day, so a backdated payment written with a default `created_at` is
 invisible to any report range more than a few days from when the seed ran.
 
+**The demo tech's depot was in Texas.** `staff.start_address` for Taylor Tech
+read `1100 E 5th St, Austin, TX 78702` — left by earlier testing — while every
+seeded property is in New York. The dispatch map opened zoomed out to the whole
+continent with one pin near Austin, and every drive-time estimate was computed
+against a depot 1,700 miles from the route. Staff rows are not wiped by the
+reseed (they carry `user_id` and are what the demo logins resolve to), but the
+seeder decides where the work is, so it now owns the depot too. Found by looking
+at the captured screenshot rather than at the data.
+
 **Nothing seeded is a credential.** The old data carried `gate_code '4213'` and
 `'9911'` and those numbers reached `07-my-day-desktop`. No seeded property has
 a `gate_code`, `lock_box_code` or `key_location`; the operational meaning lives
@@ -108,13 +117,20 @@ intent.
 | | before | after |
 |---|---|---|
 | Completion rate, last 30d | 1% | **93.3%** |
-| Collected MTD | $0.00 | **$1,526.00** |
+| Collected MTD | $0.00 | **$1,448.00** |
 | Visits today | 0 | **6** (4 done, 1 in progress, 1 to go) |
 | Today's route assigned to the tech | — | **6 of 6** |
 | Per-tech comparison on /reports | empty | **17 / 14 / 11** |
 | Clients | 24 (10 of them QA residue) | **10** |
 | Properties carrying an access code | 2 | **0** |
 | Credit-balance drift | 0 rows | **0 rows** |
+
+Collected MTD is the figure the **dashboard card** shows, which is the org's own
+calendar (America/Chicago). A `paid_at >= date_trunc('month', current_date)`
+query run in UTC returns **$1,526.00** for the same rows — $78 of it is a
+payment UTC puts in August and Chicago puts in July. The commit message quotes
+the UTC number; the card is right and the commit is imprecise. Same distinction
+`monthToDate()` exists for.
 
 `tests/the-reseeder-cannot-cross-tenants.test.ts` — 36 tests — pins the shape
 without needing a database: every `DELETE` in the function names `_org_id`, the
@@ -123,11 +139,24 @@ written, the scheduler/biller/completion path are used rather than reimplemented
 and the caller does not re-run the assignment. Five mutations were checked and
 all five fail the suite.
 
-**Still open.** The QA-residue clients are gone, including the one on
-`thenorth.consulting` flagged in v1.20. The screenshots in
-`HoundStack/public/screenshots/` still show the OLD roster (Robert Kim, Sarah
-Chen, Sunset Ridge Apartments) — those clients no longer exist, so the set is
-stale as a whole and wants recapturing together rather than piecemeal.
+**MKT-7 is unblocked and the screenshots shipped.** The QA-residue clients are
+gone, including the one on `thenorth.consulting` flagged in v1.20. All seven
+shots were recaptured together — a mix of old and new would have put names on
+the dispatch board that appear on no invoice and no client record — and all
+seven are now used by a page, so nothing sits in `public/` unreferenced:
+`01` on the home page, `02` on scheduling-and-routes, `03` on the features hub,
+`04` on billing, `05` on reporting, `06` and `07` on field-app. `04` and `05`
+replace MockFrame recreations. `components/Screenshot.astro` was added rather
+than copy-pasting the desktop treatment into five pages; it draws the same
+three-dot bar MockFrame draws so a capture and a recreation read as the same
+kind of object.
+
+Two copy corrections went with them. The home page called the whole section
+"stylized recreations of real screens" — now true only of the four panels below
+the real dashboard, so the sentence says which is which. And `field-app.astro`
+said its capture was "framed on properties that carry none", meaning gate codes;
+the seeder no longer writes those columns at all, so the framing is not
+protecting anything and the note said otherwise.
 
 ### v1.20 — 2026-08-01
 
