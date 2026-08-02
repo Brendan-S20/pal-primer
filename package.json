@@ -16,6 +16,7 @@
     "check:migrations": "node scripts/check-migrations.mjs",
     "check:baseline-objects": "node scripts/check-baseline-objects.mjs",
     "check:app-origin": "node scripts/check-app-origin.mjs",
+    "check:stripe-catalog": "node scripts/check-stripe-catalog.mjs",
     "check:dead-machinery": "node scripts/check-dead-machinery.mjs",
     "check:pwa": "node scripts/check-pwa-output.mjs"
   },

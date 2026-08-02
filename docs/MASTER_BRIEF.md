@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.21c** · Released 2026-08-02 · Supersedes: v1.21b, v1.21, v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.21d** · Released 2026-08-02 · Supersedes: v1.21c, v1.21b, v1.21, v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -157,6 +157,55 @@ the real dashboard, so the sentence says which is which. And `field-app.astro`
 said its capture was "framed on properties that carry none", meaning gate codes;
 the seeder no longer writes those columns at all, so the framing is not
 protecting anything and the note said otherwise.
+
+### v1.21d — 2026-08-02
+
+**A gate on the Stripe cutover, and the news that the catalog currently
+reconciles.**
+
+`platform_plans` stores a price in cents AND a Stripe price id. The app renders
+the cents; Stripe charges the id. **Nothing had ever compared them.**
+
+That is survivable while both are created in one sitting. It stops being
+survivable at the live-mode cutover — the last external blocker before launch —
+where a fresh live catalog is built by hand and `platform_plans` is repointed.
+Every repointed id is a chance for the pricing page to say $79 while the card is
+charged $199. The worst version does not error at all: a live key holding test
+price ids fails for the first time at checkout, in front of the first paying
+customer.
+
+**Checked against the live test catalog: everything comparable reconciles.**
+The twelve prices behind Launch, Growth and Scale — base, annual, per-seat and
+annual per-seat — match the database to the cent, with the right intervals and
+the right products. No drift to fix. `scripts/check-stripe-catalog.mjs` exists
+to keep that true through the cutover, asserting mode, existence, amount,
+interval, product and completeness.
+
+**What it does not compare, printed on every run:** Enterprise (active, but a
+contact-us tier with no price ids) and all six add-ons (every one `coming_soon`
+and inactive, so the add-on half of the check currently measures nothing). Three
+add-ons do carry Stripe ids whose amounts happen to match, but they are skipped
+as unsellable and drift in them would not be noticed. The run names every
+skipped row, pass or fail, because a tick that hides its own coverage is the
+failure this codebase keeps finding.
+
+**The gate is NOT ARMED in CI.** There is no `STRIPE_SECRET_KEY` secret, so the
+script exits **2** — a third answer, distinct from 0 and 1, meaning "could not
+check". CI turns that into a `::warning::` saying the gate is unarmed rather
+than a green tick, because *could not check* and *checked and fine* are
+different statements and conflating them is how this project has been bitten
+before. **Adding `STRIPE_SECRET_KEY` to the repo secrets arms it** — worth doing
+before the cutover, not after.
+
+`tests/stripe-charges-what-the-catalog-says.test.ts` — 15 tests covering the
+failures that cost money (amount drift, a live price under a test key and the
+reverse, a price borrowed from another product, an annual slot holding a monthly
+price, an archived id, an unresolvable id) and the ones it deliberately does not
+flag (five retired SKUs still holding stale ids, the contact-us tier, a missing
+annual pair, and the annual seat price being 10× the monthly rather than 12×
+because the annual plans carry a two-months-free discount). Five mutations
+checked, five caught — including the noise mutation, where making the check flag
+inactive rows fails the suite.
 
 ### v1.21c — 2026-08-02
 
@@ -2580,6 +2629,13 @@ rather than the following January.
    has been done in **test mode** at your instruction; going live still needs a
    live-mode catalog and `platform_plans` pointed at the live price ids, which
    is a deliberate switch and not something to do incidentally.
+
+   **v1.21d: that switch now has a gate.** `npm run check:stripe-catalog`
+   compares every active row's cents against what Stripe would actually charge,
+   and refuses a live key holding test price ids — the cutover failure that does
+   not error until checkout. The test catalog reconciles today (twelve prices,
+   zero drift). **One thing to do: add `STRIPE_SECRET_KEY` to the repo secrets**,
+   or the gate stays unarmed and CI says so on every run.
 2. ~~**Formspree contact form ID**~~ — ✅ supplied and wired (MKT-4 closed).
 3. **`SUPABASE_DB_URL` secret** — ✅ added, and verified working end-to-end in CI.
 4. ~~**Q-13**~~ — ✅ answered: every add-on available at launch, after QA.
