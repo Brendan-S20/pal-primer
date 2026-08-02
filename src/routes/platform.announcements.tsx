@@ -4,8 +4,9 @@ import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  listAnnouncements, createAnnouncement, deleteAnnouncement,
+  listAnnouncements, createAnnouncement, deleteAnnouncement, sendAnnouncementEmails,
 } from "@/lib/platform-directory.functions";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +20,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Trash2, Megaphone } from "lucide-react";
+import { Trash2, Megaphone, Send } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -56,9 +57,36 @@ function AnnouncementsPage() {
     onError: (e: any) => toast.error(e?.message ?? "Failed"),
   });
 
+  const { confirm, dialog } = useConfirmDialog();
+
   const del = useMutation({
     mutationFn: (id: string) => delFn({ data: { id } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["platform", "announcements"] }),
+    onError: (e: any) => toast.error(e?.message ?? "Failed"),
+  });
+
+  // Sending is a human decision, not a schedule — see
+  // lib/announcement-emails.server for why there is no cron.
+  const sendFn = useServerFn(sendAnnouncementEmails);
+  const send = useMutation({
+    mutationFn: (id: string) => sendFn({ data: { id } }),
+    onSuccess: (r: any) => {
+      if (r.skipped === "expired") {
+        toast.info("That announcement has already ended, so nothing was sent.");
+      } else if (r.found === 0) {
+        // Not a failure: it was already emailed, or email was never switched on.
+        toast.info("Nothing to send — this announcement has already been emailed.");
+      } else if (r.enqueued === 0) {
+        // Distinct from the above on purpose. "Nobody matched" is a targeting
+        // problem the admin can fix; silence would have looked like success.
+        toast.warning(
+          "No recipients matched that audience, so no email was sent. Check the audience and that tenants have a contact email on file.",
+        );
+      } else {
+        toast.success(`Queued ${r.enqueued} email${r.enqueued === 1 ? "" : "s"}.`);
+      }
+      qc.invalidateQueries({ queryKey: ["platform", "announcements"] });
+    },
     onError: (e: any) => toast.error(e?.message ?? "Failed"),
   });
 
@@ -76,6 +104,7 @@ function AnnouncementsPage() {
 
   return (
     <div className="space-y-6">
+      {dialog}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Announcements</h1>
@@ -122,7 +151,10 @@ function AnnouncementsPage() {
               <div className="flex items-center justify-between rounded-md border p-3">
                 <div>
                   <div className="text-sm font-medium">Also send email</div>
-                  <div className="text-xs text-muted-foreground">Sends when the announcement first goes live.</div>
+                  {/* Was "Sends when the announcement first goes live", which
+                      described a scheduler that does not exist — so an admin
+                      ticked this, published, and nothing was ever emailed. */}
+                  <div className="text-xs text-muted-foreground">Marks it for email. Nothing goes out until you press Send emails on the announcement.</div>
                 </div>
                 <Switch checked={form.send_email} onCheckedChange={(v) => setForm({ ...form, send_email: v })} />
               </div>
@@ -156,9 +188,40 @@ function AnnouncementsPage() {
                     {a.starts_at ? `Starts ${new Date(a.starts_at).toLocaleString()}` : "No start"} · {a.ends_at ? `Ends ${new Date(a.ends_at).toLocaleString()}` : "No end"}
                   </div>
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => del.mutate(a.id)} aria-label="Delete">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="flex shrink-0 items-center gap-1">
+                  {a.send_email && !a.email_sent_at && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={send.isPending}
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: `Email "${a.title}" to every ${a.audience} tenant?`,
+                          description: (
+                            <>
+                              <p>
+                                This queues one email per matching organization, to the contact
+                                address on file. It cannot be recalled once queued.
+                              </p>
+                              <p>
+                                Each recipient is only ever mailed once for this announcement, so
+                                pressing it twice is safe.
+                              </p>
+                            </>
+                          ),
+                          confirmLabel: "Send emails",
+                        });
+                        if (ok) send.mutate(a.id);
+                      }}
+                    >
+                      <Send className="mr-1 h-3 w-3" />
+                      {send.isPending ? "Sending…" : "Send emails"}
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="icon" onClick={() => del.mutate(a.id)} aria-label="Delete">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="whitespace-pre-wrap text-sm">{a.body}</CardContent>
             </Card>

@@ -18,13 +18,15 @@ import {
   TrendingUp,
   Activity,
   ScrollText,
+  Radar,
   ArrowLeft,
   LogOut,
   Loader2,
   Gift,
 } from "lucide-react";
 import { getPlatformContext } from "@/lib/platform.functions";
-import { supabase } from "@/integrations/supabase/client";
+import { ReimpersonateListener } from "@/components/ReimpersonateListener";
+import { signOutAndClearDevice } from "@/lib/offline/read-cache";
 import {
   Sidebar,
   SidebarContent,
@@ -52,6 +54,7 @@ const NAV = [
       { to: "/platform/tenants" as const, label: "Tenants", icon: Building2 },
       { to: "/platform/invites" as const, label: "Invites", icon: UserPlus },
       { to: "/platform/users" as const, label: "Users", icon: Users },
+      { to: "/platform/signals" as const, label: "Franchise signals", icon: Radar },
     ],
   },
   {
@@ -118,6 +121,8 @@ function PlatformLayout() {
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-background">
+        {/* BUG-2: lets an expired impersonation tab ask for a fresh session. */}
+        <ReimpersonateListener />
         <PlatformSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <PlatformHeader />
@@ -183,7 +188,7 @@ function PlatformHeader() {
     "Platform";
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    await signOutAndClearDevice();
     window.location.href = "/auth";
   };
 

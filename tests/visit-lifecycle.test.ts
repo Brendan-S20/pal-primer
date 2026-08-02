@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   visitDurationMinutes,
   formatVisitDuration,
+  visitTimestampIssue,
+  isVisitAwaitingCloseOut,
   isMissedVisitCandidate,
 } from "@/lib/visit-lifecycle";
 
@@ -15,14 +17,32 @@ describe("visitDurationMinutes / formatVisitDuration (I13 #10)", () => {
     expect(formatVisitDuration(started, completed)).toBe("42 min");
   });
 
-  it("treats the identical 6:05/6:05 repro as not recorded (fabricated start)", () => {
+  it("never derives a duration from the identical 6:05/6:05 repro (fabricated start)", () => {
     // The B6 backfill artifact: start == completion to the millisecond. An
     // equal start and completion is the fabrication signature (office-complete
-    // stamped started_at = now() = completed_at), never a real service, so it
-    // reads "Not recorded" rather than a misleading "Under a minute" (finding 4).
+    // stamped started_at = now() = completed_at), never a real service, so no
+    // duration is derived — a misleading "Under a minute" would assert that a
+    // real sub-minute service happened (finding 4).
     const t = "2026-07-16T06:05:00.000Z";
     expect(visitDurationMinutes(t, t)).toBeNull();
-    expect(formatVisitDuration(t, t)).toBe("Not recorded");
+  });
+
+  // BUG-9: known-bad data and absent data used to render identically, which is
+  // why the two live fabricated rows sat unnoticed for weeks.
+  it("distinguishes contradictory timestamps from missing ones", () => {
+    const t = "2026-07-16T06:05:00.000Z";
+    // Both present but contradictory → known-bad, needs a human.
+    expect(visitTimestampIssue(t, t)).toBe("unreliable");
+    expect(formatVisitDuration(t, t)).toBe("Needs review");
+    expect(visitTimestampIssue("2026-07-16T07:00:00Z", "2026-07-16T06:00:00Z")).toBe("unreliable");
+
+    // Absent → genuinely unknown, nobody recorded it.
+    expect(visitTimestampIssue(null, t)).toBe("missing");
+    expect(visitTimestampIssue(t, null)).toBe("missing");
+    expect(formatVisitDuration(t, null)).toBe("Not recorded");
+
+    // A real visit has no issue at all.
+    expect(visitTimestampIssue("2026-07-16T06:05:00Z", "2026-07-16T06:47:00Z")).toBeNull();
   });
 
   it("reads a genuine positive sub-minute gap as 'Under a minute'", () => {
@@ -88,6 +108,46 @@ describe("isMissedVisitCandidate (I13 #8)", () => {
     for (const status of ["completed", "skipped", "canceled", "in_progress", "missed"]) {
       expect(
         isMissedVisitCandidate({ status, scheduled_on: "2026-07-09" }, TODAY),
+      ).toBe(false);
+    }
+  });
+});
+
+describe("isVisitAwaitingCloseOut (BUILD-11)", () => {
+  const TODAY = "2026-07-29";
+  const open = (scheduled_on: string) => ({ status: "in_progress", scheduled_on });
+
+  it("asks about a visit started on an earlier day", () => {
+    // The gap this closes: the nightly missed-visit job skips anything with a
+    // started_at, so an in_progress visit was never resolved by anything.
+    expect(isVisitAwaitingCloseOut(open("2026-07-28"), TODAY, "09:00", "17:00")).toBe(true);
+  });
+
+  it("leaves today's visit alone until the workday has ended", () => {
+    expect(isVisitAwaitingCloseOut(open(TODAY), TODAY, "16:59", "17:00")).toBe(false);
+    expect(isVisitAwaitingCloseOut(open(TODAY), TODAY, "17:00", "17:00")).toBe(true);
+    expect(isVisitAwaitingCloseOut(open(TODAY), TODAY, "18:30", "17:00")).toBe(true);
+  });
+
+  it("tolerates seconds on either time", () => {
+    expect(isVisitAwaitingCloseOut(open(TODAY), TODAY, "17:00:30", "17:00:00")).toBe(true);
+  });
+
+  it("falls back to date rollover only when no workday end is configured", () => {
+    // Conservative on purpose: better to ask a morning late than to interrupt
+    // a tech who is still working.
+    expect(isVisitAwaitingCloseOut(open(TODAY), TODAY, "23:00", null)).toBe(false);
+    expect(isVisitAwaitingCloseOut(open("2026-07-28"), TODAY, "23:00", null)).toBe(true);
+  });
+
+  it("never asks about a future-dated visit", () => {
+    expect(isVisitAwaitingCloseOut(open("2026-07-30"), TODAY, "23:00", "17:00")).toBe(false);
+  });
+
+  it("only ever applies to in_progress visits", () => {
+    for (const status of ["scheduled", "completed", "skipped", "missed", "canceled"]) {
+      expect(
+        isVisitAwaitingCloseOut({ status, scheduled_on: "2026-07-01" }, TODAY, "23:00", "17:00"),
       ).toBe(false);
     }
   });

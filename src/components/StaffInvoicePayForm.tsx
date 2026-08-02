@@ -93,10 +93,11 @@ export function StaffInvoicePayForm({
   // Remaining due: total minus applied credit (tracked on the invoice — credit
   // applications write no payments row, payments is the cash ledger) minus
   // already-succeeded cash payments (partial ACH etc.).
-  const creditAppliedCents =
-    ((inv as { credit_applied_cents?: number | null } | undefined)?.credit_applied_cents ?? 0);
+  const creditAppliedCents = inv?.credit_applied_cents ?? 0;
+  // `succeeded` is the only settled value payment_status has — there is no
+  // "paid" member on that enum, so don't test for one.
   const paidCents = (detailQ.data?.payments ?? [])
-    .filter((p) => p.status === "succeeded" || p.status === "paid")
+    .filter((p) => p.status === "succeeded")
     .reduce((s, p) => s + (p.amount_cents ?? 0), 0);
   const dueCents = Math.max(0, (inv?.total_cents ?? 0) - creditAppliedCents - paidCents);
 

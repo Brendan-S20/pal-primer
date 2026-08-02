@@ -23,6 +23,9 @@ import {
   Package,
   Shield,
   Dna,
+  ClipboardCheck,
+  FileSpreadsheet,
+  ShieldAlert,
 } from "lucide-react";
 
 import {
@@ -40,7 +43,11 @@ import {
 import { APP_NAME } from "@/lib/scoop";
 import { Logo } from "@/components/Logo";
 
-export type NavItem = { title: string; url: string; icon: React.ComponentType<{ className?: string }> };
+export type NavItem = {
+  title: string;
+  url: string;
+  icon: React.ComponentType<{ className?: string }>;
+};
 
 // Single source of nav truth — also consumed by MobileTabBar's "More" sheet so
 // the phone nav can never drift from (or exceed) what the sidebar offers.
@@ -80,6 +87,14 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { title: "Invoices", url: "/invoices", icon: Receipt },
       { title: "Payments", url: "/payments", icon: CreditCard },
+      // BUILD-13: the accountant's pack. In the nav rather than URL-only
+      // because the whole point is that an owner finds it in January without
+      // having to be told it exists.
+      { title: "Tax & accountant", url: "/tax-reports", icon: FileSpreadsheet },
+      // BUILD-12: disputes get their own entry rather than living inside the
+      // review queue. A chargeback has a deadline attached, and one buried
+      // under visit-timestamp warnings is one nobody answers in time.
+      { title: "Disputes", url: "/disputes", icon: ShieldAlert },
     ],
   },
   {
@@ -87,6 +102,10 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { title: "Reports", url: "/reports", icon: BarChart3 },
       { title: "Analytics", url: "/analytics", icon: LineChart },
+      // BUILD-10: guardrail 10.5's review queue. In the nav rather than
+      // URL-only on purpose — a queue of things we refused to guess about
+      // is worthless if nobody knows it exists.
+      { title: "Needs review", url: "/review", icon: ClipboardCheck },
       // Royalties (/franchise) is hidden until multi-location is a real,
       // supported offering (per Brendan, 2026-07-14). The route still works
       // by URL for the rare royalty-parent org.

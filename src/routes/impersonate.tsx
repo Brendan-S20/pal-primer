@@ -66,6 +66,12 @@ function ImpersonateConsume() {
               orgName: res.orgName,
               grantId: res.grantId,
               startedAt: res.startedAt,
+              // BUG-2: the banner counts down to this and swaps to an explicit
+              // "session ended" state; org/target let that state ask the
+              // opening admin console for a fresh grant in one click.
+              sessionExpiresAt: res.sessionExpiresAt,
+              organizationId: res.organizationId,
+              targetUserId: res.targetUserId,
             }),
           );
         } catch { /* non-fatal */ }

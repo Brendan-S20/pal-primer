@@ -26,6 +26,11 @@ const TAB_GROUPS: TabGroup[] = [
       { label: "Lead form", to: "/settings/lead-form" },
       { label: "Promotions", to: "/settings/promotions" },
       { label: "Refer a business", to: "/settings/referrals" },
+      // BUILD-6: the child side of a franchise. Reachable by any plan on
+      // purpose — a franchisee is a location someone else recruited, and
+      // gating this behind Enterprise would make joining impossible for the
+      // orgs that actually need to join.
+      { label: "Franchise", to: "/settings/franchise" },
     ],
   },
   {

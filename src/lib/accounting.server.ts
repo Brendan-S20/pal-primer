@@ -1,3 +1,5 @@
+import { DEFAULT_ORG_TIMEZONE, orgLocalDay } from "@/lib/org-day";
+
 /**
  * Provider-specific accounting drivers.
  * Server-only: never import from client bundles.
@@ -25,6 +27,18 @@ type Conn = {
  * updated `Conn` with the fresh access token so callers can proceed.
  */
 export async function ensureFreshToken(conn: Conn): Promise<Conn> {
+  // IMP-1: tokens are stored encrypted. This function is the single funnel
+  // every accounting API path goes through, so decrypting here — before the
+  // early return as well as the refresh branch — is what guarantees callers
+  // downstream always hold usable plaintext and never accidentally send
+  // ciphertext as a Bearer token.
+  const { decryptSecret, encryptSecret } = await import("@/lib/secret-encryption.server");
+  conn = {
+    ...conn,
+    access_token: decryptSecret(conn.access_token),
+    refresh_token: conn.refresh_token ? decryptSecret(conn.refresh_token) : conn.refresh_token,
+  };
+
   const exp = conn.token_expires_at ? new Date(conn.token_expires_at).getTime() : 0;
   if (exp - Date.now() > 60_000) return conn;
   if (!conn.refresh_token) throw new Error("Access token expired and no refresh token stored. Reconnect the integration.");
@@ -58,7 +72,13 @@ export async function ensureFreshToken(conn: Conn): Promise<Conn> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   await supabaseAdmin
     .from("accounting_connections")
-    .update({ access_token: tok.access_token, refresh_token: nextRefresh, token_expires_at: expiresAt })
+    // Re-encrypted on the way back down. The rotated refresh token is just as
+    // sensitive as the original, so it gets the same treatment.
+    .update({
+      access_token: encryptSecret(tok.access_token),
+      refresh_token: nextRefresh ? encryptSecret(nextRefresh) : nextRefresh,
+      token_expires_at: expiresAt,
+    })
     .eq("id", conn.id);
 
   return { ...conn, access_token: tok.access_token, refresh_token: nextRefresh, token_expires_at: expiresAt };
@@ -67,6 +87,10 @@ export async function ensureFreshToken(conn: Conn): Promise<Conn> {
 
 type InvoicePayload = {
   id: string;
+  /** The organization's timezone. Required because `issued_at` is an instant
+   *  and the provider wants a calendar DAY — and the day it lands on decides
+   *  which tax year the invoice belongs to in the customer's own books. */
+  timezone?: string | null;
   total_cents: number;
   currency: string;
   issued_at: string | null;
@@ -116,7 +140,13 @@ async function pushInvoiceQBO(conn: Conn, invoice: InvoicePayload): Promise<stri
     },
     body: JSON.stringify({
       CustomerRef: { value: customerRef },
-      TxnDate: invoice.issued_at?.slice(0, 10),
+      // The date this lands on in the customer's QuickBooks. `.slice(0,10)` on
+      // an ISO string is the UTC day, so an invoice issued 2025-12-31 21:00
+      // Chicago posted as 2026-01-01 — the wrong TAX YEAR, permanently, in
+      // books this product does not own and cannot correct.
+      TxnDate: invoice.issued_at
+        ? orgLocalDay(invoice.issued_at, invoice.timezone || DEFAULT_ORG_TIMEZONE)
+        : undefined,
       Line: lines,
       CurrencyRef: { value: (invoice.currency ?? "USD").toUpperCase() },
     }),
@@ -173,7 +203,11 @@ async function pushInvoiceXero(conn: Conn, invoice: InvoicePayload): Promise<str
     body: JSON.stringify({
       Type: "ACCREC",
       Contact: contact,
-      Date: invoice.issued_at?.slice(0, 10),
+      // Same as the QuickBooks branch — the org's calendar day, not the
+      // server's.
+      Date: invoice.issued_at
+        ? orgLocalDay(invoice.issued_at, invoice.timezone || DEFAULT_ORG_TIMEZONE)
+        : undefined,
       LineItems: lineItems,
       Status: "AUTHORISED",
       CurrencyCode: (invoice.currency ?? "USD").toUpperCase(),

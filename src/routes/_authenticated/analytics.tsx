@@ -22,10 +22,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-
+import { AlertTriangle } from "lucide-react";
+import { PlanGate } from "@/components/PlanGate";
+import { BusinessAdvisor } from "@/components/BusinessAdvisor";
 
 function fmt(cents: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format((cents ?? 0) / 100);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
+    (cents ?? 0) / 100,
+  );
 }
 
 function pct(n: number, d: number) {
@@ -43,10 +47,13 @@ function AnalyticsPage() {
     <div className="mx-auto max-w-6xl p-6 space-y-6 overflow-x-hidden max-w-full">
       <div>
         <h1 className="text-2xl font-semibold">Advanced analytics</h1>
-        <p className="text-sm text-muted-foreground">Cohort retention, lifetime value, zone profitability, and churn drivers.</p>
+        <p className="text-sm text-muted-foreground">
+          Cohort retention, lifetime value, zone profitability, and churn drivers.
+        </p>
       </div>
-      <Tabs defaultValue="retention" className="space-y-4">
+      <Tabs defaultValue="advisor" className="space-y-4">
         <TabsList>
+          <TabsTrigger value="advisor">Advisor</TabsTrigger>
           <TabsTrigger value="retention">Cohort retention</TabsTrigger>
           <TabsTrigger value="ltv">LTV</TabsTrigger>
           <TabsTrigger value="zones">Zone profitability</TabsTrigger>
@@ -54,17 +61,51 @@ function AnalyticsPage() {
           <TabsTrigger value="winback">Win-back</TabsTrigger>
           <TabsTrigger value="digest">Weekly digest</TabsTrigger>
         </TabsList>
-        <TabsContent value="retention"><CohortTab /></TabsContent>
-        <TabsContent value="ltv"><LtvTab /></TabsContent>
-        <TabsContent value="zones"><ZoneTab /></TabsContent>
-        <TabsContent value="churn"><ChurnTab /></TabsContent>
-        <TabsContent value="winback"><WinBackTab /></TabsContent>
-        <TabsContent value="digest"><DigestTab /></TabsContent>
+        {/* BUILD-8: the advisor is NOT plan-gated. It isn't one of the four
+            functions the pricing page sells as "Advanced analytics", and it was
+            removed from the site as a phantom add-on SKU (MKT-1) rather than
+            sold. Gating it would invent a commitment nobody made. */}
+        <TabsContent value="advisor">
+          <BusinessAdvisor />
+        </TabsContent>
+
+        {/* BUILD-1: these four are the "Advanced analytics: cohort retention,
+            zone profitability, churn drivers" the pricing page sells on Growth
+            and above, and they map one-to-one onto analytics.functions.ts.
+            Win-back and the weekly digest are NOT part of that SKU — they come
+            from churn.functions and digest.functions — so they stay open on
+            every plan. Gating the whole route would have been easier and would
+            have taken away something we never said was paid. */}
+        <TabsContent value="retention">
+          <PlanGate entitlement="advanced_analytics">
+            <CohortTab />
+          </PlanGate>
+        </TabsContent>
+        <TabsContent value="ltv">
+          <PlanGate entitlement="advanced_analytics">
+            <LtvTab />
+          </PlanGate>
+        </TabsContent>
+        <TabsContent value="zones">
+          <PlanGate entitlement="advanced_analytics">
+            <ZoneTab />
+          </PlanGate>
+        </TabsContent>
+        <TabsContent value="churn">
+          <PlanGate entitlement="advanced_analytics">
+            <ChurnTab />
+          </PlanGate>
+        </TabsContent>
+        <TabsContent value="winback">
+          <WinBackTab />
+        </TabsContent>
+        <TabsContent value="digest">
+          <DigestTab />
+        </TabsContent>
       </Tabs>
     </div>
   );
 }
-
 
 function CohortTab() {
   const [months, setMonths] = useState(12);
@@ -92,19 +133,31 @@ function CohortTab() {
       <CardHeader className="flex-row items-end gap-4">
         <div>
           <CardTitle>Cohort retention</CardTitle>
-          <p className="text-xs text-muted-foreground mt-1">% of each signup cohort with a completed visit N months later.</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            % of each signup cohort with a completed visit N months later.
+          </p>
         </div>
         <div className="ml-auto flex items-end gap-2">
           <div>
-            <Label htmlFor="months" className="text-xs">Months back</Label>
-            <Input id="months" type="number" min={1} max={24} value={months}
+            <Label htmlFor="months" className="text-xs">
+              Months back
+            </Label>
+            <Input
+              id="months"
+              type="number"
+              min={1}
+              max={24}
+              value={months}
               onChange={(e) => setMonths(Math.max(1, Math.min(24, Number(e.target.value) || 12)))}
-              className="w-24" />
+              className="w-24"
+            />
           </div>
         </div>
       </CardHeader>
       <CardContent className="overflow-auto">
-        {q.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : grid.length === 0 ? (
+        {q.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : grid.length === 0 ? (
           <p className="text-sm text-muted-foreground">No cohorts in window.</p>
         ) : (
           <table className="text-xs">
@@ -113,7 +166,9 @@ function CohortTab() {
                 <th className="p-2">Cohort</th>
                 <th className="p-2">Size</th>
                 {Array.from({ length: months + 1 }).map((_, i) => (
-                  <th key={i} className="p-2 text-center">M{i}</th>
+                  <th key={i} className="p-2 text-center">
+                    M{i}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -125,7 +180,10 @@ function CohortTab() {
                   {Array.from({ length: months + 1 }).map((_, i) => {
                     const r = entry.retained.get(i) ?? 0;
                     const p = entry.size ? r / entry.size : 0;
-                    const bg = p > 0 ? `rgba(34,197,94,${Math.min(0.85, 0.15 + p * 0.7).toFixed(2)})` : "transparent";
+                    const bg =
+                      p > 0
+                        ? `rgba(34,197,94,${Math.min(0.85, 0.15 + p * 0.7).toFixed(2)})`
+                        : "transparent";
                     return (
                       <td key={i} className="p-2 text-center" style={{ background: bg }}>
                         {r > 0 ? pct(r, entry.size) : "-"}
@@ -150,38 +208,64 @@ function LtvTab() {
     queryFn: () => call({ data: { limit } }),
   });
   const rows = q.data?.rows ?? [];
-  const totalRev = rows.reduce((s, r) => s + Number(r.revenue_cents ?? 0), 0);
-  const avgMonthly = rows.length ? rows.reduce((s, r) => s + Number(r.monthly_avg_cents ?? 0), 0) / rows.length : 0;
+  const totalRev = rows.reduce(
+    (s, r) => s + Number(r.net_revenue_cents ?? r.revenue_cents ?? 0),
+    0,
+  );
+  const totalRefunds = rows.reduce((s, r) => s + Number(r.refunds_cents ?? 0), 0);
+  const avgMonthly = rows.length
+    ? rows.reduce((s, r) => s + Number(r.net_monthly_avg_cents ?? r.monthly_avg_cents ?? 0), 0) /
+      rows.length
+    : 0;
+  // The refund column only appears when there is something in it, so an org
+  // that has never had one keeps the table it already knows.
+  const anyRefunds = totalRefunds !== 0;
 
   return (
     <Card>
       <CardHeader className="flex-row items-end gap-4">
         <div>
           <CardTitle>Client lifetime value</CardTitle>
-          <p className="text-xs text-muted-foreground mt-1">Paid revenue by client. Monthly avg = paid revenue ÷ tenure × 30.</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Paid revenue by client, net of refunds and chargebacks. Monthly avg = net revenue ÷
+            tenure × 30.
+          </p>
         </div>
         <div className="ml-auto flex items-end gap-2">
           <div>
-            <Label htmlFor="limit" className="text-xs">Top N</Label>
-            <Input id="limit" type="number" min={1} max={200} value={limit}
+            <Label htmlFor="limit" className="text-xs">
+              Top N
+            </Label>
+            <Input
+              id="limit"
+              type="number"
+              min={1}
+              max={200}
+              value={limit}
               onChange={(e) => setLimit(Math.max(1, Math.min(200, Number(e.target.value) || 25)))}
-              className="w-24" />
+              className="w-24"
+            />
           </div>
         </div>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-3 gap-4 mb-4 text-sm">
+        <div className={`grid gap-4 mb-4 text-sm ${anyRefunds ? "grid-cols-4" : "grid-cols-3"}`}>
           <Stat label="Clients shown" value={String(rows.length)} />
-          <Stat label="Total paid revenue" value={fmt(totalRev)} />
+          {anyRefunds && <Stat label="Refunded" value={`-${fmt(totalRefunds)}`} />}
+          <Stat label="Net paid revenue" value={fmt(totalRev)} />
           <Stat label="Avg monthly / client" value={fmt(avgMonthly)} />
         </div>
-        {q.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : (
+        {q.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : (
           <table className="w-full text-sm [&_th]:px-3 [&_td]:px-3 [&_th:first-child]:pl-0 [&_td:first-child]:pl-0 [&_th:last-child]:pr-0 [&_td:last-child]:pr-0">
             <thead className="text-left text-xs text-muted-foreground">
               <tr>
                 <th className="py-2">Client</th>
                 <th className="py-2">Tenure</th>
-                <th className="py-2 text-right">Revenue</th>
+                {anyRefunds && <th className="py-2 text-right">Billed</th>}
+                {anyRefunds && <th className="py-2 text-right">Refunded</th>}
+                <th className="py-2 text-right">{anyRefunds ? "Net revenue" : "Revenue"}</th>
                 <th className="py-2 text-right">Monthly avg</th>
                 <th className="py-2">Status</th>
               </tr>
@@ -191,9 +275,25 @@ function LtvTab() {
                 <tr key={r.client_id} className="border-t">
                   <td className="py-2">{r.display_name}</td>
                   <td className="py-2 text-muted-foreground">{r.tenure_days}d</td>
-                  <td className="py-2 text-right">{fmt(Number(r.revenue_cents))}</td>
-                  <td className="py-2 text-right">{fmt(Number(r.monthly_avg_cents))}</td>
-                  <td className="py-2">{r.active ? <Badge>Active</Badge> : <Badge variant="secondary">Inactive</Badge>}</td>
+                  {anyRefunds && (
+                    <td className="py-2 text-right text-muted-foreground">
+                      {fmt(Number(r.revenue_cents))}
+                    </td>
+                  )}
+                  {anyRefunds && (
+                    <td
+                      className={`py-2 text-right ${
+                        Number(r.refunds_cents) > 0 ? "text-destructive" : "text-muted-foreground"
+                      }`}
+                    >
+                      {Number(r.refunds_cents) === 0 ? "-" : `-${fmt(Number(r.refunds_cents))}`}
+                    </td>
+                  )}
+                  <td className="py-2 text-right">{fmt(Number(r.net_revenue_cents))}</td>
+                  <td className="py-2 text-right">{fmt(Number(r.net_monthly_avg_cents))}</td>
+                  <td className="py-2">
+                    {r.active ? <Badge>Active</Badge> : <Badge variant="secondary">Inactive</Badge>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -206,7 +306,8 @@ function LtvTab() {
 
 function ZoneTab() {
   const today = new Date();
-  const past = new Date(); past.setDate(past.getDate() - 89);
+  const past = new Date();
+  past.setDate(past.getDate() - 89);
   const iso = (d: Date) => d.toISOString().slice(0, 10);
   const [from, setFrom] = useState(iso(past));
   const [to, setTo] = useState(iso(today));
@@ -222,8 +323,18 @@ function ZoneTab() {
     <Card>
       <CardHeader className="flex-row items-end gap-4">
         <div>
-          <CardTitle>Zone profitability</CardTitle>
-          <p className="text-xs text-muted-foreground mt-1">Revenue attributed to completed visits per zone.</p>
+          <CardTitle>Zone workload &amp; booked value</CardTitle>
+          {/* IMP-10: renamed from "Zone profitability / Revenue". This sums the
+              subscription LIST PRICE of completed visits — it has never known
+              about payment, discounts, credits, write-offs or refunds, so
+              calling it revenue overstated both its accuracy and its authority.
+              A refunds line was deliberately NOT added: deducting money from a
+              figure that never tracked money would make it look more reliable
+              than it is. */}
+          <p className="text-xs text-muted-foreground mt-1">
+            Booked service value of completed visits per zone, at list price. This is what the work
+            was worth, not what was collected — see Reports for money actually received.
+          </p>
         </div>
         <div className="ml-auto flex items-end gap-2">
           <div>
@@ -238,14 +349,16 @@ function ZoneTab() {
         </div>
       </CardHeader>
       <CardContent>
-        {q.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : (
+        {q.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : (
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-muted-foreground">
               <tr>
                 <th className="py-2">Zone</th>
                 <th className="py-2 text-right">Visits</th>
                 <th className="py-2 text-right">Completed</th>
-                <th className="py-2 text-right">Revenue</th>
+                <th className="py-2 text-right">Booked value</th>
                 <th className="py-2 text-right">Avg / visit</th>
               </tr>
             </thead>
@@ -278,15 +391,19 @@ function ChurnTab() {
       <CardHeader>
         <CardTitle>Churn drivers</CardTitle>
         <p className="text-xs text-muted-foreground mt-1">
-          Grouped by AI-scored churn reason. Revenue at risk = paid revenue from these clients in the last 180 days.
-          Score churn from <span className="font-medium">AI Tools → Churn</span>.
+          Grouped by AI-scored churn reason. Revenue at risk = paid revenue from these clients in
+          the last 180 days, <span className="font-medium">before refunds</span> — this is an
+          estimate for prioritising outreach, not a reported figure. Score churn from{" "}
+          <span className="font-medium">AI Tools → Churn</span>.
         </p>
       </CardHeader>
       <CardContent>
         <div className="mb-4 text-sm">
           <Stat label="Total revenue at risk (180d)" value={fmt(totalAtRisk)} />
         </div>
-        {q.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : rows.length === 0 ? (
+        {q.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">No churn-scored clients yet.</p>
         ) : (
           <table className="w-full text-sm">
@@ -361,9 +478,12 @@ function WinBackTab() {
         <div className="flex flex-wrap items-end justify-between gap-3 rounded-md border bg-muted/30 p-3">
           <div>
             <p className="text-sm">
-              Heuristic score based on recent visit gaps, skips, complaints, and payment failures. Score ≥ 60 shows here.
+              Heuristic score based on recent visit gaps, skips, complaints, and payment failures.
+              Score ≥ 60 shows here.
             </p>
-            <p className="text-xs text-muted-foreground">Prefer the AI churn scorer in AI Tools when you want reason-with-context.</p>
+            <p className="text-xs text-muted-foreground">
+              Prefer the AI churn scorer in AI Tools when you want reason-with-context.
+            </p>
           </div>
           <div className="flex items-end gap-2">
             <div>
@@ -387,7 +507,9 @@ function WinBackTab() {
         {q.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No at-risk clients right now. Run "Re-score all" to refresh.</p>
+          <p className="text-sm text-muted-foreground">
+            No at-risk clients right now. Run "Re-score all" to refresh.
+          </p>
         ) : (
           <div className="overflow-hidden rounded-md border">
             <table className="w-full text-sm">
@@ -404,14 +526,20 @@ function WinBackTab() {
               <tbody>
                 {rows.map((r) => {
                   const tone =
-                    r.churn_score >= 85 ? "destructive" : r.churn_score >= 70 ? "default" : "secondary";
+                    r.churn_score >= 85
+                      ? "destructive"
+                      : r.churn_score >= 70
+                        ? "default"
+                        : "secondary";
                   return (
                     <tr key={r.id} className="border-t">
                       <td className="px-3 py-2 font-medium">{r.display_name}</td>
                       <td className="px-3 py-2">
                         <Badge variant={tone as any}>{r.churn_score}</Badge>
                       </td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">{r.churn_reason ?? "-"}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {r.churn_reason ?? "-"}
+                      </td>
                       <td className="px-3 py-2 text-xs text-muted-foreground">
                         {r.last_visit_date ? new Date(r.last_visit_date).toLocaleDateString() : "-"}
                       </td>
@@ -461,6 +589,12 @@ function DigestTab() {
     setRecipient(settings.data!.recipientEmail ?? "");
   }
 
+  // What is SAVED, not what is typed. A half-entered address in the box does
+  // not make the Monday job able to send — only the stored value does, so the
+  // warning has to key off that or it would disappear as soon as someone
+  // started typing and stop telling the truth.
+  const savedRecipient = (settings.data?.recipientEmail ?? "").trim();
+
   const preview = useMutation({
     mutationFn: () => previewFn(),
     onError: (e: Error) => toast.error(e.message),
@@ -497,6 +631,26 @@ function DigestTab() {
             visits, new clients, at-risk accounts, and 2-3 AI-generated recommendations.
           </p>
 
+          {/* This panel promised a Monday email from the day it shipped, and for
+              months nothing was ever sent — no scheduler existed, and no
+              organization had a recipient. The schedule exists now; the second
+              half is this. A checkbox reading "Enabled" beside a promise the
+              product cannot keep is how a feature stays broken without anyone
+              filing a bug: the owner believes it is on, and the absence of an
+              email is indistinguishable from a quiet week. */}
+          {initialized && (enabled ?? true) && !savedRecipient && (
+            <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <div>
+                <p className="font-medium">No digest will be sent yet.</p>
+                <p className="mt-0.5 text-muted-foreground">
+                  This is switched on, but there is no address to send to. Add one below and save,
+                  and the first digest goes out on the next Monday.
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
             <div>
               <Label htmlFor="digest-email">Send to</Label>
@@ -525,11 +679,15 @@ function DigestTab() {
             </Button>
           </div>
 
-          {settings.data?.lastSentAt && (
+          {settings.data?.lastSentAt ? (
             <p className="text-xs text-muted-foreground">
               Last sent {new Date(settings.data.lastSentAt).toLocaleString()}.
             </p>
-          )}
+          ) : savedRecipient ? (
+            <p className="text-xs text-muted-foreground">
+              Not sent yet — the first one goes out on the next Monday.
+            </p>
+          ) : null}
 
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => preview.mutate()} disabled={preview.isPending}>
@@ -604,4 +762,3 @@ function DigestTab() {
     </div>
   );
 }
-

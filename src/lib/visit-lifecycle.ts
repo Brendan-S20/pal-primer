@@ -35,17 +35,76 @@ export function visitDurationMinutes(
   return Math.round(ms / 60000);
 }
 
-/** Humanized duration for display. "Not recorded" when it can't be computed
- *  (missing timestamps, or the fabricated identical start/completion). A
- *  genuine sub-minute gap rounds to 0 and reads "Under a minute". */
+/** Why a duration couldn't be computed, or null when it could.
+ *
+ *  BUG-9: these two cases used to look identical on screen, both reading
+ *  "Not recorded", which is why the fabricated records sat unnoticed.
+ *  - "missing"    — a timestamp is absent. Genuinely unknown: nobody recorded it.
+ *  - "unreliable" — BOTH timestamps exist but completion doesn't follow start.
+ *                   That is known-bad data, not missing data: the signature of
+ *                   the old office-completion bug writing now() into start and
+ *                   completion together. It needs a human, so it says so.
+ *
+ *  The brief's "derive duration whenever both timestamps exist" is deliberately
+ *  NOT implemented: an identical pair would derive 0 and render "Under a
+ *  minute", asserting that a real sub-minute service happened. For a row whose
+ *  timestamps were written days after the scheduled date, that is a fabricated
+ *  claim printed as fact, and it would erase the only signal these rows carry.
+ *  Surfacing the doubt is the fix; inventing a number is not. */
+export function visitTimestampIssue(
+  startedAt: string | null | undefined,
+  completedAt: string | null | undefined,
+): "missing" | "unreliable" | null {
+  if (!startedAt || !completedAt) return "missing";
+  const ms = new Date(completedAt).getTime() - new Date(startedAt).getTime();
+  if (!Number.isFinite(ms)) return "missing";
+  return ms <= 0 ? "unreliable" : null;
+}
+
+/** Humanized duration for display. "Not recorded" when a timestamp is simply
+ *  absent; "Needs review" when both exist but contradict each other. A genuine
+ *  sub-minute gap rounds to 0 and reads "Under a minute". */
 export function formatVisitDuration(
   startedAt: string | null | undefined,
   completedAt: string | null | undefined,
 ): string {
+  const issue = visitTimestampIssue(startedAt, completedAt);
+  if (issue === "unreliable") return "Needs review";
+  if (issue === "missing") return "Not recorded";
   const mins = visitDurationMinutes(startedAt, completedAt);
-  if (mins == null) return "Not recorded";
   if (mins === 0) return "Under a minute";
   return `${mins} min`;
+}
+
+/** BUILD-11: a visit the tech started and never closed, past the point where it
+ *  can still plausibly be in progress.
+ *
+ *  This gap exists because the nightly missed-visit job deliberately skips
+ *  anything with a started_at (see isMissedVisitCandidate), so an in_progress
+ *  visit is never resolved by anything — it just falls off the tech's day when
+ *  the date rolls over. Nothing auto-completes it: this predicate only decides
+ *  when to ASK.
+ *
+ *  Stale means either the org's day has moved past the visit's date, or it is
+ *  still that date but the workday has ended. All comparisons are in ORG-LOCAL
+ *  terms — callers pass the org-local date and time, never UTC, for the same
+ *  reason the portal's "today" is org-local (BUG-12).
+ *
+ *  `workdayEnd` is "HH:MM" (or "HH:MM:SS"); an absent one means only the
+ *  date rollover triggers, which is the conservative choice — better to ask a
+ *  morning late than to interrupt a tech still working. */
+export function isVisitAwaitingCloseOut(
+  v: Pick<VisitLike, "status" | "scheduled_on">,
+  orgLocalToday: string,
+  orgLocalTime?: string | null,
+  workdayEnd?: string | null,
+): boolean {
+  if (v.status !== "in_progress") return false;
+  if (v.scheduled_on < orgLocalToday) return true;
+  if (v.scheduled_on > orgLocalToday) return false;
+  // Same day: only once the workday is over.
+  if (!workdayEnd || !orgLocalTime) return false;
+  return orgLocalTime.slice(0, 5) >= workdayEnd.slice(0, 5);
 }
 
 /** True when a scheduled visit is genuinely past and never serviced, so the

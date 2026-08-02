@@ -22,7 +22,6 @@ type NotifyKey =
   | "notify_email_win_back"
   | "notify_email_review_request";
 
-
 interface EnqueueParams {
   organizationId: string;
   clientId: string;
@@ -70,7 +69,9 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
   // Org toggle
   const { data: org } = await supabaseAdmin
     .from("organizations")
-    .select(`id, name, ${params.notifyKey}`)
+    // BUILD-5: contact_email is the reply-to. Without it a customer who hits
+    // Reply on their invoice writes to noreply@ and is never heard from.
+    .select(`id, name, contact_email, ${params.notifyKey}`)
     .eq("id", params.organizationId)
     .maybeSingle();
   if (!org || (org as any)[params.notifyKey] === false) {
@@ -116,8 +117,7 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
     console.error("email render failed", params.templateName, e);
     return { ok: false, reason: "render_failed" };
   }
-  const subject =
-    typeof entry.subject === "function" ? entry.subject(mergedData) : entry.subject;
+  const subject = typeof entry.subject === "function" ? entry.subject(mergedData) : entry.subject;
 
   // Unsubscribe token
   const unsubscribeToken = hexToken();
@@ -141,6 +141,16 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
       message_id: messageId,
       to: recipient,
       from: `${(org as any).name || SITE_NAME} <noreply@${FROM_DOMAIN}>`,
+      // BUILD-5. The `from` display name has always been the tenant's business,
+      // so a customer sees "Detroit Doo Disposal" and reasonably hits Reply —
+      // and every reply went to noreply@notify.houndstack.com, a mailbox nobody
+      // reads. Questions about a bill, a missed visit, a wrong charge: all
+      // silently discarded, and the business never knew they were sent.
+      //
+      // Omitted rather than defaulted when the org has no contact email. A
+      // reply-to pointing somewhere wrong is worse than none: the customer gets
+      // no bounce and still believes they have been in touch.
+      ...((org as any).contact_email ? { reply_to: (org as any).contact_email } : {}),
       sender_domain: SENDER_DOMAIN,
       subject,
       html,
@@ -166,10 +176,7 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
   // A successful explicit manual send lifts the imported comms hold —
   // contact has now been initiated by the org.
   if (params.manual && client.comms_paused) {
-    await supabaseAdmin
-      .from("clients")
-      .update({ comms_paused: false })
-      .eq("id", client.id);
+    await supabaseAdmin.from("clients").update({ comms_paused: false }).eq("id", client.id);
   }
   return { ok: true, messageId };
 }

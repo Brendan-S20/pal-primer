@@ -38,11 +38,11 @@ export const listPlatformAddons = createServerFn({ method: "GET" })
     const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
 
     const [{ data: catalog, error }, { data: mine }, { data: org }] = await Promise.all([
-      // Untyped: `status` postdates the generated Supabase types. Tenants see
-      // active + coming-soon add-ons; disabled ones are hidden UNLESS the org
-      // is actively subscribed — a subscribed add-on must stay visible so the
-      // cancel action remains reachable (and billing explainable).
-      (context.supabase as any)
+      // Tenants see active + coming-soon add-ons; disabled ones are hidden
+      // UNLESS the org is actively subscribed — a subscribed add-on must stay
+      // visible so the cancel action remains reachable (and billing
+      // explainable).
+      context.supabase
         .from("platform_addons")
         .select("id, slug, name, description, price_cents, billing_interval, status, is_active, sort_order")
         .order("sort_order"),

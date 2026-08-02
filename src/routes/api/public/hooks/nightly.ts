@@ -11,31 +11,29 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        // Auth: accept the generated CRON_SECRET, the service role key as a
-        // Bearer token (the same pattern pg_cron already uses for
-        // /email/queue/process, read from Supabase Vault), or the project anon
-        // key (per Lovable scheduled-jobs pattern). Nightly work is idempotent,
-        // so the worst-case if someone triggers it is running an org's
-        // automation early.
-        const cronSecret = process.env.CRON_SECRET;
-        const anonKey = process.env.SUPABASE_PUBLISHABLE_KEY;
-        const serviceKey = process.env.SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-        const providedSecret =
-          request.headers.get("x-cron-secret") ??
-          new URL(request.url).searchParams.get("s");
-        const providedApiKey = request.headers.get("apikey");
-        const authHeader = request.headers.get("authorization");
-        const bearer = authHeader?.startsWith("Bearer ") ? authHeader.slice("Bearer ".length).trim() : null;
-        const okSecret = !!(cronSecret && providedSecret === cronSecret);
-        const okService = !!(serviceKey && bearer === serviceKey);
-        const okAnon = !!(anonKey && providedApiKey === anonKey);
-        if (!okSecret && !okService && !okAnon) return json({ error: "unauthorized" }, 401);
-        // Security (C2): the anon key is public (shipped in the browser bundle),
-        // so it must NOT authorize real money movement. Autopay charges run only
-        // under a private credential (CRON_SECRET or the service role key); the
-        // anon path can still drive the idempotent, non-charging automation.
-        const canCharge = okSecret || okService;
+        // AUTH: a private credential only — see cron-auth.server.ts for what the
+        // anon key was, why it was accepted here, and why it is not a
+        // credential. The check is shared with the other cron endpoints because
+        // three copies of it had already drifted into three different strengths.
+        //
+        // VERIFIED BEFORE TIGHTENING THIS, because a silently dead cron would be
+        // worse than the hole it closes: the live pg_cron job already sends BOTH
+        // an anon `apikey` and `Authorization: Bearer <service role key>` from
+        // Vault, and `clients.autopay_last_attempt_at` carries 09:00:05Z against
+        // a `0 9 * * *` schedule. That stamp is written inside the charge path,
+        // which only ever ran when a PRIVATE credential had authorized the
+        // request — so the Bearer token is already doing the work here and
+        // nothing depended on the anon path.
+        const { authorizeCronRequest, cronUnauthorized } = await import("@/lib/cron-auth.server");
+        const auth = authorizeCronRequest(request);
+        if (!auth.ok) return cronUnauthorized("nightly", auth);
 
+        // Everything past this point holds a private credential, so the old
+        // `canCharge` split is gone — it would now be a variable that is always
+        // true. If a public entry point is ever added back, the money work
+        // (autopay charges, and settlement generation, which CONSUMES pending
+        // franchise adjustments with no un-apply) must be gated behind that
+        // split again rather than left to inherit this invariant.
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const today = new Date();
@@ -60,7 +58,39 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           console.error("notification retention sweep failed", e);
         }
 
+        // BUG-14: an impersonation session ended by closing the tab left no
+        // stop event and no ended_at, so the audit log could not say when — or
+        // whether — it finished. The window had closed either way (BUG-2's
+        // server gate refuses the session); only the record was missing. This
+        // stamps the end and writes one honest stop event per grant, with the
+        // window-close time and a null duration rather than a fabricated one.
+        // Idempotent, so a retry costs nothing.
+        // Org-agnostic sweeps, run once rather than per-org.
+        const globalSweeps: Record<string, unknown> = {};
+        try {
+          const { data: n, error } = await (supabaseAdmin as any).rpc(
+            "close_abandoned_impersonation_grants",
+          );
+          globalSweeps.impersonation_grants_closed = error
+            ? `err: ${error.message}`
+            : (n as number);
+        } catch (e) {
+          console.error("impersonation grant sweep failed", e);
+        }
+
+        // BUILD-10: file anything our automated checks could not settle on
+        // their own into the review queue, instead of leaving it to be
+        // discovered by accident. Idempotent, and it never reopens an item a
+        // human already decided.
+        try {
+          const { data: n, error } = await (supabaseAdmin as any).rpc("detect_review_items");
+          globalSweeps.review_items_filed = error ? `err: ${error.message}` : (n as number);
+        } catch (e) {
+          console.error("review item detection failed", e);
+        }
+
         const summary: Array<Record<string, unknown>> = [];
+        if (Object.keys(globalSweeps).length) summary.push(globalSweeps);
 
         for (const org of orgs ?? []) {
           const perOrg: Record<string, unknown> = { org: org.name, id: org.id };
@@ -118,7 +148,11 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           // Overdue reminders are automated notifications → PLATFORM Twilio sender.
           const { platformTwilioFrom } = await import("@/lib/twilio-credentials.server");
           const reminderFrom = platformTwilioFrom() ?? org.sms_from_number;
-          if (org.overdue_reminders_enabled && (org.notify_sms_overdue_invoice ?? true) && reminderFrom) {
+          if (
+            org.overdue_reminders_enabled &&
+            (org.notify_sms_overdue_invoice ?? true) &&
+            reminderFrom
+          ) {
             perOrg.reminders_sent = await sendOverdueReminders(
               supabaseAdmin,
               org.id,
@@ -144,13 +178,21 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             perOrg.invoices_reconciled = `err: ${(e as Error).message}`;
           }
 
-          perOrg.autopay_charged = canCharge ? await runAutopayForOrg(supabaseAdmin, org.id) : 0;
+          perOrg.autopay_charged = await runAutopayForOrg(supabaseAdmin, org.id);
 
           // Franchise royalty billing (finding #16): on the 1st of the month,
           // generate last month's royalty invoices for each franchise parent's
-          // children. Idempotent per child+period.
+          // locations. Idempotent per child+period, but NOT harmless — it
+          // CONSUMES pending adjustments, binding each to the draft statement it
+          // writes, and there is no un-apply. It ran behind the private-
+          // credential gate while a public one existed; now that only private
+          // credentials reach this handler at all, the gate is the front door.
           if (today.getUTCDate() === 1) {
-            perOrg.royalties_generated = await generateRoyaltiesForParent(supabaseAdmin, org.id, today);
+            perOrg.royalties_generated = await generateRoyaltiesForParent(
+              supabaseAdmin,
+              org.id,
+              today,
+            );
           }
 
           // Seasonal deep-cleans: run on the 1st of each configured month.
@@ -174,7 +216,40 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           summary.push(perOrg);
         }
 
-        return json({ ok: true, ran_at: new Date().toISOString(), orgs: summary });
+        // BUILD-2: bill last month's AI overage. Runs once, AFTER the per-org
+        // loop, because it is driven by the usage rollup rather than by the
+        // org list — an org with no usage rows has nothing to bill, and
+        // iterating every org to discover that would be the slow way round.
+        //
+        // Outside the loop's try/catch as well: a failure here must not be
+        // attributed to whichever org happened to be last, and the run's own
+        // summary is where an operator looks for "did anyone get billed".
+        let aiOverage: Record<string, unknown>;
+        try {
+          const { runAiOverageBilling } = await import("@/lib/ai-overage-billing.server");
+          const r = await runAiOverageBilling();
+          aiOverage = {
+            billed: r.billed,
+            cents_total: r.centsTotal,
+            // The reasons, counted. A run that skips everything for the same
+            // reason every night is a broken run wearing a green summary.
+            skipped_reasons: r.outcomes.reduce<Record<string, number>>((acc, o) => {
+              if ("skipped" in o)
+                acc[o.skipped.split(":")[0]] = (acc[o.skipped.split(":")[0]] ?? 0) + 1;
+              return acc;
+            }, {}),
+          };
+        } catch (e) {
+          console.error("[nightly] ai overage billing failed", e);
+          aiOverage = { error: (e as Error).message };
+        }
+
+        return json({
+          ok: true,
+          ran_at: new Date().toISOString(),
+          orgs: summary,
+          ai_overage: aiOverage,
+        });
       },
     },
   },
@@ -187,51 +262,45 @@ function json(body: unknown, status = 200) {
   });
 }
 
-// Generate last month's royalty invoices for a franchise parent's children
+// Generate last month's settlements for a franchise parent's locations
 // (finding #16). Runs as service-role from the nightly cron (no user session).
-async function generateRoyaltiesForParent(supabaseAdmin: any, parentOrgId: string, today: Date): Promise<number | string> {
+//
+// IMP-10: this used to be a third copy of the royalty calculation, alongside
+// the SQL routine and franchise.functions.ts. It computed revenue as
+// `payments where status = 'succeeded'` — the BUG-21 filter — knew nothing
+// about who collected the money or about refunds, and left `direction` and
+// `net_due_cents` at their defaults, so an unattended nightly run produced
+// statements whose headline contradicted their own arithmetic. Three
+// implementations of one money calculation is a guarantee that a fix lands in
+// only one of them, and that is exactly what happened.
+//
+// Now a thin caller. The RPC accepts service_role explicitly (see
+// 20260731091000) because this job has no user session for its owner check.
+async function generateRoyaltiesForParent(
+  supabaseAdmin: any,
+  parentOrgId: string,
+  today: Date,
+): Promise<number | string> {
   const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1));
   const end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
   const startStr = start.toISOString().slice(0, 10);
   const endStr = end.toISOString().slice(0, 10);
 
-  const { data: children, error } = await supabaseAdmin
-    .from("organizations")
-    .select("id, franchise_royalty_percent")
-    .eq("parent_organization_id", parentOrgId);
+  // The RPC returns how many statements it actually WROTE. This used to ignore
+  // it and head-count the statements that exist for the period instead, which
+  // is a different question: its ON CONFLICT … DO UPDATE is guarded by
+  // `status = 'draft'`, so once a period's statements have been issued the RPC
+  // recalculates nothing and the count still comes back full. The log then
+  // claimed a fresh recalculation every night, for months, over numbers that
+  // had not moved since the day they were issued.
+  const { data: written, error } = await supabaseAdmin.rpc("generate_franchise_settlements", {
+    _parent: parentOrgId,
+    _start: startStr,
+    _end: endStr,
+  });
   if (error) return `err: ${error.message}`;
-  if (!children || children.length === 0) return 0;
-
-  let generated = 0;
-  for (const child of children as any[]) {
-    const percent = Number(child.franchise_royalty_percent ?? 0);
-    const { data: pays } = await supabaseAdmin
-      .from("payments")
-      .select("amount_cents")
-      .eq("organization_id", child.id)
-      .eq("status", "succeeded")
-      .gte("created_at", `${startStr}T00:00:00Z`)
-      .lt("created_at", `${endStr}T00:00:00Z`);
-    const revenue = (pays ?? []).reduce((s: number, r: any) => s + Number(r.amount_cents ?? 0), 0);
-    const amount = Math.round((revenue * percent) / 100);
-    const { error: upErr } = await supabaseAdmin
-      .from("franchise_royalty_invoices")
-      .upsert(
-        {
-          parent_organization_id: parentOrgId,
-          child_organization_id: child.id,
-          period_start: startStr,
-          period_end: endStr,
-          revenue_cents: revenue,
-          royalty_percent: percent,
-          amount_cents: amount,
-          status: "draft",
-        },
-        { onConflict: "child_organization_id,period_start,period_end" },
-      );
-    if (!upErr) generated += 1;
-  }
-  return generated;
+  const n = Number(written ?? 0);
+  return n === 0 ? "0 (nothing to recalculate — no locations, or all issued)" : n;
 }
 
 // Auto-send invoices whose grace window has ended (full auto billing).
@@ -249,7 +318,9 @@ async function autoSendScheduledInvoices(
 ): Promise<number | string> {
   const { data: invoices, error } = await supabaseAdmin
     .from("invoices")
-    .select("id, client_id, total_cents, period_start, period_end, public_token, send_after, sent_at")
+    .select(
+      "id, client_id, total_cents, period_start, period_end, public_token, send_after, sent_at",
+    )
     .eq("organization_id", orgId)
     .eq("status", "open")
     .is("sent_at", null)
@@ -414,9 +485,7 @@ async function sendOverdueEmails(
     const client = byId.get(inv.client_id) as any;
     if (!client) continue;
     const invoiceUrl = (await buildPortalLink(orgId, client.portal_token, slug)) ?? appUrl();
-    const daysPastDue = Math.floor(
-      (Date.now() - new Date(inv.issued_at).getTime()) / 86400000,
-    );
+    const daysPastDue = Math.floor((Date.now() - new Date(inv.issued_at).getTime()) / 86400000);
     const res = await enqueueAppEmail({
       organizationId: orgId,
       clientId: inv.client_id,
@@ -452,15 +521,18 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
     .select("dunning_retry_days, dunning_pause_after_failures")
     .eq("id", orgId)
     .single();
-  const retryDays: number[] = Array.isArray(org?.dunning_retry_days) && org.dunning_retry_days.length > 0
-    ? org.dunning_retry_days
-    : [1, 3, 7];
+  const retryDays: number[] =
+    Array.isArray(org?.dunning_retry_days) && org.dunning_retry_days.length > 0
+      ? org.dunning_retry_days
+      : [1, 3, 7];
   const pauseAfter: number = org?.dunning_pause_after_failures ?? 3;
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const { data: invoices } = await supabaseAdmin
     .from("invoices")
-    .select("id, client_id, total_cents, credit_applied_cents, currency, organization_id, status, stripe_payment_intent_id, stripe_checkout_session_id, clients!inner(id, stripe_customer_id, default_payment_method_id, autopay_enabled, autopay_paused, autopay_failure_count, autopay_last_attempt_at)")
+    .select(
+      "id, client_id, total_cents, credit_applied_cents, currency, organization_id, status, stripe_payment_intent_id, stripe_checkout_session_id, clients!inner(id, stripe_customer_id, default_payment_method_id, autopay_enabled, autopay_paused, autopay_failure_count, autopay_last_attempt_at)",
+    )
     .eq("organization_id", orgId)
     // Only open invoices: drafts are unfinalized staff WIP and must never be
     // auto-charged (charging one would also skip credit-first ordering, since
@@ -508,7 +580,9 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
       if (inv.stripe_payment_intent_id) {
         try {
           const existing = await stripe.paymentIntents.retrieve(
-            inv.stripe_payment_intent_id, {}, { stripeAccount: acct.accountId },
+            inv.stripe_payment_intent_id,
+            {},
+            { stripeAccount: acct.accountId },
           );
           if (existing.status === "processing") continue;
           if (
@@ -551,57 +625,70 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
     try {
       // Stamp the attempt BEFORE charging so a re-run in the same window (or a
       // webhook lag) is gated by the dunning wait and can't double-charge (H1).
-      await supabaseAdmin.from("clients")
+      await supabaseAdmin
+        .from("clients")
         .update({ autopay_last_attempt_at: new Date().toISOString() })
         .eq("id", c.id);
-      const pi = await stripe.paymentIntents.create({
-        amount: dueCents,
-        currency: inv.currency ?? "usd",
-        customer: c.stripe_customer_id,
-        payment_method: c.default_payment_method_id,
-        off_session: true,
-        confirm: true,
-        metadata: {
-          invoice_id: inv.id,
-          organization_id: inv.organization_id,
-          source: "autopay",
+      const pi = await stripe.paymentIntents.create(
+        {
+          amount: dueCents,
+          currency: inv.currency ?? "usd",
+          customer: c.stripe_customer_id,
+          payment_method: c.default_payment_method_id,
+          off_session: true,
+          confirm: true,
+          metadata: {
+            invoice_id: inv.id,
+            organization_id: inv.organization_id,
+            source: "autopay",
+          },
         },
-      }, {
-        stripeAccount: acct.accountId,
-        // Idempotent per invoice+amount: a retried request never charges
-        // twice. The amount is the OPEN amount (net of applied credit), so a
-        // later credit application mints a fresh key for the smaller charge.
-        idempotencyKey: `autopay-${inv.id}-${dueCents}`,
-      });
+        {
+          stripeAccount: acct.accountId,
+          // Idempotent per invoice+amount: a retried request never charges
+          // twice. The amount is the OPEN amount (net of applied credit), so a
+          // later credit application mints a fresh key for the smaller charge.
+          idempotencyKey: `autopay-${inv.id}-${dueCents}`,
+        },
+      );
       // Store the PI on the invoice so a missed success webhook is rescued by
       // reconcile (above, next run) instead of re-charging the card. Success
       // bookkeeping (paid flip, payments row, failure_count reset) stays in
       // the webhook payment_intent.succeeded branch.
-      await supabaseAdmin.from("invoices")
+      await supabaseAdmin
+        .from("invoices")
         .update({ stripe_payment_intent_id: pi.id })
         .eq("id", inv.id);
       charged++;
     } catch (e) {
       const msg = (e as Error).message || "autopay failed";
-      const { isStripeMissingResource, clearClientStripeRefs } = await import("@/lib/stripe-connect.server");
+      const { isStripeMissingResource, clearClientStripeRefs } =
+        await import("@/lib/stripe-connect.server");
       if (isStripeMissingResource(e)) {
         // Customer/payment method no longer exists on the connected account
         // (e.g. account cutover) — clear the stale refs so autopay stops
         // retrying a dead card and staff/portal prompt for a fresh one.
         await clearClientStripeRefs(c.id);
-        await supabaseAdmin.from("clients").update({
-          autopay_last_attempt_at: new Date().toISOString(),
-          autopay_last_error: "Saved card is no longer on file. Client needs to re-add a payment method.",
-        }).eq("id", c.id);
+        await supabaseAdmin
+          .from("clients")
+          .update({
+            autopay_last_attempt_at: new Date().toISOString(),
+            autopay_last_error:
+              "Saved card is no longer on file. Client needs to re-add a payment method.",
+          })
+          .eq("id", c.id);
         continue;
       }
       const nextCount = failures + 1;
-      await supabaseAdmin.from("clients").update({
-        autopay_last_attempt_at: new Date().toISOString(),
-        autopay_last_error: msg,
-        autopay_failure_count: nextCount,
-        autopay_paused: nextCount >= pauseAfter,
-      }).eq("id", c.id);
+      await supabaseAdmin
+        .from("clients")
+        .update({
+          autopay_last_attempt_at: new Date().toISOString(),
+          autopay_last_error: msg,
+          autopay_failure_count: nextCount,
+          autopay_paused: nextCount >= pauseAfter,
+        })
+        .eq("id", c.id);
     }
   }
   return charged;

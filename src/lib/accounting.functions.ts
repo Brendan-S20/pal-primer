@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
+import { encryptSecret } from "@/lib/secret-encryption.server";
 
 const providerSchema = z.enum(["quickbooks", "xero"]);
 
@@ -63,8 +64,9 @@ export const upsertAccountingConnection = createServerFn({ method: "POST" })
       default_payment_account: data.default_payment_account ?? null,
       auto_sync: data.auto_sync ?? false,
     };
-    if (data.access_token) payload.access_token = data.access_token;
-    if (data.refresh_token) payload.refresh_token = data.refresh_token;
+    // IMP-1: encrypted before it ever reaches the table.
+    if (data.access_token) payload.access_token = encryptSecret(data.access_token);
+    if (data.refresh_token) payload.refresh_token = encryptSecret(data.refresh_token);
     if (data.token_expires_at) payload.token_expires_at = data.token_expires_at;
 
     if (existing?.id) {
@@ -147,7 +149,17 @@ export const syncInvoice = createServerFn({ method: "POST" })
     let message: string | null = null;
     try {
       const fresh = await ensureFreshToken(conn as any);
-      remoteId = await pushInvoice(fresh, invoice as any);
+      // The driver needs the org's timezone to date the invoice in the
+      // customer's books; without it the day comes from the server's clock.
+      const { data: orgRow } = await supabase
+        .from("organizations")
+        .select("timezone")
+        .eq("id", orgId)
+        .maybeSingle();
+      remoteId = await pushInvoice(fresh, {
+        ...(invoice as any),
+        timezone: (orgRow as { timezone?: string | null } | null)?.timezone ?? null,
+      });
       await supabase
         .from("invoices")
         .update({ accounting_remote_id: remoteId })

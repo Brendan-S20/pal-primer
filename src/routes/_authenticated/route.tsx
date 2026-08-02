@@ -7,12 +7,24 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { useEffect } from "react";
+import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  clearPersistedReadCaches,
+  ensureReadCachePersistence,
+  readLastUser,
+  signOutAndClearDevice,
+} from "@/lib/offline/read-cache";
+import { isOfflineAuthFailure } from "@/lib/offline/read-cache-policy";
+import { getMyOrg } from "@/lib/org.functions";
+import { getPlatformContext } from "@/lib/platform.functions";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { OnboardingTour } from "@/components/OnboardingTour";
 import { InstallBanner } from "@/components/InstallBanner";
 import { AppSidebar } from "@/components/AppSidebar";
+import { TrialBanner } from "@/components/TrialBanner";
 import { MobileTabBar } from "@/components/MobileTabBar";
+import { useTabletTier } from "@/hooks/useTabletTier";
 import { RoleGuard } from "@/components/RoleGuard";
 import { CommandPalette } from "@/components/CommandPalette";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -26,13 +38,126 @@ import { useBrandAccent } from "@/hooks/useBrandAccent";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
-  beforeLoad: async () => {
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) throw redirect({ to: "/auth" });
-    return { user: data.user };
+  beforeLoad: async ({ context }) => {
+    const online = typeof navigator === "undefined" || navigator.onLine !== false;
+    const identity = await resolveIdentity(online);
+    if (!identity.ok) {
+      // A REJECTED identity has to take the device copy with it.
+      //
+      // Revoking a session server-side (a tech leaves, an account is disabled)
+      // did not reach the device: this redirect fires before
+      // ensureReadCachePersistence below, so the onAuthStateChange SIGNED_OUT
+      // backstop registered in there was never armed on that boot, and nothing
+      // else sweeps at launch. The previous tech's route — addresses, gate
+      // codes, lock box codes, access notes — stayed readable in localStorage
+      // on the crew tablet until someone happened to sign out through the app.
+      //
+      // Only on `rejected`. A failure we could not reach the network to make
+      // means we do not know anything, and deleting the day then would erase
+      // the tech's route exactly when they need it most.
+      if (identity.rejected) clearPersistedReadCaches();
+      throw redirect({ to: "/auth" });
+    }
+
+    // Put this user's persisted reads back into the query cache before anything
+    // asks it a question. On a cold offline launch the ensureQueryData below
+    // and every useQuery under this route resolve from what this restores;
+    // doing it any later means the shell renders its empty state first.
+    ensureReadCachePersistence(context.queryClient, identity.userId);
+
+    // BUG-1: being signed in is not enough to render a tenant surface — every
+    // page below this route reads org-scoped data, so an account with no
+    // organization rendered tenant chrome around nothing (the repro was a
+    // platform-admin account opening /settings/addons and getting an empty
+    // settings page). Guarding here covers the WHOLE _authenticated tree
+    // rather than the one route the repro happened to name.
+    //
+    // This shares the ["my-org"] cache entry with useMyRole(), so the shell
+    // and every child that calls it reuse this fetch instead of adding one.
+    // ensureQueryData answers from cache when one exists, so offline this is
+    // the restored copy rather than a request that cannot be made.
+    let org: Awaited<ReturnType<typeof getMyOrg>> | undefined;
+    try {
+      org = await context.queryClient.ensureQueryData({
+        queryKey: ["my-org"],
+        queryFn: () => getMyOrg(),
+        staleTime: 60_000,
+      });
+    } catch (e) {
+      if (online) throw e;
+      // Offline with nothing cached: bouncing to /auth would strand a tech on
+      // a sign-in form they cannot submit, so say what is actually wrong.
+      throw new Error(
+        "You're offline and this device has no saved copy of your workspace yet. Reconnect once to download your day.",
+      );
+    }
+    if (!org?.organization) {
+      // Platform admins have a real home; everyone else gets an explicit
+      // terminal state rather than a blank tenant page.
+      let isPlatformAdmin = false;
+      try {
+        isPlatformAdmin = !!(await getPlatformContext()).isPlatformAdmin;
+      } catch {
+        /* treat an unavailable check as "not an admin" — never fail open */
+      }
+      throw redirect({ to: isPlatformAdmin ? "/platform" : "/no-workspace" });
+    }
+
+    return { userId: identity.userId, user: identity.user, organization: org.organization };
   },
   component: AppShell,
 });
+
+/**
+ * Who is signed in, tolerating a dead connection.
+ *
+ * supabase.auth.getUser() is a NETWORK call, so offline it fails and the old
+ * code read that as "not signed in" and redirected to /auth — the app's entire
+ * offline story died here, before any cache could be consulted. The fallbacks
+ * only ever apply when the failure looks like a lost network (never a 4xx from
+ * the auth server), and they grant nothing but a read of data already on this
+ * device; every server call still needs a real token.
+ */
+type IdentityResult =
+  | { ok: true; userId: string; user: User | null }
+  /** `rejected` distinguishes "the server said no" from "we could not ask".
+   *  Only the first should wipe the device — wiping on the second would delete
+   *  the tech's day every time they open the app in a dead zone, which is the
+   *  case this whole feature exists for. */
+  | { ok: false; rejected: boolean };
+
+async function resolveIdentity(online: boolean): Promise<IdentityResult> {
+  let authError: unknown = null;
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (data?.user) return { ok: true, userId: data.user.id, user: data.user };
+    authError = error;
+  } catch (e) {
+    authError = e;
+  }
+  // Not a transport failure: the server answered, and the answer was no.
+  if (!isOfflineAuthFailure(authError, { online })) return { ok: false, rejected: true };
+
+  // Local read of the persisted session — no network, still authoritative
+  // about which account this device belongs to.
+  try {
+    const { data } = await supabase.auth.getSession();
+    if (data.session?.user) {
+      return { ok: true, userId: data.session.user.id, user: data.session.user };
+    }
+  } catch {
+    /* fall through to the pointer below */
+  }
+
+  // The access token expired overnight and cannot be refreshed without a
+  // network: exactly the 7am-in-a-dead-zone case this feature exists for.
+  // The pointer is written only on a verified sign-in and deleted on sign-out,
+  // so it can only name a user whose session is still on this device.
+  const lastUser = readLastUser();
+  return lastUser
+    ? { ok: true, userId: lastUser, user: null }
+    : { ok: false, rejected: false };
+}
 
 function openPalette() {
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }));
@@ -81,7 +206,9 @@ function AppShell() {
   }, [router]);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    // Destroys the device's persisted day as well as the session — see
+    // signOutAndClearDevice.
+    await signOutAndClearDevice();
     window.location.href = "/auth";
   };
 
@@ -94,6 +221,8 @@ function AppShell() {
   const isMyDay = pathname === "/my-day" || pathname.startsWith("/my-day/");
 
   const brand = useBrandAccent();
+  // Q-2's tablet tier: the tab bar's reach and this padding are one decision.
+  const { mainBottomPadding } = useTabletTier();
   // Scope the tenant brand color to the internal staff app only. Platform-admin
   // routes and the sign-in page live outside this shell and stay HoundStack-branded.
   const brandStyle = brand
@@ -149,10 +278,19 @@ function AppShell() {
             </Button>
           </header>
           <SuspensionBanner />
+          {/* BUILD-7: after suspension (which actually blocks) and before
+              announcements (which are optional reading). A trial countdown is
+              information, not an obstacle — it sits in the flow rather than in
+              front of it. */}
+          <TrialBanner />
           <AnnouncementBanner />
-          {/* Below `md` the bottom padding keeps content clear of the fixed tab
-              bar; md:pb-8 restores the original desktop padding. */}
-          <main className="min-w-0 flex-1 px-4 pt-6 pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:px-6 sm:pt-8 md:pb-8">
+          {/* The bottom padding clears the fixed tab bar for exactly as long
+              as the bar is on screen — which now depends on the role, not only
+              the width (Q-2). Both read useTabletTier so they cannot disagree:
+              a mismatch puts the bar on top of My Day's Complete button. */}
+          <main
+            className={`min-w-0 flex-1 px-4 pt-6 sm:px-6 sm:pt-8 ${mainBottomPadding}`}
+          >
             <div className="mx-auto w-full max-w-[1200px]">
               <Outlet />
             </div>

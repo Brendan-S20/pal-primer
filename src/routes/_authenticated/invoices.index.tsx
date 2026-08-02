@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import {
   listInvoices,
+  getCollectedThisMonth,
   generateInvoicesForOrg,
   createManualInvoice,
   bulkVoidInvoices,
@@ -241,6 +242,7 @@ function StatCard({
 function InvoicesPage() {
   const { confirm, dialog } = useConfirmDialog();
   const list = useServerFn(listInvoices);
+  const collectedFn = useServerFn(getCollectedThisMonth);
   const orgFn = useServerFn(getMyOrg);
   const gen = useServerFn(generateInvoicesForOrg);
   const voidBulk = useServerFn(bulkVoidInvoices);
@@ -261,6 +263,16 @@ function InvoicesPage() {
 
   const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn() });
   const invQ = useQuery({ queryKey: ["invoices"], queryFn: () => list() });
+  // IMP-10: collected money is a question about PAYMENTS, so it is asked of the
+  // server rather than derived from the invoice list in the browser. The old
+  // client-side scan dated invoices by `paid_at ?? period_end` against a UTC
+  // month prefix, could not see a refund, and only ever summed the invoices
+  // that happened to be loaded.
+  const collectedQ = useQuery({
+    queryKey: ["invoices", "collected-mtd"],
+    queryFn: () => collectedFn(),
+    staleTime: 60_000,
+  });
 
   const genM = useMutation({
     mutationFn: async () => {
@@ -287,29 +299,21 @@ function InvoicesPage() {
 
   const stats = useMemo(() => {
     const all = invQ.data ?? [];
-    const monthPrefix = new Date().toISOString().slice(0, 7);
     let outstandingCents = 0;
     let openCount = 0;
-    let paidThisMonthCents = 0;
-    let paidThisMonthCount = 0;
     let draftCount = 0;
     for (const inv of all) {
       if (inv.status === "open") {
         openCount += 1;
         // Shared AR math (B1): open balance net of applied credit, identical
-        // to the Dashboard "AR open" card and Reports "Outstanding".
+        // to the Dashboard "AR open" card and Reports "Outstanding". Counting
+        // invoices is genuinely an invoice question, so it stays here.
         outstandingCents += invoiceOutstandingCents(inv as any);
-      } else if (inv.status === "paid") {
-        const paidDay = (inv.paid_at ?? inv.period_end ?? "").slice(0, 7);
-        if (paidDay === monthPrefix) {
-          paidThisMonthCents += inv.total_cents ?? 0;
-          paidThisMonthCount += 1;
-        }
       } else if (inv.status === "draft") {
         draftCount += 1;
       }
     }
-    return { outstandingCents, openCount, paidThisMonthCents, paidThisMonthCount, draftCount };
+    return { outstandingCents, openCount, draftCount };
   }, [invQ.data]);
 
   const toggleStatusFilter = (s: StatusKey) => setStatus((prev) => (prev === s ? "all" : s));
@@ -343,10 +347,7 @@ function InvoicesPage() {
   const visibleIds = useMemo(() => filtered.map((i) => i.id), [filtered]);
   const sel = useRowSelection(visibleIds, `${status}|${search}|${from}|${to}`);
   const { selectedIds, allSelected: allVisibleSelected, toggleAll } = sel;
-  const selectedRows = useMemo(
-    () => filtered.filter((i) => sel.isSelected(i.id)),
-    [filtered, sel],
-  );
+  const selectedRows = useMemo(() => filtered.filter((i) => sel.isSelected(i.id)), [filtered, sel]);
   const totalSelected = selectedRows.reduce((sum, i) => sum + (i.total_cents ?? 0), 0);
   const selectedOpen = selectedRows.filter((i) => i.status === "open");
 
@@ -373,8 +374,7 @@ function InvoicesPage() {
   const paidM = useMutation({
     mutationFn: () => paidBulk({ data: { ids: selectedIds } }),
     onSuccess: (r) => {
-      if (r.failed)
-        toast.error(`Marked ${r.ok} of ${r.ok + r.failed} paid — ${r.failed} skipped`);
+      if (r.failed) toast.error(`Marked ${r.ok} of ${r.ok + r.failed} paid — ${r.failed} skipped`);
       else toast.success(`Marked ${r.ok} paid`);
       sel.clear();
       refreshMoney();
@@ -439,7 +439,9 @@ function InvoicesPage() {
   const rowEmailM = useMutation({
     mutationFn: (v: { invoiceId: string; reminder: boolean }) => emailFn({ data: v }),
     onSuccess: (r: any, v) => {
-      toast.success(`${v.reminder ? "Reminder" : "Invoice"} queued for ${r.recipient ?? "the client"}`);
+      toast.success(
+        `${v.reminder ? "Reminder" : "Invoice"} queued for ${r.recipient ?? "the client"}`,
+      );
       // A first send stamps sent_at — refresh so the row chips update.
       if (!v.reminder) qc.invalidateQueries({ queryKey: ["invoices"] });
     },
@@ -588,8 +590,8 @@ function InvoicesPage() {
                 <DialogTitle>Generate from visits (manual fallback)</DialogTitle>
                 <DialogDescription>
                   Invoices generate automatically on each client's cadence, so you normally never
-                  need this. Use it to bill all unbilled completed visits through a date right
-                  now, for example before changing a client's cadence.
+                  need this. Use it to bill all unbilled completed visits through a date right now,
+                  for example before changing a client's cadence.
                 </DialogDescription>
               </DialogHeader>
               <div className="flex items-end gap-2">
@@ -608,11 +610,7 @@ function InvoicesPage() {
                 <HelpTip article="generate-invoices" />
               </div>
               <DialogFooter>
-                <Button
-                  variant="secondary"
-                  onClick={() => genM.mutate()}
-                  disabled={genM.isPending}
-                >
+                <Button variant="secondary" onClick={() => genM.mutate()} disabled={genM.isPending}>
                   {genM.isPending ? "Generating…" : "Generate from visits"}
                 </Button>
               </DialogFooter>
@@ -640,12 +638,19 @@ function InvoicesPage() {
           onClick={() => toggleStatusFilter("open")}
         />
         <StatCard
-          label="Paid this month"
-          value={fmtCents(stats.paidThisMonthCents)}
+          label="Collected this month"
+          value={fmtCents(collectedQ.data?.netCents ?? 0)}
           sub={
-            stats.paidThisMonthCount === 1
-              ? "1 invoice paid"
-              : `${stats.paidThisMonthCount} invoices paid`
+            // When something came back, say so on the card. A figure that is
+            // lower than expected with no explanation is the thing an owner
+            // chases support about.
+            (collectedQ.data?.reversalCount ?? 0) > 0
+              ? `${fmtCents(collectedQ.data?.grossCents ?? 0)} received, ${fmtCents(
+                  collectedQ.data?.refundsCents ?? 0,
+                )} refunded`
+              : (collectedQ.data?.paymentCount ?? 0) === 1
+                ? "1 payment received"
+                : `${collectedQ.data?.paymentCount ?? 0} payments received`
           }
           active={status === "paid"}
           onClick={() => toggleStatusFilter("paid")}
@@ -731,16 +736,16 @@ function InvoicesPage() {
               size="sm"
               variant="outline"
               disabled={sendM.isPending || selectedOpen.length === 0}
-              title={
-                selectedOpen.length === 0 ? "Only open invoices can be emailed" : undefined
-              }
+              title={selectedOpen.length === 0 ? "Only open invoices can be emailed" : undefined}
               onClick={async () => {
                 const skipped = selectedIds.length - selectedOpen.length;
                 if (
                   await confirm({
                     title: `Send ${selectedOpen.length} invoice${selectedOpen.length === 1 ? "" : "s"}?`,
                     description: `Emails each open invoice to its client now${
-                      skipped ? `. ${skipped} non-open selected invoice${skipped === 1 ? " is" : "s are"} skipped` : ""
+                      skipped
+                        ? `. ${skipped} non-open selected invoice${skipped === 1 ? " is" : "s are"} skipped`
+                        : ""
                     }.`,
                     confirmLabel: "Send invoices",
                   })
@@ -836,42 +841,42 @@ function InvoicesPage() {
             ))}
           </div>
           <div className="overflow-x-auto rounded-xl border bg-card shadow-sm max-md:hidden">
-          <table className="w-full text-sm">
-            <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="w-10 px-4 py-2">
-                  <Checkbox
-                    checked={allVisibleSelected}
-                    onCheckedChange={toggleAll}
-                    aria-label="Select all invoices"
+            <table className="w-full text-sm">
+              <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="w-10 px-4 py-2">
+                    <Checkbox
+                      checked={allVisibleSelected}
+                      onCheckedChange={toggleAll}
+                      aria-label="Select all invoices"
+                    />
+                  </th>
+                  <th className="px-4 py-2 font-semibold">Client</th>
+                  <th className="px-4 py-2 font-semibold">Invoice</th>
+                  <th className="px-4 py-2 font-semibold">Period</th>
+                  <th className="px-4 py-2 font-semibold">Due</th>
+                  <th className="px-4 py-2 text-right font-semibold">Total</th>
+                  <th className="px-4 py-2 font-semibold">Status</th>
+                  <th className="w-28 px-4 py-2 text-right font-semibold">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((inv) => (
+                  <InvoiceRow
+                    key={inv.id}
+                    invoice={inv}
+                    showClient
+                    selectable
+                    selected={sel.isSelected(inv.id)}
+                    onToggleSelect={(next) => sel.toggle(inv.id, next)}
+                    onOpen={setDrawerInvoiceId}
+                    actions={rowActions(inv)}
                   />
-                </th>
-                <th className="px-4 py-2 font-semibold">Client</th>
-                <th className="px-4 py-2 font-semibold">Invoice</th>
-                <th className="px-4 py-2 font-semibold">Period</th>
-                <th className="px-4 py-2 font-semibold">Due</th>
-                <th className="px-4 py-2 text-right font-semibold">Total</th>
-                <th className="px-4 py-2 font-semibold">Status</th>
-                <th className="w-28 px-4 py-2 text-right font-semibold">
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((inv) => (
-                <InvoiceRow
-                  key={inv.id}
-                  invoice={inv}
-                  showClient
-                  selectable
-                  selected={sel.isSelected(inv.id)}
-                  onToggleSelect={(next) => sel.toggle(inv.id, next)}
-                  onOpen={setDrawerInvoiceId}
-                  actions={rowActions(inv)}
-                />
-              ))}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
           </div>
         </>
       )}

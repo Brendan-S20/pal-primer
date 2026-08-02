@@ -54,7 +54,8 @@ async function activeGrantForSession(sessionId: string): Promise<ImpersonationGr
   let grant: ImpersonationGrantRef | null = null;
   try {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data } = await (supabaseAdmin as any)
+    // IMP-7: typed now that the generated types include this table's columns.
+    const { data } = await supabaseAdmin
       .from("impersonation_grants")
       .select("id, actor_user_id, target_user_id")
       .eq("auth_session_id", sessionId)

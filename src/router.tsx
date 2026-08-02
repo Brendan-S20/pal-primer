@@ -1,10 +1,48 @@
-import { QueryClient } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import { RouteError, RouteNotFound } from "./components/RouteError";
+import {
+  isImpersonationExpiredError,
+  notifyImpersonationExpired,
+} from "./lib/impersonation-expiry";
 
 export const getRouter = () => {
-  const queryClient = new QueryClient();
+  // BUG-2: the server rejects any request made under an expired impersonation
+  // session. Catching it centrally — for both reads and writes — is what turns
+  // that rejection into the explicit "session ended" state instead of a page
+  // that quietly stops loading data.
+  const onError = (error: unknown) => {
+    if (isImpersonationExpiredError(error)) notifyImpersonationExpired();
+  };
+
+  const queryClient = new QueryClient({
+    queryCache: new QueryCache({ onError }),
+    mutationCache: new MutationCache({ onError }),
+    defaultOptions: {
+      queries: {
+        // Offline reads (Mobile Phase 3): React Query's default
+        // networkMode 'online' does not fail an offline query — it PAUSES it.
+        // A tech launching the app in a dead zone therefore sat on a spinner
+        // forever, with the day's route already on the device and unreachable.
+        // 'offlineFirst' lets the fetch be attempted, so it can fail fast and
+        // the restored cache (or the "no saved copy" screen) renders instead.
+        // Online this changes nothing: with a connection both modes fetch.
+        networkMode: "offlineFirst",
+        retry: (failureCount, _error) => {
+          // ...but 'offlineFirst' only ungates the FIRST attempt; retries pause
+          // again while offline, which puts the spinner right back. When the
+          // device says it has no network, don't retry at all. Online, this is
+          // React Query's own default of three attempts.
+          if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+          return failureCount < 3;
+        },
+      },
+      // Mutations are deliberately left on the default networkMode: field
+      // writes already queue in IndexedDB (lib/offline/queue.ts), and money
+      // actions must not fire optimistically off a dead connection.
+    },
+  });
 
   const router = createRouter({
     routeTree,

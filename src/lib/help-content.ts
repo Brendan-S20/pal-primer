@@ -241,7 +241,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: "Texting: setup, consent, and STOP",
     section: "Communications",
     body: [
-      "HoundStack texts fall into two buckets. **Automated notifications** (visit reminders, on-my-way, completed, review asks) and portal login codes go out through the platform sender. **Two-way conversations** with clients use your own Twilio account, connected in [SMS settings](/settings/sms).",
+      // IMP-9: this told customers two-way texting ran on "your own Twilio
+      // account, connected in SMS settings". Both halves are retired — there is
+      // no account to bring and no form to connect it in.
+      "HoundStack texts fall into two buckets. **Automated notifications** (visit reminders, on-my-way, completed, review asks) and portal login codes go out through the platform sender. **Two-way conversations** with clients run on a HoundStack-managed number provisioned for your organization — there is no Twilio account to connect and no carrier registration for you to file. Conversational texting is pending US carrier (10DLC) registration; [SMS settings](/settings/sms) shows its current state.",
       "Every text includes opt-out instructions, and a client who replies STOP is blocked from further texts automatically. Consent details live in the public [SMS policy](/legal/sms).",
       "Pick which automated texts go out in [SMS settings](/settings/sms); per-client opt-outs show on the client's page.",
     ],

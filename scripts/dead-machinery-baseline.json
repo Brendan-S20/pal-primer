@@ -1,0 +1,46 @@
+{
+  "_readme": [
+    "IMP-11. Exceptions to check-dead-machinery.mjs, each with a reason someone",
+    "can evaluate later. This is a record of decisions, not a mute button.",
+    "",
+    "A reason beginning with 'KNOWN GAP' means the thing genuinely is not wired",
+    "up yet. Those are counted and reported separately on every run, so unfinished",
+    "work stays visible in the check's own output instead of being silenced by",
+    "being written down. Clear them by wiring the thing up, not by editing the",
+    "reason.",
+    "",
+    "The gap count jumped on 2026-07-31. It was not a new outbreak: rule 1 was",
+    "counting TypeScript COMMENTS as callers and rule 3 could not fire at all.",
+    "Everything added that day was already in this state and invisible, and each",
+    "entry was checked against the live database before being written down.",
+    "",
+    "A fourth group, function_overloads, was added on 2026-07-31. Postgres",
+    "identifies a function by name AND argument types, so one name can be two",
+    "functions — skip_visit was, for a month, and rule 1 could not see the dead",
+    "one because the live one had callers. An entry here means an overload set is",
+    "deliberate and says which signatures are meant. There are none today."
+  ],
+  "uncalled_rpcs": {
+    "is_visit_tech": "Verified in the live database: used by the storage RLS policy 'assigned tech uploads visit photo files' on storage.objects. Policies from the consolidated bootstrap dump are not files in supabase/migrations, so the scanner cannot see them."
+  },
+  "endpoint_callers": {
+    "src/routes/api/public/hooks/nightly.ts": "pg_cron job 'nightly-automation', 0 9 * * * — verified in cron.job.",
+    "src/routes/api/public/hooks/weekly-digest.ts": "pg_cron job 'weekly-digest', 0 13 * * 1 — created by 20260731130000, verified in cron.job.",
+    "src/routes/email/queue/process.ts": "pg_cron job 'process-email-queue', * * * * * — verified in cron.job.",
+    "src/routes/api/public/hooks/announcement-emails.ts": "Deliberately unscheduled, and no longer unreachable. The 120-line send moved to lib/announcement-emails.server, which a platform admin now invokes per announcement from /platform/announcements — so an announcement marked send_email actually gets sent, which it never did before. This endpoint stays as the shape a scheduler needs if the owner ever wants one; scheduling platform-wide outbound email is their decision, not a cleanup task. Both callers share a per-recipient idempotency key, so adding a cron later cannot double-send.",
+    "src/routes/api/public/hooks/stripe.ts": "Stripe Connect webhook endpoint. Called by Stripe on tenant payment events.",
+    "src/routes/api/public/hooks/platform-stripe.ts": "Stripe platform webhook endpoint, for HoundStack's own SaaS billing (bucket A).",
+    "src/routes/api/public/hooks/twilio.ts": "Twilio inbound-SMS webhook.",
+    "src/routes/api/public/hooks/twilio-voice.ts": "Twilio inbound-voice webhook.",
+    "src/routes/api/public/hooks/qbo-callback.ts": "QuickBooks OAuth redirect target — the browser lands here after a tenant authorizes.",
+    "src/routes/api/public/hooks/xero-callback.ts": "Xero OAuth redirect target.",
+    "src/routes/api/public/leads.ts": "Public lead-capture form, embedded on tenant websites. Called by a browser from outside the app.",
+    "src/routes/api/public/verify-email.ts": "Target of the verification link in a signup email.",
+    "src/routes/email/auth/webhook.ts": "Supabase Auth send-email hook — Supabase calls this to render auth mail.",
+    "src/routes/email/transactional/send.ts": "Server-to-server send path, called by the app's own notification code rather than imported.",
+    "src/routes/email/unsubscribe.ts": "Target of the List-Unsubscribe header and the footer link in every marketing email.",
+    "src/routes/email/suppression.ts": "Provider bounce/complaint webhook — writes the suppression list."
+  },
+  "write_only_columns": {},
+  "function_overloads": {}
+}

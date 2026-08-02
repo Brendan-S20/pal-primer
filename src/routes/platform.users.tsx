@@ -32,6 +32,7 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { humanizeRole } from "@/lib/humanize";
 import { Copy, KeyRound, Loader2, ShieldOff, Users } from "lucide-react";
+import { humanizeEnum } from "@/lib/humanize";
 
 export const Route = createFileRoute("/platform/users")({
   component: UsersPage,
@@ -390,7 +391,10 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
                     <li key={f.id} className="flex items-center gap-2">
                       <Badge variant="secondary" className="uppercase">{f.factor_type}</Badge>
                       <span>{f.friendly_name ?? "Unnamed factor"}</span>
-                      <span className="text-xs text-muted-foreground">({f.status})</span>
+                      {/* BUG-4: raw MFA factor status enum. */}
+                      <span className="text-xs text-muted-foreground">
+                        ({humanizeEnum(f.status)})
+                      </span>
                     </li>
                   ))}
                 </ul>

@@ -10,6 +10,9 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# BUILD-9: output of `build:native` — the bundled shell Capacitor loads.
+# Build artefact, 8MB+, regenerated every build; never committed.
+dist-native
 .output
 .vinxi
 .tanstack/**
@@ -30,3 +33,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Secrets. .env was TRACKED and committed (4bcc94c) with no ignore rule —
+# one `git add -A` away from pushing a service_role key, which bypasses every
+# RLS policy in the database. Untracked in this commit; use .env.example.
+.env
+.env.local
+.env.*.local

@@ -3,17 +3,6 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { fetchPlatformSaasMetrics } from "@/lib/platform-metrics.server";
 
-export type PlatformOrgRow = {
-  organization_id: string;
-  organization_name: string;
-  billing_tier: string | null;
-  plan_status: string | null;
-  active_clients: number;
-  users_count: number;
-  revenue_mtd_cents: number;
-  ar_open_cents: number;
-  created_at: string;
-};
 
 async function assertPlatformAdmin(supabase: any, userId: string) {
   const { data, error } = await supabase.rpc("is_platform_admin", { _user_id: userId });
@@ -29,15 +18,6 @@ export const getPlatformContext = createServerFn({ method: "GET" })
     });
     if (error) throw new Error(error.message);
     return { isPlatformAdmin: !!data };
-  });
-
-export const getPlatformStats = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    await assertPlatformAdmin(context.supabase, context.userId);
-    const { data, error } = await context.supabase.rpc("platform_org_stats");
-    if (error) throw new Error(error.message);
-    return { rows: (data ?? []) as PlatformOrgRow[] };
   });
 
 const updatePlanSchema = z.object({
@@ -214,9 +194,7 @@ export const startImpersonation = createServerFn({ method: "POST" })
     if (!email) throw new Error("Target user has no email.");
 
     const token = randomBytes(32).toString("hex");
-    // impersonation_grants is added by the finding-#5 migration; generated
-    // Supabase types lag until Lovable regenerates them, so talk to it untyped.
-    const { error: insErr } = await (supabaseAdmin as any).from("impersonation_grants").insert({
+    const { error: insErr } = await supabaseAdmin.from("impersonation_grants").insert({
       token_hash: sha256(token),
       organization_id: data.organization_id,
       target_user_id: data.target_user_id,
@@ -252,10 +230,15 @@ export const consumeImpersonation = createServerFn({ method: "POST" })
     const nowIso = new Date().toISOString();
 
     // Atomically claim the grant: only succeeds if unconsumed and unexpired.
-    // (Untyped: generated types lag the finding-#5 migration.)
-    const { data: grant, error: claimErr } = await (supabaseAdmin as any)
+    // BUG-2: stamp the SESSION's own window at the same moment the grant is
+    // claimed. `expires_at` bounds only the click-through link; without this
+    // the minted session refreshed itself forever and then failed silently.
+    const { IMPERSONATION_SESSION_TTL_MS } = await import("@/lib/impersonation-session.shared");
+    const sessionExpiresAt = new Date(Date.now() + IMPERSONATION_SESSION_TTL_MS).toISOString();
+
+    const { data: grant, error: claimErr } = await supabaseAdmin
       .from("impersonation_grants")
-      .update({ consumed_at: nowIso })
+      .update({ consumed_at: nowIso, session_expires_at: sessionExpiresAt })
       .eq("token_hash", sha256(data.token))
       .is("consumed_at", null)
       .gte("expires_at", nowIso)
@@ -304,7 +287,7 @@ export const consumeImpersonation = createServerFn({ method: "POST" })
       const { sessionIdFromAuthHeader } = await import("@/lib/impersonation-marker");
       const authSessionId = sessionIdFromAuthHeader(`Bearer ${session.access_token}`);
       if (authSessionId) {
-        await (supabaseAdmin as any)
+        await supabaseAdmin
           .from("impersonation_grants")
           .update({ auth_session_id: authSessionId })
           .eq("id", grant.id);
@@ -337,6 +320,15 @@ export const consumeImpersonation = createServerFn({ method: "POST" })
       // audit loop with a stop event + duration (H2).
       grantId: grant.id as string,
       startedAt: nowIso,
+      // BUG-2: the tab counts down to this and shows an explicit ended state.
+      // The server enforces the same window independently (resolveCaller), so
+      // a tampered client buys nothing.
+      sessionExpiresAt,
+      // Re-impersonating after expiry needs a NEW grant, which only the
+      // platform-admin console can mint — the tab carries these so it can ask
+      // its opener to do so with one click.
+      organizationId: grant.organization_id as string,
+      targetUserId: grant.target_user_id as string,
     };
   });
 
@@ -360,7 +352,7 @@ export const endImpersonationSession = createServerFn({ method: "POST" })
     // owned by the calling impersonated session), so a stranger can't end
     // someone else's grant or forge a stop event, and concurrent/duplicate
     // exits produce a single stop event.
-    const { data: grant, error } = await (supabaseAdmin as any)
+    const { data: grant, error } = await supabaseAdmin
       .from("impersonation_grants")
       .update({ ended_at: nowIso })
       .eq("id", data.grantId)
@@ -491,6 +483,11 @@ export const getPlatformRevenueTrend = createServerFn({ method: "GET" })
       // by how much they collect from their own clients.
       topOrgs: saas.perOrg.slice(0, 5).map((o) => ({ id: o.id, name: o.name, revenue_cents: o.mrr_cents })),
       mrrCents: saas.mrrCents,
+      // BUG-11: MRR now includes recurring add-ons. The split rides along so
+      // the console can show where the number comes from — an MRR that jumped
+      // with no explanation would just be a different kind of wrong.
+      planMrrCents: saas.planMrrCents,
+      addonMrrCents: saas.addonMrrCents,
       arrEstimateCents: saas.arrCents,
       collectedMtdCents,
       arOpenCents: ar_open_cents,

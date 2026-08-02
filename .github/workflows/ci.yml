@@ -1,0 +1,141 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # The migration check reflects the state of the LIVE DATABASE, not of this
+  # commit, so it can go stale (or newly pass) without anyone pushing anything.
+  # Manual runs let you re-check after applying migrations, without inventing a
+  # commit to trigger CI.
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, lint, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # npm, not bun: package-lock.json resolves to the public registry, which
+      # is reachable from CI.
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # `npm test` is `vitest run` — the whole suite, discovered.
+      #
+      # It used to be a hand-typed list of 48 filenames in package.json, and on
+      # 2026-07-31 there were 52 test files. The four that had never been added
+      # to the list had never run in CI, and one of them
+      # (stripe-connect.server.test.ts) had been failing since BUILD-6 changed
+      # the return shape it asserts on. CI was green the whole time, because a
+      # test file CI does not name is a test file CI cannot fail on.
+      #
+      # Do not reintroduce a list. If a test must be excluded, exclude it in
+      # vitest.config.ts where the exclusion is visible next to the discovery,
+      # not by omitting a filename nobody will notice is missing.
+      #
+      # The three tests/integration/*.db.test.ts files self-skip unless
+      # TEST_SUPABASE_URL / _ANON_KEY / _SERVICE_KEY are set, which this step
+      # deliberately does not set.
+      - name: Tests
+        run: npm test
+
+      # The app was never BUILT in CI — only type-checked. Two things went
+      # unwatched because of it:
+      #
+      #   * `tsc --noEmit` does not run Vite, so a build-breaking change (a bad
+      #     plugin config, an SSR-only import pulled into a client file, a
+      #     failed Nitro preset) passed CI and would have surfaced at deploy.
+      #
+      #   * scripts/check-pwa-output.mjs is wired into `npm run build`, and it
+      #     exists because /sw.js 404'd in production for the entire life of the
+      #     PWA (BUG-41). It asserts against build OUTPUT, which is the only
+      #     place those defects are visible. With no build step it had never run
+      #     automatically once — a check written to stop a regression, that
+      #     nothing invoked. It also skips silently when there is no output, so
+      #     it could never have complained about its own absence.
+      #
+      # ~40s. Runs after the tests so a broken build is not the first thing a
+      # reviewer sees when the real failure is a unit test.
+      - name: Build (and verify the service worker is real)
+        run: npm run build
+
+      # IMP-11: catches the failure this project keeps producing — something
+      # built, granted and correct that nothing ever calls. Six instances in one
+      # cycle, every one invisible to tests and types because an uncalled
+      # function is perfectly well-typed and passes every test written for it.
+      #
+      # A HARD gate, unlike lint: it starts green (every existing exception is
+      # recorded in scripts/dead-machinery-baseline.json with its reason), so a
+      # failure means something NEW was added and left unwired. It also prints
+      # the known gaps on every run, green or not, so recorded debt stays visible
+      # instead of disappearing the moment it is written down.
+      - name: Dead machinery
+        run: npm run check:dead-machinery
+
+      # Non-blocking: the repo carries pre-existing formatting drift that is not
+      # this workflow's job to gate on. Kept visible so it doesn't grow unseen.
+      - name: Lint
+        run: npx eslint .
+        continue-on-error: true
+
+  migrations:
+    name: Migrations applied to the live database
+    runs-on: ubuntu-latest
+    # IMP-2: a production incident already came from "migrations never applied
+    # to the live DB". The codebase can be entirely correct while prod runs old
+    # schema, and nothing surfaces it until a query fails in front of a
+    # customer. This is the loud check.
+    #
+    # It runs on pull requests as a warning and on main as a hard gate: a PR
+    # legitimately contains migrations that have not been applied yet, whereas
+    # code landing on main must not depend on schema production lacks.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check repo migrations against the database
+        # psql ships on ubuntu-latest runners.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not set — the migration drift check cannot run."
+            echo "Add it in repo Settings → Secrets → Actions. Until then this job fails by design:"
+            echo "a check that silently passes without checking anything is the failure mode IMP-2 exists to remove."
+            exit 1
+          fi
+          node scripts/check-migrations.mjs
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+
+      - name: Check the database against the repo migrations
+        # The other direction. The step above asks "did production run
+        # everything the repo has"; this asks "does production have something
+        # the repo never wrote". Three functions had drifted in that direction
+        # undetected, one of them a SECURITY DEFINER routine reachable from a
+        # shipped screen — invisible until an environment gets rebuilt from the
+        # repo and it simply is not there.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not set — the undeclared-schema check cannot run."
+            exit 1
+          fi
+          node scripts/check-schema-declared.mjs
+        continue-on-error: ${{ github.event_name == 'pull_request' }}

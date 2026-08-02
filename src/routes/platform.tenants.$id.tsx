@@ -11,7 +11,7 @@ import {
   type TenantDetail, type TenantNote, type TenantFlagRow, type TenantInvoiceRow, type TenantAuditRow,
 } from "@/lib/platform-tenant.functions";
 import { startImpersonation } from "@/lib/platform.functions";
-import { IMPERSONATION_WINDOW_PREFIX } from "@/integrations/supabase/client";
+import { launchImpersonationTab } from "@/lib/impersonation-launch";
 import { humanizeRole } from "@/lib/humanize";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -123,25 +123,11 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
   });
   const [impersonateUser, setImpersonateUser] = useState<string>("");
   const impersonateM = useMutation({
-    mutationFn: (targetUserId: string) => {
-      // Open the tab SYNCHRONOUSLY inside the click handler (before the await)
-      // so the browser doesn't treat it as a popup, and stamp its window.name
-      // so the loaded app scopes its session to sessionStorage (finding #5).
-      const winName = `${IMPERSONATION_WINDOW_PREFIX}${crypto.randomUUID()}`;
-      const win = window.open("about:blank", winName);
-      return impersonateFn({ data: { organization_id: t.id, target_user_id: targetUserId } })
-        .then((res) => {
-          if (!win) {
-            throw new Error("Pop-up blocked. Allow pop-ups for this site and try again.");
-          }
-          win.location.href = `/impersonate#t=${encodeURIComponent(res.token)}`;
-          return res;
-        })
-        .catch((e) => {
-          try { win?.close(); } catch { /* noop */ }
-          throw e;
-        });
-    },
+    mutationFn: (targetUserId: string) =>
+      launchImpersonationTab(impersonateFn as never, {
+        organizationId: t.id,
+        targetUserId,
+      }),
     onSuccess: (res) => {
       toast.success(`Impersonating ${res.targetEmail} in a new tab`);
       setImpersonateUser("");

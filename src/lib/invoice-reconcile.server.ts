@@ -35,8 +35,13 @@ export async function markInvoicePaidFromStripe(
   if (!claimed || claimed.length === 0) return false;
   const clientId = (claimed[0] as { client_id: string | null }).client_id;
 
+  // BUILD-6: record WHICH account took this money, at the moment it was taken.
+  const { collectingOrgIdFor } = await import("@/lib/stripe-connect.server");
+  const collectedBy = await collectingOrgIdFor(args.organizationId);
+
   await supabaseAdmin.from("payments").insert({
     organization_id: args.organizationId,
+    collected_by_organization_id: collectedBy,
     invoice_id: args.invoiceId,
     amount_cents: args.amountCents,
     currency: args.currency,

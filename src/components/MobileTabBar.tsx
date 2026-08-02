@@ -11,8 +11,9 @@ import {
   Sun,
   Users,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { signOutAndClearDevice } from "@/lib/offline/read-cache";
 import { canAccess, useMyRole } from "@/hooks/useMyRole";
+import { useTabletTier } from "@/hooks/useTabletTier";
 import { NAV_GROUPS, type NavItem } from "@/components/AppSidebar";
 import { CreateSheet } from "@/components/CreateSheet";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -46,6 +47,10 @@ const tabClass = (active: boolean) =>
  */
 export function MobileTabBar() {
   const { role } = useMyRole();
+  // Q-2's tablet tier. A tech on a crew tablet keeps this bar through
+  // 768–1024px; an office user does not, because the dispatch board renders
+  // there and a bottom bar would sit on top of it. See useTabletTier.
+  const { barHiddenFrom } = useTabletTier();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   const search = useRouterState({ select: (r) => r.location.search }) as { date?: string };
@@ -68,7 +73,9 @@ export function MobileTabBar() {
   })).filter((g) => g.items.length > 0);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    // Wipes this device's persisted day along with the session: the next tech
+    // to unlock a shared tablet must not inherit the previous one's route.
+    await signOutAndClearDevice();
     window.location.href = "/auth";
   };
 
@@ -97,7 +104,7 @@ export function MobileTabBar() {
     <>
       <nav
         aria-label="Primary"
-        className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/80 md:hidden"
+        className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/80 ${barHiddenFrom}`}
       >
         {isTech ? (
           <ul className="grid grid-cols-3">
@@ -161,7 +168,7 @@ export function MobileTabBar() {
       <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
         <SheetContent
           side="bottom"
-          className="max-h-[80dvh] overflow-y-auto rounded-t-xl p-0 pb-[env(safe-area-inset-bottom)] md:hidden"
+          className={`max-h-[80dvh] overflow-y-auto rounded-t-xl p-0 pb-[env(safe-area-inset-bottom)] ${barHiddenFrom}`}
         >
           <SheetHeader className="border-b px-4 py-3 text-left">
             <SheetTitle className="text-base">More</SheetTitle>

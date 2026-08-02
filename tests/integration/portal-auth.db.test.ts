@@ -81,12 +81,43 @@ describe.skipIf(!enabled)("DB backstop for portal auth (finding #4)", () => {
     expect((data as any[])?.[0]?.client_id).toBe(clientId);
   });
 
-  it("portal_resolve_contact returns the contact for OTP delivery", async () => {
-    const { data, error } = await admin.rpc("portal_resolve_contact", { _token: portalToken });
+  // This case used to call portal_resolve_contact, dropped by
+  // 20260731200000. The BEHAVIOUR it covered — "a portal token resolves to the
+  // contact we send the OTP to, and only for an active client" — did not go
+  // away; it moved tiers. resolveContact() in src/lib/portal-auth.server.ts
+  // does it with the direct service-role SELECT below, which additionally
+  // carries the org branding (portal_slug / logo_url / brand_color) that the
+  // RPC could not return, and is why it was replaced. So the case is retargeted
+  // at the query the server now actually runs, spelled the same way it is
+  // spelled in the app.
+  it("a portal token resolves to the contact + org branding for OTP delivery", async () => {
+    const { data, error } = await admin
+      .from("clients")
+      .select(
+        "id, organization_id, display_name, primary_phone, primary_email, active, organizations(name, portal_slug, logo_url, brand_color)",
+      )
+      .eq("portal_token", portalToken)
+      .maybeSingle();
     expect(error).toBeNull();
-    const row = (data as any[])?.[0];
-    expect(row.client_id).toBe(clientId);
-    expect(row.primary_phone).toBe("+15125550123");
+    const row = data as any;
+    expect(row?.id).toBe(clientId);
+    expect(row?.active).toBe(true);
+    expect(row?.primary_phone).toBe("+15125550123");
+    const org = Array.isArray(row.organizations) ? row.organizations[0] : row.organizations;
+    expect(org?.name).toBe(`Portal Test Org ${runId}`);
+  });
+
+  // The RPC was revoked from anon (case 1 above proves that shape for the
+  // portal_* RPCs). Moving the resolution to a table read moves the exposure to
+  // RLS on clients, so assert the hole did not reopen at the new location: the
+  // publishable key must not be able to turn a portal token into a name, phone
+  // and email.
+  it("anon cannot resolve a portal token to a contact", async () => {
+    const { data } = await anon
+      .from("clients")
+      .select("id, primary_phone, primary_email")
+      .eq("portal_token", portalToken);
+    expect((data ?? []).length).toBe(0);
   });
 
   // ── 3. regenerate_portal_token rotates + revokes sessions ─────────────────

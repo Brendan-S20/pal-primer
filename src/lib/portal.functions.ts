@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { liveServiceOrFilter, todayLocalISO } from "@/lib/subscription-form";
 
 // portal-auth.server.ts imports server-only @tanstack/react-start/server, which
 // is denied in the client bundle. This file (a *.functions.ts) is reachable
@@ -343,11 +344,23 @@ export const portalSelfServeOptions = createServerFn({ method: "GET" })
         .select("portal_allow_vacation_hold, portal_allow_frequency_change, portal_auto_apply_changes")
         .eq("id", session.organizationId)
         .maybeSingle(),
+      // "Your plan" has to be the client's STANDING plan.
+      //
+      // status='active' alone picked up services the tenant had ended (this
+      // schema records ending in ends_on, not status) and — once one-off
+      // bookings existed — a finished single call-out, because it is the
+      // newest-started active row. The customer would then see "One time" as
+      // their plan, and the subscriptionId handed to portalChangeFrequency was
+      // that dead one-off: switching to biweekly rewrote a completed call-out
+      // and left their real weekly service untouched, while the office got a
+      // review ticket about a service that does not exist.
       sb
         .from("subscriptions")
-        .select("id, frequency, status")
+        .select("id, frequency, status, ends_on")
         .eq("client_id", session.clientId)
         .eq("status", "active")
+        .neq("frequency", "one_time")
+        .or(liveServiceOrFilter(todayLocalISO()))
         .order("started_on", { ascending: false })
         .limit(1),
     ]);
@@ -379,9 +392,8 @@ export const portalChangeFrequency = createServerFn({ method: "POST" })
     });
     if (error) throw new Error(error.message);
     // 'applied' | 'requested' | 'unchanged' — 'requested' means auto-apply is
-    // off and the office got a structured review ticket instead (C4/G4). The
-    // generated RPC types lag the void -> text migration, hence the cast.
-    return { ok: true, status: (result as unknown as string) ?? "applied" };
+    // off and the office got a structured review ticket instead (C4/G4).
+    return { ok: true, status: result ?? "applied" };
   });
 
 export const portalListAddonCatalog = createServerFn({ method: "GET" })

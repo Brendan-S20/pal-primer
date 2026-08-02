@@ -27,13 +27,14 @@ import {
 } from "@/lib/my-day.functions";
 import { listAddonServices, createAddonCharge } from "@/lib/addons.functions";
 import { getVisitStations, logStationService } from "@/lib/stations.functions";
+import { logDnaSampleFromField } from "@/lib/dna.functions";
 import { sendVisitStatusSms } from "@/lib/messages.functions";
 import { SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
 import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
 import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { syncQueue } from "@/lib/offline/sync";
-import { countPendingForVisit } from "@/lib/offline/queue";
-import { saveMyDaySnapshot, loadMyDaySnapshot } from "@/lib/offline/myDayCache";
+import { countPendingForVisit, countQueuedCompletionPhotos } from "@/lib/offline/queue";
+import { describeReadFreshness, formatCacheAge } from "@/lib/offline/read-cache-policy";
 import { toast } from "sonner";
 import {
   Navigation,
@@ -52,6 +53,7 @@ import { haptic } from "@/lib/haptics";
 import { useMyRole } from "@/hooks/useMyRole";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
+import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   // Honor ?date=YYYY-MM-DD deep-links (notifications, bookmarks) instead of
@@ -69,6 +71,11 @@ export const Route = createFileRoute("/_authenticated/my-day")({
   },
   component: MyDay,
 });
+
+// When this app instance started. Anything in the query cache whose
+// dataUpdatedAt predates it was restored from the device rather than fetched
+// now — that is what separates "today's route" from "the copy on disk".
+const SESSION_STARTED_AT = Date.now();
 
 function todayISO() {
   const d = new Date();
@@ -136,35 +143,63 @@ function MyDay() {
   const fn = useServerFn(getMyDay);
   const qc = useQueryClient();
   const online = useOnline();
+  // "Saved 4 hr ago" has to keep counting while a tech sits in a dead zone —
+  // a frozen age reads as if the app just refreshed.
+  //
+  // QA-P1: this used to STORE `Date.now()` and pass the stored value to
+  // describeReadFreshness. Between ticks it was up to 60 seconds behind, so
+  // data fetched after mount had a NEGATIVE age against it — and a negative
+  // age is precisely what that function reads as `clockSuspect`, its guard
+  // against a device whose clock has stepped backward. The result was the
+  // escalated red "this route may have changed — confirm before driving it"
+  // banner firing against correct, live, just-fetched data, for the first
+  // minute of every single load.
+  //
+  // The guard is right; it was being fed a clock reading it had no way to know
+  // was stale. So the interval now only forces a re-render, and the clock is
+  // read at render — there is no stored `now` left to go stale.
+  //
+  // It matters more than a cosmetic wrong banner. That warning is the app
+  // telling a tech standing at a customer's fence not to trust what is on the
+  // screen. Firing it on every load is how it stops being read at all, and
+  // the one time the route really has changed is the time it is ignored.
+  const [, forceAgeRepaint] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => forceAgeRepaint((n) => n + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
   const pending = usePendingCount();
   const { t } = useTranslation();
   const { role } = useMyRole();
   const isOfficeRole = role === "owner" || role === "office_manager" || role === "dispatcher";
 
   const {
-    data: liveData,
+    data,
     isLoading,
     isError,
+    dataUpdatedAt,
     refetch,
   } = useQuery({
     queryKey: ["my-day", day, staffParam ?? ""],
     queryFn: () => fn({ data: staffParam ? { day, staffId: staffParam } : { day } }),
   });
 
-  // Mobile Phase 3 offline hardening: persist the last good getMyDay response
-  // per (day, staff) and serve it read-only when the fetch fails (dead zone).
-  // Visit actions still queue through the existing IndexedDB path; money
-  // actions remain online-only.
-  useEffect(() => {
-    if (liveData) saveMyDaySnapshot(day, staffParam ?? null, liveData);
-  }, [liveData, day, staffParam]);
-  const snapshot = useMemo(
-    () =>
-      isError && !liveData ? loadMyDaySnapshot<typeof liveData>(day, staffParam ?? null) : null,
-    [isError, liveData, day, staffParam],
-  );
-  const data = liveData ?? snapshot?.data;
-  const servingSnapshot = !liveData && !!snapshot?.data;
+  // Mobile Phase 3 offline hardening: this response is one of the few written
+  // to the device (lib/offline/read-cache-policy.ts) and restored on launch, so
+  // `data` here can be a copy fetched hours ago. Whether that is what the tech
+  // is looking at right now is not something they can be left to guess — a
+  // silently stale route is how someone drives to yesterday's houses.
+  const freshness = describeReadFreshness({
+    hasData: !!data,
+    dataUpdatedAt,
+    isError,
+    online,
+    // `now` is deliberately NOT passed. It defaults to a live Date.now()
+    // inside describeReadFreshness — see the note on that parameter, and on
+    // forceAgeRepaint above, for why a stored clock reading here produced a
+    // red warning against correct data.
+    sessionStartedAt: SESSION_STARTED_AT,
+  });
   const previewing = !!data?.previewing;
 
   // Office/dispatch users: fetch the field-staff list so we can show a picker.
@@ -193,9 +228,31 @@ function MyDay() {
   );
 
   const runSync = useCallback(async () => {
-    const res = await syncQueue(callers);
+    // Replay only the signed-in tech's own queued work — see lib/offline/queue.
+    const { data: sess } = await supabase.auth.getSession();
+    const uid = sess.session?.user?.id;
+    if (!uid) return;
+    const res = await syncQueue(callers, uid);
     if (res.succeeded > 0) {
       toast.success(`Synced ${res.succeeded} queued action${res.succeeded === 1 ? "" : "s"}`);
+      qc.invalidateQueries({ queryKey: ["my-day"] });
+    }
+    if (res.dropped > 0) {
+      // Never folded into the success count: this is a photo whose bytes are
+      // gone, and the tech is the only person who can retake it.
+      toast.error(
+        `${res.dropped} queued photo${res.dropped === 1 ? "" : "s"} could not be recovered from this device — retake if the visit still needs one`,
+      );
+      qc.invalidateQueries({ queryKey: ["my-day"] });
+    }
+    if (res.deadLettered > 0) {
+      // Loud, specific, and never folded into any other count. The queue was
+      // blocking everything behind this; giving up unblocks the day, but the
+      // work itself is gone and only the tech can redo it.
+      toast.error(
+        `${res.deadLettered} queued action${res.deadLettered === 1 ? "" : "s"} the server kept refusing ${res.deadLettered === 1 ? "has" : "have"} been discarded so the rest could sync — check the visit and redo it if needed`,
+        { duration: 12_000 },
+      );
       qc.invalidateQueries({ queryKey: ["my-day"] });
     }
     if (res.failed > 0) {
@@ -221,7 +278,30 @@ function MyDay() {
   const skippedCount = visits.filter((v: any) => v.status === "skipped").length;
   const total = visits.length;
   const pct = total > 0 ? Math.round((completedCount / total) * 100) : 0;
-  const nextUp = visits.find((v: any) => v.status === "scheduled" || v.status === "in_progress");
+  // BUG-17: a visit the tech has already STARTED outranks anything merely
+  // scheduled. The previous single `.find()` returned whichever came first in
+  // sequence, so a tech who started #3 while #1 and #2 were still scheduled got
+  // pointed at #1 — their open job wasn't surfaced anywhere. Reloading the app
+  // (or a phone dropping the tab) has to bring them back to the job in hand.
+  const activeVisit = visits.find((v: any) => v.status === "in_progress");
+  const nextUp = activeVisit ?? visits.find((v: any) => v.status === "scheduled");
+
+  // ...and bring it back on screen without the tech hunting for it. Scrolls
+  // once per open visit, not on every render, so it never fights a tech who has
+  // deliberately scrolled elsewhere. Guarded on the id so re-renders and
+  // background refetches don't yank the viewport back.
+  const activeVisitId = activeVisit?.id as string | undefined;
+  useEffect(() => {
+    if (!activeVisitId) return;
+    // The list renders after this effect's first run on a cold load, so wait a
+    // frame for the anchor to exist rather than querying a DOM that isn't there.
+    const raf = requestAnimationFrame(() => {
+      document
+        .getElementById(`visit-${activeVisitId}`)
+        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [activeVisitId]);
 
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
 
@@ -243,6 +323,10 @@ function MyDay() {
 
   return (
     <div className="-mx-4 -my-6 pb-[calc(7rem+env(safe-area-inset-bottom))] max-md:pb-[calc(10.5rem+env(safe-area-inset-bottom))]">
+      {/* BUILD-11: a visit started on an earlier day (or before today's workday
+          ended) that was never closed. Asks the tech what happened rather than
+          guessing — nothing here completes anything on its own. */}
+      <CloseOutOpenVisits />
       {/* Sticky, blurred top bar — feels like a native nav */}
       <div
         className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60"
@@ -278,28 +362,51 @@ function MyDay() {
             </div>
           )}
 
-          {/* Read-only offline fallback (Phase 3): the fetch failed but a prior
-              successful response for this day is cached on-device. */}
-          {servingSnapshot && snapshot && (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-2.5 text-sm text-amber-700 dark:text-amber-400 animate-fade-in">
-              <div className="flex items-center gap-2">
-                <WifiOff className="h-4 w-4 shrink-0" />
-                <span className="font-medium">
-                  Offline — showing last synced{" "}
-                  {new Date(snapshot.ts).toLocaleString(undefined, {
+          {/* Read-only offline fallback (Phase 3): what is on screen was not
+              fetched just now — either the device is offline or the refresh
+              failed — so it is labelled with WHEN it was fetched. Past the
+              trust horizon the wording escalates from "saved copy" to a
+              warning, because a route that old has probably been re-sequenced
+              and driving off it sends the tech to the wrong houses. */}
+          {freshness?.status === "cached" && (
+            <div
+              className={`flex items-center justify-between gap-3 rounded-lg border p-2.5 text-sm animate-fade-in ${
+                freshness.beyondTrustHorizon
+                  ? "border-destructive/50 bg-destructive/10 text-destructive"
+                  : "border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+              }`}
+            >
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  {online ? (
+                    <RefreshCw className="h-4 w-4 shrink-0" />
+                  ) : (
+                    <WifiOff className="h-4 w-4 shrink-0" />
+                  )}
+                  <span className="font-medium">
+                    {online ? "Couldn't refresh" : "Offline"} — saved copy,{" "}
+                    {formatCacheAge(freshness.ageMs)}
+                  </span>
+                </div>
+                <div className="pl-6 text-xs opacity-90">
+                  Last updated{" "}
+                  {new Date(freshness.fetchedAt).toLocaleString(undefined, {
                     month: "short",
                     day: "numeric",
                     hour: "numeric",
                     minute: "2-digit",
                   })}
-                </span>
+                  {freshness.beyondTrustHorizon
+                    ? " — this route may have changed. Confirm before driving it."
+                    : ""}
+                </div>
               </div>
               <button
                 onClick={() => {
                   haptic("tap");
                   refetch();
                 }}
-                className="inline-flex min-h-9 items-center gap-1 rounded-md border border-current px-3 py-1 text-xs font-medium active:scale-95 transition-transform"
+                className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md border border-current px-3 py-1 text-xs font-medium active:scale-95 transition-transform"
               >
                 <RefreshCw className="h-3 w-3" /> Retry
               </button>
@@ -482,13 +589,19 @@ function MyDay() {
             className="mx-auto flex max-w-lg items-center justify-between gap-3 px-4 py-3 active:opacity-70"
           >
             <div className="min-w-0">
-              <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                {t("myDay.nextUp")} · #{nextUp.sequence ?? ""}
+              {/* BUG-17: an open job is not "next up" — saying so invites the
+                  tech to start a second visit on top of one already running. */}
+              <div
+                className={`text-[10px] font-medium uppercase tracking-wide ${
+                  activeVisit ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"
+                }`}
+              >
+                {activeVisit ? t("myDay.inProgress") : t("myDay.nextUp")} · #{nextUp.sequence ?? ""}
               </div>
               <div className="truncate text-sm font-semibold">{nextUp.clients?.display_name}</div>
             </div>
             <div className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-md">
-              {t("myDay.jump")} <ArrowDown className="h-4 w-4" />
+              {activeVisit ? t("myDay.resume") : t("myDay.jump")} <ArrowDown className="h-4 w-4" />
             </div>
           </a>
         </div>
@@ -727,10 +840,22 @@ function VisitCard({
   const canPerformVisit = !preview && role !== "dispatcher";
 
   const actions = useOfflineVisitActions(visit.id, visit.organization_id as string | undefined);
+  // Billing an add-on is the one action on this card that is NOT queued when
+  // the signal drops — start/complete/skip/photo all go to IndexedDB, this
+  // goes straight to the server. The tech has no way to know that, so the card
+  // has to say it. (Q-11 is whether it should queue at all; until that is
+  // answered, refusing honestly beats failing with a network error.)
+  const cardOnline = useOnline();
 
   const [showSkip, setShowSkip] = useState(false);
   const [showAddon, setShowAddon] = useState(false);
   const [showStations, setShowStations] = useState(false);
+  // Q-5. Only for clients the office has actually enrolled — a sample against
+  // a client who never opted in is a record nobody can act on and the client
+  // never agreed to. The server refuses it too; this keeps the button from
+  // appearing at all.
+  const [showDna, setShowDna] = useState(false);
+  const dnaEnrolled = !!visit.clients?.dna_compliance_enabled;
   const [addonSvcId, setAddonSvcId] = useState("");
   const [addonQty, setAddonQty] = useState("1");
   const addonListFn = useServerFn(listAddonServices);
@@ -765,6 +890,13 @@ function VisitCard({
   const [uploading, setUploading] = useState(false);
   const [photoKind, setPhotoKind] = useState<"before" | "completion" | "issue">("completion");
   const [pendingLocal, setPendingLocal] = useState(0);
+  // Counted SEPARATELY from pendingLocal. The Complete button is unlocked
+  // offline on the strength of a completion photo waiting to sync; it used to
+  // be gated on the count of ALL pending actions, so queueing a Start unlocked
+  // Complete. The server then refuses ("A completion photo is required"),
+  // which is not a network error, so the sync loop breaks on it and every
+  // action queued behind it stops for good.
+  const [queuedCompletionPhotos, setQueuedCompletionPhotos] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
 
   // Refresh per-visit pending count so cards can show a subtle "queued" chip.
@@ -772,6 +904,9 @@ function VisitCard({
     let cancelled = false;
     const refresh = () => {
       countPendingForVisit(visit.id).then((c) => !cancelled && setPendingLocal(c));
+      countQueuedCompletionPhotos(visit.id).then(
+        (c) => !cancelled && setQueuedCompletionPhotos(c),
+      );
     };
     refresh();
     window.addEventListener("offline-queue-change", refresh);
@@ -857,7 +992,7 @@ function VisitCard({
   const hasCompletionPhoto = photos.some((p: any) => p.kind === "completion");
   // If a completion photo is queued locally, allow "Complete" — the sync
   // driver replays photos first (older ts) then complete (newer ts).
-  const hasQueuedCompletionPhoto = pendingLocal > 0;
+  const hasQueuedCompletionPhoto = queuedCompletionPhotos > 0;
   const done = visit.status === "completed";
   const skipped = visit.status === "skipped";
   const inProg = visit.status === "in_progress";
@@ -1141,6 +1276,16 @@ function VisitCard({
                 Stations
               </Button>
             )}
+            {dnaEnrolled && canPerformVisit && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-11 px-4 sm:h-8 sm:px-3"
+                onClick={() => setShowDna((s) => !s)}
+              >
+                DNA sample
+              </Button>
+            )}
             {visit.clients?.primary_phone && (
               <>
                 <Button
@@ -1221,11 +1366,27 @@ function VisitCard({
               const totalCents = svc ? svc.unit_price_cents * qtyNum : 0;
               if (!addonServices.length) {
                 // An empty catalog used to leave a permanently-disabled Bill
-                // button with no explanation — say why instead.
+                // button with no explanation — say why instead. Two different
+                // reasons produce an empty list and they need different
+                // sentences: the price list is deliberately NOT persisted to
+                // the device (see read-cache-policy), so offline it is empty
+                // even when the office has a full catalog. Telling a tech at a
+                // fence with no bars that the office never set add-ons up
+                // sends them to complain about a setting that is already
+                // correct.
                 return (
                   <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-                    No add-on services are set up yet, so there's nothing to bill. Ask the office to
-                    add them under Settings → Add-ons.
+                    {cardOnline ? (
+                      <>
+                        No add-on services are set up yet, so there's nothing to bill. Ask the
+                        office to add them under Settings → Add-ons.
+                      </>
+                    ) : (
+                      <>
+                        You're offline, so the add-on price list isn't available. Note it on the
+                        visit and bill it when you have signal, or call the office.
+                      </>
+                    )}
                   </div>
                 );
               }
@@ -1263,7 +1424,7 @@ function VisitCard({
                         <Button
                           size="sm"
                           className="col-span-1"
-                          disabled={!addonSvcId || !svc || addonMut.isPending}
+                          disabled={!addonSvcId || !svc || addonMut.isPending || !cardOnline}
                         >
                           {addonMut.isPending ? "…" : "Bill"}
                         </Button>
@@ -1306,6 +1467,16 @@ function VisitCard({
                       Total: ${(totalCents / 100).toFixed(2)} at the catalog price
                     </p>
                   )}
+                  {!cardOnline && (
+                    // The list can still be on screen from a fetch made while
+                    // the signal was good; React Query keeps it in memory. So
+                    // the Bill button looks live, and pressing it used to fail
+                    // with a raw network error on a real charge.
+                    <p className="text-[11px] font-medium text-amber-600 dark:text-amber-500">
+                      You're offline. Unlike start, complete, skip and photos, an add-on charge is
+                      not queued — bill it when you have signal.
+                    </p>
+                  )}
                   <p className="text-[11px] text-muted-foreground">
                     Prepaid clients are debited immediately; postpaid clients see it on the next
                     invoice. Field charges are capped per charge and reviewed by the office;
@@ -1314,10 +1485,88 @@ function VisitCard({
                 </div>
               );
             })()}
+          {showDna && (
+            <DnaSamplePanel
+              visitId={visit.id}
+              hasUnits={!!p?.has_units}
+              onDone={() => setShowDna(false)}
+            />
+          )}
           {showStations && <StationsSubpanel visitId={visit.id} />}
         </div>
       )}
     </li>
+  );
+}
+
+/**
+ * Q-5: the tech-facing half of DNA compliance.
+ *
+ * It asks for what the tech can actually see standing in the yard — what kind
+ * of sample and where they found it — and nothing else. Whose dog it was and
+ * what it costs are office decisions, and the RPC behind this refuses to
+ * accept either, so there is no way for this panel to grow into them by
+ * accident.
+ */
+function DnaSamplePanel({
+  visitId,
+  hasUnits,
+  onDone,
+}: {
+  visitId: string;
+  hasUnits: boolean;
+  onDone: () => void;
+}) {
+  const logFn = useServerFn(logDnaSampleFromField);
+  const online = useOnline();
+  const [kind, setKind] = useState<"pile_sample" | "cheek_swab">("pile_sample");
+  const [where, setWhere] = useState("");
+  const mut = useMutation({
+    mutationFn: () =>
+      logFn({ data: { visitId, sampleKind: kind, locationNote: where.trim() || undefined } }),
+    onSuccess: () => {
+      toast.success("Sample logged. The office will send it to the lab.");
+      onDone();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <div className="mt-2 space-y-2 rounded-md border bg-muted/30 p-3">
+      <div className="text-xs font-medium text-muted-foreground">Log a DNA sample</div>
+      <div className="flex gap-2">
+        <select
+          className="h-9 flex-1 rounded-md border bg-background px-2 text-sm"
+          value={kind}
+          onChange={(e) => setKind(e.target.value as "pile_sample" | "cheek_swab")}
+        >
+          <option value="pile_sample">Waste sample</option>
+          <option value="cheek_swab">Cheek swab</option>
+        </select>
+      </div>
+      <input
+        className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+        maxLength={300}
+        placeholder={hasUnits ? "Where — e.g. by building C bins" : "Where — e.g. side yard"}
+        value={where}
+        onChange={(e) => setWhere(e.target.value)}
+      />
+      {!online && (
+        // Same honesty as the field add-on charge: this is not one of the
+        // queued actions, and a live-looking button that fails with a raw
+        // network error is worse than one that says why.
+        <p className="text-[11px] font-medium text-amber-600 dark:text-amber-500">
+          You're offline. A sample isn't queued like start, complete and photos — log it when you
+          have signal.
+        </p>
+      )}
+      <Button size="sm" disabled={mut.isPending || !online} onClick={() => mut.mutate()}>
+        {mut.isPending ? "Logging…" : "Log sample"}
+      </Button>
+      <p className="text-[11px] text-muted-foreground">
+        Goes to the office unmatched and unpriced — they decide whose dog it was.
+      </p>
+    </div>
   );
 }
 

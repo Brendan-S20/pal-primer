@@ -5,7 +5,15 @@
 // { stripeAccount } to the Connect platform client. Express uses Stripe-hosted
 // onboarding (Account Links); the tenant never shares an API key.
 
-export type OrgStripeAccount = { accountId: string; chargesEnabled: boolean };
+export type OrgStripeAccount = {
+  accountId: string;
+  chargesEnabled: boolean;
+  /** True when this is the FRANCHISE's account rather than the org's own —
+   *  BUILD-6. Callers that word errors or receipts need to know, because
+   *  "connect your Stripe account" is the wrong advice for a location whose
+   *  franchise collects on its behalf. */
+  collectedByParent: boolean;
+};
 
 export function connectSecret(): string {
   const s = process.env.STRIPE_CONNECT_SECRET_KEY;
@@ -27,17 +35,60 @@ export async function connectStripe() {
   return new Stripe(connectSecret());
 }
 
-/** The org's connected account, or null if it hasn't connected one. */
+/**
+ * The account a charge for this org should be made on.
+ *
+ * Normally the org's own connected account. BUILD-6 adds one exception: a
+ * franchise LOCATION whose `payments_collected_by_parent` is set charges into
+ * the FRANCHISE's account instead, because the owner's model is that the
+ * franchise collects and then remits the location's share.
+ *
+ * Resolved here, in the single funnel every charge site already passes through,
+ * rather than at each call site — there are several, and a location whose
+ * payments routed correctly from the invoice page but not from autopay would be
+ * a very expensive kind of inconsistent.
+ *
+ * One hop only, never a loop: the two-level rule means a parent has no parent,
+ * and this reads the parent's own columns directly rather than recursing.
+ */
 export async function resolveOrgStripeAccount(orgId: string): Promise<OrgStripeAccount | null> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data } = await (supabaseAdmin as any)
     .from("organizations")
-    .select("stripe_connect_account_id, stripe_connect_charges_enabled")
+    .select(
+      "stripe_connect_account_id, stripe_connect_charges_enabled, parent_organization_id, payments_collected_by_parent",
+    )
     .eq("id", orgId)
     .maybeSingle();
-  const accountId = data?.stripe_connect_account_id as string | null | undefined;
+  if (!data) return null;
+
+  if (data.payments_collected_by_parent && data.parent_organization_id) {
+    const { data: parent } = await (supabaseAdmin as any)
+      .from("organizations")
+      .select("stripe_connect_account_id, stripe_connect_charges_enabled")
+      .eq("id", data.parent_organization_id)
+      .maybeSingle();
+    const parentAccount = parent?.stripe_connect_account_id as string | null | undefined;
+    // Deliberately NO fallback to the location's own account. If the franchise
+    // is supposed to be collecting and its account is missing or broken, the
+    // charge must fail loudly — quietly billing the customer into the
+    // franchisee's account instead would put money in the wrong bank and be
+    // discovered at reconciliation, if ever.
+    if (!parentAccount) return null;
+    return {
+      accountId: parentAccount,
+      chargesEnabled: !!parent.stripe_connect_charges_enabled,
+      collectedByParent: true,
+    };
+  }
+
+  const accountId = data.stripe_connect_account_id as string | null | undefined;
   if (!accountId) return null;
-  return { accountId, chargesEnabled: !!data.stripe_connect_charges_enabled };
+  return {
+    accountId,
+    chargesEnabled: !!data.stripe_connect_charges_enabled,
+    collectedByParent: false,
+  };
 }
 
 /** For charge sites: require a charge-ready connected account or throw a clear
@@ -46,6 +97,20 @@ export async function resolveOrgStripeAccount(orgId: string): Promise<OrgStripeA
 export async function requireOrgStripeAccount(orgId: string): Promise<OrgStripeAccount> {
   const acct = await resolveOrgStripeAccount(orgId);
   if (!acct) {
+    // BUILD-6: for a location whose franchise collects, "connect your Stripe
+    // account" is advice the franchisee cannot act on — it is the franchise's
+    // account that is missing. Ask the right person.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: org } = await (supabaseAdmin as any)
+      .from("organizations")
+      .select("payments_collected_by_parent, parent_organization_id")
+      .eq("id", orgId)
+      .maybeSingle();
+    if (org?.payments_collected_by_parent && org?.parent_organization_id) {
+      throw new Error(
+        "Payments for this location are collected by your franchise, and their Stripe account isn't ready yet. Ask them to finish Stripe setup.",
+      );
+    }
     throw new Error("This business hasn't connected a Stripe account yet. Connect one in Settings → Payments.");
   }
   if (!acct.chargesEnabled) {
@@ -181,4 +246,32 @@ export function accountStateFrom(acct: {
   const chargesEnabled = !!acct.charges_enabled;
   const status = chargesEnabled ? "active" : (acct.details_submitted ? "restricted" : "pending");
   return { chargesEnabled, status };
+}
+
+/**
+ * Which organization's Stripe account will actually receive money charged for
+ * this org — recorded on each payment as it is taken (BUILD-6).
+ *
+ * Stamped at charge time rather than derived at settlement time, because
+ * routing can change. A location that switches to franchise-collection
+ * mid-month has revenue on both sides of the switch, and settling the whole
+ * period by whatever is true on the 1st would misattribute every payment taken
+ * under the old arrangement — in a calculation that decides who owes whom
+ * money.
+ *
+ * Only for money that actually moved through Stripe. Cash or a cheque handed to
+ * the location was collected BY the location whatever the routing says, so
+ * those call sites pass the org's own id directly instead of calling this.
+ */
+export async function collectingOrgIdFor(orgId: string): Promise<string> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data } = await (supabaseAdmin as any)
+    .from("organizations")
+    .select("parent_organization_id, payments_collected_by_parent")
+    .eq("id", orgId)
+    .maybeSingle();
+  if (data?.payments_collected_by_parent && data?.parent_organization_id) {
+    return data.parent_organization_id as string;
+  }
+  return orgId;
 }

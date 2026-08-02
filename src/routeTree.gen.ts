@@ -13,6 +13,7 @@ import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as PlatformRouteImport } from './routes/platform'
+import { Route as NoWorkspaceRouteImport } from './routes/no-workspace'
 import { Route as ImpersonateRouteImport } from './routes/impersonate'
 import { Route as GetStartedRouteImport } from './routes/get-started'
 import { Route as AuthRouteImport } from './routes/auth'
@@ -24,6 +25,7 @@ import { Route as SignupSuccessRouteImport } from './routes/signup.success'
 import { Route as SignupSlugRouteImport } from './routes/signup.$slug'
 import { Route as PortalSlugRouteImport } from './routes/portal.$slug'
 import { Route as PlatformUsersRouteImport } from './routes/platform.users'
+import { Route as PlatformSignalsRouteImport } from './routes/platform.signals'
 import { Route as PlatformRevenueRouteImport } from './routes/platform.revenue'
 import { Route as PlatformReferralsRouteImport } from './routes/platform.referrals'
 import { Route as PlatformPlansRouteImport } from './routes/platform.plans'
@@ -44,8 +46,10 @@ import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe
 import { Route as EmailSuppressionRouteImport } from './routes/email/suppression'
 import { Route as AuthenticatedZonesRouteImport } from './routes/_authenticated/zones'
 import { Route as AuthenticatedWasteLogRouteImport } from './routes/_authenticated/waste-log'
+import { Route as AuthenticatedTaxReportsRouteImport } from './routes/_authenticated/tax-reports'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedRoutesRouteImport } from './routes/_authenticated/routes'
+import { Route as AuthenticatedReviewRouteImport } from './routes/_authenticated/review'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedPaymentsRouteImport } from './routes/_authenticated/payments'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
@@ -59,6 +63,7 @@ import { Route as AuthenticatedInventoryRouteImport } from './routes/_authentica
 import { Route as AuthenticatedHelpRouteImport } from './routes/_authenticated/help'
 import { Route as AuthenticatedFranchiseRouteImport } from './routes/_authenticated/franchise'
 import { Route as AuthenticatedDnaRouteImport } from './routes/_authenticated/dna'
+import { Route as AuthenticatedDisputesRouteImport } from './routes/_authenticated/disputes'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedConcernsRouteImport } from './routes/_authenticated/concerns'
 import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated/clients'
@@ -92,6 +97,7 @@ import { Route as AuthenticatedSettingsPreferencesRouteImport } from './routes/_
 import { Route as AuthenticatedSettingsPaymentsRouteImport } from './routes/_authenticated/settings.payments'
 import { Route as AuthenticatedSettingsLeadFormRouteImport } from './routes/_authenticated/settings.lead-form'
 import { Route as AuthenticatedSettingsInvoicingRouteImport } from './routes/_authenticated/settings.invoicing'
+import { Route as AuthenticatedSettingsFranchiseRouteImport } from './routes/_authenticated/settings.franchise'
 import { Route as AuthenticatedSettingsEmailsRouteImport } from './routes/_authenticated/settings.emails'
 import { Route as AuthenticatedSettingsDeepCleanRouteImport } from './routes/_authenticated/settings.deep-clean'
 import { Route as AuthenticatedSettingsBlackoutsRouteImport } from './routes/_authenticated/settings.blackouts'
@@ -142,6 +148,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const PlatformRoute = PlatformRouteImport.update({
   id: '/platform',
   path: '/platform',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NoWorkspaceRoute = NoWorkspaceRouteImport.update({
+  id: '/no-workspace',
+  path: '/no-workspace',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ImpersonateRoute = ImpersonateRouteImport.update({
@@ -196,6 +207,11 @@ const PortalSlugRoute = PortalSlugRouteImport.update({
 const PlatformUsersRoute = PlatformUsersRouteImport.update({
   id: '/users',
   path: '/users',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformSignalsRoute = PlatformSignalsRouteImport.update({
+  id: '/signals',
+  path: '/signals',
   getParentRoute: () => PlatformRoute,
 } as any)
 const PlatformRevenueRoute = PlatformRevenueRouteImport.update({
@@ -298,6 +314,11 @@ const AuthenticatedWasteLogRoute = AuthenticatedWasteLogRouteImport.update({
   path: '/waste-log',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedTaxReportsRoute = AuthenticatedTaxReportsRouteImport.update({
+  id: '/tax-reports',
+  path: '/tax-reports',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -306,6 +327,11 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
 const AuthenticatedRoutesRoute = AuthenticatedRoutesRouteImport.update({
   id: '/routes',
   path: '/routes',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedReviewRoute = AuthenticatedReviewRouteImport.update({
+  id: '/review',
+  path: '/review',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
@@ -372,6 +398,11 @@ const AuthenticatedFranchiseRoute = AuthenticatedFranchiseRouteImport.update({
 const AuthenticatedDnaRoute = AuthenticatedDnaRouteImport.update({
   id: '/dna',
   path: '/dna',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedDisputesRoute = AuthenticatedDisputesRouteImport.update({
+  id: '/disputes',
+  path: '/disputes',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
@@ -553,6 +584,12 @@ const AuthenticatedSettingsInvoicingRoute =
   AuthenticatedSettingsInvoicingRouteImport.update({
     id: '/invoicing',
     path: '/invoicing',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
+const AuthenticatedSettingsFranchiseRoute =
+  AuthenticatedSettingsFranchiseRouteImport.update({
+    id: '/franchise',
+    path: '/franchise',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
 const AuthenticatedSettingsEmailsRoute =
@@ -737,6 +774,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/get-started': typeof GetStartedRoute
   '/impersonate': typeof ImpersonateRoute
+  '/no-workspace': typeof NoWorkspaceRoute
   '/platform': typeof PlatformRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/sign-up': typeof SignUpRoute
@@ -747,6 +785,7 @@ export interface FileRoutesByFullPath {
   '/clients': typeof AuthenticatedClientsRouteWithChildren
   '/concerns': typeof AuthenticatedConcernsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/disputes': typeof AuthenticatedDisputesRoute
   '/dna': typeof AuthenticatedDnaRoute
   '/franchise': typeof AuthenticatedFranchiseRoute
   '/help': typeof AuthenticatedHelpRoute
@@ -760,8 +799,10 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/payments': typeof AuthenticatedPaymentsRoute
   '/reports': typeof AuthenticatedReportsRoute
+  '/review': typeof AuthenticatedReviewRoute
   '/routes': typeof AuthenticatedRoutesRoute
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/tax-reports': typeof AuthenticatedTaxReportsRoute
   '/waste-log': typeof AuthenticatedWasteLogRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/suppression': typeof EmailSuppressionRoute
@@ -782,6 +823,7 @@ export interface FileRoutesByFullPath {
   '/platform/plans': typeof PlatformPlansRoute
   '/platform/referrals': typeof PlatformReferralsRoute
   '/platform/revenue': typeof PlatformRevenueRoute
+  '/platform/signals': typeof PlatformSignalsRoute
   '/platform/users': typeof PlatformUsersRoute
   '/portal/$slug': typeof PortalSlugRouteWithChildren
   '/signup/$slug': typeof SignupSlugRoute
@@ -801,6 +843,7 @@ export interface FileRoutesByFullPath {
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
+  '/settings/franchise': typeof AuthenticatedSettingsFranchiseRoute
   '/settings/invoicing': typeof AuthenticatedSettingsInvoicingRoute
   '/settings/lead-form': typeof AuthenticatedSettingsLeadFormRoute
   '/settings/payments': typeof AuthenticatedSettingsPaymentsRoute
@@ -852,6 +895,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/get-started': typeof GetStartedRoute
   '/impersonate': typeof ImpersonateRoute
+  '/no-workspace': typeof NoWorkspaceRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-up': typeof SignUpRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -860,6 +904,7 @@ export interface FileRoutesByTo {
   '/billing': typeof AuthenticatedBillingRoute
   '/concerns': typeof AuthenticatedConcernsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/disputes': typeof AuthenticatedDisputesRoute
   '/dna': typeof AuthenticatedDnaRoute
   '/franchise': typeof AuthenticatedFranchiseRoute
   '/help': typeof AuthenticatedHelpRoute
@@ -871,7 +916,9 @@ export interface FileRoutesByTo {
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/payments': typeof AuthenticatedPaymentsRoute
   '/reports': typeof AuthenticatedReportsRoute
+  '/review': typeof AuthenticatedReviewRoute
   '/routes': typeof AuthenticatedRoutesRoute
+  '/tax-reports': typeof AuthenticatedTaxReportsRoute
   '/waste-log': typeof AuthenticatedWasteLogRoute
   '/zones': typeof AuthenticatedZonesRoute
   '/email/suppression': typeof EmailSuppressionRoute
@@ -892,6 +939,7 @@ export interface FileRoutesByTo {
   '/platform/plans': typeof PlatformPlansRoute
   '/platform/referrals': typeof PlatformReferralsRoute
   '/platform/revenue': typeof PlatformRevenueRoute
+  '/platform/signals': typeof PlatformSignalsRoute
   '/platform/users': typeof PlatformUsersRoute
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
@@ -910,6 +958,7 @@ export interface FileRoutesByTo {
   '/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
+  '/settings/franchise': typeof AuthenticatedSettingsFranchiseRoute
   '/settings/invoicing': typeof AuthenticatedSettingsInvoicingRoute
   '/settings/lead-form': typeof AuthenticatedSettingsLeadFormRoute
   '/settings/payments': typeof AuthenticatedSettingsPaymentsRoute
@@ -962,6 +1011,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/get-started': typeof GetStartedRoute
   '/impersonate': typeof ImpersonateRoute
+  '/no-workspace': typeof NoWorkspaceRoute
   '/platform': typeof PlatformRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/sign-up': typeof SignUpRoute
@@ -972,6 +1022,7 @@ export interface FileRoutesById {
   '/_authenticated/clients': typeof AuthenticatedClientsRouteWithChildren
   '/_authenticated/concerns': typeof AuthenticatedConcernsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/disputes': typeof AuthenticatedDisputesRoute
   '/_authenticated/dna': typeof AuthenticatedDnaRoute
   '/_authenticated/franchise': typeof AuthenticatedFranchiseRoute
   '/_authenticated/help': typeof AuthenticatedHelpRoute
@@ -985,8 +1036,10 @@ export interface FileRoutesById {
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
   '/_authenticated/payments': typeof AuthenticatedPaymentsRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
+  '/_authenticated/review': typeof AuthenticatedReviewRoute
   '/_authenticated/routes': typeof AuthenticatedRoutesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/_authenticated/tax-reports': typeof AuthenticatedTaxReportsRoute
   '/_authenticated/waste-log': typeof AuthenticatedWasteLogRoute
   '/_authenticated/zones': typeof AuthenticatedZonesRoute
   '/email/suppression': typeof EmailSuppressionRoute
@@ -1007,6 +1060,7 @@ export interface FileRoutesById {
   '/platform/plans': typeof PlatformPlansRoute
   '/platform/referrals': typeof PlatformReferralsRoute
   '/platform/revenue': typeof PlatformRevenueRoute
+  '/platform/signals': typeof PlatformSignalsRoute
   '/platform/users': typeof PlatformUsersRoute
   '/portal/$slug': typeof PortalSlugRouteWithChildren
   '/signup/$slug': typeof SignupSlugRoute
@@ -1026,6 +1080,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/blackouts': typeof AuthenticatedSettingsBlackoutsRoute
   '/_authenticated/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
   '/_authenticated/settings/emails': typeof AuthenticatedSettingsEmailsRoute
+  '/_authenticated/settings/franchise': typeof AuthenticatedSettingsFranchiseRoute
   '/_authenticated/settings/invoicing': typeof AuthenticatedSettingsInvoicingRoute
   '/_authenticated/settings/lead-form': typeof AuthenticatedSettingsLeadFormRoute
   '/_authenticated/settings/payments': typeof AuthenticatedSettingsPaymentsRoute
@@ -1079,6 +1134,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/get-started'
     | '/impersonate'
+    | '/no-workspace'
     | '/platform'
     | '/reset-password'
     | '/sign-up'
@@ -1089,6 +1145,7 @@ export interface FileRouteTypes {
     | '/clients'
     | '/concerns'
     | '/dashboard'
+    | '/disputes'
     | '/dna'
     | '/franchise'
     | '/help'
@@ -1102,8 +1159,10 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/payments'
     | '/reports'
+    | '/review'
     | '/routes'
     | '/settings'
+    | '/tax-reports'
     | '/waste-log'
     | '/zones'
     | '/email/suppression'
@@ -1124,6 +1183,7 @@ export interface FileRouteTypes {
     | '/platform/plans'
     | '/platform/referrals'
     | '/platform/revenue'
+    | '/platform/signals'
     | '/platform/users'
     | '/portal/$slug'
     | '/signup/$slug'
@@ -1143,6 +1203,7 @@ export interface FileRouteTypes {
     | '/settings/blackouts'
     | '/settings/deep-clean'
     | '/settings/emails'
+    | '/settings/franchise'
     | '/settings/invoicing'
     | '/settings/lead-form'
     | '/settings/payments'
@@ -1194,6 +1255,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/get-started'
     | '/impersonate'
+    | '/no-workspace'
     | '/reset-password'
     | '/sign-up'
     | '/unsubscribe'
@@ -1202,6 +1264,7 @@ export interface FileRouteTypes {
     | '/billing'
     | '/concerns'
     | '/dashboard'
+    | '/disputes'
     | '/dna'
     | '/franchise'
     | '/help'
@@ -1213,7 +1276,9 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/payments'
     | '/reports'
+    | '/review'
     | '/routes'
+    | '/tax-reports'
     | '/waste-log'
     | '/zones'
     | '/email/suppression'
@@ -1234,6 +1299,7 @@ export interface FileRouteTypes {
     | '/platform/plans'
     | '/platform/referrals'
     | '/platform/revenue'
+    | '/platform/signals'
     | '/platform/users'
     | '/signup/$slug'
     | '/signup/success'
@@ -1252,6 +1318,7 @@ export interface FileRouteTypes {
     | '/settings/blackouts'
     | '/settings/deep-clean'
     | '/settings/emails'
+    | '/settings/franchise'
     | '/settings/invoicing'
     | '/settings/lead-form'
     | '/settings/payments'
@@ -1303,6 +1370,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/get-started'
     | '/impersonate'
+    | '/no-workspace'
     | '/platform'
     | '/reset-password'
     | '/sign-up'
@@ -1313,6 +1381,7 @@ export interface FileRouteTypes {
     | '/_authenticated/clients'
     | '/_authenticated/concerns'
     | '/_authenticated/dashboard'
+    | '/_authenticated/disputes'
     | '/_authenticated/dna'
     | '/_authenticated/franchise'
     | '/_authenticated/help'
@@ -1326,8 +1395,10 @@ export interface FileRouteTypes {
     | '/_authenticated/onboarding'
     | '/_authenticated/payments'
     | '/_authenticated/reports'
+    | '/_authenticated/review'
     | '/_authenticated/routes'
     | '/_authenticated/settings'
+    | '/_authenticated/tax-reports'
     | '/_authenticated/waste-log'
     | '/_authenticated/zones'
     | '/email/suppression'
@@ -1348,6 +1419,7 @@ export interface FileRouteTypes {
     | '/platform/plans'
     | '/platform/referrals'
     | '/platform/revenue'
+    | '/platform/signals'
     | '/platform/users'
     | '/portal/$slug'
     | '/signup/$slug'
@@ -1367,6 +1439,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/blackouts'
     | '/_authenticated/settings/deep-clean'
     | '/_authenticated/settings/emails'
+    | '/_authenticated/settings/franchise'
     | '/_authenticated/settings/invoicing'
     | '/_authenticated/settings/lead-form'
     | '/_authenticated/settings/payments'
@@ -1420,6 +1493,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   GetStartedRoute: typeof GetStartedRoute
   ImpersonateRoute: typeof ImpersonateRoute
+  NoWorkspaceRoute: typeof NoWorkspaceRoute
   PlatformRoute: typeof PlatformRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignUpRoute: typeof SignUpRoute
@@ -1481,6 +1555,13 @@ declare module '@tanstack/react-router' {
       path: '/platform'
       fullPath: '/platform'
       preLoaderRoute: typeof PlatformRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/no-workspace': {
+      id: '/no-workspace'
+      path: '/no-workspace'
+      fullPath: '/no-workspace'
+      preLoaderRoute: typeof NoWorkspaceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/impersonate': {
@@ -1558,6 +1639,13 @@ declare module '@tanstack/react-router' {
       path: '/users'
       fullPath: '/platform/users'
       preLoaderRoute: typeof PlatformUsersRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/signals': {
+      id: '/platform/signals'
+      path: '/signals'
+      fullPath: '/platform/signals'
+      preLoaderRoute: typeof PlatformSignalsRouteImport
       parentRoute: typeof PlatformRoute
     }
     '/platform/revenue': {
@@ -1700,6 +1788,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWasteLogRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/tax-reports': {
+      id: '/_authenticated/tax-reports'
+      path: '/tax-reports'
+      fullPath: '/tax-reports'
+      preLoaderRoute: typeof AuthenticatedTaxReportsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/settings': {
       id: '/_authenticated/settings'
       path: '/settings'
@@ -1712,6 +1807,13 @@ declare module '@tanstack/react-router' {
       path: '/routes'
       fullPath: '/routes'
       preLoaderRoute: typeof AuthenticatedRoutesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/review': {
+      id: '/_authenticated/review'
+      path: '/review'
+      fullPath: '/review'
+      preLoaderRoute: typeof AuthenticatedReviewRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/reports': {
@@ -1803,6 +1905,13 @@ declare module '@tanstack/react-router' {
       path: '/dna'
       fullPath: '/dna'
       preLoaderRoute: typeof AuthenticatedDnaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/disputes': {
+      id: '/_authenticated/disputes'
+      path: '/disputes'
+      fullPath: '/disputes'
+      preLoaderRoute: typeof AuthenticatedDisputesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/dashboard': {
@@ -2034,6 +2143,13 @@ declare module '@tanstack/react-router' {
       path: '/invoicing'
       fullPath: '/settings/invoicing'
       preLoaderRoute: typeof AuthenticatedSettingsInvoicingRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
+    '/_authenticated/settings/franchise': {
+      id: '/_authenticated/settings/franchise'
+      path: '/franchise'
+      fullPath: '/settings/franchise'
+      preLoaderRoute: typeof AuthenticatedSettingsFranchiseRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
     '/_authenticated/settings/emails': {
@@ -2311,6 +2427,7 @@ interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsBlackoutsRoute: typeof AuthenticatedSettingsBlackoutsRoute
   AuthenticatedSettingsDeepCleanRoute: typeof AuthenticatedSettingsDeepCleanRoute
   AuthenticatedSettingsEmailsRoute: typeof AuthenticatedSettingsEmailsRoute
+  AuthenticatedSettingsFranchiseRoute: typeof AuthenticatedSettingsFranchiseRoute
   AuthenticatedSettingsInvoicingRoute: typeof AuthenticatedSettingsInvoicingRoute
   AuthenticatedSettingsLeadFormRoute: typeof AuthenticatedSettingsLeadFormRoute
   AuthenticatedSettingsPaymentsRoute: typeof AuthenticatedSettingsPaymentsRoute
@@ -2335,6 +2452,7 @@ const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsBlackoutsRoute: AuthenticatedSettingsBlackoutsRoute,
   AuthenticatedSettingsDeepCleanRoute: AuthenticatedSettingsDeepCleanRoute,
   AuthenticatedSettingsEmailsRoute: AuthenticatedSettingsEmailsRoute,
+  AuthenticatedSettingsFranchiseRoute: AuthenticatedSettingsFranchiseRoute,
   AuthenticatedSettingsInvoicingRoute: AuthenticatedSettingsInvoicingRoute,
   AuthenticatedSettingsLeadFormRoute: AuthenticatedSettingsLeadFormRoute,
   AuthenticatedSettingsPaymentsRoute: AuthenticatedSettingsPaymentsRoute,
@@ -2360,6 +2478,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedClientsRoute: typeof AuthenticatedClientsRouteWithChildren
   AuthenticatedConcernsRoute: typeof AuthenticatedConcernsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedDisputesRoute: typeof AuthenticatedDisputesRoute
   AuthenticatedDnaRoute: typeof AuthenticatedDnaRoute
   AuthenticatedFranchiseRoute: typeof AuthenticatedFranchiseRoute
   AuthenticatedHelpRoute: typeof AuthenticatedHelpRoute
@@ -2373,8 +2492,10 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
   AuthenticatedPaymentsRoute: typeof AuthenticatedPaymentsRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
+  AuthenticatedReviewRoute: typeof AuthenticatedReviewRoute
   AuthenticatedRoutesRoute: typeof AuthenticatedRoutesRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRouteWithChildren
+  AuthenticatedTaxReportsRoute: typeof AuthenticatedTaxReportsRoute
   AuthenticatedWasteLogRoute: typeof AuthenticatedWasteLogRoute
   AuthenticatedZonesRoute: typeof AuthenticatedZonesRoute
   AuthenticatedImportsBatchIdRoute: typeof AuthenticatedImportsBatchIdRoute
@@ -2389,6 +2510,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedClientsRoute: AuthenticatedClientsRouteWithChildren,
   AuthenticatedConcernsRoute: AuthenticatedConcernsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedDisputesRoute: AuthenticatedDisputesRoute,
   AuthenticatedDnaRoute: AuthenticatedDnaRoute,
   AuthenticatedFranchiseRoute: AuthenticatedFranchiseRoute,
   AuthenticatedHelpRoute: AuthenticatedHelpRoute,
@@ -2402,8 +2524,10 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
   AuthenticatedPaymentsRoute: AuthenticatedPaymentsRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
+  AuthenticatedReviewRoute: AuthenticatedReviewRoute,
   AuthenticatedRoutesRoute: AuthenticatedRoutesRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRouteWithChildren,
+  AuthenticatedTaxReportsRoute: AuthenticatedTaxReportsRoute,
   AuthenticatedWasteLogRoute: AuthenticatedWasteLogRoute,
   AuthenticatedZonesRoute: AuthenticatedZonesRoute,
   AuthenticatedImportsBatchIdRoute: AuthenticatedImportsBatchIdRoute,
@@ -2427,6 +2551,7 @@ interface PlatformRouteChildren {
   PlatformPlansRoute: typeof PlatformPlansRoute
   PlatformReferralsRoute: typeof PlatformReferralsRoute
   PlatformRevenueRoute: typeof PlatformRevenueRoute
+  PlatformSignalsRoute: typeof PlatformSignalsRoute
   PlatformUsersRoute: typeof PlatformUsersRoute
   PlatformIndexRoute: typeof PlatformIndexRoute
   PlatformTenantsIdRoute: typeof PlatformTenantsIdRoute
@@ -2445,6 +2570,7 @@ const PlatformRouteChildren: PlatformRouteChildren = {
   PlatformPlansRoute: PlatformPlansRoute,
   PlatformReferralsRoute: PlatformReferralsRoute,
   PlatformRevenueRoute: PlatformRevenueRoute,
+  PlatformSignalsRoute: PlatformSignalsRoute,
   PlatformUsersRoute: PlatformUsersRoute,
   PlatformIndexRoute: PlatformIndexRoute,
   PlatformTenantsIdRoute: PlatformTenantsIdRoute,
@@ -2500,6 +2626,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   GetStartedRoute: GetStartedRoute,
   ImpersonateRoute: ImpersonateRoute,
+  NoWorkspaceRoute: NoWorkspaceRoute,
   PlatformRoute: PlatformRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,
   SignUpRoute: SignUpRoute,

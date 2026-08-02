@@ -8,23 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { Search } from "lucide-react";
 import { getPlatformAudit, type PlatformAuditRow } from "@/lib/platform.functions";
 import { humanizeAuditAction } from "@/lib/humanize";
-
-/** For impersonation events, the impersonated user + any duration live in the
- *  after_json — surface them inline so the log answers "who was impersonated,
- *  and for how long" without expanding Details (H2). */
-function impersonationDetail(row: PlatformAuditRow): string | null {
-  if (!row.action.includes("impersonation")) return null;
-  const a = (row.after_json ?? {}) as Record<string, any>;
-  const target = a.target_email ?? a.target_user_id ?? null;
-  const parts: string[] = [];
-  if (target) parts.push(`as ${target}`);
-  if (typeof a.duration_seconds === "number") {
-    const mins = Math.floor(a.duration_seconds / 60);
-    const secs = a.duration_seconds % 60;
-    parts.push(`for ${mins > 0 ? `${mins}m ` : ""}${secs}s`);
-  }
-  return parts.length ? parts.join(" · ") : null;
-}
+// For impersonation events, the impersonated user + any duration live in the
+// after_json — surfaced inline so the log answers "who was impersonated, and
+// for how long" without expanding Details (H2). Pure, so it and the filter can
+// be tested together; they have to agree on what a row contains (BUG-14).
+import { auditRowMatches, impersonationDetail } from "@/lib/platform-audit";
 
 export const Route = createFileRoute("/platform/audit")({
   head: () => ({ meta: [{ title: "Audit · Platform admin" }, { name: "robots", content: "noindex" }] }),
@@ -50,16 +38,10 @@ function AuditPage() {
   const q = useQuery({ queryKey: ["platform", "audit"], queryFn: () => fn() });
   const [filter, setFilter] = useState("");
 
-  const filtered = useMemo(() => {
-    const rows = q.data?.rows ?? [];
-    const f = filter.trim().toLowerCase();
-    if (!f) return rows;
-    return rows.filter((r) =>
-      [r.action, r.organization_name, r.actor_email, r.actor_user_id]
-        .filter(Boolean)
-        .some((s) => String(s).toLowerCase().includes(f)),
-    );
-  }, [q.data, filter]);
+  const filtered = useMemo(
+    () => (q.data?.rows ?? []).filter((r) => auditRowMatches(r, filter)),
+    [q.data, filter],
+  );
 
   return (
     <Card>
@@ -73,7 +55,7 @@ function AuditPage() {
         <div className="relative">
           <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Filter by action, org, or actor…"
+            placeholder="Filter by action, org, actor, or impersonated user…"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             className="pl-8"
@@ -101,6 +83,7 @@ function AuditPage() {
 
 function AuditItem({ row }: { row: PlatformAuditRow }) {
   const [open, setOpen] = useState(false);
+  const detail = impersonationDetail(row);
   const hasDetails =
     (row.before_json && Object.keys(row.before_json).length > 0) ||
     (row.after_json && Object.keys(row.after_json).length > 0);
@@ -112,9 +95,9 @@ function AuditItem({ row }: { row: PlatformAuditRow }) {
           <span className="font-medium">
             {row.organization_name ?? <span className="text-muted-foreground">(no org)</span>}
           </span>
-          {impersonationDetail(row) && (
+          {detail && (
             <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
-              {impersonationDetail(row)}
+              {detail}
             </span>
           )}
           <span className="text-xs text-muted-foreground">

@@ -54,6 +54,7 @@ import {
   scheduleChoiceToFields,
   formatFrequency,
   isServiceEnded,
+  serviceScheduleState,
   type ScheduleChoice,
   type SubscriptionFormValues,
 } from "@/lib/subscription-form";
@@ -68,6 +69,7 @@ import { generatePrepaidInvoice } from "@/lib/invoices.functions";
 import { generateVisits } from "@/lib/visits.functions";
 import { listStations } from "@/lib/stations.functions";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { humanizeEnum } from "@/lib/humanize";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -264,15 +266,15 @@ export function ServicesTab({
             // QA follow-up 1.6: an active service with no upcoming visit must
             // say why and offer a way out.
             const startsLater = s.started_on && s.started_on > today;
-            const noVisitReason =
-              !ended && !paused && s.status === "active" && !nextVisit
-                ? startsLater
-                  ? `Starts ${s.started_on}; visits appear once it begins`
-                  : s.frequency === "one_time"
-                    ? "Its one-time visit is in the past"
-                    : "Schedule hasn't been generated yet"
-                : null;
-            const canGenerate = noVisitReason != null && !startsLater && s.frequency !== "one_time";
+            // Moved to lib/subscription-form so it can be tested: this was
+            // inline and wrong in the case that mattered — see
+            // serviceScheduleState's header.
+            const { reason: noVisitReason, canGenerate } = serviceScheduleState(s, {
+              today,
+              nextVisit,
+              ended,
+              paused,
+            });
             const showEnd = !ended && started;
             const showDelete = !started;
             return (
@@ -685,7 +687,9 @@ function ServiceDetailDrawer({
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Billing</dt>
-            <dd className="capitalize">{s.billing_cadence}</dd>
+            {/* BUG-4: `capitalize` only uppercases the first letter, so a
+                snake_case cadence still reached the user as "Per_visit". */}
+            <dd>{humanizeEnum(s.billing_cadence)}</dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Arrival window</dt>

@@ -25,15 +25,14 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
       .eq("organization_id", orgId)
       .single();
     if (error) throw new Error(error.message);
-    // public_token isn't in the generated types yet.
-    const inv = invRow as any;
+    const inv = invRow;
     // Prefer the no-login public pay link (QA round 8); fall back to the
     // portal link for any legacy invoice without a token.
-    const publicToken = (inv as any).public_token as string | undefined;
+    const publicToken = inv.public_token;
     const appUrl = process.env.APP_URL || "https://app.houndstack.com";
     let invoiceUrl = publicToken ? `${appUrl}/pay/i/${publicToken}` : undefined;
     if (!invoiceUrl) {
-      const token = (inv as any).clients?.portal_token as string | undefined;
+      const token = inv.clients?.portal_token ?? undefined;
       const { buildPortalLink } = await import("@/lib/portal-links.server");
       invoiceUrl = (await buildPortalLink(inv.organization_id, token)) ?? appUrl;
     }

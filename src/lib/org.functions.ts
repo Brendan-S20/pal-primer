@@ -261,10 +261,11 @@ export const updateOrgBranding = createServerFn({ method: "POST" })
       patch.portal_allow_frequency_change = data.portalAllowFrequencyChange;
     if (data.portalAutoApplyChanges !== undefined)
       patch.portal_auto_apply_changes = data.portalAutoApplyChanges;
-    const { error } = await supabase
-      .from("organizations")
-      .update(patch as any)
-      .eq("id", orgId);
-    if (error) throw new Error(error.message);
+    // Through the helper so a zero-row update is an error. This is the only
+    // write path for contact_email, which BUILD-5 made the reply-to on customer
+    // email: an office manager "fixing" the reply-to used to get a success
+    // toast while replies kept going to noreply@.
+    const { updateOwnOrg } = await import("@/lib/org-write.server");
+    await updateOwnOrg(supabase, orgId, patch);
     return { ok: true };
   });

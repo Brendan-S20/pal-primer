@@ -1,7 +1,19 @@
-// Server-only resolver for an org's own Twilio account (BYOK), used for the
-// tenant<->client CONVERSATION channel only: manual staff↔client SMS, inbound
-// replies, and the AI receptionist. Reads the service-role-only
+import { decryptSecret } from "@/lib/secret-encryption.server";
+// Server-only resolver for the Twilio SUBACCOUNT provisioned for an org, used
+// for the tenant<->client CONVERSATION channel only: manual staff↔client SMS,
+// inbound replies, and the AI receptionist. Reads the service-role-only
 // org_twilio_credentials table; the auth token never leaves the server.
+//
+// IMP-9: these used to be credentials the CUSTOMER pasted in (BYOK). They are
+// now credentials HOUNDSTACK creates and owns, one subaccount per tenant under
+// our 10DLC brand (Q-8). The read is unchanged — a subaccount has a SID and an
+// auth token like any other account — but who is responsible for the secret
+// flipped, which is why the encryption on that column matters more now, not
+// less: one key protects a credential for every tenant rather than each tenant's
+// own.
+//
+// Provisioning is BUILD-3 and sits in the carrier compliance queue, so no row
+// exists yet and this returns null for every org today.
 //
 // OTP and automated notifications do NOT use this — they go out on the
 // platform's own Twilio (see platformTwilioFrom / gateway mode in twilio.server).
@@ -13,7 +25,8 @@ export type TenantTwilio = {
   messagingServiceSid: string | null;
 };
 
-/** The tenant's own Twilio account, or null if they haven't set up BYOK. */
+/** The org's provisioned Twilio subaccount, or null when one hasn't been
+ *  provisioned yet (which is every org until BUILD-3 clears 10DLC). */
 export async function resolveOrgTwilioConfig(orgId: string): Promise<TenantTwilio | null> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data } = await (supabaseAdmin as any)
@@ -24,7 +37,8 @@ export async function resolveOrgTwilioConfig(orgId: string): Promise<TenantTwili
   if (!data?.account_sid || !data?.auth_token) return null;
   return {
     accountSid: data.account_sid,
-    authToken: data.auth_token,
+    // IMP-1: decrypted only here, immediately before the outbound Twilio call.
+    authToken: decryptSecret(data.auth_token as string),
     from: data.sms_from_number || null,
     messagingServiceSid: data.messaging_service_sid || null,
   };

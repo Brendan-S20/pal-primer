@@ -1,9 +1,19 @@
 // Mobile Phase 2: the phone-sized schedule for office roles. The dnd-kit
 // dispatch board is touch-hostile and can't fit a phone, so below `md` the
 // Board view renders this instead — an ordered read-only day list grouped by
-// tech. Tapping a visit opens the existing VisitDetailDrawer, whose controls
-// (reassign / reschedule / cancel / complete) remain the mobile way to
-// dispatch; drag-and-drop stays desktop-only.
+// tech.
+//
+// This header used to say the drawer's "reassign / reschedule / cancel /
+// complete" controls were the mobile way to dispatch. Three of those four do
+// not exist in VisitDetailDrawer and never did: it has no staff picker and no
+// date field, and its complete/skip buttons called the tech-scoped RPCs, which
+// reject every office user who can open it. The footer note below repeated the
+// same promise to the user.
+//
+// So what mobile dispatch actually is today: observe the day, tap through for
+// address / gate codes / hazards / dogs, and complete or cancel a visit if you
+// hold manage_client_billing. Moving a visit between techs and moving it to
+// another day are desktop-only. Q-12 is how much of that should change.
 import { useMemo } from "react";
 import { ChevronRight, CloudRain } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -179,8 +189,8 @@ export function MobileDayList({
         </section>
       ))}
       <p className="text-[11px] text-muted-foreground">
-        Tap a visit to view details, reassign, or reschedule. Drag-and-drop dispatch is available on
-        desktop.
+        Tap a visit for details, and to complete or cancel it. Moving a visit to another tech or
+        another day is on desktop.
       </p>
     </div>
   );

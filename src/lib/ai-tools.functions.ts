@@ -3,7 +3,8 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { generateStructured, generateAiText } from "@/lib/ai.server";
-import { resolveOrgAiConfig } from "@/lib/ai-credentials.server";
+import { resolveOrgAiCall } from "@/lib/ai-credentials.server";
+import { grossReceivedCents, receivedPaymentStatuses } from "@/lib/revenue";
 
 async function callerOrg(context: { supabase: any; userId: string }) {
   const { data: staff, error } = await context.supabase
@@ -23,7 +24,13 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
   .inputValidator((d) =>
     z
       .object({
-        kind: z.enum(["facebook_post", "instagram_caption", "email_blast", "google_business_update", "flyer_headline"]),
+        kind: z.enum([
+          "facebook_post",
+          "instagram_caption",
+          "email_blast",
+          "google_business_update",
+          "flyer_headline",
+        ]),
         topic: z.string().trim().min(3).max(400),
         tone: z.enum(["friendly", "professional", "playful", "urgent"]).default("friendly"),
         includeCta: z.boolean().default(true),
@@ -40,7 +47,7 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
       .single();
 
     const output = await generateStructured({
-      config: await resolveOrgAiConfig(staff.organization_id),
+      ...(await resolveOrgAiCall(staff.organization_id, "marketing_content")),
       label: "Marketing content",
       schema: z.object({
         title: z.string(),
@@ -54,7 +61,10 @@ export const generateMarketingContent = createServerFn({ method: "POST" })
           title: { type: "string" },
           body: { type: "string" },
           hashtags: { type: "array", items: { type: "string" }, maxItems: 8 },
-          cta: { type: "string", description: "Short call to action (empty string if none requested)." },
+          cta: {
+            type: "string",
+            description: "Short call to action (empty string if none requested).",
+          },
         },
         required: ["title", "body", "hashtags", "cta"],
       },
@@ -90,7 +100,7 @@ export const draftReviewReply = createServerFn({ method: "POST" })
       .single();
 
     const output = await generateStructured({
-      config: await resolveOrgAiConfig(staff.organization_id),
+      ...(await resolveOrgAiCall(staff.organization_id, "review_reply")),
       label: "Review reply",
       schema: z.object({
         reply: z.string(),
@@ -128,7 +138,11 @@ interface ChurnSignals {
   sms_opt_out: boolean;
 }
 
-async function gatherChurnSignals(supabase: any, organizationId: string, clientId?: string): Promise<ChurnSignals[]> {
+async function gatherChurnSignals(
+  supabase: any,
+  organizationId: string,
+  clientId?: string,
+): Promise<ChurnSignals[]> {
   // NB: clients has no `status` column — active clients are `active = true`.
   let q = supabase
     .from("clients")
@@ -181,17 +195,19 @@ async function gatherChurnSignals(supabase: any, organizationId: string, clientI
 
 export const scoreChurn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z.object({ clientId: z.string().uuid().optional() }).parse(d ?? {}),
-  )
+  .inputValidator((d) => z.object({ clientId: z.string().uuid().optional() }).parse(d ?? {}))
   .handler(async ({ data, context }) => {
     await requirePermission(context.supabase, context.userId, "use_ai_tools");
     const staff = await callerOrg(context);
-    const signals = await gatherChurnSignals(context.supabase, staff.organization_id, data.clientId);
+    const signals = await gatherChurnSignals(
+      context.supabase,
+      staff.organization_id,
+      data.clientId,
+    );
     if (!signals.length) return { scored: 0 };
 
     const output = await generateStructured({
-      config: await resolveOrgAiConfig(staff.organization_id),
+      ...(await resolveOrgAiCall(staff.organization_id, "churn_scoring")),
       label: "Churn scoring",
       maxTokens: 16384,
       schema: z.object({
@@ -231,7 +247,11 @@ export const scoreChurn = createServerFn({ method: "POST" })
     for (const s of output.scores) {
       await context.supabase
         .from("clients")
-        .update({ churn_score: s.score, churn_reason: s.reason, churn_scored_at: new Date().toISOString() })
+        .update({
+          churn_score: s.score,
+          churn_reason: s.reason,
+          churn_scored_at: new Date().toISOString(),
+        })
         .eq("id", s.client_id)
         .eq("organization_id", staff.organization_id);
     }
@@ -265,10 +285,25 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 3600_000);
     const weekAgoIso = weekAgo.toISOString();
-    const weekAgoDate = weekAgoIso.slice(0, 10);
+
+    // The org is fetched BEFORE the rest, not alongside it, because its
+    // timezone decides the window. `scheduled_on` is a DATE column, so
+    // comparing it against a UTC-derived day is the BUG-12 mistake: for an org
+    // west of UTC the boundary lands up to a day early and quietly shifts which
+    // visits count as "this week" — in a summary an assistant then reads out as
+    // fact. One extra round trip is the right price.
+    const { data: org } = await context.supabase
+      .from("organizations")
+      .select("name, timezone")
+      .eq("id", orgId)
+      .single();
+    const { DEFAULT_TIMEZONE } = await import("@/lib/route-window");
+    const { orgLocalDay } = await import("@/lib/cpa-reports");
+    const tz = (org as { timezone?: string | null } | null)?.timezone || DEFAULT_TIMEZONE;
+    const orgDay = (ms: number) => orgLocalDay(new Date(ms), tz);
+    const weekAgoDate = orgDay(weekAgo.getTime());
 
     const [
-      { data: org },
       { data: visits },
       { data: invoices },
       { data: payments },
@@ -276,7 +311,7 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
       { data: leads },
       { data: churn },
     ] = await Promise.all([
-      context.supabase.from("organizations").select("name").eq("id", orgId).single(),
+      // timezone: the reversal reader buckets by the ORG's calendar day, so a
       context.supabase
         .from("visits")
         .select("status, scheduled_on")
@@ -287,19 +322,30 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
         .select("status, total_cents, issued_at")
         .eq("organization_id", orgId)
         .gte("issued_at", weekAgoIso),
+      // IMP-10: this had NO status filter at all, so a declined card and a
+      // pending intent both counted as revenue collected — and the number fed
+      // an assistant that answers "how did we do this week" in plain English.
+      // Wrong in the flattering direction, stated confidently.
       context.supabase
         .from("payments")
-        .select("amount_cents, paid_at")
+        .select("amount_cents, status, paid_at")
         .eq("organization_id", orgId)
+        .in("status", receivedPaymentStatuses())
         .gte("paid_at", weekAgoIso),
       context.supabase
         .from("clients")
         .select("id")
         .eq("organization_id", orgId)
         .gte("created_at", weekAgoIso),
+      // The org filter is belt-and-braces: `leads` SELECT is org-scoped by RLS
+      // (verified), so this is not a leak today. But it is the only query in
+      // this Promise.all without one, and "safe because a policy elsewhere says
+      // so" is a bad thing to have to rediscover — especially in a figure fed
+      // to an assistant that states it as fact.
       context.supabase
         .from("leads")
         .select("id, status")
+        .eq("organization_id", orgId)
         .gte("created_at", weekAgoIso),
       context.supabase
         .from("clients")
@@ -313,8 +359,32 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
     const completed = (visits ?? []).filter((v: any) => v.status === "completed").length;
     const skipped = (visits ?? []).filter((v: any) => v.status === "skipped").length;
     const scheduled = (visits ?? []).length;
-    const revenueCollected = (payments ?? []).reduce((s: number, p: any) => s + (p.amount_cents ?? 0), 0);
-    const revenueInvoiced = (invoices ?? []).reduce((s: number, i: any) => s + (i.total_cents ?? 0), 0);
+
+    // IMP-10, the other half of the rule. `revenue.ts` counts a refunded
+    // payment at full value on purpose — the money did arrive — but that is
+    // only truthful if the reversal is deducted in the period IT happened, and
+    // nothing here was doing that. So a week in which a $5,000 charge was
+    // disputed reported the same revenue_collected_cents as a week in which it
+    // was not, and this number is read out loud by an assistant answering "how
+    // did we do this week". Wrong in the flattering direction, stated
+    // confidently, with no line an owner could trace it back to.
+    const { loadOrgReversals, totalReversals } = await import("@/lib/reversals.server");
+    const reversals = totalReversals(
+      await loadOrgReversals(context.supabase, {
+        orgId,
+        timezone: tz,
+        // Same window as the payments query above, expressed in the org's own
+        // days — a refund netted against a different span is not a correction.
+        from: weekAgoDate,
+        to: orgDay(now.getTime()),
+      }),
+    );
+    const revenueGrossCollected = grossReceivedCents(payments ?? []);
+    const revenueCollected = revenueGrossCollected - reversals.netCents;
+    const revenueInvoiced = (invoices ?? []).reduce(
+      (s: number, i: any) => s + (i.total_cents ?? 0),
+      0,
+    );
     const openInvoices = (invoices ?? []).filter((i: any) => i.status === "open").length;
 
     const stats = {
@@ -324,6 +394,11 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
       scheduled,
       completion_rate: scheduled ? Math.round((completed / scheduled) * 100) : 0,
       revenue_collected_cents: revenueCollected,
+      // The components ride along so the digest can name a dispute as the
+      // reason revenue moved, instead of attributing it to lost business.
+      revenue_collected_gross_cents: revenueGrossCollected,
+      refunds_chargebacks_cents: reversals.netCents,
+      refunds_chargebacks_count: reversals.count,
       revenue_invoiced_cents: revenueInvoiced,
       open_invoices: openInvoices,
       new_clients: (newClients ?? []).length,
@@ -332,12 +407,14 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
     };
 
     const text = await generateAiText({
-      config: await resolveOrgAiConfig(staff.organization_id),
+      ...(await resolveOrgAiCall(staff.organization_id, "weekly_digest")),
       label: "Weekly digest",
       prompt:
         `Write a concise weekly owner digest for a pet waste removal business. ` +
         `Use short section headings ("This week", "Money", "Growth", "Watch list") and plain prose bullet points. ` +
         `No emoji. End with 2-3 concrete recommended actions for the owner.\n\n` +
+        `revenue_collected_cents is already NET of the refunds and chargebacks that landed this week. ` +
+        `If refunds_chargebacks_cents is non-zero, name it under "Money" — a reversal and a sales slump ask for different responses.\n\n` +
         `Stats JSON:\n${JSON.stringify(stats, null, 2)}`,
     });
 
@@ -359,10 +436,10 @@ export const suggestDispatch = createServerFn({ method: "POST" })
         .from("visits")
         .select(
           "id, assigned_staff_id, sequence, status, client_id, zone_id, " +
-          "clients(display_name, churn_score, credit_balance_cents), " +
-          "properties(street, city, postal_code, latitude, longitude), " +
-          "zones(name, postal_prefix), " +
-          "subscriptions(price_cents, frequency, billing_cadence)",
+            "clients(display_name, churn_score, credit_balance_cents), " +
+            "properties(street, city, postal_code, latitude, longitude), " +
+            "zones(name, postal_prefix), " +
+            "subscriptions(price_cents, frequency, billing_cadence)",
         )
         .eq("organization_id", orgId)
         .eq("scheduled_on", data.day)
@@ -375,7 +452,8 @@ export const suggestDispatch = createServerFn({ method: "POST" })
     ]);
     if (vErr) throw new Error(vErr.message);
     if (sErr) throw new Error(sErr.message);
-    if (!visits?.length) return { day: data.day, suggestions: [], notes: "No open visits on this day." };
+    if (!visits?.length)
+      return { day: data.day, suggestions: [], notes: "No open visits on this day." };
 
     const visitPayload = visits.map((v: any) => ({
       id: v.id,
@@ -391,12 +469,15 @@ export const suggestDispatch = createServerFn({ method: "POST" })
       lng: v.properties?.longitude ?? null,
     }));
     const staffPayload = (techs ?? []).map((s: any) => ({
-      id: s.id, name: s.display_name, role: s.role,
-      start_lat: s.start_latitude, start_lng: s.start_longitude,
+      id: s.id,
+      name: s.display_name,
+      role: s.role,
+      start_lat: s.start_latitude,
+      start_lng: s.start_longitude,
     }));
 
     const output = await generateStructured({
-      config: await resolveOrgAiConfig(staff.organization_id),
+      ...(await resolveOrgAiCall(staff.organization_id, "dispatch_suggestion")),
       label: "AI dispatch",
       maxTokens: 8192,
       schema: z.object({
@@ -415,11 +496,13 @@ export const suggestDispatch = createServerFn({ method: "POST" })
         properties: {
           notes: {
             type: "string",
-            description: "Brief overall dispatcher notes. If no changes are worth making, say why here.",
+            description:
+              "Brief overall dispatcher notes. If no changes are worth making, say why here.",
           },
           suggestions: {
             type: "array",
-            description: "One entry per visit whose assignment should change. Empty if the current plan is already optimal.",
+            description:
+              "One entry per visit whose assignment should change. Empty if the current plan is already optimal.",
             items: {
               type: "object",
               properties: {
@@ -455,8 +538,12 @@ export const suggestDispatch = createServerFn({ method: "POST" })
         return {
           ...s,
           client: v.clients?.display_name,
-          current_staff: v.assigned_staff_id ? (byStaff.get(v.assigned_staff_id) as any)?.display_name ?? null : null,
-          suggested_staff: s.suggested_staff_id ? (byStaff.get(s.suggested_staff_id) as any)?.display_name ?? null : null,
+          current_staff: v.assigned_staff_id
+            ? ((byStaff.get(v.assigned_staff_id) as any)?.display_name ?? null)
+            : null,
+          suggested_staff: s.suggested_staff_id
+            ? ((byStaff.get(s.suggested_staff_id) as any)?.display_name ?? null)
+            : null,
           zone: v.zones?.name ?? null,
           price_cents: v.subscriptions?.price_cents ?? 0,
         };
@@ -468,11 +555,14 @@ export const suggestDispatch = createServerFn({ method: "POST" })
 export const applyDispatchSuggestions = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({
-      changes: z.array(
-        z.object({ visit_id: z.string().uuid(), staff_id: z.string().uuid().nullable() }),
-      ).min(1).max(500),
-    }).parse(d),
+    z
+      .object({
+        changes: z
+          .array(z.object({ visit_id: z.string().uuid(), staff_id: z.string().uuid().nullable() }))
+          .min(1)
+          .max(500),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     await requirePermission(context.supabase, context.userId, "use_ai_tools");
@@ -521,7 +611,9 @@ export const suggestZonePricing = createServerFn({ method: "POST" })
       const prices = completed
         .map((v: any) => v.subscriptions?.price_cents ?? 0)
         .filter((n: number) => n > 0);
-      const avg = prices.length ? Math.round(prices.reduce((a: number, b: number) => a + b, 0) / prices.length) : 0;
+      const avg = prices.length
+        ? Math.round(prices.reduce((a: number, b: number) => a + b, 0) / prices.length)
+        : 0;
       return {
         zone_id: z.id,
         name: z.name,
@@ -536,7 +628,7 @@ export const suggestZonePricing = createServerFn({ method: "POST" })
     });
 
     const output = await generateStructured({
-      config: await resolveOrgAiConfig(staff.organization_id),
+      ...(await resolveOrgAiCall(staff.organization_id, "zone_pricing")),
       label: "Zone pricing",
       maxTokens: 8192,
       schema: z.object({
@@ -556,7 +648,8 @@ export const suggestZonePricing = createServerFn({ method: "POST" })
         properties: {
           notes: {
             type: "string",
-            description: "Brief overall pricing notes. If no changes are recommended, say why here.",
+            description:
+              "Brief overall pricing notes. If no changes are recommended, say why here.",
           },
           suggestions: {
             type: "array",
@@ -594,11 +687,14 @@ export const suggestZonePricing = createServerFn({ method: "POST" })
 export const applyZonePricing = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({
-      changes: z.array(
-        z.object({ zone_id: z.string().uuid(), price_note: z.string().max(200) }),
-      ).min(1).max(200),
-    }).parse(d),
+    z
+      .object({
+        changes: z
+          .array(z.object({ zone_id: z.string().uuid(), price_note: z.string().max(200) }))
+          .min(1)
+          .max(200),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     await requirePermission(context.supabase, context.userId, "use_ai_tools");

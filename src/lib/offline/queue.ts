@@ -1,14 +1,50 @@
 // IndexedDB queue for offline visit actions and photo uploads. Stores each
 // pending action with a stable id so `syncQueue` can retry deterministically.
+//
+// ── EVERY ACTION CARRIES ITS OWNER ─────────────────────────────────────────
+//
+// BUG-43 fixed the READ cache: it was keyed by nothing that identified the
+// user, so a tech's route survived sign-out on a shared crew tablet. This
+// store had exactly the same defect and was not fixed with it — actions and
+// photo blobs of customer property lived in IndexedDB, unscoped, and
+// signOutAndClearDevice only ever swept localStorage, despite its own comment
+// promising to "destroy the persisted day".
+//
+// Worse than data at rest: replay is driven by whoever is signed in NOW. Tech A
+// queues six completions in a dead zone, signs out, hands the tablet to tech B;
+// B opens my-day, the auto-sync effect fires with B's session, and every one of
+// A's actions is replayed as B. complete_visit authorizes on
+// is_visit_tech(auth.uid(), …), so they all fail — and because a failure breaks
+// the loop, B's own queue is wedged behind A's work from B's first minute on
+// the device.
+//
+// So each action records the user who created it, listPending only ever returns
+// the caller's own, and sign-out drops that user's rows.
 
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 
+/** Fields every queued action carries, whatever its kind. */
+type ActionBase = {
+  id: string;
+  ts: number;
+  /** Who queued it. Replay runs as whoever is signed in, so an action without
+   *  an owner is an action that can be replayed by the wrong person. */
+  userId: string;
+  /** How many times replay has reached the server and been refused.
+   *
+   *  The sync loop stops at the first failure so it does not hammer a broken
+   *  network, which means ONE permanently-failing action blocks every action
+   *  behind it for the rest of the day, with nothing on screen to say so. A
+   *  count is what lets the loop tell "the network is down" from "the server
+   *  will never accept this". */
+  attempts?: number;
+};
+
 export type PendingAction =
-  | { id: string; kind: "start"; visitId: string; ts: number }
-  | { id: string; kind: "complete"; visitId: string; ts: number }
-  | { id: string; kind: "skip"; visitId: string; reason: string; code: string; ts: number }
-  | {
-      id: string;
+  | ({ kind: "start"; visitId: string } & ActionBase)
+  | ({ kind: "complete"; visitId: string } & ActionBase)
+  | ({ kind: "skip"; visitId: string; reason: string; code: string } & ActionBase)
+  | ({
       kind: "photo";
       visitId: string;
       photoKind: "before" | "completion" | "issue";
@@ -16,14 +52,13 @@ export type PendingAction =
       photoId: string;
       /** Cached organization_id so upload works without a network `visits` read */
       organizationId: string;
-      ts: number;
-    };
+    } & ActionBase);
 
 interface OfflineDB extends DBSchema {
   actions: {
     key: string;
     value: PendingAction;
-    indexes: { "by-ts": number };
+    indexes: { "by-ts": number; "by-user": string };
   };
   photos: {
     key: string;
@@ -35,11 +70,33 @@ let dbPromise: Promise<IDBPDatabase<OfflineDB>> | null = null;
 
 function getDb() {
   if (!dbPromise) {
-    dbPromise = openDB<OfflineDB>("scoop-offline", 1, {
-      upgrade(db) {
-        const actions = db.createObjectStore("actions", { keyPath: "id" });
-        actions.createIndex("by-ts", "ts");
-        db.createObjectStore("photos", { keyPath: "id" });
+    // v2 adds the owner. Rows written by v1 have no userId, and there is no
+    // way to work out whose they were after the fact — so the upgrade drops
+    // them rather than leaving actions that either replay as the wrong person
+    // or sit unsyncable for ever. A queue is a few hours of one tech's work at
+    // most, and guessing its owner is the failure this version exists to stop.
+    // v3 adds `attempts`. Unlike the v1→v2 upgrade there is nothing unsafe
+    // about an existing row — a missing count simply means zero — so v2 rows
+    // are KEPT. Dropping a tech's queued work to add a counter would be a
+    // worse bug than the one being fixed.
+    dbPromise = openDB<OfflineDB>("scoop-offline", 3, {
+      upgrade(db, oldVersion) {
+        if (oldVersion < 1) {
+          const actions = db.createObjectStore("actions", { keyPath: "id" });
+          actions.createIndex("by-ts", "ts");
+          actions.createIndex("by-user", "userId");
+          db.createObjectStore("photos", { keyPath: "id" });
+          return;
+        }
+        if (oldVersion < 2) {
+          db.deleteObjectStore("actions");
+          db.deleteObjectStore("photos");
+          const actions = db.createObjectStore("actions", { keyPath: "id" });
+          actions.createIndex("by-ts", "ts");
+          actions.createIndex("by-user", "userId");
+          db.createObjectStore("photos", { keyPath: "id" });
+        }
+        // v3 needs no migration: `attempts` is optional and absent means 0.
       },
     });
   }
@@ -72,9 +129,47 @@ export async function storePhoto(
   return id;
 }
 
-export async function listPending(): Promise<PendingAction[]> {
+/**
+ * The caller's OWN pending actions, oldest first.
+ *
+ * Scoped on purpose. Replay runs as whoever is signed in now, so returning
+ * another user's actions means replaying them under the wrong identity — every
+ * one rejected by is_visit_tech, and the first rejection wedges the queue for
+ * the person actually holding the device.
+ */
+/** Record that replay reached the server and was refused. Returns the new
+ *  count so the caller can decide whether the action is beyond saving. */
+export async function recordAttempt(id: string): Promise<number> {
   const db = await getDb();
-  return await db.getAllFromIndex("actions", "by-ts");
+  const existing = await db.get("actions", id);
+  if (!existing) return 0;
+  const attempts = (existing.attempts ?? 0) + 1;
+  await db.put("actions", { ...existing, attempts });
+  return attempts;
+}
+
+export async function listPending(userId: string): Promise<PendingAction[]> {
+  const db = await getDb();
+  const all = await db.getAllFromIndex("actions", "by-ts");
+  return all.filter((a) => a.userId === userId);
+}
+
+/** Drop everything belonging to one user — their photos of customer property
+ *  included. Called on sign-out: the read cache has always been cleared there,
+ *  and this store holds the same class of data. */
+export async function clearQueueForUser(userId: string): Promise<void> {
+  const db = await getDb();
+  const tx = db.transaction(["actions", "photos"], "readwrite");
+  const actions = await tx.objectStore("actions").getAll();
+  for (const a of actions) {
+    if (a.userId !== userId) continue;
+    if (a.kind === "photo") await tx.objectStore("photos").delete(a.photoId);
+    await tx.objectStore("actions").delete(a.id);
+  }
+  await tx.done;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("offline-queue-change"));
+  }
 }
 
 export async function countPending(): Promise<number> {
@@ -82,8 +177,25 @@ export async function countPending(): Promise<number> {
   return await db.count("actions");
 }
 
+/** How many QUEUED COMPLETION PHOTOS a visit has.
+ *
+ *  Not "how many pending actions" — that was the bug. The Complete button is
+ *  unlocked offline on the strength of a completion photo waiting to sync, and
+ *  it was gated on the count of ALL pending actions, so queueing a Start
+ *  unlocked Complete. The server then refuses (`A completion photo is required
+ *  before completing this visit`), which is not a network error, so the sync
+ *  loop breaks on it and every action queued behind it stops for good. */
+export async function countQueuedCompletionPhotos(visitId: string): Promise<number> {
+  const db = await getDb();
+  const all = await db.getAll("actions");
+  return all.filter(
+    (a) => a.visitId === visitId && a.kind === "photo" && a.photoKind === "completion",
+  ).length;
+}
+
 export async function countPendingForVisit(visitId: string): Promise<number> {
-  const pending = await listPending();
+  const db = await getDb();
+  const pending = await db.getAll("actions");
   return pending.filter((a) => a.visitId === visitId).length;
 }
 
@@ -93,9 +205,21 @@ export async function deleteAction(id: string) {
   window.dispatchEvent(new Event("offline-queue-change"));
 }
 
-export async function popPhoto(photoId: string) {
+/** Read a photo WITHOUT destroying it.
+ *
+ *  It used to be `popPhoto`: delete, then upload. Any throw after the delete —
+ *  a storage 5xx, an expired token, a reset connection — left the action queued
+ *  with its blob already gone, and the next replay found no blob, treated that
+ *  as nothing to do, deleted the action and counted it a SUCCESS. The tech saw
+ *  "Synced 1 queued action" for a photo that no longer existed anywhere, and
+ *  the visit lost its completion evidence silently. Delete only after the
+ *  upload and the record both land. */
+export async function getPhoto(photoId: string) {
   const db = await getDb();
-  const row = await db.get("photos", photoId);
-  if (row) await db.delete("photos", photoId);
-  return row;
+  return await db.get("photos", photoId);
+}
+
+export async function deletePhoto(photoId: string) {
+  const db = await getDb();
+  await db.delete("photos", photoId);
 }

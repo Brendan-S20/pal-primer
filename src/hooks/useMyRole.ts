@@ -56,15 +56,44 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   // Referral rewards are real money to the business — keep it office-level.
   "/settings/referrals": ["owner", "office_manager"],
   "/reports": ["owner", "office_manager"],
+  // BUILD-13: same audience as /reports, because the server gate is the same
+  // (view_financials). Making the route stricter than the function behind it
+  // would only hide the link from someone who could still fetch the data.
+  "/tax-reports": ["owner", "office_manager"],
+  // BUILD-12: same audience as the other money surfaces — the server gate is
+  // view_financials, and a route stricter than the function behind it only
+  // hides the link from someone who could still fetch the data.
+  "/disputes": ["owner", "office_manager"],
   "/analytics": ["owner", "office_manager"],
+  // BUILD-10: dispatchers and techs can SEE that a record is uncertain
+  // (the list is gated on view_client_directory server-side), but only
+  // office roles can record a decision. Route ACL matches the read gate.
+  "/review": ["owner", "office_manager", "dispatcher"],
   "/franchise": ["owner"],
+  // BUILD-6: the CHILD side. Deliberately NOT Enterprise-gated — a
+  // franchisee is a location someone else recruited, most likely on a
+  // cheaper plan. Gating it would make linking impossible unless every
+  // location bought Enterprise too.
+  "/settings/franchise": ["owner"],
   // /ai-tools is now a redirect to /dashboard — no ACL entry needed.
   "/imports": ["owner", "office_manager"],
   "/settings": ["owner", "office_manager", "tech"],
   "/neighbors": ["owner", "office_manager", "dispatcher", "tech"],
   // H1: the DNA compliance workspace (cross-client registry, fines, violation
-  // notices) is office/dispatch only. Techs are scoped to sample logging and
-  // are redirected to /my-day; the DNA read server fns also reject them (I7).
+  // notices) is office/dispatch only. Techs are redirected to /my-day and the
+  // DNA read server fns reject them (I7).
+  //
+  // This comment used to say techs "are scoped to sample logging". They are
+  // not — no tech-facing DNA affordance exists anywhere in the product, and
+  // setDogDna requires can_write_org. The plan for it is in
+  // docs/mobile-ux-audit.md §3.2 and it was never built (Q-5).
+  //
+  // Chasing that claim found something worse: every RLS policy on dna_matches
+  // was `is_org_member`, which techs pass. Proven live — a tech could re-point
+  // a $250 violation onto another client's dog, close it, and delete a sample
+  // sitting at the lab, all without touching fine_cents, so the billing
+  // trigger never fired. Closed in
+  // 20260801021000_a-tech-could-rewrite-any-dna-violation.sql.
   "/dna": ["owner", "office_manager", "dispatcher"],
   "/help": ["owner", "office_manager", "dispatcher", "tech"],
 };

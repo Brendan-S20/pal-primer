@@ -14,15 +14,20 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { getVisitDetail } from "@/lib/visits.functions";
-import { completeVisit, startVisit, skipVisit } from "@/lib/my-day.functions";
+import {
+  getVisitDetail,
+  completeVisitFromOffice,
+  cancelVisitFromOffice,
+  reassignVisit,
+  listStaff,
+} from "@/lib/visits.functions";
+import { usePermissions } from "@/hooks/useMyRole";
 import { addDog, setDogDna } from "@/lib/dogs.functions";
 import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { Input } from "@/components/ui/input";
 import {
   Navigation,
   CheckCircle2,
-  PlayCircle,
   SkipForward,
   Phone,
   Mail,
@@ -86,9 +91,56 @@ export function VisitDetailDrawer({
   const open = !!visitId;
   const qc = useQueryClient();
   const getDetail = useServerFn(getVisitDetail);
-  const doComplete = useServerFn(completeVisit);
-  const doStart = useServerFn(startVisit);
-  const doSkip = useServerFn(skipVisit);
+  // This drawer opens from /routes and /dashboard, and ROUTE_ROLES excludes
+  // techs from both — so nobody who can see these buttons is ever the visit's
+  // assigned tech. It used to call the TECH RPCs (start_visit / complete_visit
+  // / skip_visit), every one of which authorizes on is_visit_tech(). Confirmed
+  // against the live database on a real scheduled visit: the org's own OWNER
+  // returns false for that guard and true for can_write_org. So all three
+  // buttons were guaranteed to fail with "Not authorized for this visit",
+  // for every user who could reach them.
+  //
+  // The desktop board already had this right (routes.tsx uses
+  // completeVisitFromOffice and says why); the drawer never got the same
+  // treatment. It now uses the office_* variants, which authorize on
+  // can_write_org.
+  const doComplete = useServerFn(completeVisitFromOffice);
+  const doCancel = useServerFn(cancelVisitFromOffice);
+  // Cosmetic gate only — requirePermission("manage_client_billing") inside the
+  // office server functions is the real one. Showing a dispatcher a button
+  // that throws is the failure this whole change is about, so hide it.
+  const { can, role } = usePermissions();
+  const canActFromOffice = can("manage_client_billing");
+
+  // Q-12, narrowest useful answer. Below 768px the dnd board is display:none
+  // and there is no other way to move a visit, so a dispatcher on a phone
+  // could not do the one thing a phone is for: a tech calls in sick and the
+  // day has to be redistributed from wherever they are standing.
+  //
+  // Reassign only. Reschedule and reorder stay desktop — reorder has no
+  // meaning without the board, and reschedule needs manage_client_billing,
+  // which a dispatcher does not hold. reassign_visit authorizes on
+  // can_write_org, which all three office roles pass, so this is reachable by
+  // exactly the people who reach this drawer.
+  const doReassign = useServerFn(reassignVisit);
+  const listStaffFn = useServerFn(listStaff);
+  const { data: staffData } = useQuery({
+    enabled: !!visitId,
+    queryKey: ["staff"],
+    queryFn: () => listStaffFn(),
+    staleTime: 5 * 60_000,
+  });
+  const reassignMut = useMutation({
+    mutationFn: (staffId: string | null) => doReassign({ data: { visitId: visitId!, staffId } }),
+    onSuccess: () => {
+      toast.success("Visit reassigned");
+      invalidate();
+      // The board and the mobile day list both key off "visits"; invalidate()
+      // covers those, but the tech lanes are grouped client-side from the same
+      // query so no extra refetch is needed.
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const { data, isLoading } = useQuery({
     enabled: !!visitId,
@@ -101,20 +153,18 @@ export function VisitDetailDrawer({
     qc.invalidateQueries({ queryKey: ["visits"] });
   };
 
-  const startMut = useMutation({
-    mutationFn: () => doStart({ data: { visitId: visitId! } }),
-    onSuccess: () => { toast.success("Visit started"); invalidate(); },
-    onError: (e: Error) => toast.error(e.message),
-  });
   const completeMut = useMutation({
     mutationFn: () => doComplete({ data: { visitId: visitId! } }),
     onSuccess: () => { toast.success("Visit completed"); invalidate(); onOpenChange(false); },
     onError: (e: Error) => toast.error(e.message),
   });
   const [skipReason, setSkipReason] = useState("");
-  const skipMut = useMutation({
-    mutationFn: () => doSkip({ data: { visitId: visitId!, reason: skipReason || "Skipped from dispatch", code: "other" } }),
-    onSuccess: () => { toast.success("Visit skipped"); invalidate(); onOpenChange(false); },
+  const cancelMut = useMutation({
+    // The office variant requires a reason — no silent "Skipped from dispatch"
+    // default, because that string was being written to real visits as if a
+    // human had given it.
+    mutationFn: () => doCancel({ data: { visitId: visitId!, reason: skipReason, code: "other" } }),
+    onSuccess: () => { toast.success("Visit canceled"); invalidate(); onOpenChange(false); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -125,9 +175,20 @@ export function VisitDetailDrawer({
   const history = data?.history ?? [];
   const hazards = hazardList(p);
   const dir = directionsUrl(p);
-  const canStart = v?.status === "scheduled";
+  // There is no office_start_visit — starting a visit stamps a tech's arrival,
+  // and the office has no honest value to stamp. The Start button here never
+  // worked; it is gone rather than reimplemented as a lie.
   const canComplete = v?.status === "scheduled" || v?.status === "in_progress";
-  const canSkip = v?.status === "scheduled" || v?.status === "in_progress";
+  // office_skip_visit is narrower than the tech path on purpose: a visit
+  // already in progress has a tech on site, and cancelling it from a desk
+  // would overwrite what they are doing.
+  const canCancel = v?.status === "scheduled";
+  // Only work that has not happened yet can be moved. Reassigning a completed
+  // visit would rewrite who did it.
+  const canReassign = v?.status === "scheduled";
+  const techs = (staffData?.staff ?? []).filter(
+    (s: any) => s.is_field_tech || s.id === v?.assigned_staff_id,
+  );
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -250,34 +311,67 @@ export function VisitDetailDrawer({
               </section>
             )}
 
-            {(canStart || canComplete || canSkip) && (
+            {canReassign && (
+              <section className="space-y-1 border-t pt-3">
+                <Label htmlFor="reassign" className="text-xs">Assigned tech</Label>
+                <select
+                  id="reassign"
+                  className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                  value={v?.assigned_staff_id ?? ""}
+                  disabled={reassignMut.isPending}
+                  onChange={(e) => reassignMut.mutate(e.target.value || null)}
+                >
+                  <option value="">Unassigned</option>
+                  {techs.map((s: any) => (
+                    <option key={s.id} value={s.id}>
+                      {s.display_name}
+                      {s.routing_available ? "" : " (off routes)"}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-muted-foreground">
+                  Moving a visit to another day, or reordering a tech's stops, is on desktop.
+                </p>
+              </section>
+            )}
+
+            {(canComplete || canCancel) && (
               <section className="space-y-2 border-t pt-3">
-                <div className="flex flex-wrap gap-2">
-                  {canStart && (
-                    <Button size="sm" variant="outline" onClick={() => startMut.mutate()} disabled={startMut.isPending}>
-                      <PlayCircle className="mr-1.5 h-4 w-4" />Start
-                    </Button>
-                  )}
-                  {canComplete && (
-                    <Button size="sm" onClick={() => completeMut.mutate()} disabled={completeMut.isPending}>
-                      <CheckCircle2 className="mr-1.5 h-4 w-4" />Complete
-                    </Button>
-                  )}
-                </div>
-                {canSkip && (
-                  <div className="space-y-1">
-                    <Label htmlFor="skip" className="text-xs">Skip reason</Label>
-                    <Textarea
-                      id="skip"
-                      rows={2}
-                      value={skipReason}
-                      onChange={(e) => setSkipReason(e.target.value)}
-                      placeholder="Gate locked, dog outside, weather…"
-                    />
-                    <Button size="sm" variant="destructive" onClick={() => skipMut.mutate()} disabled={skipMut.isPending || !skipReason.trim()}>
-                      <SkipForward className="mr-1.5 h-4 w-4" />Skip visit
-                    </Button>
-                  </div>
+                {!canActFromOffice ? (
+                  // A dispatcher reaches this drawer but holds neither
+                  // manage_client_billing nor the tech guard, so there is no
+                  // path by which either action succeeds. Say that, rather
+                  // than render buttons that throw.
+                  <p className="text-xs text-muted-foreground">
+                    {role === "dispatcher"
+                      ? "Completing or canceling a visit is an office action — the assigned tech closes it out, or an owner or office manager does it from the client's Visits tab."
+                      : "You don't have permission to close out a visit."}
+                  </p>
+                ) : (
+                  <>
+                    {canComplete && (
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" onClick={() => completeMut.mutate()} disabled={completeMut.isPending}>
+                          <CheckCircle2 className="mr-1.5 h-4 w-4" />Complete
+                        </Button>
+                      </div>
+                    )}
+                    {canCancel && (
+                      <div className="space-y-1">
+                        <Label htmlFor="skip" className="text-xs">Cancellation reason</Label>
+                        <Textarea
+                          id="skip"
+                          rows={2}
+                          value={skipReason}
+                          onChange={(e) => setSkipReason(e.target.value)}
+                          placeholder="Gate locked, dog outside, weather…"
+                        />
+                        <Button size="sm" variant="destructive" onClick={() => cancelMut.mutate()} disabled={cancelMut.isPending || !skipReason.trim()}>
+                          <SkipForward className="mr-1.5 h-4 w-4" />Cancel visit
+                        </Button>
+                      </div>
+                    )}
+                  </>
                 )}
               </section>
             )}

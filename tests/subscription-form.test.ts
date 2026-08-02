@@ -3,6 +3,8 @@ import {
   subscriptionToFormValues,
   blankSubscriptionFormValues,
   isServiceEnded,
+  serviceScheduleState,
+  liveServiceOrFilter,
 } from "@/lib/subscription-form";
 
 // Finding #8: the edit form must mirror the actual subscription record, not
@@ -120,5 +122,132 @@ describe("isServiceEnded", () => {
   it("open-ended active and paused services are live", () => {
     expect(isServiceEnded({ status: "active", ends_on: null }, today)).toBe(false);
     expect(isServiceEnded({ status: "paused", ends_on: null }, today)).toBe(false);
+  });
+});
+
+// ── the one-off booking dead end ───────────────────────────────────────────
+//
+// Booking a one-off visit for TODAY produced a service with no visit, a banner
+// reading "Its one-time visit is in the past" (false), and no Generate button,
+// because canGenerate excluded one_time outright. Three things had to be true
+// at once for the emergency case to be the one case that could not work.
+
+describe("serviceScheduleState — why there is no upcoming visit", () => {
+  const base = { status: "active", started_on: "2026-07-31" };
+  const opts = { today: "2026-07-31", nextVisit: null, ended: false, paused: false };
+
+  it("says a one-time visit booked for TODAY is unscheduled, not in the past", () => {
+    const r = serviceScheduleState({ ...base, frequency: "one_time" }, opts);
+    expect(r.reason).toBe("Its visit on 2026-07-31 hasn't been scheduled yet");
+    expect(r.reason).not.toMatch(/in the past/);
+  });
+
+  it("offers a way to generate it", () => {
+    // The half that made the wrong sentence unrecoverable.
+    expect(serviceScheduleState({ ...base, frequency: "one_time" }, opts).canGenerate).toBe(true);
+  });
+
+  it("still says 'in the past' when the date really has gone by", () => {
+    const r = serviceScheduleState(
+      { ...base, frequency: "one_time", started_on: "2026-07-20" },
+      opts,
+    );
+    expect(r.reason).toBe("Its one-time visit is in the past");
+    // Generating a past-dated one-time service does nothing, so the button
+    // would only look broken.
+    expect(r.canGenerate).toBe(false);
+  });
+
+  it("leaves recurring services exactly as they were", () => {
+    const r = serviceScheduleState({ ...base, frequency: "weekly" }, opts);
+    expect(r.reason).toBe("Schedule hasn't been generated yet");
+    expect(r.canGenerate).toBe(true);
+  });
+
+  it("explains a future start without offering to generate it", () => {
+    const r = serviceScheduleState(
+      { ...base, frequency: "weekly", started_on: "2026-08-10" },
+      opts,
+    );
+    expect(r.reason).toBe("Starts 2026-08-10; visits appear once it begins");
+    expect(r.canGenerate).toBe(false);
+  });
+
+  it("shows no banner at all when a visit is already scheduled", () => {
+    for (const state of [
+      { ...opts, nextVisit: "2026-08-01" },
+      { ...opts, ended: true },
+      { ...opts, paused: true },
+    ]) {
+      const r = serviceScheduleState({ ...base, frequency: "one_time" }, state);
+      expect(r.reason).toBeNull();
+      expect(r.canGenerate).toBe(false);
+    }
+  });
+});
+
+// ── "active" has to mean one thing ─────────────────────────────────────────
+//
+// listClients counted `status === 'active'` while the client's own Services tab
+// used isServiceEnded. endSubscription only writes ends_on and leaves status
+// 'active', so every ENDED service still counted as one the tenant was running.
+// Latent — no row was in that state — until booking a one-off visit started
+// creating one every time, because a one_time service carries
+// ends_on = the visit date.
+//
+// These pin the contract listClients now shares with the tab.
+
+describe("isServiceEnded is the single definition of a finished service", () => {
+  const TODAY = "2026-07-31";
+
+  it("treats a one-off whose day has passed as ended", () => {
+    expect(isServiceEnded({ status: "active", ends_on: "2026-07-30" }, TODAY)).toBe(true);
+  });
+
+  it("treats a one-off booked for TODAY as ended once the day arrives", () => {
+    // ends_on is inclusive of the visit date, so the service closes the same
+    // day the work happens rather than lingering as an active service.
+    expect(isServiceEnded({ status: "active", ends_on: TODAY }, TODAY)).toBe(true);
+  });
+
+  it("still counts a one-off booked for a future date as live", () => {
+    expect(isServiceEnded({ status: "active", ends_on: "2026-08-05" }, TODAY)).toBe(false);
+  });
+
+  it("counts an ordinary open-ended service as live", () => {
+    expect(isServiceEnded({ status: "active", ends_on: null }, TODAY)).toBe(false);
+  });
+
+  it("is not fooled by status alone, in either direction", () => {
+    // The exact gap: status 'active' + a past ends_on is an ENDED service, and
+    // counting on status alone is what made every ended service look running.
+    expect(isServiceEnded({ status: "active", ends_on: "2020-01-01" }, TODAY)).toBe(true);
+    expect(isServiceEnded({ status: "canceled", ends_on: null }, TODAY)).toBe(true);
+  });
+});
+
+// ── the same rule, got wrong in four places ────────────────────────────────
+//
+// listClients, admin_generate_seasonal_deepcleans (in SQL, where it billed),
+// the property service-time estimate, and the portal's "your plan" all asked
+// `status = 'active'` and stopped. Ending a service writes ends_on and LEAVES
+// status active, so that question has a different answer from "is this service
+// still running". liveServiceOrFilter is the query-side twin of isServiceEnded.
+
+describe("liveServiceOrFilter", () => {
+  it("keeps open-ended services and those ending today or later", () => {
+    // PostgREST `.or()` syntax: null OR ends_on >= today. `gte`, not `gt` —
+    // a service ending TODAY is still running today.
+    expect(liveServiceOrFilter("2026-07-31")).toBe("ends_on.is.null,ends_on.gte.2026-07-31");
+  });
+
+  it("agrees with isServiceEnded at the boundary", () => {
+    // The two must not disagree about the same day, or a service is live to one
+    // surface and finished to another — which is exactly the bug.
+    const today = "2026-07-31";
+    expect(liveServiceOrFilter(today)).toContain(`gte.${today}`);
+    // isServiceEnded says a service ending BEFORE today is over...
+    expect(isServiceEnded({ status: "active", ends_on: "2026-07-30" }, today)).toBe(true);
+    // ...and the filter's gte excludes exactly those.
   });
 });

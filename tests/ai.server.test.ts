@@ -100,8 +100,18 @@ describe("generateStructured — OpenAI", () => {
 });
 
 describe("generateStructured — shared behavior", () => {
-  it("throws with a Settings hint when no config is provided", async () => {
-    await expect(generateStructured(structuredOpts({ config: null }))).rejects.toThrow(/Settings → AI/);
+  it("blames us, not the tenant, when no config is provided", async () => {
+    // This asserted /Settings → AI/ — a field IMP-9 deleted along with BYOK, so
+    // the message sent people looking for a setting that no longer exists. The
+    // only way to reach this now is a deployment with no platform key, which is
+    // ours to fix; a refusal on plan grounds throws its own reason earlier, in
+    // resolveOrgAiConfig.
+    await expect(generateStructured(structuredOpts({ config: null }))).rejects.toThrow(
+      /temporarily unavailable on HoundStack's side/i,
+    );
+    await expect(generateStructured(structuredOpts({ config: null }))).rejects.toThrow(
+      /nothing is wrong with your account/i,
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

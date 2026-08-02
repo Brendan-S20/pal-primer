@@ -30,12 +30,9 @@ export class PortalVerificationRequired extends Error {
   }
 }
 
-// portal_sessions / portal_otps and the portal_resolve_contact RPC are added
-// by the finding-#4 migration; the generated Supabase types lag until Lovable
-// regenerates them, so this module talks to the admin client untyped.
-async function sbAdmin(): Promise<any> {
+async function sbAdmin() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  return supabaseAdmin as any;
+  return supabaseAdmin;
 }
 
 function sha256(v: string): string {

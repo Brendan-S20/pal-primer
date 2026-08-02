@@ -9,11 +9,22 @@ import {
   invoiceOutstandingCents,
   isInvoiceOverdue as arIsInvoiceOverdue,
 } from "@/lib/ar";
+import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
 
-/** Local calendar date (YYYY-MM-DD). due_on is a date column, so comparisons
- * are lexicographic on ISO date strings. */
-export function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+/** Calendar date (YYYY-MM-DD) in the ORGANIZATION's timezone. `due_on` is a
+ * date column, so comparisons are lexicographic on ISO date strings.
+ *
+ * This used to be `new Date().toISOString().slice(0, 10)` — the SERVER's day.
+ * For an org in America/Chicago that is already tomorrow from 19:00 local, so
+ * every invoice read as overdue five hours before it was due, on its own due
+ * date, on the staff invoice list, the drawer, and the customer's own portal.
+ *
+ * The timezone is optional because these are positional adapters called from a
+ * dozen surfaces, and a signature change would silently default the ones not
+ * updated. Passing it is what makes the answer right; not passing it falls back
+ * to the same default the database uses, which is right for every org today. */
+export function todayISO(tz: string = DEFAULT_ORG_TIMEZONE): string {
+  return orgToday(tz);
 }
 
 /** An invoice is overdue when it is still open and its due date has passed.

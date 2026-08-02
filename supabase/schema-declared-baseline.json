@@ -1,0 +1,5 @@
+{
+  "why": "Functions in `public` that Supabase or an extension installs, which no migration of ours should be creating. scripts/check-schema-declared.mjs treats every OTHER live function as needing a definition in supabase/migrations. Add an entry only when the platform owns the object — never to quiet a finding. The check also fails on an entry naming a function that no longer exists, so this list cannot rot into a blanket exemption.",
+  "verified_on": "2026-08-01",
+  "allowed": {}
+}

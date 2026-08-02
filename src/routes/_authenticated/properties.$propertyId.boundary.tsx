@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getPropertyBoundary, updatePropertyBoundary } from "@/lib/properties.functions";
 import { BoundarySketch, formatArea, type PolygonGeoJSON } from "@/components/BoundarySketch";
+import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
+import { humanizeEnum } from "@/lib/humanize";
 
 export const Route = createFileRoute("/_authenticated/properties/$propertyId/boundary")({
   component: BoundaryPage,
@@ -76,7 +78,10 @@ function BoundaryPage() {
           {p && (
             <p className="text-sm text-muted-foreground">
               {addressLine || "No address on file"}
-              {p.yard_size ? ` · ${p.yard_size} yard` : ""}
+              {/* BUG-4: rendered the raw enum ("xlarge yard"). */}
+              {p.yard_size
+                ? ` · ${YARD_SIZE_LABELS[p.yard_size as YardSizeCategory] ?? humanizeEnum(p.yard_size)} yard`
+                : ""}
               {p.boundary_area_sqm != null && ` · ${formatArea(Number(p.boundary_area_sqm))} saved`}
             </p>
           )}
