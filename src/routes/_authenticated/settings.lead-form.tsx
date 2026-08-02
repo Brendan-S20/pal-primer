@@ -7,12 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { appOrigin } from "@/lib/app-origin";
 
 export const Route = createFileRoute("/_authenticated/settings/lead-form")({
   component: LeadFormSettings,
 });
 
-const APP_ORIGIN = "https://www.app.houndstack.com";
+const APP_ORIGIN = appOrigin();
 
 function LeadFormSettings() {
   const cfgFn = useServerFn(getLeadFormConfig);

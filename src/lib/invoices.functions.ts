@@ -4,6 +4,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
+import { appOrigin } from "@/lib/app-origin";
 
 export const listInvoices = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -536,7 +537,7 @@ export const getInvoicePayLink = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     const token = invoice.public_token;
     if (!token) throw new Error("This invoice has no pay link yet");
-    const base = process.env.APP_URL || "https://app.houndstack.com";
+    const base = appOrigin();
     return { url: `${base}/pay/i/${token}` };
   });
 

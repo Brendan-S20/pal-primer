@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.21b** · Released 2026-08-02 · Supersedes: v1.21, v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.21c** · Released 2026-08-02 · Supersedes: v1.21b, v1.21, v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -157,6 +157,67 @@ the real dashboard, so the sentence says which is which. And `field-app.astro`
 said its capture was "framed on properties that carry none", meaning gate codes;
 the seeder no longer writes those columns at all, so the framing is not
 protecting anything and the note said otherwise.
+
+### v1.21c — 2026-08-02
+
+**The two curls nobody had run. The CORS work was right; the host was wrong.**
+
+§3 item 6 listed a preflight and a POST as "only you can confirm, because this
+sandbox cannot". They were run, and the documented host **fails**:
+
+```
+OPTIONS https://app.houndstack.com/_serverFn/getMyDay
+  Origin: capacitor://localhost
+→ 307  location: https://www.app.houndstack.com/_serverFn/getMyDay
+
+…the same request to www.app.houndstack.com
+→ 204  access-control-allow-origin: capacitor://localhost
+       access-control-expose-headers: x-tss-serialized, x-tss-raw
+```
+
+**A CORS preflight may not follow a redirect** — the Fetch spec makes it a
+network error — so the native app pointed at `app.houndstack.com` cannot call a
+single server function. Everything BUG-62 and the CORS work put in place is
+present and correct on the host that actually answers.
+
+The same is true of every server-to-server caller: outbound senders do not
+follow redirects on POST, so a callback URL on the bare host is delivered to a
+307 and dropped. `HoundStack_ClaudeCode_Tasks.md` already recorded this in a
+note — and the code was never made to match it, which is how a written finding
+becomes a bug that is technically already known.
+
+**Twenty-four places in `src/` wrote an app host by hand, and they disagreed.**
+Portal links, unsubscribe URLs, invoice pay links and the `og:url` canonical
+used the bare host; invite emails, the concerns link, the lead-form origin and
+both Twilio hooks used the www one. Which one a URL got depended on which file
+built it. `src/lib/app-origin.ts` is now the only place that knows, reading
+`APP_ORIGIN` → `PUBLIC_APP_ORIGIN` → `APP_URL` (all three, because all three
+already existed and one of them feeds Twilio signature validation) and
+defaulting to the host that answers. `scoop.ts`'s `APP_URL` constant — imported
+by nothing, naming the wrong host — is gone.
+
+`scripts/check-app-origin.mjs` runs the probe on every CI run: the origin must
+not bounce to another host, the preflight must answer 2xx for
+`capacitor://localhost`, and `expose-headers` must carry both `x-tss-*` names.
+A manual step nobody remembered is now a check that cannot be forgotten.
+
+**Two bugs in my own work, both found by running it:**
+
+1. The first version of the script failed the *correct* host, because
+   `www.app.houndstack.com/` answers `307 → /auth` for a signed-out visitor —
+   ordinary routing. It now distinguishes a cross-host bounce from a same-host
+   redirect. Failing on correct behaviour is how a check gets switched off.
+2. The guard test's comment-stripper deleted from the first `//` to end of line
+   — which ate the `//` inside `"https://app.houndstack.com"`, so the one string
+   it exists to forbid was the one string it could never see. A mutation putting
+   the hardcoded host back passed cleanly. Fixed with a string-aware scanner;
+   four mutations now checked, four caught.
+
+**§3 item 0 was stale and is closed with no work.** It said `SITE.url`,
+`robots.txt`, Plausible's `data-domain` and the README disagreed about the
+marketing hostname. Checked: all four say `www.houndstack.com`, and the apex
+answers `308` to it. A previous session fixed it and the ledger was never
+updated — the sixth time this cycle a brief line has been treated as a fact.
 
 ### v1.21b — 2026-08-02
 
@@ -2503,12 +2564,15 @@ rather than the following January.
    an engineering one.
 
 
-0. **Which hostname actually serves the marketing site?** `SITE.url` is
-   `www.houndstack.com`, so every canonical URL published is the www form —
-   while `robots.txt`, Plausible's `data-domain` and the README's deploy note
-   all say the apex `houndstack.com`. Canonicals pointing at a host that
-   redirects, or analytics keyed to a domain that never loads, are both silent
-   failures. One line to fix once you say which is authoritative.
+0. ~~**Which hostname actually serves the marketing site?**~~ — ✅ **already
+   resolved; this entry was stale.** Checked on 2026-08-02 against the repo and
+   the live edge: `astro.config.mjs` (`SITE.url`), `public/robots.txt` (both the
+   `Sitemap:` and `Host:` lines), the Plausible `data-domain` in
+   `BaseLayout.astro` and the README deploy note **all say `www.houndstack.com`**,
+   and the apex answers `308 → https://www.houndstack.com/`. They agree, and
+   they agree with reality. A previous session fixed it and the ledger was never
+   updated — the sixth time this cycle a brief line has been treated as a fact
+   about the product. Nothing to do.
 
 
 1. ~~**Authorize Stripe**~~ — ✅ authorized 2026-08-01. IMP-6 is done. BUILD-2
@@ -2523,18 +2587,31 @@ rather than the following January.
 
 **Two things only you can confirm, because this sandbox cannot:**
 
-6. **Two curls against the real deployment**, once the CSRF and CORS work is
-   live. The preflight:
-   `curl -i -X OPTIONS https://app.houndstack.com/_serverFn/getMyDay -H
-   'Origin: capacitor://localhost' -H 'Access-Control-Request-Method: POST'`
-   should answer 204 with `access-control-allow-origin: capacitor://localhost`.
-   And the ACTUAL response, which is the one BUG-62 was hiding in — the same
-   URL as a POST must come back carrying
-   `access-control-expose-headers: x-tss-serialized, x-tss-raw`. Without that
-   header the app receives every reply successfully and decodes all of them
-   wrongly, with nothing anywhere reporting a problem. The rules are unit-tested
-   and the middleware is wired, but nothing here has seen a response cross a
-   real edge.
+6. ~~**Two curls against the real deployment**~~ — ✅ **run on 2026-08-02, and
+   they found a live defect.** The CORS and CSRF work is correct. **The host is
+   wrong.**
+
+   `app.houndstack.com` does not serve this app — it `307`-redirects to
+   `www.app.houndstack.com`, a blanket "redirect to www" rule at the CDN that
+   caught the `app` subdomain along with the apex. **A CORS preflight may not
+   follow a redirect**; the Fetch spec makes it a network error. So the native
+   app pointed at the documented host cannot call a single server function.
+   The identical preflight against `www.app.houndstack.com` answers `204` with
+   `access-control-allow-origin: capacitor://localhost` and
+   `access-control-expose-headers: x-tss-serialized, x-tss-raw` — the header
+   BUG-62 was hiding in, present and correct.
+
+   The same applies to every server-to-server caller: outbound webhook senders
+   do not follow redirects on POST, so a callback URL on the bare host is
+   delivered to a 307 and dropped. `HoundStack_ClaudeCode_Tasks.md` already
+   carried a note saying exactly this, and the code was never made to match it.
+
+   **The remaining fix is yours and it is at the CDN, not in this repo:** remove
+   the www redirect for the `app` subdomain so `app.houndstack.com` serves
+   directly. Until then `APP_ORIGIN` (or the default in `src/lib/app-origin.ts`)
+   points everything at the host that answers, and
+   `scripts/check-app-origin.mjs` runs this probe on every CI run so it cannot
+   go unnoticed again.
 
 7. **The native app on a real device with no signal.** Offline boot was proved
    in headless Chromium against static files with every off-origin request

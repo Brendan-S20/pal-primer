@@ -1,8 +1,9 @@
 // Server-only helpers for building canonical portal links and ensuring every
 // org has a portal_slug. Import inside server-function/route handlers only.
 
+import { appOrigin } from "@/lib/app-origin";
 function appUrl(): string {
-  return process.env.APP_URL || "https://app.houndstack.com";
+  return appOrigin();
 }
 
 export function slugify(txt: string): string {

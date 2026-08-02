@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { liveServiceOrFilter, todayLocalISO } from "@/lib/subscription-form";
+import { appUrl } from "@/lib/app-origin";
 
 // portal-auth.server.ts imports server-only @tanstack/react-start/server, which
 // is denied in the client bundle. This file (a *.functions.ts) is reachable
@@ -826,7 +827,7 @@ async function notifyOfficeOfConcern(
     `<p><strong>New client concern:</strong> ${label}</p>` +
     `<p>From: ${client.display_name}</p>` +
     (message ? `<p>${message.replace(/</g, "&lt;")}</p>` : "") +
-    `<p><a href="https://www.app.houndstack.com/concerns">Open the Concerns inbox</a></p>`;
+    `<p><a href="${appUrl("/concerns")}">Open the Concerns inbox</a></p>`;
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {

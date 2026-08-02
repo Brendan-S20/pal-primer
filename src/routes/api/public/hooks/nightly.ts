@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { appOrigin } from "@/lib/app-origin";
 
 // POST /api/public/hooks/nightly?s=<CRON_SECRET>
 // Called by pg_cron on a schedule. Iterates orgs and:
@@ -444,7 +445,7 @@ async function sendOverdueReminders(
 }
 
 function appUrl() {
-  return process.env.APP_URL || "https://app.houndstack.com";
+  return appOrigin();
 }
 
 async function sendOverdueEmails(

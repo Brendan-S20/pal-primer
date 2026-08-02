@@ -162,3 +162,16 @@ jobs:
           fi
           node scripts/check-baseline-objects.mjs
         continue-on-error: ${{ github.event_name == 'pull_request' }}
+
+      - name: The published app origin answers the native preflight
+        # §3 item 6 of the brief listed this as two curls "only you can confirm".
+        # They sat unrun, and when finally run the answer was that the
+        # documented host FAILS: app.houndstack.com 307-redirects to
+        # www.app.houndstack.com, and a CORS preflight may not follow a redirect
+        # — so the native app pointed at it cannot call a single server
+        # function. The CORS work was right; the host was wrong.
+        #
+        # Nothing in the repo can know that. Only the live edge can, so this
+        # asks it every run instead of leaving it as a step to remember.
+        run: node scripts/check-app-origin.mjs
+        continue-on-error: ${{ github.event_name == 'pull_request' }}

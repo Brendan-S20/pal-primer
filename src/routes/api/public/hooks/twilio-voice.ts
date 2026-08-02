@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import crypto from "node:crypto";
+import { appOrigin } from "@/lib/app-origin";
 
 function secretEq(a: string, b: string): boolean {
   const ba = Buffer.from(a);
@@ -56,7 +57,7 @@ export const Route = createFileRoute("/api/public/hooks/twilio-voice")({
           const tenant = await resolveOrgTwilioConfig(org.id);
           const { twilioSignatureIsValid } = await import("@/lib/twilio-signature.server");
           // Validate against both the raw and canonical public URL (proxy-safe, M4).
-          const canonicalUrl = (process.env.PUBLIC_APP_ORIGIN || "https://www.app.houndstack.com") + url.pathname + url.search;
+          const canonicalUrl = appOrigin() + url.pathname + url.search;
           const ok = tenant?.authToken
             ? (twilioSignatureIsValid(request.url, params, tenant.authToken, signature) ||
                twilioSignatureIsValid(canonicalUrl, params, tenant.authToken, signature))

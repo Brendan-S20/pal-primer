@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { US_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/route-window";
+import { appOrigin } from "@/lib/app-origin";
 
 export const Route = createFileRoute("/_authenticated/settings/preferences")({
   component: PreferencesPage,
@@ -263,7 +264,7 @@ function PortalAddressCard() {
 
   if (!canEdit) return null;
   const base =
-    typeof window !== "undefined" ? window.location.origin : "https://app.houndstack.com";
+    typeof window !== "undefined" ? window.location.origin : appOrigin();
 
   return (
     <Card>

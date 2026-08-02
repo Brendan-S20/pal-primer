@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import crypto from "node:crypto";
+import { appOrigin } from "@/lib/app-origin";
 
 function secretEq(a: string, b: string): boolean {
   const ba = Buffer.from(a);
@@ -57,7 +58,7 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
           // proxy request.url can differ (scheme/host/www), so validate against
           // both the raw URL and the canonical public URL to avoid a false 401
           // that would silently break BYOK inbound (M4).
-          const canonicalUrl = (process.env.PUBLIC_APP_ORIGIN || "https://www.app.houndstack.com") + url.pathname + url.search;
+          const canonicalUrl = appOrigin() + url.pathname + url.search;
           const ok = tenant?.authToken
             ? (twilioSignatureIsValid(request.url, params, tenant.authToken, signature) ||
                twilioSignatureIsValid(canonicalUrl, params, tenant.authToken, signature))

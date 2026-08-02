@@ -5,6 +5,7 @@
 //
 // Import inside server-function handlers only (uses service_role + cookies).
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { appUrl } from "@/lib/app-origin";
 
 // @tanstack/react-start/server is server-only and denied in the client bundle.
 // portal.functions.ts (which ships to the client) statically imports this
@@ -341,7 +342,7 @@ export async function issuePortalOtp(
       await supabaseAdmin
         .from("email_unsubscribe_tokens")
         .insert({ email: dest.trim().toLowerCase(), token: unsubscribeToken });
-      const unsubUrl = `https://app.houndstack.com/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`;
+      const unsubUrl = appUrl(`/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`);
       const emailBody = {
         from: `${contact.org_name} <noreply@notify.houndstack.com>`,
         to: [dest],

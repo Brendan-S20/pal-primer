@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createFileRoute } from "@tanstack/react-router";
+import { appUrl } from "@/lib/app-origin";
 
 const MAX_RETRIES = 5;
 const DEFAULT_BATCH_SIZE = 10;
@@ -29,7 +30,7 @@ async function sendViaResend(apiKey: string, payload: Record<string, any>): Prom
   // Build List-Unsubscribe header from the unsubscribe token when present.
   const headers: Record<string, string> = {};
   if (payload.unsubscribe_token) {
-    const url = `https://app.houndstack.com/unsubscribe?token=${encodeURIComponent(payload.unsubscribe_token)}`;
+    const url = appUrl(`/unsubscribe?token=${encodeURIComponent(payload.unsubscribe_token)}`);
     headers["List-Unsubscribe"] = `<${url}>`;
     headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
   }

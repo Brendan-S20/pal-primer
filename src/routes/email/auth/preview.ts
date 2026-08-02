@@ -7,6 +7,7 @@ import { MagicLinkEmail } from '@/lib/email-templates/magic-link'
 import { RecoveryEmail } from '@/lib/email-templates/recovery'
 import { EmailChangeEmail } from '@/lib/email-templates/email-change'
 import { ReauthenticationEmail } from '@/lib/email-templates/reauthentication'
+import { appOrigin } from "@/lib/app-origin";
 
 const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
   signup: SignupEmail,
@@ -26,7 +27,7 @@ const ROOT_DOMAIN = "houndstack.com"
 // The sample email uses a fixed placeholder (RFC 6761 .test TLD) so the Go backend
 // can always find-and-replace it with the actual recipient when sending test emails,
 // even if the project's domain has changed since the template was scaffolded.
-const SAMPLE_PROJECT_URL = "https://app.houndstack.com"
+const SAMPLE_PROJECT_URL = appOrigin()
 const SAMPLE_EMAIL = "user@example.test"
 const SAMPLE_DATA: Record<string, object> = {
   signup: {

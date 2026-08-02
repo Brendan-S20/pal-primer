@@ -1,9 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { appOrigin } from "@/lib/app-origin";
 
 function appUrl() {
-  return process.env.APP_URL || "https://app.houndstack.com";
+  return appOrigin();
 }
 
 // Identifier-first sign-in: given an email, tell the auth screen whether to

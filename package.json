@@ -15,6 +15,7 @@
     "test:db": "tests/run-db-tests.sh",
     "check:migrations": "node scripts/check-migrations.mjs",
     "check:baseline-objects": "node scripts/check-baseline-objects.mjs",
+    "check:app-origin": "node scripts/check-app-origin.mjs",
     "check:dead-machinery": "node scripts/check-dead-machinery.mjs",
     "check:pwa": "node scripts/check-pwa-output.mjs"
   },

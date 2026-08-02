@@ -19,6 +19,7 @@
 // still tell the user which addresses failed, because "we emailed them" and "we
 // tried to email them" are different promises.
 
+import { appUrl } from "@/lib/app-origin";
 export type InviteEmailResult = { email: string; sent: boolean };
 
 /**
@@ -36,7 +37,7 @@ export async function sendInviteEmail(
   try {
     const resendApiKey = process.env.RESEND_API_KEY;
     if (!resendApiKey) return false;
-    const link = `https://www.app.houndstack.com/auth`;
+    const link = appUrl("/auth");
     const label = role.replace(/_/g, " ");
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
