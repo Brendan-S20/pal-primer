@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { feeReversalCents } from "@/lib/platform-fee";
 
 async function provisionSignup(
   supabaseAdmin: SupabaseClient,
@@ -482,6 +483,55 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               kind = "refund";
               amount = Number(obj?.amount_refunded ?? 0);
               movesMoney = true;
+
+              // Give back our 50 bps on the refunded portion.
+              //
+              // Stripe does not do this by itself. On a DIRECT charge the
+              // connected account issues the refund and the platform's
+              // application fee stays collected — so without this the tenant is
+              // out the refunded amount AND our fee, on a transaction that was
+              // unwound. The policy decision lives in src/lib/platform-fee.ts.
+              //
+              // Idempotent by construction, which is the point of computing a
+              // TARGET rather than an increment: `amount_refunded` is cumulative
+              // and this event fires once per refund, so reversing
+              // `proportion × fee` each time would over-refund from the second
+              // partial refund onward. We ask for the total that should have
+              // been returned by now, subtract what Stripe says already has
+              // been, and send only the difference. A replayed webhook computes
+              // a delta of zero and does nothing.
+              //
+              // `stripe` here is the PLATFORM client — application fees belong
+              // to the platform, not to the connected account, so this call must
+              // not be scoped with { stripeAccount }.
+              //
+              // Deliberately isolated: a failure here must not stop the reversal
+              // ledger below from recording the refund. The customer getting
+              // their money back is the fact that has to be right; our fee is
+              // reconcilable afterwards from Stripe's own records.
+              const feeId: string | null =
+                typeof obj?.application_fee === "string"
+                  ? obj.application_fee
+                  : (obj?.application_fee?.id ?? null);
+              if (feeId) {
+                try {
+                  const fee = await stripe.applicationFees.retrieve(feeId);
+                  const target = feeReversalCents(
+                    Number(fee?.amount ?? 0),
+                    Number(obj?.amount ?? 0),
+                    Number(obj?.amount_refunded ?? 0),
+                  );
+                  const delta = target - Number(fee?.amount_refunded ?? 0);
+                  if (delta > 0) {
+                    await stripe.applicationFees.createRefund(feeId, { amount: delta });
+                  }
+                } catch (e) {
+                  console.error("application fee reversal failed", {
+                    feeId,
+                    paymentIntentId,
+                  }, e);
+                }
+              }
             } else {
               // BUILD-12: `charge.dispute.created` and `charge.dispute.closed`
               // carry BOTH inquiries and real chargebacks, and only `status`

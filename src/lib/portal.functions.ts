@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { liveServiceOrFilter, todayLocalISO } from "@/lib/subscription-form";
 import { appUrl } from "@/lib/app-origin";
+import { platformFeeCents } from "@/lib/platform-fee";
 
 // portal-auth.server.ts imports server-only @tanstack/react-start/server, which
 // is denied in the client bundle. This file (a *.functions.ts) is reachable
@@ -679,6 +680,7 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
     try {
       const pi = await stripe.paymentIntents.create({
         amount: dueCents,
+        application_fee_amount: platformFeeCents(dueCents),
         currency: invoice.currency ?? "usd",
         customer: c.stripe_customer_id,
         payment_method: c.default_payment_method_id,
@@ -1098,6 +1100,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     if (!pi) {
       const createParams = {
         amount: dueCents,
+        application_fee_amount: platformFeeCents(dueCents),
         currency,
         customer: customerId,
         setup_future_usage: "off_session" as const,

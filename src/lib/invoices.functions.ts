@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/authz.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { appOrigin } from "@/lib/app-origin";
+import { platformFeeCents } from "@/lib/platform-fee";
 
 export const listInvoices = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -482,6 +483,7 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
       // method without the client's own consent (portal flow only).
       const createParams = {
         amount: dueCents,
+        application_fee_amount: platformFeeCents(dueCents),
         currency,
         customer: customerId,
         metadata,
@@ -649,6 +651,7 @@ async function chargeSavedCardCore(
     const pi = await stripe.paymentIntents.create(
       {
         amount: dueCents,
+        application_fee_amount: platformFeeCents(dueCents),
         currency: invoice.currency ?? "usd",
         customer: c.stripe_customer_id,
         payment_method: c.default_payment_method_id,
@@ -1342,6 +1345,7 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
       // payment method saved.
       const createParams = {
         amount: dueCents,
+        application_fee_amount: platformFeeCents(dueCents),
         currency,
         customer: customerId,
         metadata,

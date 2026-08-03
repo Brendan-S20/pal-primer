@@ -191,6 +191,70 @@ correct handler — as a hole.
 live OTP flow, the SMS path in particular, which needs `sms_from_number`
 configured. Nothing here replaces that.
 
+### v1.21f — 2026-08-03
+
+**A platform transaction fee: 50 bps on charges over $10.**
+
+The direction is Jobber-shaped — a cut of payment volume on top of the
+subscription. `application_fee_amount` on every tenant→client charge, which on a
+DIRECT charge moves only the fee to the platform. The gross still settles into
+the tenant's own connected account, which is why one Stripe account remains
+correct: it holds subscription revenue and these fees, both ours, and no part of
+a tenant's or a homeowner's money.
+
+**The term, and the part of it that was a decision.** 50 bps of the FULL amount
+when the charge exceeds $10 — the $10 is a threshold, not a deduction, so a $100
+job is 50¢ and not 45¢. Strictly greater: $10.00 is free, $10.01 is 5¢. It lives
+in `src/lib/platform-fee.ts` as a constant and deliberately NOT an environment
+variable — a pricing term that could differ between staging and production is one
+that can ship wrong.
+
+**Ten call sites, which is the actual risk.** Three in `portal.functions.ts`,
+five in `invoices.functions.ts`, one in `signup.functions.ts`, one in the
+unattended nightly autopay run. Adding the fee to nine and missing the tenth does
+not error, does not warn, and fails no test — it silently collects nothing on
+that path, and `nightly.ts` is the likely miss because nobody watches it. This is
+the twenty-four-app-hosts shape and the BUG-21 shape for the third time, so:
+one helper, and a guard test that reads the source and refuses a connected-account
+charge built without it. It also asserts the fee is computed from the SAME
+variable the charge uses — a fee derived from gross rather than the amount left
+after credit was applied would collect, look fine, and be wrong.
+
+**The refund asymmetry, which Stripe does not solve for you.** The app never
+calls `refunds.create` — refunds are learned about only through the
+`charge.refunded` webhook, because tenants refund from their own Stripe
+dashboard. On a direct charge, a connected account's refund does NOT reverse the
+platform's application fee: without intervention the tenant is out the refunded
+amount AND our 50 bps on a transaction that was unwound. Decision: give it back
+proportionally.
+
+That reversal is idempotent by construction, and the construction is the point.
+`amount_refunded` is CUMULATIVE and `charge.refunded` fires once per refund, so
+reversing `proportion × fee` on each event over-refunds from the second partial
+refund onward. `feeReversalCents()` returns the TOTAL that should have been
+reversed by now; the handler subtracts what Stripe says already has been and
+sends only the difference. A replayed webhook computes zero. The call is isolated
+in its own try/catch — a failure to return our fee must never stop the reversal
+ledger from recording that the customer got their money back.
+
+16 tests, four mutations, four caught: dropping the fee from the nightly run,
+computing it from a different variable than the charge, silently removing the $10
+threshold, and treating the refund reversal as an increment rather than a target.
+
+**Deliberately NOT done, so nobody reads this as finished:**
+
+  * **Platform revenue reporting has no line for transaction fees.** MRR and
+    `platform_org_stats` count subscriptions and AI overage only, so total
+    platform revenue will understate by exactly this fee until a line is added.
+  * **Nothing discloses the fee to tenants.** No pricing-page copy, no terms, no
+    line in the app. Changing tenants' economics without telling them is not a
+    thing to ship, and the copy is a decision rather than an implementation.
+  * **No per-org waiver or grandfathering.** Every tenant pays it the moment this
+    deploys. Harmless today — only demo and test orgs exist — and precisely why
+    this is the cheap moment to do it.
+  * Disputes have the same asymmetry as refunds and are not reversed. A lost
+    chargeback leaves our fee collected.
+
 ### v1.21e — 2026-08-03
 
 **The Stripe catalog moved to live mode, and the cutover found a class of

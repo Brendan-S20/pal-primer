@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { appOrigin } from "@/lib/app-origin";
+import { platformFeeCents } from "@/lib/platform-fee";
 
 // POST /api/public/hooks/nightly?s=<CRON_SECRET>
 // Called by pg_cron on a schedule. Iterates orgs and:
@@ -633,6 +634,7 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
       const pi = await stripe.paymentIntents.create(
         {
           amount: dueCents,
+          application_fee_amount: platformFeeCents(dueCents),
           currency: inv.currency ?? "usd",
           customer: c.stripe_customer_id,
           payment_method: c.default_payment_method_id,
