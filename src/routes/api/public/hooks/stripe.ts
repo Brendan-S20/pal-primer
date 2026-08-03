@@ -99,7 +99,10 @@ async function provisionSignup(
         notifyKey: "notify_email_welcome",
         idempotencyKey: `welcome-signup-${signupRequestId}`,
         templateData: {
-          portalUrl: await buildPortalLink(sr.organization_id, client.portal_token as string | null),
+          portalUrl: await buildPortalLink(
+            sr.organization_id,
+            client.portal_token as string | null,
+          ),
         },
       });
     } catch (e) {
@@ -114,8 +117,6 @@ async function provisionSignup(
   }
 }
 
-
-
 export const Route = createFileRoute("/api/public/hooks/stripe")({
   server: {
     handlers: {
@@ -123,10 +124,31 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
         // Connect webhook: tenant->client charge events for connected accounts,
         // verified with the Connect platform's webhook secret. Platform SaaS
         // billing events go to /api/public/hooks/platform-stripe, not here.
-        // (Falls back to the legacy vars during the Connect cutover.)
-        const secret = process.env.STRIPE_CONNECT_SECRET_KEY ?? process.env.STRIPE_SECRET_KEY;
-        const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET ?? process.env.STRIPE_WEBHOOK_SECRET;
+        //
+        // NO FALLBACK TO THE PLATFORM VARS, deliberately. Both of these used to
+        // read `CONNECT ?? platform`, which is harmless only while one Stripe
+        // account plays both roles. The moment the Connect platform and the
+        // subscription-billing account are separate — which the rest of this
+        // codebase already allows, and which `connectSecret()` has always
+        // assumed by throwing rather than falling back — that fallback becomes
+        // the worst kind of bug:
+        //
+        //   the key      authenticates against an account that does not own
+        //                these connected accounts, so every lookup misses;
+        //   the secret   verifies signatures against the wrong signing secret,
+        //                which is indistinguishable from an attacker, so every
+        //                event is rejected exactly as designed.
+        //
+        // Both fail silently while still returning 200 to Stripe. A missing
+        // variable is a configuration mistake and should read as one.
+        const secret = process.env.STRIPE_CONNECT_SECRET_KEY;
+        const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
         if (!secret || !webhookSecret) {
+          console.error(
+            "Connect webhook not configured: STRIPE_CONNECT_SECRET_KEY and " +
+              "STRIPE_CONNECT_WEBHOOK_SECRET must both be set, and must both belong to " +
+              "the Stripe account that owns the connected accounts.",
+          );
           return new Response("Stripe not configured", { status: 500 });
         }
         const signature = request.headers.get("stripe-signature");
@@ -159,6 +181,100 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
         }
 
         try {
+          if (event.type === "account.application.deauthorized") {
+            // A tenant disconnected HoundStack from THEIR Stripe dashboard.
+            //
+            // The in-app Disconnect button clears this state itself; this is the
+            // other half — the case where the tenant never touches our UI. Until
+            // now nothing handled it, so the org kept `charges_enabled = true`
+            // forever, every subsequent charge failed at the Stripe API, and
+            // neither the tenant nor the platform got a signal saying why.
+            //
+            // `event.account` is the only trustworthy identifier on a Connect
+            // event (see accountMatches above) and is exactly what we key on, so
+            // no metadata is consulted and nothing else can be affected.
+            if (event.account) {
+              const { error } = await (supabaseAdmin as any)
+                .from("organizations")
+                .update({
+                  stripe_connect_charges_enabled: false,
+                  stripe_connect_status: "disconnected",
+                  // The account id is deliberately KEPT. It is the audit trail of
+                  // which account was connected, the tenant may reconnect the
+                  // same one, and clearing it would strand every saved card and
+                  // customer id that points at it.
+                })
+                .eq("stripe_connect_account_id", event.account);
+              if (error) console.error("deauthorize update failed", event.account, error);
+              else console.warn("connected account deauthorized by tenant", event.account);
+            }
+            return new Response("ok", { status: 200 });
+          }
+
+          if (event.type === "setup_intent.succeeded") {
+            // The durable backstop for saving a card.
+            //
+            // Both inline flows confirm the SetupIntent in the browser and then
+            // call a server function (portalFinalizeCardSetup / the staff
+            // equivalent) to record the payment method. If the tab closes, the
+            // network drops, or the user navigates away in between, the card
+            // exists at Stripe and does not exist in HoundStack — so autopay
+            // silently never runs for that client and nothing reports it.
+            //
+            // This handler is that same write, driven by an event that survives
+            // the browser going away. It is idempotent: writing the same
+            // payment method id twice is a no-op, so the ordinary path racing
+            // this one is harmless.
+            const si = event.data.object as import("stripe").Stripe.SetupIntent;
+            const clientId = si.metadata?.client_id;
+            const source = si.metadata?.source;
+            if (clientId && (source === "portal_setup_inline" || source === "staff_setup_inline")) {
+              const { data: setupClient } = await supabaseAdmin
+                .from("clients")
+                .select("organization_id")
+                .eq("id", clientId)
+                .maybeSingle();
+              // C1 again: metadata is attacker-controlled, event.account is not.
+              if (await accountMatches((setupClient as any)?.organization_id)) {
+                try {
+                  const acctOpts = event.account ? { stripeAccount: event.account } : undefined;
+                  const pmId =
+                    typeof si.payment_method === "string"
+                      ? si.payment_method
+                      : si.payment_method?.id;
+                  const customerId =
+                    typeof si.customer === "string" ? si.customer : si.customer?.id;
+                  if (pmId && customerId) {
+                    const pm = await stripe.paymentMethods.retrieve(pmId, undefined, acctOpts);
+                    await stripe.customers.update(
+                      customerId,
+                      {
+                        invoice_settings: { default_payment_method: pmId },
+                      },
+                      acctOpts,
+                    );
+                    await supabaseAdmin
+                      .from("clients")
+                      .update({
+                        stripe_customer_id: customerId,
+                        default_payment_method_id: pmId,
+                        default_card_brand: pm.card?.brand ?? null,
+                        default_card_last4: pm.card?.last4 ?? null,
+                        // Same rule as the Checkout path: only the client's own
+                        // portal flow opts them into autopay. A staff-added card
+                        // must not change a preference the client set.
+                        ...(source === "portal_setup_inline" ? { autopay_enabled: true } : {}),
+                      })
+                      .eq("id", clientId);
+                  }
+                } catch (e) {
+                  console.error("setup_intent.succeeded finalize failed", si.id, e);
+                }
+              }
+            }
+            return new Response("ok", { status: 200 });
+          }
+
           if (event.type === "checkout.session.completed") {
             const session = event.data.object as import("stripe").Stripe.Checkout.Session;
 
@@ -170,36 +286,56 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 session.metadata?.source === "staff_setup")
             ) {
               const clientId = session.metadata.client_id;
-              const setupIntentId = typeof session.setup_intent === "string"
-                ? session.setup_intent
-                : session.setup_intent?.id ?? null;
+              const setupIntentId =
+                typeof session.setup_intent === "string"
+                  ? session.setup_intent
+                  : (session.setup_intent?.id ?? null);
               // C1: the client must belong to the account that produced the event.
               const { data: setupClient } = clientId
-                ? await supabaseAdmin.from("clients").select("organization_id").eq("id", clientId).maybeSingle()
+                ? await supabaseAdmin
+                    .from("clients")
+                    .select("organization_id")
+                    .eq("id", clientId)
+                    .maybeSingle()
                 : { data: null };
-              if (clientId && setupIntentId && await accountMatches((setupClient as any)?.organization_id)) {
+              if (
+                clientId &&
+                setupIntentId &&
+                (await accountMatches((setupClient as any)?.organization_id))
+              ) {
                 try {
                   // Connect: these objects live on the connected account.
                   const acctOpts = event.account ? { stripeAccount: event.account } : undefined;
                   const si = await stripe.setupIntents.retrieve(setupIntentId, undefined, acctOpts);
-                  const pmId = typeof si.payment_method === "string" ? si.payment_method : si.payment_method?.id;
-                  const customerId = typeof si.customer === "string" ? si.customer : si.customer?.id;
+                  const pmId =
+                    typeof si.payment_method === "string"
+                      ? si.payment_method
+                      : si.payment_method?.id;
+                  const customerId =
+                    typeof si.customer === "string" ? si.customer : si.customer?.id;
                   if (pmId && customerId) {
                     const pm = await stripe.paymentMethods.retrieve(pmId, undefined, acctOpts);
-                    await stripe.customers.update(customerId, {
-                      invoice_settings: { default_payment_method: pmId },
-                    }, acctOpts);
-                    await supabaseAdmin.from("clients").update({
-                      stripe_customer_id: customerId,
-                      default_payment_method_id: pmId,
-                      default_card_brand: pm.card?.brand ?? null,
-                      default_card_last4: pm.card?.last4 ?? null,
-                      // Only the client's own portal flow opts them into
-                      // autopay; a staff-added card must not.
-                      ...(session.metadata?.source === "portal_setup"
-                        ? { autopay_enabled: true }
-                        : {}),
-                    }).eq("id", clientId);
+                    await stripe.customers.update(
+                      customerId,
+                      {
+                        invoice_settings: { default_payment_method: pmId },
+                      },
+                      acctOpts,
+                    );
+                    await supabaseAdmin
+                      .from("clients")
+                      .update({
+                        stripe_customer_id: customerId,
+                        default_payment_method_id: pmId,
+                        default_card_brand: pm.card?.brand ?? null,
+                        default_card_last4: pm.card?.last4 ?? null,
+                        // Only the client's own portal flow opts them into
+                        // autopay; a staff-added card must not.
+                        ...(session.metadata?.source === "portal_setup"
+                          ? { autopay_enabled: true }
+                          : {}),
+                      })
+                      .eq("id", clientId);
                   }
                 } catch (e) {
                   console.error("portal_setup finalize failed", e);
@@ -211,20 +347,29 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             const signupRequestId = session.metadata?.signup_request_id;
             if (signupRequestId) {
               const { data: sr } = await supabaseAdmin
-                .from("signup_requests").select("organization_id").eq("id", signupRequestId).maybeSingle();
+                .from("signup_requests")
+                .select("organization_id")
+                .eq("id", signupRequestId)
+                .maybeSingle();
               if (await accountMatches((sr as any)?.organization_id)) {
                 await provisionSignup(supabaseAdmin, signupRequestId, {
                   amountTotalCents: session.amount_total ?? 0,
                   stripeRef: session.id,
                 });
               } else {
-                console.error("signup webhook account mismatch", { signupRequestId, eventAccount: event.account });
+                console.error("signup webhook account mismatch", {
+                  signupRequestId,
+                  eventAccount: event.account,
+                });
               }
               return new Response("ok", { status: 200 });
             }
 
             const invoiceId = session.metadata?.invoice_id || session.client_reference_id;
-            const pi = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id ?? null;
+            const pi =
+              typeof session.payment_intent === "string"
+                ? session.payment_intent
+                : (session.payment_intent?.id ?? null);
             if (invoiceId) {
               const { data: inv } = await supabaseAdmin
                 .from("invoices")
@@ -235,8 +380,9 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               // if already paid (Stripe retries/redelivers). The atomic claim in
               // markInvoicePaidFromStripe also protects against racing the
               // reconcile fallback.
-              if (inv && inv.status !== "paid" && await accountMatches(inv.organization_id)) {
-                const { markInvoicePaidFromStripe } = await import("@/lib/invoice-reconcile.server");
+              if (inv && inv.status !== "paid" && (await accountMatches(inv.organization_id))) {
+                const { markInvoicePaidFromStripe } =
+                  await import("@/lib/invoice-reconcile.server");
                 await markInvoicePaidFromStripe(supabaseAdmin, {
                   invoiceId: inv.id,
                   organizationId: inv.organization_id,
@@ -256,14 +402,20 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             const piSignupId = pi.metadata?.signup_request_id;
             if (piSignupId && pi.metadata?.source === "signup_inline") {
               const { data: sr } = await supabaseAdmin
-                .from("signup_requests").select("organization_id").eq("id", piSignupId).maybeSingle();
+                .from("signup_requests")
+                .select("organization_id")
+                .eq("id", piSignupId)
+                .maybeSingle();
               if (await accountMatches((sr as any)?.organization_id)) {
                 await provisionSignup(supabaseAdmin, piSignupId, {
                   amountTotalCents: pi.amount,
                   stripeRef: pi.id,
                 });
               } else {
-                console.error("signup webhook account mismatch", { signupRequestId: piSignupId, eventAccount: event.account });
+                console.error("signup webhook account mismatch", {
+                  signupRequestId: piSignupId,
+                  eventAccount: event.account,
+                });
               }
               return new Response("ok", { status: 200 });
             }
@@ -284,18 +436,20 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 source === "public_link")
             ) {
               const { data: inv } = await supabaseAdmin
-                .from("invoices").select("id, organization_id, total_cents, currency, status, client_id")
-                .eq("id", invoiceId).single();
-              if (inv && inv.status !== "paid" && await accountMatches(inv.organization_id)) {
-                const { markInvoicePaidFromStripe } = await import("@/lib/invoice-reconcile.server");
+                .from("invoices")
+                .select("id, organization_id, total_cents, currency, status, client_id")
+                .eq("id", invoiceId)
+                .single();
+              if (inv && inv.status !== "paid" && (await accountMatches(inv.organization_id))) {
+                const { markInvoicePaidFromStripe } =
+                  await import("@/lib/invoice-reconcile.server");
                 // A pass-through charge is base + surcharge. Only the base pays
                 // down the invoice: the surcharge is the tenant recovering
                 // Stripe's fee, not the homeowner paying more for the service.
                 // Handing `pi.amount` in here would over-credit the invoice and
                 // report the recovery as revenue everywhere revenue is summed.
-                const { invoiceAppliedCents, surchargeFromMetadata } = await import(
-                  "@/lib/processing-fee.server"
-                );
+                const { invoiceAppliedCents, surchargeFromMetadata } =
+                  await import("@/lib/processing-fee.server");
                 const claimed = await markInvoicePaidFromStripe(supabaseAdmin, {
                   invoiceId: inv.id,
                   organizationId: inv.organization_id,
@@ -307,12 +461,15 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 });
                 // Successful autopay clears the dunning failure ladder.
                 if (claimed) {
-                  await supabaseAdmin.from("clients").update({
-                    autopay_failure_count: 0,
-                    autopay_paused: false,
-                    autopay_last_error: null,
-                    autopay_last_attempt_at: new Date().toISOString(),
-                  }).eq("id", inv.client_id);
+                  await supabaseAdmin
+                    .from("clients")
+                    .update({
+                      autopay_failure_count: 0,
+                      autopay_paused: false,
+                      autopay_last_error: null,
+                      autopay_last_attempt_at: new Date().toISOString(),
+                    })
+                    .eq("id", inv.client_id);
                 }
               }
             }
@@ -322,9 +479,15 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             if (invoiceId) {
               // C1: ignore unless the invoice belongs to the event's account.
               const { data: invOwner } = await supabaseAdmin
-                .from("invoices").select("organization_id").eq("id", invoiceId).maybeSingle();
+                .from("invoices")
+                .select("organization_id")
+                .eq("id", invoiceId)
+                .maybeSingle();
               if (!(await accountMatches((invOwner as any)?.organization_id))) {
-                console.error("payment_failed webhook account mismatch", { invoiceId, eventAccount: event.account });
+                console.error("payment_failed webhook account mismatch", {
+                  invoiceId,
+                  eventAccount: event.account,
+                });
                 return new Response("ok", { status: 200 });
               }
               // BUILD-6: a failed charge never counts toward revenue (settlement
@@ -335,12 +498,13 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               // Same split as the succeeded path: `amount_cents` means money
               // toward the invoice on every row, so a failed pass-through charge
               // does not read as a larger attempt than the invoice was for.
-              const { invoiceAppliedCents, surchargeFromMetadata } = await import(
-                "@/lib/processing-fee.server"
-              );
+              const { invoiceAppliedCents, surchargeFromMetadata } =
+                await import("@/lib/processing-fee.server");
               await supabaseAdmin.from("payments").insert({
                 organization_id: (invOwner as any).organization_id,
-                collected_by_organization_id: await collectingOrgIdFor((invOwner as any).organization_id),
+                collected_by_organization_id: await collectingOrgIdFor(
+                  (invOwner as any).organization_id,
+                ),
                 invoice_id: invoiceId,
                 amount_cents: invoiceAppliedCents(pi.amount, pi.metadata),
                 surcharge_cents: surchargeFromMetadata(pi.metadata),
@@ -355,41 +519,60 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               // signup_inline) is a live person retrying a form, not a broken
               // card on file — the failed payment row above is enough.
               const failSource = pi.metadata?.source;
-              const isSavedCardCharge = failSource === "autopay" || failSource === "portal_saved_card";
+              const isSavedCardCharge =
+                failSource === "autopay" || failSource === "portal_saved_card";
               // A staff-initiated saved-card charge that declines is still a
               // decline of the CARD ON FILE: record card health so the
               // Billing tab shows it, but don't escalate (no failure count,
               // no autopay pause, no SMS — staff saw the error live).
               if (failSource === "staff_saved_card") {
                 const { data: failInv } = await supabaseAdmin
-                  .from("invoices").select("client_id").eq("id", invoiceId).maybeSingle();
+                  .from("invoices")
+                  .select("client_id")
+                  .eq("id", invoiceId)
+                  .maybeSingle();
                 if ((failInv as any)?.client_id) {
-                  await supabaseAdmin.from("clients").update({
-                    autopay_last_error: pi.last_payment_error?.message ?? "Card charge failed",
-                    autopay_last_attempt_at: new Date().toISOString(),
-                  }).eq("id", (failInv as any).client_id);
+                  await supabaseAdmin
+                    .from("clients")
+                    .update({
+                      autopay_last_error: pi.last_payment_error?.message ?? "Card charge failed",
+                      autopay_last_attempt_at: new Date().toISOString(),
+                    })
+                    .eq("id", (failInv as any).client_id);
                 }
               }
               // Record error on client for autopay visibility
               const err = pi.last_payment_error?.message ?? "Card charge failed";
               const { data: inv } = await supabaseAdmin
-                .from("invoices").select("client_id, organization_id").eq("id", invoiceId).single();
+                .from("invoices")
+                .select("client_id, organization_id")
+                .eq("id", invoiceId)
+                .single();
               if (inv?.client_id && isSavedCardCharge) {
                 // Dunning: increment failure count, pause autopay if past org threshold.
                 const [{ data: c }, { data: orgCfg }] = await Promise.all([
-                  supabaseAdmin.from("clients")
-                    .select("autopay_failure_count").eq("id", inv.client_id).single(),
-                  supabaseAdmin.from("organizations")
-                    .select("dunning_pause_after_failures").eq("id", inv.organization_id).single(),
+                  supabaseAdmin
+                    .from("clients")
+                    .select("autopay_failure_count")
+                    .eq("id", inv.client_id)
+                    .single(),
+                  supabaseAdmin
+                    .from("organizations")
+                    .select("dunning_pause_after_failures")
+                    .eq("id", inv.organization_id)
+                    .single(),
                 ]);
                 const nextCount = (c?.autopay_failure_count ?? 0) + 1;
                 const threshold = orgCfg?.dunning_pause_after_failures ?? 3;
-                await supabaseAdmin.from("clients").update({
-                  autopay_last_error: err,
-                  autopay_last_attempt_at: new Date().toISOString(),
-                  autopay_failure_count: nextCount,
-                  autopay_paused: nextCount >= threshold,
-                }).eq("id", inv.client_id);
+                await supabaseAdmin
+                  .from("clients")
+                  .update({
+                    autopay_last_error: err,
+                    autopay_last_attempt_at: new Date().toISOString(),
+                    autopay_failure_count: nextCount,
+                    autopay_paused: nextCount >= threshold,
+                  })
+                  .eq("id", inv.client_id);
 
                 // Optional SMS alert to client (org toggle)
                 try {
@@ -404,16 +587,26 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                   if (org?.notify_sms_payment_failed && dunningFrom) {
                     const { data: c } = await supabaseAdmin
                       .from("clients")
-                      .select("display_name, primary_phone, sms_opt_out, portal_token, comms_paused")
-                      .eq("id", inv.client_id).single();
+                      .select(
+                        "display_name, primary_phone, sms_opt_out, portal_token, comms_paused",
+                      )
+                      .eq("id", inv.client_id)
+                      .single();
                     // comms_paused: imported clients get no automated dunning
                     // SMS until the org initiates contact.
                     if (c && !c.sms_opt_out && !c.comms_paused && c.primary_phone) {
                       const { sendTwilioSms } = await import("@/lib/twilio.server");
                       const { buildPortalLink } = await import("@/lib/portal-links.server");
-                      const url = await buildPortalLink(inv.organization_id, c.portal_token as string | null);
+                      const url = await buildPortalLink(
+                        inv.organization_id,
+                        c.portal_token as string | null,
+                      );
                       const body = `Hi ${c.display_name}, your card on file was declined. Please update your payment method: ${url}`;
-                      const r = await sendTwilioSms({ from: dunningFrom, to: c.primary_phone, body });
+                      const r = await sendTwilioSms({
+                        from: dunningFrom,
+                        to: c.primary_phone,
+                        body,
+                      });
                       await supabaseAdmin.from("messages").insert({
                         organization_id: inv.organization_id,
                         client_id: inv.client_id,
@@ -422,11 +615,16 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                         from_number: dunningFrom,
                         to_number: c.primary_phone,
                         twilio_sid: r.sid,
-                        status: (r.status as "queued" | "sent" | "delivered" | "failed" | "received" | undefined) ?? "queued",
+                        status:
+                          (r.status as
+                            "queued" | "sent" | "delivered" | "failed" | "received" | undefined) ??
+                          "queued",
                       });
                     }
                   }
-                } catch (e) { console.error("payment-failed SMS failed", e); }
+                } catch (e) {
+                  console.error("payment-failed SMS failed", e);
+                }
 
                 // In-app notification to owners/managers.
                 try {
@@ -438,10 +636,11 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                     body: `Invoice ${invoiceId.slice(0, 8)}: card declined.`,
                     link: "/invoices",
                   });
-                } catch (e) { console.error("payment-failed in-app notification failed", e); }
+                } catch (e) {
+                  console.error("payment-failed in-app notification failed", e);
+                }
               }
             }
-
           } else if (
             event.type === "charge.refunded" ||
             event.type === "charge.dispute.created" ||
@@ -480,7 +679,8 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             // now returns exactly that account for such a location.
             if (!(await accountMatches(pay.organization_id))) {
               console.error("reversal webhook account mismatch", {
-                paymentIntentId, eventAccount: event.account,
+                paymentIntentId,
+                eventAccount: event.account,
               });
               return new Response("ok", { status: 200 });
             }
@@ -542,10 +742,14 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                     await stripe.applicationFees.createRefund(feeId, { amount: delta });
                   }
                 } catch (e) {
-                  console.error("application fee reversal failed", {
-                    feeId,
-                    paymentIntentId,
-                  }, e);
+                  console.error(
+                    "application fee reversal failed",
+                    {
+                      feeId,
+                      paymentIntentId,
+                    },
+                    e,
+                  );
                 }
               }
             } else {
@@ -596,7 +800,9 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                   _adjustment_id: adjId ?? null,
                   _dispute_ref: disputeRef,
                 });
-              } catch (e) { console.error("reversal review item failed", e); }
+              } catch (e) {
+                console.error("reversal review item failed", e);
+              }
 
               // Mark the payment so every revenue figure agrees with the bank.
               //
@@ -608,7 +814,9 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               // already and no dispute outcome should overrule it.
               if (event.type === "charge.refunded") {
                 await (supabaseAdmin as any)
-                  .from("payments").update({ status: "refunded" }).eq("id", pay.id);
+                  .from("payments")
+                  .update({ status: "refunded" })
+                  .eq("id", pay.id);
               } else {
                 const { DISPUTE_KINDS, disputesFrom, paymentIsReversedByDisputes } =
                   await import("@/lib/disputes");
@@ -642,11 +850,12 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                   (pay.status === "refunded" || pay.status === "succeeded")
                 ) {
                   await (supabaseAdmin as any)
-                    .from("payments").update({ status: want }).eq("id", pay.id);
+                    .from("payments")
+                    .update({ status: want })
+                    .eq("id", pay.id);
                 }
               }
             }
-
           } else if (event.type === "account.updated") {
             // Express onboarding progress: keep the org's charge-readiness fresh
             // so Settings → Payments flips to "Charges enabled" without a manual
@@ -661,20 +870,22 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             // that reports a connected account's details changing, and a
             // business that relocates must stop surcharging on the same day.
             const region = merchantRegionFrom(acct);
-            await (supabaseAdmin as any).from("organizations").update({
-              stripe_connect_charges_enabled: s.chargesEnabled,
-              stripe_connect_status: s.status,
-              // Only overwrite with a real answer: a partial account payload
-              // that omits the address must not erase a known state, because
-              // null suppresses the surcharge and would look like a bug.
-              ...(region ? { stripe_merchant_region: region } : {}),
-            }).eq("stripe_connect_account_id", acct.id);
+            await (supabaseAdmin as any)
+              .from("organizations")
+              .update({
+                stripe_connect_charges_enabled: s.chargesEnabled,
+                stripe_connect_status: s.status,
+                // Only overwrite with a real answer: a partial account payload
+                // that omits the address must not erase a known state, because
+                // null suppresses the surcharge and would look like a bug.
+                ...(region ? { stripe_merchant_region: region } : {}),
+              })
+              .eq("stripe_connect_account_id", acct.id);
           }
           // NOTE: customer.subscription.* is intentionally NOT handled here —
           // the org's own SaaS subscription (bucket A) is billed on the platform
           // account and reconciled by /api/public/hooks/platform-stripe. Handling
           // it here would let tenant-account events corrupt org billing state.
-
         } catch (e) {
           console.error("Webhook handler error", e);
           return new Response("Handler error", { status: 500 });
