@@ -191,6 +191,69 @@ correct handler — as a hole.
 live OTP flow, the SMS path in particular, which needs `sms_from_number`
 configured. Nothing here replaces that.
 
+### v1.21e — 2026-08-03
+
+**The Stripe catalog moved to live mode, and the cutover found a class of
+sandbox state nobody was tracking.**
+
+Everything Stripe in this database was a sandbox id. That was correct while
+nothing could be sold. The owner switched to a live account, so it stopped being
+correct.
+
+**The live catalog now exists.** Three products and twelve prices in
+`acct_1U0CVSQUHYdejlaV`, each verified `livemode: true`, each matching
+`platform_plans` to the cent:
+
+| plan | monthly | annual | seat/mo | seat/yr |
+|---|---|---|---|---|
+| Launch | $79.00 | $790.00 | $10.00 | $100.00 |
+| Growth | $199.00 | $1,990.00 | $10.00 | $100.00 |
+| Scale | $449.00 | $4,490.00 | $10.00 | $100.00 |
+
+Annual is 10× monthly throughout — the two-months-free convention the sandbox
+already used. **The annual per-seat amount was a decision, not a lookup.** There
+is no `annual_seat_price_cents` column and `check-stripe-catalog.mjs`
+deliberately asserts that price's existence and interval but not its amount, so
+$100/yr exists in neither the database nor the checker's coverage. It is
+recorded in the migration header as a decision so the next reader does not
+mistake it for something that was verified.
+
+**The finding: four organizations held sandbox Stripe state, and two of them
+were lying about money.** `Demo Pet Waste Co` and one `Test Test` org carried
+`stripe_connect_charges_enabled = true` pointing at Connect accounts that exist
+only in sandbox — so the app believed those tenants could accept customer card
+payments. Under a live key they cannot, and the discovery would have landed at
+the moment a homeowner pressed Pay. Cleared, along with four sandbox customer
+ids, one sandbox subscription id, and the dead pointers on five retired plans
+and three coming-soon add-ons.
+
+`plan_status` was deliberately left alone. `PAID_STATUSES` in `src/lib/trial.ts`
+treats `'active'` as paid without consulting the subscription id, so the demo
+tenant still reads `paid` and the seven marketing screenshots are unchanged.
+Writing `'free'` would have switched off the demo's AI features as a side effect
+of a Stripe migration.
+
+**The migration was refused on its first attempt, correctly.**
+`tg_orgs_protect_platform_columns` guards exactly those columns and rolled the
+whole file back rather than letting it half-apply. The fix was the escape hatch
+the trigger itself documents and six earlier migrations already use —
+`set_config('app.allow_protected_org_write', '1', true)`, transaction-local so
+the guard is restored at commit. The migration also asserts its own completeness
+in a `DO` block: three plans repointed and **zero** surviving sandbox ids
+anywhere, or it raises and rolls back.
+
+**Verified in LIVE mode:** `compared 12 price(s) across 3 plan(s) and 0
+add-on(s), in LIVE mode — ✓ Stripe (LIVE) agrees with the catalog on every row
+it can be compared against.` Mutation-tested twice: flipping one price to
+`livemode: false` and setting Scale's annual price to the monthly amount both
+turn it red with the right message.
+
+**What this does NOT finish.** Six Stripe secrets still have to move together in
+Lovable, and the two webhook secrets fail *silently* — a stale signing secret is
+indistinguishable from an attacker to the verifier, so events are rejected as
+designed and nothing reports a problem. The catalog gate cannot see that. The
+table in the open-items section lists all six.
+
 ### v1.21d — 2026-08-02
 
 **A gate on the Stripe cutover, and the news that the catalog currently
@@ -2657,18 +2720,32 @@ rather than the following January.
    about the product. Nothing to do.
 
 
-1. ~~**Authorize Stripe**~~ — ✅ authorized 2026-08-01. IMP-6 is done. BUILD-2
-   and BUILD-8 are now ordinary engineering work, not blocked. Everything so far
-   has been done in **test mode** at your instruction; going live still needs a
-   live-mode catalog and `platform_plans` pointed at the live price ids, which
-   is a deliberate switch and not something to do incidentally.
+1. ~~**Authorize Stripe**~~ — ✅ authorized 2026-08-01. ~~**Build the live
+   catalog**~~ — ✅ **done 2026-08-03, see v1.21e.** Three live products and
+   twelve live prices exist in `acct_1U0CVSQUHYdejlaV`, `platform_plans` points
+   at them, every sandbox id in the database is gone, and the gate reconciles in
+   LIVE mode.
 
-   **v1.21d: that switch now has a gate.** `npm run check:stripe-catalog`
-   compares every active row's cents against what Stripe would actually charge,
-   and refuses a live key holding test price ids — the cutover failure that does
-   not error until checkout. The test catalog reconciles today (twelve prices,
-   zero drift). **One thing to do: add `STRIPE_SECRET_KEY` to the repo secrets**,
-   or the gate stays unarmed and CI says so on every run.
+   **What is left is not code.** Six secrets have to move together, and two of
+   them fail silently:
+
+   | secret | where | if it stays sandbox |
+   |---|---|---|
+   | `STRIPE_SECRET_KEY` | Lovable | checkout dies at the card form |
+   | `STRIPE_PUBLISHABLE_KEY` | Lovable | the embedded card element will not mount |
+   | `STRIPE_CONNECT_SECRET_KEY` | Lovable | tenant payouts break |
+   | `STRIPE_CONNECT_PUBLISHABLE_KEY` | Lovable | Connect onboarding will not start |
+   | `PLATFORM_STRIPE_WEBHOOK_SECRET` | Lovable | **silent** — payments succeed at Stripe and are recorded nowhere |
+   | `STRIPE_CONNECT_WEBHOOK_SECRET` | Lovable | **silent** — Connect account state never updates |
+
+   The catalog gate catches a mode mismatch on the two key pairs. **It cannot
+   catch a stale webhook secret** — a wrong signing secret is indistinguishable
+   from an attacker to the verifier, so the events are rejected exactly as
+   designed and nothing anywhere reports a problem. Swap all six in one sitting.
+
+   **Also: add `STRIPE_SECRET_KEY` to the GitHub Actions secrets** — a separate
+   store from Lovable, which is why the CI step still reports NOT ARMED. Now
+   that the catalog is live, the live key is the correct one to add there.
 2. ~~**Formspree contact form ID**~~ — ✅ supplied and wired (MKT-4 closed).
 3. **`SUPABASE_DB_URL` secret** — ✅ added, and verified working end-to-end in CI.
 4. ~~**Q-13**~~ — ✅ answered: every add-on available at launch, after QA.
