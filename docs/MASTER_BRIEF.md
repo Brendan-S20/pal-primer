@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.21e** · Released 2026-08-02 · Supersedes: v1.21d, v1.21c, v1.21b, v1.21, v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.21i** · Released 2026-08-03 · Supersedes: v1.21h, v1.21g, v1.21f, v1.21e, v1.21d, v1.21c, v1.21b, v1.21, v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,96 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+> **On ordering.** Entries are not strictly newest-first — v1.21e (2026-08-02)
+> sits above v1.21f/g (2026-08-03) for historical reasons. Find an entry by its
+> version number, not its position. The two v1.21e duplicates were corrected on
+> 2026-08-03; see the renumbering notes in place.
+
+### v1.21i — 2026-08-03
+
+**The subscription catalog was built on the wrong Stripe account, and the check
+that exists to catch exactly that had never once run.**
+
+HoundStack runs two live Stripe accounts:
+
+| | account | role |
+|---|---|---|
+| Platform | `acct_1U0RifQjJFmqXgZD` | bills tenants for the software — `STRIPE_SECRET_KEY` |
+| Connect | `acct_1U0CVSQUHYdejlaV` | tenants charge their own clients; our 50 bps comes from here — `STRIPE_CONNECT_*` |
+
+The v1.21f catalog was created on the **Connect** account and `platform_plans`
+pointed at it. Subscription checkout runs on `STRIPE_SECRET_KEY` — the platform
+account — where those price ids do not exist, so every attempt failed with
+`No such price`. **No tenant could subscribe.** Nothing was charged wrongly: it
+failed closed, and zero orgs held a subscription id, a platform customer id or a
+connected account, so nothing needed migrating beyond the pointers.
+
+Stripe embeds the owning account in every **price** id, which is what made this
+checkable rather than a matter of belief — `price_1U0ERd**QUHYdejlaV**Br4C57JD`
+against `price_1U0Tkd**QjJFmqXgZD**7ZlwFfon`. It does **not** embed the account
+in **product** ids, a distinction that caught out the repair migration's own
+completeness assertion: it demanded the fragment in all five id columns and
+failed with `got 0` against correct data. It rolled back rather than half-apply,
+which is the wanted behaviour, but the check was the thing at fault. Products
+are pinned by literal id now.
+
+Rebuilt on the platform account — 3 products, 12 prices, identical amounts,
+intervals, nicknames, descriptions and metadata, each verified `livemode: true`.
+The Connect account's copies are archived so they cannot be mistaken for live
+later. **Verified rather than assumed this time:** `check-stripe-catalog.mjs` run
+offline against both sides reports *"compared 12 price(s) across 3 plan(s) and 0
+add-on(s), in LIVE mode … Stripe (LIVE) agrees with the catalog on every row it
+can be compared against."*
+
+**Why it survived:** that gate needs `STRIPE_SECRET_KEY` in GitHub Actions, a
+different store from Lovable. Every CI run has printed `NOT ARMED` and exited 2.
+A gate that is never armed is not a gate — and the write-up recorded the catalog
+as verified on the strength of a connection whose account was never checked
+against the key the app actually uses.
+
+### v1.21h — 2026-08-03
+
+**Pass-through processing fees, and the Connect webhook catching up to what it
+subscribes to.**
+
+*Pass-through fees.* The tenant chooses whether they absorb Stripe's cost of
+acceptance or hand it to the payer; absorbing stays the default. Four findings
+shaped it more than the arithmetic:
+
+* **We cannot bill "2.9% + 30¢".** On a direct charge the connected account is
+  the merchant of record and already pays Stripe that. Ours would double it.
+* **The 50 bps cannot ride along.** The networks cap a surcharge at the cost of
+  **card** acceptance; the platform fee is charged on ACH too, so it is a
+  software fee and including it would breach the cap.
+* **The tenant always absorbs something.** Visa's 3% cap against 2.9% + 30¢
+  binds under $300, and above it the fee lands on the surcharged total. On a $60
+  invoice they recover $1.80 and still eat 29¢. There is no break-even, and the
+  settings screen says so in dollars. *The header table asserting these numbers
+  was wrong on first writing — it computed the shortfall on the base rather than
+  the total; the test disagreed and was right.*
+* **Registration is the tenant's, not ours.** The networks require the MERCHANT
+  to give 30 days' notice, and on a direct charge that is each tenant
+  individually. Hence an attestation flag separate from the toggle. ACH needs
+  none of it — not a card, so no cap, no state ban, no notice.
+
+**The bug this avoided:** every reconcile path treats the charge amount as money
+paid toward the invoice. Once a charge is base + surcharge those diverge, and
+folding them together would over-credit invoices *and* report fee recovery as
+revenue everywhere revenue is summed. The split travels in PaymentIntent
+metadata; `payments.surcharge_cents` sits beside `amount_cents`.
+
+Live on the three off-session paths. The four customer-present paths still
+absorb — they need the two-step intent, because the rail is genuinely unknown
+when the intent is created.
+
+*Webhooks.* Three events were enabled on the live endpoint with no handler
+behind them; the endpoint returns 200 either way. `account.application.deauthorized`
+(a tenant disconnecting from their own Stripe dashboard left us believing they
+could still charge, forever) and `setup_intent.succeeded` (a card saved at
+Stripe but not here when the browser goes away mid-flow, so autopay silently
+never runs) are now handled. Both credential fallbacks in `hooks/stripe.ts` are
+gone — with two real accounts they were live hazards, not hardening.
 
 ### v1.21 — 2026-08-02
 
@@ -191,7 +281,10 @@ correct handler — as a hole.
 live OTP flow, the SMS path in particular, which needs `sms_from_number`
 configured. Nothing here replaces that.
 
-### v1.21f — 2026-08-03
+### v1.21g — 2026-08-03
+
+> **Renumbered** from v1.21f, which collided with the corrected numbering of the
+> Stripe live-mode entry below.
 
 **A platform transaction fee: 50 bps on charges over $10.**
 
@@ -255,10 +348,23 @@ threshold, and treating the refund reversal as an increment rather than a target
   * Disputes have the same asymmetry as refunds and are not reversed. A lost
     chargeback leaves our fee collected.
 
-### v1.21e — 2026-08-03
+### v1.21f — 2026-08-03
+
+> **Renumbered.** This entry shipped labelled `v1.21e`, which was already taken
+> by the 2026-08-02 entry above about QA finding #4 — two different releases
+> carrying one version number, in the document whose whole job is to be the
+> single place the ledger cannot disagree with itself. Corrected on 2026-08-03
+> along with the entry below it, which moved v1.21f → v1.21g.
 
 **The Stripe catalog moved to live mode, and the cutover found a class of
 sandbox state nobody was tracking.**
+
+> **Superseded on 2026-08-03 — see v1.21i.** The catalog described below was
+> built on the **Connect** account (`acct_1U0CVSQUHYdejlaV`) rather than the
+> platform account (`acct_1U0RifQjJFmqXgZD`) that `STRIPE_SECRET_KEY` bills on.
+> Every claim below about *what* was created is accurate; the account it was
+> created in was not. Subscription checkout could not take a payment until
+> v1.21i moved it.
 
 Everything Stripe in this database was a sandbox id. That was correct while
 nothing could be sold. The owner switched to a live account, so it stopped being
@@ -2785,31 +2891,38 @@ rather than the following January.
 
 
 1. ~~**Authorize Stripe**~~ — ✅ authorized 2026-08-01. ~~**Build the live
-   catalog**~~ — ✅ **done 2026-08-03, see v1.21e.** Three live products and
-   twelve live prices exist in `acct_1U0CVSQUHYdejlaV`, `platform_plans` points
-   at them, every sandbox id in the database is gone, and the gate reconciles in
-   LIVE mode.
+   catalog**~~ — ✅ **done 2026-08-03, on the wrong account, then moved. See
+   v1.21i.** Three live products and twelve live prices now exist in
+   `acct_1U0RifQjJFmqXgZD` (the PLATFORM account), `platform_plans` points at
+   them, every sandbox id in the database is gone, and the checker reconciles in
+   LIVE mode — run and quoted, not assumed.
 
-   **What is left is not code.** Six secrets have to move together, and two of
-   them fail silently:
+   ~~**Six secrets have to move together**~~ — ✅ **swapped and published
+   2026-08-03.** Both webhook endpoints exist and are correctly scoped, verified
+   against the live accounts:
 
-   | secret | where | if it stays sandbox |
-   |---|---|---|
-   | `STRIPE_SECRET_KEY` | Lovable | checkout dies at the card form |
-   | `STRIPE_PUBLISHABLE_KEY` | Lovable | the embedded card element will not mount |
-   | `STRIPE_CONNECT_SECRET_KEY` | Lovable | tenant payouts break |
-   | `STRIPE_CONNECT_PUBLISHABLE_KEY` | Lovable | Connect onboarding will not start |
-   | `PLATFORM_STRIPE_WEBHOOK_SECRET` | Lovable | **silent** — payments succeed at Stripe and are recorded nowhere |
-   | `STRIPE_CONNECT_WEBHOOK_SECRET` | Lovable | **silent** — Connect account state never updates |
+   | endpoint | account | scope | secret |
+   |---|---|---|---|
+   | `/api/public/hooks/platform-stripe` | `acct_1U0RifQjJFmqXgZD` | `application: null` → events on your account | `PLATFORM_STRIPE_WEBHOOK_SECRET` |
+   | `/api/public/hooks/stripe` | `acct_1U0CVSQUHYdejlaV` | `application: ca_…` → events on connected accounts | `STRIPE_CONNECT_WEBHOOK_SECRET` |
 
-   The catalog gate catches a mode mismatch on the two key pairs. **It cannot
-   catch a stale webhook secret** — a wrong signing secret is indistinguishable
-   from an attacker to the verifier, so the events are rejected exactly as
-   designed and nothing anywhere reports a problem. Swap all six in one sitting.
+   That scope field is the one worth re-checking after any change. A Connect
+   endpoint created as an account endpoint by mistake makes `event.account`
+   arrive empty, `accountMatches()` reject everything, and **every tenant
+   payment silently ignored while still returning 200** — the only failure here
+   that no dashboard reports. A wrong *signing secret*, by contrast, returns 401
+   and does show up as failed deliveries on Stripe's side.
 
-   **Also: add `STRIPE_SECRET_KEY` to the GitHub Actions secrets** — a separate
-   store from Lovable, which is why the CI step still reports NOT ARMED. Now
-   that the catalog is live, the live key is the correct one to add there.
+   **Still open: `STRIPE_SECRET_KEY` in the GitHub Actions secrets.** Reported
+   set on 2026-08-03; the run at 21:56Z still logged an empty value, which is
+   consistent with the secret being saved after that run started. The workflow
+   wiring is correct (`${{ secrets.STRIPE_SECRET_KEY }}`, the same shape as
+   `SUPABASE_DB_URL`, which resolves). **Confirm on the next run that the step no
+   longer prints `NOT ARMED`** — until it does, the gate is not protecting
+   anything, which is precisely how v1.21f's catalog reached the ledger recorded
+   as verified. A restricted key with read on Prices and nothing else is enough:
+   the script makes exactly one call, `GET /v1/prices`, and `keyIsLive` already
+   accepts `rk_live_…`.
 2. ~~**Formspree contact form ID**~~ — ✅ supplied and wired (MKT-4 closed).
 3. **`SUPABASE_DB_URL` secret** — ✅ added, and verified working end-to-end in CI.
 4. ~~**Q-13**~~ — ✅ answered: every add-on available at launch, after QA.
@@ -2836,12 +2949,14 @@ rather than the following January.
    delivered to a 307 and dropped. `HoundStack_ClaudeCode_Tasks.md` already
    carried a note saying exactly this, and the code was never made to match it.
 
-   **The remaining fix is yours and it is at the CDN, not in this repo:** remove
-   the www redirect for the `app` subdomain so `app.houndstack.com` serves
-   directly. Until then `APP_ORIGIN` (or the default in `src/lib/app-origin.ts`)
-   points everything at the host that answers, and
-   `scripts/check-app-origin.mjs` runs this probe on every CI run so it cannot
-   go unnoticed again.
+   ~~**The remaining fix is yours and it is at the CDN**~~ — ✅ **done the same
+   day, and the answer reversed under us.** The www rule was removed, so
+   `app.houndstack.com` now answers the preflight `204` directly with
+   `access-control-allow-origin: capacitor://localhost` and the
+   `x-tss-*` expose-headers, while `www.app.houndstack.com` is now the one that
+   `302`s. `src/lib/app-origin.ts` defaults to the bare host and
+   `scripts/check-app-origin.mjs` probes it on every CI run — it is what caught
+   the flip, hours after the previous state had been written down as fact.
 
 7. **The native app on a real device with no signal.** Offline boot was proved
    in headless Chromium against static files with every off-origin request
