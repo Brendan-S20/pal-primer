@@ -1,33 +1,26 @@
 // The one place that says where this app lives.
 //
-// ── THE FINDING ────────────────────────────────────────────────────────────
+// ── THE FINDING, AND ITS RESOLUTION ───────────────────────────────────────
 //
-// `app.houndstack.com` does not serve this app. It 307-redirects to
-// `www.app.houndstack.com` — a blanket "redirect to www" rule at the CDN that
-// caught the `app` subdomain along with the apex. Verified live on 2026-08-02:
+// On 2026-08-02 `app.houndstack.com` did not serve this app. It 307-redirected
+// to `www.app.houndstack.com` — a blanket "redirect to www" rule at the CDN
+// that caught the `app` subdomain along with the apex. A CORS preflight may not
+// follow a redirect (the Fetch spec makes it a network error), so the native
+// app pointed at the documented host could not call a single server function,
+// and outbound webhook POSTs were delivered to the 307 and dropped.
 //
-//     curl -i -X OPTIONS https://app.houndstack.com/_serverFn/getMyDay \
-//       -H 'Origin: capacitor://localhost' -H 'Access-Control-Request-Method: POST'
-//     → HTTP/2 307, location: https://www.app.houndstack.com/_serverFn/getMyDay
+// The owner removed that rule the same day. Re-probed immediately after:
 //
-//     …the same request to www.app.houndstack.com
-//     → HTTP/2 204, access-control-allow-origin: capacitor://localhost,
-//       access-control-expose-headers: x-tss-serialized, x-tss-raw
+//     app.houndstack.com          GET / → 307 /auth  (its own routing, fine)
+//                                 preflight → 204, allow-origin + expose-headers
+//     www.app.houndstack.com      GET / → 302 to the bare host
+//                                 preflight → 307   ← now the broken one
 //
-// **A CORS preflight may not follow redirects.** The Fetch spec makes a
-// redirect on a preflight a network error, full stop — so the native app
-// pointed at `app.houndstack.com` cannot call a single server function, while
-// the identical request to the www host succeeds with every header the app
-// needs, including the `expose-headers` pair BUG-62 was hiding in.
-//
-// So the CORS and CSRF work is correct. The host was wrong. That is the answer
-// to §3 item 6 of the brief, which was waiting on someone to run two curls.
-//
-// The same applies to any server-to-server caller: outbound webhook senders do
-// not follow redirects on POST, so a callback URL on the bare host is delivered
-// to a 307 and dropped. `HoundStack_ClaudeCode_Tasks.md` already recorded this
-// in a note — and the code was never made to match it, which is how a written
-// finding becomes a bug that is technically already known.
+// So the direction has REVERSED, and this constant reversed with it. The bare
+// host is authoritative, which is what every doc and comment in the repo said
+// all along; the www form is now the redirect. `scripts/check-app-origin.mjs`
+// is what caught the flip, and a test pins its copy of this constant to this
+// one so the two cannot drift.
 //
 // ── WHY A DEFAULT AT ALL, AND WHY THIS ONE ────────────────────────────────
 //
@@ -43,7 +36,7 @@
 // is the single line to change — and `APP_ORIGIN` in the environment overrides
 // it without a deploy in the meantime.
 
-const FALLBACK = "https://www.app.houndstack.com";
+const FALLBACK = "https://app.houndstack.com";
 
 /** Trailing slashes make `${origin}/path` produce `//path`. */
 const clean = (v: string) => v.trim().replace(/\/+$/, "");

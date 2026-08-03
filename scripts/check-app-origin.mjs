@@ -5,24 +5,17 @@
 // ── WHY THIS IS A SCRIPT AND NOT A LINE IN A RUNBOOK ──────────────────────
 //
 // §3 item 6 of the brief listed two curls as "only you can confirm, because
-// this sandbox cannot". They sat unrun for days, and when they were finally
-// run the answer was that the documented host FAILS:
+// this sandbox cannot". They sat unrun for days. When they were finally run the
+// documented host FAILED: `app.houndstack.com` answered 307 to
+// `www.app.houndstack.com`, and a CORS preflight may not follow a redirect —
+// the Fetch spec makes it a network error — so the native app pointed there
+// could not call a single server function.
 //
-//     OPTIONS https://app.houndstack.com/_serverFn/getMyDay
-//       Origin: capacitor://localhost
-//       Access-Control-Request-Method: POST
-//     → 307, location: https://www.app.houndstack.com/_serverFn/getMyDay
-//
-// A CORS preflight may not follow a redirect. The Fetch spec makes it a network
-// error, so the native app pointed at that host cannot call a single server
-// function — while the identical request to `www.app.houndstack.com` answers
-// 204 with `access-control-allow-origin: capacitor://localhost` and
-// `access-control-expose-headers: x-tss-serialized, x-tss-raw`.
-//
-// The CORS and CSRF work was right the whole time. The host was wrong. Nothing
-// in the repo could have told anyone that, because the only thing that knows is
-// the live edge — so this asks it, on a schedule, instead of leaving it as a
-// step someone has to remember.
+// The owner removed the CDN rule the same day, and the direction REVERSED: the
+// bare host now serves and the www form redirects. This script caught that flip
+// on the next run, which is the whole argument for its existence. The CORS and
+// CSRF work was right throughout; only ever the host was wrong, and which host
+// is wrong is a fact that lives at the edge and nowhere in this repo.
 //
 // ── WHAT IT ASSERTS ───────────────────────────────────────────────────────
 //
@@ -47,7 +40,7 @@ const REQUIRED_EXPOSED = ["x-tss-serialized", "x-tss-raw"];
 // Duplicated rather than imported: this is a plain node script and src/ is TS.
 // The test suite asserts the two agree — see tests/one-app-origin.test.ts and
 // the `check:app-origin default matches appOrigin()` case.
-const FALLBACK = "https://www.app.houndstack.com";
+const FALLBACK = "https://app.houndstack.com";
 
 function origin() {
   const v = process.env.APP_ORIGIN || process.env.PUBLIC_APP_ORIGIN || process.env.APP_URL;
@@ -154,9 +147,10 @@ async function main() {
 
   console.error(`✗ ${base} is not usable by the native app:\n` + problems.map((p) => `    - ${p}`).join("\n"));
   console.error(
-    `\n  If the origin redirects, the fix is at the CDN, not in this repo: the ` +
-      `blanket\n  "redirect to www" rule is catching the app subdomain. Either remove it for ` +
-      `that\n  host, or set APP_ORIGIN to the host that actually serves.`,
+    `\n  A cross-host redirect here is a CDN/DNS setting, not a code change. Point ` +
+      `the\n  redirect the other way, or set APP_ORIGIN to the host that actually serves ` +
+      `and\n  update FALLBACK in this file and in src/lib/app-origin.ts together — a test ` +
+      `pins\n  the two to each other.`,
   );
   process.exit(1);
 }

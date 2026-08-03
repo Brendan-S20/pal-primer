@@ -3,18 +3,23 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { appOrigin, appUrl } from "@/lib/app-origin";
 
-// `app.houndstack.com` does not serve this app. It 307-redirects to
-// `www.app.houndstack.com`, and a CORS preflight may not follow a redirect —
-// the Fetch spec makes that a network error — so the native app pointed at the
-// bare host cannot call a single server function. Verified live on 2026-08-02:
-// the same preflight against the www host answers 204 with every header,
-// including the `expose-headers` pair BUG-62 was hiding in.
+// A CORS preflight may not follow a redirect — the Fetch spec makes it a
+// network error — so whichever app host redirects is a host the native app
+// cannot talk to at all.
 //
-// Before this, twenty-four places in src/ wrote an app host by hand and they
-// disagreed. Portal links, unsubscribe URLs, invoice pay links and the og:url
-// canonical used the bare host; invite emails, the concerns link, the lead-form
-// origin and both Twilio hooks used the www one. Which one a URL got depended
-// on which file happened to build it.
+// On 2026-08-02 that was the bare host: `app.houndstack.com` 307'd to
+// `www.app.houndstack.com`, and the native app pointed at the documented host
+// could not call a single server function. The owner removed the CDN rule the
+// same day and it reversed: `app.houndstack.com` now answers 204 with
+// `allow-origin: capacitor://localhost` and the `x-tss-*` expose-headers, and
+// `www.app.houndstack.com` 302s back to it.
+//
+// That reversal is the argument for this file. Before it, twenty-four places in
+// src/ wrote an app host by hand and disagreed — portal links, unsubscribe URLs,
+// invoice pay links and the og:url canonical on one, invite emails, the concerns
+// link, the lead-form origin and both Twilio hooks on the other. Which one a URL
+// got depended on which file built it, so a change at the CDN fixed some links
+// and broke others. Now it is one constant, and one probe that catches the flip.
 
 const SRC = new URL("../src", import.meta.url).pathname;
 const ORIGINAL = { ...process.env };
@@ -28,9 +33,13 @@ describe("appOrigin resolves one way", () => {
     delete process.env.APP_ORIGIN;
     delete process.env.PUBLIC_APP_ORIGIN;
     delete process.env.APP_URL;
-    // Not a style preference. The bare host returns 307 to this one, and a
-    // preflight that redirects is a failed preflight.
-    expect(appOrigin()).toBe("https://www.app.houndstack.com");
+    // Not a style preference, and it has changed direction once already.
+    // On 2026-08-02 the bare host 307'd to the www one and this asserted www.
+    // The owner removed the CDN rule the same day and the bare host now serves
+    // while www 302's back to it — so this asserts the bare host. Whichever way
+    // it points, the rule is the same: the default is the host that ANSWERS a
+    // preflight, because a preflight may not follow a redirect.
+    expect(appOrigin()).toBe("https://app.houndstack.com");
   });
 
   it("prefers APP_ORIGIN, then PUBLIC_APP_ORIGIN, then APP_URL", () => {
