@@ -150,8 +150,28 @@ export const Route = createFileRoute("/email/queue/process")({
           process.env.SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
         if (!resendApiKey || !supabaseUrl || !supabaseServiceKey) {
-          console.error("Missing required environment variables (RESEND_API_KEY, SUPABASE_*)");
-          return Response.json({ error: "Server configuration error" }, { status: 500 });
+          // NAME the missing variable. This guard ran every minute for hours
+          // returning an identical opaque 500, so `net._http_response` showed
+          // 360/360 failures with nothing to say WHICH of the three was absent
+          // — and every invoice, OTP, reminder and welcome email was silently
+          // undelivered the whole time. An operator reading the log could not
+          // tell a missing Resend key from a missing Supabase URL.
+          //
+          // The two are not even configured the same way: RESEND_API_KEY and
+          // SERVICE_ROLE_KEY are RUNTIME secrets, but VITE_SUPABASE_URL is read
+          // through `import.meta.env` and is therefore inlined at BUILD time —
+          // setting it in a runtime secret store has no effect on an
+          // already-built bundle.
+          const missing = [
+            !resendApiKey && "RESEND_API_KEY (runtime secret)",
+            !supabaseUrl && "VITE_SUPABASE_URL (build-time, must be present when the bundle is built)",
+            !supabaseServiceKey && "SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY (runtime secret)",
+          ].filter(Boolean);
+          console.error(`email queue processor not configured — missing: ${missing.join(", ")}`);
+          return Response.json(
+            { error: "Server configuration error", missing },
+            { status: 500 },
+          );
         }
 
         // Verify the caller is authorized with the service role key.

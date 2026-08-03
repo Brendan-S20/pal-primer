@@ -155,11 +155,44 @@ describe("the platform fee is taken on the base, never on the surcharge", () => 
 });
 
 describe("the reconcile paths use the split, not the raw charge", () => {
-  it("the Connect webhook credits the invoice with invoiceAppliedCents", () => {
-    const src = readFileSync("src/routes/api/public/hooks/stripe.ts", "utf8");
-    expect(src).toContain("invoiceAppliedCents(pi.amount, pi.metadata)");
-    // and nothing still hands the raw charge amount to the reconciler.
-    expect(src).not.toMatch(/amountCents: pi\.amount\b/);
+  // EVERY file that can mark an invoice paid, not just the webhook.
+  //
+  // The first version of this block read only `stripe.ts`, and that blind spot
+  // cost exactly what it was written to prevent: `invoice-reconcile.server.ts`
+  // carried the identical `amountCents: pi.amount` and this test passed anyway.
+  // Reconcile is the FALLBACK for a missed webhook, so it runs against precisely
+  // the surcharged intents — a $100 invoice paid with an $0.80 ACH pass-through
+  // settled as $100.80 of revenue, and every figure that sums payments was high
+  // by the fee.
+  const MARKS_INVOICES_PAID = [
+    "src/routes/api/public/hooks/stripe.ts",
+    "src/lib/invoice-reconcile.server.ts",
+  ] as const;
+
+  it.each(MARKS_INVOICES_PAID)("%s never credits an invoice the raw charge", (file) => {
+    const src = readFileSync(file, "utf8");
+    // `amountCents:` must never be handed a bare Stripe charge amount. Matching
+    // the property assignment, not the bare identifier, so the explanatory
+    // comments above each call site do not trip it.
+    expect(src).not.toMatch(/amountCents:\s*pi\.amount\b/);
+    expect(src).not.toMatch(/amountCents:\s*charge\.amount\b/);
+  });
+
+  it.each(MARKS_INVOICES_PAID)("%s splits the charge before crediting", (file) => {
+    const src = readFileSync(file, "utf8");
+    expect(src).toContain("invoiceAppliedCents(");
+    expect(src).toContain("surchargeFromMetadata(");
+  });
+
+  it("the payments insert does not discard its error", () => {
+    // It used to. `payments_pi_unique` is UNIQUE on stripe_payment_intent_id and
+    // the payment_failed handler writes a row keyed on the same intent, so a
+    // decline followed by a retry on that intent flipped the invoice to paid
+    // and then silently lost the succeeded payment row — money banked, revenue
+    // short by the full amount, nothing reported.
+    const src = readFileSync("src/lib/invoice-reconcile.server.ts", "utf8");
+    expect(src).toMatch(/const \{ error: payErr \} = await supabaseAdmin\s*\n?\s*\.from\("payments"\)\.insert/);
+    expect(src).toContain('payErr.code === "23505"');
   });
 
   it("the payments row records the surcharge beside the amount, not inside it", () => {

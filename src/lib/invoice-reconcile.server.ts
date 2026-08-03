@@ -51,7 +51,7 @@ export async function markInvoicePaidFromStripe(
   const { collectingOrgIdFor } = await import("@/lib/stripe-connect.server");
   const collectedBy = await collectingOrgIdFor(args.organizationId);
 
-  await supabaseAdmin.from("payments").insert({
+  const paymentRow = {
     organization_id: args.organizationId,
     collected_by_organization_id: collectedBy,
     invoice_id: args.invoiceId,
@@ -63,7 +63,55 @@ export async function markInvoicePaidFromStripe(
     stripe_payment_intent_id: args.paymentIntentId,
     paid_at: nowIso,
     raw_event: JSON.parse(JSON.stringify(args.raw ?? null)),
-  });
+  };
+  const { error: payErr } = await supabaseAdmin.from("payments").insert(paymentRow);
+  if (payErr) {
+    // This insert used to discard its result, and the silence hid a money bug.
+    //
+    // `payments_pi_unique` is UNIQUE on stripe_payment_intent_id. The
+    // payment_intent.payment_failed handler already writes a row keyed on that
+    // intent when a card is declined — and the Payment Element lets the payer
+    // retry on the SAME intent, which then succeeds. The invoice flips to paid,
+    // this insert violates the index, and with the error unread the function
+    // returned true: invoice paid, money in the bank, and NO succeeded payment
+    // row, so the amount is missing from every revenue figure permanently.
+    //
+    // One intent is one payment, so the earlier `failed` row is the same
+    // payment and is promoted rather than duplicated. An upsert cannot express
+    // this: the index is PARTIAL (`WHERE stripe_payment_intent_id IS NOT NULL`)
+    // and ON CONFLICT inference needs the predicate, which supabase-js does not
+    // expose.
+    if (payErr.code === "23505" && args.paymentIntentId) {
+      const { error: promoteErr } = await supabaseAdmin
+        .from("payments")
+        .update({
+          status: "succeeded",
+          amount_cents: paymentRow.amount_cents,
+          surcharge_cents: paymentRow.surcharge_cents,
+          paid_at: nowIso,
+          raw_event: paymentRow.raw_event,
+        })
+        .eq("stripe_payment_intent_id", args.paymentIntentId);
+      if (promoteErr) {
+        console.error(
+          "payment row exists for this intent but could not be promoted to succeeded",
+          args.paymentIntentId,
+          promoteErr,
+        );
+      }
+    } else {
+      // Deliberately not thrown. The invoice claim above already succeeded, so
+      // throwing would leave the invoice paid AND make Stripe retry into a
+      // no-op claim that skips this insert entirely — strictly worse. Loud log
+      // instead, because the ledger is now short by this payment.
+      console.error(
+        "invoice marked paid but the payments row failed to insert",
+        args.invoiceId,
+        args.paymentIntentId,
+        payErr,
+      );
+    }
+  }
 
   // Activity timeline: payments are meaningful changes (spec). Service-role
   // write, so the actor is the payment processor, not a user.
@@ -165,10 +213,22 @@ export async function reconcileInvoicePayment(invoiceId: string): Promise<Reconc
         const pi = await stripe.paymentIntents.retrieve(
           inv.stripe_payment_intent_id, undefined, acctOpts);
         if (pi.status === "succeeded" && pi.metadata?.invoice_id === inv.id) {
+          // Same split as the webhook. This path is the FALLBACK for a missed
+          // webhook and therefore runs against exactly the intents that carry a
+          // surcharge — the saved-card and autopay charges store their intent id
+          // on the invoice and the nightly run re-reconciles it. Passing
+          // `pi.amount` raw credited base + surcharge against the invoice and
+          // recorded surcharge_cents = 0, so a $100 invoice paid with an $0.80
+          // ACH pass-through settled as $100.80 of revenue.
+          const { invoiceAppliedCents, surchargeFromMetadata } = await import(
+            "@/lib/processing-fee.server"
+          );
+          const charged = pi.amount ?? inv.total_cents ?? 0;
           const ok = await markInvoicePaidFromStripe(supabaseAdmin, {
             invoiceId: inv.id,
             organizationId: inv.organization_id,
-            amountCents: pi.amount ?? inv.total_cents ?? 0,
+            amountCents: invoiceAppliedCents(charged, pi.metadata),
+            surchargeCents: surchargeFromMetadata(pi.metadata),
             currency: pi.currency ?? inv.currency ?? "usd",
             paymentIntentId: pi.id,
             raw: { source: "reconcile", payment_intent_id: pi.id, pi_status: pi.status },
