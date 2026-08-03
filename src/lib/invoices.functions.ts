@@ -647,10 +647,22 @@ async function chargeSavedCardCore(
       "The saved card is no longer on file. Ask the client to add a payment method again.",
     );
   }
+  // Saved card: rail and funding are knowable before the charge, so this path
+  // stays one step. Platform fee remains on the BASE.
+  const { orgFeeConfig, quoteForPaymentMethodId, surchargeMetadata } = await import(
+    "@/lib/processing-fee.server"
+  );
+  const { supabaseAdmin: feeAdmin } = await import("@/integrations/supabase/client.server");
+  const quote = await quoteForPaymentMethodId(stripe, {
+    paymentMethodId: c.default_payment_method_id,
+    stripeAccount: acct.accountId,
+    baseCents: dueCents,
+    config: await orgFeeConfig(feeAdmin, invoice.organization_id),
+  });
   try {
     const pi = await stripe.paymentIntents.create(
       {
-        amount: dueCents,
+        amount: quote.totalCents,
         application_fee_amount: platformFeeCents(dueCents),
         currency: invoice.currency ?? "usd",
         customer: c.stripe_customer_id,
@@ -661,6 +673,7 @@ async function chargeSavedCardCore(
           invoice_id: invoice.id,
           organization_id: invoice.organization_id,
           source: "staff_saved_card",
+          ...surchargeMetadata(quote),
         },
       },
       {
@@ -668,8 +681,10 @@ async function chargeSavedCardCore(
         // The payment-method id is part of the key: after a decline the
         // client may save a NEW card the same day, and replaying the old
         // key with different params would be an idempotency_error. The amount
-        // is the OPEN amount, so applying more credit mints a fresh key.
-        idempotencyKey: `staff-saved-card-${invoice.id}-${dueCents}-${c.default_payment_method_id}`,
+        // is the CHARGED total, so applying more credit — or the tenant turning
+        // fee pass-through on — mints a fresh key rather than replaying this one
+        // with a different amount, which is that same idempotency_error.
+        idempotencyKey: `staff-saved-card-${invoice.id}-${quote.totalCents}-${c.default_payment_method_id}`,
         stripeAccount: acct.accountId,
       },
     );

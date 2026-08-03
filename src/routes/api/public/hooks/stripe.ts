@@ -288,10 +288,19 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 .eq("id", invoiceId).single();
               if (inv && inv.status !== "paid" && await accountMatches(inv.organization_id)) {
                 const { markInvoicePaidFromStripe } = await import("@/lib/invoice-reconcile.server");
+                // A pass-through charge is base + surcharge. Only the base pays
+                // down the invoice: the surcharge is the tenant recovering
+                // Stripe's fee, not the homeowner paying more for the service.
+                // Handing `pi.amount` in here would over-credit the invoice and
+                // report the recovery as revenue everywhere revenue is summed.
+                const { invoiceAppliedCents, surchargeFromMetadata } = await import(
+                  "@/lib/processing-fee.server"
+                );
                 const claimed = await markInvoicePaidFromStripe(supabaseAdmin, {
                   invoiceId: inv.id,
                   organizationId: inv.organization_id,
-                  amountCents: pi.amount,
+                  amountCents: invoiceAppliedCents(pi.amount, pi.metadata),
+                  surchargeCents: surchargeFromMetadata(pi.metadata),
                   currency: pi.currency,
                   paymentIntentId: pi.id,
                   raw: event,
@@ -323,11 +332,18 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               // would make the column mean "succeeded payments only" in
               // practice while claiming to describe every row.
               const { collectingOrgIdFor } = await import("@/lib/stripe-connect.server");
+              // Same split as the succeeded path: `amount_cents` means money
+              // toward the invoice on every row, so a failed pass-through charge
+              // does not read as a larger attempt than the invoice was for.
+              const { invoiceAppliedCents, surchargeFromMetadata } = await import(
+                "@/lib/processing-fee.server"
+              );
               await supabaseAdmin.from("payments").insert({
                 organization_id: (invOwner as any).organization_id,
                 collected_by_organization_id: await collectingOrgIdFor((invOwner as any).organization_id),
                 invoice_id: invoiceId,
-                amount_cents: pi.amount,
+                amount_cents: invoiceAppliedCents(pi.amount, pi.metadata),
+                surcharge_cents: surchargeFromMetadata(pi.metadata),
                 currency: pi.currency,
                 status: "failed",
                 stripe_payment_intent_id: pi.id,
@@ -637,10 +653,21 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             // refresh once Stripe finishes verifying the connected account.
             const acct = event.data.object as import("stripe").Stripe.Account;
             const { accountStateFrom } = await import("@/lib/stripe-connect.server");
+            const { merchantRegionFrom } = await import("@/lib/processing-fee.server");
             const s = accountStateFrom(acct);
+            // The merchant's state decides whether a card surcharge is lawful
+            // (banned in CT, MA and PR) and lives nowhere else — `organizations`
+            // has no address column. Synced here because this is the only event
+            // that reports a connected account's details changing, and a
+            // business that relocates must stop surcharging on the same day.
+            const region = merchantRegionFrom(acct);
             await (supabaseAdmin as any).from("organizations").update({
               stripe_connect_charges_enabled: s.chargesEnabled,
               stripe_connect_status: s.status,
+              // Only overwrite with a real answer: a partial account payload
+              // that omits the address must not erase a known state, because
+              // null suppresses the surcharge and would look like a bug.
+              ...(region ? { stripe_merchant_region: region } : {}),
             }).eq("stripe_connect_account_id", acct.id);
           }
           // NOTE: customer.subscription.* is intentionally NOT handled here —

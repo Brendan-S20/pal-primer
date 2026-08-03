@@ -677,9 +677,22 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
     if (!liveCustomerId) {
       throw new Error("Your saved card is no longer on file. Please add a payment method again.");
     }
+    // Saved card: the payment method is known before the charge is built, so
+    // the rail and funding type are too and no second step is needed. The
+    // platform fee stays on the BASE — we do not take 50 bps of a fee the
+    // tenant is recovering from Stripe.
+    const { orgFeeConfig, quoteForPaymentMethodId, surchargeMetadata } = await import(
+      "@/lib/processing-fee.server"
+    );
+    const quote = await quoteForPaymentMethodId(stripe, {
+      paymentMethodId: c.default_payment_method_id,
+      stripeAccount,
+      baseCents: dueCents,
+      config: await orgFeeConfig(supabaseAdmin, invoice.organization_id),
+    });
     try {
       const pi = await stripe.paymentIntents.create({
-        amount: dueCents,
+        amount: quote.totalCents,
         application_fee_amount: platformFeeCents(dueCents),
         currency: invoice.currency ?? "usd",
         customer: c.stripe_customer_id,
@@ -690,6 +703,7 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
           invoice_id: invoice.id,
           organization_id: invoice.organization_id,
           source: "portal_saved_card",
+          ...surchargeMetadata(quote),
         },
       }, {
         // Prevent a double-tap (or a retried request) from charging twice.
@@ -697,7 +711,10 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
         // mints fresh; the payment-method id is in the key because after a
         // decline the client may save a NEW card the same day, and replaying
         // the old key with different params would be an idempotency_error.
-        idempotencyKey: `portal-saved-card-${invoice.id}-${dueCents}-${c.default_payment_method_id}`,
+        // It is the CHARGED total, not the invoice base: a tenant who switches
+        // pass-through on between two attempts changes the amount, and reusing
+        // the key would be exactly that idempotency_error.
+        idempotencyKey: `portal-saved-card-${invoice.id}-${quote.totalCents}-${c.default_payment_method_id}`,
         stripeAccount,
       });
       await supabaseAdmin.from("invoices").update({

@@ -631,9 +631,22 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
         .from("clients")
         .update({ autopay_last_attempt_at: new Date().toISOString() })
         .eq("id", c.id);
+      // Saved card on file, so the rail and funding type are known here without
+      // a second step. This is the path the platform-fee module singled out as
+      // the one nobody watches — the fee and the surcharge both have to be
+      // right here with no one looking.
+      const { orgFeeConfig, quoteForPaymentMethodId, surchargeMetadata } = await import(
+        "@/lib/processing-fee.server"
+      );
+      const quote = await quoteForPaymentMethodId(stripe, {
+        paymentMethodId: c.default_payment_method_id,
+        stripeAccount: acct.accountId,
+        baseCents: dueCents,
+        config: await orgFeeConfig(supabaseAdmin, inv.organization_id),
+      });
       const pi = await stripe.paymentIntents.create(
         {
-          amount: dueCents,
+          amount: quote.totalCents,
           application_fee_amount: platformFeeCents(dueCents),
           currency: inv.currency ?? "usd",
           customer: c.stripe_customer_id,
@@ -644,14 +657,17 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
             invoice_id: inv.id,
             organization_id: inv.organization_id,
             source: "autopay",
+            ...surchargeMetadata(quote),
           },
         },
         {
           stripeAccount: acct.accountId,
           // Idempotent per invoice+amount: a retried request never charges
-          // twice. The amount is the OPEN amount (net of applied credit), so a
-          // later credit application mints a fresh key for the smaller charge.
-          idempotencyKey: `autopay-${inv.id}-${dueCents}`,
+          // twice. The amount is the CHARGED total (net of applied credit, plus
+          // any pass-through fee), so a later credit application — or the tenant
+          // switching pass-through on — mints a fresh key instead of replaying
+          // this one with a different amount.
+          idempotencyKey: `autopay-${inv.id}-${quote.totalCents}`,
         },
       );
       // Store the PI on the invoice so a missed success webhook is rescued by

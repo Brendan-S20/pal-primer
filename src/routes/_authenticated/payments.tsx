@@ -20,6 +20,11 @@ import {
   disconnectStripeConnect,
   auditClientCardRefs,
 } from "@/lib/stripe-connect.functions";
+import {
+  getProcessingFeeSettings,
+  setProcessingFeePassThrough,
+  attestCardSurcharge,
+} from "@/lib/processing-fee.functions";
 import { sendEmailVerification } from "@/lib/auth-entry.functions";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -63,17 +68,25 @@ function PaymentsSettings() {
   });
   const refresh = useMutation({
     mutationFn: () => refreshFn(),
-    onSuccess: () => { toast.success("Status refreshed"); qc.invalidateQueries({ queryKey: ["stripe-connect"] }); },
+    onSuccess: () => {
+      toast.success("Status refreshed");
+      qc.invalidateQueries({ queryKey: ["stripe-connect"] });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const disconnect = useMutation({
     mutationFn: () => disconnectFn(),
-    onSuccess: () => { toast.success("Stripe disconnected"); qc.invalidateQueries({ queryKey: ["stripe-connect"] }); },
+    onSuccess: () => {
+      toast.success("Stripe disconnected");
+      qc.invalidateQueries({ queryKey: ["stripe-connect"] });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const hostedFallback = useMutation({
     mutationFn: () => startFn({ data: { origin: window.location.origin } }),
-    onSuccess: (r: any) => { if (r?.url) window.location.href = r.url; },
+    onSuccess: (r: any) => {
+      if (r?.url) window.location.href = r.url;
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const auditFn = useServerFn(auditClientCardRefs);
@@ -81,11 +94,13 @@ function PaymentsSettings() {
     mutationFn: () => auditFn(),
     onSuccess: (r: any) => {
       if (!r.cleared.length) {
-        toast.success(`Checked ${r.checked} saved card${r.checked === 1 ? "" : "s"}: all valid on this Stripe account.`);
+        toast.success(
+          `Checked ${r.checked} saved card${r.checked === 1 ? "" : "s"}: all valid on this Stripe account.`,
+        );
       } else {
         toast.warning(
           `Checked ${r.checked}: cleared ${r.cleared.length} stale saved card${r.cleared.length === 1 ? "" : "s"} ` +
-          `(${r.cleared.slice(0, 5).join(", ")}${r.cleared.length > 5 ? "…" : ""}). Those clients will be asked to re-add a card.`,
+            `(${r.cleared.slice(0, 5).join(", ")}${r.cleared.length > 5 ? "…" : ""}). Those clients will be asked to re-add a card.`,
           { duration: 12000 },
         );
       }
@@ -131,7 +146,9 @@ function PaymentsSettings() {
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card p-3 text-sm">
             <span>
               {cfg.chargesEnabled ? (
-                <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">Charges enabled</span>
+                <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">
+                  Charges enabled
+                </span>
               ) : (
                 <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
                   Finish the steps below to enable charges
@@ -142,22 +159,45 @@ function PaymentsSettings() {
               </span>
             </span>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => refresh.mutate()} disabled={refresh.isPending}>Refresh</Button>
-              <Button variant="outline" size="sm" onClick={() => disconnect.mutate()} disabled={disconnect.isPending}>Disconnect</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refresh.mutate()}
+                disabled={refresh.isPending}
+              >
+                Refresh
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => disconnect.mutate()}
+                disabled={disconnect.isPending}
+              >
+                Disconnect
+              </Button>
             </div>
           </div>
 
-          <ConnectDashboard chargesEnabled={!!cfg.chargesEnabled} onOnboardingExit={() => refresh.mutate()} />
+          <ConnectDashboard
+            chargesEnabled={!!cfg.chargesEnabled}
+            onOnboardingExit={() => refresh.mutate()}
+          />
 
           <p className="text-xs text-muted-foreground">
             Trouble with the embedded steps?{" "}
-            <button className="underline" onClick={() => hostedFallback.mutate()} disabled={hostedFallback.isPending}>
+            <button
+              className="underline"
+              onClick={() => hostedFallback.mutate()}
+              disabled={hostedFallback.isPending}
+            >
               Open Stripe-hosted onboarding
             </button>
             .
           </p>
         </>
       )}
+
+      {cfg?.connected && cfg?.chargesEnabled && <ProcessingFeeCard />}
 
       <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
         <p>
@@ -180,10 +220,160 @@ function PaymentsSettings() {
   );
 }
 
+const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+/**
+ * Who pays Stripe's cost of acceptance.
+ *
+ * The screen leads with the number the tenant will actually keep absorbing,
+ * because the honest version of this feature is "you recover most of it", not
+ * "you recover it". Visa caps a surcharge at 3%, Stripe charges 2.9% + 30¢, and
+ * the fee lands on the surcharged total — so on a $60 job the tenant is still
+ * out ~29¢ however this is configured. Stating that here is cheaper than a
+ * support ticket after the first statement.
+ */
+function ProcessingFeeCard() {
+  const qc = useQueryClient();
+  const getFn = useServerFn(getProcessingFeeSettings);
+  const setFn = useServerFn(setProcessingFeePassThrough);
+  const attestFn = useServerFn(attestCardSurcharge);
+
+  const q = useQuery({ queryKey: ["processing-fee"], queryFn: () => getFn() });
+  const s = q.data as any;
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["processing-fee"] });
+  const setPassThrough = useMutation({
+    mutationFn: (enabled: boolean) => setFn({ data: { enabled } }),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Saved");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const attest = useMutation({
+    mutationFn: (attested: boolean) => attestFn({ data: { attested } }),
+    onSuccess: (_r, attested) => {
+      invalidate();
+      toast.success(attested ? "Card surcharging enabled" : "Card surcharging turned off");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  if (q.isLoading) return <p className="text-sm text-muted-foreground">Loading fee settings…</p>;
+  if (!s) return null;
+
+  const ex = s.example;
+  const bannedHere = s.regionAllowsCardSurcharge === false;
+
+  return (
+    <div className="space-y-4 rounded-lg border bg-card p-4">
+      <div>
+        <div className="text-sm font-medium">Processing fees</div>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Stripe charges you 2.9% + 30¢ on cards and 0.8% (capped at $5) on bank payments. You can
+          absorb that or pass it to the client as a separate line at checkout.
+        </p>
+      </div>
+
+      <label className="flex items-start gap-3">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={!!s.passThroughEnabled}
+          disabled={setPassThrough.isPending}
+          onChange={(e) => setPassThrough.mutate(e.target.checked)}
+        />
+        <span className="text-sm">
+          <span className="font-medium">Pass processing fees to the client</span>
+          <span className="block text-muted-foreground">
+            Applies to bank (ACH) payments straight away. Cards also need the confirmation below.
+          </span>
+        </span>
+      </label>
+
+      {s.passThroughEnabled && (
+        <div className="rounded-md border bg-muted/40 p-3 text-sm">
+          <div className="font-medium">On a {money(ex.baseCents)} invoice</div>
+          <ul className="mt-2 space-y-1 text-muted-foreground">
+            <li>
+              Card:{" "}
+              {ex.card.suppressed
+                ? "no fee added"
+                : `client pays ${money(ex.card.totalCents)} — you recover ${money(ex.card.surchargeCents)}`}
+              {ex.card.shortfallCents > 0 && (
+                <span> and still absorb {money(ex.card.shortfallCents)}</span>
+              )}
+            </li>
+            <li>
+              Bank:{" "}
+              {ex.ach.suppressed
+                ? "no fee added"
+                : `client pays ${money(ex.ach.totalCents)} — you recover ${money(ex.ach.surchargeCents)}`}
+            </li>
+          </ul>
+          {ex.card.shortfallCents > 0 && !ex.card.suppressed && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Card networks cap a surcharge at 3% and at your actual cost, so a card fee never
+              recovers the full amount on smaller jobs. Bank payments recover in full.
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="space-y-2 border-t pt-3">
+        <div className="text-sm font-medium">Card surcharging</div>
+        {bannedHere ? (
+          <p className="text-sm text-muted-foreground">
+            Surcharging a card is prohibited in {s.merchantRegion}. Bank (ACH) fees can still be
+            passed through.
+          </p>
+        ) : !s.merchantRegion ? (
+          <p className="text-sm text-muted-foreground">
+            We don't have your business's state from Stripe yet, so card surcharging stays off.
+            Finish Stripe onboarding and it will appear here.
+          </p>
+        ) : (
+          <>
+            <p className="text-sm text-muted-foreground">
+              Visa and Mastercard require <strong>you</strong> — not HoundStack — to notify the card
+              networks and your payment processor at least 30 days before you start surcharging. We
+              can't file that for you, because your business is the merchant of record on every
+              client payment. Debit and prepaid cards are never surcharged.
+            </p>
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={!!s.attestedAt}
+                disabled={attest.isPending}
+                onChange={(e) => attest.mutate(e.target.checked)}
+              />
+              <span className="text-sm">
+                I've given the card networks and my processor the required notice.
+                {s.attestedAt && (
+                  <span className="block text-xs text-muted-foreground">
+                    Confirmed {new Date(s.attestedAt).toLocaleDateString()}.
+                  </span>
+                )}
+              </span>
+            </label>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Embedded Stripe Connect dashboard (in-app Express experience). Loads
 // @stripe/connect-js on the client only; the Account Session is minted
 // server-side via createStripeAccountSession.
-function ConnectDashboard({ chargesEnabled, onOnboardingExit }: { chargesEnabled: boolean; onOnboardingExit: () => void }) {
+function ConnectDashboard({
+  chargesEnabled,
+  onOnboardingExit,
+}: {
+  chargesEnabled: boolean;
+  onOnboardingExit: () => void;
+}) {
   const sessionFn = useServerFn(createStripeAccountSession);
   const [instance, setInstance] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -210,14 +400,21 @@ function ConnectDashboard({ chargesEnabled, onOnboardingExit }: { chargesEnabled
         if (!cancelled) setErr((e as Error).message);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [reloadKey]);
 
   if (err)
     return (
       <div className="rounded-lg border bg-card p-4">
         <p className="text-sm text-destructive">Couldn't load the payment dashboard: {err}</p>
-        <Button variant="outline" size="sm" className="mt-3" onClick={() => setReloadKey((k) => k + 1)}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-3"
+          onClick={() => setReloadKey((k) => k + 1)}
+        >
           Try again
         </Button>
       </div>

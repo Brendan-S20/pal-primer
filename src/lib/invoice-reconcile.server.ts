@@ -10,7 +10,19 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 type MarkPaidArgs = {
   invoiceId: string;
   organizationId: string;
+  /**
+   * Money applied to the INVOICE — not the Stripe charge amount, when the two
+   * differ. A pass-through charge is base + surcharge, and only the base is a
+   * payment against what was owed. Callers pass `invoiceAppliedCents(...)`.
+   */
   amountCents: number;
+  /**
+   * The processing fee recovered from the payer, alongside `amountCents` rather
+   * than inside it. Recorded so it can be reported as fee recovery and never as
+   * revenue. Absent on every pre-surcharge caller, which is correct: those
+   * charges had none.
+   */
+  surchargeCents?: number;
   currency: string;
   paymentIntentId: string | null;
   checkoutSessionId?: string | null;
@@ -44,6 +56,7 @@ export async function markInvoicePaidFromStripe(
     collected_by_organization_id: collectedBy,
     invoice_id: args.invoiceId,
     amount_cents: args.amountCents,
+    surcharge_cents: args.surchargeCents ?? 0,
     currency: args.currency,
     status: "succeeded",
     stripe_checkout_session_id: args.checkoutSessionId ?? null,

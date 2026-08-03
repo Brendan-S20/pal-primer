@@ -168,19 +168,42 @@ describe("no charge escapes the fee", () => {
     });
   }
 
-  it("computes the fee from the same amount it charges", () => {
-    // A fee derived from a DIFFERENT variable than `amount` is the subtle
-    // version of this bug: it collects, so nothing looks broken, but it collects
-    // on the wrong number — the gross rather than the amount left after credit
-    // was applied, for instance.
+  it("computes the fee from the amount owed, whatever it ends up charging", () => {
+    // A fee derived from the WRONG variable is the subtle version of this bug:
+    // it collects, so nothing looks broken, but it collects on the wrong number
+    // — the gross rather than the amount left after credit was applied, say.
+    //
+    // Until pass-through processing fees the rule was simply "same variable as
+    // `amount`". It is now two rules, because those two numbers legitimately
+    // differ: a surcharged charge is base + surcharge, and we deliberately do
+    // NOT take 50 bps of a fee the tenant is recovering from Stripe. So:
+    //
+    //   application_fee_amount  must come from the invoice amount (dueCents /
+    //                           amountCents) — the base, always.
+    //   amount                  must be either that same base, or the quoted
+    //                           total that was derived from it.
+    //
+    // Anything else — a fee on `quote.totalCents`, or a charge on some third
+    // variable — is the original bug wearing a new shape.
+    const BASE_VARS = new Set(["dueCents", "amountCents"]);
+    const CHARGE_VARS = new Set([...BASE_VARS, "quote.totalCents"]);
     for (const f of found) {
       const pairs = [...f.src.matchAll(
-        /amount:\s*(\w+),\s*\n\s*application_fee_amount:\s*platformFeeCents\((\w+)\)/g,
+        /amount:\s*([\w.]+),\s*\n\s*application_fee_amount:\s*platformFeeCents\((\w+)\)/g,
       )];
       expect(pairs.length, `${f.file} has no amount/fee pair to check`).toBeGreaterThan(0);
       for (const [, amountVar, feeVar] of pairs) {
-        expect(feeVar, `${f.file}: fee computed from ${feeVar} but charge is ${amountVar}`)
-          .toBe(amountVar);
+        expect(
+          BASE_VARS.has(feeVar),
+          `${f.file}: platform fee computed from ${feeVar}. It must be the invoice ` +
+            `amount — taking 50 bps of a pass-through processing fee bills the tenant ` +
+            `for recovering Stripe's own charge.`,
+        ).toBe(true);
+        expect(
+          CHARGE_VARS.has(amountVar),
+          `${f.file}: charges ${amountVar}, which is neither the invoice amount nor a ` +
+            `quoted total derived from it.`,
+        ).toBe(true);
       }
     }
   });
