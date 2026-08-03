@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.21d** · Released 2026-08-02 · Supersedes: v1.21c, v1.21b, v1.21, v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.21e** · Released 2026-08-02 · Supersedes: v1.21d, v1.21c, v1.21b, v1.21, v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -157,6 +157,39 @@ the real dashboard, so the sentence says which is which. And `field-app.astro`
 said its capture was "framed on properties that carry none", meaning gate codes;
 the seeder no longer writes those columns at all, so the framing is not
 protecting anything and the note said otherwise.
+
+### v1.21e — 2026-08-02
+
+**QA finding #4 re-verified — the Critical one, about the client portal.**
+
+The portal-authentication finding was marked fixed on 10 July with a long
+status note. That note is a month old, a great deal has landed since, and the
+thing it guards is a page where a client adds a card and switches on autopay.
+This cycle's recurring lesson is that a written claim is not a fact, so it was
+checked rather than read. **It held, three independent ways:**
+
+1. **Every `portal_*` RPC is revoked from `anon` and `authenticated` at the
+   database.** All 21 have ACLs of `postgres` and `service_role` only, so the
+   publishable key cannot reach one even holding a valid token. Checked against
+   `pg_proc.proacl` live, not against the migration that was supposed to do it.
+2. **All 22 server functions that call a `portal_*` RPC establish a session
+   first.** Checked mechanically, not by eye.
+3. **`portalContext` — the one that looks ungated — is correct.** It calls
+   `portal_get_client` only inside its `if (session)` branch; an unverified
+   caller gets the org name and masked contact channels and nothing else.
+
+`tests/every-portal-handler-checks-the-session.test.ts` pins (2). Twenty-two
+call sites with no mechanical enforcement is the exact shape this codebase keeps
+finding — nine tables where a server function was the only gate, three
+superseded RPCs still callable, a second `skip_visit` nothing had called since
+July. Handler twenty-three is the one to worry about. The test accepts either
+`requirePortalSession` (which throws) or `getPortalSession` (which branches),
+because a rule demanding only the first would have reported `portalContext` — a
+correct handler — as a hole.
+
+**Still outstanding on #4, unchanged:** the human browser click-through of the
+live OTP flow, the SMS path in particular, which needs `sms_from_number`
+configured. Nothing here replaces that.
 
 ### v1.21d — 2026-08-02
 
