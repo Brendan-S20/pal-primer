@@ -3,6 +3,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
+import { resolveSupabaseUrl } from "@/lib/supabase-url";
 
 async function assertPlatformAdmin(supabase: any, userId: string) {
   const { data, error } = await supabase.rpc("is_platform_admin", { _user_id: userId });
@@ -33,7 +34,7 @@ function hexToken(bytes = 32): string {
 
 function anonServer() {
   return createClient<Database>(
-    process.env.SUPABASE_URL!,
+    resolveSupabaseUrl(),
     process.env.SUPABASE_PUBLISHABLE_KEY!,
     { auth: { storage: undefined, persistSession: false, autoRefreshToken: false } },
   );

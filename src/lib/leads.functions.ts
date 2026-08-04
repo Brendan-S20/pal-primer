@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import type { Database } from "@/integrations/supabase/types";
+import { resolveSupabaseUrl } from "@/lib/supabase-url";
 
 const STATUSES = ["new", "contacted", "qualified", "converted", "archived"] as const;
 
@@ -22,7 +23,7 @@ const leadSchema = z.object({
 });
 
 function anonClient() {
-  const url = process.env.SUPABASE_URL!;
+  const url = resolveSupabaseUrl();
   const key = process.env.SUPABASE_PUBLISHABLE_KEY!;
   return createClient<Database>(url, key, { auth: { persistSession: false } });
 }
