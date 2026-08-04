@@ -960,11 +960,23 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               // both inquiry kinds are status facts; the SQL refuses them too,
               // but a guard on both sides of a boundary that decides whether
               // someone is billed is worth the three lines.
+              // revenueAmount, NOT amount. The settlement's revenue base is
+              // `sum(payments.amount_cents)` — base only, surcharge excluded —
+              // so a deduction taken on base + surcharge is computed on a
+              // different basis than the revenue it comes off.
+              //
+              // On a 15% royalty a $100 invoice charged as $103 and refunded
+              // deducted $103, billing the location $3.00 more than the revenue
+              // that was ever counted, on every refunded surcharged payment.
+              // The split was already being computed one line up and handed to
+              // the ledger; this call was simply not given it.
+              //
+              // Identical for a chargeback, where revenueAmount === amount.
               const { data: adjId } = movesMoney
                 ? await (supabaseAdmin as any).rpc("record_franchise_adjustment", {
                     _payment_id: pay.id,
                     _kind: kind,
-                    _amount_cents: amount,
+                    _amount_cents: revenueAmount,
                     _note: `Stripe ${event.type}`,
                     _dispute_ref: disputeRef,
                   })

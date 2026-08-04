@@ -106,6 +106,15 @@ export interface SyncResult {
   /** Actions the server refused MAX_ATTEMPTS times in a row while the device
    *  was online. Given up on, so the queue behind them can move. */
   deadLettered: number;
+  /** ANOTHER replay was already in flight, so this call did nothing.
+   *
+   *  Without this a caller cannot tell "I flushed and nothing succeeded" from
+   *  "I never ran" — both are all-zeros. Sign-out reads that difference: it
+   *  asks the tech to discard whatever is left, and a queue that is mid-replay
+   *  is not left, it is seconds from landing. Discarding it would destroy work
+   *  the background loop was about to sync, with the tech's consent obtained
+   *  under a false premise. */
+  alreadyRunning: boolean;
 }
 
 /** How many server refusals before an action is given up on.
@@ -129,9 +138,15 @@ export const MAX_ATTEMPTS = 5;
 export const REPLAY_DEADLINE_MS = 60_000;
 
 export async function syncQueue(callers: SyncCallers, userId: string): Promise<SyncResult> {
-  if (running) return { attempted: 0, succeeded: 0, failed: 0, dropped: 0, deadLettered: 0 };
+  if (running) {
+    return {
+      attempted: 0, succeeded: 0, failed: 0, dropped: 0, deadLettered: 0,
+      alreadyRunning: true,
+    };
+  }
   running = true;
   const result: SyncResult = {
+    alreadyRunning: false,
     attempted: 0,
     succeeded: 0,
     failed: 0,

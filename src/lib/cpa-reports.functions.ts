@@ -654,7 +654,7 @@ async function buildReversals(supabase: any, ctx: OrgContext, from: string, to: 
       statusLabel: `${(deducted / 100).toFixed(2)} deducted, ${(recovered / 100).toFixed(2)} recovered`,
     } as ReportRow,
     caveats: [
-      "Each payment carries at most one refund entry. If a single payment was refunded in two parts, only the first is listed — check Stripe directly if a partial refund history matters for a return.",
+      "A payment refunded in parts is listed once, at the cumulative total refunded to date, not as one line per refund. The individual refunds are in Stripe if a return needs them itemised.",
       "An open dispute is deducted from the day the funds were withdrawn. If it is later won, the recovery appears on that date rather than by amending the original month.",
     ],
   };

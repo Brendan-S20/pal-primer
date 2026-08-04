@@ -204,18 +204,35 @@ export async function countPending(userId: string): Promise<number> {
  *  unlocked Complete. The server then refuses (`A completion photo is required
  *  before completing this visit`), which is not a network error, so the sync
  *  loop breaks on it and every action queued behind it stops for good. */
-export async function countQueuedCompletionPhotos(visitId: string): Promise<number> {
+export async function countQueuedCompletionPhotos(
+  visitId: string,
+  userId: string,
+): Promise<number> {
   const db = await getDb();
   const all = await db.getAll("actions");
   return all.filter(
-    (a) => a.visitId === visitId && a.kind === "photo" && a.photoKind === "completion",
+    (a) =>
+      a.userId === userId &&
+      a.visitId === visitId &&
+      a.kind === "photo" &&
+      a.photoKind === "completion",
   ).length;
 }
 
-export async function countPendingForVisit(visitId: string): Promise<number> {
+/** Pending actions THIS user has queued against one visit.
+ *
+ *  Scoped for the same reason as everything else in this file, and with a
+ *  sharper consequence than the rest. On a shared tablet an unscoped count
+ *  means tech A's queued completion photo unlocks the Complete button for tech
+ *  B, who has taken none. B completes, the server refuses ("A completion photo
+ *  is required before completing this visit"), that is not a transport failure
+ *  so it burns an attempt, and after MAX_ATTEMPTS B's own completion is
+ *  dead-lettered. An unscoped read here does not just mislead — it destroys the
+ *  work of the person actually holding the device. */
+export async function countPendingForVisit(visitId: string, userId: string): Promise<number> {
   const db = await getDb();
   const pending = await db.getAll("actions");
-  return pending.filter((a) => a.visitId === visitId).length;
+  return pending.filter((a) => a.userId === userId && a.visitId === visitId).length;
 }
 
 export async function deleteAction(id: string) {
