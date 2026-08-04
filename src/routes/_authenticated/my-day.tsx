@@ -29,7 +29,7 @@ import { listAddonServices, createAddonCharge } from "@/lib/addons.functions";
 import { getVisitStations, logStationService } from "@/lib/stations.functions";
 import { logDnaSampleFromField } from "@/lib/dna.functions";
 import { sendVisitStatusSms } from "@/lib/messages.functions";
-import { SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
+import { TECH_SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
 import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
 import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { syncQueue } from "@/lib/offline/sync";
@@ -886,7 +886,7 @@ function VisitCard({
     onError: (e: Error) => toast.error(e.message),
   });
   const [reason, setReason] = useState("");
-  const [reasonCode, setReasonCode] = useState<(typeof SKIP_REASON_CODES)[number]>("other");
+  const [reasonCode, setReasonCode] = useState<(typeof TECH_SKIP_REASON_CODES)[number]>("other");
   const [uploading, setUploading] = useState(false);
   const [photoKind, setPhotoKind] = useState<"before" | "completion" | "issue">("completion");
   const [pendingLocal, setPendingLocal] = useState(0);
@@ -1327,7 +1327,7 @@ function VisitCard({
                   onChange={(e) => setReasonCode(e.target.value as any)}
                   className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
                 >
-                  {SKIP_REASON_CODES.map((c) => (
+                  {TECH_SKIP_REASON_CODES.map((c) => (
                     <option key={c} value={c}>
                       {SKIP_REASON_LABELS[c]}
                     </option>

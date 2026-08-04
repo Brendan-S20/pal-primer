@@ -2780,7 +2780,6 @@ export type Database = {
           auto_generate_visits: boolean
           auto_invoice_enabled: boolean
           avg_speed_kmh: number
-          billed_through_parent: boolean
           billing_status: Database["public"]["Enums"]["org_billing_status"]
           billing_tier: string | null
           brand_color: string | null
@@ -2890,7 +2889,6 @@ export type Database = {
           auto_generate_visits?: boolean
           auto_invoice_enabled?: boolean
           avg_speed_kmh?: number
-          billed_through_parent?: boolean
           billing_status?: Database["public"]["Enums"]["org_billing_status"]
           billing_tier?: string | null
           brand_color?: string | null
@@ -3000,7 +2998,6 @@ export type Database = {
           auto_generate_visits?: boolean
           auto_invoice_enabled?: boolean
           avg_speed_kmh?: number
-          billed_through_parent?: boolean
           billing_status?: Database["public"]["Enums"]["org_billing_status"]
           billing_tier?: string | null
           brand_color?: string | null

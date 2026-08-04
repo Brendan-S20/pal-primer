@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 // A visit photo could end up in storage several times over, with only the last
@@ -99,5 +99,73 @@ describe("the local blob still outlives the upload", () => {
     expect(upload).toBeGreaterThan(-1);
     expect(record).toBeGreaterThan(upload);
     expect(drop).toBeGreaterThan(record);
+  });
+});
+
+// ── Two claims the schema and the settings screen were making ──────────────
+
+describe("the portal skip rule is reachable", () => {
+  const src = readFileSync(join(ROOT, "src/lib/skip-rules.functions.ts"), "utf8");
+
+  it("lists the code the portal actually writes", () => {
+    // `portal_skip_visit` sets skip_reason_code='customer_requested' and reads
+    // skip_billing_rules for that code, ending `IF _pct IS NULL THEN _pct := 0`.
+    // The code was missing from SKIP_REASON_CODES, so it never appeared in
+    // Settings and upsertSkipRule's z.enum rejected it — the override could
+    // never exist, and a client cancelling through the portal was ALWAYS billed
+    // $0, whatever the business's late-cancellation policy said.
+    expect(src).toMatch(/"customer_requested"/);
+    expect(src).toMatch(/customer_requested: "Customer skipped via portal"/);
+  });
+
+  it("defaults it to 0, matching the SQL rather than improving on it", () => {
+    // Making it configurable must not also, silently, start charging people.
+    expect(src).toMatch(/customer_requested: 0,/);
+  });
+
+  it("keeps it out of the tech's picker", () => {
+    // A tech choosing it would record the customer's decision as though the
+    // customer had made it — on the one code whose billing that decision drives.
+    expect(src).toMatch(/export const TECH_SKIP_REASON_CODES/);
+    expect(src).toMatch(/c !== "customer_requested"/);
+    const myDay = readFileSync(join(ROOT, "src/routes/_authenticated/my-day.tsx"), "utf8");
+    expect(myDay).toMatch(/TECH_SKIP_REASON_CODES\.map/);
+    expect(myDay).not.toMatch(/\{SKIP_REASON_CODES\.map/);
+  });
+});
+
+describe("billed_through_parent is gone", () => {
+  it("is not referenced anywhere in src", () => {
+    // Its comment promised HoundStack invoices the PARENT for a location and
+    // that the location "must not be dunned or suspended". Nothing implemented
+    // any of it: no reader, no writer, every row false. Meanwhile
+    // provision_franchise_location gives each location its own plan and bills it
+    // in its own right — the OPPOSITE of the claim, sitting in the schema for
+    // the next person to design franchise billing to read and believe.
+    const hits: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(join(ROOT, dir))) {
+        const rel = `${dir}/${e}`;
+        if (statSync(join(ROOT, rel)).isDirectory()) walk(rel);
+        else if (/\.(ts|tsx)$/.test(e) && readFileSync(join(ROOT, rel), "utf8").includes("billed_through_parent")) {
+          hits.push(rel);
+        }
+      }
+    };
+    walk("src");
+    expect(hits, `still referenced in:\n${hits.join("\n")}`).toEqual([]);
+  });
+
+  it("is out of the platform-columns trigger", () => {
+    // A trigger naming a dropped column fails EVERY organizations UPDATE.
+    const mig = readFileSync(
+      join(ROOT, "supabase/migrations/20260804070000_a-column-that-promised-consolidated-franchise-billing.sql"),
+      "utf8",
+    );
+    const fn = /CREATE OR REPLACE FUNCTION public\.tg_orgs_protect_platform_columns[\s\S]*$/.exec(mig)?.[0] ?? "";
+    expect(fn).not.toBe("");
+    expect(fn).not.toContain("billed_through_parent");
+    // The sibling that IS wired stays protected.
+    expect(fn).toContain("payments_collected_by_parent");
   });
 });

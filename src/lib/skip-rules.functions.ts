@@ -3,7 +3,10 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 
+/** Every skip reason the SCHEDULE can carry, including the one only the portal
+ *  writes. See TECH_SKIP_REASON_CODES for the subset a tech may choose. */
 export const SKIP_REASON_CODES = [
+  "customer_requested",
   "client_cancelled_late",
   "gate_locked",
   "dog_outside",
@@ -15,6 +18,7 @@ export const SKIP_REASON_CODES = [
 ] as const;
 
 export const SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], string> = {
+  customer_requested: "Customer skipped via portal",
   client_cancelled_late: "Client cancelled late",
   gate_locked: "Gate locked / no access",
   dog_outside: "Dog was outside",
@@ -26,6 +30,11 @@ export const SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], stri
 };
 
 const DEFAULT_PCT: Record<(typeof SKIP_REASON_CODES)[number], number> = {
+  // 0 to MATCH the SQL, which is the whole point of adding this row rather than
+  // picking a nicer number: `portal_skip_visit` ends with
+  // `IF _pct IS NULL THEN _pct := 0`, so this has always been free. Making it
+  // configurable must not also, silently, start charging people.
+  customer_requested: 0,
   client_cancelled_late: 100,
   gate_locked: 100,
   dog_outside: 100,
@@ -35,6 +44,19 @@ const DEFAULT_PCT: Record<(typeof SKIP_REASON_CODES)[number], number> = {
   unsafe_conditions: 50,
   other: 0,
 };
+
+/**
+ * The reasons a TECH may pick in the field.
+ *
+ * `customer_requested` is written only by `portal_skip_visit` when a client
+ * skips their own visit. A tech choosing it would be recording the customer's
+ * decision as though the customer had made it, on the one code whose billing
+ * the customer's own action drives — so the picker gets this list and the
+ * settings screen gets the full one.
+ */
+export const TECH_SKIP_REASON_CODES = SKIP_REASON_CODES.filter(
+  (c) => c !== "customer_requested",
+) as ReadonlyArray<(typeof SKIP_REASON_CODES)[number]>;
 
 async function getOrgId(supabase: any, userId: string) {
   const { data, error } = await supabase
