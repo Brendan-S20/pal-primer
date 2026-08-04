@@ -9,45 +9,49 @@
 // upgrade — with no deploy, no diff, and no failing test.
 //
 // It had already drifted. The live platform webhook endpoint
-// (we_1U0SFdQjJFmqXgZD3yF8GRzZ) was sending `2026-07-29.dahlia` while the
-// installed SDK (22.3.0) types every response against `2026-06-24.dahlia`:
+// (we_1U0SFdQjJFmqXgZD3yF8GRzZ) was serialising events at `2026-07-29.dahlia`
+// while the SDK then installed (22.3.0) typed every response against
+// `2026-06-24.dahlia`. So `Stripe.Invoice`, `Stripe.Charge` and every other
+// type the webhook handlers read described a DIFFERENT version than the one
+// being delivered. Nothing fails at compile time — the payload arrives as JSON
+// and is cast — so the only symptom would be a field renamed, moved or dropped
+// between versions reading `undefined` at runtime, inside money code.
 //
-//     node_modules/stripe/esm/apiVersion.d.ts
-//     export declare const ApiVersion = "2026-06-24.dahlia";
+// ── HOW THE VERSION IS CHOSEN ─────────────────────────────────────────────
 //
-// So `Stripe.Invoice`, `Stripe.Charge` and every other type the webhook handler
-// reads described a DIFFERENT version than the one being delivered. Nothing
-// fails at compile time — the payload arrives as JSON and is cast — so the only
-// symptom would be a field that is renamed, moved or dropped between versions
-// reading `undefined` at runtime, inside money code, in production.
+// The SDK decides, and the endpoints are matched to it — not the other way
+// round. `StripeConfig.apiVersion` is a single string literal equal to the
+// version whose response shapes that release models, so there is exactly one
+// value that both compiles AND describes the JSON on the wire. Writing any
+// other version means a cast, and Stripe's own doc comment on that field spells
+// out what a cast costs: "add a @ts-ignore comment here and anywhere the types
+// differ between API versions".
 //
-// ── WHY 2026-06-24 AND NOT 2026-07-29 ─────────────────────────────────────
+// So closing the drift was an SDK UPGRADE, 22.3.0 → 22.4.0, whose entire
+// headline is "changes the pinned API version to 2026-07-29.dahlia" — the
+// version the endpoints were already on. Requests and events now speak one
+// version, the types describe it, and no endpoint had to be recreated (which
+// would have minted a new signing secret and dropped billing events until it
+// was pasted in).
 //
-// Because the SDK is the thing that has to be right. Its own type is
-//
-//     apiVersion?: LatestApiVersion;   // = "2026-06-24.dahlia"
-//
-// — a single string literal. `2026-07-29.dahlia` does not typecheck, and
-// forcing it with a cast would be asserting agreement with a version whose
-// response shapes this SDK does not model. Pinning to the SDK's version means
-// the types in the editor and the JSON on the wire describe the same API.
-//
-// The webhook endpoints were moved to match, so requests and events now speak
-// one version. Upgrading is a deliberate three-step change — bump the SDK,
-// bump this constant, bump the endpoints — and the guard test makes skipping a
-// step visible.
+// Upgrading again is a deliberate two-step change: bump the SDK, bump this
+// constant. Skipping the second step does not compile — that is not a
+// convention, it is the type below, and it fired for real on this very
+// upgrade: TS2322, '2026-06-24.dahlia' is not assignable to
+// '2026-07-29.dahlia'. If a future SDK moves ahead of the endpoints, the
+// runtime warning further down is what says so.
 
 import type Stripe from "stripe";
 
 /**
  * The API version every request and every webhook endpoint speaks.
  *
- * Tied to the installed SDK on purpose: `Stripe.LatestApiVersion` is the
- * version whose response shapes these types describe. If the SDK is upgraded
- * and this is not, the compiler says so — which is the entire point of not
- * writing the string out by hand.
+ * Tied to the installed SDK on purpose: the SDK's own literal is the version
+ * whose response shapes its types describe. If the SDK is upgraded and this is
+ * not, the compiler says so — which is the entire point of typing it against
+ * the package rather than writing a string nobody checks.
  */
-export const STRIPE_API_VERSION: PinnedApiVersion = "2026-06-24.dahlia";
+export const STRIPE_API_VERSION: PinnedApiVersion = "2026-07-29.dahlia";
 
 /**
  * The SDK's own `apiVersion` type, read off the constructor rather than
@@ -83,13 +87,16 @@ export async function makeStripe(secret: string): Promise<Stripe> {
  * Say so, loudly, when a delivered event was serialised against a different
  * API version than this code reads.
  *
- * Outbound calls are pinned by {@link makeStripe}, but INBOUND events are
- * serialised at whatever version the webhook endpoint was CREATED with, and
- * Stripe does not allow that to be changed afterwards — closing the gap means
- * recreating the endpoint, which mints a new signing secret and therefore needs
- * a human. Until then the mismatch is real and this is what makes it visible:
- * otherwise the only symptom is a field renamed between versions reading
- * `undefined`, silently, in money code.
+ * The endpoints and this build agree today. This is here because they can stop
+ * agreeing WITHOUT anyone editing this repo: an endpoint's api_version is fixed
+ * at CREATION — Stripe rejects it on update ("Received unknown parameter:
+ * api_version") — so a new endpoint added from the dashboard, or a future SDK
+ * bump moving this constant ahead of the live endpoints, reintroduces the gap
+ * silently. Outbound calls stay pinned either way; inbound events are whatever
+ * the endpoint was born as.
+ *
+ * Without this the only symptom is a field renamed between versions reading
+ * `undefined`, in money code, with no error anywhere.
  *
  * Deliberately NOT a rejection. Refusing the event would turn a field-shape
  * risk into guaranteed dropped billing events, and Stripe would retry a
@@ -99,7 +106,9 @@ export function warnOnApiVersionMismatch(event: { id: string; api_version: strin
   if (!event.api_version || event.api_version === STRIPE_API_VERSION) return;
   console.warn(
     `stripe webhook ${event.id} was serialised at ${event.api_version} but this build reads ` +
-      `${STRIPE_API_VERSION}. Fields that moved between the two will read undefined. Recreate ` +
-      `the endpoint at ${STRIPE_API_VERSION} and update its signing secret.`,
+      `${STRIPE_API_VERSION}. Fields that moved between the two will read undefined. An ` +
+      `endpoint's api_version cannot be changed after creation, so closing this means either ` +
+      `recreating the endpoint at ${STRIPE_API_VERSION} (new signing secret) or moving the SDK ` +
+      `to the version the endpoint speaks.`,
   );
 }
