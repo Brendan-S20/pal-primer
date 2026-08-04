@@ -27,6 +27,7 @@ import { listTimeOff } from "@/lib/users.functions";
 import { MobileDayList } from "@/components/schedule/MobileDayList";
 import { StaffRoutingDialog } from "@/components/routes/StaffRoutingDialog";
 import { LaneStrip } from "@/components/routes/LaneStrip";
+import { AutoRoutingPanel } from "@/components/routes/AutoRoutingPanel";
 import { ScheduleCalendar, calendarWindow } from "@/components/schedule/ScheduleCalendar";
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
 import { OneOffVisitDialog } from "@/components/OneOffVisitDialog";
@@ -961,7 +962,7 @@ function RoutesPage() {
             </Popover>
           )}
           <Button variant="outline" size="sm" onClick={() => setToolsOpen((v) => !v)}>
-            {toolsOpen ? "Hide dispatch tools" : "Dispatch tools"}
+            {toolsOpen ? "Hide auto-routing" : "Auto-routing"}
           </Button>
         </div>
       </div>
@@ -976,7 +977,18 @@ function RoutesPage() {
           and two date inputs on one screen setting the same day is not a
           choice anybody wants to make. */}
       {toolsOpen && (
+        <AutoRoutingPanel
+          day={day}
+          staff={staff}
+          onApplied={() => setLocalColumns(null)}
+        />
+      )}
+
+      {toolsOpen && (
         <div className="space-y-4 rounded-lg border bg-card p-5">
+          <div className="text-xs font-medium text-muted-foreground">
+            One tech, one day
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="tech">Assign or optimize one tech&apos;s day</Label>
