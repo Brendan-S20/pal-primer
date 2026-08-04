@@ -120,67 +120,110 @@ export const createStripeAccountSession = createServerFn({ method: "POST" })
     const acct = await resolveOrgStripeAccount(orgId);
     if (!acct) throw new Error("Connect a Stripe account first.");
     const stripe = await connectStripe();
-    // ── Features shared by `payments` and `payment_details` ──────────────
+    // ── Features shared across the payment/dispute components ────────────
     //
-    // Stripe REQUIRES these two components to declare identical values for
-    // every feature they have in common, and rejects the whole session if they
-    // disagree:
+    // Stripe rejects the WHOLE AccountSession if any two components declare
+    // different values for a feature they have in common. Not the component,
+    // not the feature — the session, so payouts, balances, documents and
+    // everything else go down with it.
     //
-    //   "The `features[capture_payments]` property specified by `payments`
-    //    and `payment_details` must be the same."
+    // This bit twice, and the second time is the instructive one:
     //
-    // That is exactly what happened. `payments` set `capture_payments: false`
-    // while `payment_details` was `{ enabled: true }` with no features at all
-    // — so Stripe applied its own default of TRUE there, the two disagreed,
-    // and the payment dashboard failed to load entirely. Not the capture
-    // control specifically: the session is refused as a whole, so payouts,
-    // balances, disputes and documents all went with it.
+    //   1. "…specified by `payments` and `payment_details` must be the same."
+    //      `payments` set capture_payments: false; `payment_details` had no
+    //      features block, so Stripe applied its own default of true.
     //
-    // One object, spread into both, so they cannot drift again. Adding a
-    // feature to one and forgetting the other is the only way to reproduce
-    // this, and a shared constant makes that impossible rather than merely
-    // unlikely.
-    const paymentFeatures = {
-      // Both already default to true. Stated so the capability is greppable
-      // and so a future Stripe default cannot quietly remove the two things a
-      // tenant most needs when a customer complains.
+    //   2. "…specified by `payment_details` and `disputes_list` must be the
+    //      same." The first fix gave those two a shared object and stopped
+    //      there, because the error had named exactly two components. It is
+    //      not a pairwise rule. `disputes_list` was still bare and still
+    //      defaulting, so the identical defect simply moved to the next
+    //      component in Stripe's validation order.
+    //
+    // The constraint is over EVERY component that accepts a feature, so the
+    // fix has to be too. Per the SDK types (stripe@22, AccountSessions.d.ts):
+    //
+    //   payments · payment_details · disputes_list · payment_disputes
+    //     ← all four accept refund_management, dispute_management,
+    //       smart_disputes_management, destination_on_behalf_of_charge_management
+    //   capture_payments
+    //     ← accepted by the first THREE; `payment_disputes` has no such
+    //       feature, and sending it there is its own error.
+    //
+    // Hence two objects rather than one: the common four, and the three that
+    // also take capture_payments. `tests/stripe-account-session-features`
+    // derives this partition from the SDK's own types, so adding a component
+    // without its features fails there instead of in production.
+    const disputeFeatures = {
+      // Both default to true. Stated so the capability is greppable, and so a
+      // future change to Stripe's defaults cannot quietly remove the two
+      // things a tenant most needs when a customer complains.
       refund_management: true,
       dispute_management: true,
-      // Capturing/cancelling a PaymentIntent by hand. HoundStack creates and
-      // confirms in one step, so there is nothing for a tenant to capture;
-      // leaving it on would show a control that never applies.
-      capture_payments: false,
+      // Stripe's guided evidence flow — the difference between a tenant
+      // answering a chargeback and ignoring it. It defaults to the value of
+      // `dispute_management`, which is how it survived being declared on
+      // `payments` alone; that was luck, not design.
+      smart_disputes_management: true,
       // Charges are DIRECT — the connected account is merchant of record.
       // Nothing is created on their behalf, so this manages an empty set.
       destination_on_behalf_of_charge_management: false,
     } as const;
 
+    // The other shared set, and the one nobody had noticed. `account_onboarding`,
+    // `account_management`, `notification_banner`, `payouts` and `balances` all
+    // accept these two — five components, every one of them previously bare and
+    // therefore agreeing only because they all took the same default. The first
+    // one to declare a value would have broken the session exactly as
+    // `capture_payments` did.
+    //
+    // Both values here ARE the current defaults, so this changes no behaviour;
+    // it removes the trap.
+    const accountFeatures = {
+      // Tenants manage their own payout bank account in the embedded component.
+      // Turning this off would mean collecting bank details ourselves and
+      // sending them to Stripe, which is the opposite of the requirement that
+      // a tenant never has to leave the app.
+      external_account_collection: true,
+      // Forced, not chosen: this can only be true when
+      // `controller.requirement_collection` is `application`, and ours is
+      // `stripe`. It also defaults to the inverse of the line above.
+      disable_stripe_user_authentication: false,
+    } as const;
+
+    // Deliberately NOT declared: `edit_payout_schedule`, `standard_payouts` and
+    // `instant_payouts`, which `payouts` and `balances` both accept. Their
+    // defaults depend on the connected account's controller config
+    // (`losses.payments` is `application` here, so the first two default off),
+    // and declaring a value I could only infer risks re-breaking the dashboard
+    // to no benefit. Undeclared on BOTH is consistent — the invariant is that a
+    // shared feature is declared everywhere or nowhere, not that it is always
+    // declared. Turning payout controls on is a business decision with platform
+    // liability attached, and belongs in its own change.
+
+    const paymentFeatures = {
+      ...disputeFeatures,
+      // Capturing/cancelling a PaymentIntent by hand. HoundStack creates and
+      // confirms in one step, so there is nothing for a tenant to capture;
+      // leaving it on would show a control that never applies.
+      capture_payments: false,
+    } as const;
+
     const session = await stripe.accountSessions.create({
       account: acct.accountId,
       components: {
-        account_onboarding: { enabled: true },
-        account_management: { enabled: true },
-        notification_banner: { enabled: true },
-        payments: {
-          enabled: true,
-          features: {
-            ...paymentFeatures,
-            // Deliberately NOT in the shared object: `smart_disputes_management`
-            // belongs to the dispute surface, and sending a feature to a
-            // component that does not accept it is its own error. Stripe's
-            // guided evidence flow — the difference between a tenant answering
-            // a chargeback and ignoring it.
-            smart_disputes_management: true,
-          },
-        },
-        payouts: { enabled: true },
-        balances: { enabled: true },
+        account_onboarding: { enabled: true, features: { ...accountFeatures } },
+        account_management: { enabled: true, features: { ...accountFeatures } },
+        notification_banner: { enabled: true, features: { ...accountFeatures } },
+        payments: { enabled: true, features: { ...paymentFeatures } },
+        payouts: { enabled: true, features: { ...accountFeatures } },
+        balances: { enabled: true, features: { ...accountFeatures } },
         // The dispute surface proper. `payments` allows RESPONDING to a
         // dispute; without these there is no list to find one in and no detail
         // view to read the customer's claim — so the tenant still ended up in
         // Stripe to see what they were answering.
-        disputes_list: { enabled: true },
-        payment_disputes: { enabled: true },
+        disputes_list: { enabled: true, features: { ...paymentFeatures } },
+        payment_disputes: { enabled: true, features: { ...disputeFeatures } },
         // One payment, in full: the timeline, the card, the refunds against it.
         // What "why did this fail?" actually needs.
         payment_details: { enabled: true, features: { ...paymentFeatures } },
