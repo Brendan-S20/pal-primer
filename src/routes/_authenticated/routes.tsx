@@ -5,9 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import {
-  balanceOverloadedRoutes,
   listVisitsForDay,
-  generateVisits,
   assignRoute,
   optimizeRoute,
   optimizeWeek,
@@ -25,8 +23,15 @@ import { ScheduleCalendar, calendarWindow } from "@/components/schedule/Schedule
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
 import { OneOffVisitDialog } from "@/components/OneOffVisitDialog";
 import { usePermissions } from "@/hooks/useMyRole";
-import { WeatherStrip } from "@/components/WeatherStrip";
-import { Navigation, CheckCircle2, MapPin, CloudRain, Settings2, CalendarClock } from "lucide-react";
+import {
+  Navigation,
+  CheckCircle2,
+  MapPin,
+  Settings2,
+  CalendarClock,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -107,11 +112,6 @@ function todayISO() {
 
 function RoutesPage() {
   const [day, setDay] = useState(todayISO());
-  const [through, setThrough] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 30);
-    return toLocalISO(d);
-  });
   const [assignStaffId, setAssignStaffId] = useState<string>("");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [localColumns, setLocalColumns] = useState<Record<string, Visit[]> | null>(null);
@@ -169,6 +169,25 @@ function RoutesPage() {
       /* private mode */
     }
   };
+  /** Move the selected day by one unit of whatever range is showing.
+   *
+   *  Months step by CALENDAR month, not by 30 days — otherwise stepping
+   *  forward from 31 January lands in March, and stepping back and forward
+   *  again does not return you where you started. `setDate(1)` first, so the
+   *  day-of-month can never overflow a short month on the way through. */
+  const shiftDay = (delta: number) => {
+    const d = new Date(`${day}T00:00:00`);
+    if (range === "month") {
+      d.setDate(1);
+      d.setMonth(d.getMonth() + delta);
+    } else {
+      d.setDate(d.getDate() + delta * (range === "week" ? 7 : 1));
+    }
+    setLocalColumns(null);
+    setDay(toLocalISO(d));
+  };
+  const rangeNoun = range === "month" ? "month" : range === "week" ? "week" : "day";
+
   const [toolsOpen, setToolsOpen] = useState(false);
   const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
   const [oneOffOpen, setOneOffOpen] = useState(false);
@@ -181,7 +200,6 @@ function RoutesPage() {
 
   const listV = useServerFn(listVisitsForDay);
   const listS = useServerFn(listStaff);
-  const gen = useServerFn(generateVisits);
   const assign = useServerFn(assignRoute);
   const optimize = useServerFn(optimizeRoute);
   const optWeek = useServerFn(optimizeWeek);
@@ -316,14 +334,6 @@ function RoutesPage() {
     return cols;
   }, [visits, staff, localColumns]);
 
-  const genMut = useMutation({
-    mutationFn: () => gen({ data: { through } }),
-    onSuccess: (r) => {
-      toast.success(`Generated ${r.inserted} visits`);
-      qc.invalidateQueries({ queryKey: ["visits"] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
   // Surface implausible-drive / inconsistent-ETA warnings to the dispatcher
   // instead of silently accepting an impossible route (finding #10).
   const warnRoute = (warnings?: Array<{ message: string }>) => {
@@ -365,27 +375,6 @@ function RoutesPage() {
     mutationFn: () => reoptAll({ data: { day } }),
     onSuccess: (r) => {
       toast.success(`Re-optimized ${r.total} stops across ${r.techs} tech(s)`);
-      setLocalColumns(null);
-      qc.invalidateQueries({ queryKey: ["visits", day] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-  const balanceFn = useServerFn(balanceOverloadedRoutes);
-  const balanceMut = useMutation({
-    mutationFn: () => balanceFn({ data: { day, apply: true } }),
-    onSuccess: (r: any) => {
-      const over = (r.loads ?? []).filter((l: any) => l.overCapacity).length;
-      if (r.applied > 0) {
-        toast.success(
-          `Rebalanced ${r.applied} overflow stop(s) off overloaded routes. Re-optimize to tidy sequences.`,
-        );
-      } else if (over === 0) {
-        toast.success("No overloaded routes. Everyone's within capacity.");
-      } else {
-        toast.warning(
-          "Some routes are overloaded but no tech has spare capacity. Add a tech or move visits to another day.",
-        );
-      }
       setLocalColumns(null);
       qc.invalidateQueries({ queryKey: ["visits", day] });
     },
@@ -501,15 +490,54 @@ function RoutesPage() {
               One-off visit
             </Button>
           )}
-          <Input
-            type="date"
-            value={day}
-            onChange={(e) => {
-              setLocalColumns(null);
-              setDay(e.target.value);
-            }}
-            className="w-[160px]"
-          />
+          {/* Step by whatever you are LOOKING at.
+              A date input alone made "show me next week" a calendar-popover
+              date-arithmetic exercise: you had to work out which Monday you
+              wanted. The arrows move by the active range — a day, a week, or a
+              calendar month — so the control matches the view it drives. */}
+          <div className="inline-flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              onClick={() => shiftDay(-1)}
+              title={`Previous ${rangeNoun}`}
+              aria-label={`Previous ${rangeNoun}`}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Input
+              type="date"
+              value={day}
+              onChange={(e) => {
+                setLocalColumns(null);
+                setDay(e.target.value);
+              }}
+              className="w-[150px]"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              onClick={() => shiftDay(1)}
+              title={`Next ${rangeNoun}`}
+              aria-label={`Next ${rangeNoun}`}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9"
+              onClick={() => {
+                setLocalColumns(null);
+                setDay(todayISO());
+              }}
+              disabled={day === todayISO()}
+            >
+              Today
+            </Button>
+          </div>
           {/* Two clean axes instead of five mixed buttons: WHAT you look at
               (Map = map + load + board, Board = board only) and WHEN
               (Today / Week / Month). */}
@@ -579,7 +607,6 @@ function RoutesPage() {
           </Button>
         </div>
       </div>
-      <WeatherStrip day={day} />
 
       {/* Dispatch tools: things you DO to the day in front of you.
           The configuration that used to share this drawer — workday hours,
@@ -654,14 +681,6 @@ function RoutesPage() {
                 >
                   {reoptMut.isPending ? "…" : "Re-optimize today"}
                 </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => balanceMut.mutate()}
-                  disabled={balanceMut.isPending}
-                  title="Move overflow off any tech whose day exceeds working-hours capacity"
-                >
-                  {balanceMut.isPending ? "…" : "Balance overloaded"}
-                </Button>
               </div>
               <p className="text-[11px] text-muted-foreground">
                 Spreads unassigned visits round-robin by zone, then optimizes each tech&apos;s day.
@@ -670,24 +689,6 @@ function RoutesPage() {
             </div>
           </div>
 
-          <div className="border-t pt-4">
-            <Label htmlFor="through">Create visits from subscriptions, through</Label>
-            <div className="mt-1 flex gap-2 sm:max-w-md">
-              <Input
-                id="through"
-                type="date"
-                value={through}
-                onChange={(e) => setThrough(e.target.value)}
-              />
-              <Button onClick={() => genMut.mutate()} disabled={genMut.isPending}>
-                {genMut.isPending ? "…" : "Generate"}
-              </Button>
-            </div>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Fills the schedule out to this date from each client&apos;s recurring plan. Safe to
-              re-run — visits that already exist are left alone.
-            </p>
-          </div>
 
           <div className="border-t pt-4">
             <AiSection
@@ -1228,16 +1229,6 @@ function VisitCardView({
             {visit.window_violated && (
               <Badge variant="destructive" className="h-4 px-1 text-[10px]">
                 Late
-              </Badge>
-            )}
-            {visit.weather_flagged && (
-              <Badge
-                variant="destructive"
-                className="h-4 gap-0.5 px-1 text-[10px]"
-                title={visit.weather_note ?? "Weather risk"}
-              >
-                <CloudRain className="h-2.5 w-2.5" />
-                {visit.weather_note ? String(visit.weather_note).split(",")[0] : "Weather"}
               </Badge>
             )}
           </div>

@@ -100,7 +100,7 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
 
           if (org.auto_generate_visits) {
             const ahead = new Date(today);
-            ahead.setDate(ahead.getDate() + (org.auto_generate_days_ahead ?? 14));
+            ahead.setDate(ahead.getDate() + (org.auto_generate_days_ahead ?? 90));
             const { data: n, error } = await supabaseAdmin.rpc("admin_generate_visits_through", {
               _org_id: org.id,
               _through: iso(ahead),
