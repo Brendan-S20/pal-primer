@@ -118,11 +118,7 @@ export async function enqueueAction(action: NewAction): Promise<string> {
   return record.id;
 }
 
-export async function storePhoto(
-  blob: Blob,
-  contentType: string,
-  ext: string,
-): Promise<string> {
+export async function storePhoto(blob: Blob, contentType: string, ext: string): Promise<string> {
   const db = await getDb();
   const id = uid();
   await db.put("photos", { id, blob, contentType, ext });
@@ -172,9 +168,21 @@ export async function clearQueueForUser(userId: string): Promise<void> {
   }
 }
 
-export async function countPending(): Promise<number> {
+/**
+ * Pending actions belonging to ONE user.
+ *
+ * Was `db.count("actions")` — every user's rows, on a store that is explicitly
+ * per-user everywhere else (`listPending` filters by userId, `syncQueue` only
+ * ever replays its own). On a shared crew tablet that made the header read
+ * "6 pending" to a tech who owns none of them, permanently: tapping Sync calls
+ * `syncQueue` for the signed-in user, which finds nothing, reports zero, and
+ * leaves the badge exactly where it was. The count and the thing the button
+ * acts on have to be the same set.
+ */
+export async function countPending(userId: string): Promise<number> {
   const db = await getDb();
-  return await db.count("actions");
+  const all = await db.getAllFromIndex("actions", "by-ts");
+  return all.filter((a) => a.userId === userId).length;
 }
 
 /** How many QUEUED COMPLETION PHOTOS a visit has.
