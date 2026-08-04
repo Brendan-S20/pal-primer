@@ -289,10 +289,20 @@ function AppShell() {
               as the bar is on screen — which now depends on the role, not only
               the width (Q-2). Both read useTabletTier so they cannot disagree:
               a mismatch puts the bar on top of My Day's Complete button. */}
+          {/* Content width and rhythm for EVERY authenticated page.
+              1200px was a reading measure applied to an operations tool. On a
+              1920px display it left ~700px of empty gutter beside a dispatch
+              board and a map that were both fighting for room, and the same
+              waste showed on every table in the app.
+              1600 rather than none: past that, a table row makes the eye track
+              so far from the row label to the last column that it loses its
+              place. Wide, with a limit. Top padding tightens too — a page that
+              starts an inch down the screen wastes the most valuable band on
+              it. */}
           <main
-            className={`min-w-0 flex-1 px-4 pt-6 sm:px-6 sm:pt-8 ${mainBottomPadding}`}
+            className={`min-w-0 flex-1 px-4 pt-4 sm:px-6 sm:pt-5 ${mainBottomPadding}`}
           >
-            <div className="mx-auto w-full max-w-[1200px]">
+            <div className="mx-auto w-full max-w-[1600px]">
               <Outlet />
             </div>
           </main>

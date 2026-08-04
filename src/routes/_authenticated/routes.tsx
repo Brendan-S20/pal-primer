@@ -5,9 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import {
-  balanceOverloadedRoutes,
   listVisitsForDay,
-  generateVisits,
   assignRoute,
   optimizeRoute,
   optimizeWeek,
@@ -16,17 +14,29 @@ import {
   reassignVisit,
   reorderRoute,
   completeVisitFromOffice,
+  bulkAssignVisits,
+  bulkRescheduleVisits,
+  getStaffUpcomingLoad,
+  redistributeStaffWork,
 } from "@/lib/visits.functions";
 import { backfillPropertyGeocodes } from "@/lib/properties.functions";
 import { RouteMap, buildTechGroups, techColorMap } from "@/components/RouteMap";
+import { BASE_STYLES, storedBaseStyle, storeBaseStyle, type TileVariant } from "@/lib/map-tiles";
 import { StatusChip } from "@/components/client-detail/primitives";
 import { MobileDayList } from "@/components/schedule/MobileDayList";
 import { ScheduleCalendar, calendarWindow } from "@/components/schedule/ScheduleCalendar";
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
 import { OneOffVisitDialog } from "@/components/OneOffVisitDialog";
 import { usePermissions } from "@/hooks/useMyRole";
-import { WeatherStrip } from "@/components/WeatherStrip";
-import { Navigation, CheckCircle2, MapPin, CloudRain, Settings2, CalendarClock } from "lucide-react";
+import {
+  Navigation,
+  CheckCircle2,
+  MapPin,
+  Settings2,
+  CalendarClock,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -107,11 +117,6 @@ function todayISO() {
 
 function RoutesPage() {
   const [day, setDay] = useState(todayISO());
-  const [through, setThrough] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 30);
-    return toLocalISO(d);
-  });
   const [assignStaffId, setAssignStaffId] = useState<string>("");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [localColumns, setLocalColumns] = useState<Record<string, Visit[]> | null>(null);
@@ -169,6 +174,84 @@ function RoutesPage() {
       /* private mode */
     }
   };
+  /** Move the selected day by one unit of whatever range is showing.
+   *
+   *  Months step by CALENDAR month, not by 30 days — otherwise stepping
+   *  forward from 31 January lands in March, and stepping back and forward
+   *  again does not return you where you started. `setDate(1)` first, so the
+   *  day-of-month can never overflow a short month on the way through. */
+  const shiftDay = (delta: number) => {
+    const d = new Date(`${day}T00:00:00`);
+    if (range === "month") {
+      d.setDate(1);
+      d.setMonth(d.getMonth() + delta);
+    } else {
+      d.setDate(d.getDate() + delta * (range === "week" ? 7 : 1));
+    }
+    setLocalColumns(null);
+    setDay(toLocalISO(d));
+  };
+  const rangeNoun = range === "month" ? "month" : range === "week" ? "week" : "day";
+
+  // ── Multi-select ──────────────────────────────────────────────────────
+  //
+  // Dispatch could move one visit at a time, by dragging it. Reassigning a
+  // tech's Tuesday was fourteen drags.
+  //
+  // Selection is by visit ID, never by lane contents. The bulk server calls
+  // take the id list explicitly for the same reason `persistColumn` must not:
+  // a lane is a view, and acting on "everything in this lane" silently means
+  // something different the moment a filter is on.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [lastPickedId, setLastPickedId] = useState<string | null>(null);
+  const selectionActive = selected.size > 0;
+
+  const toggleSelect = (id: string, e: React.MouseEvent) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      // Shift-click fills the span between the last pick and this one, over
+      // the visits as currently ORDERED on screen — which is what "everything
+      // between these two" means to someone looking at the board.
+      if (e.shiftKey && lastPickedId && lastPickedId !== id) {
+        const order = visitsInBoardOrder();
+        const a = order.indexOf(lastPickedId);
+        const b = order.indexOf(id);
+        if (a !== -1 && b !== -1) {
+          for (const vid of order.slice(Math.min(a, b), Math.max(a, b) + 1)) next.add(vid);
+          return next;
+        }
+      }
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+    setLastPickedId(id);
+  };
+  const clearSelection = () => {
+    setSelected(new Set());
+    setLastPickedId(null);
+  };
+
+  // Selection is scoped to what is on screen. Carrying it across a day or
+  // range change would leave the action bar offering to reassign visits the
+  // user can no longer see — and the bulk calls take ids, so it would work.
+  useEffect(() => {
+    setSelected(new Set());
+    setLastPickedId(null);
+  }, [day, range]);
+
+  const [baseStyle, setBaseStyle] = useState<TileVariant>(() => storedBaseStyle());
+  const setBaseStylePersist = (v: TileVariant) => {
+    setBaseStyle(v);
+    storeBaseStyle(v);
+  };
+
+  // One hovered visit, shared by the board, the calendar and the map.
+  //
+  // Hovering a card used to leave the map inert and hovering a pin said
+  // nothing about which day or whose route it belonged to — two panes showing
+  // the same visits, neither able to tell you which was which.
+  const [hoveredVisitId, setHoveredVisitId] = useState<string | null>(null);
+
   const [toolsOpen, setToolsOpen] = useState(false);
   const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
   const [oneOffOpen, setOneOffOpen] = useState(false);
@@ -181,7 +264,6 @@ function RoutesPage() {
 
   const listV = useServerFn(listVisitsForDay);
   const listS = useServerFn(listStaff);
-  const gen = useServerFn(generateVisits);
   const assign = useServerFn(assignRoute);
   const optimize = useServerFn(optimizeRoute);
   const optWeek = useServerFn(optimizeWeek);
@@ -316,14 +398,85 @@ function RoutesPage() {
     return cols;
   }, [visits, staff, localColumns]);
 
-  const genMut = useMutation({
-    mutationFn: () => gen({ data: { through } }),
-    onSuccess: (r) => {
-      toast.success(`Generated ${r.inserted} visits`);
-      qc.invalidateQueries({ queryKey: ["visits"] });
+  /** Every visible visit id, in the order the board draws them.
+   *
+   *  Shift-click means "everything between these two as I see them", so the
+   *  span has to be computed over the RENDERED order — unassigned first, then
+   *  each lane in board order — not over the raw fetch order. */
+  const visitsInBoardOrder = () => {
+    const ids: string[] = [];
+    for (const v of columns[UNASSIGNED] ?? []) ids.push(v.id);
+    for (const st of staff) for (const v of columns[st.id] ?? []) ids.push(v.id);
+    for (const st of stranded) for (const v of columns[st.id] ?? []) ids.push(v.id);
+    return ids;
+  };
+
+  const bulkAssignFn = useServerFn(bulkAssignVisits);
+  const bulkRescheduleFn = useServerFn(bulkRescheduleVisits);
+  const loadFn = useServerFn(getStaffUpcomingLoad);
+  const redistributeFn = useServerFn(redistributeStaffWork);
+
+  const afterBulk = () => {
+    setLocalColumns(null);
+    clearSelection();
+    qc.invalidateQueries({ queryKey: ["visits"] });
+  };
+
+  const bulkAssignMut = useMutation({
+    mutationFn: (staffId: string | null) =>
+      bulkAssignFn({ data: { visitIds: [...selected], staffId } }),
+    onSuccess: (r: any, staffId) => {
+      toast.success(
+        staffId
+          ? `Assigned ${r.moved} visit${r.moved === 1 ? "" : "s"}`
+          : `Unassigned ${r.moved} visit${r.moved === 1 ? "" : "s"}`,
+      );
+      afterBulk();
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const bulkRescheduleMut = useMutation({
+    mutationFn: (toDate: string) =>
+      bulkRescheduleFn({ data: { visitIds: [...selected], toDate } }),
+    onSuccess: (r: any) => {
+      // `skipped` is not an error and is never swallowed: a weekly client moved
+      // exactly a week already has a visit there, and silence would read as
+      // "all moved".
+      if (r.skipped > 0) {
+        toast.warning(
+          `Moved ${r.moved}. Left ${r.skipped} alone — those clients already have a visit that day.`,
+          { duration: 9000 },
+        );
+      } else {
+        toast.success(`Moved ${r.moved} visit${r.moved === 1 ? "" : "s"}`);
+      }
+      afterBulk();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  /** Take a tech off the board: show what they are holding, then offer to move
+   *  it. Never silent — moving somebody's whole schedule on a checkbox is a
+   *  surprise, not a safeguard. */
+  const [coverFor, setCoverFor] = useState<{ id: string; name: string } | null>(null);
+  const coverQuery = useQuery({
+    queryKey: ["staff-load", coverFor?.id],
+    queryFn: () => loadFn({ data: { staffId: coverFor!.id } }),
+    enabled: Boolean(coverFor),
+  });
+  const redistributeMut = useMutation({
+    mutationFn: () => redistributeFn({ data: { staffId: coverFor!.id } }),
+    onSuccess: (r: any) => {
+      toast.success(`Moved ${r.moved} visit${r.moved === 1 ? "" : "s"} to the rest of the crew`);
+      setCoverFor(null);
+      setLocalColumns(null);
+      qc.invalidateQueries({ queryKey: ["visits"] });
+      qc.invalidateQueries({ queryKey: ["staff"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   // Surface implausible-drive / inconsistent-ETA warnings to the dispatcher
   // instead of silently accepting an impossible route (finding #10).
   const warnRoute = (warnings?: Array<{ message: string }>) => {
@@ -365,27 +518,6 @@ function RoutesPage() {
     mutationFn: () => reoptAll({ data: { day } }),
     onSuccess: (r) => {
       toast.success(`Re-optimized ${r.total} stops across ${r.techs} tech(s)`);
-      setLocalColumns(null);
-      qc.invalidateQueries({ queryKey: ["visits", day] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-  const balanceFn = useServerFn(balanceOverloadedRoutes);
-  const balanceMut = useMutation({
-    mutationFn: () => balanceFn({ data: { day, apply: true } }),
-    onSuccess: (r: any) => {
-      const over = (r.loads ?? []).filter((l: any) => l.overCapacity).length;
-      if (r.applied > 0) {
-        toast.success(
-          `Rebalanced ${r.applied} overflow stop(s) off overloaded routes. Re-optimize to tidy sequences.`,
-        );
-      } else if (over === 0) {
-        toast.success("No overloaded routes. Everyone's within capacity.");
-      } else {
-        toast.warning(
-          "Some routes are overloaded but no tech has spare capacity. Add a tech or move visits to another day.",
-        );
-      }
       setLocalColumns(null);
       qc.invalidateQueries({ queryKey: ["visits", day] });
     },
@@ -501,15 +633,54 @@ function RoutesPage() {
               One-off visit
             </Button>
           )}
-          <Input
-            type="date"
-            value={day}
-            onChange={(e) => {
-              setLocalColumns(null);
-              setDay(e.target.value);
-            }}
-            className="w-[160px]"
-          />
+          {/* Step by whatever you are LOOKING at.
+              A date input alone made "show me next week" a calendar-popover
+              date-arithmetic exercise: you had to work out which Monday you
+              wanted. The arrows move by the active range — a day, a week, or a
+              calendar month — so the control matches the view it drives. */}
+          <div className="inline-flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              onClick={() => shiftDay(-1)}
+              title={`Previous ${rangeNoun}`}
+              aria-label={`Previous ${rangeNoun}`}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Input
+              type="date"
+              value={day}
+              onChange={(e) => {
+                setLocalColumns(null);
+                setDay(e.target.value);
+              }}
+              className="w-[150px]"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              onClick={() => shiftDay(1)}
+              title={`Next ${rangeNoun}`}
+              aria-label={`Next ${rangeNoun}`}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9"
+              onClick={() => {
+                setLocalColumns(null);
+                setDay(todayISO());
+              }}
+              disabled={day === todayISO()}
+            >
+              Today
+            </Button>
+          </div>
           {/* Two clean axes instead of five mixed buttons: WHAT you look at
               (Map = map + load + board, Board = board only) and WHEN
               (Today / Week / Month). */}
@@ -579,7 +750,6 @@ function RoutesPage() {
           </Button>
         </div>
       </div>
-      <WeatherStrip day={day} />
 
       {/* Dispatch tools: things you DO to the day in front of you.
           The configuration that used to share this drawer — workday hours,
@@ -654,14 +824,6 @@ function RoutesPage() {
                 >
                   {reoptMut.isPending ? "…" : "Re-optimize today"}
                 </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => balanceMut.mutate()}
-                  disabled={balanceMut.isPending}
-                  title="Move overflow off any tech whose day exceeds working-hours capacity"
-                >
-                  {balanceMut.isPending ? "…" : "Balance overloaded"}
-                </Button>
               </div>
               <p className="text-[11px] text-muted-foreground">
                 Spreads unassigned visits round-robin by zone, then optimizes each tech&apos;s day.
@@ -670,24 +832,6 @@ function RoutesPage() {
             </div>
           </div>
 
-          <div className="border-t pt-4">
-            <Label htmlFor="through">Create visits from subscriptions, through</Label>
-            <div className="mt-1 flex gap-2 sm:max-w-md">
-              <Input
-                id="through"
-                type="date"
-                value={through}
-                onChange={(e) => setThrough(e.target.value)}
-              />
-              <Button onClick={() => genMut.mutate()} disabled={genMut.isPending}>
-                {genMut.isPending ? "…" : "Generate"}
-              </Button>
-            </div>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Fills the schedule out to this date from each client&apos;s recurring plan. Safe to
-              re-run — visits that already exist are left alone.
-            </p>
-          </div>
 
           <div className="border-t pt-4">
             <AiSection
@@ -777,6 +921,8 @@ function RoutesPage() {
             range={range === "month" ? "month" : "week"}
             visits={shownVisits as any}
             techColors={techColors}
+            hoveredVisitId={hoveredVisitId}
+            onHoverVisit={setHoveredVisitId}
             hideWeekends={hideWeekends}
             onPickDay={(d) => {
               setLocalColumns(null);
@@ -789,6 +935,10 @@ function RoutesPage() {
             // Sticky so the map stays put while a long month scrolls past it.
             <div className="lg:sticky lg:top-4">
               <MapPanel
+                baseStyle={baseStyle}
+                onBaseStyle={setBaseStylePersist}
+                hoveredVisitId={hoveredVisitId}
+                onHoverVisit={setHoveredVisitId}
                 // The same filtered list the calendar is drawing. Two panes
                 // showing different subsets of the same window would be worse
                 // than one pane.
@@ -811,6 +961,10 @@ function RoutesPage() {
       {range === "today" && viewMode === "map" && (
         <>
           <MapPanel
+            baseStyle={baseStyle}
+            onBaseStyle={setBaseStylePersist}
+            hoveredVisitId={hoveredVisitId}
+            onHoverVisit={setHoveredVisitId}
             visits={visits}
             staff={staff}
             onOpenVisit={setDetailVisitId}
@@ -867,6 +1021,12 @@ function RoutesPage() {
                 onComplete={(id) => completeMut.mutate(id)}
                 completingId={completeMut.isPending ? (completeMut.variables as string) : null}
                 onOpen={setDetailVisitId}
+                selectedIds={selected}
+                onToggleSelect={toggleSelect}
+                onSelectLane={(ids) => setSelected(new Set([...selected, ...ids]))}
+                selectionActive={selectionActive}
+                hoveredVisitId={hoveredVisitId}
+                onHover={setHoveredVisitId}
               />
               {staff.map((s: any) => {
                 const offRoutes = s.is_field_tech && !s.routing_available;
@@ -882,6 +1042,21 @@ function RoutesPage() {
                     onComplete={(id) => completeMut.mutate(id)}
                     completingId={completeMut.isPending ? (completeMut.variables as string) : null}
                     onOpen={setDetailVisitId}
+                    selectedIds={selected}
+                    onToggleSelect={toggleSelect}
+                    onSelectLane={(ids) => setSelected(new Set([...selected, ...ids]))}
+                    selectionActive={selectionActive}
+                    hoveredVisitId={hoveredVisitId}
+                    onHover={setHoveredVisitId}
+                    laneAction={
+                      <button
+                        onClick={() => setCoverFor({ id: s.id, name: s.display_name })}
+                        className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                        title={`${s.display_name} is out — move their work`}
+                      >
+                        Cover
+                      </button>
+                    }
                   />
                 );
               })}
@@ -899,6 +1074,12 @@ function RoutesPage() {
                   onComplete={(id) => completeMut.mutate(id)}
                   completingId={completeMut.isPending ? (completeMut.variables as string) : null}
                   onOpen={setDetailVisitId}
+                  selectedIds={selected}
+                  onToggleSelect={toggleSelect}
+                  onSelectLane={(ids) => setSelected(new Set([...selected, ...ids]))}
+                  selectionActive={selectionActive}
+                  hoveredVisitId={hoveredVisitId}
+                  onHover={setHoveredVisitId}
                 />
               ))}
             </div>
@@ -917,6 +1098,115 @@ function RoutesPage() {
         }}
       />
 
+      {/* Selection action bar. Fixed to the bottom rather than inline: it has
+          to stay reachable while you scroll a long board picking the next
+          visit, and an inline bar scrolls away exactly when it is being used. */}
+      {selectionActive && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 p-3 shadow-lg backdrop-blur">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 text-xs">
+            <span className="font-medium">
+              {selected.size} selected
+            </span>
+            <select
+              className="h-8 rounded-md border bg-background px-2"
+              defaultValue=""
+              onChange={(e) => {
+                const v = e.target.value;
+                e.target.value = "";
+                if (v === "__unassign__") bulkAssignMut.mutate(null);
+                else if (v) bulkAssignMut.mutate(v);
+              }}
+              disabled={bulkAssignMut.isPending}
+            >
+              <option value="">Assign to…</option>
+              {staff.map((st: any) => (
+                <option key={st.id} value={st.id}>
+                  {st.display_name}
+                  {st.routing_available ? "" : " (away)"}
+                </option>
+              ))}
+              <option value="__unassign__">— Unassign —</option>
+            </select>
+            <label className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2 py-1">
+              <span className="text-muted-foreground">Move to</span>
+              <input
+                type="date"
+                className="bg-transparent focus-visible:outline-none"
+                onChange={(e) => e.target.value && bulkRescheduleMut.mutate(e.target.value)}
+                disabled={bulkRescheduleMut.isPending}
+              />
+            </label>
+            <Button size="sm" variant="ghost" onClick={clearSelection}>
+              Clear
+            </Button>
+            <span className="ml-auto text-muted-foreground">
+              Shift-click for a range · completed visits are never moved
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Cover: what happens when someone is out.
+          Marking a tech unavailable used to change a flag and nothing else —
+          their work stayed assigned to somebody who is not coming in, and the
+          only way to notice was to open each day and see the lane still full.
+          This shows the work FIRST and then asks. */}
+      {coverFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-lg border bg-card p-5 shadow-xl">
+            <h2 className="text-base font-semibold">{coverFor.name} is out</h2>
+            {coverQuery.isLoading ? (
+              <p className="mt-3 text-sm text-muted-foreground">Checking what they&apos;re holding…</p>
+            ) : (coverQuery.data?.total ?? 0) === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">
+                They have no upcoming work. Nothing to move.
+              </p>
+            ) : (
+              <>
+                <p className="mt-3 text-sm">
+                  They still have{" "}
+                  <strong>
+                    {coverQuery.data?.total} visit{coverQuery.data?.total === 1 ? "" : "s"}
+                  </strong>{" "}
+                  across {coverQuery.data?.days?.length} day
+                  {coverQuery.data?.days?.length === 1 ? "" : "s"}, starting{" "}
+                  {coverQuery.data?.days?.[0]?.scheduled_on}.
+                </p>
+                <div className="mt-3 max-h-40 overflow-y-auto rounded border">
+                  <table className="w-full text-xs">
+                    <tbody>
+                      {(coverQuery.data?.days ?? []).map((d: any) => (
+                        <tr key={d.scheduled_on} className="border-b last:border-0">
+                          <td className="px-2 py-1">{d.scheduled_on}</td>
+                          <td className="px-2 py-1 text-right tabular-nums">{d.visits}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Moving spreads it round-robin across the technicians who are available, day by
+                  day, and clears the stop order so it can be optimised again. Completed visits stay
+                  where they are.
+                </p>
+              </>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setCoverFor(null)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => redistributeMut.mutate()}
+                disabled={redistributeMut.isPending || (coverQuery.data?.total ?? 0) === 0}
+              >
+                {redistributeMut.isPending ? "Moving…" : "Move their work"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <VisitDetailDrawer
         visitId={detailVisitId}
         onOpenChange={(o) => !o && setDetailVisitId(null)}
@@ -928,6 +1218,10 @@ function RoutesPage() {
 
 /** Toggleable weekday chips for the org's operating days (0=Sun..6=Sat). */
 function MapPanel({
+  baseStyle,
+  onBaseStyle,
+  hoveredVisitId,
+  onHoverVisit,
   visits,
   staff,
   onOpenVisit,
@@ -935,6 +1229,10 @@ function MapPanel({
   geocoding,
   drawRoutes = true,
 }: {
+  baseStyle: TileVariant;
+  onBaseStyle: (v: TileVariant) => void;
+  hoveredVisitId?: string | null;
+  onHoverVisit?: (id: string | null) => void;
   visits: any[];
   staff: any[];
   onOpenVisit?: (id: string) => void;
@@ -957,6 +1255,19 @@ function MapPanel({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={baseStyle}
+            onChange={(e) => onBaseStyle(e.target.value as TileVariant)}
+            className="h-7 rounded-md border bg-background px-2 text-[11px]"
+            title={BASE_STYLES.find((b) => b.value === baseStyle)?.hint}
+            aria-label="Map style"
+          >
+            {BASE_STYLES.map((b) => (
+              <option key={b.value} value={b.value} title={b.hint}>
+                {b.label}
+              </option>
+            ))}
+          </select>
           {onGeocode && missing > 0 && (
             <Button size="sm" variant="outline" onClick={onGeocode} disabled={geocoding}>
               <MapPin className="mr-1 h-3.5 w-3.5" />
@@ -975,7 +1286,15 @@ function MapPanel({
         </div>
       </div>
       <div className="relative">
-        <RouteMap groups={groups} height={420} onVisitClick={onOpenVisit} drawRoutes={drawRoutes} />
+        <RouteMap
+          groups={groups}
+          height={420}
+          onVisitClick={onOpenVisit}
+          drawRoutes={drawRoutes}
+          baseStyle={baseStyle}
+          hoveredVisitId={hoveredVisitId}
+          onHoverVisit={onHoverVisit}
+        />
         {mappable === 0 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-md bg-background/70 text-xs text-muted-foreground">
             <span>No coordinates yet. Geocode your properties to plot them.</span>
@@ -1008,6 +1327,13 @@ function Column({
   completingId,
   onOpen,
   layout = "columns",
+  selectedIds,
+  onToggleSelect,
+  onSelectLane,
+  selectionActive,
+  hoveredVisitId,
+  onHover,
+  laneAction,
 }: {
   id: string;
   title: string;
@@ -1015,6 +1341,14 @@ function Column({
   items: any[];
   tone?: "muted";
   offRoutes?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string, e: React.MouseEvent) => void;
+  onSelectLane?: (ids: string[]) => void;
+  selectionActive?: boolean;
+  hoveredVisitId?: string | null;
+  onHover?: (id: string | null) => void;
+  /** Rendered in the lane header — the tech-out control lives here. */
+  laneAction?: React.ReactNode;
   /** Holds visits but is not a field tech. Read-only: the server refuses new
    *  assignments here, so accepting a drop would only produce an error toast. */
   notRoutable?: boolean;
@@ -1058,7 +1392,17 @@ function Column({
             subtitle && <div className="text-xs text-muted-foreground capitalize">{subtitle}</div>
           )}
         </div>
-        <div className="text-right">
+        <div className="flex items-center gap-1.5 text-right">
+          {laneAction}
+          {onSelectLane && items.length > 0 && (
+            <button
+              onClick={() => onSelectLane(items.map((v) => v.id))}
+              className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+              title="Select every visit in this lane"
+            >
+              All
+            </button>
+          )}
           <Badge variant="secondary">{items.length}</Badge>
           {totalCents > 0 && (
             <div className="mt-0.5 text-[10px] text-muted-foreground">
@@ -1086,6 +1430,11 @@ function Column({
               onComplete={onComplete}
               completing={completingId === v.id}
               onOpen={onOpen}
+              selected={selectedIds?.has(v.id)}
+              onToggleSelect={onToggleSelect}
+              selectionActive={selectionActive}
+              hovered={hoveredVisitId === v.id}
+              onHover={onHover}
             />
           ))}
           {items.length === 0 && (
@@ -1103,12 +1452,22 @@ function SortableVisitCard({
   onComplete,
   completing,
   onOpen,
+  selected,
+  onToggleSelect,
+  selectionActive,
+  hovered,
+  onHover,
 }: {
   visit: Visit;
   seq: number;
   onComplete?: (id: string) => void;
   completing?: boolean;
   onOpen?: (id: string) => void;
+  selected?: boolean;
+  onToggleSelect?: (id: string, e: React.MouseEvent) => void;
+  selectionActive?: boolean;
+  hovered?: boolean;
+  onHover?: (id: string | null) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: visit.id,
@@ -1127,6 +1486,11 @@ function SortableVisitCard({
         onComplete={onComplete}
         completing={completing}
         onOpen={onOpen}
+        selected={selected}
+        onToggleSelect={onToggleSelect}
+        selectionActive={selectionActive}
+        hovered={hovered}
+        onHover={onHover}
       />
     </div>
   );
@@ -1150,6 +1514,11 @@ function VisitCardView({
   onComplete,
   completing,
   onOpen,
+  selected,
+  onToggleSelect,
+  selectionActive,
+  hovered,
+  onHover,
 }: {
   visit: Visit;
   seq?: number;
@@ -1158,6 +1527,12 @@ function VisitCardView({
   onComplete?: (id: string) => void;
   completing?: boolean;
   onOpen?: (id: string) => void;
+  selected?: boolean;
+  onToggleSelect?: (id: string, e: React.MouseEvent) => void;
+  /** True once anything is selected anywhere on the board. */
+  selectionActive?: boolean;
+  hovered?: boolean;
+  onHover?: (id: string | null) => void;
 }) {
   const p = visit.properties;
   const dirUrl = directionsUrl(p);
@@ -1165,15 +1540,40 @@ function VisitCardView({
     onComplete && (visit.status === "scheduled" || visit.status === "in_progress");
   return (
     <div
-      className={`rounded-md border bg-background p-2 text-xs shadow-sm ${dragging ? "shadow-lg" : ""} ${onOpen ? "cursor-pointer hover:border-primary/40 hover:bg-muted/40" : ""}`}
+      onMouseEnter={() => onHover?.(visit.id)}
+      onMouseLeave={() => onHover?.(null)}
+      className={`rounded-md border p-2 text-xs shadow-sm transition ${dragging ? "shadow-lg" : ""} ${
+        selected ? "border-primary bg-primary/5 ring-1 ring-primary" : "bg-background"
+      } ${hovered ? "border-primary bg-muted/60 ring-1 ring-primary/60" : ""} ${
+        onOpen ? "cursor-pointer hover:border-primary/40 hover:bg-muted/40" : ""
+      }`}
       onClick={(e) => {
-        if (!onOpen) return;
         const t = e.target as HTMLElement;
-        if (t.closest("a,button")) return;
+        if (t.closest("a,button,input,label")) return;
+        // Once a selection exists, a plain click EXTENDS it rather than opening
+        // a drawer. Anything else means picking a fifth visit closes the four
+        // you had — the single most common way a multi-select gets abandoned.
+        if (selectionActive && onToggleSelect) {
+          onToggleSelect(visit.id, e);
+          return;
+        }
+        if (!onOpen) return;
         onOpen(visit.id);
       }}
     >
       <div className="flex items-start gap-2">
+        {onToggleSelect && (
+          <input
+            type="checkbox"
+            checked={Boolean(selected)}
+            aria-label={`Select ${visit.clients?.display_name ?? "visit"}`}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) =>
+              onToggleSelect(visit.id, e as unknown as React.MouseEvent)
+            }
+            className="mt-1 shrink-0"
+          />
+        )}
         <button
           {...(dragHandle ?? {})}
           className="mt-0.5 cursor-grab touch-none text-muted-foreground hover:text-foreground"
@@ -1228,16 +1628,6 @@ function VisitCardView({
             {visit.window_violated && (
               <Badge variant="destructive" className="h-4 px-1 text-[10px]">
                 Late
-              </Badge>
-            )}
-            {visit.weather_flagged && (
-              <Badge
-                variant="destructive"
-                className="h-4 gap-0.5 px-1 text-[10px]"
-                title={visit.weather_note ?? "Weather risk"}
-              >
-                <CloudRain className="h-2.5 w-2.5" />
-                {visit.weather_note ? String(visit.weather_note).split(",")[0] : "Weather"}
               </Badge>
             )}
           </div>

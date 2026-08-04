@@ -120,6 +120,41 @@ export const createStripeAccountSession = createServerFn({ method: "POST" })
     const acct = await resolveOrgStripeAccount(orgId);
     if (!acct) throw new Error("Connect a Stripe account first.");
     const stripe = await connectStripe();
+    // ── Features shared by `payments` and `payment_details` ──────────────
+    //
+    // Stripe REQUIRES these two components to declare identical values for
+    // every feature they have in common, and rejects the whole session if they
+    // disagree:
+    //
+    //   "The `features[capture_payments]` property specified by `payments`
+    //    and `payment_details` must be the same."
+    //
+    // That is exactly what happened. `payments` set `capture_payments: false`
+    // while `payment_details` was `{ enabled: true }` with no features at all
+    // — so Stripe applied its own default of TRUE there, the two disagreed,
+    // and the payment dashboard failed to load entirely. Not the capture
+    // control specifically: the session is refused as a whole, so payouts,
+    // balances, disputes and documents all went with it.
+    //
+    // One object, spread into both, so they cannot drift again. Adding a
+    // feature to one and forgetting the other is the only way to reproduce
+    // this, and a shared constant makes that impossible rather than merely
+    // unlikely.
+    const paymentFeatures = {
+      // Both already default to true. Stated so the capability is greppable
+      // and so a future Stripe default cannot quietly remove the two things a
+      // tenant most needs when a customer complains.
+      refund_management: true,
+      dispute_management: true,
+      // Capturing/cancelling a PaymentIntent by hand. HoundStack creates and
+      // confirms in one step, so there is nothing for a tenant to capture;
+      // leaving it on would show a control that never applies.
+      capture_payments: false,
+      // Charges are DIRECT — the connected account is merchant of record.
+      // Nothing is created on their behalf, so this manages an empty set.
+      destination_on_behalf_of_charge_management: false,
+    } as const;
+
     const session = await stripe.accountSessions.create({
       account: acct.accountId,
       components: {
@@ -129,22 +164,13 @@ export const createStripeAccountSession = createServerFn({ method: "POST" })
         payments: {
           enabled: true,
           features: {
-            // Both already default to true. Stated so the capability is
-            // greppable and so a future Stripe default cannot quietly remove
-            // the two things a tenant most needs when a customer complains.
-            refund_management: true,
-            dispute_management: true,
-            // Follows dispute_management by default; Stripe's guided evidence
-            // flow, which is the difference between a tenant answering a
-            // chargeback and ignoring it.
+            ...paymentFeatures,
+            // Deliberately NOT in the shared object: `smart_disputes_management`
+            // belongs to the dispute surface, and sending a feature to a
+            // component that does not accept it is its own error. Stripe's
+            // guided evidence flow — the difference between a tenant answering
+            // a chargeback and ignoring it.
             smart_disputes_management: true,
-            // Capturing/cancelling a PaymentIntent by hand. HoundStack creates
-            // and confirms in one step, so there is nothing for a tenant to
-            // capture; leaving it on would show a control that never applies.
-            capture_payments: false,
-            // Charges are DIRECT — the connected account is merchant of record.
-            // Nothing is created on their behalf, so this manages an empty set.
-            destination_on_behalf_of_charge_management: false,
           },
         },
         payouts: { enabled: true },
@@ -157,7 +183,7 @@ export const createStripeAccountSession = createServerFn({ method: "POST" })
         payment_disputes: { enabled: true },
         // One payment, in full: the timeline, the card, the refunds against it.
         // What "why did this fail?" actually needs.
-        payment_details: { enabled: true },
+        payment_details: { enabled: true, features: { ...paymentFeatures } },
         // Tax forms — the 1099-K. An annual, unavoidable errand that otherwise
         // has exactly one home, and it is not this product.
         documents: { enabled: true },

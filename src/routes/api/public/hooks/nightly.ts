@@ -41,12 +41,29 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const today = new Date();
         const iso = (d: Date) => d.toISOString().slice(0, 10);
+        /** The Monday of the week a date falls in, as an ISO date.
+         *
+         *  Two horizons in the same week are the same announcement. Comparing
+         *  Mondays rather than "did the date change" is what makes the notice
+         *  weekly instead of nightly, and idempotent across retries. */
+        const mondayOf = (isoDate: string) => {
+          const d = new Date(`${isoDate}T00:00:00Z`);
+          d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+          return iso(d);
+        };
+        const friendlyDate = (isoDate: string) =>
+          new Date(`${isoDate}T00:00:00Z`).toLocaleDateString("en-US", {
+            timeZone: "UTC",
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+          });
         const todayStr = iso(today);
 
         const { data: orgs, error: orgErr } = await supabaseAdmin
           .from("organizations")
           .select(
-            "id, name, sms_from_number, auto_generate_visits, auto_generate_days_ahead, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days, seasonal_deepclean_enabled, seasonal_deepclean_months, notify_sms_overdue_invoice",
+            "id, name, sms_from_number, auto_generate_visits, auto_generate_days_ahead, notify_schedule_horizon, schedule_horizon_notified_on, auto_invoice_enabled, overdue_reminders_enabled, overdue_reminder_days, seasonal_deepclean_enabled, seasonal_deepclean_months, notify_sms_overdue_invoice",
           );
         if (orgErr) return json({ error: orgErr.message }, 500);
 
@@ -100,12 +117,49 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
 
           if (org.auto_generate_visits) {
             const ahead = new Date(today);
-            ahead.setDate(ahead.getDate() + (org.auto_generate_days_ahead ?? 14));
+            ahead.setDate(ahead.getDate() + (org.auto_generate_days_ahead ?? 90));
             const { data: n, error } = await supabaseAdmin.rpc("admin_generate_visits_through", {
               _org_id: org.id,
               _through: iso(ahead),
             });
             perOrg.visits_generated = error ? `err: ${error.message}` : (n as number);
+
+            // Say so, once a week, if they asked.
+            //
+            // Removing the "generate visits through <date>" button was right —
+            // a recurring plan already states when its visits happen. But that
+            // button was also the only thing that ever CONFIRMED generation had
+            // run, and a rolling horizon is invisible by construction: working
+            // perfectly looks exactly like nothing happening.
+            //
+            // Weekly, not nightly. "Your schedule moved forward one day" every
+            // morning is noise, and noise is how a real warning gets ignored
+            // later. Comparing the WEEK of the stored date to the week of the
+            // new horizon makes that idempotent — a job that runs twice, or
+            // retries after a failure, cannot send twice.
+            if (!error && org.notify_schedule_horizon) {
+              const already = (org as any).schedule_horizon_notified_on as string | null;
+              if (!already || mondayOf(already) !== mondayOf(iso(ahead))) {
+                try {
+                  const { notifyRoles } = await import("@/lib/notify-center.server");
+                  await notifyRoles(["owner", "office_manager"], {
+                    orgId: org.id,
+                    type: "schedule.horizon",
+                    title: "Schedule filled through " + friendlyDate(iso(ahead)),
+                    body: `Visits are booked out ${org.auto_generate_days_ahead ?? 90} days from today. Change how far ahead in Settings → Scheduling.`,
+                    link: "/routes",
+                  });
+                  await supabaseAdmin
+                    .from("organizations")
+                    .update({ schedule_horizon_notified_on: iso(ahead) })
+                    .eq("id", org.id);
+                } catch (e) {
+                  // Best-effort: a notification that fails must not stop the
+                  // rest of the nightly run for this org or any org after it.
+                  console.error("schedule horizon notice failed", org.id, e);
+                }
+              }
+            }
           }
 
           // Missed-visit lifecycle (B6): move genuinely past, never-serviced
