@@ -35,6 +35,9 @@ export type OrgForMrr = {
   plan: PlanForMrr | null;
   /** Optional so existing callers and fixtures stay valid; absent means none. */
   addons?: AddonForMrr[] | null;
+  /** Platform-granted free use — the demo org, design partners, internal
+   *  accounts. Optional for the same reason as `addons`; absent means false. */
+  is_comped?: boolean | null;
 };
 
 // A tenant contributes to MRR only while it is actually paying. `free` orgs (on
@@ -47,16 +50,35 @@ export function isPayingStatus(status: string | null | undefined): boolean {
 }
 
 /**
+ * Does this org contribute money at all?
+ *
+ * A comped org — the demo account, a design partner, an internal workspace —
+ * has a real plan and real add-ons and pays for neither. It is billing_status
+ * 'active' because it is not a lapsed customer and must never be dunned, which
+ * means every status-based test says "paying". Only this flag distinguishes
+ * "active and billed" from "active and free", and without it the demo org alone
+ * put $126/month of add-on revenue into MRR that nobody pays.
+ *
+ * It is deliberately NOT the same as billing_status 'free': that is the
+ * freemium client-count tier, which gates client creation and feeds the
+ * conversion funnel. A comped org is not a prospect who hasn't paid yet.
+ */
+export function contributesRevenue(org: OrgForMrr): boolean {
+  if (org.is_comped) return false;
+  return isPayingStatus(org.billing_status);
+}
+
+/**
  * The monthly-equivalent SaaS price a single tenant pays HoundStack. Annual
  * plans are divided by 12. Seat overage (active seats beyond the plan's
  * included seats) is added at the per-seat rate. Returns 0 for non-paying orgs,
- * free plans, and custom/enterprise plans with no listed price (those are
- * negotiated off-catalog and cannot be derived from the plan row).
+ * comped orgs, free plans, and custom/enterprise plans with no listed price
+ * (those are negotiated off-catalog and cannot be derived from the plan row).
  */
 export function monthlyEquivalentCents(org: OrgForMrr): number {
   const p = org.plan;
   if (!p) return 0;
-  if (!isPayingStatus(org.billing_status)) return 0;
+  if (!contributesRevenue(org)) return 0;
   if (p.is_free) return 0;
   if (p.price_cents == null && p.annual_price_cents == null) return 0; // custom/enterprise
 
@@ -93,7 +115,7 @@ export function monthlyEquivalentCents(org: OrgForMrr): number {
  * not contribute add-on revenue while contributing no plan revenue.
  */
 export function addonMonthlyEquivalentCents(org: OrgForMrr): number {
-  if (!isPayingStatus(org.billing_status)) return 0;
+  if (!contributesRevenue(org)) return 0;
   let total = 0;
   for (const a of org.addons ?? []) {
     if (a.status !== "active") continue;

@@ -33,7 +33,7 @@ export interface AiConfig {
  *  Optional, because two callers legitimately have no org: the Settings health
  *  check before an org exists, and any future platform-side use. Absent means
  *  "not metered", which is only ever correct when there is nobody to meter —
- *  every tenant-facing call site passes it, and tests/ai-metering.test.ts is
+ *  every tenant-facing call site passes it, and tests/ai-metering-is-wired.test.ts is
  *  what stops a new one from quietly not. */
 export interface AiMeter {
   orgId: string;

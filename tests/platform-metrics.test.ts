@@ -226,3 +226,64 @@ describe("recurring add-ons count toward platform MRR (BUG-11)", () => {
     expect(totalMonthlyEquivalentCents(DEMO)).toBe(monthlyEquivalentCents(DEMO));
   });
 });
+
+// The demo org is now comped: Enterprise plan, all six add-ons, no Stripe
+// subscription, billing_status 'active' — because it is not a lapsed customer
+// and must never be dunned. Every status-based test therefore says "paying",
+// and its add-ons alone would have put $126/month into MRR that nobody sends
+// us. BUG-11 was this defect pointing the other way (add-ons uncounted, $449
+// reported for a tenant paying $527); understating and overstating are the
+// same bug, and a metric that includes free accounts is not a revenue metric.
+describe("comped tenants", () => {
+  const COMPED: OrgForMrr = {
+    ...DEMO,
+    is_comped: true,
+    addons: [
+      { status: "active", price_cents: 4900, billing_interval: "month" },
+      { status: "active", price_cents: 2900, billing_interval: "month" },
+      { status: "active", price_cents: 49900, billing_interval: "one_time" },
+    ],
+  };
+
+  it("contributes no plan revenue despite carrying a priced plan", () => {
+    // Not because the plan is unpriced — Scale is $449 and the same org
+    // contributes it the moment the flag comes off.
+    expect(monthlyEquivalentCents(COMPED)).toBe(0);
+    expect(monthlyEquivalentCents({ ...COMPED, is_comped: false })).toBe(44900);
+  });
+
+  it("contributes no add-on revenue despite carrying active add-ons", () => {
+    expect(addonMonthlyEquivalentCents(COMPED)).toBe(0);
+    expect(addonMonthlyEquivalentCents({ ...COMPED, is_comped: false })).toBe(7800);
+  });
+
+  it("is not counted as a paying tenant", () => {
+    const m = computePlatformSaasMetrics([COMPED, ...FREE_ORGS]);
+    expect(m.payingTenants).toBe(0);
+    expect(m.mrrCents).toBe(0);
+    expect(m.addonMrrCents).toBe(0);
+    expect(m.arrCents).toBe(0);
+  });
+
+  it("does not drag real tenants down with it", () => {
+    const paying: OrgForMrr = { id: "p", name: "Real Co", billing_status: "active",
+      active_seat_count: 2, plan: GROWTH };
+    const m = computePlatformSaasMetrics([COMPED, paying]);
+    expect(m.mrrCents).toBe(19900);
+    expect(m.payingTenants).toBe(1);
+  });
+
+  it("treats an absent flag as false, so existing rows and fixtures are unchanged", () => {
+    // The column is optional on the type for exactly this reason.
+    expect(monthlyEquivalentCents(DEMO)).toBe(44900);
+    expect(monthlyEquivalentCents({ ...DEMO, is_comped: null })).toBe(44900);
+  });
+
+  it("stays distinct from the freemium tier", () => {
+    // 'free' gates client creation at 3 and feeds the conversion funnel on the
+    // platform overview. A comped org is not a prospect who hasn't paid — if
+    // comping were implemented by writing billing_status='free', the demo would
+    // start appearing in the upgrade funnel and hit the client cap.
+    expect(COMPED.billing_status).toBe("active");
+  });
+});

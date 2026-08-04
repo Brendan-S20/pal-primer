@@ -3,8 +3,12 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { getOrgBillingState, subscriptionPeriodEnd } from "./billing-state.server";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
+import { makeStripe } from "@/lib/stripe-client.server";
 
-// Kept for back-compat with anything still importing this.
+// Nothing imports this. $59 is not a price in the current per-employee
+// catalog either — plans come from `platform_plans`, which is the only place
+// a price should be read from. Kept only because deleting an export is a
+// separate change from correcting a comment that claimed a caller existed.
 export const PRO_PRICE_CENTS = 5900;
 
 // The org's own SaaS subscription is owner-only (manage_org_billing),
@@ -147,8 +151,7 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       throw new Error("Annual billing isn't available for that plan yet. Contact support.");
     }
 
-    const Stripe = (await import("stripe")).default;
-    const stripe = new Stripe(secret);
+    const stripe = await makeStripe(secret);
 
     // The plan bills a flat base that covers the tier's included employees,
     // plus a per-seat overage price for each active employee beyond that.
@@ -583,8 +586,7 @@ export const cancelBillingSubscription = createServerFn({ method: "POST" })
     if (!s.stripeSubscriptionId) throw new Error("No active subscription to cancel.");
     const secret = process.env.STRIPE_SECRET_KEY;
     if (!secret) throw new Error("Billing is not configured.");
-    const Stripe = (await import("stripe")).default;
-    const stripe = new Stripe(secret);
+    const stripe = await makeStripe(secret);
     const sub = await stripe.subscriptions.update(s.stripeSubscriptionId, {
       cancel_at_period_end: true,
     });
@@ -601,8 +603,7 @@ export const resumeBillingSubscription = createServerFn({ method: "POST" })
     if (!s.stripeSubscriptionId) throw new Error("No subscription found.");
     const secret = process.env.STRIPE_SECRET_KEY;
     if (!secret) throw new Error("Billing is not configured.");
-    const Stripe = (await import("stripe")).default;
-    const stripe = new Stripe(secret);
+    const stripe = await makeStripe(secret);
     await stripe.subscriptions.update(s.stripeSubscriptionId, {
       cancel_at_period_end: false,
     });
@@ -646,8 +647,7 @@ export const listSubscriptionItems = createServerFn({ method: "GET" })
     }
     const secret = process.env.STRIPE_SECRET_KEY;
     if (!secret) throw new Error("Billing is not configured.");
-    const Stripe = (await import("stripe")).default;
-    const stripe = new Stripe(secret);
+    const stripe = await makeStripe(secret);
     const sub = await stripe.subscriptions.retrieve(s.stripeSubscriptionId, {
       expand: ["items.data.price.product"],
     });
@@ -722,8 +722,7 @@ export const listSubscriptionItems = createServerFn({ method: "GET" })
 async function platformStripe() {
   const secret = process.env.STRIPE_SECRET_KEY;
   if (!secret) throw new Error("Billing is not configured.");
-  const Stripe = (await import("stripe")).default;
-  return new Stripe(secret);
+  return await makeStripe(secret);
 }
 
 function realCustomerId(customerId: string | null): string | null {
@@ -961,8 +960,7 @@ export const refreshBillingStatus = createServerFn({ method: "POST" })
     if (!looksReal) return { billingStatus: s.billingStatus };
     const secret = process.env.STRIPE_SECRET_KEY;
     if (!secret) throw new Error("Billing is not configured.");
-    const Stripe = (await import("stripe")).default;
-    const stripe = new Stripe(secret);
+    const stripe = await makeStripe(secret);
     const subs = await stripe.subscriptions.list({ customer: customerId!, status: "all", limit: 5 });
     const active = subs.data.find((s) => ["active", "trialing", "past_due"].includes(s.status));
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");

@@ -12,6 +12,7 @@ import {
 } from "@/components/billing/PlanPicker";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { APP_NAME } from "@/lib/scoop";
+import { appUrl } from "@/lib/app-origin";
 
 // Post-signup onboarding path (Brendan's re-review): "Create account" lands
 // here instead of dropping new owners straight onto an empty dashboard —
@@ -136,7 +137,7 @@ function OnboardingPage() {
         <EmbeddedPlanCheckout
           planId={plan.planId}
           interval={plan.interval}
-          returnUrl={typeof window !== "undefined" ? `${window.location.origin}/onboarding?paid=1` : "https://app.houndstack.com/onboarding?paid=1"}
+          returnUrl={typeof window !== "undefined" ? `${window.location.origin}/onboarding?paid=1` : appUrl("/onboarding?paid=1")}
           onCancel={() => setStep("plan")}
           // Already subscribed (e.g. revisiting onboarding): the plan was
           // switched in place, no payment form needed.

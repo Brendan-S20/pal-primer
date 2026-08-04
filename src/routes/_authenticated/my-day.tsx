@@ -29,11 +29,12 @@ import { listAddonServices, createAddonCharge } from "@/lib/addons.functions";
 import { getVisitStations, logStationService } from "@/lib/stations.functions";
 import { logDnaSampleFromField } from "@/lib/dna.functions";
 import { sendVisitStatusSms } from "@/lib/messages.functions";
-import { SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
+import { TECH_SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
 import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
 import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { syncQueue } from "@/lib/offline/sync";
 import { countPendingForVisit, countQueuedCompletionPhotos } from "@/lib/offline/queue";
+import { resolveOfflineUserId } from "@/lib/offline/action-owner";
 import { describeReadFreshness, formatCacheAge } from "@/lib/offline/read-cache-policy";
 import { toast } from "sonner";
 import {
@@ -229,10 +230,32 @@ function MyDay() {
 
   const runSync = useCallback(async () => {
     // Replay only the signed-in tech's own queued work — see lib/offline/queue.
-    const { data: sess } = await supabase.auth.getSession();
-    const uid = sess.session?.user?.id;
-    if (!uid) return;
+    //
+    // resolveOfflineUserId, NOT supabase.auth.getSession(). getSession reads
+    // local storage EXCEPT when the stored token has expired, in which case
+    // supabase-js refreshes it over the network first — which offline hangs for
+    // ever, with no deadline here to stop it. That is the exact defect
+    // action-owner.ts was written to eliminate, and this call site was still
+    // making it: 7am, token aged out overnight, one bar in the yard so
+    // navigator.onLine is true, and Sync does nothing for ever with no toast.
+    //
+    // Worse, the BADGE already used the bounded resolver, so the count said "6
+    // pending" while the button it labels could not act at all — breaking the
+    // one invariant countPending exists to hold: the count and the thing the
+    // button acts on have to be the same set.
+    let uid: string;
+    try {
+      uid = await resolveOfflineUserId();
+    } catch {
+      return;
+    }
     const res = await syncQueue(callers, uid);
+    if (res.alreadyRunning) {
+      // A replay is already in flight. Saying nothing is indistinguishable from
+      // a dead button.
+      toast.info("Already syncing…");
+      return;
+    }
     if (res.succeeded > 0) {
       toast.success(`Synced ${res.succeeded} queued action${res.succeeded === 1 ? "" : "s"}`);
       qc.invalidateQueries({ queryKey: ["my-day"] });
@@ -886,7 +909,7 @@ function VisitCard({
     onError: (e: Error) => toast.error(e.message),
   });
   const [reason, setReason] = useState("");
-  const [reasonCode, setReasonCode] = useState<(typeof SKIP_REASON_CODES)[number]>("other");
+  const [reasonCode, setReasonCode] = useState<(typeof TECH_SKIP_REASON_CODES)[number]>("other");
   const [uploading, setUploading] = useState(false);
   const [photoKind, setPhotoKind] = useState<"before" | "completion" | "issue">("completion");
   const [pendingLocal, setPendingLocal] = useState(0);
@@ -903,10 +926,28 @@ function VisitCard({
   useEffect(() => {
     let cancelled = false;
     const refresh = () => {
-      countPendingForVisit(visit.id).then((c) => !cancelled && setPendingLocal(c));
-      countQueuedCompletionPhotos(visit.id).then(
-        (c) => !cancelled && setQueuedCompletionPhotos(c),
-      );
+      // Scoped to the signed-in tech, resolved the same bounded way the sync
+      // loop resolves it. Unscoped, tech A's queued completion photo unlocked
+      // tech B's Complete button on a shared tablet — and B's completion was
+      // then refused by the server, burned five attempts and dead-lettered.
+      resolveOfflineUserId()
+        .then((uid) =>
+          Promise.all([
+            countPendingForVisit(visit.id, uid),
+            countQueuedCompletionPhotos(visit.id, uid),
+          ]),
+        )
+        .then(([pending, photos]) => {
+          if (cancelled) return;
+          setPendingLocal(pending);
+          setQueuedCompletionPhotos(photos);
+        })
+        .catch(() => {
+          // No identity means no queue of our own to report.
+          if (cancelled) return;
+          setPendingLocal(0);
+          setQueuedCompletionPhotos(0);
+        });
     };
     refresh();
     window.addEventListener("offline-queue-change", refresh);
@@ -1087,6 +1128,17 @@ function VisitCard({
               {skipped && (
                 <div className="mt-2 text-xs text-amber-700 dark:text-amber-400">
                   Skipped
+                  {/* The TIME it was skipped, which for a queued skip replayed
+                      on reconnect is hours before the row was written. Null on
+                      every skip recorded before `skipped_at` existed, so it is
+                      rendered only when present rather than falling back to a
+                      row timestamp that would mean something else. */}
+                  {visit.skipped_at
+                    ? ` at ${new Date(visit.skipped_at).toLocaleTimeString([], {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}`
+                    : ""}
                   {visit.skip_reason_code
                     ? ` (${SKIP_REASON_LABELS[visit.skip_reason_code as keyof typeof SKIP_REASON_LABELS] ?? visit.skip_reason_code})`
                     : ""}
@@ -1327,7 +1379,7 @@ function VisitCard({
                   onChange={(e) => setReasonCode(e.target.value as any)}
                   className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
                 >
-                  {SKIP_REASON_CODES.map((c) => (
+                  {TECH_SKIP_REASON_CODES.map((c) => (
                     <option key={c} value={c}>
                       {SKIP_REASON_LABELS[c]}
                     </option>

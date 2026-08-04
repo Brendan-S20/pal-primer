@@ -1,3 +1,4 @@
+import { makeStripe } from "@/lib/stripe-client.server";
 // Server-only helpers for tenant Stripe via Connect (Express accounts).
 // HoundStack is the Connect PLATFORM here (STRIPE_CONNECT_* keys) — distinct
 // from the platform's SaaS-billing Stripe (PLATFORM_STRIPE_* / bucket A).
@@ -31,8 +32,7 @@ export function connectPublishableKey(): string {
 
 /** The Connect platform Stripe client (platform secret key). */
 export async function connectStripe() {
-  const Stripe = (await import("stripe")).default;
-  return new Stripe(connectSecret());
+  return await makeStripe(connectSecret());
 }
 
 /**

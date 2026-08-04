@@ -1,4 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { appOrigin } from "@/lib/app-origin";
+import { platformFeeCents } from "@/lib/platform-fee";
+import { fetchAllPages } from "@/lib/supabase-paging.server";
 
 // POST /api/public/hooks/nightly?s=<CRON_SECRET>
 // Called by pg_cron on a schedule. Iterates orgs and:
@@ -316,16 +319,32 @@ async function autoSendScheduledInvoices(
   orgId: string,
   todayStr: string,
 ): Promise<number | string> {
-  const { data: invoices, error } = await supabaseAdmin
-    .from("invoices")
-    .select(
-      "id, client_id, total_cents, period_start, period_end, public_token, send_after, sent_at",
-    )
-    .eq("organization_id", orgId)
-    .eq("status", "open")
-    .is("sent_at", null)
-    .not("send_after", "is", null)
-    .lte("send_after", todayStr);
+  // Paged. PostgREST stops at 1000 rows and says nothing — no error, no flag —
+  // so an org past a thousand queued invoices would silently send the first
+  // thousand and leave the rest unsent FOREVER, since each run repeats the same
+  // truncated page. Unattended and about money, which is the worst combination
+  // for a limit that announces itself nowhere. Ordered because paging an
+  // unordered query can repeat or drop a row between pages.
+  let invoices: any[] = [];
+  let error: { message: string } | null = null;
+  try {
+    invoices = await fetchAllPages<any>((a, b) =>
+      supabaseAdmin
+        .from("invoices")
+        .select(
+          "id, client_id, total_cents, period_start, period_end, public_token, send_after, sent_at",
+        )
+        .eq("organization_id", orgId)
+        .eq("status", "open")
+        .is("sent_at", null)
+        .not("send_after", "is", null)
+        .lte("send_after", todayStr)
+        .order("id")
+        .range(a, b),
+    );
+  } catch (e) {
+    error = { message: (e as Error).message };
+  }
   if (error) return `err: ${error.message}`;
   if (!invoices?.length) return 0;
 
@@ -372,19 +391,46 @@ async function autoSendScheduledInvoices(
   return pausedSkipped > 0 ? `${sent} sent; ${pausedSkipped} skipped (comms hold)` : sent;
 }
 
+/** `due_on` is a DATE column, so this compares calendar days, not instants. */
+function dueOnCutoff(reminderDays: number): string {
+  return new Date(Date.now() - reminderDays * 86400000).toISOString().slice(0, 10);
+}
+
+/** Whole days between a due date and today. Never negative: an invoice that is
+ *  not yet due is not "0 days past due" by accident of rounding. */
+function daysPastDueFrom(dueOn: string | null | undefined): number {
+  if (!dueOn) return 0;
+  const due = Date.parse(`${dueOn}T00:00:00Z`);
+  if (!Number.isFinite(due)) return 0;
+  return Math.max(0, Math.floor((Date.now() - due) / 86400000));
+}
+
 async function sendOverdueReminders(
   supabaseAdmin: any,
   orgId: string,
   from: string,
   reminderDays: number,
 ): Promise<number | string> {
-  const cutoffIso = new Date(Date.now() - reminderDays * 86400000).toISOString();
-  const { data: invoices, error } = await supabaseAdmin
-    .from("invoices")
-    .select("id, client_id, total_cents, issued_at, last_reminder_at, kind")
-    .eq("organization_id", orgId)
-    .eq("status", "open")
-    .lte("issued_at", cutoffIso);
+  const dueCutoff = dueOnCutoff(reminderDays);
+  // Paged — see sendQueuedInvoices. A truncated page here means the oldest
+  // thousand overdue invoices get chased and everyone past them never does.
+  let invoices: any[] = [];
+  let error: { message: string } | null = null;
+  try {
+    invoices = await fetchAllPages<any>((a, b) =>
+      supabaseAdmin
+        .from("invoices")
+        .select("id, client_id, total_cents, issued_at, due_on, last_reminder_at, kind")
+        .eq("organization_id", orgId)
+        .eq("status", "open")
+        .not("due_on", "is", null)
+        .lte("due_on", dueCutoff)
+        .order("id")
+        .range(a, b),
+    );
+  } catch (e) {
+    error = { message: (e as Error).message };
+  }
   if (error) return `err: ${error.message}`;
   if (!invoices?.length) return 0;
 
@@ -444,21 +490,48 @@ async function sendOverdueReminders(
 }
 
 function appUrl() {
-  return process.env.APP_URL || "https://app.houndstack.com";
+  return appOrigin();
 }
 
+// Dunning is aged from `due_on`, NEVER from `issued_at`.
+//
+// Both of these selected `issued_at <= now - reminderDays`, which is not a
+// measure of lateness at all — it is a measure of how long ago the invoice was
+// RAISED. With the stock defaults (`invoice_net_days` 15, `overdue_reminder_days`
+// 7) that told a customer they were "7 days past due" on day 7, EIGHT DAYS
+// BEFORE the invoice was due, by email and by SMS.
+//
+// `isInvoiceOverdue` in `src/lib/ar.ts` has had the correct rule the whole time
+// and nothing here called it; MASTER_BRIEF even asserts that `due_on` is the
+// only input to dunning. It was not.
+//
+// Invoices with no `due_on` are skipped rather than aged from `issued_at`: a
+// missing due date is unknown lateness, and guessing it is what produced the
+// wrong number in the first place.
 async function sendOverdueEmails(
   supabaseAdmin: any,
   orgId: string,
   reminderDays: number,
 ): Promise<number | string> {
-  const cutoffIso = new Date(Date.now() - reminderDays * 86400000).toISOString();
-  const { data: invoices, error } = await supabaseAdmin
-    .from("invoices")
-    .select("id, client_id, total_cents, issued_at, last_email_reminder_at")
-    .eq("organization_id", orgId)
-    .eq("status", "open")
-    .lte("issued_at", cutoffIso);
+  const dueCutoff = dueOnCutoff(reminderDays);
+  // Paged — see sendQueuedInvoices.
+  let invoices: any[] = [];
+  let error: { message: string } | null = null;
+  try {
+    invoices = await fetchAllPages<any>((a, b) =>
+      supabaseAdmin
+        .from("invoices")
+        .select("id, client_id, total_cents, issued_at, due_on, last_email_reminder_at")
+        .eq("organization_id", orgId)
+        .eq("status", "open")
+        .not("due_on", "is", null)
+        .lte("due_on", dueCutoff)
+        .order("id")
+        .range(a, b),
+    );
+  } catch (e) {
+    error = { message: (e as Error).message };
+  }
   if (error) return `err: ${error.message}`;
   if (!invoices?.length) return 0;
 
@@ -485,7 +558,7 @@ async function sendOverdueEmails(
     const client = byId.get(inv.client_id) as any;
     if (!client) continue;
     const invoiceUrl = (await buildPortalLink(orgId, client.portal_token, slug)) ?? appUrl();
-    const daysPastDue = Math.floor((Date.now() - new Date(inv.issued_at).getTime()) / 86400000);
+    const daysPastDue = daysPastDueFrom(inv.due_on);
     const res = await enqueueAppEmail({
       organizationId: orgId,
       clientId: inv.client_id,
@@ -629,9 +702,22 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
         .from("clients")
         .update({ autopay_last_attempt_at: new Date().toISOString() })
         .eq("id", c.id);
+      // Saved card on file, so the rail and funding type are known here without
+      // a second step. This is the path the platform-fee module singled out as
+      // the one nobody watches — the fee and the surcharge both have to be
+      // right here with no one looking.
+      const { orgFeeConfig, quoteForPaymentMethodId, surchargeMetadata } =
+        await import("@/lib/processing-fee.server");
+      const quote = await quoteForPaymentMethodId(stripe, {
+        paymentMethodId: c.default_payment_method_id,
+        stripeAccount: acct.accountId,
+        baseCents: dueCents,
+        config: await orgFeeConfig(supabaseAdmin, inv.organization_id),
+      });
       const pi = await stripe.paymentIntents.create(
         {
-          amount: dueCents,
+          amount: quote.totalCents,
+          application_fee_amount: platformFeeCents(dueCents),
           currency: inv.currency ?? "usd",
           customer: c.stripe_customer_id,
           payment_method: c.default_payment_method_id,
@@ -641,14 +727,17 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
             invoice_id: inv.id,
             organization_id: inv.organization_id,
             source: "autopay",
+            ...surchargeMetadata(quote),
           },
         },
         {
           stripeAccount: acct.accountId,
           // Idempotent per invoice+amount: a retried request never charges
-          // twice. The amount is the OPEN amount (net of applied credit), so a
-          // later credit application mints a fresh key for the smaller charge.
-          idempotencyKey: `autopay-${inv.id}-${dueCents}`,
+          // twice. The amount is the CHARGED total (net of applied credit, plus
+          // any pass-through fee), so a later credit application — or the tenant
+          // switching pass-through on — mints a fresh key instead of replaying
+          // this one with a different amount.
+          idempotencyKey: `autopay-${inv.id}-${quote.totalCents}`,
         },
       );
       // Store the PI on the invoice so a missed success webhook is rescued by

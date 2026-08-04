@@ -139,3 +139,69 @@ jobs:
           fi
           node scripts/check-schema-declared.mjs
         continue-on-error: ${{ github.event_name == 'pull_request' }}
+
+      - name: Check every object the migrations create still exists
+        # IMP-2b. The two steps above compare NAMES: repo files against the
+        # applied ledger, and live objects against declared ones. Neither can
+        # see inside a file. 82 migrations are exempt from the name comparison
+        # via migrations-baseline.json, whose comment claimed each was verified
+        # by confirming the objects it creates exist — and seed_demo_org was
+        # defined in two of those files and present in neither copy of the live
+        # database for a month, with the app calling it by name the whole time.
+        #
+        # A per-FILE exemption has nowhere to record "five of the six functions
+        # in this file landed". This step replays every CREATE and DROP across
+        # every migration and asserts each surviving object is in the catalog,
+        # so a half-applied migration is a failure rather than a rounding error.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not set — the per-object check cannot run."
+            exit 1
+          fi
+          node scripts/check-baseline-objects.mjs
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+
+      - name: The published app origin answers the native preflight
+        # §3 item 6 of the brief listed this as two curls "only you can confirm".
+        # They sat unrun, and when finally run the answer was that the
+        # documented host FAILS: app.houndstack.com 307-redirects to
+        # www.app.houndstack.com, and a CORS preflight may not follow a redirect
+        # — so the native app pointed at it cannot call a single server
+        # function. The CORS work was right; the host was wrong.
+        #
+        # Nothing in the repo can know that. Only the live edge can, so this
+        # asks it every run instead of leaving it as a step to remember.
+        run: node scripts/check-app-origin.mjs
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+
+      - name: Stripe charges what the catalog says
+        # The database stores a price in cents AND a Stripe price id. The app
+        # renders the cents; Stripe charges the id. Nothing compared them until
+        # now, which is survivable only while the two are created together.
+        #
+        # It stops being survivable at the live-mode cutover: a fresh live
+        # catalog is built by hand and platform_plans is repointed, and every
+        # new id is a chance for the pricing page to say $79 while the card is
+        # charged $199 — or for a live key to hold test ids, which does not
+        # error until checkout, in front of the first paying customer.
+        #
+        # Exit 2 means the gate is NOT ARMED (no STRIPE_SECRET_KEY in CI yet)
+        # and is reported as a warning rather than a pass, because "could not
+        # check" and "checked and fine" are different answers. Exit 1 is a real
+        # disagreement and fails.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+        run: |
+          set +e
+          node scripts/check-stripe-catalog.mjs
+          code=$?
+          set -e
+          if [ "$code" = "2" ]; then
+            echo "::warning::Stripe catalog gate is NOT ARMED — add STRIPE_SECRET_KEY to repo secrets to arm it before the live-mode cutover."
+            exit 0
+          fi
+          exit $code
+        continue-on-error: ${{ github.event_name == 'pull_request' }}

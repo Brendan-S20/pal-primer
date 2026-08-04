@@ -5,6 +5,7 @@
 //
 // Import inside server-function handlers only (uses service_role + cookies).
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { appUrl } from "@/lib/app-origin";
 
 // @tanstack/react-start/server is server-only and denied in the client bundle.
 // portal.functions.ts (which ships to the client) statically imports this
@@ -341,7 +342,7 @@ export async function issuePortalOtp(
       await supabaseAdmin
         .from("email_unsubscribe_tokens")
         .insert({ email: dest.trim().toLowerCase(), token: unsubscribeToken });
-      const unsubUrl = `https://app.houndstack.com/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`;
+      const unsubUrl = appUrl(`/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`);
       const emailBody = {
         from: `${contact.org_name} <noreply@notify.houndstack.com>`,
         to: [dest],
@@ -570,8 +571,46 @@ export async function portalIdentify(
   return { sent: true, channel: res.channel, hint: res.hint, matchCount: matches.length };
 }
 
+/**
+ * The MAC key for the pick cookie — the ONLY proof `portalChooseClient`
+ * requires that a contact was just verified by OTP.
+ *
+ * ── WHY THIS THROWS INSTEAD OF FALLING BACK ───────────────────────────────
+ *
+ * It read `SUPABASE_SERVICE_ROLE_KEY || STRIPE_SECRET_KEY || "portal-pick"`.
+ * Three problems, in order of severity:
+ *
+ *  1. `"portal-pick"` is a LITERAL IN THIS REPOSITORY. Reaching it makes every
+ *     pick cookie forgeable: the only other check compares an attacker-supplied
+ *     `contactHash` against `sha256(last-10-phone-digits)` or
+ *     `sha256(lowercased email)`, both of which anyone who knows a customer's
+ *     phone or email can compute. That is a full portal session — invoices,
+ *     addresses, service history — for a named client, with no OTP. And it
+ *     would happen SILENTLY, because a default is not an error.
+ *
+ *  2. It read the wrong variable name. Every other module in this codebase
+ *     reads `SERVICE_ROLE_KEY || SUPABASE_SERVICE_ROLE_KEY` — client.server.ts,
+ *     cron-auth.server.ts, weather.functions.ts and all six email routes — and
+ *     `.env.example` ships only `SERVICE_ROLE_KEY`. This was the one module
+ *     that checked the second name first and the first name never, so under
+ *     the documented configuration it skipped straight past the intended key.
+ *
+ *  3. Falling back to `STRIPE_SECRET_KEY` makes a payment credential do
+ *     double duty as a MAC key, so rotating Stripe silently invalidates every
+ *     in-flight pick cookie — and, worse, a Stripe rotation that also cleared
+ *     the variable would drop through to (1).
+ *
+ * An auth primitive with no key must fail, loudly. A portal sign-in that errors
+ * is a support ticket; one that accepts forged cookies is a breach nobody sees.
+ */
 function pickSecret(): string {
-  const s = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.STRIPE_SECRET_KEY || "portal-pick";
+  const s = process.env.SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!s) {
+    throw new Error(
+      "SERVICE_ROLE_KEY is not set, so the portal pick cookie cannot be signed. " +
+        "Refusing rather than falling back to a shared or default key.",
+    );
+  }
   return s;
 }
 function signPick(orgId: string, contactValue: string, expMs: number): string {
@@ -588,7 +627,11 @@ function verifyPick(raw: string | undefined): { orgId: string; contactHash: stri
     .update(`${pickSecret()}.${orgId}.${contactHash}.${expStr}`)
     .digest("hex")
     .slice(0, 32);
-  if (mac !== expected) return null;
+  // Constant-time. A `!==` on hex leaks position of first difference, which is
+  // enough to forge a MAC byte by byte given a spare afternoon.
+  const a = Buffer.from(mac);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
   if (Number(expStr) < Date.now()) return null;
   return { orgId, contactHash };
 }

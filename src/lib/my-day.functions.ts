@@ -97,9 +97,20 @@ export const listMyDayFieldStaff = createServerFn({ method: "GET" })
 
 export const startVisit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ visitId: z.string().uuid() }).parse(d))
+  .inputValidator((d) =>
+    z
+      .object({
+        visitId: z.string().uuid(),
+        /** When the tech actually started, for a REPLAYED action. */
+        startedAt: z.string().datetime().optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase.rpc("start_visit", { _visit_id: data.visitId });
+    const { error } = await context.supabase.rpc("start_visit", {
+      _visit_id: data.visitId,
+      _started_at: data.startedAt ?? null,
+    });
     if (error) throw new Error(error.message);
     try {
       const { data: v } = await context.supabase
@@ -118,15 +129,35 @@ export const startVisit = createServerFn({ method: "POST" })
           summary: `Started the visit scheduled for ${v.scheduled_on}`,
         });
       }
-    } catch {}
+    } catch (e) {
+      // Best-effort: the visit already started (the rpc above throws on
+      // failure), and a broken activity log must not fail the tech's tap. But
+      // it was `catch {}` — so activity logging could stop working for every
+      // visit in every org and leave no trace anywhere to find it by.
+      console.warn("visit.started activity log failed", data.visitId, e);
+    }
     return { ok: true };
   });
 
 export const completeVisit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ visitId: z.string().uuid() }).parse(d))
+  .inputValidator((d) =>
+    z
+      .object({
+        visitId: z.string().uuid(),
+        // When the tech actually finished, for a REPLAYED action. Absent on the
+        // live path. The SQL decides whether to believe it — a phone clock is a
+        // hint, never the safeguard — and records the replay in
+        // completion_source either way.
+        completedAt: z.string().datetime().optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase.rpc("complete_visit", { _visit_id: data.visitId });
+    const { error } = await context.supabase.rpc("complete_visit", {
+      _visit_id: data.visitId,
+      _completed_at: data.completedAt ?? null,
+    });
     if (error) throw new Error(error.message);
     try {
       const { data: v } = await context.supabase
@@ -145,7 +176,9 @@ export const completeVisit = createServerFn({ method: "POST" })
           summary: `Completed the visit scheduled for ${v.scheduled_on}`,
         });
       }
-    } catch {}
+    } catch (e) {
+      console.warn("visit.completed activity log failed", data.visitId, e);
+    }
 
     // Fire visit-completed email (best-effort)
     try {
@@ -284,6 +317,8 @@ export const skipVisit = createServerFn({ method: "POST" })
             "other",
           ])
           .default("other"),
+        /** When the tech actually skipped, for a REPLAYED action. */
+        skippedAt: z.string().datetime().optional(),
       })
       .parse(d),
   )
@@ -292,6 +327,7 @@ export const skipVisit = createServerFn({ method: "POST" })
       _visit_id: data.visitId,
       _reason: data.reason,
       _code: data.code,
+      _skipped_at: data.skippedAt ?? null,
     });
     if (error) throw new Error(error.message);
     return { ok: true };

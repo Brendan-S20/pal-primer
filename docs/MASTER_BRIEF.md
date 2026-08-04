@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.21** · Released 2026-08-02 · Supersedes: v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.21k** · Released 2026-08-04 · Supersedes: v1.21j, v1.21i, v1.21h, v1.21g, v1.21f, v1.21e, v1.21d, v1.21c, v1.21b, v1.21, v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -14,6 +14,228 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 ---
 
 # 1. CHANGELOG
+
+> **On ordering.** Entries are not strictly newest-first — v1.21e (2026-08-02)
+> sits above v1.21f/g (2026-08-03) for historical reasons. Find an entry by its
+> version number, not its position. The two v1.21e duplicates were corrected on
+> 2026-08-03; see the renumbering notes in place.
+
+### v1.21k — 2026-08-04
+
+**Everything sellable, and the checks that were measuring nothing.**
+
+All six add-ons are live on the platform account (`acct_1U0RifQjJFmqXgZD`) —
+five recurring monthly, `developer-setup` one-time at $499 — with `status` and
+`is_active` both set. Both matter and are read by different things: `status`
+is the purchase gate, `is_active` is what `check-stripe-catalog.mjs` uses to
+decide a row is worth comparing. With all six inactive that gate **validated
+twelve plan prices and zero add-on prices while printing a green tick**. It now
+compares 18 prices across 3 plans and 6 add-ons, and the skip list no longer
+contains a single add-on.
+
+**Anyone could write a lead into any tenant's pipeline.** The `leads` INSERT
+policy was `WITH CHECK (true)`, on a table reached with the publishable key.
+`public_get_org_for_lead_form` is SECURITY DEFINER, granted to anon, and
+returns the org UUID for any slug — so the identifier needed to target a
+competitor was one documented lookup away. `organization_id = NULL` was also
+accepted, producing rows no tenant could see *or* delete. The obvious fix — an
+inline `EXISTS` against `organizations` — fails closed: that subquery runs as
+`anon`, which cannot read that table, so it rejected **every** submission
+including the real form's. Caught by probing as `anon` before committing; the
+rule now lives in `org_accepts_public_leads()`.
+
+**One Stripe API version, on both sides.** Thirteen `new Stripe(secret)` calls,
+none pinning `apiVersion`, while the live endpoint served `2026-07-29.dahlia`
+and the SDK typed every response against `2026-06-24.dahlia`. Closed by
+upgrading stripe-node 22.3.0 → 22.4.0, whose headline change *is* that version
+— not by casting, which Stripe's own doc comment warns costs you `@ts-ignore`
+"anywhere the types differ between API versions". The constant is typed off the
+SDK constructor, so upgrading without bumping it fails `tsc`; that fired for
+real during this upgrade.
+
+**Three surcharge money bugs.** A refund of a surcharged charge deducted
+base + surcharge from revenue that only ever held the base. `ON CONFLICT … DO
+NOTHING` meant the **second partial refund was silently discarded** — $100
+charge refunded $30 then $50 more left the ledger reading $30 for ever while
+$80 had left the bank. And the saved-card flip dropped `surchargeCents`, so
+every synchronously-settled card charge recorded `surcharge_cents = 0`, feeding
+the wrong base to the split. A fourth followed with the new webhook events: a
+refund that **fails after creation** never un-recorded itself.
+
+**Inbound Twilio was one platform-wide secret, in a URL.** The per-tenant
+signature branch could never run — `resolveOrgTwilioConfig` returns null for
+every org until 10DLC clears — so a single secret in the query string was the
+whole of inbound authentication, and the voice route echoed it back into TwiML,
+writing it into Twilio's stored call logs. Signature first now, secret last and
+logging when it is what let a request through.
+
+**Field-app data integrity.** One storage key per photo (both paths keyed on
+`Date.now()`, so any failure after the bytes landed orphaned them — up to five
+copies before dead-lettering). Replayed work now carries the time it was
+actually done, bounded server-side, and records
+`completion_source = 'tech_offline_replay'` instead of claiming `tech_live`.
+The nightly invoice jobs page instead of stopping at PostgREST's silent
+1000-row cap — which would have left every invoice past the first thousand
+unsent **for ever**, since each run repeats the same truncated page.
+
+**Two claims removed.** `customer_requested` was a real skip code the portal
+writes, missing from the TS list — so a client cancelling through the portal
+was always billed $0 and the settings screen that exists to set that policy
+showed no row to set. `billed_through_parent` promised consolidated franchise
+billing with no reader, no writer, and every row false; dropped rather than
+half-implemented.
+
+**Accepted, stated:** end-customer texts (visit reminders, on-my-way, overdue)
+send on HoundStack's shared toll-free number, which is registered for
+account-holder messaging. Per-client consent is opt-OUT only — no opt-IN is
+recorded anywhere. Accepted deliberately on 2026-08-04 to get the number
+verified; closing it needs per-client consent capture plus tenant subaccounts.
+
+---
+
+### v1.21j — 2026-08-04
+
+**Transactional email was 100% dead, and nothing in the product could see it.**
+
+360 of 360 rows in `net._http_response` were `500 {"error":"Server
+configuration error"}`. Not a bounce, not the Resend key, not the service role
+key. Six routes under `src/routes/email/` read the Supabase project URL from
+`import.meta.env.VITE_SUPABASE_URL`, which **Vite inlines at build time**. The
+variable was absent when the bundle was built, so each route compiled to
+`undefined`, tripped its own config guard, and nothing added to a runtime secret
+store afterwards could reach already-built code.
+
+Nothing else noticed because `src/integrations/supabase/client.ts` hard-codes
+its own copy of the same string. The app signed in and worked perfectly while
+every invoice, OTP, receipt and reminder went undelivered.
+
+The URL is not a secret — it ships to every browser next to the anon key. So
+`src/lib/supabase-url.ts` resolves it with a floor that can never be undefined:
+`SUPABASE_URL` → `VITE_SUPABASE_URL` → the literal. An explicit variable still
+wins so staging can point elsewhere; absent one, production is correct with
+**no configuration and no Lovable secret at all**. Empty string counts as
+absent. The `!supabaseUrl` half of five config guards is now unreachable and was
+removed rather than left asserting a condition that cannot occur.
+
+**Sign-out left a tech's queued work — and their photos of customer property —
+on the shared tablet.**
+
+`clearQueueForUser` was written, documented as "Called on sign-out", and called
+by nothing; `signOutAndClearDevice` swept localStorage only. The read cache had
+this defect and it was fixed (BUG-43); this store, holding strictly more
+sensitive data, was not fixed with it.
+
+Clearing alone would be data loss wearing a privacy fix's clothes, so the order
+is **flush → count what is left → ask → clear → sign out**. The flush is bounded
+at 15s for the whole queue (not 60s per action like an unattended replay); no
+flush is attempted with no network; and with work remaining and nobody to ask,
+sign-out is **refused** rather than silently destructive. Every call site's
+redirect is now conditional.
+
+**The demo org uses everything and pays nothing.**
+
+Demo Pet Waste Co carries the Enterprise plan, all six add-ons, and a franchise
+with two seeded locations, and is billed for none of it. Doing that naively
+would have put **$126/month of add-on revenue into platform MRR that nobody
+pays** — `addonMonthlyEquivalentCents` counts every active add-on row whenever
+the org is in a paying status, and Demo is `active` because it must never be
+dunned. BUG-11 was the same defect pointing the other way. So
+`organizations.is_comped`, guarded by `tg_orgs_protect_platform_columns` (an
+owner could otherwise vanish from revenue and keep every feature), read by
+`contributesRevenue()` in both MRR functions.
+
+Entitlements are deliberately untouched: Demo gets everything by being on
+`enterprise`, through the same code path a real Enterprise customer runs. Tenant
+counts and churn still include it — it IS an active organization; only the money
+was untrue. The franchise was built through `provision_franchise_location`
+rather than hand-written INSERTs, then seeded with `seed_demo_org`.
+
+---
+
+### v1.21i — 2026-08-03
+
+**The subscription catalog was built on the wrong Stripe account, and the check
+that exists to catch exactly that had never once run.**
+
+HoundStack runs two live Stripe accounts:
+
+| | account | role |
+|---|---|---|
+| Platform | `acct_1U0RifQjJFmqXgZD` | bills tenants for the software — `STRIPE_SECRET_KEY` |
+| Connect | `acct_1U0CVSQUHYdejlaV` | tenants charge their own clients; our 50 bps comes from here — `STRIPE_CONNECT_*` |
+
+The v1.21f catalog was created on the **Connect** account and `platform_plans`
+pointed at it. Subscription checkout runs on `STRIPE_SECRET_KEY` — the platform
+account — where those price ids do not exist, so every attempt failed with
+`No such price`. **No tenant could subscribe.** Nothing was charged wrongly: it
+failed closed, and zero orgs held a subscription id, a platform customer id or a
+connected account, so nothing needed migrating beyond the pointers.
+
+Stripe embeds the owning account in every **price** id, which is what made this
+checkable rather than a matter of belief — `price_1U0ERd**QUHYdejlaV**Br4C57JD`
+against `price_1U0Tkd**QjJFmqXgZD**7ZlwFfon`. It does **not** embed the account
+in **product** ids, a distinction that caught out the repair migration's own
+completeness assertion: it demanded the fragment in all five id columns and
+failed with `got 0` against correct data. It rolled back rather than half-apply,
+which is the wanted behaviour, but the check was the thing at fault. Products
+are pinned by literal id now.
+
+Rebuilt on the platform account — 3 products, 12 prices, identical amounts,
+intervals, nicknames, descriptions and metadata, each verified `livemode: true`.
+The Connect account's copies are archived so they cannot be mistaken for live
+later. **Verified rather than assumed this time:** `check-stripe-catalog.mjs` run
+offline against both sides reports *"compared 12 price(s) across 3 plan(s) and 0
+add-on(s), in LIVE mode … Stripe (LIVE) agrees with the catalog on every row it
+can be compared against."*
+
+**Why it survived:** that gate needs `STRIPE_SECRET_KEY` in GitHub Actions, a
+different store from Lovable. Every CI run has printed `NOT ARMED` and exited 2.
+A gate that is never armed is not a gate — and the write-up recorded the catalog
+as verified on the strength of a connection whose account was never checked
+against the key the app actually uses.
+
+### v1.21h — 2026-08-03
+
+**Pass-through processing fees, and the Connect webhook catching up to what it
+subscribes to.**
+
+*Pass-through fees.* The tenant chooses whether they absorb Stripe's cost of
+acceptance or hand it to the payer; absorbing stays the default. Four findings
+shaped it more than the arithmetic:
+
+* **We cannot bill "2.9% + 30¢".** On a direct charge the connected account is
+  the merchant of record and already pays Stripe that. Ours would double it.
+* **The 50 bps cannot ride along.** The networks cap a surcharge at the cost of
+  **card** acceptance; the platform fee is charged on ACH too, so it is a
+  software fee and including it would breach the cap.
+* **The tenant always absorbs something.** Visa's 3% cap against 2.9% + 30¢
+  binds under $300, and above it the fee lands on the surcharged total. On a $60
+  invoice they recover $1.80 and still eat 29¢. There is no break-even, and the
+  settings screen says so in dollars. *The header table asserting these numbers
+  was wrong on first writing — it computed the shortfall on the base rather than
+  the total; the test disagreed and was right.*
+* **Registration is the tenant's, not ours.** The networks require the MERCHANT
+  to give 30 days' notice, and on a direct charge that is each tenant
+  individually. Hence an attestation flag separate from the toggle. ACH needs
+  none of it — not a card, so no cap, no state ban, no notice.
+
+**The bug this avoided:** every reconcile path treats the charge amount as money
+paid toward the invoice. Once a charge is base + surcharge those diverge, and
+folding them together would over-credit invoices *and* report fee recovery as
+revenue everywhere revenue is summed. The split travels in PaymentIntent
+metadata; `payments.surcharge_cents` sits beside `amount_cents`.
+
+Live on the three off-session paths. The four customer-present paths still
+absorb — they need the two-step intent, because the rail is genuinely unknown
+when the intent is created.
+
+*Webhooks.* Three events were enabled on the live endpoint with no handler
+behind them; the endpoint returns 200 either way. `account.application.deauthorized`
+(a tenant disconnecting from their own Stripe dashboard left us believing they
+could still charge, forever) and `setup_intent.succeeded` (a card saved at
+Stripe but not here when the browser goes away mid-flow, so autopay silently
+never runs) are now handled. Both credential fallbacks in `hooks/stripe.ts` are
+gone — with two real accounts they were live hazards, not hardening.
 
 ### v1.21 — 2026-08-02
 
@@ -157,6 +379,339 @@ the real dashboard, so the sentence says which is which. And `field-app.astro`
 said its capture was "framed on properties that carry none", meaning gate codes;
 the seeder no longer writes those columns at all, so the framing is not
 protecting anything and the note said otherwise.
+
+### v1.21e — 2026-08-02
+
+**QA finding #4 re-verified — the Critical one, about the client portal.**
+
+The portal-authentication finding was marked fixed on 10 July with a long
+status note. That note is a month old, a great deal has landed since, and the
+thing it guards is a page where a client adds a card and switches on autopay.
+This cycle's recurring lesson is that a written claim is not a fact, so it was
+checked rather than read. **It held, three independent ways:**
+
+1. **Every `portal_*` RPC is revoked from `anon` and `authenticated` at the
+   database.** All 21 have ACLs of `postgres` and `service_role` only, so the
+   publishable key cannot reach one even holding a valid token. Checked against
+   `pg_proc.proacl` live, not against the migration that was supposed to do it.
+2. **All 22 server functions that call a `portal_*` RPC establish a session
+   first.** Checked mechanically, not by eye.
+3. **`portalContext` — the one that looks ungated — is correct.** It calls
+   `portal_get_client` only inside its `if (session)` branch; an unverified
+   caller gets the org name and masked contact channels and nothing else.
+
+`tests/every-portal-handler-checks-the-session.test.ts` pins (2). Twenty-two
+call sites with no mechanical enforcement is the exact shape this codebase keeps
+finding — nine tables where a server function was the only gate, three
+superseded RPCs still callable, a second `skip_visit` nothing had called since
+July. Handler twenty-three is the one to worry about. The test accepts either
+`requirePortalSession` (which throws) or `getPortalSession` (which branches),
+because a rule demanding only the first would have reported `portalContext` — a
+correct handler — as a hole.
+
+**Still outstanding on #4, unchanged:** the human browser click-through of the
+live OTP flow, the SMS path in particular, which needs `sms_from_number`
+configured. Nothing here replaces that.
+
+### v1.21g — 2026-08-03
+
+> **Renumbered** from v1.21f, which collided with the corrected numbering of the
+> Stripe live-mode entry below.
+
+**A platform transaction fee: 50 bps on charges over $10.**
+
+The direction is Jobber-shaped — a cut of payment volume on top of the
+subscription. `application_fee_amount` on every tenant→client charge, which on a
+DIRECT charge moves only the fee to the platform. The gross still settles into
+the tenant's own connected account, which is why one Stripe account remains
+correct: it holds subscription revenue and these fees, both ours, and no part of
+a tenant's or a homeowner's money.
+
+**The term, and the part of it that was a decision.** 50 bps of the FULL amount
+when the charge exceeds $10 — the $10 is a threshold, not a deduction, so a $100
+job is 50¢ and not 45¢. Strictly greater: $10.00 is free, $10.01 is 5¢. It lives
+in `src/lib/platform-fee.ts` as a constant and deliberately NOT an environment
+variable — a pricing term that could differ between staging and production is one
+that can ship wrong.
+
+**Ten call sites, which is the actual risk.** Three in `portal.functions.ts`,
+five in `invoices.functions.ts`, one in `signup.functions.ts`, one in the
+unattended nightly autopay run. Adding the fee to nine and missing the tenth does
+not error, does not warn, and fails no test — it silently collects nothing on
+that path, and `nightly.ts` is the likely miss because nobody watches it. This is
+the twenty-four-app-hosts shape and the BUG-21 shape for the third time, so:
+one helper, and a guard test that reads the source and refuses a connected-account
+charge built without it. It also asserts the fee is computed from the SAME
+variable the charge uses — a fee derived from gross rather than the amount left
+after credit was applied would collect, look fine, and be wrong.
+
+**The refund asymmetry, which Stripe does not solve for you.** The app never
+calls `refunds.create` — refunds are learned about only through the
+`charge.refunded` webhook, because tenants refund from their own Stripe
+dashboard. On a direct charge, a connected account's refund does NOT reverse the
+platform's application fee: without intervention the tenant is out the refunded
+amount AND our 50 bps on a transaction that was unwound. Decision: give it back
+proportionally.
+
+That reversal is idempotent by construction, and the construction is the point.
+`amount_refunded` is CUMULATIVE and `charge.refunded` fires once per refund, so
+reversing `proportion × fee` on each event over-refunds from the second partial
+refund onward. `feeReversalCents()` returns the TOTAL that should have been
+reversed by now; the handler subtracts what Stripe says already has been and
+sends only the difference. A replayed webhook computes zero. The call is isolated
+in its own try/catch — a failure to return our fee must never stop the reversal
+ledger from recording that the customer got their money back.
+
+16 tests, four mutations, four caught: dropping the fee from the nightly run,
+computing it from a different variable than the charge, silently removing the $10
+threshold, and treating the refund reversal as an increment rather than a target.
+
+**Deliberately NOT done, so nobody reads this as finished:**
+
+  * **Platform revenue reporting has no line for transaction fees.** MRR and
+    `platform_org_stats` count subscriptions and AI overage only, so total
+    platform revenue will understate by exactly this fee until a line is added.
+  * **Nothing discloses the fee to tenants.** No pricing-page copy, no terms, no
+    line in the app. Changing tenants' economics without telling them is not a
+    thing to ship, and the copy is a decision rather than an implementation.
+  * **No per-org waiver or grandfathering.** Every tenant pays it the moment this
+    deploys. Harmless today — only demo and test orgs exist — and precisely why
+    this is the cheap moment to do it.
+  * Disputes have the same asymmetry as refunds and are not reversed. A lost
+    chargeback leaves our fee collected.
+
+### v1.21f — 2026-08-03
+
+> **Renumbered.** This entry shipped labelled `v1.21e`, which was already taken
+> by the 2026-08-02 entry above about QA finding #4 — two different releases
+> carrying one version number, in the document whose whole job is to be the
+> single place the ledger cannot disagree with itself. Corrected on 2026-08-03
+> along with the entry below it, which moved v1.21f → v1.21g.
+
+**The Stripe catalog moved to live mode, and the cutover found a class of
+sandbox state nobody was tracking.**
+
+> **Superseded on 2026-08-03 — see v1.21i.** The catalog described below was
+> built on the **Connect** account (`acct_1U0CVSQUHYdejlaV`) rather than the
+> platform account (`acct_1U0RifQjJFmqXgZD`) that `STRIPE_SECRET_KEY` bills on.
+> Every claim below about *what* was created is accurate; the account it was
+> created in was not. Subscription checkout could not take a payment until
+> v1.21i moved it.
+
+Everything Stripe in this database was a sandbox id. That was correct while
+nothing could be sold. The owner switched to a live account, so it stopped being
+correct.
+
+**The live catalog now exists.** Three products and twelve prices in
+`acct_1U0CVSQUHYdejlaV`, each verified `livemode: true`, each matching
+`platform_plans` to the cent:
+
+| plan | monthly | annual | seat/mo | seat/yr |
+|---|---|---|---|---|
+| Launch | $79.00 | $790.00 | $10.00 | $100.00 |
+| Growth | $199.00 | $1,990.00 | $10.00 | $100.00 |
+| Scale | $449.00 | $4,490.00 | $10.00 | $100.00 |
+
+Annual is 10× monthly throughout — the two-months-free convention the sandbox
+already used. **The annual per-seat amount was a decision, not a lookup.** There
+is no `annual_seat_price_cents` column and `check-stripe-catalog.mjs`
+deliberately asserts that price's existence and interval but not its amount, so
+$100/yr exists in neither the database nor the checker's coverage. It is
+recorded in the migration header as a decision so the next reader does not
+mistake it for something that was verified.
+
+**The finding: four organizations held sandbox Stripe state, and two of them
+were lying about money.** `Demo Pet Waste Co` and one `Test Test` org carried
+`stripe_connect_charges_enabled = true` pointing at Connect accounts that exist
+only in sandbox — so the app believed those tenants could accept customer card
+payments. Under a live key they cannot, and the discovery would have landed at
+the moment a homeowner pressed Pay. Cleared, along with four sandbox customer
+ids, one sandbox subscription id, and the dead pointers on five retired plans
+and three coming-soon add-ons.
+
+`plan_status` was deliberately left alone. `PAID_STATUSES` in `src/lib/trial.ts`
+treats `'active'` as paid without consulting the subscription id, so the demo
+tenant still reads `paid` and the seven marketing screenshots are unchanged.
+Writing `'free'` would have switched off the demo's AI features as a side effect
+of a Stripe migration.
+
+**The migration was refused on its first attempt, correctly.**
+`tg_orgs_protect_platform_columns` guards exactly those columns and rolled the
+whole file back rather than letting it half-apply. The fix was the escape hatch
+the trigger itself documents and six earlier migrations already use —
+`set_config('app.allow_protected_org_write', '1', true)`, transaction-local so
+the guard is restored at commit. The migration also asserts its own completeness
+in a `DO` block: three plans repointed and **zero** surviving sandbox ids
+anywhere, or it raises and rolls back.
+
+**Verified in LIVE mode:** `compared 12 price(s) across 3 plan(s) and 0
+add-on(s), in LIVE mode — ✓ Stripe (LIVE) agrees with the catalog on every row
+it can be compared against.` Mutation-tested twice: flipping one price to
+`livemode: false` and setting Scale's annual price to the monthly amount both
+turn it red with the right message.
+
+**What this does NOT finish.** Six Stripe secrets still have to move together in
+Lovable, and the two webhook secrets fail *silently* — a stale signing secret is
+indistinguishable from an attacker to the verifier, so events are rejected as
+designed and nothing reports a problem. The catalog gate cannot see that. The
+table in the open-items section lists all six.
+
+### v1.21d — 2026-08-02
+
+**A gate on the Stripe cutover, and the news that the catalog currently
+reconciles.**
+
+`platform_plans` stores a price in cents AND a Stripe price id. The app renders
+the cents; Stripe charges the id. **Nothing had ever compared them.**
+
+That is survivable while both are created in one sitting. It stops being
+survivable at the live-mode cutover — the last external blocker before launch —
+where a fresh live catalog is built by hand and `platform_plans` is repointed.
+Every repointed id is a chance for the pricing page to say $79 while the card is
+charged $199. The worst version does not error at all: a live key holding test
+price ids fails for the first time at checkout, in front of the first paying
+customer.
+
+**Checked against the live test catalog: everything comparable reconciles.**
+The twelve prices behind Launch, Growth and Scale — base, annual, per-seat and
+annual per-seat — match the database to the cent, with the right intervals and
+the right products. No drift to fix. `scripts/check-stripe-catalog.mjs` exists
+to keep that true through the cutover, asserting mode, existence, amount,
+interval, product and completeness.
+
+**What it does not compare, printed on every run:** Enterprise (active, but a
+contact-us tier with no price ids) and all six add-ons (every one `coming_soon`
+and inactive, so the add-on half of the check currently measures nothing). Three
+add-ons do carry Stripe ids whose amounts happen to match, but they are skipped
+as unsellable and drift in them would not be noticed. The run names every
+skipped row, pass or fail, because a tick that hides its own coverage is the
+failure this codebase keeps finding.
+
+**The gate is NOT ARMED in CI.** There is no `STRIPE_SECRET_KEY` secret, so the
+script exits **2** — a third answer, distinct from 0 and 1, meaning "could not
+check". CI turns that into a `::warning::` saying the gate is unarmed rather
+than a green tick, because *could not check* and *checked and fine* are
+different statements and conflating them is how this project has been bitten
+before. **Adding `STRIPE_SECRET_KEY` to the repo secrets arms it** — worth doing
+before the cutover, not after.
+
+`tests/stripe-charges-what-the-catalog-says.test.ts` — 15 tests covering the
+failures that cost money (amount drift, a live price under a test key and the
+reverse, a price borrowed from another product, an annual slot holding a monthly
+price, an archived id, an unresolvable id) and the ones it deliberately does not
+flag (five retired SKUs still holding stale ids, the contact-us tier, a missing
+annual pair, and the annual seat price being 10× the monthly rather than 12×
+because the annual plans carry a two-months-free discount). Five mutations
+checked, five caught — including the noise mutation, where making the check flag
+inactive rows fails the suite.
+
+### v1.21c — 2026-08-02
+
+**The two curls nobody had run. The CORS work was right; the host was wrong.**
+
+§3 item 6 listed a preflight and a POST as "only you can confirm, because this
+sandbox cannot". They were run, and the documented host **fails**:
+
+```
+OPTIONS https://app.houndstack.com/_serverFn/getMyDay
+  Origin: capacitor://localhost
+→ 307  location: https://www.app.houndstack.com/_serverFn/getMyDay
+
+…the same request to www.app.houndstack.com
+→ 204  access-control-allow-origin: capacitor://localhost
+       access-control-expose-headers: x-tss-serialized, x-tss-raw
+```
+
+**A CORS preflight may not follow a redirect** — the Fetch spec makes it a
+network error — so the native app pointed at `app.houndstack.com` cannot call a
+single server function. Everything BUG-62 and the CORS work put in place is
+present and correct on the host that actually answers.
+
+The same is true of every server-to-server caller: outbound senders do not
+follow redirects on POST, so a callback URL on the bare host is delivered to a
+307 and dropped. `HoundStack_ClaudeCode_Tasks.md` already recorded this in a
+note — and the code was never made to match it, which is how a written finding
+becomes a bug that is technically already known.
+
+**Twenty-four places in `src/` wrote an app host by hand, and they disagreed.**
+Portal links, unsubscribe URLs, invoice pay links and the `og:url` canonical
+used the bare host; invite emails, the concerns link, the lead-form origin and
+both Twilio hooks used the www one. Which one a URL got depended on which file
+built it. `src/lib/app-origin.ts` is now the only place that knows, reading
+`APP_ORIGIN` → `PUBLIC_APP_ORIGIN` → `APP_URL` (all three, because all three
+already existed and one of them feeds Twilio signature validation) and
+defaulting to the host that answers. `scoop.ts`'s `APP_URL` constant — imported
+by nothing, naming the wrong host — is gone.
+
+`scripts/check-app-origin.mjs` runs the probe on every CI run: the origin must
+not bounce to another host, the preflight must answer 2xx for
+`capacitor://localhost`, and `expose-headers` must carry both `x-tss-*` names.
+A manual step nobody remembered is now a check that cannot be forgotten.
+
+**Two bugs in my own work, both found by running it:**
+
+1. The first version of the script failed the *correct* host, because
+   `www.app.houndstack.com/` answers `307 → /auth` for a signed-out visitor —
+   ordinary routing. It now distinguishes a cross-host bounce from a same-host
+   redirect. Failing on correct behaviour is how a check gets switched off.
+2. The guard test's comment-stripper deleted from the first `//` to end of line
+   — which ate the `//` inside `"https://app.houndstack.com"`, so the one string
+   it exists to forbid was the one string it could never see. A mutation putting
+   the hardcoded host back passed cleanly. Fixed with a string-aware scanner;
+   four mutations now checked, four caught.
+
+**§3 item 0 was stale and is closed with no work.** It said `SITE.url`,
+`robots.txt`, Plausible's `data-domain` and the README disagreed about the
+marketing hostname. Checked: all four say `www.houndstack.com`, and the apex
+answers `308` to it. A previous session fixed it and the ledger was never
+updated — the sixth time this cycle a brief line has been treated as a fact.
+
+### v1.21b — 2026-08-02
+
+**IMP-2b — the baseline said it had been verified per object. It had not.**
+
+v1.21 closed one instance of a hole and named the hole. This closes the hole.
+
+`migrations-baseline.json` exempts 82 migration files from the name comparison,
+and its comment claimed each had been "verified individually by checking that
+the objects they create exist". That claim was **not true**, and the check had
+no way to notice: `20260703051513` defines six functions, five of which landed.
+"Was this file applied?" has no answer that separates those cases, so the honest
+answer — *mostly* — was recorded as a pass. The comment is now corrected in
+place rather than quietly rewritten.
+
+`scripts/check-baseline-objects.mjs` replays every `CREATE` and `DROP` across
+all 231 migrations in filename and document order, and asserts every surviving
+object exists in the live catalog. **567 objects — 27 enum types, 86
+tables/views, 294 added columns, 160 functions — all present.** Wired into CI
+beside the two existing directions (repo→ledger, live→declared), advisory on
+pull requests and a hard gate on `main`, and failing loudly when
+`SUPABASE_DB_URL` is absent rather than skipping.
+
+**Two bugs in the checker, both found by running it rather than reading it:**
+
+1. It reported a missing table called `as`, parsed out of the string literal
+   `command_tag IN ('CREATE TABLE', 'CREATE TABLE AS')` inside an event-trigger
+   body. One bogus finding is enough to get a check waved through — §4 is about
+   exactly that.
+2. It applied every `CREATE` in a file before every `DROP`. Migrations routinely
+   write `DROP FUNCTION IF EXISTS f(uuid); CREATE OR REPLACE FUNCTION
+   f(_token uuid) ...` to change a signature, so the drop won and **ten live
+   functions fell out of the checked set**. That is the quieter failure: a pass
+   over less than the check claims to cover — the same shape as the bug it was
+   written to catch.
+
+`tests/baseline-objects-replay.test.ts` — 21 tests — pins the replay itself:
+literals and comments create no expectations, document order decides
+create-vs-drop, multi-column `ALTER` catches every column, renames move rather
+than duplicate, and the whole-repo replay is non-empty and still excludes what
+this repo deliberately dropped. Four mutations checked, four caught.
+
+**What it does NOT cover, said plainly:** policies, triggers, indexes and
+grants. Their names are frequently rewritten in place and replaying their
+lifecycle would be guesswork; RLS coverage is asserted directly elsewhere and
+permission parity has its own test. A check that quietly covers less than its
+name implies is how "verified" came to mean "assumed" the first time.
 
 ### v1.20 — 2026-08-01
 
@@ -2255,6 +2810,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | IMP-5 | 🟢 Fixed | ⚪ | Repo housekeeping — ~20 stale `as any` casts removed across 14 files, each verified against the regenerated types first and probed to confirm a REAL type flowed rather than degrading to `any`. That probe found a live dead branch: `StaffInvoicePayForm` tested `payment.status === "paid"`, a value the `payment_status` enum has never had. See below | v1.5 |
 | IMP-6 | 🟢 Fixed | 🟡 | **Unblocked and done.** Payment test coverage: 49 tests across both money webhooks, which had **zero** between them. `/api/public/hooks/stripe` — signature verification (no signature, wrong secret, valid signature over a different body, an hour-stale replay), fail-closed when unconfigured, both pay paths, the C1 cross-tenant guard on each, the source allowlist, the atomic paid-claim under concurrency, and the whole reversal ladder (a real chargeback bills the franchise and keys the adjustment on the DISPUTE id; an inquiry bills nobody; a win restores the payment unless a second dispute is still open). `/api/public/hooks/platform-stripe` — the only writer of `plan_status`: an `incomplete` subscription cannot suspend a live org, a stale payment attempt's `deleted` cannot cancel a real plan or its add-ons, an unmapped customer writes nothing, `unpaid`→past_due not canceled, a metadata plan id is adopted only if the catalog has it, and a redelivery cannot re-cancel add-ons. All 23 mutations caught; the two that initially passed are written up in the v1.15 changelog. Fake service-role client shared at `tests/helpers/fake-supabase.ts` rather than copied | v1.15 |
 | IMP-7 | 🟢 Fixed | 🟡 | Supabase types regenerated. They had been stale since before this cycle and IMP-9's table drop made them wrong, not just incomplete. Four `any`/structural casts removed as a result | v1.3 |
+| IMP-2b | 🟢 Fixed | 🔴 | **New.** The migration baseline was a per-FILE exemption claiming each file's objects had been confirmed present. It had not been, and could not have been at that granularity: `seed_demo_org` is defined in two baselined files and existed in neither copy live for a month. `scripts/check-baseline-objects.mjs` replays every CREATE and DROP across all 231 migrations and asserts each surviving object is in the live catalog — **567 objects, all present**. Two bugs in the checker itself were found by running it: a string literal `'CREATE TABLE AS'` parsed as a table, and applying all CREATEs before all DROPs, which silently dropped ten live functions from the checked set | v1.21 |
 | IMP-11 | 🟢 Fixed | 🟠 | Dead-machinery detector — a hard CI gate for the failure this project keeps producing: something built, granted and correct that nothing ever calls. Turned on itself in v1.6 and found one rule that could not fire, one counting comments as callers, and one that would have failed CI on correct code; all three rewritten and mutation-proven in v1.7. **v1.8 adds a fourth rule and fixes a blind spot the first three shared:** rule 1 keys on a function's NAME, so two signatures of one name collapse and a dead overload is vouched for by the live one's callers — which is how a second `skip_visit` stayed granted and uncalled for a month (BUG-50). Drops and creates are now tracked per signature, and rule 4 flags any name with more than one live signature. Its first run reported five findings, all five false, all caused by its own type normalization — recorded in the header as the general rule. Green with 17 exceptions, no open known gaps. One residual: the cron schedules in rule 2's baseline are asserted by a human and checked by nothing | v1.5 |
 | IMP-13 | 🟢 Fixed | 🔴 | **New.** **Eight protections could be switched off with the full suite green** — the most consequential finding of the QA pass, because it means everything else in this ledger was less verified than it read. At `vitest run` 752 passed, a mutation could: delete the CSRF middleware from `requestMiddleware`, leaving the app with no CSRF protection at all; replace the nightly cron's `if (!auth.ok) return cronUnauthorized(...)` with `void auth`, opening autopay charges and invoice generation to anyone who can POST; swap `encryptSecret(token)` for `token` at the accounting write site, undoing IMP-1; comment out the `CREATE TRIGGER` for `tg_orgs_protect_platform_columns`, detaching the guard while leaving the body every test reads; `ALTER TABLE payments DISABLE ROW LEVEL SECURITY`, invisible to every policy-text scan; change the royalty divisor from 100.0 to 10.0 and invert the settlement balance signs; widen `generate_franchise_settlements` to `is_org_member`; and redefine `is_org_member` in a later migration without its caller guard, because `permission-parity.test.ts` read one hard-coded filename. Every one was a guard whose EXISTENCE was checked while nothing checked it was CONNECTED. New `tests/the-wiring-is-connected.test.ts` asserts only wiring; the weak tests are repaired in place. Also closed two discovery holes: vitest never ran `.test.tsx` files, and an `exclude:` entry could silently drop real ones. Twelve mutations, all now caught | v1.14 |
 | IMP-12 | 🟢 Fixed | 🟠 | **New.** The other direction of schema drift. IMP-2's `check-migrations.mjs` compares migration files to Supabase's applied ledger — it answers "did production run everything the repo has", and cannot answer "does production have something the repo never wrote". That is the direction that stays invisible, because nothing fails until an environment is rebuilt and an object simply is not there; three functions had drifted that way undetected (BUG-75). `check-schema-declared.mjs` sweeps every function in `public` against every migration, wired into CI beside its counterpart. A GRANT mentioning a name does **not** count as a declaration — that is precisely how `email_queue_wake` hid, since a migration granted EXECUTE on a function no migration created. The allow-list is for platform-owned objects only and is currently empty; the check also fails on an allowance naming a function that no longer exists, so it cannot rot into a blanket exemption. Three mutations run, all caught. **Known gap:** it covers functions, not tables, policies, indexes or triggers | v1.12 |
@@ -2281,7 +2837,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | MKT-4 | 🟢 Fixed | 🔴 | Contact form wired to the real Formspree endpoint, with `_subject` and a `form` field so the two forms are distinguishable in one inbox | v1.2 |
 | MKT-5 | 🟢 Closed | 🟠 | **The ledger was wrong, not the site.** This entry said `/privacy` and `/terms` were drafts pending review. Checked in v1.14 against both the source and the built HTML: neither page carries a draft notice and neither ever did. They are complete documents, dated, ported from the app's canonical copies at `/legal/privacy` and `/legal/terms`. Owner decision 2026-08-01: publish as they stand, continue formal review after payments begin. There was nothing to remove — the entry was the error, which is the third time this cycle a ledger line has been treated as a fact about the product | v1.14 |
 | MKT-6 | 🟠 Part-built | 🟡 | SEO gaps closed: a double-escaped title, TWO identical FAQPage blocks on two pages, four separate Organization nodes and two contradicting SoftwareApplication entities, all now single-`@id`. Offers say PreOrder, not InStock — nothing is buyable yet. **Analytics needs you:** Plausible is already installed and firing events; registering the domain and creating goals needs your account | v1.5 |
-| MKT-7 | 🔵 Open | 🟡 | Real product screenshots | v1.0 |
+| MKT-7 | 🟢 Fixed | 🟡 | **Done.** Seven real screenshots, recaptured together against the reseeded demo org and each wired to a page — `01` home, `02` scheduling-and-routes, `03` the features hub, `04` billing, `05` reporting, `06`+`07` field-app. `04` and `05` replace MockFrame recreations; `components/Screenshot.astro` frames them the way MockFrame frames a recreation. The blocker was never capture technique: /reports read COMPLETION RATE 1% and the dashboard $0.00, which is why `01` and `05` had never been committed | v1.21 |
 | MKT-8 | ⚪ Deferred | ⚪ | `/customers` stub | v1.0 |
 | MKT-9 | 🟢 Fixed | 🟡 | Annual billing was already built on BOTH sides — the app has the interval toggle and switch confirmation, the site has the monthly/yearly switch. What no ledger entry caught is that they disagreed on the number; see BUG-45 | v1.7 |
 
@@ -2455,19 +3011,50 @@ rather than the following January.
    an engineering one.
 
 
-0. **Which hostname actually serves the marketing site?** `SITE.url` is
-   `www.houndstack.com`, so every canonical URL published is the www form —
-   while `robots.txt`, Plausible's `data-domain` and the README's deploy note
-   all say the apex `houndstack.com`. Canonicals pointing at a host that
-   redirects, or analytics keyed to a domain that never loads, are both silent
-   failures. One line to fix once you say which is authoritative.
+0. ~~**Which hostname actually serves the marketing site?**~~ — ✅ **already
+   resolved; this entry was stale.** Checked on 2026-08-02 against the repo and
+   the live edge: `astro.config.mjs` (`SITE.url`), `public/robots.txt` (both the
+   `Sitemap:` and `Host:` lines), the Plausible `data-domain` in
+   `BaseLayout.astro` and the README deploy note **all say `www.houndstack.com`**,
+   and the apex answers `308 → https://www.houndstack.com/`. They agree, and
+   they agree with reality. A previous session fixed it and the ledger was never
+   updated — the sixth time this cycle a brief line has been treated as a fact
+   about the product. Nothing to do.
 
 
-1. ~~**Authorize Stripe**~~ — ✅ authorized 2026-08-01. IMP-6 is done. BUILD-2
-   and BUILD-8 are now ordinary engineering work, not blocked. Everything so far
-   has been done in **test mode** at your instruction; going live still needs a
-   live-mode catalog and `platform_plans` pointed at the live price ids, which
-   is a deliberate switch and not something to do incidentally.
+1. ~~**Authorize Stripe**~~ — ✅ authorized 2026-08-01. ~~**Build the live
+   catalog**~~ — ✅ **done 2026-08-03, on the wrong account, then moved. See
+   v1.21i.** Three live products and twelve live prices now exist in
+   `acct_1U0RifQjJFmqXgZD` (the PLATFORM account), `platform_plans` points at
+   them, every sandbox id in the database is gone, and the checker reconciles in
+   LIVE mode — run and quoted, not assumed.
+
+   ~~**Six secrets have to move together**~~ — ✅ **swapped and published
+   2026-08-03.** Both webhook endpoints exist and are correctly scoped, verified
+   against the live accounts:
+
+   | endpoint | account | scope | secret |
+   |---|---|---|---|
+   | `/api/public/hooks/platform-stripe` | `acct_1U0RifQjJFmqXgZD` | `application: null` → events on your account | `PLATFORM_STRIPE_WEBHOOK_SECRET` |
+   | `/api/public/hooks/stripe` | `acct_1U0CVSQUHYdejlaV` | `application: ca_…` → events on connected accounts | `STRIPE_CONNECT_WEBHOOK_SECRET` |
+
+   That scope field is the one worth re-checking after any change. A Connect
+   endpoint created as an account endpoint by mistake makes `event.account`
+   arrive empty, `accountMatches()` reject everything, and **every tenant
+   payment silently ignored while still returning 200** — the only failure here
+   that no dashboard reports. A wrong *signing secret*, by contrast, returns 401
+   and does show up as failed deliveries on Stripe's side.
+
+   **Still open: `STRIPE_SECRET_KEY` in the GitHub Actions secrets.** Reported
+   set on 2026-08-03; the run at 21:56Z still logged an empty value, which is
+   consistent with the secret being saved after that run started. The workflow
+   wiring is correct (`${{ secrets.STRIPE_SECRET_KEY }}`, the same shape as
+   `SUPABASE_DB_URL`, which resolves). **Confirm on the next run that the step no
+   longer prints `NOT ARMED`** — until it does, the gate is not protecting
+   anything, which is precisely how v1.21f's catalog reached the ledger recorded
+   as verified. A restricted key with read on Prices and nothing else is enough:
+   the script makes exactly one call, `GET /v1/prices`, and `keyIsLive` already
+   accepts `rk_live_…`.
 2. ~~**Formspree contact form ID**~~ — ✅ supplied and wired (MKT-4 closed).
 3. **`SUPABASE_DB_URL` secret** — ✅ added, and verified working end-to-end in CI.
 4. ~~**Q-13**~~ — ✅ answered: every add-on available at launch, after QA.
@@ -2475,18 +3062,33 @@ rather than the following January.
 
 **Two things only you can confirm, because this sandbox cannot:**
 
-6. **Two curls against the real deployment**, once the CSRF and CORS work is
-   live. The preflight:
-   `curl -i -X OPTIONS https://app.houndstack.com/_serverFn/getMyDay -H
-   'Origin: capacitor://localhost' -H 'Access-Control-Request-Method: POST'`
-   should answer 204 with `access-control-allow-origin: capacitor://localhost`.
-   And the ACTUAL response, which is the one BUG-62 was hiding in — the same
-   URL as a POST must come back carrying
-   `access-control-expose-headers: x-tss-serialized, x-tss-raw`. Without that
-   header the app receives every reply successfully and decodes all of them
-   wrongly, with nothing anywhere reporting a problem. The rules are unit-tested
-   and the middleware is wired, but nothing here has seen a response cross a
-   real edge.
+6. ~~**Two curls against the real deployment**~~ — ✅ **run on 2026-08-02, and
+   they found a live defect.** The CORS and CSRF work is correct. **The host is
+   wrong.**
+
+   `app.houndstack.com` does not serve this app — it `307`-redirects to
+   `www.app.houndstack.com`, a blanket "redirect to www" rule at the CDN that
+   caught the `app` subdomain along with the apex. **A CORS preflight may not
+   follow a redirect**; the Fetch spec makes it a network error. So the native
+   app pointed at the documented host cannot call a single server function.
+   The identical preflight against `www.app.houndstack.com` answers `204` with
+   `access-control-allow-origin: capacitor://localhost` and
+   `access-control-expose-headers: x-tss-serialized, x-tss-raw` — the header
+   BUG-62 was hiding in, present and correct.
+
+   The same applies to every server-to-server caller: outbound webhook senders
+   do not follow redirects on POST, so a callback URL on the bare host is
+   delivered to a 307 and dropped. `HoundStack_ClaudeCode_Tasks.md` already
+   carried a note saying exactly this, and the code was never made to match it.
+
+   ~~**The remaining fix is yours and it is at the CDN**~~ — ✅ **done the same
+   day, and the answer reversed under us.** The www rule was removed, so
+   `app.houndstack.com` now answers the preflight `204` directly with
+   `access-control-allow-origin: capacitor://localhost` and the
+   `x-tss-*` expose-headers, while `www.app.houndstack.com` is now the one that
+   `302`s. `src/lib/app-origin.ts` defaults to the bare host and
+   `scripts/check-app-origin.mjs` probes it on every CI run — it is what caught
+   the flip, hours after the previous state had been written down as fact.
 
 7. **The native app on a real device with no signal.** Offline boot was proved
    in headless Chromium against static files with every off-origin request
@@ -2538,4 +3140,19 @@ credential the product stores.
 
 `CREDENTIAL_ENCRYPTION_KEY` is still required in production before any
 accounting connection or Twilio subaccount is saved.
+
+**Checked live on 2026-08-02, and the answer is "nothing to check yet":**
+`accounting_connections` and `org_twilio_credentials` hold **zero rows**. So
+there is no plaintext credential sitting in the database — and equally, nothing
+has ever exercised the write path in production, so the key being present has
+never been demonstrated. A checker for plaintext credentials was considered and
+**deliberately not written**: against zero rows it would return a green tick
+having compared nothing, which is the failure mode this cycle keeps finding
+rather than a guard against it. Worth adding the moment the first connection is
+saved.
+
+The module's behaviour is already correct either way: `encryptSecret` throws
+`MissingEncryptionKeyError` rather than silently storing plaintext, and reads
+still serve legacy plaintext, so a missing key is a loud failure at the moment
+someone tries to connect QuickBooks — not a silent downgrade.
 

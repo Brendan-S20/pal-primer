@@ -1,5 +1,5 @@
 // Public JSON endpoint for the external marketing site to submit contact leads.
-// POST https://app.houndstack.com/api/public/leads
+// POST https://www.app.houndstack.com/api/public/leads
 // CORS: allow all origins (the marketing site is not deployed yet). Lock down
 // later by echoing the request Origin against an allow-list.
 import { createFileRoute } from "@tanstack/react-router";

@@ -11,7 +11,7 @@ import {
   Sun,
   Users,
 } from "lucide-react";
-import { signOutAndClearDevice } from "@/lib/offline/read-cache";
+import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
 import { canAccess, useMyRole } from "@/hooks/useMyRole";
 import { useTabletTier } from "@/hooks/useTabletTier";
 import { NAV_GROUPS, type NavItem } from "@/components/AppSidebar";
@@ -56,6 +56,8 @@ export function MobileTabBar() {
   const search = useRouterState({ select: (r) => r.location.search }) as { date?: string };
   const [createOpen, setCreateOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  // Above the `!role` early return: hooks cannot be conditional.
+  const { signOut, dialog: signOutDialog } = useOfflineSignOut();
 
   // No role yet (loading, or a platform admin without a tenant org): no bar.
   if (!role) return null;
@@ -74,9 +76,12 @@ export function MobileTabBar() {
 
   const handleSignOut = async () => {
     // Wipes this device's persisted day along with the session: the next tech
-    // to unlock a shared tablet must not inherit the previous one's route.
-    await signOutAndClearDevice();
-    window.location.href = "/auth";
+    // to unlock a shared tablet must not inherit the previous one's route, or
+    // their queued jobs, or their photos of customers' yards. Anything still
+    // unsynced is pushed first and only discarded with a yes — which is also
+    // why the redirect is conditional. Saying "stay signed in" and being signed
+    // out anyway would be the worst of both.
+    if (await signOut()) window.location.href = "/auth";
   };
 
   const focusMyDaySchedule = () => {
@@ -235,6 +240,7 @@ export function MobileTabBar() {
           </nav>
         </SheetContent>
       </Sheet>
+      {signOutDialog}
     </>
   );
 }

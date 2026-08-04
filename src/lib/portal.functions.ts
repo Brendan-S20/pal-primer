@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { liveServiceOrFilter, todayLocalISO } from "@/lib/subscription-form";
+import { appUrl } from "@/lib/app-origin";
+import { platformFeeCents } from "@/lib/platform-fee";
 
 // portal-auth.server.ts imports server-only @tanstack/react-start/server, which
 // is denied in the client bundle. This file (a *.functions.ts) is reachable
@@ -675,9 +677,23 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
     if (!liveCustomerId) {
       throw new Error("Your saved card is no longer on file. Please add a payment method again.");
     }
+    // Saved card: the payment method is known before the charge is built, so
+    // the rail and funding type are too and no second step is needed. The
+    // platform fee stays on the BASE — we do not take 50 bps of a fee the
+    // tenant is recovering from Stripe.
+    const { orgFeeConfig, quoteForPaymentMethodId, surchargeMetadata } = await import(
+      "@/lib/processing-fee.server"
+    );
+    const quote = await quoteForPaymentMethodId(stripe, {
+      paymentMethodId: c.default_payment_method_id,
+      stripeAccount,
+      baseCents: dueCents,
+      config: await orgFeeConfig(supabaseAdmin, invoice.organization_id),
+    });
     try {
       const pi = await stripe.paymentIntents.create({
-        amount: dueCents,
+        amount: quote.totalCents,
+        application_fee_amount: platformFeeCents(dueCents),
         currency: invoice.currency ?? "usd",
         customer: c.stripe_customer_id,
         payment_method: c.default_payment_method_id,
@@ -687,6 +703,7 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
           invoice_id: invoice.id,
           organization_id: invoice.organization_id,
           source: "portal_saved_card",
+          ...surchargeMetadata(quote),
         },
       }, {
         // Prevent a double-tap (or a retried request) from charging twice.
@@ -694,7 +711,10 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
         // mints fresh; the payment-method id is in the key because after a
         // decline the client may save a NEW card the same day, and replaying
         // the old key with different params would be an idempotency_error.
-        idempotencyKey: `portal-saved-card-${invoice.id}-${dueCents}-${c.default_payment_method_id}`,
+        // It is the CHARGED total, not the invoice base: a tenant who switches
+        // pass-through on between two attempts changes the amount, and reusing
+        // the key would be exactly that idempotency_error.
+        idempotencyKey: `portal-saved-card-${invoice.id}-${quote.totalCents}-${c.default_payment_method_id}`,
         stripeAccount,
       });
       await supabaseAdmin.from("invoices").update({
@@ -826,7 +846,7 @@ async function notifyOfficeOfConcern(
     `<p><strong>New client concern:</strong> ${label}</p>` +
     `<p>From: ${client.display_name}</p>` +
     (message ? `<p>${message.replace(/</g, "&lt;")}</p>` : "") +
-    `<p><a href="https://www.app.houndstack.com/concerns">Open the Concerns inbox</a></p>`;
+    `<p><a href="${appUrl("/concerns")}">Open the Concerns inbox</a></p>`;
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -1069,6 +1089,13 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
           // but the client paying it themselves consents to saving theirs.
           const updateParams = {
             amount: dueCents,
+            // application_fee_amount travels WITH the amount. It was set once at
+            // create time from the then-current due amount and never updated,
+            // so applying client credit shrank the charge and left the fee
+            // where it was: $150 of credit on a $200 invoice charged $50 with
+            // a $1.00 fee — 2%, not 0.5% — out of the tenant's settlement. At
+            // $1.00 due the fee equalled the whole charge.
+            application_fee_amount: platformFeeCents(dueCents),
             currency,
             metadata,
             setup_future_usage: "off_session" as const,
@@ -1097,6 +1124,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     if (!pi) {
       const createParams = {
         amount: dueCents,
+        application_fee_amount: platformFeeCents(dueCents),
         currency,
         customer: customerId,
         setup_future_usage: "off_session" as const,

@@ -12,11 +12,33 @@ for these paths.
 
 | Secret | Purpose |
 |--------|---------|
-| `STRIPE_SECRET_KEY` / `PLATFORM_STRIPE_WEBHOOK_SECRET` | Platform SaaS billing (bucket A — per-employee plans) |
-| `STRIPE_CONNECT_SECRET_KEY` / `STRIPE_CONNECT_PUBLISHABLE_KEY` / `STRIPE_CONNECT_WEBHOOK_SECRET` | Connect platform (bucket B — tenant→client charges) |
+| `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` / `PLATFORM_STRIPE_WEBHOOK_SECRET` | Platform SaaS billing (bucket A — per-employee plans). **All three from `acct_1U0RifQjJFmqXgZD`.** |
+| `STRIPE_CONNECT_SECRET_KEY` / `STRIPE_CONNECT_PUBLISHABLE_KEY` / `STRIPE_CONNECT_WEBHOOK_SECRET` | Connect platform (bucket B — tenant→client charges). **All three from `acct_1U0CVSQUHYdejlaV`.** |
+| `CREDENTIAL_ENCRYPTION_KEY` | AES-256-GCM at rest for QuickBooks/Xero OAuth tokens. `openssl rand -base64 32`. Absent ⇒ storing one hard-fails. **Only the two accounting modules call `encryptSecret()`** — Twilio and BYO-AI keys are not encrypted at rest today, whatever `secret-encryption.server.ts`'s header implies. |
+| `AUTH_HOOK_SECRET` | Supabase auth hook verification |
+| `RESEND_WEBHOOK_SECRET` | Resend delivery/bounce callbacks |
+| `SERVICE_ROLE_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`) | Service-role DB access; also accepted as cron authorization |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Web push. Unset ⇒ web push silently unavailable. |
+| `APNS_AUTH_KEY` / `APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_TOPIC` / `APNS_ENVIRONMENT` / `FCM_SERVER_KEY` | Native iOS / Android push |
+| `GOOGLE_PLACES_API_KEY` | Address autocomplete on signup and property forms |
+| `QBO_CLIENT_ID` / `QBO_CLIENT_SECRET` / `QBO_ENVIRONMENT` / `XERO_CLIENT_ID` / `XERO_CLIENT_SECRET` | QuickBooks / Xero OAuth |
+
+**Deliberately unset — setting these breaks things quietly:**
+
+| Secret | Why not |
+|--------|---------|
+| `PLATFORM_STRIPE_SECRET_KEY` / `PLATFORM_STRIPE_PUBLISHABLE_KEY` | Honoured by only three of the five subscription modules (`platform-billing`, `seat-sync`, `ai-overage-billing`); `billing.functions.ts` and `platform-addons.functions.ts` read `STRIPE_SECRET_KEY` only. Set it to anything different and subscription billing splits across two accounts with nothing reporting it. |
+| `STRIPE_WEBHOOK_SECRET` | Legacy fallback, removed from `hooks/stripe.ts`. |
+
+**GitHub Actions secrets (a separate store from Lovable):** `SUPABASE_DB_URL`
+and `STRIPE_SECRET_KEY`. The latter arms `check-stripe-catalog.mjs`; a restricted
+key with **read on Prices only** is sufficient — one call, `GET /v1/prices` — and
+`keyIsLive` accepts `rk_live_…`. Until it resolves, the step prints `NOT ARMED`
+and exits 2, and the gate is protecting nothing.
 | `PLATFORM_SMS_FROM_NUMBER` | Platform Twilio number for OTP + automated notifications |
 | `LOVABLE_API_KEY` / `TWILIO_API_KEY` | Platform Twilio via the connector gateway |
-| `TWILIO_INBOUND_SECRET` | Shared inbound-webhook secret for platform-managed numbers |
+| `TWILIO_AUTH_TOKEN` | **Set this.** Platform Twilio Auth Token. Verifies the signature Twilio puts on every inbound webhook, which is the mechanism built for this job. While it is unset, inbound SMS and voice authenticate on `TWILIO_INBOUND_SECRET` alone. |
+| `TWILIO_INBOUND_SECRET` | Fallback inbound-webhook secret, in the query string. Platform-wide: one value authenticates every tenant, and after it passes the org is taken from the attacker-supplied `To` field. It appears in every access, proxy and Twilio log it passes through. Kept only so inbound SMS does not go dark before `TWILIO_AUTH_TOKEN` is set; it logs a warning naming itself whenever it is what let a request through. |
 | `RESEND_API_KEY` | All transactional email (OTP email, invoices, review-ask fallback, notifications) |
 | `ANTHROPIC_API_KEY` | Optional platform-managed AI fallback (unset ⇒ AI is pure BYOK) |
 | `CRON_SECRET` | Authorizes the nightly cron (**required** for autopay — see §5) |
@@ -28,9 +50,58 @@ for these paths.
 
 ## 2. Webhooks to register
 
-- **Stripe Connect** → `POST /api/public/hooks/stripe`, secret `STRIPE_CONNECT_WEBHOOK_SECRET`. Events: `account.updated`, `checkout.session.completed`, `payment_intent.succeeded`, `payment_intent.payment_failed`.
-- **Platform SaaS Stripe** → `POST /api/public/hooks/platform-stripe`, secret `PLATFORM_STRIPE_WEBHOOK_SECRET`. Events: invoice.* + customer.subscription.*.
-- **Twilio (per BYOK tenant)** → the tenant sets their number's "A message comes in" / "A call comes in" to `POST /api/public/hooks/twilio` and `/twilio-voice` (no `?s=` — verified by their Auth Token signature). Platform-managed numbers use `?s=<TWILIO_INBOUND_SECRET>`.
+**Two Stripe accounts, one endpoint each.** The scope setting is the part that
+fails silently if wrong — an endpoint created "on your account" when it should be
+"on connected accounts" leaves `event.account` empty, so `accountMatches()`
+rejects everything and every tenant payment is ignored while still returning 200.
+Nothing reports that. (A wrong *signing secret* is different: it returns 401 and
+does surface as failed deliveries in Stripe's dashboard.)
+
+- **Stripe Connect** (`acct_1U0CVSQUHYdejlaV`) → `POST /api/public/hooks/stripe`,
+  secret `STRIPE_CONNECT_WEBHOOK_SECRET`, scope **events on connected accounts**
+  (the endpoint object shows `application: ca_…`). Eleven events:
+  `account.updated`, `account.application.deauthorized`, `charge.dispute.created`,
+  `charge.dispute.updated`, `charge.dispute.closed`, `charge.refunded`,
+  `checkout.session.completed`, `payment_intent.succeeded`,
+  `payment_intent.payment_failed`, `payment_intent.processing`,
+  `setup_intent.succeeded`.
+
+  `checkout.session.completed` is subscribed but nothing in `src/` creates a
+  Checkout session in any mode — card saving is `setupIntents.create`. Harmless
+  to keep; not load-bearing. `payment_intent.processing` is subscribed and
+  deliberately **not** handled: there is nowhere on the invoice to record "bank
+  payment in flight", and a column with no reader is what the dead-machinery
+  check exists to fail on.
+
+- **Platform SaaS Stripe** (`acct_1U0RifQjJFmqXgZD`) →
+  `POST /api/public/hooks/platform-stripe`, secret
+  `PLATFORM_STRIPE_WEBHOOK_SECRET`, scope **events on your account**
+  (`application: null`). Eleven events: `customer.created`, `customer.updated`,
+  `customer.subscription.created`, `customer.subscription.updated`,
+  `customer.subscription.deleted`, `invoice.created`, `invoice.finalized`,
+  `invoice.paid`, `invoice.payment_failed`, `invoice.voided`,
+  `invoice.marked_uncollectible`.
+
+**Both live endpoints run API version `2026-07-29.dahlia`, and so does the
+app.** `src/lib/stripe-client.server.ts` pins `STRIPE_API_VERSION` and passes it
+to every Stripe constructor; `makeStripe` is the only place a client is built,
+guarded by `tests/one-stripe-api-version.test.ts`.
+
+The constant is typed off the SDK's own constructor signature, so upgrading
+`stripe` without bumping it does not compile — that is not a convention, it is
+the type. Upgrading is therefore two deliberate steps: bump the SDK, bump the
+constant.
+
+An endpoint's `api_version` is fixed at CREATION — Stripe rejects it on update
+("Received unknown parameter: api_version") — so if the SDK ever moves ahead of
+the live endpoints, closing the gap means recreating the endpoint, which mints a
+NEW SIGNING SECRET and drops events until it is pasted in.
+`warnOnApiVersionMismatch` logs the delta on every delivery so that state is
+visible rather than silent.
+
+*(This section previously told an operator to go and pin something that was
+already pinned, and named `stripe@22.3.0` after the upgrade.)*
+- **Twilio** → set the number's "A message comes in" / "A call comes in" to `POST /api/public/hooks/twilio` and `/twilio-voice`. With `TWILIO_AUTH_TOKEN` set, no `?s=` is needed on any number — platform or tenant — because Twilio signs every request. `?s=<TWILIO_INBOUND_SECRET>` still works as a fallback. Voice continuations no longer carry the secret: they carry a token derived from it, scoped to one call and one turn.
 
 ## 3. Migrations
 
@@ -88,7 +159,7 @@ will not move money (security fix C2). Schedule it once daily.
 
 - Tenant charges are isolated per connected account; the Connect webhook verifies
   every metadata-referenced invoice/client belongs to `event.account` before acting.
-- BYOK credential columns (`org_ai_credentials`, `org_twilio_credentials`) are
+- BYOK credential columns (`org_twilio_credentials`) are
   service-role-only (RLS on, no policies); settings endpoints return only masked
   last-4s.
 - In-app notifications are per-recipient (`recipient_user_id = auth.uid()`).

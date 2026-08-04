@@ -323,14 +323,25 @@ function SignupPage() {
                   <div className="text-sm">
                     Ongoing ({FREQ_LABELS[form.frequency]})
                   </div>
+                  {/* PER VISIT, not per month. `public_quote` returns
+                      `round(base_visit_cents × frequency_multiplier)`, and
+                      pricing.ts documents it as "Per-visit price after the
+                      frequency multiplier" — the multipliers price LESS frequent
+                      visits HIGHER (weekly 1.0, biweekly 1.7, monthly 3.2),
+                      which only makes sense per visit. Every other surface says
+                      /visit; this one said /mo and the line below sold "a
+                      prepaid first month" for what buys ONE visit. Weekly
+                      service at $25 read "$25.00/mo". */}
                   <div className="font-medium">
-                    {money(quote.recurring_price_cents, quote.currency)}/mo
+                    {money(quote.recurring_price_cents, quote.currency)}/visit
                   </div>
                 </div>
                 <div className="border-t pt-3 text-xs text-muted-foreground">
                   Charged today: <strong className="text-foreground">
                     {money(quote.initial_cleanup_cents + quote.recurring_price_cents, quote.currency)}
-                  </strong>, which covers your first cleanup plus a prepaid first month. Cancel anytime.
+                  </strong>, which covers your first cleanup plus your first
+                  scheduled visit. After that you are billed for visits as they
+                  happen. Cancel anytime.
                 </div>
                 {intent ? (
                   <Elements

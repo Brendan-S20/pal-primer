@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
+import { platformFeeCents } from "@/lib/platform-fee";
 
 function anon() {
   return createClient<Database>(
@@ -110,6 +111,7 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
     const pi = await stripe.paymentIntents.create(
       {
         amount: amountCents,
+        application_fee_amount: platformFeeCents(amountCents),
         currency: q.currency,
         receipt_email: data.email.toLowerCase(),
         payment_method_types: ["card"],

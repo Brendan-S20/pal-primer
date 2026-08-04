@@ -14,6 +14,9 @@
     "test": "vitest run",
     "test:db": "tests/run-db-tests.sh",
     "check:migrations": "node scripts/check-migrations.mjs",
+    "check:baseline-objects": "node scripts/check-baseline-objects.mjs",
+    "check:app-origin": "node scripts/check-app-origin.mjs",
+    "check:stripe-catalog": "node scripts/check-stripe-catalog.mjs",
     "check:dead-machinery": "node scripts/check-dead-machinery.mjs",
     "check:pwa": "node scripts/check-pwa-output.mjs"
   },
@@ -99,7 +102,7 @@
     "recharts": "^2.15.4",
     "sonner": "^2.0.7",
     "standardwebhooks": "^1.0.0",
-    "stripe": "^22.3.0",
+    "stripe": "^22.4.0",
     "svix": "^1.96.1",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.1",

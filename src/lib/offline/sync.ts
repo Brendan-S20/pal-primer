@@ -14,9 +14,11 @@ import {
 } from "./queue";
 
 export interface SyncCallers {
-  startVisit: (args: { data: { visitId: string } }) => Promise<unknown>;
-  completeVisit: (args: { data: { visitId: string } }) => Promise<unknown>;
-  skipVisit: (args: { data: { visitId: string; reason: string; code: any } }) => Promise<unknown>;
+  startVisit: (args: { data: { visitId: string; startedAt?: string } }) => Promise<unknown>;
+  completeVisit: (args: { data: { visitId: string; completedAt?: string } }) => Promise<unknown>;
+  skipVisit: (args: {
+    data: { visitId: string; reason: string; code: any; skippedAt?: string };
+  }) => Promise<unknown>;
   recordVisitPhoto: (args: {
     data: { visitId: string; storagePath: string; kind: "before" | "completion" | "issue" };
   }) => Promise<unknown>;
@@ -24,15 +26,37 @@ export interface SyncCallers {
 
 async function runOne(action: PendingAction, callers: SyncCallers): Promise<void> {
   switch (action.kind) {
+    // `action.ts` is when the tech DID this, not when we got signal back.
+    //
+    // Without it, complete_visit stamped completed_at = now() and labelled the
+    // row `tech_live` — so a visit finished at 9:15am in a dead zone and synced
+    // at 4pm was recorded as a 4pm completion that we claimed to have measured.
+    // Every offline visit in a day clustered onto whenever signal returned, in
+    // the wrong order, feeding the completion rate, the progress bar, route
+    // timing and the time the customer is shown.
     case "start":
-      await callers.startVisit({ data: { visitId: action.visitId } });
+      await callers.startVisit({
+        data: { visitId: action.visitId, startedAt: new Date(action.ts).toISOString() },
+      });
       return;
     case "complete":
-      await callers.completeVisit({ data: { visitId: action.visitId } });
+      await callers.completeVisit({
+        data: { visitId: action.visitId, completedAt: new Date(action.ts).toISOString() },
+      });
       return;
     case "skip":
+      // The third lifecycle action, and it sat directly under the comment
+      // above asserting that `action.ts` is when the tech DID this — while
+      // passing no timestamp. A skip queued at 9:15 in a dead zone was recorded
+      // as a 4pm skip, which is what the skip-billing rules and the day's
+      // figures then read.
       await callers.skipVisit({
-        data: { visitId: action.visitId, reason: action.reason, code: action.code },
+        data: {
+          visitId: action.visitId,
+          reason: action.reason,
+          code: action.code,
+          skippedAt: new Date(action.ts).toISOString(),
+        },
       });
       return;
     case "photo": {
@@ -41,10 +65,25 @@ async function runOne(action: PendingAction, callers: SyncCallers): Promise<void
       // caller read as success — so the one path where a photo had been
       // destroyed was also the path that reported "synced". Say so instead.
       if (!photo) throw new MissingPhotoError(action.photoId);
-      const path = `${action.organizationId}/${action.visitId}/${Date.now()}.${photo.ext}`;
+      // The action's OWN id, not the clock.
+      //
+      // `Date.now()` made every attempt at the same photo a different object.
+      // The upload is not the last step — `recordVisitPhoto` follows it — so any
+      // failure after the bytes land (a refused insert, a dropped connection, a
+      // deadline) leaves that object in storage and retries to a FRESH path.
+      // Nothing references the first, nothing ever collects it, and the org is
+      // billed for it. This loop retries up to MAX_ATTEMPTS, so one stubborn
+      // photo could leave five copies of itself behind and then dead-letter,
+      // taking the only reference with it.
+      //
+      // Keyed on the action, the retry rewrites the SAME object — which is also
+      // why upsert has to be true. With `upsert: false` a retry after a
+      // successful upload fails on "already exists", turning a recoverable
+      // record-step failure into a permanent one.
+      const path = `${action.organizationId}/${action.visitId}/${action.uploadKey ?? action.id}.${photo.ext}`;
       const { error } = await supabase.storage
         .from("visit-photos")
-        .upload(path, photo.blob, { contentType: photo.contentType, upsert: false });
+        .upload(path, photo.blob, { contentType: photo.contentType, upsert: true });
       if (error) throw error;
       await callers.recordVisitPhoto({
         data: { visitId: action.visitId, storagePath: path, kind: action.photoKind },
@@ -79,6 +118,15 @@ export interface SyncResult {
   /** Actions the server refused MAX_ATTEMPTS times in a row while the device
    *  was online. Given up on, so the queue behind them can move. */
   deadLettered: number;
+  /** ANOTHER replay was already in flight, so this call did nothing.
+   *
+   *  Without this a caller cannot tell "I flushed and nothing succeeded" from
+   *  "I never ran" — both are all-zeros. Sign-out reads that difference: it
+   *  asks the tech to discard whatever is left, and a queue that is mid-replay
+   *  is not left, it is seconds from landing. Discarding it would destroy work
+   *  the background loop was about to sync, with the tech's consent obtained
+   *  under a false premise. */
+  alreadyRunning: boolean;
 }
 
 /** How many server refusals before an action is given up on.
@@ -102,9 +150,15 @@ export const MAX_ATTEMPTS = 5;
 export const REPLAY_DEADLINE_MS = 60_000;
 
 export async function syncQueue(callers: SyncCallers, userId: string): Promise<SyncResult> {
-  if (running) return { attempted: 0, succeeded: 0, failed: 0, dropped: 0, deadLettered: 0 };
+  if (running) {
+    return {
+      attempted: 0, succeeded: 0, failed: 0, dropped: 0, deadLettered: 0,
+      alreadyRunning: true,
+    };
+  }
   running = true;
   const result: SyncResult = {
+    alreadyRunning: false,
     attempted: 0,
     succeeded: 0,
     failed: 0,

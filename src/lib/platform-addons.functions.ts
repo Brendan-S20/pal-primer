@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
+import { makeStripe } from "@/lib/stripe-client.server";
 
 // Platform -> tenant software add-ons (e.g. AI Receptionist): the upsell
 // catalog shown on Settings -> Billing. Subscribing attaches a Stripe
@@ -15,8 +16,7 @@ async function resolveOrgIdForCaller(supabase: any, userId: string): Promise<str
 async function getStripe() {
   const secret = process.env.STRIPE_SECRET_KEY;
   if (!secret) throw new Error("Billing is not configured.");
-  const Stripe = (await import("stripe")).default;
-  return new Stripe(secret);
+  return await makeStripe(secret);
 }
 
 export type PlatformAddonRow = {

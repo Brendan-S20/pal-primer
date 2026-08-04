@@ -1,5 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createFileRoute } from "@tanstack/react-router";
+import { appUrl } from "@/lib/app-origin";
+import { resolveSupabaseUrl } from "@/lib/supabase-url";
 
 const MAX_RETRIES = 5;
 const DEFAULT_BATCH_SIZE = 10;
@@ -29,7 +31,7 @@ async function sendViaResend(apiKey: string, payload: Record<string, any>): Prom
   // Build List-Unsubscribe header from the unsubscribe token when present.
   const headers: Record<string, string> = {};
   if (payload.unsubscribe_token) {
-    const url = `https://app.houndstack.com/unsubscribe?token=${encodeURIComponent(payload.unsubscribe_token)}`;
+    const url = appUrl(`/unsubscribe?token=${encodeURIComponent(payload.unsubscribe_token)}`);
     headers["List-Unsubscribe"] = `<${url}>`;
     headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
   }
@@ -144,13 +146,32 @@ export const Route = createFileRoute("/email/queue/process")({
     handlers: {
       POST: async ({ request }) => {
         const resendApiKey = process.env.RESEND_API_KEY;
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        // Cannot be undefined, and that is the fix: this guard used to test
+        // `import.meta.env.VITE_SUPABASE_URL`, which Vite INLINES at build. The
+        // variable was absent when the bundle was built, so the compiled output
+        // held `undefined` and no secret added to a runtime store afterwards
+        // could change it. `.env` is untracked (deliberately — it was committed
+        // once and removing it was a security fix), so the deployed build had no
+        // source for it, and nothing else in the product revealed the gap because
+        // the browser client hard-codes its own copy of this same public URL.
+        // This processor 500'd at the guard below every minute for hours and every
+        // invoice, OTP, reminder and welcome email went silently undelivered.
+        const supabaseUrl = resolveSupabaseUrl();
         const supabaseServiceKey =
           process.env.SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-        if (!resendApiKey || !supabaseUrl || !supabaseServiceKey) {
-          console.error("Missing required environment variables (RESEND_API_KEY, SUPABASE_*)");
-          return Response.json({ error: "Server configuration error" }, { status: 500 });
+        if (!resendApiKey || !supabaseServiceKey) {
+          // NAME the missing variable. The old guard ran every minute for hours
+          // returning an identical opaque 500, so `net._http_response` showed
+          // 360/360 failures with nothing to say WHICH variable was absent. An
+          // operator reading the log could not tell a missing Resend key from a
+          // missing Supabase URL.
+          const missing = [
+            !resendApiKey && "RESEND_API_KEY (runtime secret)",
+            !supabaseServiceKey && "SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY (runtime secret)",
+          ].filter(Boolean);
+          console.error(`email queue processor not configured — missing: ${missing.join(", ")}`);
+          return Response.json({ error: "Server configuration error", missing }, { status: 500 });
         }
 
         // Verify the caller is authorized with the service role key.

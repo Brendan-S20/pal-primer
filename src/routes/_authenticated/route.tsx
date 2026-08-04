@@ -13,8 +13,8 @@ import {
   clearPersistedReadCaches,
   ensureReadCachePersistence,
   readLastUser,
-  signOutAndClearDevice,
 } from "@/lib/offline/read-cache";
+import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
 import { isOfflineAuthFailure } from "@/lib/offline/read-cache-policy";
 import { getMyOrg } from "@/lib/org.functions";
 import { getPlatformContext } from "@/lib/platform.functions";
@@ -165,6 +165,7 @@ function openPalette() {
 
 function AppShell() {
   const router = useRouter();
+  const { signOut, dialog: signOutDialog } = useOfflineSignOut();
 
   // Native Capacitor bootstrap — theme-coherent status bar; no-ops on web.
   // Also registers APNs/FCM device tokens with our backend and routes push
@@ -206,10 +207,10 @@ function AppShell() {
   }, [router]);
 
   const handleSignOut = async () => {
-    // Destroys the device's persisted day as well as the session — see
-    // signOutAndClearDevice.
-    await signOutAndClearDevice();
-    window.location.href = "/auth";
+    // Destroys the device's persisted day AND its queued field work — see
+    // lib/offline/sign-out. Unsynced jobs are pushed first, and discarded only
+    // if the tech says yes, so the redirect has to wait on the answer.
+    if (await signOut()) window.location.href = "/auth";
   };
 
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -302,6 +303,7 @@ function AppShell() {
         <OnboardingTour />
         <InstallBanner />
         <RoleGuard />
+        {signOutDialog}
       </div>
     </SidebarProvider>
   );

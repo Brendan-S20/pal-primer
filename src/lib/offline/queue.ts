@@ -50,6 +50,17 @@ export type PendingAction =
       photoKind: "before" | "completion" | "issue";
       /** ID pointing into the `photos` object store */
       photoId: string;
+      /** Storage object key for this photo, minted BEFORE the first upload
+       *  attempt and reused by every retry and by the offline replay.
+       *
+       *  Without it the online path and the replay pick different paths for the
+       *  same bytes: an online upload that lands and then fails at the record
+       *  step queues the action, and the replay uploads a SECOND copy. The
+       *  first is referenced by nothing and collected by nothing.
+       *
+       *  Optional because rows queued before this field existed have none; they
+       *  fall back to the action id, which is stable for their own retries. */
+      uploadKey?: string;
       /** Cached organization_id so upload works without a network `visits` read */
       organizationId: string;
     } & ActionBase);
@@ -118,11 +129,7 @@ export async function enqueueAction(action: NewAction): Promise<string> {
   return record.id;
 }
 
-export async function storePhoto(
-  blob: Blob,
-  contentType: string,
-  ext: string,
-): Promise<string> {
+export async function storePhoto(blob: Blob, contentType: string, ext: string): Promise<string> {
   const db = await getDb();
   const id = uid();
   await db.put("photos", { id, blob, contentType, ext });
@@ -172,9 +179,21 @@ export async function clearQueueForUser(userId: string): Promise<void> {
   }
 }
 
-export async function countPending(): Promise<number> {
+/**
+ * Pending actions belonging to ONE user.
+ *
+ * Was `db.count("actions")` — every user's rows, on a store that is explicitly
+ * per-user everywhere else (`listPending` filters by userId, `syncQueue` only
+ * ever replays its own). On a shared crew tablet that made the header read
+ * "6 pending" to a tech who owns none of them, permanently: tapping Sync calls
+ * `syncQueue` for the signed-in user, which finds nothing, reports zero, and
+ * leaves the badge exactly where it was. The count and the thing the button
+ * acts on have to be the same set.
+ */
+export async function countPending(userId: string): Promise<number> {
   const db = await getDb();
-  return await db.count("actions");
+  const all = await db.getAllFromIndex("actions", "by-ts");
+  return all.filter((a) => a.userId === userId).length;
 }
 
 /** How many QUEUED COMPLETION PHOTOS a visit has.
@@ -185,18 +204,35 @@ export async function countPending(): Promise<number> {
  *  unlocked Complete. The server then refuses (`A completion photo is required
  *  before completing this visit`), which is not a network error, so the sync
  *  loop breaks on it and every action queued behind it stops for good. */
-export async function countQueuedCompletionPhotos(visitId: string): Promise<number> {
+export async function countQueuedCompletionPhotos(
+  visitId: string,
+  userId: string,
+): Promise<number> {
   const db = await getDb();
   const all = await db.getAll("actions");
   return all.filter(
-    (a) => a.visitId === visitId && a.kind === "photo" && a.photoKind === "completion",
+    (a) =>
+      a.userId === userId &&
+      a.visitId === visitId &&
+      a.kind === "photo" &&
+      a.photoKind === "completion",
   ).length;
 }
 
-export async function countPendingForVisit(visitId: string): Promise<number> {
+/** Pending actions THIS user has queued against one visit.
+ *
+ *  Scoped for the same reason as everything else in this file, and with a
+ *  sharper consequence than the rest. On a shared tablet an unscoped count
+ *  means tech A's queued completion photo unlocks the Complete button for tech
+ *  B, who has taken none. B completes, the server refuses ("A completion photo
+ *  is required before completing this visit"), that is not a transport failure
+ *  so it burns an attempt, and after MAX_ATTEMPTS B's own completion is
+ *  dead-lettered. An unscoped read here does not just mislead — it destroys the
+ *  work of the person actually holding the device. */
+export async function countPendingForVisit(visitId: string, userId: string): Promise<number> {
   const db = await getDb();
   const pending = await db.getAll("actions");
-  return pending.filter((a) => a.visitId === visitId).length;
+  return pending.filter((a) => a.userId === userId && a.visitId === visitId).length;
 }
 
 export async function deleteAction(id: string) {

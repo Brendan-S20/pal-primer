@@ -43,7 +43,11 @@ export type Reversal = {
   disputeId: string;
   /** Org-local calendar day the money moved — never a UTC slice. */
   day: string;
+  /** The revenue-affecting amount — what a contra line subtracts. */
   amountCents: number;
+  /** What actually left the account: base + any recovered surcharge. Equal to
+   *  `amountCents` unless a card surcharge was inside the refunded charge. */
+  movedCents: number;
   /** False for a won dispute: the money came back, so it is a recovery rather
    *  than a deduction. Deducting it as well would understate income twice. */
   deducts: boolean;
@@ -113,7 +117,19 @@ export async function loadOrgReversals(
         paymentId: (r.subject_id as string | null) ?? null,
         disputeId: (r.dispute_ref as string | null) ?? "",
         day,
-        amountCents: Number(r.detail?.amount_cents ?? 0),
+        // What comes off REVENUE, which is not always what moved. A refund of
+        // a surcharged charge returns base + surcharge, but only the base was
+        // ever revenue — the surcharge was fee recovery, recorded beside the
+        // amount rather than inside it. Deducting the whole thing understated
+        // the tenant's income by exactly the fee they never earned.
+        //
+        // `revenue_cents` is absent on every row filed before that split
+        // existed, and falling back to `amount_cents` is right for them: those
+        // predate pass-through, so the two figures were equal anyway.
+        amountCents: Number(r.detail?.revenue_cents ?? r.detail?.amount_cents ?? 0),
+        /** What actually left the account — for anything showing the customer's
+         *  refund rather than its effect on income. */
+        movedCents: Number(r.detail?.amount_cents ?? 0),
         deducts: reducesIncome(r.kind as string),
         typeLabel: reversalLabel(r.kind as string).type,
       };

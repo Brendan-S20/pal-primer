@@ -16,7 +16,7 @@ export async function fetchPlatformSaasMetrics(
 ): Promise<PlatformSaasMetrics> {
   const { data: orgs, error } = await supabaseAdmin
     .from("organizations")
-    .select("id, name, billing_status, active_seat_count, plan_id")
+    .select("id, name, billing_status, active_seat_count, plan_id, is_comped")
     .is("deleted_at", null);
   if (error) throw new Error(error.message);
 
@@ -78,6 +78,10 @@ export async function fetchPlatformSaasMetrics(
     active_seat_count: o.active_seat_count ?? null,
     plan: o.plan_id ? planMap.get(o.plan_id) ?? null : null,
     addons: addonsByOrg.get(o.id) ?? null,
+    // The demo org carries the top plan and every add-on and pays for none of
+    // it. Without this it is billing_status 'active' like any customer, and its
+    // add-ons alone would report $126/month of revenue nobody sends us.
+    is_comped: o.is_comped ?? false,
   }));
 
   return computePlatformSaasMetrics(rows);

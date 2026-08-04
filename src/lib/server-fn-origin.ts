@@ -9,8 +9,8 @@
 // and TSS_SERVER_FN_BASE is produced by createServerFnBasePath(), which is
 // `joinPaths(["/", routerBasepath, serverFnBase, "/"])`. joinPaths collapses
 // repeated slashes, so an absolute `serverFns.base` does NOT survive — passing
-// "https://app.houndstack.com/_serverFn" yields the string
-// "/https:/app.houndstack.com/_serverFn/". There is no build-time option that
+// "https://www.app.houndstack.com/_serverFn" yields the string
+// "/https:/www.app.houndstack.com/_serverFn/". There is no build-time option that
 // points server functions at another origin; the value is always a path.
 //
 // A path is correct on the web, where the document is served from the same

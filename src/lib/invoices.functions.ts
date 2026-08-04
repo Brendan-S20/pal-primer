@@ -4,6 +4,8 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
+import { appOrigin } from "@/lib/app-origin";
+import { platformFeeCents } from "@/lib/platform-fee";
 
 export const listInvoices = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -293,11 +295,25 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
         failed++;
         continue;
       }
-      const { error: uErr } = await supabase
+      // An ATOMIC CLAIM, not a read-then-write. The status was read above and
+      // checked, but two requests — a double-click on "Mark paid", or a retry —
+      // both read `open` and both proceeded, inserting two `payments` rows for
+      // one invoice. `payments_pi_unique` cannot catch it: that index is
+      // `WHERE stripe_payment_intent_id IS NOT NULL` and an out-of-band payment
+      // has none. A $340 invoice became $680 of revenue in the dashboard,
+      // /reports, the CPA cash-income sheet and the franchise royalty base.
+      //
+      // `markInvoicePaidFromStripe` has always done it this way and documents
+      // why; this path was the one that did not. Narrowing the UPDATE to rows
+      // still unpaid means the loser of the race writes zero rows and takes the
+      // `failed` branch instead of inserting a second payment.
+      const { data: claimed, error: uErr } = await supabase
         .from("invoices")
         .update({ status: "paid", paid_at: nowIso })
-        .eq("id", id);
-      if (uErr) {
+        .eq("id", id)
+        .eq("status", inv.status)
+        .select("id");
+      if (uErr || !claimed?.length) {
         failed++;
         continue;
       }
@@ -442,6 +458,13 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
           // card by consent, but a card typed by staff must never be saved.
           const updateParams = {
             amount: dueCents,
+            // application_fee_amount travels WITH the amount. It was set once at
+            // create time from the then-current due amount and never updated,
+            // so applying client credit shrank the charge and left the fee
+            // where it was: $150 of credit on a $200 invoice charged $50 with
+            // a $1.00 fee — 2%, not 0.5% — out of the tenant's settlement. At
+            // $1.00 due the fee equalled the whole charge.
+            application_fee_amount: platformFeeCents(dueCents),
             currency,
             metadata,
             setup_future_usage: "" as const,
@@ -481,6 +504,7 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
       // method without the client's own consent (portal flow only).
       const createParams = {
         amount: dueCents,
+        application_fee_amount: platformFeeCents(dueCents),
         currency,
         customer: customerId,
         metadata,
@@ -536,7 +560,7 @@ export const getInvoicePayLink = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     const token = invoice.public_token;
     if (!token) throw new Error("This invoice has no pay link yet");
-    const base = process.env.APP_URL || "https://app.houndstack.com";
+    const base = appOrigin();
     return { url: `${base}/pay/i/${token}` };
   });
 
@@ -644,10 +668,23 @@ async function chargeSavedCardCore(
       "The saved card is no longer on file. Ask the client to add a payment method again.",
     );
   }
+  // Saved card: rail and funding are knowable before the charge, so this path
+  // stays one step. Platform fee remains on the BASE.
+  const { orgFeeConfig, quoteForPaymentMethodId, surchargeMetadata } = await import(
+    "@/lib/processing-fee.server"
+  );
+  const { supabaseAdmin: feeAdmin } = await import("@/integrations/supabase/client.server");
+  const quote = await quoteForPaymentMethodId(stripe, {
+    paymentMethodId: c.default_payment_method_id,
+    stripeAccount: acct.accountId,
+    baseCents: dueCents,
+    config: await orgFeeConfig(feeAdmin, invoice.organization_id),
+  });
   try {
     const pi = await stripe.paymentIntents.create(
       {
-        amount: dueCents,
+        amount: quote.totalCents,
+        application_fee_amount: platformFeeCents(dueCents),
         currency: invoice.currency ?? "usd",
         customer: c.stripe_customer_id,
         payment_method: c.default_payment_method_id,
@@ -657,6 +694,7 @@ async function chargeSavedCardCore(
           invoice_id: invoice.id,
           organization_id: invoice.organization_id,
           source: "staff_saved_card",
+          ...surchargeMetadata(quote),
         },
       },
       {
@@ -664,8 +702,10 @@ async function chargeSavedCardCore(
         // The payment-method id is part of the key: after a decline the
         // client may save a NEW card the same day, and replaying the old
         // key with different params would be an idempotency_error. The amount
-        // is the OPEN amount, so applying more credit mints a fresh key.
-        idempotencyKey: `staff-saved-card-${invoice.id}-${dueCents}-${c.default_payment_method_id}`,
+        // is the CHARGED total, so applying more credit — or the tenant turning
+        // fee pass-through on — mints a fresh key rather than replaying this one
+        // with a different amount, which is that same idempotency_error.
+        idempotencyKey: `staff-saved-card-${invoice.id}-${quote.totalCents}-${c.default_payment_method_id}`,
         stripeAccount: acct.accountId,
       },
     );
@@ -684,6 +724,20 @@ async function chargeSavedCardCore(
           invoiceId: invoice.id,
           organizationId: invoice.organization_id,
           amountCents: dueCents,
+          // The charge was `quote.totalCents` — base + surcharge — and this
+          // path dropped the surcharge on the floor, so `payments.surcharge_cents`
+          // read 0 for every saved-card charge that settled synchronously,
+          // which is most of them. The webhook path has always recorded it
+          // (`surchargeFromMetadata(pi.metadata)`); this one silently did not,
+          // so the SAME charge produced different rows depending on whether
+          // Stripe answered in-band or via the hook.
+          //
+          // Two things went wrong downstream. Fee recovery was under-reported
+          // to the tenant, and — worse — the refund ledger derives the
+          // revenue-affecting portion of a refund from base = charged −
+          // surcharge, so a surcharge recorded as 0 makes a refund deduct the
+          // surcharge from revenue that never contained it.
+          surchargeCents: quote.surchargeCents,
           currency: invoice.currency ?? "usd",
           paymentIntentId: pi.id,
           raw: { source: "staff_saved_card_sync", payment_intent: pi.id },
@@ -1302,6 +1356,13 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
           // the card (only the client's own portal session can consent).
           const updateParams = {
             amount: dueCents,
+            // application_fee_amount travels WITH the amount. It was set once at
+            // create time from the then-current due amount and never updated,
+            // so applying client credit shrank the charge and left the fee
+            // where it was: $150 of credit on a $200 invoice charged $50 with
+            // a $1.00 fee — 2%, not 0.5% — out of the tenant's settlement. At
+            // $1.00 due the fee equalled the whole charge.
+            application_fee_amount: platformFeeCents(dueCents),
             currency,
             metadata,
             setup_future_usage: "" as const,
@@ -1341,6 +1402,7 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
       // payment method saved.
       const createParams = {
         amount: dueCents,
+        application_fee_amount: platformFeeCents(dueCents),
         currency,
         customer: customerId,
         metadata,

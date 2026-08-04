@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+// @ts-expect-error - plain ESM script, no type declarations
+import { sqlCode } from "../scripts/check-baseline-objects.mjs";
 
 // `seed_demo_org` is the RPC behind the app's "reseed demo data" button. It had
 // never been applied to the live database — `src/lib/demo.functions.ts` called
@@ -51,13 +53,24 @@ function currentSeederSource(): { file: string; body: string } {
 
 const { file, body: rawBody } = currentSeederSource();
 
-/** Comments stripped, so an assertion about what the seeder DOES cannot be
- *  satisfied — or broken — by a line explaining what it deliberately does not
- *  do. The first version of this file failed on its own
- *  `-- No gate_code, no lock_box_code, no key_location` comment. There are no
- *  `--` sequences inside the seeder's string literals; the em dashes in its
- *  notes are single characters. */
-const body = rawBody.replace(/--[^\n]*/g, "");
+// Comments and string literals stripped, so an assertion about what the seeder
+// DOES cannot be satisfied — or broken — by a line explaining what it
+// deliberately does not do. The first version of this file failed on its own
+// `-- No gate_code, no lock_box_code, no key_location` comment.
+//
+// Shares `sqlCode` with check-baseline-objects.mjs rather than carrying its own
+// strip-to-end-of-line regex. That regex was correct for THIS seeder — no
+// double-dash appears inside its literals — and latently wrong for any future
+// one: eight migrations in this repo already contain a double-dash inside a
+// string, and there the regex eats the rest of the line and the test quietly
+// checks less than it says. Two strippers for one job, one of them carrying the
+// exact bug already fixed in the other, is the duplication this suite keeps
+// finding elsewhere.
+//
+// (Written as line comments, not a block: the regex it describes contains the
+// characters that close a block comment, which is how the first attempt at this
+// note turned the file into a parse error.)
+const body = sqlCode(rawBody);
 
 /** Each `DELETE FROM public.x ...` statement, up to its terminating semicolon. */
 function deleteStatements(sql: string): string[] {
@@ -154,7 +167,13 @@ describe("the reseeder leaves an org a demo can be shown from", () => {
   it("puts a payment inside the current calendar month", () => {
     // Collected MTD reads $0.00 for the first days of every month otherwise —
     // which is the state the demo org was found in on the 2nd.
-    expect(body).toMatch(/GREATEST\(date_trunc\('month', current_date\)::date, current_date - 3\)/);
+    // Matched in two distinctive halves rather than as one literal expression:
+    // `sqlCode` blanks string literals, so `date_trunc('month', …)` reaches this
+    // assertion with the 'month' removed. Checking the parts that survive keeps
+    // the assertion honest — both must be present, and neither can be satisfied
+    // by a comment, because comments are stripped too.
+    expect(body).toMatch(/GREATEST\(date_trunc\(/);
+    expect(body).toMatch(/current_date - 3/);
   });
 
   it("dates payments explicitly rather than letting created_at default", () => {

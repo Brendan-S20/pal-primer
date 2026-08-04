@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { appOrigin } from "@/lib/app-origin";
 
 // Manually email an existing invoice to the client. With reminder: true the
 // same template renders as a payment reminder ("Reminder: …" subject), and
@@ -29,7 +30,7 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
     // Prefer the no-login public pay link (QA round 8); fall back to the
     // portal link for any legacy invoice without a token.
     const publicToken = inv.public_token;
-    const appUrl = process.env.APP_URL || "https://app.houndstack.com";
+    const appUrl = appOrigin();
     let invoiceUrl = publicToken ? `${appUrl}/pay/i/${publicToken}` : undefined;
     if (!invoiceUrl) {
       const token = inv.clients?.portal_token ?? undefined;

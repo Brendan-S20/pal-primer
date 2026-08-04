@@ -152,12 +152,52 @@ export default defineConfig({
         },
         workbox: {
           importScripts: ["/push-handlers.js"],
-          navigateFallback: "/",
-          navigateFallbackDenylist: [/^\/api\//, /^\/lovable\//, /^\/email\//, /^\/~oauth/],
+          // EXPLICITLY undefined, not merely absent. vite-plugin-pwa defaults
+          // this to "index.html" (its dist/index.js, the workbox defaults
+          // object), so deleting the line does not remove the NavigationRoute —
+          // it only swaps which non-existent URL is passed to
+          // createHandlerBoundToURL. Verified by rebuilding and reading the
+          // emitted worker: the call came back as
+          // `createHandlerBoundToURL("index.html")`.
+          navigateFallback: undefined,
+          // Disabling it is load-bearing rather than an omission. It was `"/"`,
+          // and that ONE LINE disabled the entire
+          // offline story — the fourth reason in a row, after the three
+          // recorded further down this file.
+          //
+          // This is an SSR app: Nitro renders HTML per request and the web
+          // build emits no index.html at all, so nothing named "/" is ever in
+          // the precache manifest (it holds icons and the webmanifest, nothing
+          // else). `createHandlerBoundToURL("/")` THROWS when its argument is
+          // not precached, and the generated worker is a single top-level comma
+          // sequence:
+          //
+          //   precacheAndRoute(...), cleanupOutdatedCaches(),
+          //   registerRoute(new NavigationRoute(createHandlerBoundToURL("/"))),
+          //   registerRoute(navigate -> NetworkFirst),
+          //   registerRoute(/assets/ -> CacheFirst)
+          //
+          // so the throw took out BOTH runtime rules below it. Navigations went
+          // unhandled and no asset was ever runtime-cached: a tech cold-opening
+          // the installed PWA in a yard with no signal got the browser's
+          // no-internet page, not the app.
+          //
+          // The NetworkFirst rule immediately below is the correct mechanism
+          // for an SSR app anyway — it caches each navigation as it happens and
+          // serves it back when the network is gone, which is what a fallback
+          // shell would only have approximated.
           runtimeCaching: [
             {
-              // App shell / HTML — network first, fall back to cache when offline
-              urlPattern: ({ request }) => request.mode === "navigate",
+              // App shell / HTML — network first, fall back to cache when offline.
+              //
+              // Carries the exclusions that used to live in
+              // navigateFallbackDenylist. These are all real navigations (an
+              // unsubscribe link, an OAuth bounce), so `request.mode` alone does
+              // not exclude them, and serving a cached shell in their place
+              // would break the flow.
+              urlPattern: ({ request, url }) =>
+                request.mode === "navigate" &&
+                !/^\/(api|lovable|email|~oauth)\//.test(url.pathname),
               handler: "NetworkFirst",
               options: {
                 cacheName: "app-shell",

@@ -2780,10 +2780,10 @@ export type Database = {
           auto_generate_visits: boolean
           auto_invoice_enabled: boolean
           avg_speed_kmh: number
-          billed_through_parent: boolean
           billing_status: Database["public"]["Enums"]["org_billing_status"]
           billing_tier: string | null
           brand_color: string | null
+          card_surcharge_attested_at: string | null
           chargeback_responsibility: string
           contact_email: string | null
           contact_phone: string | null
@@ -2805,6 +2805,7 @@ export type Database = {
           id: string
           invoice_grace_days: number
           invoice_net_days: number
+          is_comped: boolean
           is_franchise_parent: boolean
           last_digest_sent_at: string | null
           lead_form_config: Json
@@ -2829,6 +2830,7 @@ export type Database = {
           overdue_reminder_days: number
           overdue_reminders_enabled: boolean
           parent_organization_id: string | null
+          payment_fee_pass_through: boolean
           payments_collected_by_parent: boolean
           plan_id: string | null
           plan_status: Database["public"]["Enums"]["org_plan_status"]
@@ -2862,6 +2864,7 @@ export type Database = {
           stripe_connect_connected_at: string | null
           stripe_connect_status: string | null
           stripe_customer_id: string | null
+          stripe_merchant_region: string | null
           stripe_subscription_id: string | null
           suspended_at: string | null
           suspended_reason: string | null
@@ -2886,10 +2889,10 @@ export type Database = {
           auto_generate_visits?: boolean
           auto_invoice_enabled?: boolean
           avg_speed_kmh?: number
-          billed_through_parent?: boolean
           billing_status?: Database["public"]["Enums"]["org_billing_status"]
           billing_tier?: string | null
           brand_color?: string | null
+          card_surcharge_attested_at?: string | null
           chargeback_responsibility?: string
           contact_email?: string | null
           contact_phone?: string | null
@@ -2911,6 +2914,7 @@ export type Database = {
           id?: string
           invoice_grace_days?: number
           invoice_net_days?: number
+          is_comped?: boolean
           is_franchise_parent?: boolean
           last_digest_sent_at?: string | null
           lead_form_config?: Json
@@ -2935,6 +2939,7 @@ export type Database = {
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
           parent_organization_id?: string | null
+          payment_fee_pass_through?: boolean
           payments_collected_by_parent?: boolean
           plan_id?: string | null
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
@@ -2968,6 +2973,7 @@ export type Database = {
           stripe_connect_connected_at?: string | null
           stripe_connect_status?: string | null
           stripe_customer_id?: string | null
+          stripe_merchant_region?: string | null
           stripe_subscription_id?: string | null
           suspended_at?: string | null
           suspended_reason?: string | null
@@ -2992,10 +2998,10 @@ export type Database = {
           auto_generate_visits?: boolean
           auto_invoice_enabled?: boolean
           avg_speed_kmh?: number
-          billed_through_parent?: boolean
           billing_status?: Database["public"]["Enums"]["org_billing_status"]
           billing_tier?: string | null
           brand_color?: string | null
+          card_surcharge_attested_at?: string | null
           chargeback_responsibility?: string
           contact_email?: string | null
           contact_phone?: string | null
@@ -3017,6 +3023,7 @@ export type Database = {
           id?: string
           invoice_grace_days?: number
           invoice_net_days?: number
+          is_comped?: boolean
           is_franchise_parent?: boolean
           last_digest_sent_at?: string | null
           lead_form_config?: Json
@@ -3041,6 +3048,7 @@ export type Database = {
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
           parent_organization_id?: string | null
+          payment_fee_pass_through?: boolean
           payments_collected_by_parent?: boolean
           plan_id?: string | null
           plan_status?: Database["public"]["Enums"]["org_plan_status"]
@@ -3074,6 +3082,7 @@ export type Database = {
           stripe_connect_connected_at?: string | null
           stripe_connect_status?: string | null
           stripe_customer_id?: string | null
+          stripe_merchant_region?: string | null
           stripe_subscription_id?: string | null
           suspended_at?: string | null
           suspended_reason?: string | null
@@ -3124,6 +3133,7 @@ export type Database = {
           status: Database["public"]["Enums"]["payment_status"]
           stripe_checkout_session_id: string | null
           stripe_payment_intent_id: string | null
+          surcharge_cents: number
           updated_at: string
         }
         Insert: {
@@ -3140,6 +3150,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["payment_status"]
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
+          surcharge_cents?: number
           updated_at?: string
         }
         Update: {
@@ -3156,6 +3167,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["payment_status"]
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
+          surcharge_cents?: number
           updated_at?: string
         }
         Relationships: [

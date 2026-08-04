@@ -115,7 +115,12 @@ describe("the sync loop gives up only on a reachable server", () => {
     expect(src).toMatch(/deadLettered: number/);
     // Every early return must carry the field, or a caller reads undefined and
     // the toast never fires.
-    const returns = src.match(/\{ attempted: 0[^}]*\}/g) ?? [];
+    // Matched across newlines: the early return was reformatted onto several
+    // lines when `alreadyRunning` was added, and a single-line-only pattern
+    // silently found NOTHING to check rather than failing on the field it
+    // guards — a guard that passes by matching zero things is the failure this
+    // repo keeps finding elsewhere.
+    const returns = src.match(/\{\s*attempted: 0[\s\S]*?\}/g) ?? [];
     expect(returns.length).toBeGreaterThan(0);
     for (const r of returns) expect(r).toMatch(/deadLettered: 0/);
   });

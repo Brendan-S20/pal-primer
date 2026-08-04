@@ -318,7 +318,7 @@ export const DISPUTE_COPY: Record<
     label: "Inquiry — no money taken",
     tone: "warn",
     whatItMeans:
-      "The customer's bank has asked a question about this charge. Nothing has been withdrawn and your revenue is untouched. Answering it in Stripe is how it stays that way — an unanswered inquiry is what turns into a chargeback.",
+      "The customer's bank has asked a question about this charge. Nothing has been withdrawn and your revenue is untouched. Answering it is how it stays that way — an unanswered inquiry is what turns into a chargeback. Answer it on the Payments page; you do not need to open Stripe.",
   },
   inquiry_closed: {
     label: "Inquiry closed — nothing was taken",
@@ -330,7 +330,7 @@ export const DISPUTE_COPY: Record<
     label: "Open — money withdrawn",
     tone: "warn",
     whatItMeans:
-      "The bank has taken this money back while the customer's claim is reviewed. You have a limited window to submit evidence in Stripe; after that the decision is made without it.",
+      "The bank has taken this money back while the customer's claim is reviewed. You have a limited window to submit evidence from the Payments page; after that the decision is made without it.",
   },
   lost: {
     label: "Lost",

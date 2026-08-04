@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { makeStripe } from "@/lib/stripe-client.server";
 
 async function assertAdmin(supabase: any, userId: string) {
   const { data, error } = await supabase.rpc("is_platform_admin", { _user_id: userId });
@@ -69,8 +70,7 @@ export const createPlatformCoupon = createServerFn({ method: "POST" })
     const secret = process.env.PLATFORM_STRIPE_SECRET_KEY ?? process.env.STRIPE_SECRET_KEY;
     if (secret) {
       try {
-        const Stripe = (await import("stripe")).default;
-        const stripe = new Stripe(secret);
+        const stripe = await makeStripe(secret);
         const c = await stripe.coupons.create({
           id: data.code,
           name: data.code,

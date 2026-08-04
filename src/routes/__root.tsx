@@ -14,6 +14,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { ImpersonationBanner } from "../components/ImpersonationBanner";
 import "../lib/i18n";
+import { appOrigin, appUrl } from "@/lib/app-origin";
 
 function NotFoundComponent() {
   return (
@@ -94,11 +95,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "description", content: "HoundStack runs routes, recurring visits, per-dog billing, and the field app for pet waste removal companies." },
       { property: "og:description", content: "HoundStack runs routes, recurring visits, per-dog billing, and the field app for pet waste removal companies." },
       { name: "twitter:description", content: "HoundStack runs routes, recurring visits, per-dog billing, and the field app for pet waste removal companies." },
-      { property: "og:image", content: "https://app.houndstack.com/og-image.png" },
+      { property: "og:image", content: appUrl("/og-image.png") },
       { property: "og:image:width", content: "1200" },
       { property: "og:image:height", content: "630" },
-      { property: "og:url", content: "https://app.houndstack.com" },
-      { name: "twitter:image", content: "https://app.houndstack.com/og-image.png" },
+      { property: "og:url", content: appOrigin() },
+      { name: "twitter:image", content: appUrl("/og-image.png") },
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [

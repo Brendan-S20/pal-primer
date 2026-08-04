@@ -35,6 +35,7 @@ import { formatDay } from "@/lib/format";
 import { stripeAppearance } from "@/lib/stripe-appearance";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
+import { appUrl } from "@/lib/app-origin";
 
 // Moved into Settings (punch list #9): this is HoundStack's own subscription
 // (the CRM plan), which is configuration - the tenant-facing Stripe money view
@@ -290,7 +291,7 @@ function BillingPage() {
             returnUrl={
               typeof window !== "undefined"
                 ? window.location.href.split("?")[0]
-                : "https://app.houndstack.com/settings/billing"
+                : appUrl("/settings/billing")
             }
             onCancel={() => setCheckout(null)}
             onSwitched={() => {
