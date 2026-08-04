@@ -87,10 +87,29 @@ export const ensureStripeConnectAccount = createServerFn({ method: "POST" })
   });
 
 /**
- * Create a Connect Account Session for embedded components (the in-app Express
- * dashboard: onboarding, account management, payments, payouts, balances).
- * Returns the short-lived client_secret + the publishable key to init
- * @stripe/connect-js on the client.
+ * Create a Connect Account Session for embedded components — the in-app Stripe
+ * dashboard.
+ *
+ * ── THE GOAL: A TENANT NEVER OPENS STRIPE ─────────────────────────────────
+ *
+ * Every component enabled here is one fewer reason for a pet-waste business to
+ * leave HoundStack, learn a second product, and discover that the thing they
+ * needed was two products deep in someone else's navigation.
+ *
+ * ── FEATURES ARE SPELLED OUT EVEN WHERE THEY ARE THE DEFAULT ──────────────
+ *
+ * `refund_management` and `dispute_management` are `true` by default on the
+ * payments component, which means tenants could ALREADY refund and answer
+ * disputes in-app — while `disputes.ts` told them "answering it in Stripe is
+ * how it stays that way" and `platform-fee.ts` recorded that "tenants refund
+ * from their own Stripe dashboard". The capability was on and the product said
+ * it was off, which is this repo's recurring defect wearing its friendliest
+ * face: nobody was harmed, they were just sent somewhere they did not need to
+ * go, on the two tasks that matter most when money is disputed.
+ *
+ * Writing the defaults out is what stops that recurring. A silent default is a
+ * capability nobody can grep for, and the copy drifts away from it the moment
+ * someone writes a sentence from memory.
  */
 export const createStripeAccountSession = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -107,9 +126,41 @@ export const createStripeAccountSession = createServerFn({ method: "POST" })
         account_onboarding: { enabled: true },
         account_management: { enabled: true },
         notification_banner: { enabled: true },
-        payments: { enabled: true },
+        payments: {
+          enabled: true,
+          features: {
+            // Both already default to true. Stated so the capability is
+            // greppable and so a future Stripe default cannot quietly remove
+            // the two things a tenant most needs when a customer complains.
+            refund_management: true,
+            dispute_management: true,
+            // Follows dispute_management by default; Stripe's guided evidence
+            // flow, which is the difference between a tenant answering a
+            // chargeback and ignoring it.
+            smart_disputes_management: true,
+            // Capturing/cancelling a PaymentIntent by hand. HoundStack creates
+            // and confirms in one step, so there is nothing for a tenant to
+            // capture; leaving it on would show a control that never applies.
+            capture_payments: false,
+            // Charges are DIRECT — the connected account is merchant of record.
+            // Nothing is created on their behalf, so this manages an empty set.
+            destination_on_behalf_of_charge_management: false,
+          },
+        },
         payouts: { enabled: true },
         balances: { enabled: true },
+        // The dispute surface proper. `payments` allows RESPONDING to a
+        // dispute; without these there is no list to find one in and no detail
+        // view to read the customer's claim — so the tenant still ended up in
+        // Stripe to see what they were answering.
+        disputes_list: { enabled: true },
+        payment_disputes: { enabled: true },
+        // One payment, in full: the timeline, the card, the refunds against it.
+        // What "why did this fail?" actually needs.
+        payment_details: { enabled: true },
+        // Tax forms — the 1099-K. An annual, unavoidable errand that otherwise
+        // has exactly one home, and it is not this product.
+        documents: { enabled: true },
       },
     });
     return { clientSecret: session.client_secret, publishableKey: connectPublishableKey() };

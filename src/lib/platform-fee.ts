@@ -41,8 +41,14 @@
 // charge — the tenant would be out the refunded amount AND our fee. That is a
 // policy decision, and the decision here is to give it back proportionally. See
 // `feeReversalCents` below and the `charge.refunded` branch of the Connect
-// webhook, which is the only place a refund is ever learned about (the app never
-// calls `refunds.create`; tenants refund from their own Stripe dashboard).
+// webhook, which is the only place a refund is ever learned about.
+//
+// "Learned about" rather than "issued": HoundStack never calls `refunds.create`
+// itself. Tenants refund through the embedded Stripe payments component on the
+// Payments page — in-app, on their own connected account — and the webhook is
+// how this side finds out. That is why the refund ledger has to be correct
+// about redelivery and partials: nothing here initiates a refund, so nothing
+// here knows one happened until Stripe says so.
 
 /** Basis points. 50 bps = 0.5%. */
 export const PLATFORM_FEE_BPS = 50;
