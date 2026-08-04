@@ -95,9 +95,14 @@ function UsersPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Users & roles</h1>
+        {/* One name for one idea. This used to say "appears on routes", "field
+            worker" and "show up in routing" in a single sentence, for the same
+            flag — while the control itself was labelled "Field technician". The
+            server's own error now points people here by the words on the
+            checkbox, so those words have to match. */}
         <p className="text-sm text-muted-foreground">
-          Owners can change roles, deactivate staff, flag who appears on routes, and set each field
-          worker's route start &amp; end addresses. Only field workers show up in routing and tech reports.
+          Change roles, deactivate people, and choose who runs routes. Only people who run routes
+          appear on the dispatch board, can be assigned visits, or show up in tech reports.
         </p>
       </div>
 
@@ -125,13 +130,19 @@ function UsersPage() {
                   {(data?.users ?? []).map((u: any) => {
                     const isOpen = u.staff_id && expanded.has(u.staff_id);
                     const staff = u.staff_id ? staffById.get(u.staff_id) : null;
-                    // An override flags a non-tech in (owner who runs a route) or a
-                    // tech out. Surface only DELIBERATE overrides (is_field_tech_
-                    // overridden) so a role default never shows a routing badge.
-                    const fieldOverrideIn =
-                      staff && staff.is_field_tech_overridden && u.role !== "tech" && staff.is_field_tech;
-                    const notRoutable =
-                      staff && staff.is_field_tech_overridden && u.role === "tech" && !staff.is_field_tech;
+                    // Routing state, shown for EVERY active person with a staff
+                    // record — not only for deliberate overrides.
+                    //
+                    // It used to render a badge only when someone had been
+                    // explicitly flagged in or out, on the reasoning that a role
+                    // default is not worth announcing. The effect was that the
+                    // most common case of all — an ordinary tech who does run
+                    // routes — displayed nothing whatsoever, so the column could
+                    // not answer the one question it exists to answer. Reading
+                    // it, you could not tell "runs routes" from "no staff record
+                    // at all"; both were blank.
+                    const runsRoutes = Boolean(staff?.is_field_tech);
+                    const offToday = runsRoutes && !staff?.routing_available;
                     return (
                       <>
                         <tr key={u.user_id}>
@@ -166,20 +177,20 @@ function UsersPage() {
                             {/* Surface routing eligibility in the row (punch
                                 list #12 / G8) — the controls live in the expander,
                                 but their state shouldn't hide there. */}
-                            {u.active && staff && staff.is_field_tech && !staff.routing_available && (
-                              <Badge variant="outline" className="ml-1.5 border-amber-400 text-amber-700">
-                                Off routes
-                              </Badge>
-                            )}
-                            {u.active && fieldOverrideIn && (
-                              <Badge variant="outline" className="ml-1.5 border-emerald-400 text-emerald-700">
-                                On routes
-                              </Badge>
-                            )}
-                            {u.active && notRoutable && (
-                              <Badge variant="outline" className="ml-1.5 text-muted-foreground">
-                                Not on routes
-                              </Badge>
+                            {u.active && staff && (
+                              offToday ? (
+                                <Badge variant="outline" className="ml-1.5 border-amber-400 text-amber-700">
+                                  Away today
+                                </Badge>
+                              ) : runsRoutes ? (
+                                <Badge variant="outline" className="ml-1.5 border-emerald-400 text-emerald-700">
+                                  Runs routes
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="ml-1.5 text-muted-foreground">
+                                  Office only
+                                </Badge>
+                              )
                             )}
                           </td>
                           <td className="py-3 text-right">
@@ -394,25 +405,46 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
           </p>
         )}
       </div>
-      {/* Routing eligibility (finding #26). */}
-      <div className="sm:col-span-2 flex flex-wrap items-center gap-4 border-t pt-3">
-        <label className="flex items-center gap-2 text-sm">
+      {/* Routing eligibility (finding #26).
+          These two sat side by side as "Field technician (can be assigned
+          routes)" and "Available for routing today" with no explanation of
+          either, and nothing said that the second only means anything when the
+          first is on. They are a permanent fact and a temporary one; the copy
+          now says which is which, and the second is disabled when it cannot
+          apply rather than sitting there tickable and inert. */}
+      <div className="sm:col-span-2 space-y-3 border-t pt-3">
+        <label className="flex items-start gap-2 text-sm">
           <input
             type="checkbox"
+            className="mt-1"
             defaultChecked={staff.is_field_tech ?? true}
             disabled={!canEdit}
             onChange={(e) => routingMut.mutate({ staffId: staff.id, isFieldTech: e.target.checked })}
           />
-          Field technician (can be assigned routes)
+          <span>
+            <span className="font-medium">Runs routes</span>
+            <span className="block text-xs text-muted-foreground">
+              Gets a lane on the dispatch board and can be assigned visits. Tick it for an owner or
+              office manager who also runs a truck; untick it for a tech who has moved inside.
+            </span>
+          </span>
         </label>
-        <label className="flex items-center gap-2 text-sm">
+        <label className={`flex items-start gap-2 text-sm ${staff.is_field_tech ? "" : "opacity-50"}`}>
           <input
             type="checkbox"
+            className="mt-1"
             defaultChecked={staff.routing_available ?? true}
-            disabled={!canEdit}
+            disabled={!canEdit || !staff.is_field_tech}
             onChange={(e) => routingMut.mutate({ staffId: staff.id, routingAvailable: e.target.checked })}
           />
-          Available for routing today
+          <span>
+            <span className="font-medium">Available right now</span>
+            <span className="block text-xs text-muted-foreground">
+              {staff.is_field_tech
+                ? "Untick while someone is on leave, sick or training. They stay on the board, greyed out, and auto-assign and Optimize skip them — but you can still schedule their work for a later day."
+                : "Only applies to people who run routes."}
+            </span>
+          </span>
         </label>
         <label className="flex items-center gap-2 text-sm">
           Daily capacity (min)

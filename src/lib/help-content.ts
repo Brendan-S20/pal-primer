@@ -120,14 +120,17 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: "Plan your first routes",
     section: "Business setup",
     body: [
-      "Routes turn scheduled visits into an ordered day for each tech. The map view shows visits color-grouped by [zone](article:zones); the board view shows each tech's column.",
+      "Routes turn scheduled visits into an ordered day for each tech. Week and month show the calendar beside the map, with each technician in their own colour in both — hover a visit for who is running it, where, and its status. Today shows a drag-and-drop board with a column per tech.",
+      "Only people set to run routes appear here. If someone is missing, turn on \"Runs routes\" for them in [Users & roles](/settings/users).",
     ],
     steps: [
-      "Open [Routes](/routes) and pick the day (Today, Week, or Month view).",
+      "Open [Routes](/routes) and pick Today, Week, or Month.",
+      "In week or month, filter by type, team or status to narrow both the calendar and the map at once.",
       "Unassigned visits appear grouped by zone. Drag them onto a tech, or use auto-assign to balance by capacity.",
       "Drag within a tech's column to set the drive order. Directions links use the property's address or coordinates.",
       "Check the [weather forecast](article:weather) (the cloud icon in the header) for risky days; the weather check on Routes can move flagged visits off a storm day in one click.",
       "Techs see the final order on [My Day](article:my-day) the moment you're done.",
+      "Workday hours, work days and travel assumptions are set once in [Settings → Scheduling](/settings/scheduling), not on the routes screen.",
     ],
     appLink: { to: "/routes", label: "Open Routes" },
     related: ["zones", "weather", "my-day"],
@@ -354,7 +357,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     section: "Team",
     body: [
       "Invite teammates from [Users & roles](/settings/users). Each person gets a role (see [What each role can see and do](article:roles)) that controls their access.",
-      'Per-technician routing controls live in each user\'s "Routing & addresses" panel: availability for routes, daily capacity, and route start/end addresses. Plans are priced per active seat, so deactivating someone frees their seat.',
+      'Open a person\'s "Routing & addresses" panel to set whether they run routes, whether they are available right now, their daily capacity, and where their route starts and ends. Only people who run routes appear on the dispatch board or can be assigned visits. Plans are priced per active seat, so deactivating someone frees their seat.',
     ],
     appLink: { to: "/settings/users", label: "Open Users & roles" },
     related: ["roles", "routes-planning"],

@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { fetchPlatformSaasMetrics } from "@/lib/platform-metrics.server";
+import { resolveSupabaseUrl } from "@/lib/supabase-url";
 
 
 async function assertPlatformAdmin(supabase: any, userId: string) {
@@ -267,7 +268,7 @@ export const consumeImpersonation = createServerFn({ method: "POST" })
 
     const { createClient } = await import("@supabase/supabase-js");
     const verifier = createClient(
-      process.env.SUPABASE_URL!,
+      resolveSupabaseUrl(),
       process.env.SUPABASE_PUBLISHABLE_KEY!,
       { auth: { storage: undefined, persistSession: false, autoRefreshToken: false } },
     );

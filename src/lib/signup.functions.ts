@@ -3,10 +3,11 @@ import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { platformFeeCents } from "@/lib/platform-fee";
+import { resolveSupabaseUrl } from "@/lib/supabase-url";
 
 function anon() {
   return createClient<Database>(
-    process.env.SUPABASE_URL!,
+    resolveSupabaseUrl(),
     process.env.SUPABASE_PUBLISHABLE_KEY!,
     { auth: { storage: undefined, persistSession: false, autoRefreshToken: false } },
   );

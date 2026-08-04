@@ -282,39 +282,6 @@ export const listStaff = createServerFn({ method: "GET" })
     return { staff: data ?? [] };
   });
 
-// Finding #28: multi-day overview so office staff can spot overloaded days,
-// gaps, and upcoming volume without stepping through single days.
-export const getVisitRangeSummary = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ from: z.string(), to: z.string() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const orgId = await resolveOrgId(supabase, userId);
-    const { data: rows, error } = await supabase
-      .from("visits")
-      .select("scheduled_on, status, assigned_staff_id")
-      .eq("organization_id", orgId)
-      .gte("scheduled_on", data.from)
-      .lte("scheduled_on", data.to);
-    if (error) throw new Error(error.message);
-
-    // Per-day totals: total, completed, unassigned.
-    const byDay = new Map<string, { total: number; completed: number; unassigned: number }>();
-    for (const v of rows ?? []) {
-      const d = (v as any).scheduled_on as string;
-      const cur = byDay.get(d) ?? { total: 0, completed: 0, unassigned: 0 };
-      cur.total += 1;
-      if ((v as any).status === "completed") cur.completed += 1;
-      if (!(v as any).assigned_staff_id) cur.unassigned += 1;
-      byDay.set(d, cur);
-    }
-    return {
-      days: Array.from(byDay.entries())
-        .map(([date, c]) => ({ date, ...c }))
-        .sort((a, b) => a.date.localeCompare(b.date)),
-    };
-  });
-
 // Finding #27: capacity-aware planning. Detect field techs whose day exceeds a
 // working-day capacity (drive + service minutes), and move the overflow (their
 // last stops) to the least-loaded available tech under capacity, or to

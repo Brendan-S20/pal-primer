@@ -6,6 +6,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
+import { resolveSupabaseUrl } from "@/lib/supabase-url";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -54,7 +55,7 @@ export const Route = createFileRoute("/api/public/leads")({
         }
         const data = parsed.data;
         const supabase = createClient<Database>(
-          process.env.SUPABASE_URL!,
+          resolveSupabaseUrl(),
           process.env.SUPABASE_PUBLISHABLE_KEY!,
           { auth: { persistSession: false } },
         );
