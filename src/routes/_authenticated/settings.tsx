@@ -14,6 +14,7 @@ const TAB_GROUPS: TabGroup[] = [
     title: "Business setup",
     tabs: [
       { label: "Preferences", to: "/settings/preferences", techVisible: true },
+      { label: "Scheduling", to: "/settings/scheduling" },
       { label: "Skip rules", to: "/settings/skip-rules" },
       { label: "Blackouts", to: "/settings/blackouts" },
       { label: "Add-ons", to: "/settings/addons" },

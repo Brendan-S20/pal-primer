@@ -15,12 +15,9 @@ import {
   listStaff,
   reassignVisit,
   reorderRoute,
-  getDispatchSettings,
-  updateDispatchSettings,
   completeVisitFromOffice,
 } from "@/lib/visits.functions";
 import { backfillPropertyGeocodes } from "@/lib/properties.functions";
-import { US_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/route-window";
 import { RouteMap, buildTechGroups, techColorMap } from "@/components/RouteMap";
 import { StatusChip } from "@/components/client-detail/primitives";
 import { MobileDayList } from "@/components/schedule/MobileDayList";
@@ -192,8 +189,6 @@ function RoutesPage() {
   const reassign = useServerFn(reassignVisit);
 
   const reorder = useServerFn(reorderRoute);
-  const getSettings = useServerFn(getDispatchSettings);
-  const updSettings = useServerFn(updateDispatchSettings);
   // Office action, not the my-day tech flow: completeVisitFromOffice checks
   // the caller's office role + org and logs the completion on the timeline
   // (the my-day completeVisit is scoped to the tech's OWN assigned visit).
@@ -209,17 +204,6 @@ function RoutesPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
-
-  const { data: settingsData } = useQuery({
-    queryKey: ["dispatch-settings"],
-    queryFn: () => getSettings(),
-  });
-  const settings = settingsData?.settings ?? {
-    workday_start: "08:00",
-    workday_end: "17:00",
-    avg_speed_kmh: 30,
-    traffic_profile: "normal",
-  };
 
   // The window the page FETCHES has to be the window the calendar DRAWS.
   //
@@ -407,14 +391,6 @@ function RoutesPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
-  const settingsMut = useMutation({
-    mutationFn: (patch: any) => updSettings({ data: patch }),
-    onSuccess: () => {
-      toast.success("Dispatch settings saved");
-      qc.invalidateQueries({ queryKey: ["dispatch-settings"] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
   const geocode = useServerFn(backfillPropertyGeocodes);
   const geocodeMut = useMutation({
     mutationFn: () => geocode({ data: { limit: 100 } }),
@@ -599,29 +575,104 @@ function RoutesPage() {
             </PopoverContent>
           </Popover>
           <Button variant="outline" size="sm" onClick={() => setToolsOpen((v) => !v)}>
-            {toolsOpen ? "Hide planning tools" : "Planning tools"}
+            {toolsOpen ? "Hide dispatch tools" : "Dispatch tools"}
           </Button>
         </div>
       </div>
       <WeatherStrip day={day} />
 
+      {/* Dispatch tools: things you DO to the day in front of you.
+          The configuration that used to share this drawer — workday hours,
+          work days, speed and traffic assumptions — moved to Settings →
+          Scheduling. One button held both, so "Planning tools" meant a date
+          picker, three optimizers and the definition of a working week, and
+          you had to open it to find out which you were about to get.
+          The day picker that sat here too is gone: the header already has one,
+          and two date inputs on one screen setting the same day is not a
+          choice anybody wants to make. */}
       {toolsOpen && (
-        <div className="grid gap-4 rounded-lg border bg-card p-5 sm:grid-cols-3">
-          <div className="space-y-2">
-            <Label htmlFor="day">Day</Label>
-            <Input
-              id="day"
-              type="date"
-              value={day}
-              onChange={(e) => {
-                setLocalColumns(null);
-                setDay(e.target.value);
-              }}
-            />
+        <div className="space-y-4 rounded-lg border bg-card p-5">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="tech">Assign or optimize one tech&apos;s day</Label>
+              <div className="flex gap-2">
+                <select
+                  id="tech"
+                  value={assignStaffId}
+                  onChange={(e) => setAssignStaffId(e.target.value)}
+                  className="h-10 flex-1 rounded-md border bg-background px-3 text-sm"
+                >
+                  <option value="">Select…</option>
+                  {staff.map((s: any) => (
+                    <option key={s.id} value={s.id}>
+                      {s.display_name}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  onClick={() => assignMut.mutate()}
+                  disabled={!assignStaffId || assignMut.isPending}
+                  variant="secondary"
+                >
+                  Assign
+                </Button>
+                <Button
+                  onClick={() => optimizeMut.mutate()}
+                  disabled={!assignStaffId || optimizeMut.isPending}
+                >
+                  {optimizeMut.isPending ? "…" : "Optimize"}
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Assign gives them {day}&apos;s unassigned stops. Optimize re-sequences what they
+                already have, using time windows and traffic from their start address.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Optimize across several days</Label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={weekDays}
+                  onChange={(e) =>
+                    setWeekDays(Math.max(1, Math.min(31, Number(e.target.value) || 1)))
+                  }
+                  className="w-20"
+                />
+                <span className="text-sm text-muted-foreground">days from {day}</span>
+                <Button onClick={() => weekMut.mutate()} disabled={weekMut.isPending}>
+                  {weekMut.isPending ? "…" : "Optimize"}
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => reoptMut.mutate()}
+                  disabled={reoptMut.isPending}
+                  title="Recompute sequence for every tech using their remaining stops"
+                >
+                  {reoptMut.isPending ? "…" : "Re-optimize today"}
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => balanceMut.mutate()}
+                  disabled={balanceMut.isPending}
+                  title="Move overflow off any tech whose day exceeds working-hours capacity"
+                >
+                  {balanceMut.isPending ? "…" : "Balance overloaded"}
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Spreads unassigned visits round-robin by zone, then optimizes each tech&apos;s day.
+                Balance moves stops off anyone whose day runs past the workday end.
+              </p>
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="through">Generate visits through</Label>
-            <div className="flex gap-2">
+
+          <div className="border-t pt-4">
+            <Label htmlFor="through">Create visits from subscriptions, through</Label>
+            <div className="mt-1 flex gap-2 sm:max-w-md">
               <Input
                 id="through"
                 type="date"
@@ -632,87 +683,13 @@ function RoutesPage() {
                 {genMut.isPending ? "…" : "Generate"}
               </Button>
             </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="tech">Auto-assign / optimize day for tech</Label>
-            <div className="flex gap-2">
-              <select
-                id="tech"
-                value={assignStaffId}
-                onChange={(e) => setAssignStaffId(e.target.value)}
-                className="h-10 flex-1 rounded-md border bg-background px-3 text-sm"
-              >
-                <option value="">Select…</option>
-                {staff.map((s: any) => (
-                  <option key={s.id} value={s.id}>
-                    {s.display_name}
-                  </option>
-                ))}
-              </select>
-              <Button
-                onClick={() => assignMut.mutate()}
-                disabled={!assignStaffId || assignMut.isPending}
-                variant="secondary"
-              >
-                Assign
-              </Button>
-              <Button
-                onClick={() => optimizeMut.mutate()}
-                disabled={!assignStaffId || optimizeMut.isPending}
-              >
-                {optimizeMut.isPending ? "…" : "Optimize"}
-              </Button>
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              Optimize uses nearest-neighbor with time windows + traffic from the tech's start
-              location.
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Fills the schedule out to this date from each client&apos;s recurring plan. Safe to
+              re-run — visits that already exist are left alone.
             </p>
           </div>
-        </div>
-      )}
 
-      {toolsOpen && (
-        <div className="grid gap-4 rounded-lg border bg-card p-5 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label>Optimize multiple days (auto-balance across techs)</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                min={1}
-                max={31}
-                value={weekDays}
-                onChange={(e) =>
-                  setWeekDays(Math.max(1, Math.min(31, Number(e.target.value) || 1)))
-                }
-                className="w-20"
-              />
-              <span className="text-sm text-muted-foreground">days starting {day}</span>
-              <Button onClick={() => weekMut.mutate()} disabled={weekMut.isPending}>
-                {weekMut.isPending ? "…" : "Optimize week"}
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => reoptMut.mutate()}
-                disabled={reoptMut.isPending}
-                title="Recompute sequence for every tech using their remaining stops"
-              >
-                {reoptMut.isPending ? "…" : "Re-optimize today"}
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => balanceMut.mutate()}
-                disabled={balanceMut.isPending}
-                title="Move overflow off any tech whose day exceeds working-hours capacity"
-              >
-                {balanceMut.isPending ? "…" : "Balance overloaded routes"}
-              </Button>
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              Distributes unassigned visits round-robin by zone, then optimizes each tech's day.
-            </p>
-          </div>
-          <div className="md:col-span-2">
-            {/* Value-aware dispatch belongs with the other planning tools (punch list #11). */}
+          <div className="border-t pt-4">
             <AiSection
               title="AI dispatch"
               description="Suggest value-aware reassignments for a day."
@@ -720,101 +697,19 @@ function RoutesPage() {
               <DispatchPanel />
             </AiSection>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label className="text-xs">Workday start</Label>
-              <Input
-                type="time"
-                defaultValue={settings.workday_start?.slice(0, 5) ?? "08:00"}
-                onBlur={(e) => settingsMut.mutate({ workday_start: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Workday end</Label>
-              <Input
-                type="time"
-                defaultValue={settings.workday_end?.slice(0, 5) ?? "17:00"}
-                onBlur={(e) => settingsMut.mutate({ workday_end: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Avg speed (km/h)</Label>
-              <Input
-                type="number"
-                min={5}
-                max={120}
-                defaultValue={settings.avg_speed_kmh ?? 30}
-                onBlur={(e) => settingsMut.mutate({ avg_speed_kmh: Number(e.target.value) })}
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Traffic profile</Label>
-              <select
-                defaultValue={settings.traffic_profile ?? "normal"}
-                onChange={(e) => settingsMut.mutate({ traffic_profile: e.target.value as any })}
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-              >
-                <option value="light">Light (faster)</option>
-                <option value="normal">Normal</option>
-                <option value="heavy">Heavy (slower)</option>
-              </select>
-            </div>
-            <div>
-              <Label className="text-xs">Max drive to a stop (min)</Label>
-              <Input
-                type="number"
-                min={15}
-                max={1440}
-                defaultValue={(settings as any).max_drive_minutes ?? 240}
-                onBlur={(e) => settingsMut.mutate({ max_drive_minutes: Number(e.target.value) })}
-              />
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Assignments implying a longer drive are flagged as implausible.
-              </p>
-            </div>
-            {/* IMP-8: the time zone control moved to Settings → Preferences. It
-              is not a routing detail — it defines "today" for the portal, the
-              missed-visit job and the end-of-day close-out as well — and it was
-              effectively unfindable here. Pointer, not a second control (10.2). */}
-            <div className="col-span-2">
-              <Label className="text-xs">Timezone</Label>
-              <p className="mt-1 text-sm">
-                {US_TIMEZONES.find(
-                  (tz) => tz.value === ((settings as any).timezone ?? DEFAULT_TIMEZONE),
-                )?.label ??
-                  (settings as any).timezone ??
-                  DEFAULT_TIMEZONE}
-              </p>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Arrival windows are anchored to the workday start in this time zone. Change it in{" "}
-                <Link to="/settings/preferences" className="underline underline-offset-2">
-                  Settings → Preferences
-                </Link>
-                .
-              </p>
-            </div>
-            <div className="col-span-2">
-              <Label className="text-xs">Work days</Label>
-              <WorkDaysPicker
-                value={((settings as any).work_days as number[] | null) ?? [0, 1, 2, 3, 4, 5, 6]}
-                onChange={(days) => settingsMut.mutate({ work_days: days })}
-                disabled={settingsMut.isPending}
-              />
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                New visits are only scheduled on these days. A client's explicit preferred weekdays
-                still win — an agreed Saturday stays a Saturday.
-              </p>
-            </div>
-          </div>
+
+          {/* Pointer, not a second control — the same shape the timezone move
+              left behind, so nobody goes looking for these on the old screen. */}
+          <p className="border-t pt-4 text-[11px] text-muted-foreground">
+            Workday hours, work days and travel assumptions live in{" "}
+            <Link to="/settings/scheduling" className="underline underline-offset-2">
+              Settings → Scheduling
+            </Link>
+            .
+          </p>
         </div>
       )}
 
-      {/* Week and month: calendar and map SIDE BY SIDE, which is the whole
-          point of showing both — you read a name in a cell and find it on the
-          map without either moving. Stacked (what this used to do) meant the
-          map was a scroll away from the thing it illustrates, so in practice
-          you looked at one or the other.
-          Below `lg` they stack anyway; two panes in 400px is neither. */}
       {range !== "today" && (
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <FilterSelect
@@ -1030,50 +925,8 @@ function RoutesPage() {
   );
 }
 
-const WORK_DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /** Toggleable weekday chips for the org's operating days (0=Sun..6=Sat). */
-function WorkDaysPicker({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: number[];
-  onChange: (days: number[]) => void;
-  disabled?: boolean;
-}) {
-  const selected = new Set(value);
-  const toggle = (d: number) => {
-    const next = new Set(selected);
-    next.has(d) ? next.delete(d) : next.add(d);
-    if (next.size === 0) {
-      toast.error("Keep at least one working day");
-      return;
-    }
-    onChange([...next].sort((a, b) => a - b));
-  };
-  return (
-    <div className="mt-1 flex flex-wrap gap-1.5">
-      {WORK_DAY_LABELS.map((label, d) => (
-        <button
-          key={d}
-          type="button"
-          disabled={disabled}
-          onClick={() => toggle(d)}
-          aria-pressed={selected.has(d)}
-          className={`rounded-full border px-2.5 py-1 text-xs transition disabled:opacity-50 ${
-            selected.has(d)
-              ? "border-primary bg-primary/10 font-medium text-primary"
-              : "text-muted-foreground hover:bg-muted"
-          }`}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function MapPanel({
   visits,
   staff,
