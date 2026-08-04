@@ -144,8 +144,17 @@ export const Route = createFileRoute("/email/queue/process")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        // SERVER-SIDE, so this must be a RUNTIME lookup with the build-time value only
+        // as a fallback. `import.meta.env.VITE_SUPABASE_URL` is INLINED AT BUILD: if the
+        // variable is absent when the bundle is built, the compiled output contains
+        // `undefined` and no secret added afterwards can change it. `.env` is untracked
+        // (deliberately — it was committed once and that was a security fix), so the
+        // deployed build has no source for it, and nothing else in the product reveals
+        // the gap because the browser client hard-codes its own URL. The result was the
+        // email queue processor returning 500 at its config guard every minute, with
+        // every invoice, OTP, reminder and welcome email silently undelivered.
         const resendApiKey = process.env.RESEND_API_KEY;
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const supabaseUrl = process.env.SUPABASE_URL ?? import.meta.env.VITE_SUPABASE_URL;
         const supabaseServiceKey =
           process.env.SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -165,7 +174,7 @@ export const Route = createFileRoute("/email/queue/process")({
           const missing = [
             !resendApiKey && "RESEND_API_KEY (runtime secret)",
             !supabaseUrl &&
-              "VITE_SUPABASE_URL (build-time, must be present when the bundle is built)",
+              "SUPABASE_URL (runtime secret — set this; VITE_SUPABASE_URL is build-time only)",
             !supabaseServiceKey && "SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY (runtime secret)",
           ].filter(Boolean);
           console.error(`email queue processor not configured — missing: ${missing.join(", ")}`);
