@@ -18,7 +18,14 @@ export const Route = createFileRoute("/api/public/hooks/twilio-voice")({
       POST: async ({ request }) => {
         const url = new URL(request.url);
 
-        const form = await request.formData();
+        // Same as the SMS hook: public endpoint, `formData()` throws on a body
+        // it cannot parse, and an unhandled throw is a 500 that means nothing.
+        let form: FormData;
+        try {
+          form = await request.formData();
+        } catch {
+          return new Response("expected application/x-www-form-urlencoded", { status: 400 });
+        }
         const params: Record<string, string> = {};
         for (const [k, v] of form.entries()) params[k] = String(v);
         const from = params.From ?? "";

@@ -11,7 +11,22 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
       POST: async ({ request }) => {
         const url = new URL(request.url);
 
-        const form = await request.formData();
+        // Twilio always posts application/x-www-form-urlencoded, but this is a
+        // PUBLIC endpoint and anyone can post anything to it. `formData()`
+        // THROWS on a body it cannot parse — a JSON body, an empty body, a wrong
+        // content-type — and an unhandled throw here is a 500.
+        //
+        // A 500 on a public endpoint is worth avoiding for its own sake, but the
+        // specific reason is today's: the email queue processor returned an
+        // opaque 500 every minute for hours and nothing could tell which of
+        // three variables was missing. An unparseable body is a bad request and
+        // should say so, so a real 500 from this route stays meaningful.
+        let form: FormData;
+        try {
+          form = await request.formData();
+        } catch {
+          return new Response("expected application/x-www-form-urlencoded", { status: 400 });
+        }
         const params: Record<string, string> = {};
         for (const [k, v] of form.entries()) params[k] = String(v);
         const from = params.From ?? "";
