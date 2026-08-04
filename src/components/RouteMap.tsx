@@ -43,6 +43,21 @@ const TECH_COLORS = [
   "#0891b2", "#db2777", "#65a30d", "#c026d3", "#0d9488",
 ];
 
+function prettyStatus(s?: string) {
+  if (s === "in_progress") return "In progress";
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
+}
+
+/** "Tue 12 Aug" — the pin has to say WHICH day on a week or month map. */
+function formatDay(iso?: string | null) {
+  if (!iso) return "";
+  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
+
 function statusEmoji(s?: string) {
   if (s === "completed") return "✓";
   if (s === "skipped") return "⤼";
@@ -56,6 +71,8 @@ export function RouteMap({
   onVisitClick,
   drawRoutes = true,
   baseStyle,
+  hoveredVisitId,
+  onHoverVisit,
 }: {
   groups: TechGroup[];
   height?: number;
@@ -63,12 +80,19 @@ export function RouteMap({
   /** Base tiles. Changing it swaps the layer in place rather than rebuilding
    *  the map, so pan and zoom survive picking a different style. */
   baseStyle?: TileVariant;
+  /** Which visit the CALENDAR or BOARD is hovering, so the map can point at
+   *  the same one. Hovering a card used to leave the map inert — the two panes
+   *  showed the same visits and could not tell you which was which. */
+  hoveredVisitId?: string | null;
+  /** Hovering a pin reports back, so the card highlights too. */
+  onHoverVisit?: (visitId: string | null) => void;
   /** Ordered polylines + sequence numbers only make sense for a single day's
    * route. Multi-day views (Routes week/month) pass false to plot plain
    * per-tech pins — a volume view, not a driving order. */
   drawRoutes?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const markerRefs = useRef<Map<string, L.Marker>>(new Map());
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
 
@@ -122,6 +146,7 @@ export function RouteMap({
     const layer = layerRef.current;
     if (!map || !layer) return;
     layer.clearLayers();
+    markerRefs.current.clear();
     if (points.length === 0) return;
 
     // Draw ordered polylines per tech + numbered markers
@@ -186,14 +211,36 @@ export function RouteMap({
           iconAnchor: [13, 13],
         });
         const m = L.marker(latlngs[idx], { icon }).addTo(layer);
+        markerRefs.current.set(v.id, m);
         const addr = [v.properties?.street, v.properties?.city].filter(Boolean).join(", ");
         const title = drawRoutes
           ? `#${label} · ${escapeHtml(v.clients?.display_name ?? "-")}`
           : `${escapeHtml((v as any).scheduled_on ?? "")} · ${escapeHtml(v.clients?.display_name ?? "-")}`;
-        m.bindPopup(
-          `<div style="min-width:160px"><div style="font-weight:600">${title}</div><div style="font-size:11px;color:#555">${escapeHtml(addr)}</div><div style="font-size:11px;color:#888;margin-top:2px">${escapeHtml(g.name)}</div></div>`,
-        );
+        const detail =
+          `<div style="min-width:170px">` +
+          `<div style="font-weight:600">${escapeHtml(v.clients?.display_name ?? "-")}</div>` +
+          // The day, always — a week or month map shows several, and a pin
+          // that will not say which day it is cannot be acted on.
+          `<div style="font-size:11px;color:#555">${escapeHtml(formatDay((v as any).scheduled_on))}</div>` +
+          `<div style="font-size:11px;color:#555">${escapeHtml(addr)}</div>` +
+          // Whose route, and where in it — the two questions a pin on a
+          // multi-tech map is actually being asked.
+          `<div style="font-size:11px;margin-top:3px"><span style="display:inline-block;width:8px;height:8px;border-radius:9999px;background:${g.color};margin-right:5px"></span>${escapeHtml(g.name)}` +
+          (v.sequence != null ? ` · stop #${v.sequence}` : "") +
+          `</div>` +
+          (v.status && v.status !== "scheduled"
+            ? `<div style="font-size:11px;color:#888">${escapeHtml(prettyStatus(v.status))}</div>`
+            : "") +
+          `</div>`;
+        m.bindPopup(detail);
+        // Tooltip as well as popup: a popup needs a click, and "what is this
+        // pin?" should not cost one.
+        m.bindTooltip(detail, { direction: "top", offset: [0, -12], opacity: 1 });
         if (onVisitClick) m.on("click", () => onVisitClick(v.id));
+        if (onHoverVisit) {
+          m.on("mouseover", () => onHoverVisit(v.id));
+          m.on("mouseout", () => onHoverVisit(null));
+        }
       });
     }
 
@@ -209,7 +256,25 @@ export function RouteMap({
       // neighborhood level instead of snapping to one street (C8).
       map.fitBounds(L.latLngBounds(all), { padding: [30, 30], maxZoom: 14 });
     }
-  }, [points, groups, onVisitClick, drawRoutes]);
+    // Rebuilt above, so anything the previous pass registered is stale.
+  }, [points, groups, onVisitClick, drawRoutes, onHoverVisit]);
+
+  // Point at whichever visit another pane is hovering.
+  //
+  // Scaling the existing marker rather than re-rendering the layer: rebuilding
+  // every pin on each mouseover would fight the map for a frame at exactly the
+  // moment the pointer is moving.
+  useEffect(() => {
+    for (const [id, m] of markerRefs.current) {
+      const el = (m as any).getElement?.() as HTMLElement | undefined;
+      if (!el) continue;
+      const on = id === hoveredVisitId;
+      el.style.transition = "transform 90ms ease-out";
+      el.style.transform = `${el.style.transform.replace(/ scale\([^)]*\)/, "")}${on ? " scale(1.45)" : ""}`;
+      el.style.zIndex = on ? "1000" : "";
+      el.style.filter = on ? "drop-shadow(0 0 6px rgba(0,0,0,.45))" : "";
+    }
+  }, [hoveredVisitId, points]);
 
   useEffect(() => {
     return () => {

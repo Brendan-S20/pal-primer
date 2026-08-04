@@ -245,6 +245,13 @@ function RoutesPage() {
     storeBaseStyle(v);
   };
 
+  // One hovered visit, shared by the board, the calendar and the map.
+  //
+  // Hovering a card used to leave the map inert and hovering a pin said
+  // nothing about which day or whose route it belonged to — two panes showing
+  // the same visits, neither able to tell you which was which.
+  const [hoveredVisitId, setHoveredVisitId] = useState<string | null>(null);
+
   const [toolsOpen, setToolsOpen] = useState(false);
   const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
   const [oneOffOpen, setOneOffOpen] = useState(false);
@@ -914,6 +921,8 @@ function RoutesPage() {
             range={range === "month" ? "month" : "week"}
             visits={shownVisits as any}
             techColors={techColors}
+            hoveredVisitId={hoveredVisitId}
+            onHoverVisit={setHoveredVisitId}
             hideWeekends={hideWeekends}
             onPickDay={(d) => {
               setLocalColumns(null);
@@ -928,6 +937,8 @@ function RoutesPage() {
               <MapPanel
                 baseStyle={baseStyle}
                 onBaseStyle={setBaseStylePersist}
+                hoveredVisitId={hoveredVisitId}
+                onHoverVisit={setHoveredVisitId}
                 // The same filtered list the calendar is drawing. Two panes
                 // showing different subsets of the same window would be worse
                 // than one pane.
@@ -952,6 +963,8 @@ function RoutesPage() {
           <MapPanel
             baseStyle={baseStyle}
             onBaseStyle={setBaseStylePersist}
+            hoveredVisitId={hoveredVisitId}
+            onHoverVisit={setHoveredVisitId}
             visits={visits}
             staff={staff}
             onOpenVisit={setDetailVisitId}
@@ -1012,6 +1025,8 @@ function RoutesPage() {
                 onToggleSelect={toggleSelect}
                 onSelectLane={(ids) => setSelected(new Set([...selected, ...ids]))}
                 selectionActive={selectionActive}
+                hoveredVisitId={hoveredVisitId}
+                onHover={setHoveredVisitId}
               />
               {staff.map((s: any) => {
                 const offRoutes = s.is_field_tech && !s.routing_available;
@@ -1031,6 +1046,8 @@ function RoutesPage() {
                     onToggleSelect={toggleSelect}
                     onSelectLane={(ids) => setSelected(new Set([...selected, ...ids]))}
                     selectionActive={selectionActive}
+                    hoveredVisitId={hoveredVisitId}
+                    onHover={setHoveredVisitId}
                     laneAction={
                       <button
                         onClick={() => setCoverFor({ id: s.id, name: s.display_name })}
@@ -1061,6 +1078,8 @@ function RoutesPage() {
                   onToggleSelect={toggleSelect}
                   onSelectLane={(ids) => setSelected(new Set([...selected, ...ids]))}
                   selectionActive={selectionActive}
+                  hoveredVisitId={hoveredVisitId}
+                  onHover={setHoveredVisitId}
                 />
               ))}
             </div>
@@ -1201,6 +1220,8 @@ function RoutesPage() {
 function MapPanel({
   baseStyle,
   onBaseStyle,
+  hoveredVisitId,
+  onHoverVisit,
   visits,
   staff,
   onOpenVisit,
@@ -1210,6 +1231,8 @@ function MapPanel({
 }: {
   baseStyle: TileVariant;
   onBaseStyle: (v: TileVariant) => void;
+  hoveredVisitId?: string | null;
+  onHoverVisit?: (id: string | null) => void;
   visits: any[];
   staff: any[];
   onOpenVisit?: (id: string) => void;
@@ -1269,6 +1292,8 @@ function MapPanel({
           onVisitClick={onOpenVisit}
           drawRoutes={drawRoutes}
           baseStyle={baseStyle}
+          hoveredVisitId={hoveredVisitId}
+          onHoverVisit={onHoverVisit}
         />
         {mappable === 0 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-md bg-background/70 text-xs text-muted-foreground">
@@ -1306,6 +1331,8 @@ function Column({
   onToggleSelect,
   onSelectLane,
   selectionActive,
+  hoveredVisitId,
+  onHover,
   laneAction,
 }: {
   id: string;
@@ -1318,6 +1345,8 @@ function Column({
   onToggleSelect?: (id: string, e: React.MouseEvent) => void;
   onSelectLane?: (ids: string[]) => void;
   selectionActive?: boolean;
+  hoveredVisitId?: string | null;
+  onHover?: (id: string | null) => void;
   /** Rendered in the lane header — the tech-out control lives here. */
   laneAction?: React.ReactNode;
   /** Holds visits but is not a field tech. Read-only: the server refuses new
@@ -1404,6 +1433,8 @@ function Column({
               selected={selectedIds?.has(v.id)}
               onToggleSelect={onToggleSelect}
               selectionActive={selectionActive}
+              hovered={hoveredVisitId === v.id}
+              onHover={onHover}
             />
           ))}
           {items.length === 0 && (
@@ -1424,6 +1455,8 @@ function SortableVisitCard({
   selected,
   onToggleSelect,
   selectionActive,
+  hovered,
+  onHover,
 }: {
   visit: Visit;
   seq: number;
@@ -1433,6 +1466,8 @@ function SortableVisitCard({
   selected?: boolean;
   onToggleSelect?: (id: string, e: React.MouseEvent) => void;
   selectionActive?: boolean;
+  hovered?: boolean;
+  onHover?: (id: string | null) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: visit.id,
@@ -1454,6 +1489,8 @@ function SortableVisitCard({
         selected={selected}
         onToggleSelect={onToggleSelect}
         selectionActive={selectionActive}
+        hovered={hovered}
+        onHover={onHover}
       />
     </div>
   );
@@ -1480,6 +1517,8 @@ function VisitCardView({
   selected,
   onToggleSelect,
   selectionActive,
+  hovered,
+  onHover,
 }: {
   visit: Visit;
   seq?: number;
@@ -1492,6 +1531,8 @@ function VisitCardView({
   onToggleSelect?: (id: string, e: React.MouseEvent) => void;
   /** True once anything is selected anywhere on the board. */
   selectionActive?: boolean;
+  hovered?: boolean;
+  onHover?: (id: string | null) => void;
 }) {
   const p = visit.properties;
   const dirUrl = directionsUrl(p);
@@ -1499,9 +1540,13 @@ function VisitCardView({
     onComplete && (visit.status === "scheduled" || visit.status === "in_progress");
   return (
     <div
-      className={`rounded-md border p-2 text-xs shadow-sm ${dragging ? "shadow-lg" : ""} ${
+      onMouseEnter={() => onHover?.(visit.id)}
+      onMouseLeave={() => onHover?.(null)}
+      className={`rounded-md border p-2 text-xs shadow-sm transition ${dragging ? "shadow-lg" : ""} ${
         selected ? "border-primary bg-primary/5 ring-1 ring-primary" : "bg-background"
-      } ${onOpen ? "cursor-pointer hover:border-primary/40 hover:bg-muted/40" : ""}`}
+      } ${hovered ? "border-primary bg-muted/60 ring-1 ring-primary/60" : ""} ${
+        onOpen ? "cursor-pointer hover:border-primary/40 hover:bg-muted/40" : ""
+      }`}
       onClick={(e) => {
         const t = e.target as HTMLElement;
         if (t.closest("a,button,input,label")) return;

@@ -96,10 +96,15 @@ function VisitChip({
   visit,
   color,
   onOpen,
+  hovered,
+  onHover,
 }: {
   visit: CalendarVisit;
   color: string | undefined;
   onOpen: (id: string) => void;
+  /** The MAP is pointing at this one. */
+  hovered?: boolean;
+  onHover?: (id: string | null) => void;
 }) {
   const name = visit.clients?.display_name ?? "Unnamed customer";
   const who = visit.staff?.display_name ?? null;
@@ -119,7 +124,13 @@ function VisitChip({
             e.stopPropagation();
             onOpen(visit.id);
           }}
-          className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[11px] hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+          onMouseEnter={() => onHover?.(visit.id)}
+          onMouseLeave={() => onHover?.(null)}
+          onFocus={() => onHover?.(visit.id)}
+          onBlur={() => onHover?.(null)}
+          className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[11px] transition hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary ${
+            hovered ? "bg-primary/15 ring-1 ring-primary/50" : ""
+          }`}
         >
           <span
             aria-hidden
@@ -170,6 +181,8 @@ export function ScheduleCalendar({
   range,
   visits,
   techColors,
+  hoveredVisitId,
+  onHoverVisit,
   hideWeekends = false,
   onPickDay,
   onOpenVisit,
@@ -179,6 +192,11 @@ export function ScheduleCalendar({
   visits: CalendarVisit[];
   /** staffId → colour, from RouteMap's `techColorMap`. */
   techColors: Map<string, string>;
+  /** Kept in step with the map: hovering a chip lights its pin and hovering a
+   *  pin lights the chip. Two panes over the same visits are only useful if
+   *  they can point at the same one. */
+  hoveredVisitId?: string | null;
+  onHoverVisit?: (id: string | null) => void;
   hideWeekends?: boolean;
   onPickDay: (d: string) => void;
   onOpenVisit: (visitId: string) => void;
@@ -248,6 +266,8 @@ export function ScheduleCalendar({
                     visit={v}
                     color={v.assigned_staff_id ? techColors.get(v.assigned_staff_id) : undefined}
                     onOpen={onOpenVisit}
+                    hovered={hoveredVisitId === v.id}
+                    onHover={onHoverVisit}
                   />
                 ))}
               </div>
