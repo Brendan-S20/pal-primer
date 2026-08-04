@@ -23,7 +23,9 @@ import { backfillPropertyGeocodes } from "@/lib/properties.functions";
 import { RouteMap, buildTechGroups, techColorMap } from "@/components/RouteMap";
 import { BASE_STYLES, storedBaseStyle, storeBaseStyle, type TileVariant } from "@/lib/map-tiles";
 import { StatusChip } from "@/components/client-detail/primitives";
+import { listTimeOff } from "@/lib/users.functions";
 import { MobileDayList } from "@/components/schedule/MobileDayList";
+import { StaffRoutingDialog } from "@/components/routes/StaffRoutingDialog";
 import { ScheduleCalendar, calendarWindow } from "@/components/schedule/ScheduleCalendar";
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
 import { OneOffVisitDialog } from "@/components/OneOffVisitDialog";
@@ -38,6 +40,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
+  CalendarOff,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -220,6 +223,8 @@ function RoutesPage() {
       /* private mode */
     }
   };
+
+  const [routingDialogStaff, setRoutingDialogStaff] = useState<any>(null);
 
   const [hideWeekends, setHideWeekends] = useState<boolean>(
     () =>
@@ -612,6 +617,23 @@ function RoutesPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const listTimeOffFn = useServerFn(listTimeOff);
+  const timeOffQ = useQuery({
+    queryKey: ["time-off", rangeStart, rangeEnd],
+    queryFn: () => listTimeOffFn({ data: { from: rangeStart, to: rangeEnd } }),
+  });
+  /** Off on the SELECTED day. Ranges are inclusive of both ends, matching
+   *  `is_staff_off` in SQL — the badge and the guard have to agree or the
+   *  board says someone is available while the server refuses to assign
+   *  them. */
+  const offToday = useMemo(() => {
+    const out = new Set<string>();
+    for (const t of timeOffQ.data?.timeOff ?? []) {
+      if (day >= t.starts_on && day <= t.ends_on) out.add(t.staff_id);
+    }
+    return out;
+  }, [timeOffQ.data, day]);
+
   const geocode = useServerFn(backfillPropertyGeocodes);
   const geocodeMut = useMutation({
     mutationFn: () => geocode({ data: { limit: 100 } }),
@@ -902,16 +924,30 @@ function RoutesPage() {
                             {s.is_field_tech && assignedIds.has(s.id) ? (
                               <span> · holds work today</span>
                             ) : null}
+                            {offToday.has(s.id) ? (
+                              <span className="text-amber-600"> · off today</span>
+                            ) : null}
                           </div>
                         </div>
-                        <Switch
-                          checked={Boolean(s.is_field_tech)}
-                          disabled={routingMut.isPending}
-                          onCheckedChange={(next) =>
-                            routingMut.mutate({ staffId: s.id, isFieldTech: next })
-                          }
-                          aria-label={`${s.display_name} runs routes`}
-                        />
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-[11px]"
+                            onClick={() => setRoutingDialogStaff(s)}
+                            title="Time off and route endpoints"
+                          >
+                            <CalendarOff className="h-3.5 w-3.5" />
+                          </Button>
+                          <Switch
+                            checked={Boolean(s.is_field_tech)}
+                            disabled={routingMut.isPending}
+                            onCheckedChange={(next) =>
+                              routingMut.mutate({ staffId: s.id, isFieldTech: next })
+                            }
+                            aria-label={`${s.display_name} runs routes`}
+                          />
+                        </div>
                       </div>
                     ))
                   )}
@@ -1239,6 +1275,7 @@ function RoutesPage() {
               />
               {staff.map((s: any) => {
                 const offRoutes = s.is_field_tech && !s.routing_available;
+                const away = offToday.has(s.id);
                 return (
                   <Column
                     key={s.id}
@@ -1246,6 +1283,7 @@ function RoutesPage() {
                     title={s.display_name}
                     subtitle={s.role ? humanizeRole(s.role) : undefined}
                     offRoutes={offRoutes}
+                    offToday={away}
                     items={columns[s.id] ?? []}
                     layout={boardLayout}
                     onComplete={(id) => completeMut.mutate(id)}
@@ -1333,6 +1371,11 @@ function RoutesPage() {
           />
         </div>
       )}
+      <StaffRoutingDialog
+        staff={routingDialogStaff}
+        open={Boolean(routingDialogStaff)}
+        onOpenChange={(o) => !o && setRoutingDialogStaff(null)}
+      />
       <OneOffVisitDialog
         open={oneOffOpen}
         onOpenChange={setOneOffOpen}
@@ -1571,6 +1614,7 @@ function Column({
   items,
   tone,
   offRoutes,
+  offToday,
   notRoutable,
   notRoutableHint,
   onComplete,
@@ -1591,6 +1635,10 @@ function Column({
   items: any[];
   tone?: "muted";
   offRoutes?: boolean;
+  /** Has dated time off covering the day on screen. Distinct from `offRoutes`,
+   *  which is the undated same-day flag — this one has an end and the server
+   *  refuses assignment for it. */
+  offToday?: boolean;
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string, e: React.MouseEvent) => void;
   onSelectLane?: (ids: string[]) => void;
@@ -1615,7 +1663,7 @@ function Column({
   return (
     <div
       ref={setNodeRef}
-      className={`rounded-lg border ${tone === "muted" ? "bg-muted/30" : offRoutes ? "bg-muted/40 opacity-70" : "bg-card"} ${
+      className={`rounded-lg border ${tone === "muted" ? "bg-muted/30" : offRoutes || offToday ? "bg-muted/40 opacity-70" : "bg-card"} ${
         isOver ? "ring-2 ring-primary" : ""
       }`}
     >
@@ -1623,7 +1671,12 @@ function Column({
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 text-sm font-medium">
             <span className="truncate">{title}</span>
-            {offRoutes && (
+            {offToday && (
+              <Badge variant="outline" className="border-amber-400 text-amber-700 text-[10px]">
+                Away
+              </Badge>
+            )}
+            {offRoutes && !offToday && (
               <Badge variant="outline" className="border-amber-400 text-amber-700 text-[10px]">
                 Off routes
               </Badge>

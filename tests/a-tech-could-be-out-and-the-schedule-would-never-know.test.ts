@@ -129,3 +129,36 @@ describe("recording leave does not move anybody's work", () => {
     expect(SQL).not.toMatch(/UPDATE public\.visits[\s\S]{0,400}FROM public\.staff_time_off/);
   });
 });
+
+describe("the badge and the guard have to agree", () => {
+  // The board deciding somebody is available while the server refuses to
+  // assign them is worse than either behaviour alone: the dispatcher drags a
+  // visit, watches it bounce, and has no way to find out why from the screen.
+  // SQL uses `_day BETWEEN starts_on AND ends_on` — inclusive both ends — so
+  // the client comparison has to be `>=` and `<=`, not a half-open range.
+  const routes = readFileSync(
+    join(import.meta.dirname, "..", "src/routes/_authenticated/routes.tsx"),
+    "utf8",
+  );
+
+  it("marks a tech away using the same inclusive bounds as is_staff_off", () => {
+    expect(routes).toMatch(/day >= t\.starts_on && day <= t\.ends_on/);
+    expect(lastBody("is_staff_off")).toMatch(/_day BETWEEN starts_on AND ends_on/);
+  });
+
+  it("fetches time off over the window the page is already drawing", () => {
+    // Fetching only the selected day would leave week and month unable to mark
+    // an absent tech at all — the same defect the visit query had before
+    // `calendarWindow` became the single definition.
+    expect(routes).toMatch(/queryKey: \["time-off", rangeStart, rangeEnd\]/);
+    expect(routes).toMatch(/from: rangeStart, to: rangeEnd/);
+  });
+
+  it("keeps 'Away' and 'Off routes' as separate claims", () => {
+    // `routing_available` is the undated same-day flag ("out sick, decide
+    // later"); time off is dated and enforced. Collapsing them into one badge
+    // would tell the dispatcher the server will refuse an assignment when it
+    // will happily accept it, and vice versa.
+    expect(routes).toMatch(/offRoutes && !offToday/);
+  });
+});
