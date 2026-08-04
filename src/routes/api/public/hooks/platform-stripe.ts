@@ -73,6 +73,37 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
               const inv = event.data.object as import("stripe").Stripe.Invoice;
               const customerId = typeof inv.customer === "string" ? inv.customer : inv.customer?.id ?? null;
               const orgId = await orgFromCustomer(customerId);
+
+              // Stripe does not guarantee ORDER and retries for up to 3 days.
+              // The per-event idempotency check above is keyed on `event.id`,
+              // so it stops a replay of the SAME event and does nothing about a
+              // late delivery of a DIFFERENT one. Six event types write this row
+              // with a full snapshot, so a retried `invoice.finalized` landing
+              // after `invoice.paid` rewound status to 'open', amount_paid to 0
+              // and cleared paid_at — and the plan_status mirror below leaves
+              // the org alone on that event, so nothing corrected it.
+              // listPlatformInvoices then understated collected SaaS revenue
+              // with nothing flagged.
+              //
+              // A paid invoice is terminal for these purposes. Skip any event
+              // that would move it backwards; `invoice.voided` and
+              // `invoice.marked_uncollectible` are allowed through because they
+              // are genuine later transitions rather than stale snapshots.
+              const rewindable = event.type === "invoice.created" || event.type === "invoice.finalized";
+              if (rewindable) {
+                const { data: existing } = await supabaseAdmin
+                  .from("platform_invoices")
+                  .select("status")
+                  .eq("stripe_invoice_id", inv.id ?? event.id)
+                  .maybeSingle();
+                if (existing?.status === "paid" && inv.status !== "paid") {
+                  console.warn(
+                    `platform invoice ${inv.id}: ignoring a late ${event.type} that would rewind a paid invoice`,
+                  );
+                  break;
+                }
+              }
+
               await supabaseAdmin.from("platform_invoices").upsert(
                 {
                   stripe_invoice_id: inv.id ?? event.id,

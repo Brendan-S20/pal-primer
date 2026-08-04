@@ -295,11 +295,25 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
         failed++;
         continue;
       }
-      const { error: uErr } = await supabase
+      // An ATOMIC CLAIM, not a read-then-write. The status was read above and
+      // checked, but two requests — a double-click on "Mark paid", or a retry —
+      // both read `open` and both proceeded, inserting two `payments` rows for
+      // one invoice. `payments_pi_unique` cannot catch it: that index is
+      // `WHERE stripe_payment_intent_id IS NOT NULL` and an out-of-band payment
+      // has none. A $340 invoice became $680 of revenue in the dashboard,
+      // /reports, the CPA cash-income sheet and the franchise royalty base.
+      //
+      // `markInvoicePaidFromStripe` has always done it this way and documents
+      // why; this path was the one that did not. Narrowing the UPDATE to rows
+      // still unpaid means the loser of the race writes zero rows and takes the
+      // `failed` branch instead of inserting a second payment.
+      const { data: claimed, error: uErr } = await supabase
         .from("invoices")
         .update({ status: "paid", paid_at: nowIso })
-        .eq("id", id);
-      if (uErr) {
+        .eq("id", id)
+        .eq("status", inv.status)
+        .select("id");
+      if (uErr || !claimed?.length) {
         failed++;
         continue;
       }

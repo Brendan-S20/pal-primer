@@ -286,13 +286,22 @@ function ProcessingFeeCard() {
         <span className="text-sm">
           <span className="font-medium">Pass processing fees to the client</span>
           <span className="block text-muted-foreground">
-            Applies to bank (ACH) payments straight away. Cards also need the confirmation below.
+            Applies to automatic payments and saved cards. Cards also need the
+            confirmation below.
           </span>
         </span>
       </label>
 
       {s.passThroughEnabled && (
         <div className="rounded-md border bg-muted/40 p-3 text-sm">
+          {/* Which payments this actually reaches. The three paths that quote a
+              fee all charge a SAVED payment method — autopay, staff "charge
+              saved card", and the portal's saved card — and the rail is known
+              before the charge is built. On the four customer-present paths the
+              payer chooses card or bank inside Stripe's Payment Element AFTER
+              the intent exists, so its amount is already fixed and no fee can
+              be added. Saying "applies to ACH straight away" while every ACH-
+              capable path absorbed the fee was the wrong half of that. */}
           <div className="font-medium">On a {money(ex.baseCents)} invoice</div>
           <ul className="mt-2 space-y-1 text-muted-foreground">
             <li>
@@ -311,6 +320,12 @@ function ProcessingFeeCard() {
                 : `client pays ${money(ex.ach.totalCents)} — you recover ${money(ex.ach.surchargeCents)}`}
             </li>
           </ul>
+          <p className="mt-3 border-t pt-2 text-xs text-muted-foreground">
+            These apply to automatic payments and saved cards. When a client
+            pays from a link or the portal and picks their own method at
+            checkout, you absorb the fee — the amount is fixed before they
+            choose.
+          </p>
           {ex.card.shortfallCents > 0 && !ex.card.suppressed && (
             <p className="mt-2 text-xs text-muted-foreground">
               Card networks cap a surcharge at 3% and at your actual cost, so a card fee never

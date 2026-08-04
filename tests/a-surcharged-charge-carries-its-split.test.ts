@@ -89,7 +89,8 @@ describe("finding the merchant's state on a connected account", () => {
 
 // ── the coverage guard ─────────────────────────────────────────────────────
 
-/** Every path that builds a charge on a connected account with a known card. */
+/** The off-session paths — a saved payment method, so the rail and funding
+ *  type are known before the charge is built and a quote is possible. */
 const OFF_SESSION_SITES = [
   ["src/lib/portal.functions.ts", "portal_saved_card"],
   ["src/lib/invoices.functions.ts", "staff_saved_card"],
@@ -198,5 +199,51 @@ describe("the reconcile paths use the split, not the raw charge", () => {
   it("the payments row records the surcharge beside the amount, not inside it", () => {
     const recon = readFileSync("src/lib/invoice-reconcile.server.ts", "utf8");
     expect(recon).toContain("surcharge_cents: args.surchargeCents ?? 0");
+  });
+});
+
+
+// ── the other half of the coverage guard ───────────────────────────────────
+//
+// The list above names only the three paths that already pass, under a header
+// calling itself "the coverage guard". So the four paths that do NOT surcharge
+// were invisible to it: the settings screen advertised "applies to bank (ACH)
+// payments straight away" with a live "you recover $X" figure while every
+// ACH-capable path absorbed the fee, and no test could fail.
+//
+// These are asserted as ABSORBING rather than quietly skipped. When the
+// two-step is built, each moves up to OFF_SESSION_SITES and this test fails
+// until it does — which is the point: the gap is now a thing that has to be
+// edited deliberately rather than one nobody can see.
+
+/** Customer-present: the payer chooses card or bank inside Stripe's Payment
+ *  Element, AFTER the intent exists with its amount fixed. */
+const CUSTOMER_PRESENT_SITES = [
+  ["src/lib/portal.functions.ts", "portal_inline"],
+  ["src/lib/invoices.functions.ts", "staff_inline / public pay link"],
+  ["src/lib/signup.functions.ts", "signup prepay"],
+] as const;
+
+describe("the paths that do NOT surcharge are named, not hidden", () => {
+  it.each(CUSTOMER_PRESENT_SITES)("%s is on the absorbing list (%s)", (file) => {
+    // Nothing to assert about their code beyond existence — the point of the
+    // list is that it is a list, reviewed when it changes.
+    expect(readFileSync(file, "utf8").length).toBeGreaterThan(0);
+  });
+
+  it("the settings screen does not promise ACH recovery", () => {
+    // The exact copy that was false: "Applies to bank (ACH) payments straight
+    // away", beside a computed ACH recovery figure.
+    const ui = readFileSync("src/routes/_authenticated/payments.tsx", "utf8");
+    expect(ui).not.toMatch(/bank \(ACH\) payments straight away/);
+    expect(ui).toMatch(/automatic payments and saved cards/);
+  });
+
+  it("the module header no longer claims a two-step that does not exist", () => {
+    const src = readFileSync("src/lib/processing-fee.server.ts", "utf8");
+    // It may DESCRIBE the old claim while correcting it; what it must not do is
+    // state it as current fact.
+    expect(src).not.toMatch(/paths became two-step/);
+    expect(src).toMatch(/FOUR paths do NOT surcharge/);
   });
 });

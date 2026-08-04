@@ -4,25 +4,41 @@
 // The arithmetic and the law live in `processing-fee.ts`, which is pure and
 // tested in isolation. This file only fetches the two inputs that arithmetic
 // needs — the tenant's choice, and what the payer actually paid with — and it
-// exists so that the seven charge sites cannot each fetch them differently.
+// exists so the charge sites cannot each fetch them differently.
 //
-// ── WHY THE PAYMENT METHOD MUST BE FETCHED, NOT ASSUMED ───────────────────
+// ── WHERE PASS-THROUGH ACTUALLY APPLIES ───────────────────────────────────
 //
-// `INVOICE_PM_TYPES` is `["card", "us_bank_account"]`: at the moment a
-// PaymentIntent is created the homeowner has not yet chosen. Card and ACH cost
-// wildly different amounts (2.9% + 30¢ against 0.8% capped at $5), and a debit
-// card may not be surcharged at all, so the quote is undecidable until a
-// payment method is attached. That is the whole reason the customer-present
-// paths became two-step: create → attach → quote → update → confirm.
+// THREE paths, all of them OFF-SESSION: the nightly autopay run, staff "charge
+// saved card", and the portal's saved card. Each already holds
+// `default_payment_method_id` when it builds the charge, so the rail and the
+// funding type are known and `quoteForPaymentMethodId` can answer.
 //
-// The three off-session paths — portal saved card, staff saved card and the
-// nightly autopay run — already hold `default_payment_method_id` when they build
-// the charge, so they call `quoteForPaymentMethodId` directly and stay one step.
+// FOUR paths do NOT surcharge, and cannot as they stand: portal inline, staff
+// inline, the public pay link and signup prepay. `INVOICE_PM_TYPES` is
+// `["card", "us_bank_account"]`, and on those the homeowner chooses inside
+// Stripe's Payment Element — AFTER the PaymentIntent exists with its amount
+// already fixed. Card and ACH cost wildly different amounts (2.9% + 30¢ against
+// 0.8% capped at $5) and a debit card may not be surcharged at all, so the
+// quote is undecidable at creation and there is nowhere later to apply it.
 //
-// The signup prepay is NOT one of them, despite being fixed to `["card"]`. Its
-// card arrives through a Payment Element, so the rail is known but the funding
-// type is not, and a debit card may not be surcharged — which leaves it
-// customer-present like the other three.
+// ── A CORRECTION, BECAUSE THIS HEADER USED TO CLAIM OTHERWISE ─────────────
+//
+// It described the customer-present paths as a two-step create → attach →
+// quote → update → confirm. No such step exists, and never did. Every
+// `paymentIntents.update` in the repo sets `amount: dueCents` with no quote and
+// no `surchargeMetadata`, and `quoteForPaymentMethod` / `absorbedQuote` had
+// ZERO callers. Meanwhile the settings screen advertised "applies to bank (ACH)
+// payments straight away" with a live "you recover $X" figure — and every
+// ACH-capable path absorbed the fee. A tenant who ticked the box recovered
+// nothing on exactly the rail the screen named.
+//
+// The UI now states which payments it reaches, and
+// `tests/a-surcharged-charge-carries-its-split.test.ts` asserts the split
+// across ALL of them rather than only the three that pass, so this cannot widen
+// unnoticed. Building the real two-step — a client-side hook on payment-method
+// selection, a requote endpoint, then confirm — is the remaining work, and it
+// touches four live payment surfaces, which is why it is not being bolted on
+// here.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";

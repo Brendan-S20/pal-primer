@@ -162,6 +162,9 @@ type PaymentRow = {
   id: string;
   invoice_id: string;
   amount_cents: number;
+  /** Recovered processing fee, beside the amount rather than inside it. Absent
+   *  on every payment taken before pass-through existed. */
+  surcharge_cents?: number | null;
   status: string;
   paid_at: string | null;
   created_at: string;
@@ -177,7 +180,9 @@ async function loadReceipts(supabase: any, ctx: OrgContext, from: string, to: st
     supabase
       .from("payments")
       .select(
-        "id, invoice_id, amount_cents, status, paid_at, created_at, collected_by_organization_id",
+        // surcharge_cents: the 1099-K reconciliation sheet needs what STRIPE
+        // reported, which is the charge — base + surcharge — not the revenue.
+        "id, invoice_id, amount_cents, surcharge_cents, status, paid_at, created_at, collected_by_organization_id",
       )
       .eq("organization_id", ctx.orgId)
       .in("status", ["succeeded", "refunded"])
@@ -734,7 +739,9 @@ async function loadCollectedForLocations(ctx: OrgContext, from: string, to: stri
     (supabaseAdmin as any)
       .from("payments")
       .select(
-        "id, invoice_id, amount_cents, status, paid_at, created_at, collected_by_organization_id",
+        // surcharge_cents: the 1099-K reconciliation sheet needs what STRIPE
+        // reported, which is the charge — base + surcharge — not the revenue.
+        "id, invoice_id, amount_cents, surcharge_cents, status, paid_at, created_at, collected_by_organization_id",
       )
       .eq("collected_by_organization_id", ctx.orgId)
       .neq("organization_id", ctx.orgId)
@@ -776,7 +783,14 @@ async function build1099k(supabase: any, ctx: OrgContext, from: string, to: stri
     const key = p.collected_by_organization_id ?? ctx.orgId;
     collectorOf.set(p.id, key);
     const b = at(key);
-    b.gross += p.amount_cents ?? 0;
+    // Stripe reports the CHARGE on a 1099-K, and a pass-through charge is
+    // base + surcharge. `payments.amount_cents` is base only — the surcharge
+    // sits beside it in `surcharge_cents` precisely so it is never counted as
+    // revenue. On this ONE sheet that is wrong: its entire purpose is to
+    // reconcile against the form, so it has to show the number Stripe put on
+    // it. 400 charges of $100 + $3 left $1,200 unexplained, in the direction
+    // the sheet's own caveats said was impossible.
+    b.gross += (p.amount_cents ?? 0) + (p.surcharge_cents ?? 0);
     b.count += 1;
   }
   // One row per COLLECTING account, which is what a 1099-K is issued against —
@@ -785,9 +799,11 @@ async function build1099k(supabase: any, ctx: OrgContext, from: string, to: stri
   let onBehalfGross = 0;
   for (const p of onBehalf) {
     const b = at(ctx.orgId);
-    b.gross += p.amount_cents ?? 0;
+    // Same reasoning as above: what Stripe reported, not what was revenue.
+    const chargedCents = (p.amount_cents ?? 0) + (p.surcharge_cents ?? 0);
+    b.gross += chargedCents;
     b.count += 1;
-    onBehalfGross += p.amount_cents ?? 0;
+    onBehalfGross += chargedCents;
   }
   // Recoveries add back — see buildIncomeCash. A won dispute that stayed
   // deducted here would leave this sheet unable to tie to the income report it

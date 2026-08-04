@@ -112,6 +112,21 @@ export type LedgerInvoice = ArInvoice & {
   paid_at?: string | null;
   voided_at?: string | null;
   updated_at?: string | null;
+  /** Credit applied to this invoice ON OR BEFORE the day being reconstructed,
+   *  summed from `credit_ledger`, which is dated.
+   *
+   *  `credit_applied_cents` is a LIVE column with no date on it. Using it in a
+   *  point-in-time reconstruction made the answer depend on today: a $200
+   *  invoice still open at year end, with $150 of credit applied the following
+   *  February, reported $50 for 31 December when the question was asked in
+   *  March. The same figure feeds buildBridge's opening and closing
+   *  receivables and /reports' arPositionAsOf, so a filed balance sheet could
+   *  not be reproduced later — which is the one thing a point-in-time figure
+   *  exists to guarantee.
+   *
+   *  Optional: absent, the live column is used, which is exactly right when the
+   *  day being asked about IS today. */
+  creditAppliedAsOf?: number | null;
 };
 
 /** Was this invoice an open receivable at the end of `day`, and for how much?
@@ -139,7 +154,10 @@ export function outstandingAsOf(
     const off = inv.updated_at ? orgLocalDay(inv.updated_at, tz) : null;
     if (off && off <= day) return 0;
   }
-  return Math.max((inv.total_cents ?? 0) - (inv.credit_applied_cents ?? 0), 0);
+  // Dated credit when the caller supplied it; the live column otherwise. See
+  // `creditAppliedAsOf` on LedgerInvoice for why the difference matters.
+  const credit = inv.creditAppliedAsOf ?? inv.credit_applied_cents ?? 0;
+  return Math.max((inv.total_cents ?? 0) - credit, 0);
 }
 
 export type ArAging = { current: number; d30: number; d60: number; d90: number };
