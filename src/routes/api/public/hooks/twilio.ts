@@ -1,12 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import crypto from "node:crypto";
-import { appOrigin } from "@/lib/app-origin";
-
-function secretEq(a: string, b: string): boolean {
-  const ba = Buffer.from(a);
-  const bb = Buffer.from(b);
-  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
-}
+import { verifyTwilioInbound } from "@/lib/twilio-inbound-auth.server";
 
 // Inbound SMS webhook.
 // Configure in Twilio Console for each number as the "A MESSAGE COMES IN" URL:
@@ -16,9 +9,7 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const shared = process.env.TWILIO_INBOUND_SECRET;
         const url = new URL(request.url);
-        const sharedOk = !!shared && secretEq(url.searchParams.get("s") ?? "", shared);
 
         const form = await request.formData();
         const params: Record<string, string> = {};
@@ -46,25 +37,18 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
           return xml("<Response/>", 200);
         }
 
-        // Authn: the shared inbound secret (platform-managed numbers) OR a valid
-        // Twilio signature from this org's own (BYOK) auth token. A single shared
-        // secret can't authenticate N tenant Twilio accounts, so BYOK orgs are
-        // verified per-request against their own token.
-        if (!sharedOk) {
-          const { resolveOrgTwilioConfig } = await import("@/lib/twilio-credentials.server");
-          const tenant = await resolveOrgTwilioConfig(org.id);
-          const { twilioSignatureIsValid } = await import("@/lib/twilio-signature.server");
-          // Twilio signs the exact public URL it was configured with; behind a
-          // proxy request.url can differ (scheme/host/www), so validate against
-          // both the raw URL and the canonical public URL to avoid a false 401
-          // that would silently break BYOK inbound (M4).
-          const canonicalUrl = appOrigin() + url.pathname + url.search;
-          const ok = tenant?.authToken
-            ? (twilioSignatureIsValid(request.url, params, tenant.authToken, signature) ||
-               twilioSignatureIsValid(canonicalUrl, params, tenant.authToken, signature))
-            : false;
-          if (!ok) return new Response("unauthorized", { status: 401 });
-        }
+        // Authn. SIGNATURE FIRST — see lib/twilio-inbound-auth.server. The old
+        // order checked the shared query secret first, which made the stronger
+        // check unreachable and left one platform-wide credential, carried in a
+        // URL, as the whole of inbound authentication for every tenant.
+        const auth = await verifyTwilioInbound({
+          requestUrl: request.url,
+          pathWithQuery: url.pathname + url.search,
+          params,
+          signature,
+          orgId: org.id,
+        });
+        if (!auth.ok) return new Response("unauthorized", { status: 401 });
 
         // Replay/idempotency (M2): ignore a MessageSid we've already processed so
         // a captured request can't re-toggle opt-out or re-invoke the (paid) AI

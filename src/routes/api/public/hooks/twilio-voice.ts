@@ -1,25 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
-import crypto from "node:crypto";
-import { appOrigin } from "@/lib/app-origin";
-
-function secretEq(a: string, b: string): boolean {
-  const ba = Buffer.from(a);
-  const bb = Buffer.from(b);
-  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
-}
+import {
+  verifyTwilioInbound,
+  continuationToken,
+  continuationTokenValid,
+} from "@/lib/twilio-inbound-auth.server";
 
 // Inbound VOICE webhook.
 // Configure in Twilio Console for each number as the "A CALL COMES IN" URL:
-//   https://<host>/api/public/hooks/twilio-voice?s=<TWILIO_INBOUND_SECRET>
+//   https://<host>/api/public/hooks/twilio-voice
+// Set TWILIO_AUTH_TOKEN and no query secret is needed — Twilio signs every
+// request. `?s=<TWILIO_INBOUND_SECRET>` still works as a fallback.
 // (POST, application/x-www-form-urlencoded).
 // Twilio's built-in <Gather input="speech"> handles STT, <Say> handles TTS.
 export const Route = createFileRoute("/api/public/hooks/twilio-voice")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const shared = process.env.TWILIO_INBOUND_SECRET;
         const url = new URL(request.url);
-        const sharedOk = !!shared && secretEq(url.searchParams.get("s") ?? "", shared);
 
         const form = await request.formData();
         const params: Record<string, string> = {};
@@ -50,23 +47,30 @@ export const Route = createFileRoute("/api/public/hooks/twilio-voice")({
           );
         }
 
-        // Authn: shared inbound secret (platform-managed) OR a valid Twilio
-        // signature from this org's own (BYOK) auth token.
-        if (!sharedOk) {
-          const { resolveOrgTwilioConfig } = await import("@/lib/twilio-credentials.server");
-          const tenant = await resolveOrgTwilioConfig(org.id);
-          const { twilioSignatureIsValid } = await import("@/lib/twilio-signature.server");
-          // Validate against both the raw and canonical public URL (proxy-safe, M4).
-          const canonicalUrl = appOrigin() + url.pathname + url.search;
-          const ok = tenant?.authToken
-            ? (twilioSignatureIsValid(request.url, params, tenant.authToken, signature) ||
-               twilioSignatureIsValid(canonicalUrl, params, tenant.authToken, signature))
-            : false;
-          if (!ok) return new Response("unauthorized", { status: 401 });
-        }
+        // Authn. SIGNATURE FIRST — see lib/twilio-inbound-auth.server. The old
+        // order tried the shared query secret first, which made the stronger
+        // check unreachable; and because this route echoed that secret into the
+        // TwiML continuation URL, every multi-turn call wrote the platform's
+        // master credential into Twilio's stored call log.
+        const auth = await verifyTwilioInbound({
+          requestUrl: request.url,
+          pathWithQuery: url.pathname + url.search,
+          params,
+          signature,
+          orgId: org.id,
+          // A continuation is this call, this turn, and nothing else.
+          continuationOk: continuationTokenValid(callSid, turn, url.searchParams.get("t")),
+        });
+        if (!auth.ok) return new Response("unauthorized", { status: 401 });
 
-        const nextUrl = sharedOk
-          ? `/api/public/hooks/twilio-voice?s=${encodeURIComponent(shared!)}&turn=${turn + 1}`
+        // Scoped to THIS call and THIS turn, derived from the secret rather
+        // than being it — so a leaked TwiML line or call log is not a reusable
+        // credential and cannot be aimed at another call or replayed later.
+        // Null when no secret is set, because then Twilio's own signature on
+        // the continuation request is doing the work and nothing is needed.
+        const nextToken = continuationToken(callSid, turn + 1);
+        const nextUrl = nextToken
+          ? `/api/public/hooks/twilio-voice?t=${encodeURIComponent(nextToken)}&turn=${turn + 1}`
           : `/api/public/hooks/twilio-voice?turn=${turn + 1}`;
 
         // Initial call — greet and gather.
