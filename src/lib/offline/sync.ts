@@ -16,7 +16,9 @@ import {
 export interface SyncCallers {
   startVisit: (args: { data: { visitId: string; startedAt?: string } }) => Promise<unknown>;
   completeVisit: (args: { data: { visitId: string; completedAt?: string } }) => Promise<unknown>;
-  skipVisit: (args: { data: { visitId: string; reason: string; code: any } }) => Promise<unknown>;
+  skipVisit: (args: {
+    data: { visitId: string; reason: string; code: any; skippedAt?: string };
+  }) => Promise<unknown>;
   recordVisitPhoto: (args: {
     data: { visitId: string; storagePath: string; kind: "before" | "completion" | "issue" };
   }) => Promise<unknown>;
@@ -43,8 +45,18 @@ async function runOne(action: PendingAction, callers: SyncCallers): Promise<void
       });
       return;
     case "skip":
+      // The third lifecycle action, and it sat directly under the comment
+      // above asserting that `action.ts` is when the tech DID this — while
+      // passing no timestamp. A skip queued at 9:15 in a dead zone was recorded
+      // as a 4pm skip, which is what the skip-billing rules and the day's
+      // figures then read.
       await callers.skipVisit({
-        data: { visitId: action.visitId, reason: action.reason, code: action.code },
+        data: {
+          visitId: action.visitId,
+          reason: action.reason,
+          code: action.code,
+          skippedAt: new Date(action.ts).toISOString(),
+        },
       });
       return;
     case "photo": {

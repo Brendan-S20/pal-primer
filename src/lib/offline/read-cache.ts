@@ -305,7 +305,23 @@ export function ensureReadCachePersistence(
     // Backstop for sign-out paths that don't go through signOutAndClearDevice
     // (a session revoked from another tab, or a future call site that forgets).
     const { data } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_OUT") clearPersistedReadCaches();
+      if (event === "SIGNED_OUT") {
+        // Same ordering as signOutAndClearDevice, and the same reason: once
+        // LAST_USER_KEY is gone the queue can never be attributed or cleared.
+        // This backstop covers sign-outs that never reach our own helper — a
+        // session revoked from another tab, or a call site that forgets.
+        void (async () => {
+          try {
+            const { resolveOfflineUserId } = await import("@/lib/offline/action-owner");
+            const { clearQueueForUser } = await import("@/lib/offline/queue");
+            await clearQueueForUser(await resolveOfflineUserId());
+          } catch {
+            /* nothing resolvable, nothing to clear */
+          } finally {
+            clearPersistedReadCaches();
+          }
+        })();
+      }
     });
     unsubscribeAuth = () => data.subscription.unsubscribe();
   }
@@ -320,8 +336,33 @@ export function ensureReadCachePersistence(
  * that hangs on a bad connection still leaves the device clean.
  */
 export async function signOutAndClearDevice(): Promise<void> {
-  // Also drops LAST_USER_KEY — it shares the prefix — so the offline identity
-  // fallback can no longer resolve to the user who just signed out.
+  // ORDER MATTERS, and it used to be wrong in a way nothing could recover from.
+  //
+  // `clearPersistedReadCaches` also drops LAST_USER_KEY — it shares the prefix
+  // — which is the ONLY way to resolve who owns the queued actions in
+  // IndexedDB once the session is gone. So clearing the read cache first and
+  // the queue never left a tech's actions AND their photo blobs on the device
+  // with nothing able to name their owner again: `clearQueueForUser` needs a
+  // user id, `usePendingCount` reports 0, and the rows are invisible and
+  // permanent. Pictures of customers' back yards, on a shared crew tablet, for
+  // ever.
+  //
+  // So the queue goes first, while the identity is still resolvable.
+  //
+  // This is the LAST-RESORT sweep. The staff surfaces call
+  // `flushThenClearAndSignOut`, which tries to sync before discarding and asks
+  // first. This path — platform/admin/no-workspace sign-out, a revoked session,
+  // an impersonation exit — has no callers to replay with and no one to ask, so
+  // it drops the queue silently rather than leaving it unreachable. Losing an
+  // unsyncable queue is bad; leaving customer photos on a device nobody can
+  // clear is worse, and it is the one this used to do.
+  try {
+    const { resolveOfflineUserId } = await import("@/lib/offline/action-owner");
+    const { clearQueueForUser } = await import("@/lib/offline/queue");
+    await clearQueueForUser(await resolveOfflineUserId());
+  } catch {
+    /* no identity resolvable means no queue of ours to clear */
+  }
   clearPersistedReadCaches();
   await supabase.auth.signOut();
 }

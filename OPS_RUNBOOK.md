@@ -82,12 +82,25 @@ does surface as failed deliveries in Stripe's dashboard.)
   `invoice.paid`, `invoice.payment_failed`, `invoice.voided`,
   `invoice.marked_uncollectible`.
 
-**Both live endpoints run API version `2026-07-29.dahlia`.** The installed SDK
-(`stripe@22.3.0`) defaults to `2026-06-24.dahlia` and nothing in `src/` pins
-`apiVersion`, so outbound calls and inbound payloads are on different versions
-and the outbound one moves silently on any dependency bump. Same major, so the
-objects consumed here are very unlikely to differ — but it is unverified, and
-worth pinning.
+**Both live endpoints run API version `2026-07-29.dahlia`, and so does the
+app.** `src/lib/stripe-client.server.ts` pins `STRIPE_API_VERSION` and passes it
+to every Stripe constructor; `makeStripe` is the only place a client is built,
+guarded by `tests/one-stripe-api-version.test.ts`.
+
+The constant is typed off the SDK's own constructor signature, so upgrading
+`stripe` without bumping it does not compile — that is not a convention, it is
+the type. Upgrading is therefore two deliberate steps: bump the SDK, bump the
+constant.
+
+An endpoint's `api_version` is fixed at CREATION — Stripe rejects it on update
+("Received unknown parameter: api_version") — so if the SDK ever moves ahead of
+the live endpoints, closing the gap means recreating the endpoint, which mints a
+NEW SIGNING SECRET and drops events until it is pasted in.
+`warnOnApiVersionMismatch` logs the delta on every delivery so that state is
+visible rather than silent.
+
+*(This section previously told an operator to go and pin something that was
+already pinned, and named `stripe@22.3.0` after the upgrade.)*
 - **Twilio** → set the number's "A message comes in" / "A call comes in" to `POST /api/public/hooks/twilio` and `/twilio-voice`. With `TWILIO_AUTH_TOKEN` set, no `?s=` is needed on any number — platform or tenant — because Twilio signs every request. `?s=<TWILIO_INBOUND_SECRET>` still works as a fallback. Voice continuations no longer carry the secret: they carry a token derived from it, scoped to one call and one turn.
 
 ## 3. Migrations
@@ -146,7 +159,7 @@ will not move money (security fix C2). Schedule it once daily.
 
 - Tenant charges are isolated per connected account; the Connect webhook verifies
   every metadata-referenced invoice/client belongs to `event.account` before acting.
-- BYOK credential columns (`org_ai_credentials`, `org_twilio_credentials`) are
+- BYOK credential columns (`org_twilio_credentials`) are
   service-role-only (RLS on, no policies); settings endpoints return only masked
   last-4s.
 - In-app notifications are per-recipient (`recipient_user_id = auth.uid()`).

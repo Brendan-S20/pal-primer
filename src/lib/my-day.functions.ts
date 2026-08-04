@@ -309,6 +309,8 @@ export const skipVisit = createServerFn({ method: "POST" })
             "other",
           ])
           .default("other"),
+        /** When the tech actually skipped, for a REPLAYED action. */
+        skippedAt: z.string().datetime().optional(),
       })
       .parse(d),
   )
@@ -317,6 +319,7 @@ export const skipVisit = createServerFn({ method: "POST" })
       _visit_id: data.visitId,
       _reason: data.reason,
       _code: data.code,
+      _skipped_at: data.skippedAt ?? null,
     });
     if (error) throw new Error(error.message);
     return { ok: true };

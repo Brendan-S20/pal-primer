@@ -50,6 +50,15 @@ export interface SignOutOutcome {
   synced: number;
   /** Actions dropped unsynced, with the user's consent. */
   discarded: number;
+  /** Photos whose bytes were already gone, and actions the server refused
+   *  MAX_ATTEMPTS times. Both are LOSSES the flush itself caused, and the flush
+   *  used to report only `succeeded` — so a tech whose one bad action
+   *  dead-lettered during the sign-out flush saw "Synced 3 queued actions",
+   *  was signed out, and never learned the fourth was gone. `remaining` is 0 by
+   *  then, so the confirm never fires either. sync.ts:103 says these are
+   *  "surfaced separately so a loss is never reported as a sync"; this is the
+   *  caller that was not surfacing them. */
+  lost: number;
   /** The flush never ran — no network, or no callers were supplied. */
   flushSkipped: boolean;
 }
@@ -71,10 +80,11 @@ export async function flushThenClearAndSignOut(opts: {
     // No session and nothing remembered: there is no queue that could belong to
     // anyone here, so there is nothing to flush and nothing to consent to.
     await signOutAndClearDevice();
-    return { signedOut: true, synced: 0, discarded: 0, flushSkipped: true };
+    return { signedOut: true, synced: 0, discarded: 0, lost: 0, flushSkipped: true };
   }
 
   let synced = 0;
+  let lost = 0;
   let flushSkipped = true;
 
   const online = typeof navigator === "undefined" || navigator.onLine;
@@ -88,6 +98,14 @@ export async function flushThenClearAndSignOut(opts: {
         "sign-out flush",
       );
       synced = res.succeeded;
+      lost = res.dropped + res.deadLettered;
+      if (res.alreadyRunning) {
+        // Another replay is mid-flight. Its rows are seconds from landing, and
+        // `remaining` below would count them as unsynced — so the tech would be
+        // asked to discard work that was about to succeed, and consent obtained
+        // on a false premise is worse than no consent. Refuse instead.
+        return { signedOut: false, synced: 0, discarded: 0, lost: 0, flushSkipped: false };
+      }
     } catch {
       // The deadline, or a replay that threw past `syncQueue`'s own handling.
       // Either way the queue is re-counted below, so the number we ask about is
@@ -103,15 +121,15 @@ export async function flushThenClearAndSignOut(opts: {
 
   const remaining = await countPending(userId);
   if (remaining > 0) {
-    if (!opts.confirmDiscard) return { signedOut: false, synced, discarded: 0, flushSkipped };
+    if (!opts.confirmDiscard) return { signedOut: false, synced, discarded: 0, lost, flushSkipped };
     const ok = await opts.confirmDiscard(remaining);
-    if (!ok) return { signedOut: false, synced, discarded: 0, flushSkipped };
+    if (!ok) return { signedOut: false, synced, discarded: 0, lost, flushSkipped };
   }
 
   // Actions AND the photo blobs they point at. This is the part that never ran.
   await clearQueueForUser(userId);
   await signOutAndClearDevice();
-  return { signedOut: true, synced, discarded: remaining, flushSkipped };
+  return { signedOut: true, synced, discarded: remaining, lost, flushSkipped };
 }
 
 /** Who is signing out, or null if this device cannot say.

@@ -17,7 +17,7 @@
 // replays every (tier, entitlement) pair against both, the same guard IMP-3 put
 // on permissions.
 
-/** Ordered cheapest to richest. The order is load-bearing: `requiresTier` copy
+/** Ordered cheapest to richest. The order is load-bearing: `lowestTierWith`
  *  and the upgrade prompt both read it. */
 export const PLAN_TIERS = ["launch", "growth", "scale", "enterprise"] as const;
 export type PlanTier = (typeof PLAN_TIERS)[number];

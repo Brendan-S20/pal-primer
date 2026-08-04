@@ -1128,6 +1128,17 @@ function VisitCard({
               {skipped && (
                 <div className="mt-2 text-xs text-amber-700 dark:text-amber-400">
                   Skipped
+                  {/* The TIME it was skipped, which for a queued skip replayed
+                      on reconnect is hours before the row was written. Null on
+                      every skip recorded before `skipped_at` existed, so it is
+                      rendered only when present rather than falling back to a
+                      row timestamp that would mean something else. */}
+                  {visit.skipped_at
+                    ? ` at ${new Date(visit.skipped_at).toLocaleTimeString([], {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}`
+                    : ""}
                   {visit.skip_reason_code
                     ? ` (${SKIP_REASON_LABELS[visit.skip_reason_code as keyof typeof SKIP_REASON_LABELS] ?? visit.skip_reason_code})`
                     : ""}

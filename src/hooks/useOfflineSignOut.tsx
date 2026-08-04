@@ -65,6 +65,18 @@ export function useOfflineSignOut() {
         }),
     });
 
+    if (outcome.lost > 0) {
+      // Never folded into the success count. These are a photo whose bytes are
+      // gone, or an action the server refused five times — the tech is the only
+      // person who can redo either, and they are about to walk away.
+      toast.error(
+        `${outcome.lost} queued item${outcome.lost === 1 ? "" : "s"} could not be saved and ${outcome.lost === 1 ? "was" : "were"} discarded — check the visit and redo if needed`,
+        { duration: 12_000 },
+      );
+    }
+    if (!outcome.signedOut && !outcome.flushSkipped && outcome.synced === 0) {
+      toast.info("Still syncing — try again in a moment.");
+    }
     if (outcome.synced > 0) {
       toast.success(
         `Synced ${outcome.synced} queued action${outcome.synced === 1 ? "" : "s"} before signing out`,

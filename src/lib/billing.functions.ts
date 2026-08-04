@@ -5,7 +5,10 @@ import { getOrgBillingState, subscriptionPeriodEnd } from "./billing-state.serve
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { makeStripe } from "@/lib/stripe-client.server";
 
-// Kept for back-compat with anything still importing this.
+// Nothing imports this. $59 is not a price in the current per-employee
+// catalog either — plans come from `platform_plans`, which is the only place
+// a price should be read from. Kept only because deleting an export is a
+// separate change from correcting a comment that claimed a caller existed.
 export const PRO_PRICE_CENTS = 5900;
 
 // The org's own SaaS subscription is owner-only (manage_org_billing),

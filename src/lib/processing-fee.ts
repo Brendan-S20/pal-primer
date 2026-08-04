@@ -75,7 +75,7 @@
 // Whether a tenant may surcharge at all. Visa and Mastercard require THE
 // MERCHANT to notify the networks and its acquirer 30 days before surcharging,
 // and on a direct charge the merchant is the tenant, not HoundStack — we cannot
-// file that once on their behalf. `orgs.card_surcharge_attested_at` records
+// file that once on their behalf. `organizations.card_surcharge_attested_at` records
 // that a tenant said they had; this module only answers "given they may, how
 // much."
 
@@ -86,7 +86,7 @@ export type PaymentRail = "card" | "ach";
  * A card's funding type, straight off `PaymentMethod.card.funding`.
  *
  * `unknown` is a real answer from Stripe and is treated as un-surchargeable —
- * see `SUPPRESSION_REASONS`. Guessing here would mean surcharging a debit card,
+ * see `SuppressionReason`. Guessing here would mean surcharging a debit card,
  * which is prohibited outright.
  */
 export type CardFunding = "credit" | "debit" | "prepaid" | "unknown";
@@ -180,9 +180,9 @@ export type QuoteInput = {
   funding?: CardFunding;
   /** Two-letter state/territory of the MERCHANT, e.g. "TX". */
   merchantRegion?: string | null;
-  /** `orgs.card_surcharge_enabled` — the tenant's own choice. */
+  /** `organizations.payment_fee_pass_through` — the tenant's own choice. */
   passThroughEnabled: boolean;
-  /** `orgs.card_surcharge_attested_at` — non-null once they confirmed they notified. */
+  /** `organizations.card_surcharge_attested_at` — non-null once they confirmed they notified. */
   attested: boolean;
 };
 
