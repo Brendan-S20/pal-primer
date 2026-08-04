@@ -2826,6 +2826,8 @@ export type Database = {
           notify_sms_payment_failed: boolean
           notify_sms_visit_completed: boolean
           notify_sms_visit_reminder: boolean
+          notify_schedule_horizon: boolean
+          schedule_horizon_notified_on: string | null
           onboarding_dismissed_at: string | null
           overdue_reminder_days: number
           overdue_reminders_enabled: boolean
@@ -2935,6 +2937,8 @@ export type Database = {
           notify_sms_payment_failed?: boolean
           notify_sms_visit_completed?: boolean
           notify_sms_visit_reminder?: boolean
+          notify_schedule_horizon?: boolean
+          schedule_horizon_notified_on?: string | null
           onboarding_dismissed_at?: string | null
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
@@ -3044,6 +3048,8 @@ export type Database = {
           notify_sms_payment_failed?: boolean
           notify_sms_visit_completed?: boolean
           notify_sms_visit_reminder?: boolean
+          notify_schedule_horizon?: boolean
+          schedule_horizon_notified_on?: string | null
           onboarding_dismissed_at?: string | null
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean

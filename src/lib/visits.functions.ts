@@ -744,7 +744,9 @@ export const getDispatchSettings = createServerFn({ method: "GET" })
     const orgId = await resolveOrgId(context.supabase, context.userId);
     const { data, error } = await context.supabase
       .from("organizations")
-      .select("workday_start, workday_end, avg_speed_kmh, traffic_profile, max_drive_minutes, timezone, work_days")
+      .select(
+        "workday_start, workday_end, avg_speed_kmh, traffic_profile, max_drive_minutes, timezone, work_days, auto_generate_days_ahead, notify_schedule_horizon",
+      )
       .eq("id", orgId)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -764,6 +766,12 @@ export const updateDispatchSettings = createServerFn({ method: "POST" })
       // dates off non-working days unless a subscription carries explicit
       // preferred weekdays.
       work_days: z.array(z.number().int().min(0).max(6)).min(1).max(7).optional(),
+      // How far ahead the nightly job keeps the schedule filled. Same bounds as
+      // the column CHECK and the RPC — three places, one range, because a
+      // number that passes here and fails in the database is a 500 where a
+      // sentence belonged.
+      auto_generate_days_ahead: z.number().int().min(1).max(365).optional(),
+      notify_schedule_horizon: z.boolean().optional(),
       // Anchors route windows/ETAs at the org's local workday start (B6).
       timezone: z
         .string()
@@ -795,6 +803,8 @@ export const updateDispatchSettings = createServerFn({ method: "POST" })
       _max_drive_minutes: data.max_drive_minutes ?? null,
       _timezone: data.timezone ?? null,
       _work_days: data.work_days ?? null,
+      _auto_generate_days_ahead: data.auto_generate_days_ahead ?? null,
+      _notify_schedule_horizon: data.notify_schedule_horizon ?? null,
     });
     if (error) throw new Error(error.message);
     return { ok: true };

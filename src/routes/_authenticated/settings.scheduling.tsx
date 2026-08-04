@@ -43,6 +43,17 @@ function SchedulingSettings() {
     traffic_profile: "normal",
   };
 
+  /** The date the horizon currently reaches, spelled out.
+   *
+   *  A number of days is not a date, and "90" does not answer "can I promise
+   *  this customer a slot in October?". Computed rather than stored: it is a
+   *  function of today, so a stored copy would be wrong by morning. */
+  const horizonLabel = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + (settings.auto_generate_days_ahead ?? 90));
+    return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  })();
+
   const mut = useMutation({
     mutationFn: (patch: any) => updSettings({ data: patch }),
     onSuccess: () => {
@@ -101,6 +112,68 @@ function SchedulingSettings() {
             still win — an agreed Saturday stays a Saturday.
           </p>
         </div>
+      </section>
+
+      <section className="rounded-lg border bg-card p-5">
+        <h3 className="text-sm font-semibold">How far ahead the schedule is built</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Every night we fill the calendar out to this many days from today, from each client&apos;s
+          recurring plan. It rolls forward on its own — there is nothing to press.
+        </p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label className="text-xs">Days ahead</Label>
+            <Input
+              type="number"
+              min={1}
+              max={365}
+              defaultValue={settings.auto_generate_days_ahead ?? 90}
+              onBlur={(e) => {
+                const v = Number(e.target.value);
+                // Refuse locally rather than round-tripping to a raise. The
+                // same 1–365 bound lives on the column, the RPC and the input
+                // validator; this is the one that can explain itself.
+                if (!Number.isFinite(v) || v < 1 || v > 365) {
+                  toast.error("Choose between 1 and 365 days");
+                  e.target.value = String(settings.auto_generate_days_ahead ?? 90);
+                  return;
+                }
+                if (v !== (settings.auto_generate_days_ahead ?? 90)) {
+                  mut.mutate({ auto_generate_days_ahead: v });
+                }
+              }}
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              90 is a good default — a quarter to plan and sell against. Longer suits annual
+              contracts; shorter means less to redo when prices or frequencies change.
+            </p>
+          </div>
+          <div className="rounded-md border bg-muted/30 p-3">
+            <p className="text-xs font-medium">Currently filled through</p>
+            <p className="mt-0.5 text-sm tabular-nums">{horizonLabel}</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Clients whose plan has an end date stop on that date, and one-off visits never
+              repeat — changing this number does not change either.
+            </p>
+          </div>
+        </div>
+        <label className="mt-4 flex items-start gap-2 border-t pt-4 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1"
+            defaultChecked={Boolean(settings.notify_schedule_horizon)}
+            onChange={(e) => mut.mutate({ notify_schedule_horizon: e.target.checked })}
+          />
+          <span>
+            <span className="font-medium">Tell me when the schedule moves into a new week</span>
+            <span className="block text-xs text-muted-foreground">
+              A note in your notifications saying what date the calendar now runs to. Off by
+              default. It exists because a schedule that fills itself is invisible — working
+              perfectly looks identical to nothing happening — and this used to be confirmed by
+              pressing a button. Sent once a week at most, never nightly.
+            </span>
+          </span>
+        </label>
       </section>
 
       <section className="rounded-lg border bg-card p-5">
