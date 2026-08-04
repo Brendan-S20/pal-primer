@@ -2806,6 +2806,7 @@ export type Database = {
           id: string
           invoice_grace_days: number
           invoice_net_days: number
+          is_comped: boolean
           is_franchise_parent: boolean
           last_digest_sent_at: string | null
           lead_form_config: Json
@@ -2915,6 +2916,7 @@ export type Database = {
           id?: string
           invoice_grace_days?: number
           invoice_net_days?: number
+          is_comped?: boolean
           is_franchise_parent?: boolean
           last_digest_sent_at?: string | null
           lead_form_config?: Json
@@ -3024,6 +3026,7 @@ export type Database = {
           id?: string
           invoice_grace_days?: number
           invoice_net_days?: number
+          is_comped?: boolean
           is_franchise_parent?: boolean
           last_digest_sent_at?: string | null
           lead_form_config?: Json
