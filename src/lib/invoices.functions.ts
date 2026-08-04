@@ -703,6 +703,20 @@ async function chargeSavedCardCore(
           invoiceId: invoice.id,
           organizationId: invoice.organization_id,
           amountCents: dueCents,
+          // The charge was `quote.totalCents` — base + surcharge — and this
+          // path dropped the surcharge on the floor, so `payments.surcharge_cents`
+          // read 0 for every saved-card charge that settled synchronously,
+          // which is most of them. The webhook path has always recorded it
+          // (`surchargeFromMetadata(pi.metadata)`); this one silently did not,
+          // so the SAME charge produced different rows depending on whether
+          // Stripe answered in-band or via the hook.
+          //
+          // Two things went wrong downstream. Fee recovery was under-reported
+          // to the tenant, and — worse — the refund ledger derives the
+          // revenue-affecting portion of a refund from base = charged −
+          // surcharge, so a surcharge recorded as 0 makes a refund deduct the
+          // surcharge from revenue that never contained it.
+          surchargeCents: quote.surchargeCents,
           currency: invoice.currency ?? "usd",
           paymentIntentId: pi.id,
           raw: { source: "staff_saved_card_sync", payment_intent: pi.id },

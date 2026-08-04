@@ -672,7 +672,10 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
 
             const { data: pay } = await (supabaseAdmin as any)
               .from("payments")
-              .select("id, organization_id, amount_cents, status")
+              // surcharge_cents: a refund's amount is the CHARGE total (base +
+              // surcharge) but only the base was ever revenue, so the split
+              // needs to know how much of this payment was recovered fee.
+              .select("id, organization_id, amount_cents, surcharge_cents, status")
               .eq("stripe_payment_intent_id", paymentIntentId)
               .maybeSingle();
             if (!pay) return new Response("ok", { status: 200 });
@@ -688,7 +691,12 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             }
 
             let kind: string | null = null;
+            /** What actually left the account — what the customer got back and
+             *  what the alert must quote. */
             let amount = 0;
+            /** The share of it that comes off REVENUE. Equal to `amount` for
+             *  every non-surcharged payment, which is most of them. */
+            let revenueAmount = 0;
             // Stripe's dispute id. THE identity of a dispute — a payment can be
             // disputed more than once over its life (an inquiry that escalates
             // is a new dispute object; a charge can carry two partial disputes),
@@ -701,6 +709,19 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               kind = "refund";
               amount = Number(obj?.amount_refunded ?? 0);
               movesMoney = true;
+
+              // Only the invoiced base is revenue. The surcharge was fee
+              // recovery, recorded beside the amount rather than inside it, and
+              // deducting it here took money off a revenue figure that never
+              // contained it — understating the tenant's income by exactly the
+              // fee they never earned, on every refunded surcharged payment.
+              const { splitRefund } = await import("@/lib/refund-split");
+              revenueAmount = splitRefund(
+                amount,
+                // The charge total: base + surcharge, as stored on the payment.
+                Number(pay.amount_cents ?? 0) + Number(pay.surcharge_cents ?? 0),
+                Number(pay.surcharge_cents ?? 0),
+              ).revenueCents;
 
               // Give back our 50 bps on the refunded portion.
               //
@@ -769,6 +790,11 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               kind = plan.kind;
               movesMoney = plan.movesMoney;
               amount = Number(obj?.amount ?? 0);
+              // A chargeback takes the whole charge, surcharge included, and
+              // the bank does not itemise it. Left whole on purpose: unlike a
+              // refund the tenant does not get to keep the recovered fee
+              // either, so the entire amount really is gone.
+              revenueAmount = amount;
               disputeRef = typeof obj?.id === "string" ? obj.id : null;
             }
 
@@ -798,7 +824,12 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                   _org_id: pay.organization_id,
                   _payment_id: pay.id,
                   _kind: kind,
+                  // What moved — this is the number the alert quotes to the
+                  // tenant, and it must match their Stripe dashboard.
                   _amount_cents: amount,
+                  // What comes off revenue. Same as the above unless a card
+                  // surcharge was collected inside the refunded charge.
+                  _revenue_cents: revenueAmount,
                   _adjustment_id: adjId ?? null,
                   _dispute_ref: disputeRef,
                 });
