@@ -4805,6 +4805,54 @@ export type Database = {
           },
         ]
       }
+      staff_time_off: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          ends_on: string
+          id: string
+          organization_id: string
+          reason: string | null
+          staff_id: string
+          starts_on: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          ends_on: string
+          id?: string
+          organization_id: string
+          reason?: string | null
+          staff_id: string
+          starts_on: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          ends_on?: string
+          id?: string
+          organization_id?: string
+          reason?: string | null
+          staff_id?: string
+          starts_on?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_time_off_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_time_off_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscriptions: {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"]
