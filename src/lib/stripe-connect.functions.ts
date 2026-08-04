@@ -191,15 +191,29 @@ export const createStripeAccountSession = createServerFn({ method: "POST" })
       disable_stripe_user_authentication: false,
     } as const;
 
-    // Deliberately NOT declared: `edit_payout_schedule`, `standard_payouts` and
-    // `instant_payouts`, which `payouts` and `balances` both accept. Their
-    // defaults depend on the connected account's controller config
-    // (`losses.payments` is `application` here, so the first two default off),
-    // and declaring a value I could only infer risks re-breaking the dashboard
-    // to no benefit. Undeclared on BOTH is consistent — the invariant is that a
-    // shared feature is declared everywhere or nowhere, not that it is always
-    // declared. Turning payout controls on is a business decision with platform
-    // liability attached, and belongs in its own change.
+    // `payouts` and `balances` share three more, and both must state them or
+    // neither can. All three are ON by owner decision, against defaults that
+    // would be off — `controller.losses.payments` is `application`, so these
+    // default to false and HoundStack, not Stripe, carries a negative balance.
+    //
+    // The exposure is real and was raised before this was turned on:
+    // `instant_payouts` moves money in minutes, so a refund or chargeback
+    // landing afterwards can leave an account negative with the funds already
+    // gone. `debit_negative_balances` is true on the connected account, so
+    // Stripe will attempt to recover it from their bank — that reduces the
+    // risk, it does not remove it. The other two are mild by comparison:
+    // changing a payout schedule only moves timing, and standard payouts
+    // settle over days, which is usually long enough for a dispute to surface
+    // first.
+    //
+    // What this buys is the thing the product promised — a tenant never has to
+    // open Stripe to get paid or to change when they get paid.
+    const payoutFeatures = {
+      ...accountFeatures,
+      edit_payout_schedule: true,
+      standard_payouts: true,
+      instant_payouts: true,
+    } as const;
 
     const paymentFeatures = {
       ...disputeFeatures,
@@ -216,8 +230,8 @@ export const createStripeAccountSession = createServerFn({ method: "POST" })
         account_management: { enabled: true, features: { ...accountFeatures } },
         notification_banner: { enabled: true, features: { ...accountFeatures } },
         payments: { enabled: true, features: { ...paymentFeatures } },
-        payouts: { enabled: true, features: { ...accountFeatures } },
-        balances: { enabled: true, features: { ...accountFeatures } },
+        payouts: { enabled: true, features: { ...payoutFeatures } },
+        balances: { enabled: true, features: { ...payoutFeatures } },
         // The dispute surface proper. `payments` allows RESPONDING to a
         // dispute; without these there is no list to find one in and no detail
         // view to read the customer's claim — so the tenant still ended up in
