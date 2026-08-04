@@ -1003,6 +1003,28 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 console.error("reversal review item failed", e);
               }
 
+              // A refunded PREPAID TOP-UP has to give the credit back too.
+              //
+              // tg_invoice_paid_credit grants `total_cents` of spendable credit
+              // when a prepaid_topup invoice flips to paid. Nothing removed it.
+              // So a client who bought $500 of credit, changed their mind and
+              // was refunded kept a $500 balance AND had the $500 back — the
+              // same dollars counted twice, spent down by apply_credit_to_invoice
+              // against future invoices, reported nowhere.
+              //
+              // Returns 0 for any payment whose invoice is not a top-up, which
+              // is almost all of them, so this is a no-op on the ordinary path.
+              if (kind === "refund") {
+                try {
+                  await (supabaseAdmin as any).rpc("reverse_prepaid_credit_for_payment", {
+                    _payment_id: pay.id,
+                    _refunded_cents: amount,
+                  });
+                } catch (e) {
+                  console.error("prepaid credit reversal failed", { paymentId: pay.id }, e);
+                }
+              }
+
               // Mark the payment so every revenue figure agrees with the bank.
               //
               // Derived from the WHOLE ledger rather than from this one event.

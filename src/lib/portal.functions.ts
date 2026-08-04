@@ -1089,6 +1089,13 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
           // but the client paying it themselves consents to saving theirs.
           const updateParams = {
             amount: dueCents,
+            // application_fee_amount travels WITH the amount. It was set once at
+            // create time from the then-current due amount and never updated,
+            // so applying client credit shrank the charge and left the fee
+            // where it was: $150 of credit on a $200 invoice charged $50 with
+            // a $1.00 fee — 2%, not 0.5% — out of the tenant's settlement. At
+            // $1.00 due the fee equalled the whole charge.
+            application_fee_amount: platformFeeCents(dueCents),
             currency,
             metadata,
             setup_future_usage: "off_session" as const,

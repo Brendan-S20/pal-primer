@@ -6,6 +6,7 @@
 // the webhook — the status flip is an atomic claim, so only one writer
 // records the payment.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { platformFeeCents } from "@/lib/platform-fee";
 
 type MarkPaidArgs = {
   invoiceId: string;
@@ -313,7 +314,18 @@ export async function syncInvoicePaymentIntentAmount(invoiceId: string): Promise
       return "canceled";
     }
     if (pi.amount !== dueCents) {
-      await stripe.paymentIntents.update(pi.id, { amount: dueCents }, acctOpts);
+      await stripe.paymentIntents.update(
+        pi.id,
+        {
+          amount: dueCents,
+          // Must move with the amount — see the note at the other update
+          // sites. This one is the sharpest: it exists precisely to shrink a
+          // charge after credit is applied, so leaving the fee behind is
+          // guaranteed here rather than incidental.
+          application_fee_amount: platformFeeCents(dueCents),
+        },
+        acctOpts,
+      );
     }
     return "synced";
   } catch (e) {
