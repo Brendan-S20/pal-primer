@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { makeStripe, warnOnApiVersionMismatch } from "@/lib/stripe-client.server";
 
 // Platform-side Stripe webhook. Handles SaaS subscription and invoice events for
 // tenant organizations (separate from the tenant-facing hook at /api/public/hooks/stripe).
@@ -26,8 +27,7 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
         if (!signature) return new Response("Missing signature", { status: 400 });
         const body = await request.text();
 
-        const Stripe = (await import("stripe")).default;
-        const stripe = new Stripe(secret);
+        const stripe = await makeStripe(secret);
         let event: import("stripe").Stripe.Event;
         try {
           event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
@@ -35,6 +35,8 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
           console.error("Platform webhook signature failed", e);
           return new Response("Invalid signature", { status: 401 });
         }
+
+        warnOnApiVersionMismatch(event);
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 

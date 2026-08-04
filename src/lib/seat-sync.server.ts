@@ -1,3 +1,4 @@
+import { makeStripe } from "@/lib/stripe-client.server";
 // Ongoing seat-count → Stripe sync for the per-employee plan model (finding #6
 // follow-through). Checkout sets the initial seat-overage quantity; this keeps
 // it reconciled as active employees come and go.
@@ -40,8 +41,7 @@ export async function syncOrgSeatQuantity(orgId: string): Promise<SeatSyncResult
   const subId = (org as any)?.stripe_subscription_id as string | null | undefined;
   if (!subId || !SUB_RE.test(subId) || subId.includes("demo")) return { skipped: "no_subscription" };
 
-  const Stripe = (await import("stripe")).default;
-  const stripe = new Stripe(secret);
+  const stripe = await makeStripe(secret);
   const sub = await stripe.subscriptions.retrieve(subId, { expand: ["items.data.price"] });
   if (sub.status === "canceled" || sub.status === "incomplete_expired") return { skipped: `status_${sub.status}` };
 

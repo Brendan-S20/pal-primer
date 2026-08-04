@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { feeReversalCents } from "@/lib/platform-fee";
+import { makeStripe, warnOnApiVersionMismatch } from "@/lib/stripe-client.server";
 
 async function provisionSignup(
   supabaseAdmin: SupabaseClient,
@@ -155,8 +156,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
         if (!signature) return new Response("Missing signature", { status: 400 });
         const body = await request.text();
 
-        const Stripe = (await import("stripe")).default;
-        const stripe = new Stripe(secret);
+        const stripe = await makeStripe(secret);
         let event: import("stripe").Stripe.Event;
         try {
           event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
@@ -164,6 +164,8 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
           console.error("Webhook signature verification failed", e);
           return new Response("Invalid signature", { status: 401 });
         }
+
+        warnOnApiVersionMismatch(event);
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { resolveOrgStripeAccount } = await import("@/lib/stripe-connect.server");

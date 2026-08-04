@@ -41,6 +41,7 @@ import { orgLocalDay, DEFAULT_ORG_TIMEZONE } from "@/lib/org-day";
 // starting their own dynamic import of the same module is a race, and under
 // vitest it is the race that hands one of them an unmocked client.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { makeStripe } from "@/lib/stripe-client.server";
 
 export type OverageOutcome =
   | { billed: true; orgId: string; periodMonth: string; cents: number; invoiceItemId: string }
@@ -175,8 +176,7 @@ export async function billOrgAiOverage(row: PeriodRow): Promise<OverageOutcome> 
     .select("organization_id");
   if (!claimed || claimed.length === 0) return { skipped: "already_billed", orgId, periodMonth };
 
-  const Stripe = (await import("stripe")).default;
-  const stripe = new Stripe(secret);
+  const stripe = await makeStripe(secret);
 
   const monthLabel = new Date(`${periodMonth}T12:00:00Z`).toLocaleDateString("en-US", {
     month: "long",
