@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { appOrigin } from "@/lib/app-origin";
 import { platformFeeCents } from "@/lib/platform-fee";
+import { fetchAllPages } from "@/lib/supabase-paging.server";
 
 // POST /api/public/hooks/nightly?s=<CRON_SECRET>
 // Called by pg_cron on a schedule. Iterates orgs and:
@@ -318,16 +319,32 @@ async function autoSendScheduledInvoices(
   orgId: string,
   todayStr: string,
 ): Promise<number | string> {
-  const { data: invoices, error } = await supabaseAdmin
-    .from("invoices")
-    .select(
-      "id, client_id, total_cents, period_start, period_end, public_token, send_after, sent_at",
-    )
-    .eq("organization_id", orgId)
-    .eq("status", "open")
-    .is("sent_at", null)
-    .not("send_after", "is", null)
-    .lte("send_after", todayStr);
+  // Paged. PostgREST stops at 1000 rows and says nothing — no error, no flag —
+  // so an org past a thousand queued invoices would silently send the first
+  // thousand and leave the rest unsent FOREVER, since each run repeats the same
+  // truncated page. Unattended and about money, which is the worst combination
+  // for a limit that announces itself nowhere. Ordered because paging an
+  // unordered query can repeat or drop a row between pages.
+  let invoices: any[] = [];
+  let error: { message: string } | null = null;
+  try {
+    invoices = await fetchAllPages<any>((a, b) =>
+      supabaseAdmin
+        .from("invoices")
+        .select(
+          "id, client_id, total_cents, period_start, period_end, public_token, send_after, sent_at",
+        )
+        .eq("organization_id", orgId)
+        .eq("status", "open")
+        .is("sent_at", null)
+        .not("send_after", "is", null)
+        .lte("send_after", todayStr)
+        .order("id")
+        .range(a, b),
+    );
+  } catch (e) {
+    error = { message: (e as Error).message };
+  }
   if (error) return `err: ${error.message}`;
   if (!invoices?.length) return 0;
 
@@ -395,13 +412,25 @@ async function sendOverdueReminders(
   reminderDays: number,
 ): Promise<number | string> {
   const dueCutoff = dueOnCutoff(reminderDays);
-  const { data: invoices, error } = await supabaseAdmin
-    .from("invoices")
-    .select("id, client_id, total_cents, issued_at, due_on, last_reminder_at, kind")
-    .eq("organization_id", orgId)
-    .eq("status", "open")
-    .not("due_on", "is", null)
-    .lte("due_on", dueCutoff);
+  // Paged — see sendQueuedInvoices. A truncated page here means the oldest
+  // thousand overdue invoices get chased and everyone past them never does.
+  let invoices: any[] = [];
+  let error: { message: string } | null = null;
+  try {
+    invoices = await fetchAllPages<any>((a, b) =>
+      supabaseAdmin
+        .from("invoices")
+        .select("id, client_id, total_cents, issued_at, due_on, last_reminder_at, kind")
+        .eq("organization_id", orgId)
+        .eq("status", "open")
+        .not("due_on", "is", null)
+        .lte("due_on", dueCutoff)
+        .order("id")
+        .range(a, b),
+    );
+  } catch (e) {
+    error = { message: (e as Error).message };
+  }
   if (error) return `err: ${error.message}`;
   if (!invoices?.length) return 0;
 
@@ -485,13 +514,24 @@ async function sendOverdueEmails(
   reminderDays: number,
 ): Promise<number | string> {
   const dueCutoff = dueOnCutoff(reminderDays);
-  const { data: invoices, error } = await supabaseAdmin
-    .from("invoices")
-    .select("id, client_id, total_cents, issued_at, due_on, last_email_reminder_at")
-    .eq("organization_id", orgId)
-    .eq("status", "open")
-    .not("due_on", "is", null)
-    .lte("due_on", dueCutoff);
+  // Paged — see sendQueuedInvoices.
+  let invoices: any[] = [];
+  let error: { message: string } | null = null;
+  try {
+    invoices = await fetchAllPages<any>((a, b) =>
+      supabaseAdmin
+        .from("invoices")
+        .select("id, client_id, total_cents, issued_at, due_on, last_email_reminder_at")
+        .eq("organization_id", orgId)
+        .eq("status", "open")
+        .not("due_on", "is", null)
+        .lte("due_on", dueCutoff)
+        .order("id")
+        .range(a, b),
+    );
+  } catch (e) {
+    error = { message: (e as Error).message };
+  }
   if (error) return `err: ${error.message}`;
   if (!invoices?.length) return 0;
 
