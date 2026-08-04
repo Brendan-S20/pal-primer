@@ -28,6 +28,7 @@ import { ScheduleCalendar, calendarWindow } from "@/components/schedule/Schedule
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
 import { OneOffVisitDialog } from "@/components/OneOffVisitDialog";
 import { usePermissions } from "@/hooks/useMyRole";
+import { setStaffRouting } from "@/lib/users.functions";
 import {
   Navigation,
   CheckCircle2,
@@ -36,6 +37,7 @@ import {
   CalendarClock,
   ChevronLeft,
   ChevronRight,
+  Users,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -261,9 +263,15 @@ function RoutesPage() {
   // throws only after it has been filled in.
   const { can: canDo } = usePermissions();
   const canBookOneOff = canDo("manage_pricing");
+  // "You shouldn't have to go to settings to say who's a tech." Naming the
+  // crew is the same permission as editing the crew — `setStaffRouting` takes
+  // `manage_users` and will refuse regardless, so a dispatcher gets no switch
+  // rather than a switch that throws.
+  const canManageCrew = canDo("manage_users");
 
   const listV = useServerFn(listVisitsForDay);
   const listS = useServerFn(listStaff);
+  const setRouting = useServerFn(setStaffRouting);
   const assign = useServerFn(assignRoute);
   const optimize = useServerFn(optimizeRoute);
   const optWeek = useServerFn(optimizeWeek);
@@ -473,6 +481,30 @@ function RoutesPage() {
       setLocalColumns(null);
       qc.invalidateQueries({ queryKey: ["visits"] });
       qc.invalidateQueries({ queryKey: ["staff"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  /** Who runs routes, set from the board.
+   *
+   *  This flag decides whether somebody gets a lane, a drop target and an
+   *  entry in every assign control on this page — and until now the only
+   *  place to set it was Settings → Team, two navigations away from the board
+   *  where you notice it's wrong. You notice it *here*: a new hire has no
+   *  column, or somebody who left the trucks still has one.
+   *
+   *  `setStaffRouting` writes `is_field_tech_overridden` alongside the flag,
+   *  so the nightly role reconciliation never undoes a deliberate choice made
+   *  from this popover. */
+  const routingMut = useMutation({
+    mutationFn: (v: { staffId: string; isFieldTech: boolean }) =>
+      setRouting({ data: { staffId: v.staffId, isFieldTech: v.isFieldTech } }),
+    onSuccess: (_r, v) => {
+      toast.success(v.isFieldTech ? "Added to the routing crew" : "Taken off the routing crew");
+      // The board's lanes ARE this list, so it has to redraw. Visits too:
+      // a stranded lane stops being stranded the moment the flag flips.
+      qc.invalidateQueries({ queryKey: ["staff"] });
+      qc.invalidateQueries({ queryKey: ["visits"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -745,6 +777,69 @@ function RoutesPage() {
               </div>
             </PopoverContent>
           </Popover>
+          {canManageCrew && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" title="Who runs routes">
+                  <Users className="h-4 w-4" />
+                  <span className="ml-1.5 max-sm:hidden">Crew</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-80 p-0">
+                <div className="border-b px-3 py-2">
+                  <div className="text-sm font-medium">Who runs routes</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Everyone switched on here gets a lane on the board and can be assigned
+                    work. Everyone else stays in the office.
+                  </div>
+                </div>
+                <div className="max-h-72 overflow-y-auto">
+                  {allStaff.length === 0 ? (
+                    <div className="px-3 py-4 text-xs text-muted-foreground">
+                      Nobody on the team yet.{" "}
+                      <Link to="/settings/users" className="underline">
+                        Invite someone
+                      </Link>
+                      .
+                    </div>
+                  ) : (
+                    allStaff.map((s: any) => (
+                      <div
+                        key={s.id}
+                        className="flex items-center justify-between gap-3 border-b px-3 py-2 last:border-0"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate text-sm">{s.display_name}</div>
+                          <div className="text-[11px] text-muted-foreground capitalize">
+                            {s.role ? humanizeRole(s.role) : "—"}
+                            {/* Only ever shown for someone being switched OFF,
+                                where it is the consequence rather than trivia:
+                                their lane is about to disappear with work
+                                still in it. */}
+                            {s.is_field_tech && assignedIds.has(s.id) ? (
+                              <span> · holds work today</span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <Switch
+                          checked={Boolean(s.is_field_tech)}
+                          disabled={routingMut.isPending}
+                          onCheckedChange={(next) =>
+                            routingMut.mutate({ staffId: s.id, isFieldTech: next })
+                          }
+                          aria-label={`${s.display_name} runs routes`}
+                        />
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="border-t px-3 py-2 text-[11px] text-muted-foreground">
+                  Switching somebody off doesn&apos;t move their visits — use{" "}
+                  <strong>Cover</strong> on their lane for that.
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
           <Button variant="outline" size="sm" onClick={() => setToolsOpen((v) => !v)}>
             {toolsOpen ? "Hide dispatch tools" : "Dispatch tools"}
           </Button>
@@ -1069,6 +1164,23 @@ function RoutesPage() {
                   id={s.id}
                   title={s.display_name}
                   notRoutable
+                  notRoutableHint={
+                    canManageCrew ? (
+                      <>Still holding work — drag it to a tech, or let them run routes.</>
+                    ) : undefined
+                  }
+                  laneAction={
+                    canManageCrew ? (
+                      <button
+                        onClick={() => routingMut.mutate({ staffId: s.id, isFieldTech: true })}
+                        disabled={routingMut.isPending}
+                        className="rounded border border-rose-300 px-1.5 py-0.5 text-[10px] text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                        title={`Let ${s.display_name} run routes`}
+                      >
+                        Let them run routes
+                      </button>
+                    ) : undefined
+                  }
                   items={columns[s.id] ?? []}
                   layout={boardLayout}
                   onComplete={(id) => completeMut.mutate(id)}
@@ -1323,6 +1435,7 @@ function Column({
   tone,
   offRoutes,
   notRoutable,
+  notRoutableHint,
   onComplete,
   completingId,
   onOpen,
@@ -1352,6 +1465,9 @@ function Column({
   /** Holds visits but is not a field tech. Read-only: the server refuses new
    *  assignments here, so accepting a drop would only produce an error toast. */
   notRoutable?: boolean;
+  /** Overrides the default "…in Settings → Team" remedy when the caller can
+   *  offer a shorter one. */
+  notRoutableHint?: React.ReactNode;
   onComplete?: (visitId: string) => void;
   completingId?: string | null;
   onOpen?: (visitId: string) => void;
@@ -1383,10 +1499,16 @@ function Column({
           </div>
           {notRoutable ? (
             // Say what to do, not just what is wrong. Both remedies are real and
-            // the dispatcher can reach either from here.
+            // the dispatcher can reach either from here — the second one now
+            // literally so, via the lane's own button, for anyone who holds
+            // manage_users. Readers who don't still get told where it lives.
             <div className="text-xs text-rose-700">
-              Still holding work — drag it to a tech, or turn on “Runs routes” for
-              them in Settings → Team.
+              {notRoutableHint ?? (
+                <>
+                  Still holding work — drag it to a tech, or turn on “Runs routes” for them in
+                  Settings → Team.
+                </>
+              )}
             </div>
           ) : (
             subtitle && <div className="text-xs text-muted-foreground capitalize">{subtitle}</div>
