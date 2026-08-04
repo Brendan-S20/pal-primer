@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createFileRoute } from "@tanstack/react-router";
 import { appUrl } from "@/lib/app-origin";
+import { resolveSupabaseUrl } from "@/lib/supabase-url";
 
 const MAX_RETRIES = 5;
 const DEFAULT_BATCH_SIZE = 10;
@@ -144,37 +145,29 @@ export const Route = createFileRoute("/email/queue/process")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        // SERVER-SIDE, so this must be a RUNTIME lookup with the build-time value only
-        // as a fallback. `import.meta.env.VITE_SUPABASE_URL` is INLINED AT BUILD: if the
-        // variable is absent when the bundle is built, the compiled output contains
-        // `undefined` and no secret added afterwards can change it. `.env` is untracked
-        // (deliberately — it was committed once and that was a security fix), so the
-        // deployed build has no source for it, and nothing else in the product reveals
-        // the gap because the browser client hard-codes its own URL. The result was the
-        // email queue processor returning 500 at its config guard every minute, with
-        // every invoice, OTP, reminder and welcome email silently undelivered.
         const resendApiKey = process.env.RESEND_API_KEY;
-        const supabaseUrl = process.env.SUPABASE_URL ?? import.meta.env.VITE_SUPABASE_URL;
+        // Cannot be undefined, and that is the fix: this guard used to test
+        // `import.meta.env.VITE_SUPABASE_URL`, which Vite INLINES at build. The
+        // variable was absent when the bundle was built, so the compiled output
+        // held `undefined` and no secret added to a runtime store afterwards
+        // could change it. `.env` is untracked (deliberately — it was committed
+        // once and removing it was a security fix), so the deployed build had no
+        // source for it, and nothing else in the product revealed the gap because
+        // the browser client hard-codes its own copy of this same public URL.
+        // This processor 500'd at the guard below every minute for hours and every
+        // invoice, OTP, reminder and welcome email went silently undelivered.
+        const supabaseUrl = resolveSupabaseUrl();
         const supabaseServiceKey =
           process.env.SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-        if (!resendApiKey || !supabaseUrl || !supabaseServiceKey) {
-          // NAME the missing variable. This guard ran every minute for hours
+        if (!resendApiKey || !supabaseServiceKey) {
+          // NAME the missing variable. The old guard ran every minute for hours
           // returning an identical opaque 500, so `net._http_response` showed
-          // 360/360 failures with nothing to say WHICH of the three was absent
-          // — and every invoice, OTP, reminder and welcome email was silently
-          // undelivered the whole time. An operator reading the log could not
-          // tell a missing Resend key from a missing Supabase URL.
-          //
-          // The two are not even configured the same way: RESEND_API_KEY and
-          // SERVICE_ROLE_KEY are RUNTIME secrets, but VITE_SUPABASE_URL is read
-          // through `import.meta.env` and is therefore inlined at BUILD time —
-          // setting it in a runtime secret store has no effect on an
-          // already-built bundle.
+          // 360/360 failures with nothing to say WHICH variable was absent. An
+          // operator reading the log could not tell a missing Resend key from a
+          // missing Supabase URL.
           const missing = [
             !resendApiKey && "RESEND_API_KEY (runtime secret)",
-            !supabaseUrl &&
-              "SUPABASE_URL (runtime secret — set this; VITE_SUPABASE_URL is build-time only)",
             !supabaseServiceKey && "SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY (runtime secret)",
           ].filter(Boolean);
           console.error(`email queue processor not configured — missing: ${missing.join(", ")}`);

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { createFileRoute } from "@tanstack/react-router";
+import { resolveSupabaseUrl } from "@/lib/supabase-url";
 
 function redactEmail(email: string | null | undefined): string {
   if (!email) return "***";
@@ -12,11 +13,12 @@ export const Route = createFileRoute("/email/unsubscribe")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const supabaseUrl = process.env.SUPABASE_URL ?? import.meta.env.VITE_SUPABASE_URL;
+        const supabaseUrl = resolveSupabaseUrl();
         const supabaseServiceKey =
           process.env.SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-        if (!supabaseUrl || !supabaseServiceKey) {
+        if (!supabaseServiceKey) {
+          console.error("SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY is not set");
           return Response.json({ error: "Server configuration error" }, { status: 500 });
         }
 
@@ -49,11 +51,12 @@ export const Route = createFileRoute("/email/unsubscribe")({
       },
 
       POST: async ({ request }) => {
-        const supabaseUrl = process.env.SUPABASE_URL ?? import.meta.env.VITE_SUPABASE_URL;
+        const supabaseUrl = resolveSupabaseUrl();
         const supabaseServiceKey =
           process.env.SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-        if (!supabaseUrl || !supabaseServiceKey) {
+        if (!supabaseServiceKey) {
+          console.error("SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY is not set");
           return Response.json({ error: "Server configuration error" }, { status: 500 });
         }
 

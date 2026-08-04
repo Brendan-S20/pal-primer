@@ -9,6 +9,7 @@ import { MagicLinkEmail } from "@/lib/email-templates/magic-link";
 import { RecoveryEmail } from "@/lib/email-templates/recovery";
 import { EmailChangeEmail } from "@/lib/email-templates/email-change";
 import { ReauthenticationEmail } from "@/lib/email-templates/reauthentication";
+import { resolveSupabaseUrl } from "@/lib/supabase-url";
 
 // Supabase Auth "Send Email" hook action types
 type SupabaseEmailActionType =
@@ -126,8 +127,7 @@ export const Route = createFileRoute("/email/auth/webhook")({
         // The app has no custom /auth/callback route that verifies token_hash
         // via supabase-js, so we point at Supabase's hosted verify endpoint,
         // which will then redirect the user back to redirect_to.
-        const supabaseUrl = (process.env.SUPABASE_URL ??
-          import.meta.env.VITE_SUPABASE_URL) as string;
+        const supabaseUrl = resolveSupabaseUrl();
         const buildVerifyUrl = (tokenHash: string, type: string) =>
           `${supabaseUrl}/auth/v1/verify?token=${encodeURIComponent(tokenHash)}&type=${encodeURIComponent(type)}&redirect_to=${encodeURIComponent(email_data.redirect_to || email_data.site_url)}`;
 
@@ -162,8 +162,8 @@ export const Route = createFileRoute("/email/auth/webhook")({
 
         const supabaseServiceKey =
           process.env.SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-        if (!supabaseUrl || !supabaseServiceKey) {
-          console.error("Missing Supabase environment variables");
+        if (!supabaseServiceKey) {
+          console.error("SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY is not set");
           return Response.json({ error: "Server configuration error" }, { status: 500 });
         }
 

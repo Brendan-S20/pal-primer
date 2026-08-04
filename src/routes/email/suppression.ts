@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { Webhook, WebhookVerificationError } from "svix";
 import { createFileRoute } from "@tanstack/react-router";
+import { resolveSupabaseUrl } from "@/lib/supabase-url";
 
 // Resend delivers webhooks via Svix. Signature is verified with the
 // signing secret shown in the Resend dashboard when the endpoint is
@@ -71,12 +72,12 @@ export const Route = createFileRoute("/email/suppression")({
     handlers: {
       POST: async ({ request }) => {
         const signingSecret = process.env.RESEND_WEBHOOK_SECRET;
-        const supabaseUrl = process.env.SUPABASE_URL ?? import.meta.env.VITE_SUPABASE_URL;
+        const supabaseUrl = resolveSupabaseUrl();
         const supabaseServiceKey =
           process.env.SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-        if (!supabaseUrl || !supabaseServiceKey) {
-          console.error("Missing Supabase environment variables");
+        if (!supabaseServiceKey) {
+          console.error("SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY is not set");
           return Response.json({ error: "Server configuration error" }, { status: 500 });
         }
 
