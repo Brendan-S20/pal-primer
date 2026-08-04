@@ -21,6 +21,7 @@ import {
 } from "@/lib/visits.functions";
 import { backfillPropertyGeocodes } from "@/lib/properties.functions";
 import { RouteMap, buildTechGroups, techColorMap } from "@/components/RouteMap";
+import { BASE_STYLES, storedBaseStyle, storeBaseStyle, type TileVariant } from "@/lib/map-tiles";
 import { StatusChip } from "@/components/client-detail/primitives";
 import { MobileDayList } from "@/components/schedule/MobileDayList";
 import { ScheduleCalendar, calendarWindow } from "@/components/schedule/ScheduleCalendar";
@@ -237,6 +238,12 @@ function RoutesPage() {
     setSelected(new Set());
     setLastPickedId(null);
   }, [day, range]);
+
+  const [baseStyle, setBaseStyle] = useState<TileVariant>(() => storedBaseStyle());
+  const setBaseStylePersist = (v: TileVariant) => {
+    setBaseStyle(v);
+    storeBaseStyle(v);
+  };
 
   const [toolsOpen, setToolsOpen] = useState(false);
   const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
@@ -919,6 +926,8 @@ function RoutesPage() {
             // Sticky so the map stays put while a long month scrolls past it.
             <div className="lg:sticky lg:top-4">
               <MapPanel
+                baseStyle={baseStyle}
+                onBaseStyle={setBaseStylePersist}
                 // The same filtered list the calendar is drawing. Two panes
                 // showing different subsets of the same window would be worse
                 // than one pane.
@@ -941,6 +950,8 @@ function RoutesPage() {
       {range === "today" && viewMode === "map" && (
         <>
           <MapPanel
+            baseStyle={baseStyle}
+            onBaseStyle={setBaseStylePersist}
             visits={visits}
             staff={staff}
             onOpenVisit={setDetailVisitId}
@@ -1188,6 +1199,8 @@ function RoutesPage() {
 
 /** Toggleable weekday chips for the org's operating days (0=Sun..6=Sat). */
 function MapPanel({
+  baseStyle,
+  onBaseStyle,
   visits,
   staff,
   onOpenVisit,
@@ -1195,6 +1208,8 @@ function MapPanel({
   geocoding,
   drawRoutes = true,
 }: {
+  baseStyle: TileVariant;
+  onBaseStyle: (v: TileVariant) => void;
   visits: any[];
   staff: any[];
   onOpenVisit?: (id: string) => void;
@@ -1217,6 +1232,19 @@ function MapPanel({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={baseStyle}
+            onChange={(e) => onBaseStyle(e.target.value as TileVariant)}
+            className="h-7 rounded-md border bg-background px-2 text-[11px]"
+            title={BASE_STYLES.find((b) => b.value === baseStyle)?.hint}
+            aria-label="Map style"
+          >
+            {BASE_STYLES.map((b) => (
+              <option key={b.value} value={b.value} title={b.hint}>
+                {b.label}
+              </option>
+            ))}
+          </select>
           {onGeocode && missing > 0 && (
             <Button size="sm" variant="outline" onClick={onGeocode} disabled={geocoding}>
               <MapPin className="mr-1 h-3.5 w-3.5" />
@@ -1235,7 +1263,13 @@ function MapPanel({
         </div>
       </div>
       <div className="relative">
-        <RouteMap groups={groups} height={420} onVisitClick={onOpenVisit} drawRoutes={drawRoutes} />
+        <RouteMap
+          groups={groups}
+          height={420}
+          onVisitClick={onOpenVisit}
+          drawRoutes={drawRoutes}
+          baseStyle={baseStyle}
+        />
         {mappable === 0 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-md bg-background/70 text-xs text-muted-foreground">
             <span>No coordinates yet. Geocode your properties to plot them.</span>

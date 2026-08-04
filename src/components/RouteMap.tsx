@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { addBaseTiles } from "@/lib/map-tiles";
+import { addBaseTiles, type TileVariant } from "@/lib/map-tiles";
 
 // Fix Leaflet default icon paths (they break under bundlers).
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -55,10 +55,14 @@ export function RouteMap({
   height = 380,
   onVisitClick,
   drawRoutes = true,
+  baseStyle,
 }: {
   groups: TechGroup[];
   height?: number;
   onVisitClick?: (visitId: string) => void;
+  /** Base tiles. Changing it swaps the layer in place rather than rebuilding
+   *  the map, so pan and zoom survive picking a different style. */
+  baseStyle?: TileVariant;
   /** Ordered polylines + sequence numbers only make sense for a single day's
    * route. Multi-day views (Routes week/month) pass false to plot plain
    * per-tech pins — a volume view, not a driving order. */
@@ -88,10 +92,30 @@ export function RouteMap({
       zoom: 4,
       scrollWheelZoom: true,
     });
-    addBaseTiles(map);
     mapRef.current = map;
     layerRef.current = L.layerGroup().addTo(map);
   }, []);
+
+  // Base tiles live in their own effect keyed on the style. Rebuilding the map
+  // to change basemap would reset the viewport, so switching style would fling
+  // you back to the whole-country default view every time.
+  const baseRef = useRef<L.Layer[]>([]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    for (const l of baseRef.current) map.removeLayer(l);
+    baseRef.current = [];
+    const before = new Set<L.Layer>();
+    map.eachLayer((l) => before.add(l));
+    addBaseTiles(map, baseStyle);
+    map.eachLayer((l) => {
+      if (!before.has(l) && l instanceof L.TileLayer) {
+        baseRef.current.push(l);
+        // Tiles belong underneath every pin and polyline.
+        l.setZIndex(0);
+      }
+    });
+  }, [baseStyle]);
 
   useEffect(() => {
     const map = mapRef.current;
