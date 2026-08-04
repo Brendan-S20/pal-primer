@@ -37,7 +37,8 @@ key with **read on Prices only** is sufficient — one call, `GET /v1/prices` �
 and exits 2, and the gate is protecting nothing.
 | `PLATFORM_SMS_FROM_NUMBER` | Platform Twilio number for OTP + automated notifications |
 | `LOVABLE_API_KEY` / `TWILIO_API_KEY` | Platform Twilio via the connector gateway |
-| `TWILIO_INBOUND_SECRET` | Shared inbound-webhook secret for platform-managed numbers |
+| `TWILIO_AUTH_TOKEN` | **Set this.** Platform Twilio Auth Token. Verifies the signature Twilio puts on every inbound webhook, which is the mechanism built for this job. While it is unset, inbound SMS and voice authenticate on `TWILIO_INBOUND_SECRET` alone. |
+| `TWILIO_INBOUND_SECRET` | Fallback inbound-webhook secret, in the query string. Platform-wide: one value authenticates every tenant, and after it passes the org is taken from the attacker-supplied `To` field. It appears in every access, proxy and Twilio log it passes through. Kept only so inbound SMS does not go dark before `TWILIO_AUTH_TOKEN` is set; it logs a warning naming itself whenever it is what let a request through. |
 | `RESEND_API_KEY` | All transactional email (OTP email, invoices, review-ask fallback, notifications) |
 | `ANTHROPIC_API_KEY` | Optional platform-managed AI fallback (unset ⇒ AI is pure BYOK) |
 | `CRON_SECRET` | Authorizes the nightly cron (**required** for autopay — see §5) |
@@ -87,7 +88,7 @@ does surface as failed deliveries in Stripe's dashboard.)
 and the outbound one moves silently on any dependency bump. Same major, so the
 objects consumed here are very unlikely to differ — but it is unverified, and
 worth pinning.
-- **Twilio (per BYOK tenant)** → the tenant sets their number's "A message comes in" / "A call comes in" to `POST /api/public/hooks/twilio` and `/twilio-voice` (no `?s=` — verified by their Auth Token signature). Platform-managed numbers use `?s=<TWILIO_INBOUND_SECRET>`.
+- **Twilio** → set the number's "A message comes in" / "A call comes in" to `POST /api/public/hooks/twilio` and `/twilio-voice`. With `TWILIO_AUTH_TOKEN` set, no `?s=` is needed on any number — platform or tenant — because Twilio signs every request. `?s=<TWILIO_INBOUND_SECRET>` still works as a fallback. Voice continuations no longer carry the secret: they carry a token derived from it, scoped to one call and one turn.
 
 ## 3. Migrations
 

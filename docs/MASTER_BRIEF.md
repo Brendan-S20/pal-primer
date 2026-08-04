@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.21j** · Released 2026-08-04 · Supersedes: v1.21i, v1.21h, v1.21g, v1.21f, v1.21e, v1.21d, v1.21c, v1.21b, v1.21, v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.21k** · Released 2026-08-04 · Supersedes: v1.21j, v1.21i, v1.21h, v1.21g, v1.21f, v1.21e, v1.21d, v1.21c, v1.21b, v1.21, v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -19,6 +19,79 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 > sits above v1.21f/g (2026-08-03) for historical reasons. Find an entry by its
 > version number, not its position. The two v1.21e duplicates were corrected on
 > 2026-08-03; see the renumbering notes in place.
+
+### v1.21k — 2026-08-04
+
+**Everything sellable, and the checks that were measuring nothing.**
+
+All six add-ons are live on the platform account (`acct_1U0RifQjJFmqXgZD`) —
+five recurring monthly, `developer-setup` one-time at $499 — with `status` and
+`is_active` both set. Both matter and are read by different things: `status`
+is the purchase gate, `is_active` is what `check-stripe-catalog.mjs` uses to
+decide a row is worth comparing. With all six inactive that gate **validated
+twelve plan prices and zero add-on prices while printing a green tick**. It now
+compares 18 prices across 3 plans and 6 add-ons, and the skip list no longer
+contains a single add-on.
+
+**Anyone could write a lead into any tenant's pipeline.** The `leads` INSERT
+policy was `WITH CHECK (true)`, on a table reached with the publishable key.
+`public_get_org_for_lead_form` is SECURITY DEFINER, granted to anon, and
+returns the org UUID for any slug — so the identifier needed to target a
+competitor was one documented lookup away. `organization_id = NULL` was also
+accepted, producing rows no tenant could see *or* delete. The obvious fix — an
+inline `EXISTS` against `organizations` — fails closed: that subquery runs as
+`anon`, which cannot read that table, so it rejected **every** submission
+including the real form's. Caught by probing as `anon` before committing; the
+rule now lives in `org_accepts_public_leads()`.
+
+**One Stripe API version, on both sides.** Thirteen `new Stripe(secret)` calls,
+none pinning `apiVersion`, while the live endpoint served `2026-07-29.dahlia`
+and the SDK typed every response against `2026-06-24.dahlia`. Closed by
+upgrading stripe-node 22.3.0 → 22.4.0, whose headline change *is* that version
+— not by casting, which Stripe's own doc comment warns costs you `@ts-ignore`
+"anywhere the types differ between API versions". The constant is typed off the
+SDK constructor, so upgrading without bumping it fails `tsc`; that fired for
+real during this upgrade.
+
+**Three surcharge money bugs.** A refund of a surcharged charge deducted
+base + surcharge from revenue that only ever held the base. `ON CONFLICT … DO
+NOTHING` meant the **second partial refund was silently discarded** — $100
+charge refunded $30 then $50 more left the ledger reading $30 for ever while
+$80 had left the bank. And the saved-card flip dropped `surchargeCents`, so
+every synchronously-settled card charge recorded `surcharge_cents = 0`, feeding
+the wrong base to the split. A fourth followed with the new webhook events: a
+refund that **fails after creation** never un-recorded itself.
+
+**Inbound Twilio was one platform-wide secret, in a URL.** The per-tenant
+signature branch could never run — `resolveOrgTwilioConfig` returns null for
+every org until 10DLC clears — so a single secret in the query string was the
+whole of inbound authentication, and the voice route echoed it back into TwiML,
+writing it into Twilio's stored call logs. Signature first now, secret last and
+logging when it is what let a request through.
+
+**Field-app data integrity.** One storage key per photo (both paths keyed on
+`Date.now()`, so any failure after the bytes landed orphaned them — up to five
+copies before dead-lettering). Replayed work now carries the time it was
+actually done, bounded server-side, and records
+`completion_source = 'tech_offline_replay'` instead of claiming `tech_live`.
+The nightly invoice jobs page instead of stopping at PostgREST's silent
+1000-row cap — which would have left every invoice past the first thousand
+unsent **for ever**, since each run repeats the same truncated page.
+
+**Two claims removed.** `customer_requested` was a real skip code the portal
+writes, missing from the TS list — so a client cancelling through the portal
+was always billed $0 and the settings screen that exists to set that policy
+showed no row to set. `billed_through_parent` promised consolidated franchise
+billing with no reader, no writer, and every row false; dropped rather than
+half-implemented.
+
+**Accepted, stated:** end-customer texts (visit reminders, on-my-way, overdue)
+send on HoundStack's shared toll-free number, which is registered for
+account-holder messaging. Per-client consent is opt-OUT only — no opt-IN is
+recorded anywhere. Accepted deliberately on 2026-08-04 to get the number
+verified; closing it needs per-client consent capture plus tenant subaccounts.
+
+---
 
 ### v1.21j — 2026-08-04
 
