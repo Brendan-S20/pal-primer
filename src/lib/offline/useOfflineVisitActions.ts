@@ -119,6 +119,17 @@ export function useOfflineVisitActions(
       // the better).
       const { file, contentType, ext } = await compressImage(rawFile);
 
+      // ONE storage key for this photo, whichever path it takes. The online
+      // upload can land and the record step can still fail — at which point
+      // runOrQueue queues the action and the replay uploads the same bytes
+      // again. With `Date.now()` in the path that second upload went somewhere
+      // new, leaving the first object referenced by nothing and collected by
+      // nothing, billed to the org for ever.
+      const uploadKey =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
       return runOrQueue({
         online: isNavigatorOnline(),
         label: "Upload photo",
@@ -134,10 +145,13 @@ export function useOfflineVisitActions(
             .eq("id", visitId)
             .single();
           if (vErr) throw vErr;
-          const path = `${vRow.organization_id}/${visitId}/${Date.now()}.${ext}`;
+          const path = `${vRow.organization_id}/${visitId}/${uploadKey}.${ext}`;
           const { error: upErr } = await supabase.storage
             .from("visit-photos")
-            .upload(path, file, { contentType, upsert: false });
+            // upsert, because the replay may write these same bytes to this
+            // same key. `upsert: false` would turn a recoverable record-step
+            // failure into a permanent "already exists".
+            .upload(path, file, { contentType, upsert: true });
           if (upErr) throw upErr;
           await photoFn({ data: { visitId, storagePath: path, kind } });
         },
@@ -158,6 +172,7 @@ export function useOfflineVisitActions(
               visitId,
               photoKind: kind,
               photoId,
+              uploadKey,
               organizationId: cachedOrgId,
               userId,
             });

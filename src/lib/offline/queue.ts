@@ -50,6 +50,17 @@ export type PendingAction =
       photoKind: "before" | "completion" | "issue";
       /** ID pointing into the `photos` object store */
       photoId: string;
+      /** Storage object key for this photo, minted BEFORE the first upload
+       *  attempt and reused by every retry and by the offline replay.
+       *
+       *  Without it the online path and the replay pick different paths for the
+       *  same bytes: an online upload that lands and then fails at the record
+       *  step queues the action, and the replay uploads a SECOND copy. The
+       *  first is referenced by nothing and collected by nothing.
+       *
+       *  Optional because rows queued before this field existed have none; they
+       *  fall back to the action id, which is stable for their own retries. */
+      uploadKey?: string;
       /** Cached organization_id so upload works without a network `visits` read */
       organizationId: string;
     } & ActionBase);

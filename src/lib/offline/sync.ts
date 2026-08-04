@@ -41,10 +41,25 @@ async function runOne(action: PendingAction, callers: SyncCallers): Promise<void
       // caller read as success — so the one path where a photo had been
       // destroyed was also the path that reported "synced". Say so instead.
       if (!photo) throw new MissingPhotoError(action.photoId);
-      const path = `${action.organizationId}/${action.visitId}/${Date.now()}.${photo.ext}`;
+      // The action's OWN id, not the clock.
+      //
+      // `Date.now()` made every attempt at the same photo a different object.
+      // The upload is not the last step — `recordVisitPhoto` follows it — so any
+      // failure after the bytes land (a refused insert, a dropped connection, a
+      // deadline) leaves that object in storage and retries to a FRESH path.
+      // Nothing references the first, nothing ever collects it, and the org is
+      // billed for it. This loop retries up to MAX_ATTEMPTS, so one stubborn
+      // photo could leave five copies of itself behind and then dead-letter,
+      // taking the only reference with it.
+      //
+      // Keyed on the action, the retry rewrites the SAME object — which is also
+      // why upsert has to be true. With `upsert: false` a retry after a
+      // successful upload fails on "already exists", turning a recoverable
+      // record-step failure into a permanent one.
+      const path = `${action.organizationId}/${action.visitId}/${action.uploadKey ?? action.id}.${photo.ext}`;
       const { error } = await supabase.storage
         .from("visit-photos")
-        .upload(path, photo.blob, { contentType: photo.contentType, upsert: false });
+        .upload(path, photo.blob, { contentType: photo.contentType, upsert: true });
       if (error) throw error;
       await callers.recordVisitPhoto({
         data: { visitId: action.visitId, storagePath: path, kind: action.photoKind },
