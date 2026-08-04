@@ -14,6 +14,10 @@ import {
   reassignVisit,
   reorderRoute,
   completeVisitFromOffice,
+  bulkAssignVisits,
+  bulkRescheduleVisits,
+  getStaffUpcomingLoad,
+  redistributeStaffWork,
 } from "@/lib/visits.functions";
 import { backfillPropertyGeocodes } from "@/lib/properties.functions";
 import { RouteMap, buildTechGroups, techColorMap } from "@/components/RouteMap";
@@ -188,6 +192,52 @@ function RoutesPage() {
   };
   const rangeNoun = range === "month" ? "month" : range === "week" ? "week" : "day";
 
+  // ── Multi-select ──────────────────────────────────────────────────────
+  //
+  // Dispatch could move one visit at a time, by dragging it. Reassigning a
+  // tech's Tuesday was fourteen drags.
+  //
+  // Selection is by visit ID, never by lane contents. The bulk server calls
+  // take the id list explicitly for the same reason `persistColumn` must not:
+  // a lane is a view, and acting on "everything in this lane" silently means
+  // something different the moment a filter is on.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [lastPickedId, setLastPickedId] = useState<string | null>(null);
+  const selectionActive = selected.size > 0;
+
+  const toggleSelect = (id: string, e: React.MouseEvent) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      // Shift-click fills the span between the last pick and this one, over
+      // the visits as currently ORDERED on screen — which is what "everything
+      // between these two" means to someone looking at the board.
+      if (e.shiftKey && lastPickedId && lastPickedId !== id) {
+        const order = visitsInBoardOrder();
+        const a = order.indexOf(lastPickedId);
+        const b = order.indexOf(id);
+        if (a !== -1 && b !== -1) {
+          for (const vid of order.slice(Math.min(a, b), Math.max(a, b) + 1)) next.add(vid);
+          return next;
+        }
+      }
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+    setLastPickedId(id);
+  };
+  const clearSelection = () => {
+    setSelected(new Set());
+    setLastPickedId(null);
+  };
+
+  // Selection is scoped to what is on screen. Carrying it across a day or
+  // range change would leave the action bar offering to reassign visits the
+  // user can no longer see — and the bulk calls take ids, so it would work.
+  useEffect(() => {
+    setSelected(new Set());
+    setLastPickedId(null);
+  }, [day, range]);
+
   const [toolsOpen, setToolsOpen] = useState(false);
   const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
   const [oneOffOpen, setOneOffOpen] = useState(false);
@@ -333,6 +383,85 @@ function RoutesPage() {
     }
     return cols;
   }, [visits, staff, localColumns]);
+
+  /** Every visible visit id, in the order the board draws them.
+   *
+   *  Shift-click means "everything between these two as I see them", so the
+   *  span has to be computed over the RENDERED order — unassigned first, then
+   *  each lane in board order — not over the raw fetch order. */
+  const visitsInBoardOrder = () => {
+    const ids: string[] = [];
+    for (const v of columns[UNASSIGNED] ?? []) ids.push(v.id);
+    for (const st of staff) for (const v of columns[st.id] ?? []) ids.push(v.id);
+    for (const st of stranded) for (const v of columns[st.id] ?? []) ids.push(v.id);
+    return ids;
+  };
+
+  const bulkAssignFn = useServerFn(bulkAssignVisits);
+  const bulkRescheduleFn = useServerFn(bulkRescheduleVisits);
+  const loadFn = useServerFn(getStaffUpcomingLoad);
+  const redistributeFn = useServerFn(redistributeStaffWork);
+
+  const afterBulk = () => {
+    setLocalColumns(null);
+    clearSelection();
+    qc.invalidateQueries({ queryKey: ["visits"] });
+  };
+
+  const bulkAssignMut = useMutation({
+    mutationFn: (staffId: string | null) =>
+      bulkAssignFn({ data: { visitIds: [...selected], staffId } }),
+    onSuccess: (r: any, staffId) => {
+      toast.success(
+        staffId
+          ? `Assigned ${r.moved} visit${r.moved === 1 ? "" : "s"}`
+          : `Unassigned ${r.moved} visit${r.moved === 1 ? "" : "s"}`,
+      );
+      afterBulk();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const bulkRescheduleMut = useMutation({
+    mutationFn: (toDate: string) =>
+      bulkRescheduleFn({ data: { visitIds: [...selected], toDate } }),
+    onSuccess: (r: any) => {
+      // `skipped` is not an error and is never swallowed: a weekly client moved
+      // exactly a week already has a visit there, and silence would read as
+      // "all moved".
+      if (r.skipped > 0) {
+        toast.warning(
+          `Moved ${r.moved}. Left ${r.skipped} alone — those clients already have a visit that day.`,
+          { duration: 9000 },
+        );
+      } else {
+        toast.success(`Moved ${r.moved} visit${r.moved === 1 ? "" : "s"}`);
+      }
+      afterBulk();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  /** Take a tech off the board: show what they are holding, then offer to move
+   *  it. Never silent — moving somebody's whole schedule on a checkbox is a
+   *  surprise, not a safeguard. */
+  const [coverFor, setCoverFor] = useState<{ id: string; name: string } | null>(null);
+  const coverQuery = useQuery({
+    queryKey: ["staff-load", coverFor?.id],
+    queryFn: () => loadFn({ data: { staffId: coverFor!.id } }),
+    enabled: Boolean(coverFor),
+  });
+  const redistributeMut = useMutation({
+    mutationFn: () => redistributeFn({ data: { staffId: coverFor!.id } }),
+    onSuccess: (r: any) => {
+      toast.success(`Moved ${r.moved} visit${r.moved === 1 ? "" : "s"} to the rest of the crew`);
+      setCoverFor(null);
+      setLocalColumns(null);
+      qc.invalidateQueries({ queryKey: ["visits"] });
+      qc.invalidateQueries({ queryKey: ["staff"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   // Surface implausible-drive / inconsistent-ETA warnings to the dispatcher
   // instead of silently accepting an impossible route (finding #10).
@@ -868,6 +997,10 @@ function RoutesPage() {
                 onComplete={(id) => completeMut.mutate(id)}
                 completingId={completeMut.isPending ? (completeMut.variables as string) : null}
                 onOpen={setDetailVisitId}
+                selectedIds={selected}
+                onToggleSelect={toggleSelect}
+                onSelectLane={(ids) => setSelected(new Set([...selected, ...ids]))}
+                selectionActive={selectionActive}
               />
               {staff.map((s: any) => {
                 const offRoutes = s.is_field_tech && !s.routing_available;
@@ -883,6 +1016,19 @@ function RoutesPage() {
                     onComplete={(id) => completeMut.mutate(id)}
                     completingId={completeMut.isPending ? (completeMut.variables as string) : null}
                     onOpen={setDetailVisitId}
+                    selectedIds={selected}
+                    onToggleSelect={toggleSelect}
+                    onSelectLane={(ids) => setSelected(new Set([...selected, ...ids]))}
+                    selectionActive={selectionActive}
+                    laneAction={
+                      <button
+                        onClick={() => setCoverFor({ id: s.id, name: s.display_name })}
+                        className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                        title={`${s.display_name} is out — move their work`}
+                      >
+                        Cover
+                      </button>
+                    }
                   />
                 );
               })}
@@ -900,6 +1046,10 @@ function RoutesPage() {
                   onComplete={(id) => completeMut.mutate(id)}
                   completingId={completeMut.isPending ? (completeMut.variables as string) : null}
                   onOpen={setDetailVisitId}
+                  selectedIds={selected}
+                  onToggleSelect={toggleSelect}
+                  onSelectLane={(ids) => setSelected(new Set([...selected, ...ids]))}
+                  selectionActive={selectionActive}
                 />
               ))}
             </div>
@@ -917,6 +1067,115 @@ function RoutesPage() {
           qc.invalidateQueries({ queryKey: ["visits"] });
         }}
       />
+
+      {/* Selection action bar. Fixed to the bottom rather than inline: it has
+          to stay reachable while you scroll a long board picking the next
+          visit, and an inline bar scrolls away exactly when it is being used. */}
+      {selectionActive && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 p-3 shadow-lg backdrop-blur">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2 text-xs">
+            <span className="font-medium">
+              {selected.size} selected
+            </span>
+            <select
+              className="h-8 rounded-md border bg-background px-2"
+              defaultValue=""
+              onChange={(e) => {
+                const v = e.target.value;
+                e.target.value = "";
+                if (v === "__unassign__") bulkAssignMut.mutate(null);
+                else if (v) bulkAssignMut.mutate(v);
+              }}
+              disabled={bulkAssignMut.isPending}
+            >
+              <option value="">Assign to…</option>
+              {staff.map((st: any) => (
+                <option key={st.id} value={st.id}>
+                  {st.display_name}
+                  {st.routing_available ? "" : " (away)"}
+                </option>
+              ))}
+              <option value="__unassign__">— Unassign —</option>
+            </select>
+            <label className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2 py-1">
+              <span className="text-muted-foreground">Move to</span>
+              <input
+                type="date"
+                className="bg-transparent focus-visible:outline-none"
+                onChange={(e) => e.target.value && bulkRescheduleMut.mutate(e.target.value)}
+                disabled={bulkRescheduleMut.isPending}
+              />
+            </label>
+            <Button size="sm" variant="ghost" onClick={clearSelection}>
+              Clear
+            </Button>
+            <span className="ml-auto text-muted-foreground">
+              Shift-click for a range · completed visits are never moved
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Cover: what happens when someone is out.
+          Marking a tech unavailable used to change a flag and nothing else —
+          their work stayed assigned to somebody who is not coming in, and the
+          only way to notice was to open each day and see the lane still full.
+          This shows the work FIRST and then asks. */}
+      {coverFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-lg border bg-card p-5 shadow-xl">
+            <h2 className="text-base font-semibold">{coverFor.name} is out</h2>
+            {coverQuery.isLoading ? (
+              <p className="mt-3 text-sm text-muted-foreground">Checking what they&apos;re holding…</p>
+            ) : (coverQuery.data?.total ?? 0) === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">
+                They have no upcoming work. Nothing to move.
+              </p>
+            ) : (
+              <>
+                <p className="mt-3 text-sm">
+                  They still have{" "}
+                  <strong>
+                    {coverQuery.data?.total} visit{coverQuery.data?.total === 1 ? "" : "s"}
+                  </strong>{" "}
+                  across {coverQuery.data?.days?.length} day
+                  {coverQuery.data?.days?.length === 1 ? "" : "s"}, starting{" "}
+                  {coverQuery.data?.days?.[0]?.scheduled_on}.
+                </p>
+                <div className="mt-3 max-h-40 overflow-y-auto rounded border">
+                  <table className="w-full text-xs">
+                    <tbody>
+                      {(coverQuery.data?.days ?? []).map((d: any) => (
+                        <tr key={d.scheduled_on} className="border-b last:border-0">
+                          <td className="px-2 py-1">{d.scheduled_on}</td>
+                          <td className="px-2 py-1 text-right tabular-nums">{d.visits}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Moving spreads it round-robin across the technicians who are available, day by
+                  day, and clears the stop order so it can be optimised again. Completed visits stay
+                  where they are.
+                </p>
+              </>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setCoverFor(null)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => redistributeMut.mutate()}
+                disabled={redistributeMut.isPending || (coverQuery.data?.total ?? 0) === 0}
+              >
+                {redistributeMut.isPending ? "Moving…" : "Move their work"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <VisitDetailDrawer
         visitId={detailVisitId}
@@ -1009,6 +1268,11 @@ function Column({
   completingId,
   onOpen,
   layout = "columns",
+  selectedIds,
+  onToggleSelect,
+  onSelectLane,
+  selectionActive,
+  laneAction,
 }: {
   id: string;
   title: string;
@@ -1016,6 +1280,12 @@ function Column({
   items: any[];
   tone?: "muted";
   offRoutes?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string, e: React.MouseEvent) => void;
+  onSelectLane?: (ids: string[]) => void;
+  selectionActive?: boolean;
+  /** Rendered in the lane header — the tech-out control lives here. */
+  laneAction?: React.ReactNode;
   /** Holds visits but is not a field tech. Read-only: the server refuses new
    *  assignments here, so accepting a drop would only produce an error toast. */
   notRoutable?: boolean;
@@ -1059,7 +1329,17 @@ function Column({
             subtitle && <div className="text-xs text-muted-foreground capitalize">{subtitle}</div>
           )}
         </div>
-        <div className="text-right">
+        <div className="flex items-center gap-1.5 text-right">
+          {laneAction}
+          {onSelectLane && items.length > 0 && (
+            <button
+              onClick={() => onSelectLane(items.map((v) => v.id))}
+              className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+              title="Select every visit in this lane"
+            >
+              All
+            </button>
+          )}
           <Badge variant="secondary">{items.length}</Badge>
           {totalCents > 0 && (
             <div className="mt-0.5 text-[10px] text-muted-foreground">
@@ -1087,6 +1367,9 @@ function Column({
               onComplete={onComplete}
               completing={completingId === v.id}
               onOpen={onOpen}
+              selected={selectedIds?.has(v.id)}
+              onToggleSelect={onToggleSelect}
+              selectionActive={selectionActive}
             />
           ))}
           {items.length === 0 && (
@@ -1104,12 +1387,18 @@ function SortableVisitCard({
   onComplete,
   completing,
   onOpen,
+  selected,
+  onToggleSelect,
+  selectionActive,
 }: {
   visit: Visit;
   seq: number;
   onComplete?: (id: string) => void;
   completing?: boolean;
   onOpen?: (id: string) => void;
+  selected?: boolean;
+  onToggleSelect?: (id: string, e: React.MouseEvent) => void;
+  selectionActive?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: visit.id,
@@ -1128,6 +1417,9 @@ function SortableVisitCard({
         onComplete={onComplete}
         completing={completing}
         onOpen={onOpen}
+        selected={selected}
+        onToggleSelect={onToggleSelect}
+        selectionActive={selectionActive}
       />
     </div>
   );
@@ -1151,6 +1443,9 @@ function VisitCardView({
   onComplete,
   completing,
   onOpen,
+  selected,
+  onToggleSelect,
+  selectionActive,
 }: {
   visit: Visit;
   seq?: number;
@@ -1159,6 +1454,10 @@ function VisitCardView({
   onComplete?: (id: string) => void;
   completing?: boolean;
   onOpen?: (id: string) => void;
+  selected?: boolean;
+  onToggleSelect?: (id: string, e: React.MouseEvent) => void;
+  /** True once anything is selected anywhere on the board. */
+  selectionActive?: boolean;
 }) {
   const p = visit.properties;
   const dirUrl = directionsUrl(p);
@@ -1166,15 +1465,36 @@ function VisitCardView({
     onComplete && (visit.status === "scheduled" || visit.status === "in_progress");
   return (
     <div
-      className={`rounded-md border bg-background p-2 text-xs shadow-sm ${dragging ? "shadow-lg" : ""} ${onOpen ? "cursor-pointer hover:border-primary/40 hover:bg-muted/40" : ""}`}
+      className={`rounded-md border p-2 text-xs shadow-sm ${dragging ? "shadow-lg" : ""} ${
+        selected ? "border-primary bg-primary/5 ring-1 ring-primary" : "bg-background"
+      } ${onOpen ? "cursor-pointer hover:border-primary/40 hover:bg-muted/40" : ""}`}
       onClick={(e) => {
-        if (!onOpen) return;
         const t = e.target as HTMLElement;
-        if (t.closest("a,button")) return;
+        if (t.closest("a,button,input,label")) return;
+        // Once a selection exists, a plain click EXTENDS it rather than opening
+        // a drawer. Anything else means picking a fifth visit closes the four
+        // you had — the single most common way a multi-select gets abandoned.
+        if (selectionActive && onToggleSelect) {
+          onToggleSelect(visit.id, e);
+          return;
+        }
+        if (!onOpen) return;
         onOpen(visit.id);
       }}
     >
       <div className="flex items-start gap-2">
+        {onToggleSelect && (
+          <input
+            type="checkbox"
+            checked={Boolean(selected)}
+            aria-label={`Select ${visit.clients?.display_name ?? "visit"}`}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) =>
+              onToggleSelect(visit.id, e as unknown as React.MouseEvent)
+            }
+            className="mt-1 shrink-0"
+          />
+        )}
         <button
           {...(dragHandle ?? {})}
           className="mt-0.5 cursor-grab touch-none text-muted-foreground hover:text-foreground"
