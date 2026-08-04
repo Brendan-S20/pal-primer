@@ -164,14 +164,12 @@ export const Route = createFileRoute("/email/queue/process")({
           // already-built bundle.
           const missing = [
             !resendApiKey && "RESEND_API_KEY (runtime secret)",
-            !supabaseUrl && "VITE_SUPABASE_URL (build-time, must be present when the bundle is built)",
+            !supabaseUrl &&
+              "VITE_SUPABASE_URL (build-time, must be present when the bundle is built)",
             !supabaseServiceKey && "SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY (runtime secret)",
           ].filter(Boolean);
           console.error(`email queue processor not configured — missing: ${missing.join(", ")}`);
-          return Response.json(
-            { error: "Server configuration error", missing },
-            { status: 500 },
-          );
+          return Response.json({ error: "Server configuration error", missing }, { status: 500 });
         }
 
         // Verify the caller is authorized with the service role key.

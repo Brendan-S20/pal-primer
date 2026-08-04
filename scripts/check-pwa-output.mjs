@@ -98,6 +98,53 @@ if (existsSync(SW)) {
       );
     }
   }
+
+  // 4. THE WORKER MUST NOT THROW ON ITS FIRST LINE.
+  //
+  //    `createHandlerBoundToURL(u)` throws when `u` is absent from the precache
+  //    manifest, and the generated worker is ONE top-level comma sequence:
+  //
+  //      precacheAndRoute(...), cleanupOutdatedCaches(),
+  //      registerRoute(new NavigationRoute(createHandlerBoundToURL(u))),
+  //      registerRoute(navigate -> NetworkFirst),
+  //      registerRoute(/assets/ -> CacheFirst)
+  //
+  //    so one bad `u` takes out every rule after it. This build is SSR and
+  //    emits no HTML, so nothing named "/" or "index.html" is ever precached —
+  //    and vite-plugin-pwa DEFAULTS navigateFallback to "index.html", meaning
+  //    simply deleting the option reintroduces the fault with a different
+  //    string. Checks 1–3 all passed throughout: the file existed, the manifest
+  //    had entries, and /assets/ was mentioned. Nothing looked wrong.
+  const boundUrls = [...sw.matchAll(/createHandlerBoundToURL\(\s*["']([^"']+)["']\s*\)/g)].map(
+    (m) => m[1],
+  );
+  for (const u of boundUrls) {
+    const normalized = u.replace(/^\//, "");
+    const inManifest = precached.some((e) => e.replace(/^\//, "") === normalized);
+    if (!inManifest) {
+      problems.push(
+        `the worker calls createHandlerBoundToURL(${JSON.stringify(u)}) but ` +
+          `"${u}" is not in its precache manifest. That call THROWS at install ` +
+          `time and aborts every registerRoute after it, so the app-shell and ` +
+          `asset caches never register and the installed PWA will not open ` +
+          `offline. This build emits no HTML — set workbox.navigateFallback to ` +
+          `undefined explicitly (omitting it is not enough, the plugin defaults ` +
+          `it to "index.html").`,
+      );
+    }
+  }
+
+  // 5. Both runtime caches must actually be registered. If check 4 ever fires,
+  //    this is the consequence — assert it directly so the failure names the
+  //    thing the user would notice rather than only the mechanism.
+  for (const cacheName of ["app-shell", "static-assets"]) {
+    if (!sw.includes(cacheName)) {
+      problems.push(
+        `the worker registers no "${cacheName}" runtime cache, so nothing it ` +
+          `is meant to serve offline will be there.`,
+      );
+    }
+  }
 }
 
 if (problems.length) {

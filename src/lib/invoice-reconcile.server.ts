@@ -140,7 +140,9 @@ export async function markInvoicePaidFromStripe(
         templateData: {
           amountCents: args.amountCents,
           paidAt: new Date().toLocaleDateString("en-US", {
-            month: "short", day: "numeric", year: "numeric",
+            month: "short",
+            day: "numeric",
+            year: "numeric",
           }),
         },
       });
@@ -152,11 +154,11 @@ export async function markInvoicePaidFromStripe(
 }
 
 export type ReconcileOutcome =
-  | "marked_paid"    // Stripe says paid; we flipped it just now
-  | "already_paid"   // nothing to do (or another writer claimed the flip first)
-  | "not_paid_yet"   // session/intent exists but hasn't been paid
-  | "no_session"     // invoice has no checkout session or payment intent
-  | "skipped";       // void/missing invoice, no connected account, or Stripe unreachable
+  | "marked_paid" // Stripe says paid; we flipped it just now
+  | "already_paid" // nothing to do (or another writer claimed the flip first)
+  | "not_paid_yet" // session/intent exists but hasn't been paid
+  | "no_session" // invoice has no checkout session or payment intent
+  | "skipped"; // void/missing invoice, no connected account, or Stripe unreachable
 
 /** Check the invoice's checkout session — and, for the inline Payment Element
  *  flow, its payment intent — on the org's connected account, and mark the
@@ -166,7 +168,9 @@ export async function reconcileInvoicePayment(invoiceId: string): Promise<Reconc
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: inv } = await supabaseAdmin
       .from("invoices")
-      .select("id, organization_id, status, total_cents, currency, stripe_checkout_session_id, stripe_payment_intent_id")
+      .select(
+        "id, organization_id, status, total_cents, currency, stripe_checkout_session_id, stripe_payment_intent_id",
+      )
       .eq("id", invoiceId)
       .maybeSingle();
     if (!inv) return "skipped";
@@ -184,11 +188,15 @@ export async function reconcileInvoicePayment(invoiceId: string): Promise<Reconc
     if (inv.stripe_checkout_session_id) {
       try {
         const session = await stripe.checkout.sessions.retrieve(
-          inv.stripe_checkout_session_id, undefined, acctOpts);
+          inv.stripe_checkout_session_id,
+          undefined,
+          acctOpts,
+        );
         if (session.payment_status === "paid") {
-          const pi = typeof session.payment_intent === "string"
-            ? session.payment_intent
-            : session.payment_intent?.id ?? null;
+          const pi =
+            typeof session.payment_intent === "string"
+              ? session.payment_intent
+              : (session.payment_intent?.id ?? null);
           const ok = await markInvoicePaidFromStripe(supabaseAdmin, {
             invoiceId: inv.id,
             organizationId: inv.organization_id,
@@ -196,7 +204,11 @@ export async function reconcileInvoicePayment(invoiceId: string): Promise<Reconc
             currency: session.currency ?? inv.currency ?? "usd",
             paymentIntentId: pi,
             checkoutSessionId: session.id,
-            raw: { source: "reconcile", session_id: session.id, payment_status: session.payment_status },
+            raw: {
+              source: "reconcile",
+              session_id: session.id,
+              payment_status: session.payment_status,
+            },
           });
           return ok ? "marked_paid" : "already_paid";
         }
@@ -211,7 +223,10 @@ export async function reconcileInvoicePayment(invoiceId: string): Promise<Reconc
     if (inv.stripe_payment_intent_id) {
       try {
         const pi = await stripe.paymentIntents.retrieve(
-          inv.stripe_payment_intent_id, undefined, acctOpts);
+          inv.stripe_payment_intent_id,
+          undefined,
+          acctOpts,
+        );
         if (pi.status === "succeeded" && pi.metadata?.invoice_id === inv.id) {
           // Same split as the webhook. This path is the FALLBACK for a missed
           // webhook and therefore runs against exactly the intents that carry a
@@ -220,9 +235,8 @@ export async function reconcileInvoicePayment(invoiceId: string): Promise<Reconc
           // `pi.amount` raw credited base + surcharge against the invoice and
           // recorded surcharge_cents = 0, so a $100 invoice paid with an $0.80
           // ACH pass-through settled as $100.80 of revenue.
-          const { invoiceAppliedCents, surchargeFromMetadata } = await import(
-            "@/lib/processing-fee.server"
-          );
+          const { invoiceAppliedCents, surchargeFromMetadata } =
+            await import("@/lib/processing-fee.server");
           const charged = pi.amount ?? inv.total_cents ?? 0;
           const ok = await markInvoicePaidFromStripe(supabaseAdmin, {
             invoiceId: inv.id,
@@ -248,11 +262,11 @@ export async function reconcileInvoicePayment(invoiceId: string): Promise<Reconc
 }
 
 export type PiSyncOutcome =
-  | "none"        // no stored payment intent
-  | "processing"  // an in-flight bank debit — the invoice IS being paid
-  | "synced"      // confirmable intent updated to the current open amount
-  | "canceled"    // nothing due (or invoice no longer open) — intent canceled
-  | "other";      // succeeded/canceled/etc. — reconcile handles those
+  | "none" // no stored payment intent
+  | "processing" // an in-flight bank debit — the invoice IS being paid
+  | "synced" // confirmable intent updated to the current open amount
+  | "canceled" // nothing due (or invoice no longer open) — intent canceled
+  | "other"; // succeeded/canceled/etc. — reconcile handles those
 
 /** Keep a stored, still-confirmable PaymentIntent in step with the invoice's
  *  CURRENT open amount. Credit application shrinks the open amount after an
@@ -264,7 +278,9 @@ export async function syncInvoicePaymentIntentAmount(invoiceId: string): Promise
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: inv } = await supabaseAdmin
       .from("invoices")
-      .select("id, organization_id, status, total_cents, credit_applied_cents, currency, stripe_payment_intent_id")
+      .select(
+        "id, organization_id, status, total_cents, credit_applied_cents, currency, stripe_payment_intent_id",
+      )
       .eq("id", invoiceId)
       .maybeSingle();
     if (!inv?.stripe_payment_intent_id) return "none";
@@ -275,7 +291,11 @@ export async function syncInvoicePaymentIntentAmount(invoiceId: string): Promise
     const stripe = await connectStripe();
     const acctOpts = { stripeAccount: acct.accountId };
 
-    const pi = await stripe.paymentIntents.retrieve(inv.stripe_payment_intent_id, undefined, acctOpts);
+    const pi = await stripe.paymentIntents.retrieve(
+      inv.stripe_payment_intent_id,
+      undefined,
+      acctOpts,
+    );
     if (pi.status === "processing") return "processing";
     const confirmable =
       pi.status === "requires_payment_method" ||
@@ -284,7 +304,8 @@ export async function syncInvoicePaymentIntentAmount(invoiceId: string): Promise
     if (!confirmable) return "other";
 
     const dueCents = Math.max(
-      (inv.total_cents ?? 0) - ((inv as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0),
+      (inv.total_cents ?? 0) -
+        ((inv as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0),
       0,
     );
     if (inv.status !== "open" || dueCents <= 0) {
@@ -318,8 +339,9 @@ export async function invoiceHasProcessingIntent(invoiceId: string): Promise<boo
     const acct = await resolveOrgStripeAccount(inv.organization_id);
     if (!acct) return false;
     const stripe = await connectStripe();
-    const pi = await stripe.paymentIntents.retrieve(
-      inv.stripe_payment_intent_id, undefined, { stripeAccount: acct.accountId });
+    const pi = await stripe.paymentIntents.retrieve(inv.stripe_payment_intent_id, undefined, {
+      stripeAccount: acct.accountId,
+    });
     return pi.status === "processing";
   } catch {
     return false;
