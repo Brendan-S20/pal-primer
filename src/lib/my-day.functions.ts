@@ -129,7 +129,13 @@ export const startVisit = createServerFn({ method: "POST" })
           summary: `Started the visit scheduled for ${v.scheduled_on}`,
         });
       }
-    } catch {}
+    } catch (e) {
+      // Best-effort: the visit already started (the rpc above throws on
+      // failure), and a broken activity log must not fail the tech's tap. But
+      // it was `catch {}` — so activity logging could stop working for every
+      // visit in every org and leave no trace anywhere to find it by.
+      console.warn("visit.started activity log failed", data.visitId, e);
+    }
     return { ok: true };
   });
 
@@ -170,7 +176,9 @@ export const completeVisit = createServerFn({ method: "POST" })
           summary: `Completed the visit scheduled for ${v.scheduled_on}`,
         });
       }
-    } catch {}
+    } catch (e) {
+      console.warn("visit.completed activity log failed", data.visitId, e);
+    }
 
     // Fire visit-completed email (best-effort)
     try {
