@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.21i** · Released 2026-08-03 · Supersedes: v1.21h, v1.21g, v1.21f, v1.21e, v1.21d, v1.21c, v1.21b, v1.21, v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.21j** · Released 2026-08-04 · Supersedes: v1.21i, v1.21h, v1.21g, v1.21f, v1.21e, v1.21d, v1.21c, v1.21b, v1.21, v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -19,6 +19,65 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 > sits above v1.21f/g (2026-08-03) for historical reasons. Find an entry by its
 > version number, not its position. The two v1.21e duplicates were corrected on
 > 2026-08-03; see the renumbering notes in place.
+
+### v1.21j — 2026-08-04
+
+**Transactional email was 100% dead, and nothing in the product could see it.**
+
+360 of 360 rows in `net._http_response` were `500 {"error":"Server
+configuration error"}`. Not a bounce, not the Resend key, not the service role
+key. Six routes under `src/routes/email/` read the Supabase project URL from
+`import.meta.env.VITE_SUPABASE_URL`, which **Vite inlines at build time**. The
+variable was absent when the bundle was built, so each route compiled to
+`undefined`, tripped its own config guard, and nothing added to a runtime secret
+store afterwards could reach already-built code.
+
+Nothing else noticed because `src/integrations/supabase/client.ts` hard-codes
+its own copy of the same string. The app signed in and worked perfectly while
+every invoice, OTP, receipt and reminder went undelivered.
+
+The URL is not a secret — it ships to every browser next to the anon key. So
+`src/lib/supabase-url.ts` resolves it with a floor that can never be undefined:
+`SUPABASE_URL` → `VITE_SUPABASE_URL` → the literal. An explicit variable still
+wins so staging can point elsewhere; absent one, production is correct with
+**no configuration and no Lovable secret at all**. Empty string counts as
+absent. The `!supabaseUrl` half of five config guards is now unreachable and was
+removed rather than left asserting a condition that cannot occur.
+
+**Sign-out left a tech's queued work — and their photos of customer property —
+on the shared tablet.**
+
+`clearQueueForUser` was written, documented as "Called on sign-out", and called
+by nothing; `signOutAndClearDevice` swept localStorage only. The read cache had
+this defect and it was fixed (BUG-43); this store, holding strictly more
+sensitive data, was not fixed with it.
+
+Clearing alone would be data loss wearing a privacy fix's clothes, so the order
+is **flush → count what is left → ask → clear → sign out**. The flush is bounded
+at 15s for the whole queue (not 60s per action like an unattended replay); no
+flush is attempted with no network; and with work remaining and nobody to ask,
+sign-out is **refused** rather than silently destructive. Every call site's
+redirect is now conditional.
+
+**The demo org uses everything and pays nothing.**
+
+Demo Pet Waste Co carries the Enterprise plan, all six add-ons, and a franchise
+with two seeded locations, and is billed for none of it. Doing that naively
+would have put **$126/month of add-on revenue into platform MRR that nobody
+pays** — `addonMonthlyEquivalentCents` counts every active add-on row whenever
+the org is in a paying status, and Demo is `active` because it must never be
+dunned. BUG-11 was the same defect pointing the other way. So
+`organizations.is_comped`, guarded by `tg_orgs_protect_platform_columns` (an
+owner could otherwise vanish from revenue and keep every feature), read by
+`contributesRevenue()` in both MRR functions.
+
+Entitlements are deliberately untouched: Demo gets everything by being on
+`enterprise`, through the same code path a real Enterprise customer runs. Tenant
+counts and churn still include it — it IS an active organization; only the money
+was untrue. The franchise was built through `provision_franchise_location`
+rather than hand-written INSERTs, then seeded with `seed_demo_org`.
+
+---
 
 ### v1.21i — 2026-08-03
 
