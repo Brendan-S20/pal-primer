@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { lookupInviteByToken, acceptPlatformInvite } from "@/lib/platform-onboarding.functions";
 import { supabase } from "@/integrations/supabase/client";
-import { signOutAndClearDevice } from "@/lib/offline/read-cache";
+import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
 import { humanizeRole } from "@/lib/humanize";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ function InvitePage() {
   const acceptFn = useServerFn(acceptPlatformInvite);
   const [session, setSession] = useState<{ email: string | null } | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
+  const { signOut, dialog: signOutDialog } = useOfflineSignOut();
 
   const q = useQuery({
     queryKey: ["invite", token],
@@ -105,8 +106,11 @@ function InvitePage() {
                   </div>
                   <Button variant="outline" className="w-full" onClick={async () => {
                     // Switching accounts on a shared device: the outgoing
-                    // account's cached day must not survive the switch.
-                    await signOutAndClearDevice();
+                    // account's cached day, queued jobs and photos of customer
+                    // property must not survive the switch — and unsynced work
+                    // is pushed before any of it is dropped. If they decide to
+                    // keep it, stay put rather than half-switching.
+                    if (!(await signOut())) return;
                     navigate({ to: "/auth", search: { redirect: `/invite/${token}` } as any });
                   }}>
                     Sign out &amp; switch accounts
@@ -127,6 +131,7 @@ function InvitePage() {
           )}
         </CardContent>
       </Card>
+      {signOutDialog}
     </div>
   );
 }
