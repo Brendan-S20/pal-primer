@@ -97,9 +97,20 @@ export const listMyDayFieldStaff = createServerFn({ method: "GET" })
 
 export const startVisit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ visitId: z.string().uuid() }).parse(d))
+  .inputValidator((d) =>
+    z
+      .object({
+        visitId: z.string().uuid(),
+        /** When the tech actually started, for a REPLAYED action. */
+        startedAt: z.string().datetime().optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase.rpc("start_visit", { _visit_id: data.visitId });
+    const { error } = await context.supabase.rpc("start_visit", {
+      _visit_id: data.visitId,
+      _started_at: data.startedAt ?? null,
+    });
     if (error) throw new Error(error.message);
     try {
       const { data: v } = await context.supabase
@@ -124,9 +135,23 @@ export const startVisit = createServerFn({ method: "POST" })
 
 export const completeVisit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ visitId: z.string().uuid() }).parse(d))
+  .inputValidator((d) =>
+    z
+      .object({
+        visitId: z.string().uuid(),
+        // When the tech actually finished, for a REPLAYED action. Absent on the
+        // live path. The SQL decides whether to believe it — a phone clock is a
+        // hint, never the safeguard — and records the replay in
+        // completion_source either way.
+        completedAt: z.string().datetime().optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase.rpc("complete_visit", { _visit_id: data.visitId });
+    const { error } = await context.supabase.rpc("complete_visit", {
+      _visit_id: data.visitId,
+      _completed_at: data.completedAt ?? null,
+    });
     if (error) throw new Error(error.message);
     try {
       const { data: v } = await context.supabase

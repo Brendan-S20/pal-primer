@@ -14,8 +14,8 @@ import {
 } from "./queue";
 
 export interface SyncCallers {
-  startVisit: (args: { data: { visitId: string } }) => Promise<unknown>;
-  completeVisit: (args: { data: { visitId: string } }) => Promise<unknown>;
+  startVisit: (args: { data: { visitId: string; startedAt?: string } }) => Promise<unknown>;
+  completeVisit: (args: { data: { visitId: string; completedAt?: string } }) => Promise<unknown>;
   skipVisit: (args: { data: { visitId: string; reason: string; code: any } }) => Promise<unknown>;
   recordVisitPhoto: (args: {
     data: { visitId: string; storagePath: string; kind: "before" | "completion" | "issue" };
@@ -24,11 +24,23 @@ export interface SyncCallers {
 
 async function runOne(action: PendingAction, callers: SyncCallers): Promise<void> {
   switch (action.kind) {
+    // `action.ts` is when the tech DID this, not when we got signal back.
+    //
+    // Without it, complete_visit stamped completed_at = now() and labelled the
+    // row `tech_live` — so a visit finished at 9:15am in a dead zone and synced
+    // at 4pm was recorded as a 4pm completion that we claimed to have measured.
+    // Every offline visit in a day clustered onto whenever signal returned, in
+    // the wrong order, feeding the completion rate, the progress bar, route
+    // timing and the time the customer is shown.
     case "start":
-      await callers.startVisit({ data: { visitId: action.visitId } });
+      await callers.startVisit({
+        data: { visitId: action.visitId, startedAt: new Date(action.ts).toISOString() },
+      });
       return;
     case "complete":
-      await callers.completeVisit({ data: { visitId: action.visitId } });
+      await callers.completeVisit({
+        data: { visitId: action.visitId, completedAt: new Date(action.ts).toISOString() },
+      });
       return;
     case "skip":
       await callers.skipVisit({
