@@ -1018,3 +1018,83 @@ export const cancelVisitFromOffice = createServerFn({ method: "POST" })
     });
     return { ok: true };
   });
+
+// ── Bulk dispatch ─────────────────────────────────────────────────────────
+//
+// Dispatch could move exactly one visit at a time, by dragging it. Reassigning
+// a tech's Tuesday meant fourteen drags; moving a rained-off day meant doing it
+// for every stop; taking a tech off the roster meant finding their work by eye.
+//
+// All four are thin wrappers: the authorization, the single-organization check
+// on the caller-supplied id list, and the routing-eligibility rule all live in
+// SQL, because these are RPCs the browser can call directly and a check in this
+// file would be advice rather than a gate.
+
+export const bulkAssignVisits = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        // Bounded: an unbounded list is a request to hold the whole table in
+        // one transaction. 500 is far past any real day's work.
+        visitIds: z.array(z.string().uuid()).min(1).max(500),
+        // Null unassigns — how work comes OFF someone.
+        staffId: z.string().uuid().nullable(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: n, error } = await (context.supabase as any).rpc("bulk_reassign_visits", {
+      _visit_ids: data.visitIds,
+      _staff_id: data.staffId,
+    });
+    if (error) throw new Error(error.message);
+    return { moved: (n as number) ?? 0 };
+  });
+
+export const bulkRescheduleVisits = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        visitIds: z.array(z.string().uuid()).min(1).max(500),
+        toDate: z.string(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: rows, error } = await (context.supabase as any).rpc("bulk_reschedule_visits", {
+      _visit_ids: data.visitIds,
+      _to_date: data.toDate,
+    });
+    if (error) throw new Error(error.message);
+    // `skipped` is not an error and must reach the caller: a weekly client
+    // moved exactly a week already has a visit there, and the honest report is
+    // "moved 12, left 2 alone", not silence.
+    const row = Array.isArray(rows) ? rows[0] : rows;
+    return { moved: row?.moved ?? 0, skipped: row?.skipped ?? 0 };
+  });
+
+/** What a tech is still holding, by day — read BEFORE offering to move it. */
+export const getStaffUpcomingLoad = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ staffId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: rows, error } = await (context.supabase as any).rpc("staff_upcoming_load", {
+      _staff_id: data.staffId,
+    });
+    if (error) throw new Error(error.message);
+    const days = (rows ?? []) as Array<{ scheduled_on: string; visits: number }>;
+    return { days, total: days.reduce((s, d) => s + (d.visits ?? 0), 0) };
+  });
+
+export const redistributeStaffWork = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ staffId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: n, error } = await (context.supabase as any).rpc("redistribute_staff_work", {
+      _staff_id: data.staffId,
+    });
+    if (error) throw new Error(error.message);
+    return { moved: (n as number) ?? 0 };
+  });
