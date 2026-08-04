@@ -202,21 +202,41 @@ function RoutesPage() {
   const { data: staffData } = useQuery({ queryKey: ["staff"], queryFn: () => listS() });
 
   const allStaff = staffData?.staff ?? [];
-  // Show every field tech in the board — available techs get regular columns,
-  // off-duty ones stay visible as muted "Off routes" lanes so a dispatcher
-  // sees at a glance who's not in play today (finding #12). Non-field roles
-  // still only appear if they somehow already own a visit.
   const assignedIds = new Set(
     (visitsData?.visits ?? []).map((v: any) => v.assigned_staff_id).filter(Boolean),
   );
+
+  // Who may be GIVEN work: field techs, and nothing else.
+  //
+  // This used to be `s.is_field_tech || assignedIds.has(s.id)`, and that `||`
+  // was a one-way door. Holding a single visit — from an import, the demo
+  // seeder, or a tech demoted after they were already assigned — earned an
+  // office manager a full board column, a drag-and-drop target, and an entry in
+  // the "auto-assign / optimize day for tech" select below, from which they
+  // could be given a whole day's route. Nothing ever took it away again.
+  //
+  // Available techs get regular columns; off-duty ones stay visible as muted
+  // "Off routes" lanes so a dispatcher sees who is not in play today
+  // (finding #12). `routing_available` is deliberately NOT part of eligibility:
+  // it means "not in a truck today", and you must still be able to schedule
+  // their work for tomorrow.
   const staff = allStaff
-    .filter((s: any) => s.is_field_tech || assignedIds.has(s.id))
+    .filter((s: any) => s.is_field_tech)
     .sort((a: any, b: any) => {
       const av = a.routing_available ? 0 : 1;
       const bv = b.routing_available ? 0 : 1;
       if (av !== bv) return av - bv;
       return (a.display_name ?? "").localeCompare(b.display_name ?? "");
     });
+
+  // Who already HOLDS work but is not a field tech. Dropping them from the
+  // board entirely would hide real visits — the dispatcher would see a day
+  // whose stops do not add up and have nothing to click. So they keep a lane,
+  // read-only, labelled with what to do about it. The server now refuses to
+  // add to these (assert_runs_routes), so the count can only go down.
+  const stranded = allStaff
+    .filter((s: any) => !s.is_field_tech && assignedIds.has(s.id))
+    .sort((a: any, b: any) => (a.display_name ?? "").localeCompare(b.display_name ?? ""));
   const visits: Visit[] = visitsData?.visits ?? [];
 
   const columns = useMemo(() => {
@@ -808,6 +828,22 @@ function RoutesPage() {
                   />
                 );
               })}
+              {/* Non-techs who still hold work. Last, read-only, and only ever
+                  rendered when they actually have visits — so a healthy org
+                  never sees this at all. */}
+              {stranded.map((s: any) => (
+                <Column
+                  key={s.id}
+                  id={s.id}
+                  title={s.display_name}
+                  notRoutable
+                  items={columns[s.id] ?? []}
+                  layout={boardLayout}
+                  onComplete={(id) => completeMut.mutate(id)}
+                  completingId={completeMut.isPending ? (completeMut.variables as string) : null}
+                  onOpen={setDetailVisitId}
+                />
+              ))}
             </div>
             <DragOverlay>
               {activeVisit ? <VisitCardView visit={activeVisit} dragging /> : null}
@@ -1088,6 +1124,7 @@ function Column({
   items,
   tone,
   offRoutes,
+  notRoutable,
   onComplete,
   completingId,
   onOpen,
@@ -1099,12 +1136,15 @@ function Column({
   items: any[];
   tone?: "muted";
   offRoutes?: boolean;
+  /** Holds visits but is not a field tech. Read-only: the server refuses new
+   *  assignments here, so accepting a drop would only produce an error toast. */
+  notRoutable?: boolean;
   onComplete?: (visitId: string) => void;
   completingId?: string | null;
   onOpen?: (visitId: string) => void;
   layout?: "columns" | "rows";
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id });
+  const { setNodeRef, isOver } = useDroppable({ id, disabled: notRoutable });
   const totalCents = items.reduce((sum, v) => sum + (v.subscriptions?.price_cents ?? 0), 0);
   return (
     <div
@@ -1122,8 +1162,22 @@ function Column({
                 Off routes
               </Badge>
             )}
+            {notRoutable && (
+              <Badge variant="outline" className="border-rose-400 text-rose-700 text-[10px]">
+                Doesn&apos;t run routes
+              </Badge>
+            )}
           </div>
-          {subtitle && <div className="text-xs text-muted-foreground capitalize">{subtitle}</div>}
+          {notRoutable ? (
+            // Say what to do, not just what is wrong. Both remedies are real and
+            // the dispatcher can reach either from here.
+            <div className="text-xs text-rose-700">
+              Still holding work — drag it to a tech, or turn on “Runs routes” for
+              them in Settings → Team.
+            </div>
+          ) : (
+            subtitle && <div className="text-xs text-muted-foreground capitalize">{subtitle}</div>
+          )}
         </div>
         <div className="text-right">
           <Badge variant="secondary">{items.length}</Badge>
