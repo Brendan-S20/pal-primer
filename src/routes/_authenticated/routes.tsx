@@ -26,6 +26,7 @@ import { StatusChip } from "@/components/client-detail/primitives";
 import { listTimeOff } from "@/lib/users.functions";
 import { MobileDayList } from "@/components/schedule/MobileDayList";
 import { StaffRoutingDialog } from "@/components/routes/StaffRoutingDialog";
+import { LaneStrip } from "@/components/routes/LaneStrip";
 import { ScheduleCalendar, calendarWindow } from "@/components/schedule/ScheduleCalendar";
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
 import { OneOffVisitDialog } from "@/components/OneOffVisitDialog";
@@ -1120,6 +1121,24 @@ function RoutesPage() {
             </>
           )}
         </div>
+      )}
+
+      {range !== "today" && (
+        <LaneStrip
+          from={rangeStart}
+          to={rangeEnd}
+          visits={shownVisits as any}
+          staff={staff}
+          timeOff={timeOffQ.data?.timeOff ?? []}
+          techColors={techColors}
+          hideWeekends={hideWeekends}
+          compact={compact}
+          onPickDay={(d) => {
+            setLocalColumns(null);
+            setDay(d);
+            setRangePersist("today");
+          }}
+        />
       )}
 
       {range !== "today" && (

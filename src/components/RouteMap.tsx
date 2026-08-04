@@ -93,6 +93,10 @@ export function RouteMap({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const markerRefs = useRef<Map<string, L.Marker>>(new Map());
+  /** visit id -> the route legs touching that stop. Rebuilt whenever the layer
+   *  is, and cleared alongside it: stale Leaflet objects here would be styled
+   *  on hover after being removed from the map. */
+  const legRefs = useRef<Map<string, L.Polyline[]>>(new Map());
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
 
@@ -147,6 +151,7 @@ export function RouteMap({
     if (!map || !layer) return;
     layer.clearLayers();
     markerRefs.current.clear();
+    legRefs.current.clear();
     if (points.length === 0) return;
 
     // Draw ordered polylines per tech + numbered markers
@@ -160,7 +165,21 @@ export function RouteMap({
         (v) => [v.properties!.latitude!, v.properties!.longitude!] as [number, number],
       );
       if (drawRoutes && latlngs.length > 1) {
-        L.polyline(latlngs, { color: g.color, weight: 3, opacity: 0.7 }).addTo(layer);
+        for (let i = 0; i < latlngs.length - 1; i++) {
+          const seg = L.polyline([latlngs[i], latlngs[i + 1]], {
+            color: g.color,
+            weight: 3,
+            opacity: 0.7,
+          }).addTo(layer);
+          // Registered against BOTH endpoints: hovering a stop should light
+          // the leg arriving and the leg leaving, which together are "where
+          // this stop sits in the run".
+          for (const id of [pts[i].id, pts[i + 1].id]) {
+            const list = legRefs.current.get(id) ?? [];
+            list.push(seg);
+            legRefs.current.set(id, list);
+          }
+        }
       }
 
       // Start / end anchors — dashed lines from home base to first stop and
@@ -168,14 +187,21 @@ export function RouteMap({
       const hasStart = drawRoutes && g.startLat != null && g.startLng != null;
       const hasEnd = drawRoutes && g.endLat != null && g.endLng != null;
       if (hasStart && latlngs.length > 0) {
-        L.polyline([[g.startLat!, g.startLng!], latlngs[0]], {
+        const seg = L.polyline([[g.startLat!, g.startLng!], latlngs[0]], {
           color: g.color, weight: 2, opacity: 0.5, dashArray: "6 6",
         }).addTo(layer);
+        const list = legRefs.current.get(pts[0].id) ?? [];
+        list.push(seg);
+        legRefs.current.set(pts[0].id, list);
       }
       if (hasEnd && latlngs.length > 0) {
-        L.polyline([latlngs[latlngs.length - 1], [g.endLat!, g.endLng!]], {
+        const seg = L.polyline([latlngs[latlngs.length - 1], [g.endLat!, g.endLng!]], {
           color: g.color, weight: 2, opacity: 0.5, dashArray: "6 6",
         }).addTo(layer);
+        const lastId = pts[pts.length - 1].id;
+        const list = legRefs.current.get(lastId) ?? [];
+        list.push(seg);
+        legRefs.current.set(lastId, list);
       }
       if (hasStart) {
         const startIcon = L.divIcon({
@@ -273,6 +299,22 @@ export function RouteMap({
       el.style.transform = `${el.style.transform.replace(/ scale\([^)]*\)/, "")}${on ? " scale(1.45)" : ""}`;
       el.style.zIndex = on ? "1000" : "";
       el.style.filter = on ? "drop-shadow(0 0 6px rgba(0,0,0,.45))" : "";
+    }
+    // Legs are restyled in two passes — every leg back to base, then the
+    // hovered stop's legs up — because one leg can belong to two stops. A
+    // single pass that only lowered "the previous stop's" legs would leave a
+    // shared leg stuck bright when the pointer moved between neighbours.
+    for (const [id, segs] of legRefs.current) {
+      const on = id === hoveredVisitId;
+      for (const seg of segs) {
+        const dashed = Boolean((seg.options as any).dashArray);
+        if (!on) seg.setStyle({ weight: dashed ? 2 : 3, opacity: dashed ? 0.5 : 0.7 });
+      }
+    }
+    for (const seg of legRefs.current.get(hoveredVisitId ?? "") ?? []) {
+      const dashed = Boolean((seg.options as any).dashArray);
+      seg.setStyle({ weight: dashed ? 4 : 6, opacity: 1 });
+      seg.bringToFront();
     }
   }, [hoveredVisitId, points]);
 
