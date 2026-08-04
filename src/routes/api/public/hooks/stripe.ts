@@ -643,6 +643,160 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 }
               }
             }
+          } else if (event.type === "charge.refund.updated") {
+            // A refund is NOT final when it is created. `charge.refunded` fires
+            // on submission; the refund can still fail afterwards — closed card,
+            // rejected ACH return, a bank that will not take it — and Stripe
+            // reports that here, moving the refund's status to `failed` or
+            // `canceled` and DECREMENTING charge.amount_refunded.
+            //
+            // Nothing listened for it, so the ledger recorded the refund at
+            // submission and kept it for ever: a failed refund permanently
+            // removed revenue the tenant still had. The exact inverse of the
+            // partial-refund bug, invisible for the same reason — the ledger
+            // only ever learned about a refund once.
+            const refund = event.data.object as any;
+            const chargeId: string | null =
+              typeof refund?.charge === "string" ? refund.charge : (refund?.charge?.id ?? null);
+            if (!chargeId) return new Response("ok", { status: 200 });
+
+            // Re-read the CHARGE rather than trusting the event's own figure.
+            // Its amount_refunded is the current truth — Stripe has already
+            // taken the failed refund back out of it — and because we fetched it
+            // now, out-of-order delivery does not apply. That is what makes the
+            // authoritative write below safe when the monotonic one is not.
+            // `stripeAccount` is a REQUEST OPTION, not a param — it belongs in
+            // the second options argument, and the charge lives on the connected
+            // account, so without it this reads the platform's own charges and
+            // finds nothing.
+            const charge = await stripe.charges.retrieve(
+              chargeId,
+              {},
+              { stripeAccount: event.account ?? undefined },
+            );
+            const piId =
+              typeof charge.payment_intent === "string"
+                ? charge.payment_intent
+                : (charge.payment_intent?.id ?? null);
+            if (!piId) return new Response("ok", { status: 200 });
+
+            const { data: rpay } = await (supabaseAdmin as any)
+              .from("payments")
+              .select("id, organization_id, amount_cents, surcharge_cents")
+              .eq("stripe_payment_intent_id", piId)
+              .maybeSingle();
+            if (!rpay) return new Response("ok", { status: 200 });
+            if (!(await accountMatches(rpay.organization_id))) {
+              return new Response("ok", { status: 200 });
+            }
+
+            const trueRefunded = Number(charge.amount_refunded ?? 0);
+            const { splitRefund } = await import("@/lib/refund-split");
+            const split = splitRefund(
+              trueRefunded,
+              Number(rpay.amount_cents ?? 0) + Number(rpay.surcharge_cents ?? 0),
+              Number(rpay.surcharge_cents ?? 0),
+            );
+            try {
+              await (supabaseAdmin as any).rpc("file_reversal_review_item", {
+                _org_id: rpay.organization_id,
+                _payment_id: rpay.id,
+                _kind: "refund",
+                _amount_cents: trueRefunded,
+                _revenue_cents: split.revenueCents,
+                _adjustment_id: null,
+                _dispute_ref: null,
+                // Re-read from Stripe, so it REPLACES the stored total. This is
+                // the only path that may lower it.
+                _authoritative: true,
+              });
+            } catch (e) {
+              console.error("refund reconcile failed", { chargeId, piId }, e);
+            }
+
+            // The payment's own status has to follow, or the charge path keeps
+            // treating a payment as refunded when the money never went back.
+            if (trueRefunded <= 0) {
+              await (supabaseAdmin as any)
+                .from("payments").update({ status: "succeeded" }).eq("id", rpay.id);
+            }
+
+            if (refund?.status === "failed" || refund?.status === "canceled") {
+              // Say so. A failed refund is a customer who was told they would be
+              // repaid and was not — the tenant has to hear it from us, because
+              // the customer will otherwise hear nothing at all.
+              try {
+                const { notifyRoles } = await import("@/lib/notify-center.server");
+                await notifyRoles(["owner", "office_manager"], {
+                  orgId: rpay.organization_id,
+                  type: "refund_failed",
+                  title: "A refund did not go through",
+                  body:
+                    `A refund of $${(Number(refund?.amount ?? 0) / 100).toFixed(2)} ` +
+                    `${refund?.status === "failed" ? "failed" : "was canceled"} — the money has ` +
+                    `NOT returned to the customer. Your revenue figures have been corrected. ` +
+                    `Contact them before they chase it.`,
+                });
+              } catch (e) {
+                console.error("refund-failed notification failed", e);
+              }
+            }
+          } else if (event.type === "payout.paid" || event.type === "payout.failed") {
+            // Money reaching (or failing to reach) the tenant's bank. Their
+            // first question and the one thing HoundStack could not answer —
+            // the embedded balances component shows it live, but nothing on
+            // this side knew, so nothing could notify or report on it.
+            const payout = event.data.object as any;
+            const { data: porg } = await (supabaseAdmin as any)
+              .from("organizations")
+              .select("id")
+              .eq("stripe_connect_account_id", event.account ?? "")
+              .maybeSingle();
+            if (!porg) return new Response("ok", { status: 200 });
+            const amount = `$${(Number(payout?.amount ?? 0) / 100).toFixed(2)}`;
+            const failed = event.type === "payout.failed";
+            try {
+              const { notifyRoles } = await import("@/lib/notify-center.server");
+              await notifyRoles(["owner", "office_manager"], {
+                orgId: porg.id,
+                type: failed ? "payout_failed" : "payout_paid",
+                title: failed ? "A payout failed" : `${amount} is on its way to your bank`,
+                body: failed
+                  ? // A stale bank account silently halts EVERY payout, not just
+                    // this one, and the only place that was visible was Stripe.
+                    `${amount} could not be paid out${payout?.failure_message ? `: ${payout.failure_message}` : ""}. ` +
+                    `Payouts stay stopped until the bank details are fixed — check Payments.`
+                  : `${amount} has been sent to your bank account.`,
+              });
+            } catch (e) {
+              console.error("payout notification failed", e);
+            }
+          } else if (event.type === "radar.early_fraud_warning.created") {
+            // The card network telling us, before the customer does, that this
+            // charge is probably fraudulent. It is the strongest predictor of a
+            // chargeback there is, and refunding on it avoids the dispute (and
+            // the fee) entirely — but only if the tenant hears about it in time.
+            const efw = event.data.object as any;
+            const { data: forg } = await (supabaseAdmin as any)
+              .from("organizations")
+              .select("id")
+              .eq("stripe_connect_account_id", event.account ?? "")
+              .maybeSingle();
+            if (!forg) return new Response("ok", { status: 200 });
+            try {
+              const { notifyRoles } = await import("@/lib/notify-center.server");
+              await notifyRoles(["owner", "office_manager"], {
+                orgId: forg.id,
+                type: "fraud_warning",
+                title: "Fraud warning on a payment",
+                body:
+                  `The card network has flagged a charge as likely fraudulent` +
+                  `${efw?.fraud_type ? ` (${String(efw.fraud_type).replace(/_/g, " ")})` : ""}. ` +
+                  `Refunding it now usually avoids a chargeback and its fee. Open Payments to review.`,
+              });
+            } catch (e) {
+              console.error("fraud warning notification failed", e);
+            }
           } else if (
             event.type === "charge.refunded" ||
             event.type === "charge.dispute.created" ||

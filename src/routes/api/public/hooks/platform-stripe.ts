@@ -105,6 +105,34 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
               }
               break;
             }
+            case "customer.subscription.trial_will_end": {
+              // Stripe fires this three days out. Warning a trialing tenant
+              // before their card is charged is the cheapest churn lever there
+              // is — and its absence is worse than neutral, because a charge
+              // nobody expected is what produces a dispute rather than a
+              // cancellation.
+              const sub = event.data.object as import("stripe").Stripe.Subscription;
+              const customerId =
+                typeof sub.customer === "string" ? sub.customer : (sub.customer?.id ?? null);
+              const trialOrgId = await orgFromCustomer(customerId);
+              if (!trialOrgId) break;
+              const endsAt = sub.trial_end ? new Date(sub.trial_end * 1000) : null;
+              try {
+                const { notifyRoles } = await import("@/lib/notify-center.server");
+                await notifyRoles(["owner"], {
+                  orgId: trialOrgId,
+                  type: "trial_ending",
+                  title: "Your trial ends soon",
+                  body: endsAt
+                    ? `Your free trial ends on ${endsAt.toLocaleDateString("en-US", { month: "long", day: "numeric" })}, and your card will be charged then. Change or cancel your plan in Settings → Billing before that if you need to.`
+                    : "Your free trial is ending and your card will be charged. Change or cancel your plan in Settings → Billing before that if you need to.",
+                  link: "/settings/billing",
+                });
+              } catch (e) {
+                console.error("trial-ending notification failed", (e as Error).message);
+              }
+              break;
+            }
             case "customer.subscription.created":
             case "customer.subscription.updated":
             case "customer.subscription.deleted": {

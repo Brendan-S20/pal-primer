@@ -29,7 +29,10 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
         // Match org by sms_from_number == To
         const { data: org } = await supabaseAdmin
           .from("organizations")
-          .select("id, slug, sms_from_number, ai_receptionist_enabled, ai_receptionist_faq, ai_receptionist_persona")
+          // name/contact are not decoration: carrier rules require the BRAND to
+          // identify itself in every STOP and HELP auto-reply, and require HELP
+          // to give a real support contact.
+          .select("id, slug, name, contact_email, contact_phone, sms_from_number, ai_receptionist_enabled, ai_receptionist_faq, ai_receptionist_persona")
           .eq("sms_from_number", to)
           .maybeSingle();
         if (!org) {
@@ -80,14 +83,30 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
         let reply: string | null = null;
         let aiHandled = false;
         let escalated = false;
+        // The BRAND has to name itself in every one of these. A reply that says
+        // "contact your service provider" identifies nobody, gives the recipient
+        // nowhere to go, and is the shape that fails a toll-free or 10DLC
+        // verification review — the requirement is the brand name in the STOP
+        // confirmation, and the brand name PLUS a real support contact in HELP.
+        const brand = (org as any).name?.trim() || "HoundStack";
+        const supportContact =
+          (org as any).contact_phone?.trim() ||
+          (org as any).contact_email?.trim() ||
+          "support@houndstack.com";
         if (client && isStop) {
           await supabaseAdmin.from("clients").update({ sms_opt_out: true }).eq("id", client.id);
-          reply = "You have been unsubscribed and will not receive further messages. Reply START to resubscribe.";
+          reply =
+            `${brand}: You are unsubscribed and will receive no further messages. ` +
+            `Reply START to resubscribe or HELP for help.`;
         } else if (client && isStart) {
           await supabaseAdmin.from("clients").update({ sms_opt_out: false }).eq("id", client.id);
-          reply = "You are resubscribed to messages. Reply STOP to opt out.";
+          reply =
+            `${brand}: You are resubscribed to service messages. ` +
+            `Msg & data rates may apply. Reply STOP to opt out or HELP for help.`;
         } else if (upper === "HELP" || upper === "INFO") {
-          reply = "Support: contact your service provider. Reply STOP to opt out.";
+          reply =
+            `${brand}: Service and account messages. For help contact ${supportContact}. ` +
+            `Msg & data rates may apply. Reply STOP to opt out.`;
         }
 
         const { data: inboundMsg } = await supabaseAdmin.from("messages").insert({
