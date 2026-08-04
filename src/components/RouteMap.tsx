@@ -204,6 +204,25 @@ export function RouteMap({
   );
 }
 
+/** Which colour each tech is drawn in, keyed by staff id.
+ *
+ *  Built by delegating to `buildTechGroups` rather than re-deriving the
+ *  assignment, because the assignment is not a pure function of the staff list:
+ *  the colour index advances only for techs who actually have visits in the
+ *  window. Any second implementation would agree on the common case and drift
+ *  the moment someone has an empty day — leaving a chip and its own map pin in
+ *  different colours, which is worse than having no colour at all. */
+export function techColorMap(
+  visits: MapVisit[],
+  staff: Parameters<typeof buildTechGroups>[1],
+): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const g of buildTechGroups(visits, staff)) {
+    if (g.staffId) m.set(g.staffId, g.color);
+  }
+  return m;
+}
+
 export function buildTechGroups(
   visits: MapVisit[],
   staff: Array<{

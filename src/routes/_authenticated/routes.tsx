@@ -6,7 +6,6 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import {
   balanceOverloadedRoutes,
-  getVisitRangeSummary,
   listVisitsForDay,
   generateVisits,
   assignRoute,
@@ -22,9 +21,10 @@ import {
 } from "@/lib/visits.functions";
 import { backfillPropertyGeocodes } from "@/lib/properties.functions";
 import { US_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/route-window";
-import { RouteMap, buildTechGroups } from "@/components/RouteMap";
+import { RouteMap, buildTechGroups, techColorMap } from "@/components/RouteMap";
 import { StatusChip } from "@/components/client-detail/primitives";
 import { MobileDayList } from "@/components/schedule/MobileDayList";
+import { ScheduleCalendar, calendarWindow } from "@/components/schedule/ScheduleCalendar";
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
 import { OneOffVisitDialog } from "@/components/OneOffVisitDialog";
 import { usePermissions } from "@/hooks/useMyRole";
@@ -65,6 +65,40 @@ export const Route = createFileRoute("/_authenticated/routes")({
 
 const UNASSIGNED = "__unassigned__";
 type Visit = any;
+
+/** A labelled filter dropdown for the calendar toolbar.
+ *
+ *  A plain `<select>` rather than the shadcn `Select`: this is a three-item
+ *  toolbar control, and the popover variant brings a portal, focus trapping and
+ *  a listbox for a choice a native control already makes accessible for free. */
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <label className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2 py-1">
+      <span className="text-muted-foreground">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="bg-transparent text-xs font-medium focus-visible:outline-none"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 function toLocalISO(d: Date) {
   const off = d.getTimezoneOffset();
@@ -187,17 +221,23 @@ function RoutesPage() {
     traffic_profile: "normal",
   };
 
-  // Map view is available at every range (only the Board is day-scoped): for
-  // week/month the visit window widens so the map shows the whole period.
-  const rangeEnd = useMemo(() => {
-    if (range === "today") return day;
-    const d = new Date(`${day}T00:00:00`);
-    d.setDate(d.getDate() + (range === "week" ? 6 : 29));
-    return d.toISOString().slice(0, 10);
+  // The window the page FETCHES has to be the window the calendar DRAWS.
+  //
+  // It used to be "selected day + 6 / + 29" while the grid drew from the Monday
+  // of that week or the 1st of that month. Pick a Thursday and the first three
+  // cells sat outside the query: with counts they read as three quiet days,
+  // and with per-visit chips they would read as three days nobody is working.
+  // `calendarWindow` is the one definition, and the calendar renders from it.
+  const { from: rangeStart, to: rangeEnd } = useMemo(() => {
+    if (range === "today") return { from: day, to: day };
+    return calendarWindow(day, range === "month" ? "month" : "week");
   }, [range, day]);
   const { data: visitsData } = useQuery({
-    queryKey: ["visits", day, rangeEnd],
-    queryFn: () => listV({ data: { day, ...(rangeEnd !== day ? { throughDay: rangeEnd } : {}) } }),
+    queryKey: ["visits", rangeStart, rangeEnd],
+    queryFn: () =>
+      listV({
+        data: { day: rangeStart, ...(rangeEnd !== rangeStart ? { throughDay: rangeEnd } : {}) },
+      }),
   });
   const { data: staffData } = useQuery({ queryKey: ["staff"], queryFn: () => listS() });
 
@@ -238,6 +278,44 @@ function RoutesPage() {
     .filter((s: any) => !s.is_field_tech && assignedIds.has(s.id))
     .sort((a: any, b: any) => (a.display_name ?? "").localeCompare(b.display_name ?? ""));
   const visits: Visit[] = visitsData?.visits ?? [];
+
+  // One colour per tech, shared with the map. Built from the map's own grouping
+  // so a calendar chip and that visit's pin can never end up different colours.
+  // Computed from the UNFILTERED list on purpose: filtering to one tech must
+  // not repaint everyone else, or a colour would mean different people
+  // depending on what you had selected.
+  const techColors = useMemo(
+    () => techColorMap(visits as any, [...staff, ...stranded] as any),
+    [visits, staff, stranded],
+  );
+
+  // ── Filters ───────────────────────────────────────────────────────────
+  //
+  // Week and month only, and deliberately so. The day board is a drag-and-drop
+  // surface whose drop handler calls `persistColumn(lane)` — it writes the
+  // sequence for every visit in that lane from what it can see. Hand it a
+  // filtered lane and the hidden stops are silently dropped out of the
+  // ordering. Filtering a read-only calendar is free; filtering that board is a
+  // data-corruption bug wearing a convenience feature's clothes.
+  const [fTeam, setFTeam] = useState("all");
+  const [fStatus, setFStatus] = useState("all");
+  const [fType, setFType] = useState("all");
+  const filtersActive = fTeam !== "all" || fStatus !== "all" || fType !== "all";
+
+  const shownVisits = useMemo(
+    () =>
+      (visits as any[]).filter((v) => {
+        if (fTeam === "unassigned" && v.assigned_staff_id) return false;
+        if (fTeam !== "all" && fTeam !== "unassigned" && v.assigned_staff_id !== fTeam) return false;
+        if (fStatus !== "all" && v.status !== fStatus) return false;
+        // A visit generated from a subscription is recurring; one booked ad hoc
+        // has no subscription behind it.
+        if (fType === "recurring" && !v.subscription_id) return false;
+        if (fType === "oneoff" && v.subscription_id) return false;
+        return true;
+      }),
+    [visits, fTeam, fStatus, fType],
+  );
 
   const columns = useMemo(() => {
     if (localColumns) return localColumns;
@@ -731,10 +809,111 @@ function RoutesPage() {
         </div>
       )}
 
-      {/* The map follows the Map/Board toggle at EVERY range — only Board is
-          day-scoped. For week/month the map plots the whole period's visits
-          (QA: switching to week/month used to hide the map entirely). */}
-      {viewMode === "map" && (
+      {/* Week and month: calendar and map SIDE BY SIDE, which is the whole
+          point of showing both — you read a name in a cell and find it on the
+          map without either moving. Stacked (what this used to do) meant the
+          map was a scroll away from the thing it illustrates, so in practice
+          you looked at one or the other.
+          Below `lg` they stack anyway; two panes in 400px is neither. */}
+      {range !== "today" && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <FilterSelect
+            label="Type"
+            value={fType}
+            onChange={setFType}
+            options={[
+              { value: "all", label: "All work" },
+              { value: "recurring", label: "Recurring" },
+              { value: "oneoff", label: "One-off" },
+            ]}
+          />
+          <FilterSelect
+            label="Team"
+            value={fTeam}
+            onChange={setFTeam}
+            options={[
+              { value: "all", label: "Everyone" },
+              ...staff.map((s: any) => ({ value: s.id, label: s.display_name })),
+              { value: "unassigned", label: "Unassigned" },
+            ]}
+          />
+          <FilterSelect
+            label="Status"
+            value={fStatus}
+            onChange={setFStatus}
+            options={[
+              { value: "all", label: "Any status" },
+              { value: "scheduled", label: "Scheduled" },
+              { value: "in_progress", label: "In progress" },
+              { value: "completed", label: "Completed" },
+              { value: "skipped", label: "Skipped" },
+            ]}
+          />
+          {filtersActive && (
+            <>
+              <span className="text-muted-foreground">
+                {shownVisits.length} of {visits.length} visits
+              </span>
+              <button
+                onClick={() => {
+                  setFType("all");
+                  setFTeam("all");
+                  setFStatus("all");
+                }}
+                className="rounded border px-2 py-1 hover:bg-muted"
+              >
+                Clear
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {range !== "today" && (
+        <div
+          className={
+            viewMode === "map"
+              ? "grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start"
+              : ""
+          }
+        >
+          <ScheduleCalendar
+            day={day}
+            range={range === "month" ? "month" : "week"}
+            visits={shownVisits as any}
+            techColors={techColors}
+            hideWeekends={hideWeekends}
+            onPickDay={(d) => {
+              setLocalColumns(null);
+              setDay(d);
+              setRangePersist("today");
+            }}
+            onOpenVisit={setDetailVisitId}
+          />
+          {viewMode === "map" && (
+            // Sticky so the map stays put while a long month scrolls past it.
+            <div className="lg:sticky lg:top-4">
+              <MapPanel
+                // The same filtered list the calendar is drawing. Two panes
+                // showing different subsets of the same window would be worse
+                // than one pane.
+                visits={shownVisits}
+                staff={staff}
+                onOpenVisit={setDetailVisitId}
+                onGeocode={() => geocodeMut.mutate()}
+                geocoding={geocodeMut.isPending}
+                // Week/month is a coverage view: per-day sequences repeat, so
+                // ordered polylines/numbers only draw for a single day.
+                drawRoutes={false}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Today: the board is a full-width drag-and-drop surface with a lane per
+          tech, so the map stays above it rather than competing for width. */}
+      {range === "today" && viewMode === "map" && (
         <>
           <MapPanel
             visits={visits}
@@ -742,31 +921,14 @@ function RoutesPage() {
             onOpenVisit={setDetailVisitId}
             onGeocode={() => geocodeMut.mutate()}
             geocoding={geocodeMut.isPending}
-            // Week/month is a coverage view: per-day sequences repeat, so
-            // ordered polylines/numbers only draw for a single day.
-            drawRoutes={range === "today"}
+            drawRoutes
           />
           {/* Tech load is a FIELD-worker report (C3/I4): only capability-flagged
               field workers are route runners. Non-field roles stay on the board
-              above (so a mis-assigned visit can be dragged off them) but never
+              below (so a mis-assigned visit can be dragged off them) but never
               appear in the load analytics. */}
-          {range === "today" && (
-            <HeatmapPanel visits={visits} staff={staff.filter((s: any) => s.is_field_tech)} />
-          )}
+          <HeatmapPanel visits={visits} staff={staff.filter((s: any) => s.is_field_tech)} />
         </>
-      )}
-
-      {range !== "today" && (
-        <WeekOverview
-          day={day}
-          initialSpan={range === "month" ? "month" : 7}
-          hideWeekends={hideWeekends}
-          onPickDay={(d) => {
-            setLocalColumns(null);
-            setDay(d);
-            setRangePersist("today");
-          }}
-        />
       )}
 
       {/* Mobile Phase 2: below `md` the dnd board is replaced by a tap-through
@@ -980,142 +1142,6 @@ function MapPanel({
 // Finding #28 + punch list #13: a multi-day overview so office staff can see
 // upcoming volume, overloaded days, and gaps across a week, rolling 4 weeks,
 // or a true calendar month — with weekends optionally hidden.
-type OverviewSpan = 7 | 28 | "month";
-
-function WeekOverview({
-  day,
-  onPickDay,
-  initialSpan = 7,
-  hideWeekends = false,
-}: {
-  day: string;
-  onPickDay: (d: string) => void;
-  initialSpan?: OverviewSpan;
-  hideWeekends?: boolean;
-}) {
-  const [span, setSpan] = useState<OverviewSpan>(initialSpan);
-  const rangeFn = useServerFn(getVisitRangeSummary);
-  useEffect(() => {
-    setSpan(initialSpan);
-  }, [initialSpan]);
-
-  const iso = (d: Date) => {
-    const off = d.getTimezoneOffset();
-    return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10);
-  };
-  const base = new Date(`${day}T00:00:00`);
-  const days: string[] = [];
-  let leadingBlanks = 0;
-  if (span === "month") {
-    // The selected day's calendar month, grid-aligned to Monday.
-    const first = new Date(base.getFullYear(), base.getMonth(), 1);
-    const last = new Date(base.getFullYear(), base.getMonth() + 1, 0);
-    leadingBlanks = (first.getDay() + 6) % 7; // 0 = Monday
-    for (let i = 1; i <= last.getDate(); i++) {
-      days.push(iso(new Date(base.getFullYear(), base.getMonth(), i)));
-    }
-  } else {
-    // Start from the Monday of the selected day's week.
-    const dow = (base.getDay() + 6) % 7;
-    const start = new Date(base);
-    start.setDate(base.getDate() - dow);
-    for (let i = 0; i < span; i++) {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      days.push(iso(d));
-    }
-  }
-  const from = days[0];
-  const to = days[days.length - 1];
-
-  const q = useQuery({
-    queryKey: ["visit-range", from, to],
-    queryFn: () => rangeFn({ data: { from, to } }),
-  });
-  const byDay = new Map<string, { total: number; completed: number; unassigned: number }>();
-  for (const d of (q.data as any)?.days ?? []) byDay.set(d.date, d);
-  const maxTotal = Math.max(1, ...days.map((d) => byDay.get(d)?.total ?? 0));
-  const todayIso = todayISO();
-
-  const isWeekend = (d: string) => {
-    const dow = new Date(`${d}T00:00:00`).getDay();
-    return dow === 0 || dow === 6;
-  };
-  const cols = hideWeekends ? 5 : 7;
-  // With weekends hidden, Monday-aligned blanks shrink to weekday-only blanks
-  // (Sat/Sun leaders disappear entirely).
-  const monthBlanks = span === "month" ? Math.min(leadingBlanks, 5) : 0;
-  const visibleDays = hideWeekends ? days.filter((d) => !isWeekend(d)) : days;
-  const title =
-    span === 7
-      ? "This week"
-      : span === 28
-        ? "Next 4 weeks"
-        : base.toLocaleDateString(undefined, { month: "long", year: "numeric" });
-
-  return (
-    <div className="rounded-lg border bg-card p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">{title}</h2>
-        <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-md border p-0.5 text-xs">
-            <button
-              onClick={() => setSpan(7)}
-              className={`px-3 py-1 rounded ${span === 7 ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-            >
-              Week
-            </button>
-            <button
-              onClick={() => setSpan(28)}
-              className={`px-3 py-1 rounded ${span === 28 ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-            >
-              4 weeks
-            </button>
-            <button
-              onClick={() => setSpan("month")}
-              className={`px-3 py-1 rounded ${span === "month" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-            >
-              Month
-            </button>
-          </div>
-        </div>
-      </div>
-      <div className={`grid gap-2 ${cols === 5 ? "grid-cols-5" : "grid-cols-7"}`}>
-        {Array.from({ length: monthBlanks }).map((_, i) => (
-          <div key={`blank-${i}`} />
-        ))}
-        {visibleDays.map((d) => {
-          const c = byDay.get(d) ?? { total: 0, completed: 0, unassigned: 0 };
-          const heat = c.total / maxTotal;
-          const dt = new Date(`${d}T00:00:00`);
-          return (
-            <button
-              key={d}
-              onClick={() => onPickDay(d)}
-              className={`flex flex-col rounded-md border p-2 text-left text-xs transition hover:ring-1 hover:ring-primary ${d === todayIso ? "ring-1 ring-primary" : ""}`}
-              style={{ background: c.total ? `rgba(37,99,235,${0.08 + heat * 0.35})` : undefined }}
-              title={`${c.total} visits · ${c.completed} completed · ${c.unassigned} unassigned`}
-            >
-              <span className="text-[10px] uppercase text-muted-foreground">
-                {dt.toLocaleDateString(undefined, { weekday: "short" })}
-              </span>
-              <span className="font-medium">{dt.getDate()}</span>
-              <span className="mt-1 text-[11px]">
-                {c.total} visit{c.total === 1 ? "" : "s"}
-              </span>
-              {c.unassigned > 0 && (
-                <span className="text-[10px] text-amber-700">{c.unassigned} unassigned</span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-      <p className="mt-3 text-[11px] text-muted-foreground">
-        Darker = busier. Click a day to open its route board.
-      </p>
-    </div>
-  );
-}
 
 function Column({
   id,
