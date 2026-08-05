@@ -273,3 +273,114 @@ export const setStaffAddresses = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+// ── Time off ──────────────────────────────────────────────────────────────
+//
+// `routing_available` is a same-day boolean with no end date, so it answered
+// "out sick today" and nothing else. Leave with dates is a different fact:
+// it has an end, the board can read it per day, and nobody has to remember to
+// switch it back. Enforcement is a trigger on `visits` (migration
+// 20260804230000), so these functions only have to read and write rows —
+// they cannot be the thing that lets a bad assignment through.
+
+export const listTimeOff = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ from: z.string().optional(), to: z.string().optional() }).parse(d ?? {}),
+  )
+  .handler(async ({ data, context }) => {
+    const orgId = await resolveOrgId(context.supabase, context.userId);
+    let q = (context.supabase.from("staff_time_off") as any)
+      .select("id, staff_id, starts_on, ends_on, reason")
+      .eq("organization_id", orgId);
+    // Overlap, not containment: a fortnight of leave straddling the week you
+    // are looking at still makes that week unavailable, and `starts_on >= from`
+    // would miss it entirely.
+    if (data.to) q = q.lte("starts_on", data.to);
+    if (data.from) q = q.gte("ends_on", data.from);
+    const { data: rows, error } = await q.order("starts_on");
+    if (error) throw new Error(error.message);
+    return { timeOff: rows ?? [] };
+  });
+
+/** What a proposed absence would strand, asked BEFORE it is saved. */
+export const previewTimeOff = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ staffId: z.string().uuid(), from: z.string(), to: z.string() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await resolveOrgId(context.supabase, context.userId);
+    const { data: rows, error } = await (context.supabase as any).rpc("staff_time_off_impact", {
+      _staff_id: data.staffId,
+      _from: data.from,
+      _to: data.to,
+    });
+    if (error) throw new Error(error.message);
+    const days = (rows ?? []) as Array<{ scheduled_on: string; visits: number }>;
+    return { days, total: days.reduce((n, d) => n + Number(d.visits), 0) };
+  });
+
+export const addTimeOff = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        staffId: z.string().uuid(),
+        startsOn: z.string(),
+        endsOn: z.string(),
+        reason: z.string().max(200).optional(),
+      })
+      // Caught here as well as by the CHECK constraint: a range typed backwards
+      // is a slip, and "new row violates check constraint
+      // staff_time_off_range" is not something to show a dispatcher.
+      .refine((v) => v.endsOn >= v.startsOn, {
+        message: "The last day off cannot be before the first.",
+        path: ["endsOn"],
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
+    // Same-org check on the staff row. RLS covers the insert, but without this
+    // a valid uuid from another tenant would fail as a policy error rather
+    // than as "that person isn't on your team".
+    const { data: who } = await (context.supabase.from("staff") as any)
+      .select("id")
+      .eq("id", data.staffId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (!who) throw new Error("That person is not on your team.");
+
+    const { data: row, error } = await (context.supabase.from("staff_time_off") as any)
+      .insert({
+        organization_id: orgId,
+        staff_id: data.staffId,
+        starts_on: data.startsOn,
+        ends_on: data.endsOn,
+        reason: data.reason || null,
+        created_by: context.userId,
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    // Deliberately does NOT move existing work. Recording leave and silently
+    // reassigning forty visits are different decisions; Cover is where the
+    // second one happens, with the list shown first.
+    return { ok: true, id: row.id };
+  });
+
+export const removeTimeOff = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
+    const { error } = await (context.supabase.from("staff_time_off") as any)
+      .delete()
+      .eq("id", data.id)
+      .eq("organization_id", orgId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });

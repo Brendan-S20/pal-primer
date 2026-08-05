@@ -23,7 +23,11 @@ import { backfillPropertyGeocodes } from "@/lib/properties.functions";
 import { RouteMap, buildTechGroups, techColorMap } from "@/components/RouteMap";
 import { BASE_STYLES, storedBaseStyle, storeBaseStyle, type TileVariant } from "@/lib/map-tiles";
 import { StatusChip } from "@/components/client-detail/primitives";
+import { listTimeOff } from "@/lib/users.functions";
 import { MobileDayList } from "@/components/schedule/MobileDayList";
+import { StaffRoutingDialog } from "@/components/routes/StaffRoutingDialog";
+import { LaneStrip } from "@/components/routes/LaneStrip";
+import { AutoRoutingPanel } from "@/components/routes/AutoRoutingPanel";
 import { ScheduleCalendar, calendarWindow } from "@/components/schedule/ScheduleCalendar";
 import { VisitDetailDrawer } from "@/components/VisitDetailDrawer";
 import { OneOffVisitDialog } from "@/components/OneOffVisitDialog";
@@ -38,6 +42,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
+  CalendarOff,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -164,6 +169,65 @@ function RoutesPage() {
       /* private mode */
     }
   };
+  /** Compact halves the padding and drops the per-card second line.
+   *
+   *  Not a cosmetic preference: on a 1440px laptop the comfortable board fits
+   *  about five stops per lane before scrolling, and a dispatcher checking
+   *  "does Tuesday work" is comparing whole lanes, not reading addresses. The
+   *  same screen shows eleven compact. */
+  const [density, setDensity] = useState<"comfortable" | "compact">(() =>
+    typeof localStorage !== "undefined" && localStorage.getItem("routes.density") === "compact"
+      ? "compact"
+      : "comfortable",
+  );
+  const setDensityPersist = (d: "comfortable" | "compact") => {
+    setDensity(d);
+    try {
+      localStorage.setItem("routes.density", d);
+    } catch {
+      /* private mode */
+    }
+  };
+  const compact = density === "compact";
+
+  /** Map beside the board rather than stacked above it.
+   *
+   *  Stacked, the board starts below the fold on every laptop, so the two
+   *  things you are comparing — a pin and the lane it belongs to — are never
+   *  on screen together, which is most of what the linked hover is for.
+   *  Off below `lg`, where side-by-side would give each half ~380px. */
+  const [sideBySide, setSideBySide] = useState<boolean>(
+    () =>
+      typeof localStorage === "undefined" || localStorage.getItem("routes.sideBySide") !== "0",
+  );
+  const setSideBySidePersist = (v: boolean) => {
+    setSideBySide(v);
+    try {
+      localStorage.setItem("routes.sideBySide", v ? "1" : "0");
+    } catch {
+      /* private mode */
+    }
+  };
+
+  /** Tech load, hidden by default once you have seen it.
+   *
+   *  It answers "is anybody overloaded", which is a question you ask
+   *  occasionally — but it sat between the map and the board permanently,
+   *  pushing the thing you came for further down every single visit. */
+  const [showLoad, setShowLoad] = useState<boolean>(
+    () => typeof localStorage !== "undefined" && localStorage.getItem("routes.showLoad") === "1",
+  );
+  const setShowLoadPersist = (v: boolean) => {
+    setShowLoad(v);
+    try {
+      localStorage.setItem("routes.showLoad", v ? "1" : "0");
+    } catch {
+      /* private mode */
+    }
+  };
+
+  const [routingDialogStaff, setRoutingDialogStaff] = useState<any>(null);
+
   const [hideWeekends, setHideWeekends] = useState<boolean>(
     () =>
       typeof localStorage !== "undefined" && localStorage.getItem("routes.hideWeekends") === "1",
@@ -555,6 +619,23 @@ function RoutesPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const listTimeOffFn = useServerFn(listTimeOff);
+  const timeOffQ = useQuery({
+    queryKey: ["time-off", rangeStart, rangeEnd],
+    queryFn: () => listTimeOffFn({ data: { from: rangeStart, to: rangeEnd } }),
+  });
+  /** Off on the SELECTED day. Ranges are inclusive of both ends, matching
+   *  `is_staff_off` in SQL — the badge and the guard have to agree or the
+   *  board says someone is available while the server refuses to assign
+   *  them. */
+  const offToday = useMemo(() => {
+    const out = new Set<string>();
+    for (const t of timeOffQ.data?.timeOff ?? []) {
+      if (day >= t.starts_on && day <= t.ends_on) out.add(t.staff_id);
+    }
+    return out;
+  }, [timeOffQ.data, day]);
+
   const geocode = useServerFn(backfillPropertyGeocodes);
   const geocodeMut = useMutation({
     mutationFn: () => geocode({ data: { limit: 100 } }),
@@ -756,6 +837,32 @@ function RoutesPage() {
                 <Switch checked={hideWeekends} onCheckedChange={setHideWeekendsPersist} />
               </div>
               <div className="space-y-1.5">
+                <div className="text-sm font-medium">Density</div>
+                <div className="text-[11px] text-muted-foreground">
+                  Compact fits roughly twice as many stops per lane before scrolling.
+                </div>
+                <div className="inline-flex rounded-md border p-0.5 text-xs">
+                  {(["comfortable", "compact"] as const).map((d) => (
+                    <button
+                      key={d}
+                      className={`px-3 py-1 rounded capitalize ${density === d ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                      onClick={() => setDensityPersist(d)}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium">Map beside the board</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Keeps a pin and its lane on screen together. Stacks below 1280px.
+                  </div>
+                </div>
+                <Switch checked={sideBySide} onCheckedChange={setSideBySidePersist} />
+              </div>
+              <div className="space-y-1.5">
                 <div className="text-sm font-medium">Board layout</div>
                 <div className="text-[11px] text-muted-foreground">
                   How tech lanes are arranged on the board.
@@ -819,16 +926,30 @@ function RoutesPage() {
                             {s.is_field_tech && assignedIds.has(s.id) ? (
                               <span> · holds work today</span>
                             ) : null}
+                            {offToday.has(s.id) ? (
+                              <span className="text-amber-600"> · off today</span>
+                            ) : null}
                           </div>
                         </div>
-                        <Switch
-                          checked={Boolean(s.is_field_tech)}
-                          disabled={routingMut.isPending}
-                          onCheckedChange={(next) =>
-                            routingMut.mutate({ staffId: s.id, isFieldTech: next })
-                          }
-                          aria-label={`${s.display_name} runs routes`}
-                        />
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-[11px]"
+                            onClick={() => setRoutingDialogStaff(s)}
+                            title="Time off and route endpoints"
+                          >
+                            <CalendarOff className="h-3.5 w-3.5" />
+                          </Button>
+                          <Switch
+                            checked={Boolean(s.is_field_tech)}
+                            disabled={routingMut.isPending}
+                            onCheckedChange={(next) =>
+                              routingMut.mutate({ staffId: s.id, isFieldTech: next })
+                            }
+                            aria-label={`${s.display_name} runs routes`}
+                          />
+                        </div>
                       </div>
                     ))
                   )}
@@ -841,7 +962,7 @@ function RoutesPage() {
             </Popover>
           )}
           <Button variant="outline" size="sm" onClick={() => setToolsOpen((v) => !v)}>
-            {toolsOpen ? "Hide dispatch tools" : "Dispatch tools"}
+            {toolsOpen ? "Hide auto-routing" : "Auto-routing"}
           </Button>
         </div>
       </div>
@@ -856,7 +977,18 @@ function RoutesPage() {
           and two date inputs on one screen setting the same day is not a
           choice anybody wants to make. */}
       {toolsOpen && (
+        <AutoRoutingPanel
+          day={day}
+          staff={staff}
+          onApplied={() => setLocalColumns(null)}
+        />
+      )}
+
+      {toolsOpen && (
         <div className="space-y-4 rounded-lg border bg-card p-5">
+          <div className="text-xs font-medium text-muted-foreground">
+            One tech, one day
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="tech">Assign or optimize one tech&apos;s day</Label>
@@ -1004,6 +1136,24 @@ function RoutesPage() {
       )}
 
       {range !== "today" && (
+        <LaneStrip
+          from={rangeStart}
+          to={rangeEnd}
+          visits={shownVisits as any}
+          staff={staff}
+          timeOff={timeOffQ.data?.timeOff ?? []}
+          techColors={techColors}
+          hideWeekends={hideWeekends}
+          compact={compact}
+          onPickDay={(d) => {
+            setLocalColumns(null);
+            setDay(d);
+            setRangePersist("today");
+          }}
+        />
+      )}
+
+      {range !== "today" && (
         <div
           className={
             viewMode === "map"
@@ -1051,49 +1201,80 @@ function RoutesPage() {
         </div>
       )}
 
-      {/* Today: the board is a full-width drag-and-drop surface with a lane per
-          tech, so the map stays above it rather than competing for width. */}
-      {range === "today" && viewMode === "map" && (
-        <>
-          <MapPanel
-            baseStyle={baseStyle}
-            onBaseStyle={setBaseStylePersist}
-            hoveredVisitId={hoveredVisitId}
-            onHoverVisit={setHoveredVisitId}
-            visits={visits}
-            staff={staff}
-            onOpenVisit={setDetailVisitId}
-            onGeocode={() => geocodeMut.mutate()}
-            geocoding={geocodeMut.isPending}
-            drawRoutes
-          />
+      {/* Today: map and board side by side by default.
+          Stacked, the board began below the fold on every laptop, so a pin and
+          the lane it belongs to were never visible together — which is most of
+          what hovering one to light the other is for. */}
+      {range === "today" && (
+        <div
+          className={
+            sideBySide && viewMode === "map"
+              ? "grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] xl:items-start"
+              : "space-y-4"
+          }
+        >
+          {viewMode === "map" && (
+          <div className={sideBySide ? "xl:sticky xl:top-4" : ""}>
+            <MapPanel
+              baseStyle={baseStyle}
+              onBaseStyle={setBaseStylePersist}
+              hoveredVisitId={hoveredVisitId}
+              onHoverVisit={setHoveredVisitId}
+              visits={visits}
+              staff={staff}
+              onOpenVisit={setDetailVisitId}
+              onGeocode={() => geocodeMut.mutate()}
+              geocoding={geocodeMut.isPending}
+              compact={compact}
+              drawRoutes
+            />
+          </div>
+          )}
           {/* Tech load is a FIELD-worker report (C3/I4): only capability-flagged
               field workers are route runners. Non-field roles stay on the board
               below (so a mis-assigned visit can be dragged off them) but never
-              appear in the load analytics. */}
-          <HeatmapPanel visits={visits} staff={staff.filter((s: any) => s.is_field_tech)} />
-        </>
-      )}
+              appear in the load analytics.
 
-      {/* Mobile Phase 2: below `md` the dnd board is replaced by a tap-through
-          day list (per-tech rows → VisitDetailDrawer). This comment used to
-          claim reassignment and reschedule happen via "the drawer's existing
-          controls"; the drawer has neither, and saying so here is how the same
-          wrong claim got repeated into MobileDayList and into its user-facing
-          footer. Mobile is observe + close-out; moving work between techs or
-          between days is desktop-only (Q-12).
-          Rendered at EVERY range (QA: week/month left phones with no visit
-          list at all) — always the selected day's visits. */}
-      <div className="md:hidden">
-        <MobileDayList
-          visits={range === "today" ? visits : visits.filter((v: any) => v.scheduled_on === day)}
-          staff={staff}
-          onOpen={setDetailVisitId}
-        />
-      </div>
+              Collapsed by default. It answers "is anybody overloaded", which is
+              an occasional question, and it used to sit permanently between the
+              map and the board pushing the thing you came for down the page. */}
+          <div className="min-w-0 space-y-4">
+            {showLoad ? (
+              <div className="space-y-1">
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setShowLoadPersist(false)}
+                    className="rounded px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    Hide tech load
+                  </button>
+                </div>
+                <HeatmapPanel
+                  visits={visits}
+                  staff={staff.filter((s: any) => s.is_field_tech)}
+                />
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowLoadPersist(true)}
+                className="w-full rounded-lg border border-dashed px-3 py-1.5 text-left text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                Show tech load
+              </button>
+            )}
+            {/* Mobile Phase 2: below `md` the dnd board is replaced by a
+                tap-through day list (per-tech rows → VisitDetailDrawer). This
+                comment used to claim reassignment and reschedule happen via
+                "the drawer's existing controls"; the drawer has neither, and
+                saying so here is how the same wrong claim got repeated into
+                MobileDayList and into its user-facing footer. Mobile is
+                observe + close-out; moving work between techs or between days
+                is desktop-only (Q-12). */}
+            <div className="md:hidden">
+              <MobileDayList visits={visits} staff={staff} onOpen={setDetailVisitId} />
+            </div>
 
-      {range === "today" && (
-        <div className="max-md:hidden">
+            <div className="max-md:hidden">
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -1125,6 +1306,7 @@ function RoutesPage() {
               />
               {staff.map((s: any) => {
                 const offRoutes = s.is_field_tech && !s.routing_available;
+                const away = offToday.has(s.id);
                 return (
                   <Column
                     key={s.id}
@@ -1132,6 +1314,7 @@ function RoutesPage() {
                     title={s.display_name}
                     subtitle={s.role ? humanizeRole(s.role) : undefined}
                     offRoutes={offRoutes}
+                    offToday={away}
                     items={columns[s.id] ?? []}
                     layout={boardLayout}
                     onComplete={(id) => completeMut.mutate(id)}
@@ -1199,8 +1382,31 @@ function RoutesPage() {
               {activeVisit ? <VisitCardView visit={activeVisit} dragging /> : null}
             </DragOverlay>
           </DndContext>
+            </div>
+          </div>
         </div>
       )}
+
+      {/* Week and month keep their own phone list — the selected day's visits,
+          filtered out of the wider window the calendar fetched. A single
+          shared instance used to do both with a ternary; two call sites with
+          genuinely different inputs is clearer than one that is neither.
+          Rendered at EVERY range: week/month once left phones with no visit
+          list at all. */}
+      {range !== "today" && (
+        <div className="md:hidden">
+          <MobileDayList
+            visits={visits.filter((v: any) => v.scheduled_on === day)}
+            staff={staff}
+            onOpen={setDetailVisitId}
+          />
+        </div>
+      )}
+      <StaffRoutingDialog
+        staff={routingDialogStaff}
+        open={Boolean(routingDialogStaff)}
+        onOpenChange={(o) => !o && setRoutingDialogStaff(null)}
+      />
       <OneOffVisitDialog
         open={oneOffOpen}
         onOpenChange={setOneOffOpen}
@@ -1339,6 +1545,7 @@ function MapPanel({
   onOpenVisit,
   onGeocode,
   geocoding,
+  compact = false,
   drawRoutes = true,
 }: {
   baseStyle: TileVariant;
@@ -1350,6 +1557,10 @@ function MapPanel({
   onOpenVisit?: (id: string) => void;
   onGeocode?: () => void;
   geocoding?: boolean;
+  /** Tighter chrome and a shorter map. Side by side the map shares the row
+   *  with the board, and 420px of tiles pushes the first lane off screen on a
+   *  1080p display — the arrangement exists to keep both visible. */
+  compact?: boolean;
   drawRoutes?: boolean;
 }) {
   const groups = useMemo(() => buildTechGroups(visits as any, staff as any), [visits, staff]);
@@ -1358,8 +1569,8 @@ function MapPanel({
   ).length;
   const missing = visits.length - mappable;
   return (
-    <div className="rounded-lg border bg-card p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <div className={`rounded-lg border bg-card ${compact ? "p-2.5" : "p-4"}`}>
+      <div className={`flex flex-wrap items-center justify-between gap-2 ${compact ? "mb-2" : "mb-3"}`}>
         <div>
           <h2 className="text-sm font-semibold">Map</h2>
           <p className="text-[11px] text-muted-foreground">
@@ -1400,7 +1611,7 @@ function MapPanel({
       <div className="relative">
         <RouteMap
           groups={groups}
-          height={420}
+          height={compact ? 320 : 420}
           onVisitClick={onOpenVisit}
           drawRoutes={drawRoutes}
           baseStyle={baseStyle}
@@ -1434,6 +1645,7 @@ function Column({
   items,
   tone,
   offRoutes,
+  offToday,
   notRoutable,
   notRoutableHint,
   onComplete,
@@ -1454,6 +1666,10 @@ function Column({
   items: any[];
   tone?: "muted";
   offRoutes?: boolean;
+  /** Has dated time off covering the day on screen. Distinct from `offRoutes`,
+   *  which is the undated same-day flag — this one has an end and the server
+   *  refuses assignment for it. */
+  offToday?: boolean;
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string, e: React.MouseEvent) => void;
   onSelectLane?: (ids: string[]) => void;
@@ -1478,7 +1694,7 @@ function Column({
   return (
     <div
       ref={setNodeRef}
-      className={`rounded-lg border ${tone === "muted" ? "bg-muted/30" : offRoutes ? "bg-muted/40 opacity-70" : "bg-card"} ${
+      className={`rounded-lg border ${tone === "muted" ? "bg-muted/30" : offRoutes || offToday ? "bg-muted/40 opacity-70" : "bg-card"} ${
         isOver ? "ring-2 ring-primary" : ""
       }`}
     >
@@ -1486,7 +1702,12 @@ function Column({
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 text-sm font-medium">
             <span className="truncate">{title}</span>
-            {offRoutes && (
+            {offToday && (
+              <Badge variant="outline" className="border-amber-400 text-amber-700 text-[10px]">
+                Away
+              </Badge>
+            )}
+            {offRoutes && !offToday && (
               <Badge variant="outline" className="border-amber-400 text-amber-700 text-[10px]">
                 Off routes
               </Badge>

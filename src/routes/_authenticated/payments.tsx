@@ -27,6 +27,8 @@ import {
 } from "@/lib/processing-fee.functions";
 import { sendEmailVerification } from "@/lib/auth-entry.functions";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 
 function ResendVerification() {
@@ -74,6 +76,7 @@ function PaymentsSettings() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const { confirm, dialog } = useConfirmDialog();
   const disconnect = useMutation({
     mutationFn: () => disconnectFn(),
     onSuccess: () => {
@@ -109,7 +112,11 @@ function PaymentsSettings() {
   });
 
   return (
-    <div className="max-w-3xl space-y-6">
+    // Wider than the old max-w-3xl: the Payments tab is a transaction table
+    // inside an iframe, and 768px forced it to scroll horizontally at every
+    // window size.
+    <div className="max-w-5xl space-y-6">
+      {dialog}
       <div>
         <h1 className="text-2xl font-semibold">Payments</h1>
         <p className="text-sm text-muted-foreground">
@@ -158,29 +165,57 @@ function PaymentsSettings() {
                 Stripe account {maskAccountId(cfg.accountId)}
               </span>
             </span>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => refresh.mutate()}
-                disabled={refresh.isPending}
-              >
-                Refresh
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => disconnect.mutate()}
-                disabled={disconnect.isPending}
-              >
-                Disconnect
-              </Button>
-            </div>
+            {/* Disconnect used to live here, beside Refresh, at identical
+                weight (outline/sm) and firing on one click with no
+                confirmation — a misclick took payment collection down for the
+                whole organization. It is now at the foot of the Account tab,
+                styled destructive, behind a confirm that names what breaks. */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refresh.mutate()}
+              disabled={refresh.isPending}
+            >
+              Refresh
+            </Button>
           </div>
 
           <ConnectDashboard
             chargesEnabled={!!cfg.chargesEnabled}
             onOnboardingExit={() => refresh.mutate()}
+            danger={
+              <div className="rounded-lg border border-destructive/40 p-4">
+                <div className="text-sm font-medium">Disconnect this Stripe account</div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Stops all card and bank payments immediately — invoices, autopay, and the
+                  client portal. Saved client cards belong to this Stripe account and will not
+                  work on a different one.
+                </p>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="mt-3"
+                  disabled={disconnect.isPending}
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: "Disconnect Stripe?",
+                      description: (
+                        <>
+                          Clients will not be able to pay you through HoundStack until another
+                          account is connected. Autopay stops. Saved cards are tied to this
+                          account and will need re-entering if you connect a different one.
+                        </>
+                      ),
+                      confirmLabel: "Disconnect",
+                      destructive: true,
+                    });
+                    if (ok) disconnect.mutate();
+                  }}
+                >
+                  {disconnect.isPending ? "Disconnecting…" : "Disconnect"}
+                </Button>
+              </div>
+            }
           />
 
           <p className="text-xs text-muted-foreground">
@@ -383,9 +418,13 @@ function ProcessingFeeCard() {
 // @stripe/connect-js on the client only; the Account Session is minted
 // server-side via createStripeAccountSession.
 function ConnectDashboard({
+  danger,
   chargesEnabled,
   onOnboardingExit,
 }: {
+  /** Rendered at the foot of the Account tab. Passed in rather than built here
+   *  so the disconnect mutation stays with the other account mutations. */
+  danger?: ReactNode;
   chargesEnabled: boolean;
   onOnboardingExit: () => void;
 }) {
@@ -439,20 +478,67 @@ function ConnectDashboard({
   return (
     <div className="space-y-5">
       <ConnectComponentsProvider connectInstance={instance}>
+        {/* Stripe's own alerting. Above the tabs, because "your account is
+            restricted" is true on whichever tab you are looking at, and
+            hiding it inside one of them means the tab you are NOT on is where
+            the warning lives. */}
         <ConnectNotificationBanner />
         {!chargesEnabled ? (
           <ConnectCard title="Account setup">
             {(h) => <ConnectAccountOnboarding onExit={onOnboardingExit} {...h} />}
           </ConnectCard>
         ) : (
-          <>
-            <ConnectCard title="Balances">{(h) => <ConnectBalances {...h} />}</ConnectCard>
-            <ConnectCard title="Payments">{(h) => <ConnectPayments {...h} />}</ConnectCard>
-            <ConnectCard title="Payouts">{(h) => <ConnectPayouts {...h} />}</ConnectCard>
-            <ConnectCard title="Account management">
-              {(h) => <ConnectAccountManagement {...h} />}
-            </ConnectCard>
-          </>
+          /* Three jobs, not four boxes.
+           *
+           * The four components were stacked and all mounted at once. Each is
+           * an iframe that fetches independently, so opening this page paid
+           * for four of them whatever you came to do, and the page was a long
+           * scroll in which the thing you wanted was rarely on screen.
+           *
+           * Grouped by the question being asked:
+           *   Money    — "how much do I have, and when does it reach my bank"
+           *              (balances and payouts answer that together; splitting
+           *              them made you scroll between two halves of one answer)
+           *   Activity — "what did clients actually pay"
+           *   Account  — "my business details, and disconnecting"
+           *
+           * Tabs unmount their content, so exactly one iframe is live. */
+          <Tabs defaultValue="money">
+            <TabsList>
+              <TabsTrigger value="money">Money</TabsTrigger>
+              <TabsTrigger value="activity">Activity</TabsTrigger>
+              <TabsTrigger value="account">Account</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="money" className="mt-4 space-y-4">
+              <ConnectCard title="Balance">{(h) => <ConnectBalances {...h} />}</ConnectCard>
+              <ConnectCard
+                title="Payouts"
+                hint="When money leaves Stripe for your bank. Change the schedule or send one now."
+              >
+                {(h) => <ConnectPayouts {...h} />}
+              </ConnectCard>
+            </TabsContent>
+
+            <TabsContent value="activity" className="mt-4">
+              <ConnectCard
+                title="Payments"
+                hint="Every charge, refund and dispute on your account."
+              >
+                {(h) => <ConnectPayments {...h} />}
+              </ConnectCard>
+            </TabsContent>
+
+            <TabsContent value="account" className="mt-4 space-y-4">
+              <ConnectCard
+                title="Business details"
+                hint="Legal entity, bank account, and the information Stripe needs to keep you paid out."
+              >
+                {(h) => <ConnectAccountManagement {...h} />}
+              </ConnectCard>
+              {danger}
+            </TabsContent>
+          </Tabs>
         )}
       </ConnectComponentsProvider>
     </div>
@@ -474,9 +560,14 @@ function maskAccountId(id: string | null | undefined): string {
 // they fail; we drive the card state off those and remount on retry.
 function ConnectCard({
   title,
+  hint,
   children,
 }: {
   title: string;
+  /** One line saying what this panel is for. The embedded components open on a
+   *  table with no heading of their own, so without this the tab is three
+   *  unlabelled grids. */
+  hint?: string;
   children: (handlers: { onLoaderStart: () => void; onLoadError: (e: any) => void }) => ReactNode;
 }) {
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -491,7 +582,10 @@ function ConnectCard({
   };
   return (
     <div className="rounded-lg border bg-card p-4">
-      <div className="mb-2 text-sm font-medium">{title}</div>
+      <div className="mb-2">
+        <div className="text-sm font-medium">{title}</div>
+        {hint && <div className="text-[11px] text-muted-foreground">{hint}</div>}
+      </div>
       {state === "error" ? (
         <div className="space-y-2 text-sm">
           <p className="text-destructive">

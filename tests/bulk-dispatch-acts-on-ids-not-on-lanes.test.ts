@@ -71,10 +71,19 @@ describe("a caller-supplied id list cannot span organizations", () => {
 describe("one collision does not abandon the rest", () => {
   it("reschedule reports what it could not move", () => {
     const body = lastBody("bulk_reschedule_visits");
-    // visits has UNIQUE(subscription_id, scheduled_on): moving a weekly
-    // client's Tuesday to next Tuesday collides with the visit already
-    // generated there, which is the schedule being right, not an error.
-    expect(body).toMatch(/EXCEPTION WHEN unique_violation THEN/);
+    // Two things can make one row unmovable, and both are "the schedule is
+    // right", not "the call failed":
+    //
+    //   unique_violation — visits has UNIQUE(subscription_id, scheduled_on),
+    //     so moving a weekly client's Tuesday onto next Tuesday collides with
+    //     the visit already generated there.
+    //   check_violation  — the assignee has that day booked off
+    //     (assert_available_on, via the visits_respect_time_off trigger).
+    //
+    // Both must be caught per row. Catching only the first would let a day
+    // off abort the other forty moves, which is the failure this whole
+    // subtransaction loop exists to prevent.
+    expect(body).toMatch(/EXCEPTION WHEN unique_violation OR check_violation THEN/);
     expect(body).toMatch(/_skipped := _skipped \+ 1/);
     expect(body).toMatch(/RETURNS TABLE\(moved integer, skipped integer\)/);
   });

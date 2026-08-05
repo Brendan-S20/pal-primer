@@ -81,6 +81,22 @@ export const sendSmsToClient = createServerFn({ method: "POST" })
     if (cErr) throw new Error(cErr.message);
     if (!client.primary_phone) throw new Error("Client has no phone number on file");
     if (client.sms_opt_out) throw new Error("Client has opted out of SMS (STOP). Cannot send.");
+    // Consent, not just the absence of a refusal. `sms_opt_out` only ever went
+    // true AFTER somebody replied STOP, so a client with no consent on file
+    // read as sendable — the exact model Twilio rejected under 30513. The
+    // check lives in SQL (`client_may_be_texted`) so every path asks the same
+    // question, including ones added later.
+    const { data: mayText, error: cErrConsent } = await (supabase as any).rpc(
+      "client_may_be_texted",
+      { _client_id: data.clientId },
+    );
+    if (cErrConsent) throw new Error(cErrConsent.message);
+    if (!mayText) {
+      throw new Error(
+        "No texting consent on file for this client. Ask them to opt in from their portal, or record their consent on the client page.",
+      );
+    }
+
 
     const { data: org, error: oErr } = await supabase
       .from("organizations")
@@ -217,6 +233,22 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
     // Account-level opt-out covers the property contact too — conservative on
     // consent until per-contact opt-out exists.
     if (client.sms_opt_out) throw new Error("Client has opted out of SMS.");
+    // Consent, not just the absence of a refusal. `sms_opt_out` only ever went
+    // true AFTER somebody replied STOP, so a client with no consent on file
+    // read as sendable — the exact model Twilio rejected under 30513. The
+    // check lives in SQL (`client_may_be_texted`) so every path asks the same
+    // question, including ones added later.
+    const { data: mayText, error: cErrConsent } = await (supabase as any).rpc(
+      "client_may_be_texted",
+      { _client_id: v.client_id! },
+    );
+    if (cErrConsent) throw new Error(cErrConsent.message);
+    if (!mayText) {
+      throw new Error(
+        "No texting consent on file for this client. Ask them to opt in from their portal, or record their consent on the client page.",
+      );
+    }
+
     // Imported comms hold: templated lifecycle texts (reminder / on my way /
     // completed) count as automated notifications, not personal outreach.
     if (client.comms_paused)

@@ -975,6 +975,10 @@ export type Database = {
           referred_by_client_id: string | null
           review_asked_at: string | null
           review_submitted_at: string | null
+          sms_consent_at: string | null
+          sms_consent_phone: string | null
+          sms_consent_source: string | null
+          sms_consent_text: string | null
           sms_opt_out: boolean
           stripe_customer_id: string | null
           tags: string[]
@@ -1022,6 +1026,10 @@ export type Database = {
           referred_by_client_id?: string | null
           review_asked_at?: string | null
           review_submitted_at?: string | null
+          sms_consent_at?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
           sms_opt_out?: boolean
           stripe_customer_id?: string | null
           tags?: string[]
@@ -1069,6 +1077,10 @@ export type Database = {
           referred_by_client_id?: string | null
           review_asked_at?: string | null
           review_submitted_at?: string | null
+          sms_consent_at?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
           sms_opt_out?: boolean
           stripe_customer_id?: string | null
           tags?: string[]
@@ -4801,6 +4813,54 @@ export type Database = {
             columns: ["waste_station_id"]
             isOneToOne: false
             referencedRelation: "waste_stations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_time_off: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          ends_on: string
+          id: string
+          organization_id: string
+          reason: string | null
+          staff_id: string
+          starts_on: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          ends_on: string
+          id?: string
+          organization_id: string
+          reason?: string | null
+          staff_id: string
+          starts_on: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          ends_on?: string
+          id?: string
+          organization_id?: string
+          reason?: string | null
+          staff_id?: string
+          starts_on?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_time_off_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_time_off_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
             referencedColumns: ["id"]
           },
         ]

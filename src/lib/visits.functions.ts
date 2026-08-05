@@ -1098,3 +1098,123 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { moved: (n as number) ?? 0 };
   });
+
+// ── Auto-routing: preview, then apply ─────────────────────────────────────
+//
+// Both call the same SQL planner (`plan_route`), which is the whole point.
+// A preview backed by its own estimate drifts from what Apply does, and the
+// drift is invisible until somebody trusts the number.
+
+const LEVELS = ["fast", "balanced", "thorough"] as const;
+
+export const previewOptimize = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        staffIds: z.array(z.string().uuid()).min(1).max(50),
+        from: z.string(),
+        to: z.string(),
+        level: z.enum(LEVELS).default("balanced"),
+        reassign: z.boolean().default(false),
+      })
+      .refine((v) => v.to >= v.from, {
+        message: "The end date is before the start date.",
+        path: ["to"],
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+    const { data: rows, error } = await (supabase as any).rpc("preview_optimize", {
+      _org_id: orgId,
+      _staff_ids: data.staffIds,
+      _from: data.from,
+      _to: data.to,
+      _level: data.level,
+      _reassign: data.reassign,
+    } as any);
+    if (error) throw new Error(error.message);
+
+    const days = (rows ?? []) as Array<{
+      staff_id: string;
+      day: string;
+      stops: number;
+      before_min: number;
+      after_min: number;
+      before_known: boolean;
+      violations: number;
+    }>;
+
+    // Saving is summed ONLY over days that had a real route to compare
+    // against. A day whose stops carry no sequence is not a slower route, it
+    // is no route — counting it would inflate the headline with the entire
+    // cost of a day nobody had planned yet.
+    const measured = days.filter((d) => d.before_known);
+    const savedMin = measured.reduce((n, d) => n + (Number(d.before_min) - Number(d.after_min)), 0);
+    return {
+      days,
+      totals: {
+        stops: days.reduce((n, d) => n + Number(d.stops), 0),
+        daysPlanned: days.length,
+        daysMeasured: measured.length,
+        // Rounded once, at the end. Rounding per day and summing drifts.
+        savedMin: Math.round(savedMin * 10) / 10,
+        violations: days.reduce((n, d) => n + Number(d.violations), 0),
+      },
+    };
+  });
+
+export const applyOptimize = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        staffIds: z.array(z.string().uuid()).min(1).max(50),
+        from: z.string(),
+        to: z.string(),
+        level: z.enum(LEVELS).default("balanced"),
+        reassign: z.boolean().default(false),
+      })
+      .refine((v) => v.to >= v.from, {
+        message: "The end date is before the start date.",
+        path: ["to"],
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+
+    const days: string[] = [];
+    for (let d = new Date(`${data.from}T12:00:00`); ; d.setDate(d.getDate() + 1)) {
+      const iso = d.toISOString().slice(0, 10);
+      if (iso > data.to) break;
+      days.push(iso);
+    }
+
+    let stops = 0;
+    const skipped: Array<{ staffId: string; day: string; reason: string }> = [];
+    for (const staffId of data.staffIds) {
+      for (const day of days) {
+        const { data: n, error } = await (supabase as any).rpc("optimize_route_v3", {
+          _org_id: orgId,
+          _staff_id: staffId,
+          _day: day,
+          _reassign: data.reassign,
+          _level: data.level,
+        } as any);
+        if (error) {
+          // One tech being away, or no longer a field tech, must not abandon
+          // the other twenty days. Collected and reported, not swallowed —
+          // silently skipping is how a dispatcher ends up believing a day was
+          // optimized when it was refused.
+          skipped.push({ staffId, day, reason: error.message });
+          continue;
+        }
+        stops += (n as number) ?? 0;
+      }
+    }
+    return { stops, skipped };
+  });
