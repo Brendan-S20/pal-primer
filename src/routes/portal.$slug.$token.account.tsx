@@ -1,15 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Gift, Bell, CalendarClock, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { PushToggle } from "@/components/PushToggle";
+import { Switch } from "@/components/ui/switch";
+import { SMS_CONSENT_TEXT } from "@/lib/clients.functions";
 import { usePortalCtx, ReferralCard, EmptyBox } from "@/lib/portal-ui";
 import { PORTAL_FREQUENCY_VALUES, frequencyLabel } from "@/lib/frequency-request";
 import {
   portalSelfServeOptions,
   portalRequestVacationHold,
+  portalSetSmsConsent,
   portalChangeFrequency,
 } from "@/lib/portal.functions";
 
@@ -43,6 +46,11 @@ function PortalAccount() {
           </div>
           <PushToggle portalToken={token} />
         </div>
+        {/* Texts sit with push notifications because they are the same job to
+            the person reading this — "how do you reach me". Consent is a
+            separate legal fact from a preference toggle, which is why this one
+            stores wording and a timestamp while push does not. */}
+        <TextOptIn token={token} client={c} />
       </section>
 
       <section>
@@ -180,5 +188,60 @@ function SelfServeSection({ token }: { token: string }) {
         </section>
       )}
     </>
+  );
+}
+
+
+/**
+ * The client opting themselves in to texts.
+ *
+ * This is the strongest consent evidence there is: the end user, on their own
+ * authenticated session, ticking a box whose exact words are stored with the
+ * timestamp. `portalSetSmsConsent` was written and wired to nothing — the
+ * server function existed while this control did not, so the only way a client
+ * could ever be textable was for staff to record consent on their behalf.
+ */
+function TextOptIn({ token, client }: { token: string; client: any }) {
+  const qc = useQueryClient();
+  const fn = useServerFn(portalSetSmsConsent);
+  const optedIn = Boolean(client?.sms_consent_at) && !client?.sms_opt_out;
+
+  const mut = useMutation({
+    mutationFn: (optIn: boolean) => fn({ data: { token, optIn } }),
+    onSuccess: (_r, optIn) => {
+      toast.success(optIn ? "You're opted in to texts." : "You won't receive texts.");
+      qc.invalidateQueries({ queryKey: ["portal", token, "client"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Nothing to agree to without a number. Offering the toggle would let
+  // somebody consent to messages at an address that does not exist.
+  if (!client?.primary_phone) return null;
+
+  return (
+    <div className="mt-3 rounded-md border bg-card p-4 text-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="font-medium">Text messages</div>
+          <div className="text-xs text-muted-foreground">
+            Appointment reminders, visit updates and billing, to {client.primary_phone}.
+          </div>
+        </div>
+        <Switch
+          checked={optedIn}
+          disabled={mut.isPending}
+          onCheckedChange={(v) => mut.mutate(v)}
+          aria-label="Receive text messages"
+        />
+      </div>
+      {/* The words themselves, not a link to them. This is what gets stored as
+          the consent record, and what a carrier asks to see. */}
+      {!optedIn && (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          {SMS_CONSENT_TEXT}
+        </p>
+      )}
+    </div>
   );
 }

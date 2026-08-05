@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { listClients, updateClient } from "@/lib/clients.functions";
+import { getSmsConsentCoverage, listClients, updateClient } from "@/lib/clients.functions";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { usePermissions } from "@/hooks/useMyRole";
 import { humanizeEnum } from "@/lib/humanize";
@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
-import { AlertTriangle, Download, Search, Users } from "lucide-react";
+import { AlertTriangle, Download, MessageSquareOff, Search, Users } from "lucide-react";
 import { downloadCsv } from "@/lib/csv";
 import { HelpTip } from "@/components/HelpTip";
 
@@ -189,6 +189,8 @@ function ClientsList() {
           </Link>
         </div>
       </div>
+
+      <SmsConsentBanner />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Card className="p-4">
@@ -526,6 +528,48 @@ function ClientsList() {
           <ChurnPanel />
         </AiSection>
       </div>
+    </div>
+  );
+}
+
+
+/**
+ * How much of the book can actually be texted.
+ *
+ * The consent guard turned texting off for every client who had never been
+ * asked — correctly, but silently. Without this the only way to discover the
+ * gap is one failed send at a time, and an owner whose reminders stopped going
+ * out has no way to find out why from any screen.
+ *
+ * Shown only when there IS a gap. A banner that says "316 of 316, all good"
+ * every day is furniture, and furniture is not read on the day it changes.
+ */
+function SmsConsentBanner() {
+  const fn = useServerFn(getSmsConsentCoverage);
+  const q = useQuery({ queryKey: ["sms-consent-coverage"], queryFn: () => fn() });
+  const d = q.data;
+  if (!d || d.withPhone === 0) return null;
+
+  const missing = d.withPhone - d.consented;
+  if (missing <= 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+      <MessageSquareOff className="h-4 w-4 shrink-0" />
+      <span>
+        <strong>
+          {missing} of {d.withPhone}
+        </strong>{" "}
+        clients with a phone number have no texting consent on file, so reminders and
+        notifications will not reach them.
+      </span>
+      {/* Says what to do, not just what is wrong. Both routes are real: the
+          client opts in from their portal, or you record consent you already
+          hold on their Communication tab. */}
+      <span className="text-amber-800 dark:text-amber-300">
+        Ask them to opt in from their portal, or record consent you already have on a
+        client&apos;s Communication tab.
+      </span>
     </div>
   );
 }

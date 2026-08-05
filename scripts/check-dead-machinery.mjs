@@ -257,6 +257,15 @@ function appText() {
   return appTextCache;
 }
 
+/** Per-file source, for rules that need to know WHICH file said something.
+ *  appText() flattens everything into one haystack and so cannot answer
+ *  "does any file other than the definer mention this name". */
+let appFilesCache = null;
+function appFiles() {
+  appFilesCache ??= appSources().map((f) => [f, readFileSync(f, "utf8")]);
+  return appFilesCache;
+}
+
 function sqlText() {
   sqlTextCache ??= migrationFiles()
     .map((f) => sqlCode(readFileSync(f, "utf8")))
@@ -828,6 +837,56 @@ function checkUndeclaredOverloads(baseline) {
   return found.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+
+// ── Rule 5: a server function nothing imports ──────────────────────────────
+//
+// Added because this file MISSED a live instance of exactly what it is for.
+//
+// `recordSmsConsent`, `getSmsConsentCoverage` and `portalSetSmsConsent` shipped
+// with the SMS-consent model. All three were exported, correct, tested at the
+// SQL layer — and imported by nothing. The consent guard they were built to
+// satisfy went live at the same time, so texting stopped working for every
+// client and the only screen that could have fixed it did not exist.
+//
+// Rules 1-4 could not see it. They watch SQL→app, cron→endpoint and
+// writer→reader, and the header says unused TypeScript is "already caught by
+// the compiler". It is not: `tsc` does not flag an unused EXPORT, and neither
+// does the bundler, because an export is a public API by definition. A server
+// function wired to no UI falls precisely between the two.
+//
+// Conservative, per this file's rule: a `createServerFn` export counts as dead
+// only when its name appears in NO other file at all. One mention anywhere —
+// a route, a component, another lib, even a test — vouches for it. That will
+// miss a function whose only caller is itself dead, and that is the right
+// trade: false positives here would train people to ignore the check.
+function checkUnwiredServerFns(baseline) {
+  const files = appFiles();
+  const dead = [];
+
+  for (const [path, text] of files) {
+    if (!path.includes("/lib/")) continue;
+    const code = tsCode(text);
+    // `export const NAME = createServerFn(` — the entry-point form. A plain
+    // exported helper is ordinary TypeScript and out of scope.
+    for (const m of code.matchAll(/export\s+const\s+(\w+)\s*=\s*createServerFn\b/g)) {
+      const name = m[1];
+      if (baseline.unwired_server_fns?.[name]) continue;
+      const referenced = [...files].some(
+        ([other, otherText]) => other !== path && tsCode(otherText).includes(name),
+      );
+      if (!referenced) {
+        dead.push({
+          kind: "server fn",
+          name,
+          where: path.replace(/^.*\/src\//, "src/"),
+          why: "exported createServerFn that no other file mentions — no UI can reach it",
+        });
+      }
+    }
+  }
+  return dead.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // ── report ─────────────────────────────────────────────────────────────────
 
 function main() {
@@ -838,6 +897,7 @@ function main() {
     ...checkUninvokedEndpoints(baseline),
     ...checkWriteOnlyColumns(baseline),
     ...checkUndeclaredOverloads(baseline),
+    ...checkUnwiredServerFns(baseline),
   ];
 
   if (process.argv.includes("--json")) {
@@ -855,6 +915,7 @@ function main() {
     ["endpoint_callers", "endpoint"],
     ["write_only_columns", "column"],
     ["function_overloads", "overload"],
+    ["unwired_server_fns", "server fn"],
   ];
   const gaps = [];
   let exceptions = 0;
