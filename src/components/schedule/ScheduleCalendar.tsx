@@ -128,7 +128,7 @@ function VisitChip({
           onMouseLeave={() => onHover?.(null)}
           onFocus={() => onHover?.(visit.id)}
           onBlur={() => onHover?.(null)}
-          className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[11px] transition hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary ${
+          className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-2xs transition hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary ${
             hovered ? "bg-primary/15 ring-1 ring-primary/50" : ""
           }`}
         >
@@ -250,12 +250,12 @@ export function ScheduleCalendar({
                 className="mb-1 flex items-baseline gap-1.5 rounded px-1 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
                 title={`Open ${dt.toLocaleDateString()} on the board`}
               >
-                <span className="text-[10px] uppercase text-muted-foreground">
+                <span className="text-3xs uppercase text-muted-foreground">
                   {dt.toLocaleDateString(undefined, { weekday: "short" })}
                 </span>
                 <span className="font-medium">{dt.getDate()}</span>
                 {list.length > 0 && (
-                  <span className="ml-auto text-[10px] text-muted-foreground">{list.length}</span>
+                  <span className="ml-auto text-3xs text-muted-foreground">{list.length}</span>
                 )}
               </button>
 
@@ -282,14 +282,14 @@ export function ScheduleCalendar({
                       return next;
                     })
                   }
-                  className="mt-0.5 px-1 text-left text-[10px] text-muted-foreground hover:text-foreground"
+                  className="mt-0.5 px-1 text-left text-3xs text-muted-foreground hover:text-foreground"
                 >
                   {isOpen ? "Show less" : `+${list.length - CHIPS_PER_DAY} more`}
                 </button>
               )}
 
               {unassigned > 0 && (
-                <span className="mt-auto px-1 pt-1 text-[10px] text-amber-700">
+                <span className="mt-auto px-1 pt-1 text-3xs text-amber-700">
                   {unassigned} unassigned
                 </span>
               )}
@@ -297,7 +297,7 @@ export function ScheduleCalendar({
           );
         })}
       </div>
-      <p className="mt-3 text-[11px] text-muted-foreground">
+      <p className="mt-3 text-2xs text-muted-foreground">
         Colours match the map — each technician keeps the same colour in both. Hover a visit for
         who and where; click the date to open that day&apos;s board.
       </p>

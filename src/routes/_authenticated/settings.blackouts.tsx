@@ -37,9 +37,9 @@ function BlackoutsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="flex items-center gap-2 text-2xl font-semibold">
+        <h2 className="flex items-center gap-2 text-lg font-semibold">
           Blackout dates <HelpTip article="blackouts" />
-        </h1>
+        </h2>
         <p className="text-sm text-muted-foreground">
           Holidays and office closures. Visits scheduled on these days will be bumped to the next
           available day (up to 2 weeks).

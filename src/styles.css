@@ -132,6 +132,38 @@
   --sidebar-ring: oklch(0.551 0.027 264.364);
 }
 
+/*
+ * The two steps below `text-xs`.
+ *
+ * A survey of the app found 157 hard-coded micro type sizes: 93 uses of
+ * `text-[11px]`, 64 of `text-[10px]`, plus stragglers at 9px and 15px. Four
+ * undeclared sizes below Tailwind's smallest step is not a scale, it is a
+ * habit — every dense table cell, badge and helper line picked whichever
+ * number the author had in their head, and adjacent components ended up a
+ * pixel apart for no reason anybody could state.
+ *
+ * These are the two that were actually load-bearing, named so they can be
+ * reached for deliberately and changed in one place. Both keep their existing
+ * pixel values, so naming them changed nothing on screen — this is a rename,
+ * not a redesign.
+ *
+ * The line heights are set explicitly. Tailwind's arbitrary `text-[11px]`
+ * inherits whatever line-height is in scope, which is why two 11px labels in
+ * different cards did not line up.
+ *
+ *   text-2xs   11px / 15px   dense table cells, helper text under a control
+ *   text-3xs   10px / 14px   badges, chips, the smallest legible label
+ *
+ * Below 10px is not a size, it is an accessibility problem. There is
+ * deliberately no fourth step.
+ */
+@theme inline {
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 0.9375rem;
+  --text-3xs: 0.625rem;
+  --text-3xs--line-height: 0.875rem;
+}
+
 @theme inline {
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);

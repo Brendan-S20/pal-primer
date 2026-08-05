@@ -64,7 +64,7 @@ function Page() {
   return (
     <div className="max-w-3xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">AI SMS Receptionist</h1>
+        <h2 className="text-lg font-semibold">AI SMS Receptionist</h2>
         <p className="text-sm text-muted-foreground">
           When enabled, inbound texts that aren't STOP/START/HELP are answered by an AI trained
           on your FAQ. It can quote prices, capture leads, and hand off to a human.
@@ -161,7 +161,7 @@ function Page() {
               <div key={l.id} className="rounded-lg border bg-card p-3 text-sm">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>
-                    <span className={`mr-2 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${l.channel === "voice" ? "bg-blue-100 text-blue-800" : "bg-muted"}`}>
+                    <span className={`mr-2 rounded px-1.5 py-0.5 text-3xs font-medium uppercase ${l.channel === "voice" ? "bg-blue-100 text-blue-800" : "bg-muted"}`}>
                       {l.channel ?? "sms"}
                     </span>
                     {new Date(l.created_at).toLocaleString()} · {l.from_number}

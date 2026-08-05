@@ -201,7 +201,7 @@ function PaymentsSettings() {
                     are actually contemplating. */}
                 <div className="rounded-lg border p-4">
                   <div className="text-sm font-medium">Saved client cards</div>
-                  <p className="mt-1 text-[11px] text-muted-foreground">
+                  <p className="mt-1 text-2xs text-muted-foreground">
                     Saved cards and autopay belong to the Stripe account that stored them. Connect a
                     different account and clients will have to re-enter their card. This check finds
                     cards that no longer resolve on the current account.
@@ -219,7 +219,7 @@ function PaymentsSettings() {
 
                 <div className="rounded-lg border border-destructive/40 p-4">
                   <div className="text-sm font-medium">Disconnect this Stripe account</div>
-                  <p className="mt-1 text-[11px] text-muted-foreground">
+                  <p className="mt-1 text-2xs text-muted-foreground">
                     Stops all card and bank payments immediately — invoices, autopay, and the client
                     portal. Saved client cards belong to this Stripe account and will not work on a
                     different one.
@@ -616,7 +616,7 @@ function ConnectCard({
     <div className="rounded-lg border bg-card p-4">
       <div className="mb-2">
         <div className="text-sm font-medium">{title}</div>
-        {hint && <div className="text-[11px] text-muted-foreground">{hint}</div>}
+        {hint && <div className="text-2xs text-muted-foreground">{hint}</div>}
       </div>
       {state === "error" ? (
         <div className="space-y-2 text-sm">
@@ -687,7 +687,7 @@ function BalanceSummary() {
   return (
     <div className="grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-3">
       <div>
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground">
           Available now
         </div>
         <div className="text-xl font-semibold">
@@ -695,7 +695,7 @@ function BalanceSummary() {
         </div>
       </div>
       <div>
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground">
           Still clearing
         </div>
         {/* Kept separate from "available" rather than summed. A single total
@@ -706,7 +706,7 @@ function BalanceSummary() {
         </div>
       </div>
       <div>
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground">
           Latest payout
         </div>
         {d.lastPayout ? (
@@ -717,7 +717,7 @@ function BalanceSummary() {
               // "Expected" because arrival_date is Stripe's estimate, not a
               // commitment from the bank. Presenting it flat would make us
               // answerable for a date we do not control.
-              <div className="text-[11px] text-muted-foreground">
+              <div className="text-2xs text-muted-foreground">
                 Expected {new Date(d.lastPayout.arrivalDate).toLocaleDateString()}
               </div>
             )}

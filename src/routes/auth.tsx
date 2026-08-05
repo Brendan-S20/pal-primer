@@ -347,7 +347,7 @@ function AuthPage() {
               title="Coming soon"
             >
               <GoogleIcon /> Google
-              <span className="text-[10px] font-normal text-muted-foreground">soon</span>
+              <span className="text-3xs font-normal text-muted-foreground">soon</span>
             </Button>
             {/* Apple/Facebook aren't configured yet — shown disabled as a
                 teaser rather than wired to a broken flow (Brendan's call). */}
@@ -360,7 +360,7 @@ function AuthPage() {
                 title="Coming soon"
               >
                 <AppleIcon /> Apple
-                <span className="text-[10px] font-normal text-muted-foreground">soon</span>
+                <span className="text-3xs font-normal text-muted-foreground">soon</span>
               </Button>
               <Button
                 type="button"
@@ -370,7 +370,7 @@ function AuthPage() {
                 title="Coming soon"
               >
                 <FacebookIcon /> Facebook
-                <span className="text-[10px] font-normal text-muted-foreground">soon</span>
+                <span className="text-3xs font-normal text-muted-foreground">soon</span>
               </Button>
             </div>
           </div>

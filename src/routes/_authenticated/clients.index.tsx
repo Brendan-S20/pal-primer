@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { listClients, updateClient } from "@/lib/clients.functions";
+import { getSmsConsentCoverage, listClients, updateClient } from "@/lib/clients.functions";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { usePermissions } from "@/hooks/useMyRole";
 import { humanizeEnum } from "@/lib/humanize";
@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
-import { AlertTriangle, Download, Search, Users } from "lucide-react";
+import { AlertTriangle, Download, MessageSquareOff, Search, Users } from "lucide-react";
 import { downloadCsv } from "@/lib/csv";
 import { HelpTip } from "@/components/HelpTip";
 
@@ -31,7 +31,7 @@ export const Route = createFileRoute("/_authenticated/clients/")({
   component: ClientsList,
 });
 
-type StatusFilter = "all" | "active" | "inactive" | "outstanding" | "at_risk";
+type StatusFilter = "all" | "active" | "inactive" | "outstanding" | "at_risk" | "no_plan";
 type TypeFilter = "all" | "residential" | "commercial";
 
 function money(cents: number) {
@@ -98,7 +98,16 @@ function ClientsList() {
     const outstanding = clients.filter((c: any) => c.outstanding_cents > 0).length;
     const owedTotal = clients.reduce((sum: number, c: any) => sum + (c.outstanding_cents ?? 0), 0);
     const atRisk = clients.filter((c: any) => (c.churn_score ?? 0) >= 60).length;
-    return { total: clients.length, active, outstanding, owedTotal, atRisk };
+    // A client with no service plan is never visited, never invoiced, never
+    // routed. Until now the list showed them in green as "Active", identical
+    // to somebody on a weekly route — and on this database that is 287 of
+    // them, sitting in a count of 297 that the schedule flatly contradicts.
+    // "Active" is a flag somebody set; having work is a fact. They are not the
+    // same thing and the list was only showing the flag.
+    const noPlan = clients.filter(
+      (c: any) => c.active && (c.active_subscription_count ?? 0) === 0,
+    ).length;
+    return { total: clients.length, active, outstanding, owedTotal, atRisk, noPlan };
   }, [clients]);
 
   const filtered = useMemo(() => {
@@ -109,6 +118,8 @@ function ClientsList() {
       if (status === "inactive" && c.active) return false;
       if (status === "outstanding" && !(c.outstanding_cents > 0)) return false;
       if (status === "at_risk" && !((c.churn_score ?? 0) >= 60)) return false;
+      if (status === "no_plan" && !(c.active && (c.active_subscription_count ?? 0) === 0))
+        return false;
       if (!needle) return true;
       const hay = [c.display_name, c.primary_email, c.primary_phone]
         .filter(Boolean)
@@ -190,6 +201,8 @@ function ClientsList() {
         </div>
       </div>
 
+      <SmsConsentBanner />
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Card className="p-4">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -208,9 +221,30 @@ function ClientsList() {
           </div>
           <p className="mt-1 text-2xl font-semibold">{stats.atRisk}</p>
         </Card>
-        <Card className="p-4">
-          <div className="text-xs text-muted-foreground">Inactive</div>
-          <p className="mt-1 text-2xl font-semibold">{stats.total - stats.active}</p>
+        {/* Replaces the "Inactive" tile. Inactive was already derivable from
+            Active and the total, and it is the less useful of the two: an
+            archived client is a decision somebody made, whereas an active
+            client with no plan is usually an oversight — an import that was
+            never finished, or a service that ended and was never replaced.
+            Those are the ones that quietly stop earning. */}
+        <Card
+          className={`p-4 ${stats.noPlan > 0 ? "cursor-pointer hover:bg-muted/40" : ""}`}
+          onClick={() => stats.noPlan > 0 && setStatus("no_plan")}
+        >
+          <div
+            className="text-xs text-muted-foreground"
+            title="Active clients with no running service. They are never scheduled, never invoiced, and never appear on a route."
+          >
+            No service plan
+          </div>
+          <p
+            className={`mt-1 text-2xl font-semibold ${stats.noPlan > 0 ? "text-amber-600" : ""}`}
+          >
+            {stats.noPlan}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {stats.total - stats.active} archived
+          </p>
         </Card>
       </div>
 
@@ -234,6 +268,7 @@ function ClientsList() {
             <SelectItem value="inactive">Inactive</SelectItem>
             <SelectItem value="outstanding">Has balance</SelectItem>
             <SelectItem value="at_risk">At churn risk</SelectItem>
+            <SelectItem value="no_plan">No service plan</SelectItem>
           </SelectContent>
         </Select>
         <Select value={type} onValueChange={(v) => setType(v as TypeFilter)}>
@@ -328,17 +363,17 @@ function ClientsList() {
                       <span className="font-medium">{c.display_name}</span>
                       <Badge
                         variant={c.account_type === "commercial" ? "default" : "secondary"}
-                        className="text-[10px]"
+                        className="text-3xs"
                       >
                         {humanizeEnum(c.account_type)}
                       </Badge>
                       {(c.churn_score ?? 0) >= 60 && (
-                        <Badge variant="destructive" className="text-[10px]">
+                        <Badge variant="destructive" className="text-3xs">
                           At risk
                         </Badge>
                       )}
                       {c.comms_paused && (
-                        <Badge variant="outline" className="text-[10px]">
+                        <Badge variant="outline" className="text-3xs">
                           Comms paused
                         </Badge>
                       )}
@@ -349,10 +384,15 @@ function ClientsList() {
                     <div className="text-xs text-muted-foreground">{c.primary_phone ?? ""}</div>
                   </div>
                   <div className="text-right">
-                    {c.active ? (
-                      <span className="text-xs text-emerald-600">Active</span>
-                    ) : (
+                    {/* Three states, not two. "Active with no plan" was
+                        rendering as plain green "Active", which is the same
+                        thing it says about somebody on a weekly route. */}
+                    {!c.active ? (
                       <span className="text-xs text-muted-foreground">Inactive</span>
+                    ) : (c.active_subscription_count ?? 0) === 0 ? (
+                      <span className="text-xs text-amber-600">No service plan</span>
+                    ) : (
+                      <span className="text-xs text-emerald-600">Active</span>
                     )}
                     {/* Show owed and credit distinctly and labeled — a client
                         can carry both at once (finding #22). */}
@@ -360,13 +400,13 @@ function ClientsList() {
                       {c.outstanding_cents > 0 && (
                         <div className="font-medium text-amber-600">
                           {money(c.outstanding_cents)}{" "}
-                          <span className="text-[11px] font-normal">owed</span>
+                          <span className="text-2xs font-normal">owed</span>
                         </div>
                       )}
                       {c.credit_balance_cents > 0 && (
                         <div className="text-emerald-600">
                           +{money(c.credit_balance_cents)}{" "}
-                          <span className="text-[11px] text-emerald-700/70">credit</span>
+                          <span className="text-2xs text-emerald-700/70">credit</span>
                         </div>
                       )}
                       {!(c.outstanding_cents > 0) && !(c.credit_balance_cents > 0) && (
@@ -379,7 +419,7 @@ function ClientsList() {
                   <span>{c.dog_count} dogs</span>
                   <span>{c.active_subscription_count} subs</span>
                   {(c.frequencies ?? []).length > 0 && (
-                    <Badge variant="outline" className="text-[10px]">
+                    <Badge variant="outline" className="text-3xs">
                       {(c.frequencies as string[]).map((f) => frequencyLabel(f)).join(", ")}
                     </Badge>
                   )}
@@ -432,7 +472,7 @@ function ClientsList() {
                         {c.display_name}
                       </Link>
                       {(c.churn_score ?? 0) >= 60 && (
-                        <Badge variant="destructive" className="ml-2 text-[10px]">
+                        <Badge variant="destructive" className="ml-2 text-3xs">
                           At risk
                         </Badge>
                       )}
@@ -467,13 +507,19 @@ function ClientsList() {
                       <div className="text-xs">{c.primary_phone ?? ""}</div>
                     </td>
                     <td className="px-4 py-3">
-                      {c.active ? (
-                        <span className="text-emerald-600">Active</span>
-                      ) : (
+                      {/* Same three states as the mobile cards above — the two
+                          views disagreeing about what "Active" means is how
+                          somebody checks on a phone and gets a different
+                          answer than the person beside them on a laptop. */}
+                      {!c.active ? (
                         <span className="text-muted-foreground">Inactive</span>
+                      ) : (c.active_subscription_count ?? 0) === 0 ? (
+                        <span className="text-amber-600">No service plan</span>
+                      ) : (
+                        <span className="text-emerald-600">Active</span>
                       )}
                       {c.comms_paused && (
-                        <Badge variant="outline" className="ml-2 text-[10px]">
+                        <Badge variant="outline" className="ml-2 text-3xs">
                           Comms paused
                         </Badge>
                       )}
@@ -526,6 +572,48 @@ function ClientsList() {
           <ChurnPanel />
         </AiSection>
       </div>
+    </div>
+  );
+}
+
+
+/**
+ * How much of the book can actually be texted.
+ *
+ * The consent guard turned texting off for every client who had never been
+ * asked — correctly, but silently. Without this the only way to discover the
+ * gap is one failed send at a time, and an owner whose reminders stopped going
+ * out has no way to find out why from any screen.
+ *
+ * Shown only when there IS a gap. A banner that says "316 of 316, all good"
+ * every day is furniture, and furniture is not read on the day it changes.
+ */
+function SmsConsentBanner() {
+  const fn = useServerFn(getSmsConsentCoverage);
+  const q = useQuery({ queryKey: ["sms-consent-coverage"], queryFn: () => fn() });
+  const d = q.data;
+  if (!d || d.withPhone === 0) return null;
+
+  const missing = d.withPhone - d.consented;
+  if (missing <= 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+      <MessageSquareOff className="h-4 w-4 shrink-0" />
+      <span>
+        <strong>
+          {missing} of {d.withPhone}
+        </strong>{" "}
+        clients with a phone number have no texting consent on file, so reminders and
+        notifications will not reach them.
+      </span>
+      {/* Says what to do, not just what is wrong. Both routes are real: the
+          client opts in from their portal, or you record consent you already
+          hold on their Communication tab. */}
+      <span className="text-amber-800 dark:text-amber-300">
+        Ask them to opt in from their portal, or record consent you already have on a
+        client&apos;s Communication tab.
+      </span>
     </div>
   );
 }

@@ -94,7 +94,7 @@ function UsersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Users & roles</h1>
+        <h2 className="text-lg font-semibold">Users & roles</h2>
         {/* One name for one idea. This used to say "appears on routes", "field
             worker" and "show up in routing" in a single sentence, for the same
             flag — while the control itself was labelled "Field technician". The
@@ -384,7 +384,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
           disabled={!canEdit}
         />
         {staff.start_latitude != null && (
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-3xs text-muted-foreground">
             Pinned: {Number(staff.start_latitude).toFixed(4)}, {Number(staff.start_longitude).toFixed(4)}
           </p>
         )}
@@ -400,7 +400,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
           disabled={!canEdit}
         />
         {staff.end_latitude != null && (
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-3xs text-muted-foreground">
             Pinned: {Number(staff.end_latitude).toFixed(4)}, {Number(staff.end_longitude).toFixed(4)}
           </p>
         )}

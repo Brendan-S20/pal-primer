@@ -201,7 +201,7 @@ export function OneOffVisitDialog({
               ))}
             </select>
             {clientId && properties.length === 0 && (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 This client has no active property to visit.
               </p>
             )}
@@ -266,7 +266,7 @@ export function OneOffVisitDialog({
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               Shows on the client's activity timeline.
             </p>
           </div>

@@ -66,7 +66,7 @@ export function ActivityTab({ clientId }: { clientId: string }) {
                 </span>
                 {e.meta?.impersonation ? (
                   <span
-                    className="rounded border border-amber-300 bg-amber-50 px-1.5 py-px text-[10px] font-medium text-amber-700"
+                    className="rounded border border-amber-300 bg-amber-50 px-1.5 py-px text-3xs font-medium text-amber-700"
                     title="This action was taken by a platform admin impersonating the user. Details are in the platform audit log."
                   >
                     Platform-admin impersonation

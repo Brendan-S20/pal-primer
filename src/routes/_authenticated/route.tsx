@@ -22,6 +22,7 @@ import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { OnboardingTour } from "@/components/OnboardingTour";
 import { InstallBanner } from "@/components/InstallBanner";
 import { AppSidebar } from "@/components/AppSidebar";
+import { AccountMenu } from "@/components/AccountMenu";
 import { TrialBanner } from "@/components/TrialBanner";
 import { MobileTabBar } from "@/components/MobileTabBar";
 import { useTabletTier } from "@/hooks/useTabletTier";
@@ -258,7 +259,7 @@ function AppShell() {
             >
               <Search className="h-4 w-4 shrink-0" />
               <span className="truncate">Search or jump to…</span>
-              <kbd className="ml-auto hidden shrink-0 rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] sm:inline-block">
+              <kbd className="ml-auto hidden shrink-0 rounded border bg-muted px-1.5 py-0.5 font-mono text-3xs sm:inline-block">
                 {isMac ? "⌘K" : "Ctrl K"}
               </kbd>
             </button>
@@ -272,11 +273,15 @@ function AppShell() {
             </Link>
             <WeatherPopover />
             <NotificationBell />
-            {/* Below `md` Sign out lives in the tab bar's More sheet — the most
-                dangerous action doesn't belong in a phone header. */}
-            <Button variant="ghost" size="sm" onClick={handleSignOut} className="max-md:hidden">
-              Sign out
-            </Button>
+            {/* Below `md` this lives in the tab bar's More sheet — the most
+                dangerous action doesn't belong in a phone header.
+                It was a bare "Sign out" button, which made the header's only
+                trace of the signed-in person a one-click way to leave. The
+                avatar answers "which account am I in" and puts Sign out one
+                level down. */}
+            <div className="max-md:hidden">
+              <AccountMenu onSignOut={handleSignOut} />
+            </div>
           </header>
           <SuspensionBanner />
           {/* BUILD-7: after suspension (which actually blocks) and before

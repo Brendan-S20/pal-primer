@@ -17,6 +17,8 @@ import { useTabletTier } from "@/hooks/useTabletTier";
 import { NAV_GROUPS, type NavItem } from "@/components/AppSidebar";
 import { CreateSheet } from "@/components/CreateSheet";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { UserAvatar } from "@/components/UserAvatar";
+import { useMyProfile } from "@/hooks/useMyProfile";
 
 /**
  * Fired by the tech "Schedule" tab so My Day scrolls to / focuses its
@@ -36,7 +38,7 @@ const OFFICE_TAB_URLS = ["/dashboard", "/routes", "/clients"];
 const TECH_TAB_URLS = ["/my-day"];
 
 const tabClass = (active: boolean) =>
-  `flex min-h-12 w-full flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium transition-colors ${
+  `flex min-h-12 w-full flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-3xs font-medium transition-colors ${
     active ? "text-primary" : "text-muted-foreground hover:text-foreground"
   }`;
 
@@ -58,6 +60,7 @@ export function MobileTabBar() {
   const [moreOpen, setMoreOpen] = useState(false);
   // Above the `!role` early return: hooks cannot be conditional.
   const { signOut, dialog: signOutDialog } = useOfflineSignOut();
+  const { staff: me } = useMyProfile();
 
   // No role yet (loading, or a platform admin without a tenant org): no bar.
   if (!role) return null;
@@ -178,10 +181,34 @@ export function MobileTabBar() {
           <SheetHeader className="border-b px-4 py-3 text-left">
             <SheetTitle className="text-base">More</SheetTitle>
           </SheetHeader>
+          {/* Your account, at the top rather than buried above Sign out. On a
+              phone this sheet is the ONLY place the signed-in identity appears
+              — the header is hidden on My Day and carries no avatar anywhere
+              else — so "which account am I in" has to be answerable here. */}
+          <Link
+            to="/profile"
+            onClick={() => setMoreOpen(false)}
+            className="flex min-h-14 items-center gap-3 border-b px-4 text-sm transition-colors hover:bg-muted active:bg-muted"
+          >
+            <UserAvatar
+              name={me?.display_name}
+              avatarPath={me?.avatar_url}
+              seed={me?.id}
+              className="h-9 w-9"
+            />
+            <span className="min-w-0">
+              <span className="block truncate font-medium">
+                {me?.display_name ?? "Your account"}
+              </span>
+              <span className="block truncate text-xs text-muted-foreground">
+                View and edit your account
+              </span>
+            </span>
+          </Link>
           <nav aria-label="All sections" className="p-2">
             {moreGroups.map((group) => (
               <div key={group.label} className="py-1">
-                <div className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                <div className="px-3 pb-1 pt-2 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
                   {group.label}
                 </div>
                 <ul>

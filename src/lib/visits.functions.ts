@@ -27,145 +27,6 @@ export const generateVisits = createServerFn({ method: "POST" })
     return { inserted: (count as number) ?? 0 };
   });
 
-export const assignRoute = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z
-      .object({
-        staffId: z.string().uuid(),
-        day: z.string(),
-        reassign: z.boolean().optional(),
-      })
-      .parse(d),
-  )
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const orgId = await resolveOrgId(supabase, userId);
-    const { data: count, error } = await supabase.rpc("assign_route_for_day", {
-      _org_id: orgId,
-      _staff_id: data.staffId,
-      _day: data.day,
-      _reassign: data.reassign ?? false,
-    });
-    if (error) throw new Error(error.message);
-    const assigned = (count as number) ?? 0;
-    if (assigned > 0) {
-      try {
-        const { data: staff } = await supabase
-          .from("staff")
-          .select("user_id, display_name")
-          .eq("id", data.staffId)
-          .maybeSingle();
-        if (staff?.user_id) {
-          const { sendPushToUser } = await import("@/lib/push.server");
-          await sendPushToUser(staff.user_id, {
-            title: "New route assigned",
-            body: `${assigned} stop${assigned === 1 ? "" : "s"} on ${data.day}`,
-            tag: `route-${data.staffId}-${data.day}`,
-            url: "/my-day",
-          });
-        }
-      } catch (e) {
-        console.error("route push failed", e);
-      }
-    }
-    const warnings = await routeWarningsForDay(supabase, orgId, data.staffId, data.day);
-    return { assigned, warnings };
-  });
-
-/** Fetch the tech's stops for the day and flag implausible ones (finding #10). */
-async function routeWarningsForDay(supabase: any, orgId: string, staffId: string, day: string) {
-  const { findRouteWarnings } = await import("@/lib/route-plausibility");
-  const [{ data: visits }, { data: org }] = await Promise.all([
-    supabase
-      .from("visits")
-      .select("id, scheduled_on, travel_km, travel_min, eta_start, clients(display_name)")
-      .eq("organization_id", orgId)
-      .eq("assigned_staff_id", staffId)
-      .eq("scheduled_on", day),
-    (supabase.from("organizations") as any)
-      .select("max_drive_minutes, workday_start")
-      .eq("id", orgId)
-      .maybeSingle(),
-  ]);
-  const rows = (visits ?? []).map((v: any) => ({
-    id: v.id,
-    clientName: v.clients?.display_name ?? null,
-    travel_km: v.travel_km,
-    travel_min: v.travel_min,
-    eta_start: v.eta_start,
-    scheduled_on: v.scheduled_on,
-  }));
-  const workdayStart: string | null = org?.workday_start ?? null;
-  const workdayStartMinutes = workdayStart
-    ? Number(workdayStart.slice(0, 2)) * 60 + Number(workdayStart.slice(3, 5))
-    : undefined;
-  return findRouteWarnings(rows, {
-    maxDriveMinutes: org?.max_drive_minutes ?? undefined,
-    workdayStartMinutes,
-  });
-}
-
-export const optimizeRoute = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z
-      .object({
-        staffId: z.string().uuid(),
-        day: z.string(),
-        reassign: z.boolean().optional(),
-      })
-      .parse(d),
-  )
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const orgId = await resolveOrgId(supabase, userId);
-    const { data: count, error } = await supabase.rpc("optimize_route_v2", {
-      _org_id: orgId,
-      _staff_id: data.staffId,
-      _day: data.day,
-      _reassign: data.reassign ?? false,
-    });
-    if (error) throw new Error(error.message);
-    const warnings = await routeWarningsForDay(supabase, orgId, data.staffId, data.day);
-    return { assigned: (count as number) ?? 0, warnings };
-  });
-
-export const reoptimizeAll = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ day: z.string() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const orgId = await resolveOrgId(supabase, userId);
-    // Get all techs that have any visits assigned that day
-    const { data: rows, error: qErr } = await supabase
-      .from("visits")
-      .select("assigned_staff_id")
-      .eq("organization_id", orgId)
-      .eq("scheduled_on", data.day)
-      .not("assigned_staff_id", "is", null);
-    if (qErr) throw new Error(qErr.message);
-    const staffIds = Array.from(
-      new Set((rows ?? []).map((r: any) => r.assigned_staff_id).filter(Boolean)),
-    ) as string[];
-    let total = 0;
-    const perTech: { staffId: string; assigned: number }[] = [];
-    for (const staffId of staffIds) {
-      const { data: n, error } = await supabase.rpc("optimize_route_v2", {
-        _org_id: orgId,
-        _staff_id: staffId,
-        _day: data.day,
-        _reassign: false,
-      });
-      if (error) throw new Error(error.message);
-      const assigned = (n as number) ?? 0;
-      total += assigned;
-      perTech.push({ staffId, assigned });
-    }
-    return { techs: staffIds.length, total, perTech };
-  });
-
-
 export const updateStaffStart = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
@@ -721,23 +582,6 @@ export const reorderRoute = createServerFn({ method: "POST" })
     return { updated: (count as number) ?? 0 };
   });
 
-export const optimizeWeek = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z.object({ startDate: z.string(), days: z.number().int().min(1).max(31) }).parse(d),
-  )
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const orgId = await resolveOrgId(supabase, userId);
-    const { data: rows, error } = await supabase.rpc("optimize_week", {
-      _org_id: orgId,
-      _start_date: data.startDate,
-      _days: data.days,
-    });
-    if (error) throw new Error(error.message);
-    return { results: (rows as any[]) ?? [] };
-  });
-
 export const getDispatchSettings = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -1218,3 +1062,18 @@ export const applyOptimize = createServerFn({ method: "POST" })
     }
     return { stops, skipped };
   });
+
+// assignRoute / optimizeRoute / optimizeWeek / reoptimizeAll were removed here.
+//
+// They backed the deleted "One tech, one day" card. optimizeRoute was called
+// with `reassign: true`, and that branch of optimize_route_v2 selects every
+// scheduled visit on the day org-wide and writes one tech onto all of them —
+// a whole day silently reassigned to one person, with no confirm or undo.
+//
+// Deleting the UI left these exported and callable; the dead-machinery check
+// flagged all four the moment the card went, which is what it is for. They are
+// gone rather than baselined, because an unreferenced export is still a live
+// RPC endpoint for anyone who can post to it.
+//
+// Everything they did is in previewOptimize / applyOptimize, which preview
+// before they write and only reassign when explicitly asked.

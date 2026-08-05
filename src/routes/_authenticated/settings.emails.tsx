@@ -41,7 +41,7 @@ function EmailSettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Email notifications</h1>
+        <h2 className="text-lg font-semibold">Email notifications</h2>
         <p className="text-sm text-muted-foreground">
           Choose which emails your organization sends to clients.
         </p>

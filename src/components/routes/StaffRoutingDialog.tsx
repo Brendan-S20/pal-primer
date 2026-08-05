@@ -205,7 +205,7 @@ export function StaffRoutingDialog({
                         {t.ends_on !== t.starts_on ? ` – ${fmt(t.ends_on)}` : ""}
                       </div>
                       {t.reason && (
-                        <div className="truncate text-[11px] text-muted-foreground">{t.reason}</div>
+                        <div className="truncate text-2xs text-muted-foreground">{t.reason}</div>
                       )}
                     </div>
                     <Button
@@ -248,7 +248,7 @@ export function StaffRoutingDialog({
                 different things to different people, and getting it wrong by
                 one day puts somebody on a route while they are away. */}
             {rangeValid && (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 Off {fmt(from)}
                 {to !== from ? ` through ${fmt(to)}` : ""}, back{" "}
                 {fmt(new Date(new Date(`${to}T12:00:00`).getTime() + 864e5).toISOString().slice(0, 10))}
@@ -261,7 +261,7 @@ export function StaffRoutingDialog({
               </p>
             )}
             {from && to && to < from && (
-              <p className="text-[11px] text-destructive">
+              <p className="text-2xs text-destructive">
                 The last day off is before the first.
               </p>
             )}
@@ -287,7 +287,7 @@ export function StaffRoutingDialog({
                 placeholder="Home, shop, or depot"
               />
               {staff.start_latitude != null && start === staff.start_address && (
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-3xs text-muted-foreground">
                   Pinned {Number(staff.start_latitude).toFixed(4)},{" "}
                   {Number(staff.start_longitude).toFixed(4)}
                 </p>
@@ -301,7 +301,7 @@ export function StaffRoutingDialog({
                 placeholder="Dump, home, or shop"
               />
               {staff.end_latitude != null && end === staff.end_address && (
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-3xs text-muted-foreground">
                   Pinned {Number(staff.end_latitude).toFixed(4)},{" "}
                   {Number(staff.end_longitude).toFixed(4)}
                 </p>

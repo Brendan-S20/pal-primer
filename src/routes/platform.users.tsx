@@ -216,7 +216,7 @@ function UsersPage() {
                               className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs hover:bg-accent"
                             >
                               <span>{o.name}</span>
-                              <Badge variant="outline" className="text-[10px]">{humanizeRole(o.role)}</Badge>
+                              <Badge variant="outline" className="text-3xs">{humanizeRole(o.role)}</Badge>
                             </Link>
                           ))
                         )}
@@ -372,7 +372,7 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
                       className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs hover:bg-accent"
                     >
                       <span>{o.name}</span>
-                      <Badge variant="outline" className="text-[10px]">{humanizeRole(o.role)}</Badge>
+                      <Badge variant="outline" className="text-3xs">{humanizeRole(o.role)}</Badge>
                     </Link>
                   ))}
                 </div>

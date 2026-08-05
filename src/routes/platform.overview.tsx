@@ -39,7 +39,7 @@ function Kpi({
   return (
     <div className="rounded-lg border bg-card p-4">
       <div className="flex items-center justify-between">
-        <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
           {label}
         </div>
         <Icon className={`h-4 w-4 ${toneClass}`} />

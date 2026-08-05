@@ -2788,6 +2788,7 @@ export type Database = {
           ai_receptionist_persona: string | null
           ai_voice_enabled: boolean
           ai_voice_greeting: string | null
+          area_type: string
           auto_generate_days_ahead: number
           auto_generate_visits: boolean
           auto_invoice_enabled: boolean
@@ -2833,17 +2834,17 @@ export type Database = {
           notify_email_weekly_digest: boolean
           notify_email_welcome: boolean
           notify_email_win_back: boolean
+          notify_schedule_horizon: boolean
           notify_sms_on_my_way: boolean
           notify_sms_overdue_invoice: boolean
           notify_sms_payment_failed: boolean
           notify_sms_visit_completed: boolean
           notify_sms_visit_reminder: boolean
-          notify_schedule_horizon: boolean
-          schedule_horizon_notified_on: string | null
           onboarding_dismissed_at: string | null
           overdue_reminder_days: number
           overdue_reminders_enabled: boolean
           parent_organization_id: string | null
+          park_walk_min: number
           payment_fee_pass_through: boolean
           payments_collected_by_parent: boolean
           plan_id: string | null
@@ -2860,6 +2861,8 @@ export type Database = {
           referred_by_org_id: string | null
           review_ask_enabled: boolean
           review_ask_template: string | null
+          road_factor: number
+          schedule_horizon_notified_on: string | null
           seasonal_deepclean_charge_cents: number
           seasonal_deepclean_enabled: boolean
           seasonal_deepclean_months: number[]
@@ -2899,6 +2902,7 @@ export type Database = {
           ai_receptionist_persona?: string | null
           ai_voice_enabled?: boolean
           ai_voice_greeting?: string | null
+          area_type?: string
           auto_generate_days_ahead?: number
           auto_generate_visits?: boolean
           auto_invoice_enabled?: boolean
@@ -2944,17 +2948,17 @@ export type Database = {
           notify_email_weekly_digest?: boolean
           notify_email_welcome?: boolean
           notify_email_win_back?: boolean
+          notify_schedule_horizon?: boolean
           notify_sms_on_my_way?: boolean
           notify_sms_overdue_invoice?: boolean
           notify_sms_payment_failed?: boolean
           notify_sms_visit_completed?: boolean
           notify_sms_visit_reminder?: boolean
-          notify_schedule_horizon?: boolean
-          schedule_horizon_notified_on?: string | null
           onboarding_dismissed_at?: string | null
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
           parent_organization_id?: string | null
+          park_walk_min?: number
           payment_fee_pass_through?: boolean
           payments_collected_by_parent?: boolean
           plan_id?: string | null
@@ -2971,6 +2975,8 @@ export type Database = {
           referred_by_org_id?: string | null
           review_ask_enabled?: boolean
           review_ask_template?: string | null
+          road_factor?: number
+          schedule_horizon_notified_on?: string | null
           seasonal_deepclean_charge_cents?: number
           seasonal_deepclean_enabled?: boolean
           seasonal_deepclean_months?: number[]
@@ -3010,6 +3016,7 @@ export type Database = {
           ai_receptionist_persona?: string | null
           ai_voice_enabled?: boolean
           ai_voice_greeting?: string | null
+          area_type?: string
           auto_generate_days_ahead?: number
           auto_generate_visits?: boolean
           auto_invoice_enabled?: boolean
@@ -3055,17 +3062,17 @@ export type Database = {
           notify_email_weekly_digest?: boolean
           notify_email_welcome?: boolean
           notify_email_win_back?: boolean
+          notify_schedule_horizon?: boolean
           notify_sms_on_my_way?: boolean
           notify_sms_overdue_invoice?: boolean
           notify_sms_payment_failed?: boolean
           notify_sms_visit_completed?: boolean
           notify_sms_visit_reminder?: boolean
-          notify_schedule_horizon?: boolean
-          schedule_horizon_notified_on?: string | null
           onboarding_dismissed_at?: string | null
           overdue_reminder_days?: number
           overdue_reminders_enabled?: boolean
           parent_organization_id?: string | null
+          park_walk_min?: number
           payment_fee_pass_through?: boolean
           payments_collected_by_parent?: boolean
           plan_id?: string | null
@@ -3082,6 +3089,8 @@ export type Database = {
           referred_by_org_id?: string | null
           review_ask_enabled?: boolean
           review_ask_template?: string | null
+          road_factor?: number
+          schedule_horizon_notified_on?: string | null
           seasonal_deepclean_charge_cents?: number
           seasonal_deepclean_enabled?: boolean
           seasonal_deepclean_months?: number[]
@@ -4672,6 +4681,7 @@ export type Database = {
       staff: {
         Row: {
           active: boolean
+          avatar_url: string | null
           created_at: string
           daily_capacity_minutes: number | null
           display_name: string
@@ -4694,6 +4704,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          avatar_url?: string | null
           created_at?: string
           daily_capacity_minutes?: number | null
           display_name: string
@@ -4716,6 +4727,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          avatar_url?: string | null
           created_at?: string
           daily_capacity_minutes?: number | null
           display_name?: string
@@ -4749,6 +4761,54 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_time_off: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          ends_on: string
+          id: string
+          organization_id: string
+          reason: string | null
+          staff_id: string
+          starts_on: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          ends_on: string
+          id?: string
+          organization_id: string
+          reason?: string | null
+          staff_id: string
+          starts_on: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          ends_on?: string
+          id?: string
+          organization_id?: string
+          reason?: string | null
+          staff_id?: string
+          starts_on?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_time_off_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_time_off_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
             referencedColumns: ["id"]
           },
         ]
@@ -4813,54 +4873,6 @@ export type Database = {
             columns: ["waste_station_id"]
             isOneToOne: false
             referencedRelation: "waste_stations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      staff_time_off: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          ends_on: string
-          id: string
-          organization_id: string
-          reason: string | null
-          staff_id: string
-          starts_on: string
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          ends_on: string
-          id?: string
-          organization_id: string
-          reason?: string | null
-          staff_id: string
-          starts_on: string
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          ends_on?: string
-          id?: string
-          organization_id?: string
-          reason?: string | null
-          staff_id?: string
-          starts_on?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "staff_time_off_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "staff_time_off_staff_id_fkey"
-            columns: ["staff_id"]
-            isOneToOne: false
-            referencedRelation: "staff"
             referencedColumns: ["id"]
           },
         ]
@@ -5245,6 +5257,7 @@ export type Database = {
           skip_reason_code:
             | Database["public"]["Enums"]["skip_reason_code"]
             | null
+          skipped_at: string | null
           started_at: string | null
           station_count_serviced: number
           status: Database["public"]["Enums"]["visit_status"]
@@ -5279,6 +5292,7 @@ export type Database = {
           skip_reason_code?:
             | Database["public"]["Enums"]["skip_reason_code"]
             | null
+          skipped_at?: string | null
           started_at?: string | null
           station_count_serviced?: number
           status?: Database["public"]["Enums"]["visit_status"]
@@ -5313,6 +5327,7 @@ export type Database = {
           skip_reason_code?:
             | Database["public"]["Enums"]["skip_reason_code"]
             | null
+          skipped_at?: string | null
           started_at?: string | null
           station_count_serviced?: number
           status?: Database["public"]["Enums"]["visit_status"]
@@ -5731,6 +5746,11 @@ export type Database = {
         Args: { _code: string; _new_client_id: string }
         Returns: Json
       }
+      assert_available_on: {
+        Args: { _day: string; _staff_id: string }
+        Returns: undefined
+      }
+      assert_runs_routes: { Args: { _staff_id: string }; Returns: undefined }
       assign_billing_tier_for_org: {
         Args: { _org_id: string }
         Returns: string
@@ -5756,6 +5776,17 @@ export type Database = {
           _utm?: Json
         }
         Returns: string
+      }
+      bulk_reassign_visits: {
+        Args: { _staff_id: string; _visit_ids: string[] }
+        Returns: number
+      }
+      bulk_reschedule_visits: {
+        Args: { _to_date: string; _visit_ids: string[] }
+        Returns: {
+          moved: number
+          skipped: number
+        }[]
       }
       can_write_org: {
         Args: { _org_id: string; _user_id: string }
@@ -5806,8 +5837,12 @@ export type Database = {
           tenure_days: number
         }[]
       }
+      client_may_be_texted: { Args: { _client_id: string }; Returns: boolean }
       close_abandoned_impersonation_grants: { Args: never; Returns: number }
-      complete_visit: { Args: { _visit_id: string }; Returns: undefined }
+      complete_visit: {
+        Args: { _completed_at?: string; _visit_id: string }
+        Returns: undefined
+      }
       confirm_open_visit: {
         Args: {
           _completed: boolean
@@ -5840,6 +5875,20 @@ export type Database = {
         Returns: boolean
       }
       detect_review_items: { Args: { _org_id?: string }; Returns: number }
+      drive_minutes: {
+        Args: {
+          _lat1: number
+          _lat2: number
+          _lon1: number
+          _lon2: number
+          _org_id: string
+        }
+        Returns: number
+      }
+      effective_speed_kmh: {
+        Args: { _area_type: string; _traffic: string }
+        Returns: number
+      }
       email_has_account: { Args: { _email: string }; Returns: boolean }
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
@@ -5849,10 +5898,12 @@ export type Database = {
         Args: {
           _adjustment_id?: string
           _amount_cents: number
+          _authoritative?: boolean
           _dispute_ref?: string
           _kind: string
           _org_id: string
           _payment_id: string
+          _revenue_cents?: number
         }
         Returns: string
       }
@@ -6016,6 +6067,10 @@ export type Database = {
         Returns: boolean
       }
       is_platform_admin: { Args: { _user_id: string }; Returns: boolean }
+      is_staff_off: {
+        Args: { _day: string; _staff_id: string }
+        Returns: boolean
+      }
       is_valid_entity_name: { Args: { _name: string }; Returns: boolean }
       is_valid_label: { Args: { _label: string }; Returns: boolean }
       is_visit_tech: {
@@ -6058,6 +6113,8 @@ export type Database = {
       }
       mark_franchise_parent: { Args: { _org_id: string }; Returns: undefined }
       mark_review_asked: { Args: { _client_id: string }; Returns: boolean }
+      may_read_client: { Args: { _client_id: string }; Returns: boolean }
+      may_read_property: { Args: { _property_id: string }; Returns: boolean }
       move_to_dlq: {
         Args: {
           dlq_name: string
@@ -6093,6 +6150,16 @@ export type Database = {
         }
         Returns: number
       }
+      optimize_route_v3: {
+        Args: {
+          _day: string
+          _level?: string
+          _org_id: string
+          _reassign?: boolean
+          _staff_id: string
+        }
+        Returns: number
+      }
       optimize_week: {
         Args: { _days?: number; _org_id: string; _start_date: string }
         Returns: {
@@ -6101,9 +6168,28 @@ export type Database = {
           staff_id: string
         }[]
       }
+      org_accepts_public_leads: { Args: { _org_id: string }; Returns: boolean }
       org_can_add_client: { Args: { _org_id: string }; Returns: boolean }
       org_seat_overage_cents: { Args: { _org_id: string }; Returns: number }
       phone_digits: { Args: { _p: string }; Returns: string }
+      plan_route: {
+        Args: {
+          _day: string
+          _level?: string
+          _org_id: string
+          _reassign?: boolean
+          _staff_id: string
+        }
+        Returns: {
+          eta_end: string
+          eta_start: string
+          seq: number
+          travel_km: number
+          travel_min: number
+          visit_id: string
+          window_violated: boolean
+        }[]
+      }
       plan_tier_for_org: { Args: { _org_id: string }; Returns: string }
       portal_cancel_addon: {
         Args: { _addon_subscription_id: string; _token: string }
@@ -6146,9 +6232,12 @@ export type Database = {
           primary_billing_cadence: string
           primary_dog_count: number
           primary_frequency: string
+          primary_phone: string
           primary_price_cents: number
           primary_unit_count: number
           reschedule_cutoff_hours: number
+          sms_consent_at: string
+          sms_opt_out: boolean
           station_count: number
         }[]
       }
@@ -6324,6 +6413,25 @@ export type Database = {
         }
         Returns: undefined
       }
+      preview_optimize: {
+        Args: {
+          _from: string
+          _level?: string
+          _org_id: string
+          _reassign?: boolean
+          _staff_ids: string[]
+          _to: string
+        }
+        Returns: {
+          after_min: number
+          before_known: boolean
+          before_min: number
+          day: string
+          staff_id: string
+          stops: number
+          violations: number
+        }[]
+      }
       provision_franchise_location: {
         Args: { _members?: Json; _name: string }
         Returns: string
@@ -6375,6 +6483,10 @@ export type Database = {
         Args: { _staff_id: string; _visit_id: string }
         Returns: undefined
       }
+      record_client_sms_consent: {
+        Args: { _client_id: string; _source: string; _text: string }
+        Returns: undefined
+      }
       record_franchise_adjustment: {
         Args: {
           _amount_cents: number
@@ -6404,6 +6516,10 @@ export type Database = {
           remaining_cents: number
         }[]
       }
+      redistribute_staff_work: {
+        Args: { _from?: string; _staff_id: string }
+        Returns: number
+      }
       refresh_active_client_count: {
         Args: { _org_id: string }
         Returns: undefined
@@ -6425,6 +6541,10 @@ export type Database = {
         Args: { _new_date: string; _note?: string; _visit_id: string }
         Returns: undefined
       }
+      reverse_prepaid_credit_for_payment: {
+        Args: { _payment_id: string; _refunded_cents: number }
+        Returns: number
+      }
       roadmap_vote_counts: {
         Args: never
         Returns: {
@@ -6432,7 +6552,20 @@ export type Database = {
           votes: number
         }[]
       }
+      route_cost_current: {
+        Args: { _day: string; _org_id: string; _staff_id: string }
+        Returns: {
+          minutes: number
+          sequenced: boolean
+          stops: number
+        }[]
+      }
+      route_segment_km: {
+        Args: { _ids: string[]; _start_lat: number; _start_lon: number }
+        Returns: number
+      }
       run_billing_cycles: { Args: { _org_id?: string }; Returns: number }
+      seed_demo_org: { Args: { _org_id: string }; Returns: Json }
       set_chargeback_responsibility: {
         Args: { _child_org_id: string; _responsibility: string }
         Returns: undefined
@@ -6453,12 +6586,38 @@ export type Database = {
         Args: {
           _code?: Database["public"]["Enums"]["skip_reason_code"]
           _reason: string
+          _skipped_at?: string
           _visit_id: string
         }
         Returns: undefined
       }
       slugify: { Args: { _txt: string }; Returns: string }
-      start_visit: { Args: { _visit_id: string }; Returns: undefined }
+      sms_consent_coverage: {
+        Args: { _org_id: string }
+        Returns: {
+          consented: number
+          opted_out: number
+          with_phone: number
+        }[]
+      }
+      staff_time_off_impact: {
+        Args: { _from: string; _staff_id: string; _to: string }
+        Returns: {
+          scheduled_on: string
+          visits: number
+        }[]
+      }
+      staff_upcoming_load: {
+        Args: { _from?: string; _staff_id: string }
+        Returns: {
+          scheduled_on: string
+          visits: number
+        }[]
+      }
+      start_visit: {
+        Args: { _started_at?: string; _visit_id: string }
+        Returns: undefined
+      }
       unlink_franchise_child: {
         Args: { _child_org_id: string }
         Returns: undefined
@@ -6474,8 +6633,10 @@ export type Database = {
       }
       update_org_dispatch_settings: {
         Args: {
+          _auto_generate_days_ahead?: number
           _avg_speed_kmh?: number
           _max_drive_minutes?: number
+          _notify_schedule_horizon?: boolean
           _org_id: string
           _timezone?: string
           _traffic_profile?: string

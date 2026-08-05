@@ -31,6 +31,7 @@ import {
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -42,6 +43,8 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_NAME } from "@/lib/scoop";
 import { Logo } from "@/components/Logo";
+import { UserAvatar } from "@/components/UserAvatar";
+import { useMyProfile } from "@/hooks/useMyProfile";
 
 export type NavItem = {
   title: string;
@@ -125,6 +128,7 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   const { role } = useMyRole();
+  const { staff: me } = useMyProfile();
 
   const isActive = (url: string) =>
     url === "/dashboard"
@@ -197,6 +201,31 @@ export function AppSidebar() {
           </SidebarGroup>
         ))}
       </SidebarContent>
+      {/* Who you are, at the foot of the nav, the way every tool of this shape
+          puts it. Before this there was no indication anywhere in the sidebar
+          of which account was signed in.
+          Collapsed, it reduces to the avatar alone and keeps the 2rem geometry
+          of the icon rail so it lines up with the nav icons above it. */}
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={isActive("/profile")} tooltip="Your account">
+              <Link to="/profile" className="flex items-center gap-2">
+                <UserAvatar
+                  name={me?.display_name}
+                  avatarPath={me?.avatar_url}
+                  seed={me?.id}
+                  className="h-5 w-5 shrink-0"
+                  textClassName="text-3xs"
+                />
+                {!collapsed && (
+                  <span className="truncate">{me?.display_name ?? "Your account"}</span>
+                )}
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
     </Sidebar>
   );
 }

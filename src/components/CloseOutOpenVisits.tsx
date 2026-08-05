@@ -151,7 +151,7 @@ export function CloseOutOpenVisits() {
               onChange={(e) => setFinishedAt(e.target.value)}
               className="mt-1"
             />
-            <p className="mt-1 text-[11px] text-muted-foreground">
+            <p className="mt-1 text-2xs text-muted-foreground">
               Recorded as a time you entered afterwards, not a measured one, so it won't be reported
               as service duration.
             </p>

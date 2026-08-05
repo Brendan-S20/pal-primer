@@ -56,6 +56,16 @@ function DeepCleanSettings() {
 
   return (
     <div className="space-y-4">
+      {/* Every other Settings sub-page opens with a heading and a line saying
+          what the page is for. Two of them dropped the reader straight into a
+          card, so navigating the sidebar made the page start in a different
+          place depending on which tab you landed on. */}
+      <div>
+        <h2 className="text-lg font-semibold">Deep clean</h2>
+        <p className="text-sm text-muted-foreground">
+          An extra charge added automatically in the months when yards need more work.
+        </p>
+      </div>
       <Card>
         <CardHeader>
           <CardTitle>Seasonal deep-clean surcharge</CardTitle>

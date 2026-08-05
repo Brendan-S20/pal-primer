@@ -6,10 +6,6 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import {
   listVisitsForDay,
-  assignRoute,
-  optimizeRoute,
-  optimizeWeek,
-  reoptimizeAll,
   listStaff,
   reassignVisit,
   reorderRoute,
@@ -124,11 +120,9 @@ function todayISO() {
 
 function RoutesPage() {
   const [day, setDay] = useState(todayISO());
-  const [assignStaffId, setAssignStaffId] = useState<string>("");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [localColumns, setLocalColumns] = useState<Record<string, Visit[]> | null>(null);
 
-  const [weekDays, setWeekDays] = useState(7);
   const [viewMode, setViewMode] = useState<"map" | "board">(() =>
     typeof localStorage !== "undefined" && localStorage.getItem("routes.viewMode") === "board"
       ? "board"
@@ -336,10 +330,6 @@ function RoutesPage() {
   const listV = useServerFn(listVisitsForDay);
   const listS = useServerFn(listStaff);
   const setRouting = useServerFn(setStaffRouting);
-  const assign = useServerFn(assignRoute);
-  const optimize = useServerFn(optimizeRoute);
-  const optWeek = useServerFn(optimizeWeek);
-  const reoptAll = useServerFn(reoptimizeAll);
   const reassign = useServerFn(reassignVisit);
 
   const reorder = useServerFn(reorderRoute);
@@ -580,45 +570,11 @@ function RoutesPage() {
       toast.warning(w.message, { duration: 8000 });
     }
   };
-  const assignMut = useMutation({
-    mutationFn: () => assign({ data: { staffId: assignStaffId, day, reassign: false } }),
-    onSuccess: (r) => {
-      toast.success(`Auto-assigned ${r.assigned} visits`);
-      warnRoute((r as any).warnings);
-      setLocalColumns(null);
-      qc.invalidateQueries({ queryKey: ["visits", day] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-  const optimizeMut = useMutation({
-    mutationFn: () => optimize({ data: { staffId: assignStaffId, day, reassign: true } }),
-    onSuccess: (r) => {
-      toast.success(`Optimized ${r.assigned} stops (nearest-neighbor)`);
-      warnRoute((r as any).warnings);
-      setLocalColumns(null);
-      qc.invalidateQueries({ queryKey: ["visits", day] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-  const weekMut = useMutation({
-    mutationFn: () => optWeek({ data: { startDate: day, days: weekDays } }),
-    onSuccess: (r) => {
-      const total = (r.results ?? []).reduce((s: number, x: any) => s + (x.assigned ?? 0), 0);
-      toast.success(`Optimized ${total} stops across ${weekDays} day(s)`);
-      setLocalColumns(null);
-      qc.invalidateQueries({ queryKey: ["visits"] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-  const reoptMut = useMutation({
-    mutationFn: () => reoptAll({ data: { day } }),
-    onSuccess: (r) => {
-      toast.success(`Re-optimized ${r.total} stops across ${r.techs} tech(s)`);
-      setLocalColumns(null);
-      qc.invalidateQueries({ queryKey: ["visits", day] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  // assignMut / optimizeMut / weekMut / reoptMut lived here. They backed the
+  // deleted "One tech, one day" card, and optimizeMut sent `reassign: true` —
+  // the call that reassigned an entire day's visits, across every tech, to one
+  // person. Removing the JSX alone would have left that call in the bundle,
+  // unreachable today and one careless re-wire from being reachable again.
   const listTimeOffFn = useServerFn(listTimeOff);
   const timeOffQ = useQuery({
     queryKey: ["time-off", rangeStart, rangeEnd],
@@ -830,15 +786,22 @@ function RoutesPage() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium">Hide weekends</div>
-                  <div className="text-[11px] text-muted-foreground">
+                  <div className="text-2xs text-muted-foreground">
                     Skip Sat/Sun in Week and Month views.
                   </div>
                 </div>
                 <Switch checked={hideWeekends} onCheckedChange={setHideWeekendsPersist} />
               </div>
+              <p className="border-b pb-3 text-2xs text-muted-foreground">
+                Workday hours, work days and travel assumptions live in{" "}
+                <Link to="/settings/scheduling" className="underline underline-offset-2">
+                  Settings → Scheduling
+                </Link>
+                .
+              </p>
               <div className="space-y-1.5">
                 <div className="text-sm font-medium">Density</div>
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-2xs text-muted-foreground">
                   Compact fits roughly twice as many stops per lane before scrolling.
                 </div>
                 <div className="inline-flex rounded-md border p-0.5 text-xs">
@@ -856,7 +819,7 @@ function RoutesPage() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium">Map beside the board</div>
-                  <div className="text-[11px] text-muted-foreground">
+                  <div className="text-2xs text-muted-foreground">
                     Keeps a pin and its lane on screen together. Stacks below 1280px.
                   </div>
                 </div>
@@ -864,7 +827,7 @@ function RoutesPage() {
               </div>
               <div className="space-y-1.5">
                 <div className="text-sm font-medium">Board layout</div>
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-2xs text-muted-foreground">
                   How tech lanes are arranged on the board.
                 </div>
                 <div className="inline-flex rounded-md border p-0.5 text-xs">
@@ -895,7 +858,7 @@ function RoutesPage() {
               <PopoverContent align="end" className="w-80 p-0">
                 <div className="border-b px-3 py-2">
                   <div className="text-sm font-medium">Who runs routes</div>
-                  <div className="text-[11px] text-muted-foreground">
+                  <div className="text-2xs text-muted-foreground">
                     Everyone switched on here gets a lane on the board and can be assigned
                     work. Everyone else stays in the office.
                   </div>
@@ -917,7 +880,7 @@ function RoutesPage() {
                       >
                         <div className="min-w-0">
                           <div className="truncate text-sm">{s.display_name}</div>
-                          <div className="text-[11px] text-muted-foreground capitalize">
+                          <div className="text-2xs text-muted-foreground capitalize">
                             {s.role ? humanizeRole(s.role) : "—"}
                             {/* Only ever shown for someone being switched OFF,
                                 where it is the consequence rather than trivia:
@@ -935,7 +898,7 @@ function RoutesPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-7 px-2 text-[11px]"
+                            className="h-7 px-2 text-2xs"
                             onClick={() => setRoutingDialogStaff(s)}
                             title="Time off and route endpoints"
                           >
@@ -954,7 +917,7 @@ function RoutesPage() {
                     ))
                   )}
                 </div>
-                <div className="border-t px-3 py-2 text-[11px] text-muted-foreground">
+                <div className="border-t px-3 py-2 text-2xs text-muted-foreground">
                   Switching somebody off doesn&apos;t move their visits — use{" "}
                   <strong>Cover</strong> on their lane for that.
                 </div>
@@ -967,7 +930,7 @@ function RoutesPage() {
         </div>
       </div>
 
-      {/* Dispatch tools: things you DO to the day in front of you.
+      {/* Auto-routing: things you DO to the day in front of you.
           The configuration that used to share this drawer — workday hours,
           work days, speed and traffic assumptions — moved to Settings →
           Scheduling. One button held both, so "Planning tools" meant a date
@@ -975,111 +938,35 @@ function RoutesPage() {
           you had to open it to find out which you were about to get.
           The day picker that sat here too is gone: the header already has one,
           and two date inputs on one screen setting the same day is not a
-          choice anybody wants to make. */}
+          choice anybody wants to make.
+          It renders FLOATING now (fixed, bottom-right) rather than inline. As
+          an inline block it pushed the board down the moment you opened it, so
+          you lost sight of the schedule exactly when you started rearranging
+          it. Its position in this file no longer affects where it appears. */}
       {toolsOpen && (
         <AutoRoutingPanel
           day={day}
           staff={staff}
           onApplied={() => setLocalColumns(null)}
+          onClose={() => setToolsOpen(false)}
         />
       )}
 
-      {toolsOpen && (
-        <div className="space-y-4 rounded-lg border bg-card p-5">
-          <div className="text-xs font-medium text-muted-foreground">
-            One tech, one day
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="tech">Assign or optimize one tech&apos;s day</Label>
-              <div className="flex gap-2">
-                <select
-                  id="tech"
-                  value={assignStaffId}
-                  onChange={(e) => setAssignStaffId(e.target.value)}
-                  className="h-10 flex-1 rounded-md border bg-background px-3 text-sm"
-                >
-                  <option value="">Select…</option>
-                  {staff.map((s: any) => (
-                    <option key={s.id} value={s.id}>
-                      {s.display_name}
-                    </option>
-                  ))}
-                </select>
-                <Button
-                  onClick={() => assignMut.mutate()}
-                  disabled={!assignStaffId || assignMut.isPending}
-                  variant="secondary"
-                >
-                  Assign
-                </Button>
-                <Button
-                  onClick={() => optimizeMut.mutate()}
-                  disabled={!assignStaffId || optimizeMut.isPending}
-                >
-                  {optimizeMut.isPending ? "…" : "Optimize"}
-                </Button>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Assign gives them {day}&apos;s unassigned stops. Optimize re-sequences what they
-                already have, using time windows and traffic from their start address.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Optimize across several days</Label>
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  type="number"
-                  min={1}
-                  max={31}
-                  value={weekDays}
-                  onChange={(e) =>
-                    setWeekDays(Math.max(1, Math.min(31, Number(e.target.value) || 1)))
-                  }
-                  className="w-20"
-                />
-                <span className="text-sm text-muted-foreground">days from {day}</span>
-                <Button onClick={() => weekMut.mutate()} disabled={weekMut.isPending}>
-                  {weekMut.isPending ? "…" : "Optimize"}
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => reoptMut.mutate()}
-                  disabled={reoptMut.isPending}
-                  title="Recompute sequence for every tech using their remaining stops"
-                >
-                  {reoptMut.isPending ? "…" : "Re-optimize today"}
-                </Button>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Spreads unassigned visits round-robin by zone, then optimizes each tech&apos;s day.
-                Balance moves stops off anyone whose day runs past the workday end.
-              </p>
-            </div>
-          </div>
-
-
-          <div className="border-t pt-4">
-            <AiSection
-              title="AI dispatch"
-              description="Suggest value-aware reassignments for a day."
-            >
-              <DispatchPanel />
-            </AiSection>
-          </div>
-
-          {/* Pointer, not a second control — the same shape the timezone move
-              left behind, so nobody goes looking for these on the old screen. */}
-          <p className="border-t pt-4 text-[11px] text-muted-foreground">
-            Workday hours, work days and travel assumptions live in{" "}
-            <Link to="/settings/scheduling" className="underline underline-offset-2">
-              Settings → Scheduling
-            </Link>
-            .
-          </p>
-        </div>
-      )}
+      {/* The "One tech, one day" card that stood here is gone, and with it a
+          live data-loss bug.
+          Its Optimize button sent `reassign: true`. In optimize_route_v2 that
+          branch selects EVERY scheduled visit on the day — org-wide, not the
+          selected tech's — and writes assigned_staff_id = the chosen tech onto
+          all of them. Pick a tech, press Optimize, and the whole day belonged
+          to one person. There was no confirm, no preview and no undo, and the
+          helper text under the button said it "re-sequences what they already
+          have".
+          Everything the card could do is reachable from Auto-routing above,
+          which previews first and never silently reassigns: Assign is covered
+          because plan_route already ingests unassigned stops; one-tech and
+          multi-day optimize are the tech and date pickers; "Re-optimize today"
+          is no techs selected with today's date.
+          The Settings pointer it carried survives, in the Display popover. */}
 
       {range !== "today" && (
         <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -1192,9 +1079,13 @@ function RoutesPage() {
                 onOpenVisit={setDetailVisitId}
                 onGeocode={() => geocodeMut.mutate()}
                 geocoding={geocodeMut.isPending}
-                // Week/month is a coverage view: per-day sequences repeat, so
-                // ordered polylines/numbers only draw for a single day.
-                drawRoutes={false}
+                // Routes DO draw here now. They used to be off because
+                // buildTechGroups keyed on tech alone, so a week's stops sorted
+                // by `sequence` — which restarts at 1 daily — zig-zagged across
+                // days. Grouping per tech per day fixes the cause; `multiDay`
+                // then draws every day faintly and hover lifts one.
+                drawRoutes
+                multiDay
               />
             </div>
           )}
@@ -1244,7 +1135,7 @@ function RoutesPage() {
                 <div className="flex justify-end">
                   <button
                     onClick={() => setShowLoadPersist(false)}
-                    className="rounded px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                    className="rounded px-2 py-0.5 text-2xs text-muted-foreground hover:bg-muted hover:text-foreground"
                   >
                     Hide tech load
                   </button>
@@ -1257,7 +1148,7 @@ function RoutesPage() {
             ) : (
               <button
                 onClick={() => setShowLoadPersist(true)}
-                className="w-full rounded-lg border border-dashed px-3 py-1.5 text-left text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="w-full rounded-lg border border-dashed px-3 py-1.5 text-left text-2xs text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 Show tech load
               </button>
@@ -1329,7 +1220,7 @@ function RoutesPage() {
                     laneAction={
                       <button
                         onClick={() => setCoverFor({ id: s.id, name: s.display_name })}
-                        className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                        className="rounded px-1.5 py-0.5 text-3xs text-muted-foreground hover:bg-muted hover:text-foreground"
                         title={`${s.display_name} is out — move their work`}
                       >
                         Cover
@@ -1357,7 +1248,7 @@ function RoutesPage() {
                       <button
                         onClick={() => routingMut.mutate({ staffId: s.id, isFieldTech: true })}
                         disabled={routingMut.isPending}
-                        className="rounded border border-rose-300 px-1.5 py-0.5 text-[10px] text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                        className="rounded border border-rose-300 px-1.5 py-0.5 text-3xs text-rose-700 hover:bg-rose-50 disabled:opacity-50"
                         title={`Let ${s.display_name} run routes`}
                       >
                         Let them run routes
@@ -1547,6 +1438,7 @@ function MapPanel({
   geocoding,
   compact = false,
   drawRoutes = true,
+  multiDay = false,
 }: {
   baseStyle: TileVariant;
   onBaseStyle: (v: TileVariant) => void;
@@ -1562,8 +1454,14 @@ function MapPanel({
    *  1080p display — the arrangement exists to keep both visible. */
   compact?: boolean;
   drawRoutes?: boolean;
+  multiDay?: boolean;
 }) {
-  const groups = useMemo(() => buildTechGroups(visits as any, staff as any), [visits, staff]);
+  // perDay must match multiDay: grouping and rendering disagreeing is exactly
+  // the bug this replaces.
+  const groups = useMemo(
+    () => buildTechGroups(visits as any, staff as any, multiDay),
+    [visits, staff, multiDay],
+  );
   const mappable = visits.filter(
     (v: any) => v.properties?.latitude != null && v.properties?.longitude != null,
   ).length;
@@ -1573,7 +1471,7 @@ function MapPanel({
       <div className={`flex flex-wrap items-center justify-between gap-2 ${compact ? "mb-2" : "mb-3"}`}>
         <div>
           <h2 className="text-sm font-semibold">Map</h2>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {mappable} of {visits.length} visits on map. Click a pin or a card to view details.
           </p>
         </div>
@@ -1581,7 +1479,7 @@ function MapPanel({
           <select
             value={baseStyle}
             onChange={(e) => onBaseStyle(e.target.value as TileVariant)}
-            className="h-7 rounded-md border bg-background px-2 text-[11px]"
+            className="h-7 rounded-md border bg-background px-2 text-2xs"
             title={BASE_STYLES.find((b) => b.value === baseStyle)?.hint}
             aria-label="Map style"
           >
@@ -1598,7 +1496,7 @@ function MapPanel({
             </Button>
           )}
           {groups.map((g) => (
-            <div key={g.staffId ?? "u"} className="flex items-center gap-1 text-[11px]">
+            <div key={g.staffId ?? "u"} className="flex items-center gap-1 text-2xs">
               <span
                 className="inline-block h-2.5 w-2.5 rounded-full"
                 style={{ background: g.color }}
@@ -1614,6 +1512,7 @@ function MapPanel({
           height={compact ? 320 : 420}
           onVisitClick={onOpenVisit}
           drawRoutes={drawRoutes}
+          multiDay={multiDay}
           baseStyle={baseStyle}
           hoveredVisitId={hoveredVisitId}
           onHoverVisit={onHoverVisit}
@@ -1703,17 +1602,17 @@ function Column({
           <div className="flex items-center gap-1.5 text-sm font-medium">
             <span className="truncate">{title}</span>
             {offToday && (
-              <Badge variant="outline" className="border-amber-400 text-amber-700 text-[10px]">
+              <Badge variant="outline" className="border-amber-400 text-amber-700 text-3xs">
                 Away
               </Badge>
             )}
             {offRoutes && !offToday && (
-              <Badge variant="outline" className="border-amber-400 text-amber-700 text-[10px]">
+              <Badge variant="outline" className="border-amber-400 text-amber-700 text-3xs">
                 Off routes
               </Badge>
             )}
             {notRoutable && (
-              <Badge variant="outline" className="border-rose-400 text-rose-700 text-[10px]">
+              <Badge variant="outline" className="border-rose-400 text-rose-700 text-3xs">
                 Doesn&apos;t run routes
               </Badge>
             )}
@@ -1740,7 +1639,7 @@ function Column({
           {onSelectLane && items.length > 0 && (
             <button
               onClick={() => onSelectLane(items.map((v) => v.id))}
-              className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="rounded px-1.5 py-0.5 text-3xs text-muted-foreground hover:bg-muted hover:text-foreground"
               title="Select every visit in this lane"
             >
               All
@@ -1748,7 +1647,7 @@ function Column({
           )}
           <Badge variant="secondary">{items.length}</Badge>
           {totalCents > 0 && (
-            <div className="mt-0.5 text-[10px] text-muted-foreground">
+            <div className="mt-0.5 text-3xs text-muted-foreground">
               ${(totalCents / 100).toFixed(0)}
             </div>
           )}
@@ -1934,7 +1833,7 @@ function VisitCardView({
             </div>
           )}
           {(visit.eta_start || visit.travel_min != null) && (
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-3xs text-muted-foreground">
               {visit.eta_start && (
                 <span>
                   ETA{" "}
@@ -1959,17 +1858,17 @@ function VisitCardView({
             const e = (useSub ? sub.latest_time : p?.latest_service_time)?.slice(0, 5);
             if (!s && !e) return null;
             const label = s && e ? `${s}-${e}` : s ? `${s} onward` : `until ${e}`;
-            return <div className="mt-0.5 text-[10px] text-muted-foreground">Window {label}</div>;
+            return <div className="mt-0.5 text-3xs text-muted-foreground">Window {label}</div>;
           })()}
           <div className="mt-1 flex flex-wrap items-center gap-1">
             {visit.zones?.name && (
-              <Badge variant="outline" className="h-4 px-1 text-[10px]">
+              <Badge variant="outline" className="h-4 px-1 text-3xs">
                 {visit.zones.name}
               </Badge>
             )}
-            <StatusChip status={visit.status} className="h-4 px-1 text-[10px]" />
+            <StatusChip status={visit.status} className="h-4 px-1 text-3xs" />
             {visit.window_violated && (
-              <Badge variant="destructive" className="h-4 px-1 text-[10px]">
+              <Badge variant="destructive" className="h-4 px-1 text-3xs">
                 Late
               </Badge>
             )}
@@ -1981,7 +1880,7 @@ function VisitCardView({
                   href={dirUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] hover:bg-muted"
+                  className="inline-flex items-center gap-1 rounded border px-2 py-1 text-2xs hover:bg-muted"
                 >
                   <Navigation className="h-3 w-3" /> Directions
                 </a>
@@ -1991,7 +1890,7 @@ function VisitCardView({
                   type="button"
                   onClick={() => onComplete!(visit.id)}
                   disabled={completing}
-                  className="inline-flex items-center gap-1 rounded border border-emerald-600/40 bg-emerald-600/10 px-2 py-1 text-[11px] text-emerald-700 hover:bg-emerald-600/20 disabled:opacity-50 dark:text-emerald-400"
+                  className="inline-flex items-center gap-1 rounded border border-emerald-600/40 bg-emerald-600/10 px-2 py-1 text-2xs text-emerald-700 hover:bg-emerald-600/20 disabled:opacity-50 dark:text-emerald-400"
                 >
                   <CheckCircle2 className="h-3 w-3" /> {completing ? "…" : "Complete"}
                 </button>
@@ -2055,7 +1954,7 @@ function HeatmapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold">Tech load</h2>
           {unassigned > 0 && (
-            <Badge variant="destructive" className="text-[10px]">
+            <Badge variant="destructive" className="text-3xs">
               {unassigned} unassigned
             </Badge>
           )}

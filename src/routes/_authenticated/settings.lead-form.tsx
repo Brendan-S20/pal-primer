@@ -36,7 +36,7 @@ function LeadFormSettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold">Lead capture form</h1>
+        <h2 className="text-lg font-semibold">Lead capture form</h2>
         <p className="text-sm text-muted-foreground">
           Put a "Request a quote" form on your own website. Submissions land in Leads.
         </p>

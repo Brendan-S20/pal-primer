@@ -60,7 +60,7 @@ function FranchiseSettings() {
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h1 className="text-xl font-semibold">Franchise</h1>
+        <h2 className="text-lg font-semibold">Franchise</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           If your business operates as a location within a larger franchise, this is where you
           connect to it.

@@ -329,7 +329,7 @@ export function VisitDetailDrawer({
                     </option>
                   ))}
                 </select>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   Moving a visit to another day, or reordering a tech's stops, is on desktop.
                 </p>
               </section>
@@ -504,7 +504,7 @@ function PhotosSection({ visitId, photos }: { visitId: string; photos: any[] }) 
           {photos.map((ph: any) => (
             <div key={ph.id} className="relative">
               <PhotoThumb path={ph.storage_path} />
-              <span className="absolute -bottom-1 -right-1 rounded bg-background px-1 text-[9px] uppercase text-muted-foreground shadow-sm">
+              <span className="absolute -bottom-1 -right-1 rounded bg-background px-1 text-3xs uppercase text-muted-foreground shadow-sm">
                 {ph.kind}
               </span>
             </div>
@@ -577,19 +577,19 @@ function DogDnaControl({ dog, onChanged }: { dog: any; onChanged: () => void }) 
   });
   if (dog.dna_registered && !editing) {
     return (
-      <div className="flex flex-col items-end text-[11px]">
+      <div className="flex flex-col items-end text-2xs">
         <Badge variant="outline" className="border-emerald-500/60 text-emerald-700 dark:text-emerald-400">
           DNA ✓
         </Badge>
         {dog.dna_registry_id && <span className="mt-0.5 text-muted-foreground">{dog.dna_registry_id}</span>}
-        <button className="mt-0.5 text-[10px] text-muted-foreground underline" onClick={() => setEditing(true)}>edit</button>
+        <button className="mt-0.5 text-3xs text-muted-foreground underline" onClick={() => setEditing(true)}>edit</button>
       </div>
     );
   }
   if (!editing) {
     return (
       <button
-        className="text-[11px] text-muted-foreground underline"
+        className="text-2xs text-muted-foreground underline"
         onClick={() => setEditing(true)}
         disabled={mut.isPending}
       >
@@ -606,11 +606,11 @@ function DogDnaControl({ dog, onChanged }: { dog: any; onChanged: () => void }) 
         onChange={(e) => setRegistryId(e.target.value)}
       />
       <div className="flex gap-1">
-        <Button size="sm" className="h-6 px-2 text-[11px]" onClick={() => mut.mutate({ registered: true, registryId })} disabled={mut.isPending}>Save</Button>
+        <Button size="sm" className="h-6 px-2 text-2xs" onClick={() => mut.mutate({ registered: true, registryId })} disabled={mut.isPending}>Save</Button>
         {dog.dna_registered && (
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => mut.mutate({ registered: false })} disabled={mut.isPending}>Clear</Button>
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-2xs" onClick={() => mut.mutate({ registered: false })} disabled={mut.isPending}>Clear</Button>
         )}
-        <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => setEditing(false)}>Cancel</Button>
+        <Button size="sm" variant="ghost" className="h-6 px-2 text-2xs" onClick={() => setEditing(false)}>Cancel</Button>
       </div>
     </div>
   );

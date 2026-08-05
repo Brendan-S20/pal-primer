@@ -54,7 +54,7 @@ export function NotificationBell() {
       >
         <Bell className="h-4 w-4 max-md:h-5 max-md:w-5" />
         {unread > 0 && (
-          <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-none text-white">
+          <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-3xs font-semibold leading-none text-white">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
@@ -95,7 +95,7 @@ export function NotificationBell() {
                           <div className="min-w-0">
                             <div className="text-sm font-medium">{n.title}</div>
                             {n.body && <div className="truncate text-xs text-muted-foreground">{n.body}</div>}
-                            <div className="mt-0.5 text-[10px] text-muted-foreground">{timeAgo(n.created_at)}</div>
+                            <div className="mt-0.5 text-3xs text-muted-foreground">{timeAgo(n.created_at)}</div>
                           </div>
                         </div>
                       </div>
@@ -134,7 +134,7 @@ export function NotificationBell() {
                 >
                   View all
                 </Link>
-                <span className="text-[10px] text-muted-foreground">Kept for 30 days</span>
+                <span className="text-3xs text-muted-foreground">Kept for 30 days</span>
               </div>
             </div>
             )}

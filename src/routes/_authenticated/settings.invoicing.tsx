@@ -66,7 +66,7 @@ function InvoicingPage() {
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Invoicing</h1>
+        <h2 className="text-lg font-semibold">Invoicing</h2>
         <p className="text-sm text-muted-foreground">
           How invoices to your clients are dated, held for review, and sent. This is separate from
           your own HoundStack subscription under{" "}

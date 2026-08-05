@@ -109,7 +109,7 @@ function SamplePhotoLink({ path }: { path: string }) {
       href={url}
       target="_blank"
       rel="noreferrer"
-      className="mt-1 inline-flex items-center gap-1 text-[11px] text-primary underline"
+      className="mt-1 inline-flex items-center gap-1 text-2xs text-primary underline"
     >
       <Camera className="h-3 w-3" /> Collection photo
     </a>
@@ -543,7 +543,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
                   ))}
                 </select>
                 {selectedProp?.client_name && (
-                  <p className="mt-1 text-[11px] text-muted-foreground">
+                  <p className="mt-1 text-2xs text-muted-foreground">
                     Client: {selectedProp.client_name}
                   </p>
                 )}
@@ -634,14 +634,14 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
                     </span>
                   )}
                 </div>
-                <p className="mt-1 text-[11px] text-muted-foreground">
+                <p className="mt-1 text-2xs text-muted-foreground">
                   Evidence of the collection (bagged sample / kit at the site).
                 </p>
               </div>
               <div className="md:col-span-4">
                 <Label>Notes</Label>
                 <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-                <p className="mt-1 text-[11px] text-muted-foreground">
+                <p className="mt-1 text-2xs text-muted-foreground">
                   Provider references, statuses, and reports only — no raw genetic markers are stored.
                 </p>
               </div>
@@ -773,7 +773,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
                               <span className="text-muted-foreground">-</span>
                             )}
                             {r.collected_by_name && (
-                              <div className="text-[11px] text-muted-foreground">
+                              <div className="text-2xs text-muted-foreground">
                                 by {r.collected_by_name}
                               </div>
                             )}
@@ -781,7 +781,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
                           <td className="px-3 py-2 text-xs">
                             {r.location_note ?? "-"}
                             {r.kit_reference && (
-                              <div className="text-[11px] text-muted-foreground font-mono">
+                              <div className="text-2xs text-muted-foreground font-mono">
                                 kit {r.kit_reference}
                               </div>
                             )}
@@ -835,7 +835,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
                               <span className="text-muted-foreground">n/a</span>
                             )}
                             {r.matched_dog_name && (
-                              <div className="mt-1 text-[11px] text-muted-foreground">
+                              <div className="mt-1 text-2xs text-muted-foreground">
                                 Owner: {r.matched_client_name ?? "?"}
                               </div>
                             )}
@@ -1019,7 +1019,7 @@ function RegistryRow({
     <tr className="border-t">
       <td className="px-3 py-2">
         <div className="font-medium">{dog.name}</div>
-        {dog.breed && <div className="text-[11px] text-muted-foreground">{dog.breed}</div>}
+        {dog.breed && <div className="text-2xs text-muted-foreground">{dog.breed}</div>}
       </td>
       <td className="px-3 py-2 text-xs">{dog.client_name ?? "-"}</td>
       <td className="px-3 py-2 text-xs">
@@ -1164,7 +1164,7 @@ function Stat({ label, value, tone }: { label: string; value: number | string; t
   return (
     <Card>
       <CardContent className="p-3">
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground">{label}</div>
         <div className={`text-2xl font-semibold ${tone === "good" ? "text-emerald-600" : ""}`}>
           {value}
         </div>

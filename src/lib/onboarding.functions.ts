@@ -58,7 +58,10 @@ export const getOnboardingStatus = createServerFn({ method: "GET" })
         label: "Add your first tech",
         description: "Invite at least one tech so visits can be assigned and dispatched.",
         done: (staff.count ?? 0) > 0,
-        to: "/settings",
+        // /settings redirects to /settings/preferences, so this button — the
+        // most-clicked control on an empty dashboard — delivered the owner to a
+        // timezone and branding form instead of the invite panel.
+        to: "/settings/users",
         cta: "Invite tech",
       },
       {

@@ -127,7 +127,7 @@ function LeadForm() {
               {Array.from({ length: steps }).map((_, i) => (
                 <div key={i} className="flex flex-1 items-center gap-2">
                   <div
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-2xs font-semibold ${
                       step > i + 1 ? "text-white" : step === i + 1 ? "text-white" : "bg-muted text-muted-foreground"
                     }`}
                     style={step >= i + 1 ? { backgroundColor: accent ?? "var(--primary)" } : undefined}
@@ -220,7 +220,7 @@ function LeadForm() {
                 {busy ? "Sending…" : onLastStep ? "Request a quote" : "Continue"}
               </button>
             </div>
-            <p className="pt-1 text-center text-[11px] text-muted-foreground">
+            <p className="pt-1 text-center text-2xs text-muted-foreground">
               We'll only use this to follow up about your quote.
             </p>
           </form>

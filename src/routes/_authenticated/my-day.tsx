@@ -498,7 +498,7 @@ function MyDay() {
                         : "border-transparent text-muted-foreground hover:bg-muted active:bg-muted"
                   }`}
                 >
-                  <span className="text-[10px] font-medium uppercase leading-none">
+                  <span className="text-3xs font-medium uppercase leading-none">
                     {dt.toLocaleDateString(undefined, { weekday: "narrow" })}
                   </span>
                   <span className="mt-0.5 text-sm font-semibold leading-tight">{dt.getDate()}</span>
@@ -557,7 +557,7 @@ function MyDay() {
                 ))}
               </select>
               {previewing && (
-                <span className="rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                <span className="rounded-full border px-2 py-0.5 text-3xs uppercase tracking-wide text-muted-foreground">
                   Preview · read-only
                 </span>
               )}
@@ -615,7 +615,7 @@ function MyDay() {
               {/* BUG-17: an open job is not "next up" — saying so invites the
                   tech to start a second visit on top of one already running. */}
               <div
-                className={`text-[10px] font-medium uppercase tracking-wide ${
+                className={`text-3xs font-medium uppercase tracking-wide ${
                   activeVisit ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"
                 }`}
               >
@@ -747,7 +747,7 @@ function PhotoThumb({ path }: { path: string }) {
   if (state === "error") {
     return (
       <div
-        className="flex h-14 w-14 flex-col items-center justify-center rounded border bg-muted/50 text-center text-[9px] leading-tight text-muted-foreground"
+        className="flex h-14 w-14 flex-col items-center justify-center rounded border bg-muted/50 text-center text-3xs leading-tight text-muted-foreground"
         title="This photo couldn't be loaded. It may not have finished uploading."
       >
         <span>Photo</span>
@@ -1059,7 +1059,7 @@ function VisitCard({
             {visit.zones?.name && <span>· {visit.zones.name}</span>}
             {statusBadge(visit.status)}
             {pendingLocal > 0 && (
-              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-3xs font-medium text-amber-700 dark:text-amber-400">
                 {pendingLocal} queued
               </span>
             )}
@@ -1185,7 +1185,7 @@ function VisitCard({
           {photos.map((ph: any) => (
             <div key={ph.id} className="relative">
               <PhotoThumb path={ph.storage_path} />
-              <span className="absolute -bottom-1 -right-1 rounded bg-background px-1 text-[9px] uppercase text-muted-foreground shadow-sm">
+              <span className="absolute -bottom-1 -right-1 rounded bg-background px-1 text-3xs uppercase text-muted-foreground shadow-sm">
                 {ph.kind}
               </span>
             </div>
@@ -1405,7 +1405,7 @@ function VisitCard({
                   Cancel
                 </Button>
               </div>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 The office sets the billing rules for each skip reason.
               </p>
             </div>
@@ -1515,7 +1515,7 @@ function VisitCard({
                     </AlertDialog>
                   </div>
                   {svc && (
-                    <p className="text-[11px] font-medium">
+                    <p className="text-2xs font-medium">
                       Total: ${(totalCents / 100).toFixed(2)} at the catalog price
                     </p>
                   )}
@@ -1524,12 +1524,12 @@ function VisitCard({
                     // the signal was good; React Query keeps it in memory. So
                     // the Bill button looks live, and pressing it used to fail
                     // with a raw network error on a real charge.
-                    <p className="text-[11px] font-medium text-amber-600 dark:text-amber-500">
+                    <p className="text-2xs font-medium text-amber-600 dark:text-amber-500">
                       You're offline. Unlike start, complete, skip and photos, an add-on charge is
                       not queued — bill it when you have signal.
                     </p>
                   )}
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-2xs text-muted-foreground">
                     Prepaid clients are debited immediately; postpaid clients see it on the next
                     invoice. Field charges are capped per charge and reviewed by the office;
                     anything larger needs the office to bill it.
@@ -1607,7 +1607,7 @@ function DnaSamplePanel({
         // Same honesty as the field add-on charge: this is not one of the
         // queued actions, and a live-looking button that fails with a raw
         // network error is worse than one that says why.
-        <p className="text-[11px] font-medium text-amber-600 dark:text-amber-500">
+        <p className="text-2xs font-medium text-amber-600 dark:text-amber-500">
           You're offline. A sample isn't queued like start, complete and photos — log it when you
           have signal.
         </p>
@@ -1615,7 +1615,7 @@ function DnaSamplePanel({
       <Button size="sm" disabled={mut.isPending || !online} onClick={() => mut.mutate()}>
         {mut.isPending ? "Logging…" : "Log sample"}
       </Button>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Goes to the office unmatched and unpriced — they decide whose dog it was.
       </p>
     </div>
@@ -1695,14 +1695,14 @@ function StationRow({
     <div className="rounded-md border bg-background p-2">
       <div className="flex items-center justify-between">
         <div className="text-sm font-medium">{station.label}</div>
-        {existing && <span className="text-[11px] text-emerald-600">saved</span>}
+        {existing && <span className="text-2xs text-emerald-600">saved</span>}
       </div>
       {station.location_description && (
-        <div className="text-[11px] text-muted-foreground">{station.location_description}</div>
+        <div className="text-2xs text-muted-foreground">{station.location_description}</div>
       )}
       <div className="mt-2 grid grid-cols-6 gap-2 text-xs">
         <label className="col-span-2">
-          <span className="block text-[11px] text-muted-foreground">Bags collected</span>
+          <span className="block text-2xs text-muted-foreground">Bags collected</span>
           <input
             type="number"
             min="0"
@@ -1712,7 +1712,7 @@ function StationRow({
           />
         </label>
         <label className="col-span-2">
-          <span className="block text-[11px] text-muted-foreground">Refill bags added</span>
+          <span className="block text-2xs text-muted-foreground">Refill bags added</span>
           <input
             type="number"
             min="0"
