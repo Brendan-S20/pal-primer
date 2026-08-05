@@ -450,7 +450,9 @@ function WinBackTab() {
   const sendFn = useServerFn(sendWinBack);
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["churn", "at-risk"], queryFn: () => listFn() });
-  const [discount, setDiscount] = useState(20);
+  // Dollars, not percent. A percentage offer had no base to compute from and
+  // produced a code the customer portal refuses — see sendWinBack.
+  const [discountDollars, setDiscountDollars] = useState(15);
 
   const score = useMutation({
     mutationFn: () => scoreFn(),
@@ -463,7 +465,9 @@ function WinBackTab() {
 
   const send = useMutation({
     mutationFn: (clientId: string) =>
-      sendFn({ data: { clientId, discountPercent: discount, expiresDays: 30 } }),
+      sendFn({
+        data: { clientId, discountCents: Math.round(discountDollars * 100), expiresDays: 30 },
+      }),
     onSuccess: (r) => {
       toast.success(`Win-back sent (code ${r.promoCode})`);
       qc.invalidateQueries({ queryKey: ["churn", "at-risk"] });
@@ -487,19 +491,29 @@ function WinBackTab() {
             <p className="text-xs text-muted-foreground">
               Prefer the AI churn scorer in AI Tools when you want reason-with-context.
             </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Sending a win-back emails a single-use code worth the credit below. The customer
+              enters it in their portal and it lands on their account as credit.
+            </p>
           </div>
           <div className="flex items-end gap-2">
             <div>
-              <Label htmlFor="wd">Discount %</Label>
-              <Input
-                id="wd"
-                type="number"
-                min={5}
-                max={50}
-                value={discount}
-                onChange={(e) => setDiscount(Number(e.target.value))}
-                className="w-24"
-              />
+              <Label htmlFor="wd">Credit offered</Label>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                  $
+                </span>
+                <Input
+                  id="wd"
+                  type="number"
+                  min={1}
+                  max={200}
+                  step={1}
+                  value={discountDollars}
+                  onChange={(e) => setDiscountDollars(Number(e.target.value))}
+                  className="w-24 pl-5"
+                />
+              </div>
             </div>
             <Button variant="outline" onClick={() => score.mutate()} disabled={score.isPending}>
               {score.isPending ? "Scoring…" : "Re-score all"}
@@ -557,7 +571,7 @@ function WinBackTab() {
                           onClick={() => send.mutate(r.id)}
                           disabled={send.isPending}
                         >
-                          Send {discount}% offer
+                          Send ${discountDollars} offer
                         </Button>
                       </td>
                     </tr>

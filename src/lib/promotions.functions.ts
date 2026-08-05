@@ -50,15 +50,29 @@ export const upsertPromoCode = createServerFn({ method: "POST" })
     const orgId = await resolveManagerOrgId(context.supabase, context.userId);
     // Reject bare-number / placeholder codes like "10" (G8, I11).
     const validCode = assertValidPromoCode(data.code);
+    // Percentage codes cannot be redeemed. `discount_percent` has no reader in
+    // SQL or in this app, and `portal_redeem_promo` refuses anything that is
+    // not a fixed amount — so minting one produces a code that fails in the
+    // customer's hands. The form no longer offers the option; refusing here
+    // too, because removing a <SelectItem> does not close a POST endpoint.
+    // The `percent` value stays in the schema and the CHECK constraint so the
+    // codes already on file keep loading and can be read back.
+    if (data.discountType === "percent") {
+      throw new Error(
+        "Percentage codes are not supported yet — nothing applies the discount, so the code " +
+          "would be refused at redemption. Create a fixed-amount code instead.",
+      );
+    }
     const row = {
       organization_id: orgId,
       code: validCode.toUpperCase(),
       description: data.description ?? null,
-      discount_type: data.discountType,
-      discount_value_cents:
-        data.discountType === "fixed" ? (data.discountValueCents ?? 0) : null,
-      discount_percent:
-        data.discountType === "percent" ? (data.discountPercent ?? 0) : null,
+      // Narrowed to "fixed" by the throw above, so the percent branches that
+      // used to live here are gone rather than left as unreachable code that
+      // reads like support.
+      discount_type: "fixed" as const,
+      discount_value_cents: data.discountValueCents ?? 0,
+      discount_percent: null,
       applies_to: data.appliesTo,
       recurring_cycles: data.appliesTo === "recurring" ? (data.recurringCycles ?? null) : null,
       max_redemptions: data.maxRedemptions ?? null,

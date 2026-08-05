@@ -147,22 +147,45 @@ export const listAtRiskClients = createServerFn({ method: "GET" })
     return { rows };
   });
 
-function makePromoCode(clientName: string, pct: number) {
+function makePromoCode(clientName: string, dollars: number) {
   const base = (clientName || "COMEBACK")
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "")
     .slice(0, 6) || "COMEBACK";
   const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `${base}${pct}-${suffix}`;
+  return `${base}${dollars}-${suffix}`;
 }
 
+/**
+ * Win-back offers are a DOLLAR amount, not a percentage. Two reasons, both
+ * found by measuring rather than reasoning:
+ *
+ * 1. This function inserted `applies_to: "subscription"`, and the column
+ *    carries CHECK (applies_to IN ('first_visit','recurring','one_time')).
+ *    Every send raised "Promo create failed: new row violates check
+ *    constraint". The button had never worked, for anyone, since it shipped.
+ *    The insert happens before the email is enqueued, so at least nobody was
+ *    ever mailed a code — the feature was simply inert.
+ *
+ * 2. It also asked for `discount_type: "percent"`, and nothing in this system
+ *    applies a percentage. `discount_percent` has no reader in SQL or in the
+ *    app; `portal_redeem_promo` credits `discount_value_cents` and refuses
+ *    everything else. Fixing only the CHECK violation would have started
+ *    mailing lapsed customers codes their portal rejects — worse than inert.
+ *
+ * "20% off a month of service" also has no base to compute from:
+ * `subscriptions.price_cents` is per VISIT, and no visits-per-cycle rule
+ * exists anywhere in this codebase. Rather than invent one inside a flow that
+ * writes to the credit ledger, the offer is the number the sender types.
+ */
 export const sendWinBack = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
     z
       .object({
         clientId: z.string().uuid(),
-        discountPercent: z.number().int().min(5).max(50).default(20),
+        // $1 to $200. Credited to the account on redemption, in full.
+        discountCents: z.number().int().min(100).max(20000).default(1500),
         expiresDays: z.number().int().min(7).max(90).default(30),
       })
       .parse(d),
@@ -188,13 +211,16 @@ export const sendWinBack = createServerFn({ method: "POST" })
 
     // Create promo code
     const expiresAt = new Date(Date.now() + data.expiresDays * DAY).toISOString();
-    const code = makePromoCode(client.display_name, data.discountPercent);
+    const dollars = Math.round(data.discountCents / 100);
+    const code = makePromoCode(client.display_name, dollars);
     const { error: pcErr } = await supabase.from("promo_codes").insert({
       organization_id: orgId,
       code,
-      discount_type: "percent",
-      discount_percent: data.discountPercent,
-      applies_to: "subscription",
+      discount_type: "fixed",
+      discount_value_cents: data.discountCents,
+      // 'one_time' is one of the three values the CHECK allows, and it is the
+      // true one: a win-back is a single credit, not a standing discount.
+      applies_to: "one_time",
       description: `Win-back for ${client.display_name}`,
       expires_at: expiresAt,
       max_redemptions: 1,
@@ -212,7 +238,10 @@ export const sendWinBack = createServerFn({ method: "POST" })
       notifyKey: "notify_email_win_back",
       idempotencyKey: `winback-${client.id}-${new Date().toISOString().slice(0, 10)}`,
       templateData: {
-        discountPercent: data.discountPercent,
+        // The email states the same number the code is worth. It previously
+        // said "20% off your next month of service" for a code that credited
+        // nothing at all.
+        discountAmount: `$${(data.discountCents / 100).toFixed(2).replace(/\.00$/, "")}`,
         promoCode: code,
         expiresOn: new Date(expiresAt).toLocaleDateString(),
       },

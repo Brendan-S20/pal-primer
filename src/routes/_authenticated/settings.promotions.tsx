@@ -123,14 +123,23 @@ function PromoSection() {
   const delFn = useServerFn(deletePromoCode);
   const { data, isLoading } = useQuery({ queryKey: ["promo-codes"], queryFn: () => listFn() });
 
+  // Fixed amount only, and the "Applies to" choices are down to the two that
+  // describe a single credit.
+  //
+  // Percent used to be the DEFAULT here, and it produced a code no customer
+  // could ever redeem: nothing in this system reads `discount_percent`, and
+  // `portal_redeem_promo` refuses anything that is not a fixed amount. The
+  // "Recurring (N cycles)" option was the same shape of promise — redemption
+  // credits the account once, so the cycle count was decoration on a one-off.
+  //
+  // Both are still allowed by the database, and the three percent codes already
+  // on file still render below, marked as not redeemable. This stops new ones
+  // being minted; it does not pretend the old ones work.
   const empty = {
     code: "",
     description: "",
-    discountType: "percent" as "percent" | "fixed",
-    discountPercent: 10,
     discountValueCents: 0,
-    appliesTo: "first_visit" as "first_visit" | "recurring" | "one_time",
-    recurringCycles: 3,
+    appliesTo: "first_visit" as "first_visit" | "one_time",
     maxRedemptions: undefined as number | undefined,
     expiresAt: "",
     active: true,
@@ -143,11 +152,9 @@ function PromoSection() {
         data: {
           code: v.code,
           description: v.description || undefined,
-          discountType: v.discountType,
-          discountValueCents: v.discountType === "fixed" ? Math.round(v.discountValueCents) : undefined,
-          discountPercent: v.discountType === "percent" ? v.discountPercent : undefined,
+          discountType: "fixed" as const,
+          discountValueCents: Math.round(v.discountValueCents),
           appliesTo: v.appliesTo,
-          recurringCycles: v.appliesTo === "recurring" ? v.recurringCycles : undefined,
           maxRedemptions: v.maxRedemptions,
           expiresAt: v.expiresAt || undefined,
           active: v.active,
@@ -194,72 +201,36 @@ function PromoSection() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Discount type</Label>
-              <Select
-                value={form.discountType}
-                onValueChange={(v: any) => setForm({ ...form, discountType: v })}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="percent">Percent</SelectItem>
-                  <SelectItem value="fixed">Fixed amount</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Amount ($)</Label>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={form.discountValueCents / 100}
+                onChange={(e) =>
+                  setForm({ ...form, discountValueCents: Math.round(Number(e.target.value) * 100) })
+                }
+              />
             </div>
-            {form.discountType === "percent" ? (
-              <div>
-                <Label>Percent off</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={form.discountPercent}
-                  onChange={(e) => setForm({ ...form, discountPercent: Number(e.target.value) })}
-                />
-              </div>
-            ) : (
-              <div>
-                <Label>Amount ($)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={form.discountValueCents / 100}
-                  onChange={(e) =>
-                    setForm({ ...form, discountValueCents: Math.round(Number(e.target.value) * 100) })
-                  }
-                />
-              </div>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Applies to</Label>
+              <Label>What it's for</Label>
               <Select
                 value={form.appliesTo}
                 onValueChange={(v: any) => setForm({ ...form, appliesTo: v })}
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="first_visit">First visit</SelectItem>
-                  <SelectItem value="recurring">Recurring (N cycles)</SelectItem>
-                  <SelectItem value="one_time">One-time invoice</SelectItem>
+                  <SelectItem value="first_visit">New customer</SelectItem>
+                  <SelectItem value="one_time">One-off credit</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            {form.appliesTo === "recurring" && (
-              <div>
-                <Label>Cycles</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={60}
-                  value={form.recurringCycles}
-                  onChange={(e) => setForm({ ...form, recurringCycles: Number(e.target.value) })}
-                />
-              </div>
-            )}
           </div>
+          <p className="text-xs text-muted-foreground">
+            Redeeming adds this amount to the customer's account credit, once, and it comes off
+            their next invoice automatically. "What it's for" is your own label — it does not change
+            what the code does.
+          </p>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Max redemptions</Label>
@@ -311,19 +282,28 @@ function PromoSection() {
                     {p.expires_at && new Date(p.expires_at) < new Date() && (
                       <Badge variant="destructive">expired</Badge>
                     )}
+                    {p.discount_type === "percent" && (
+                      <Badge variant="destructive">not redeemable</Badge>
+                    )}
                   </div>
                   <div className="mt-0.5 text-xs text-muted-foreground">
                     {p.discount_type === "percent"
                       ? `${p.discount_percent}% off`
-                      : fmtMoney(p.discount_value_cents ?? 0) + " off"}
+                      : fmtMoney(p.discount_value_cents ?? 0) + " credit"}
                     {" · "}
-                    {p.applies_to === "recurring"
-                      ? `${p.recurring_cycles ?? "∞"} cycles`
-                      : p.applies_to.replace("_", " ")}
+                    {p.applies_to === "recurring" ? "recurring" : p.applies_to.replace("_", " ")}
                     {" · "}
                     used {p.redemption_count}
                     {p.max_redemptions ? ` / ${p.max_redemptions}` : ""}
                   </div>
+                  {/* Said plainly on the row rather than discovered by the
+                      customer at the moment they try to use it. */}
+                  {p.discount_type === "percent" && (
+                    <p className="mt-1 text-xs text-destructive">
+                      Percentage codes are not applied anywhere yet — a customer entering this in
+                      their portal is turned away. Replace it with a fixed-amount code.
+                    </p>
+                  )}
                   {p.description && (
                     <p className="mt-1 text-xs text-muted-foreground">{p.description}</p>
                   )}
