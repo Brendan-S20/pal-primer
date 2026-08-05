@@ -486,7 +486,7 @@ function FlagRow({ f, onSet }: { f: TenantFlagRow; onSet: (value: boolean | null
         <div className="flex items-center gap-2">
           <span className="font-medium">{f.label}</span>
           <code className="text-xs text-muted-foreground">{f.key}</code>
-          {overridden && <Badge variant="secondary" className="text-[10px]">override</Badge>}
+          {overridden && <Badge variant="secondary" className="text-3xs">override</Badge>}
         </div>
         {f.description && <div className="text-xs text-muted-foreground">{f.description}</div>}
         <div className="mt-1 text-xs text-muted-foreground">

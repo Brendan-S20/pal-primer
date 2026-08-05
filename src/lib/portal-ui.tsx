@@ -1208,7 +1208,7 @@ export function DogsGrid({ rows }: { rows: any[] }) {
             {[d.breed, d.weight_class].filter(Boolean).join(" · ") || "No breed on file"}
           </div>
           {d.temperament && (
-            <Badge variant="outline" className="mt-2 text-[10px] capitalize">
+            <Badge variant="outline" className="mt-2 text-3xs capitalize">
               {d.temperament}
             </Badge>
           )}
@@ -1536,7 +1536,7 @@ export function ServiceHistorySection({
                             loading="lazy"
                             className="h-full w-full object-cover transition group-hover:scale-105"
                           />
-                          <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium uppercase text-white">
+                          <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-3xs font-medium uppercase text-white">
                             {i % 2 === 0 ? "Before" : "After"}
                           </span>
                         </>

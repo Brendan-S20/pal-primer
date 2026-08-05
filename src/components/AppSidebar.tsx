@@ -216,7 +216,7 @@ export function AppSidebar() {
                   avatarPath={me?.avatar_url}
                   seed={me?.id}
                   className="h-5 w-5 shrink-0"
-                  textClassName="text-[9px]"
+                  textClassName="text-3xs"
                 />
                 {!collapsed && (
                   <span className="truncate">{me?.display_name ?? "Your account"}</span>

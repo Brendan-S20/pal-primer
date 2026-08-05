@@ -63,7 +63,7 @@ function Thread() {
           <div className="text-sm font-semibold">
             {client?.display_name}
             {client?.sms_opt_out && (
-              <span className="ml-2 rounded bg-destructive/15 px-1.5 text-[10px] font-semibold uppercase text-destructive">
+              <span className="ml-2 rounded bg-destructive/15 px-1.5 text-3xs font-semibold uppercase text-destructive">
                 opted out
               </span>
             )}
@@ -93,7 +93,7 @@ function Thread() {
               }`}
             >
               <div className="whitespace-pre-wrap">{m.body}</div>
-              <div className="mt-1 text-[10px] opacity-70">
+              <div className="mt-1 text-3xs opacity-70">
                 {new Date(m.created_at).toLocaleString()} · {m.status}
                 {m.error ? ` · ${m.error}` : ""}
               </div>

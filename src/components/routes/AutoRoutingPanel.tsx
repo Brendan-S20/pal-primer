@@ -252,7 +252,7 @@ export function AutoRoutingPanel({
 
         {section === "dates" && (
           <div className="space-y-1.5 rounded-md border p-2">
-            <Label className="text-[11px] text-muted-foreground">Days to route</Label>
+            <Label className="text-2xs text-muted-foreground">Days to route</Label>
             <div className="flex items-center gap-1.5">
               <Input
                 type="date"
@@ -268,7 +268,7 @@ export function AutoRoutingPanel({
                 }}
                 className="h-8 text-xs"
               />
-              <span className="text-[11px] text-muted-foreground">to</span>
+              <span className="text-2xs text-muted-foreground">to</span>
               <Input
                 type="date"
                 value={to}
@@ -287,12 +287,12 @@ export function AutoRoutingPanel({
         {section === "techs" && (
           <div className="space-y-1.5 rounded-md border p-2">
             <div className="flex items-center justify-between">
-              <Label className="text-[11px] text-muted-foreground">
+              <Label className="text-2xs text-muted-foreground">
                 {picked.size === 0 ? "Everyone who runs routes" : `${picked.size} selected`}
               </Label>
               {picked.size > 0 && (
                 <button
-                  className="text-[11px] text-muted-foreground underline-offset-2 hover:underline"
+                  className="text-2xs text-muted-foreground underline-offset-2 hover:underline"
                   onClick={() => {
                     setPicked(new Set());
                     dirty();
@@ -316,14 +316,14 @@ export function AutoRoutingPanel({
                       setPicked(next);
                       dirty();
                     }}
-                    className={`rounded-full border px-2 py-0.5 text-[11px] ${on ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted"}`}
+                    className={`rounded-full border px-2 py-0.5 text-2xs ${on ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted"}`}
                   >
                     {s.display_name}
                   </button>
                 );
               })}
               {techs.length === 0 && (
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-2xs text-muted-foreground">
                   Nobody runs routes yet — switch someone on under Crew.
                 </span>
               )}
@@ -347,7 +347,7 @@ export function AutoRoutingPanel({
                 />
                 <span>
                   <span className="block text-xs font-medium">{l.label}</span>
-                  <span className="block text-[11px] leading-snug text-muted-foreground">
+                  <span className="block text-2xs leading-snug text-muted-foreground">
                     {l.hint}
                   </span>
                 </span>
@@ -359,7 +359,7 @@ export function AutoRoutingPanel({
         {/* One checkbox, and it stays visible rather than hiding behind a pill:
             it is the only control here that can move a stop from one person to
             another, and that is not something to discover after the fact. */}
-        <label className="flex items-start gap-2 pt-0.5 text-[11px]">
+        <label className="flex items-start gap-2 pt-0.5 text-2xs">
           <Checkbox
             checked={reassign}
             onCheckedChange={(v) => {
@@ -407,7 +407,7 @@ export function AutoRoutingPanel({
                     nothing to compare against.
                   </>
                 )}
-                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                <div className="mt-0.5 text-2xs text-muted-foreground">
                   {t!.stops} stop{t!.stops === 1 ? "" : "s"} · {t!.daysPlanned} tech-day
                   {t!.daysPlanned === 1 ? "" : "s"}
                 </div>

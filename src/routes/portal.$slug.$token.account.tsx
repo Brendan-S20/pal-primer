@@ -238,7 +238,7 @@ function TextOptIn({ token, client }: { token: string; client: any }) {
       {/* The words themselves, not a link to them. This is what gets stored as
           the consent record, and what a carrier asks to see. */}
       {!optedIn && (
-        <p className="mt-2 text-[11px] text-muted-foreground">
+        <p className="mt-2 text-2xs text-muted-foreground">
           {SMS_CONSENT_TEXT}
         </p>
       )}

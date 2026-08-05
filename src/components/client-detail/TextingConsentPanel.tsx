@@ -118,7 +118,7 @@ export function TextingConsentPanel({ client }: { client: any }) {
           agreed to, and the answer has to be the words themselves rather than
           a link to whatever the current copy happens to say. */}
       {consentAt && client.sms_consent_text && (
-        <blockquote className="mt-3 rounded border-l-2 border-muted-foreground/30 bg-muted/40 p-2 text-[11px] italic text-muted-foreground">
+        <blockquote className="mt-3 rounded border-l-2 border-muted-foreground/30 bg-muted/40 p-2 text-2xs italic text-muted-foreground">
           {client.sms_consent_text}
         </blockquote>
       )}
@@ -126,19 +126,19 @@ export function TextingConsentPanel({ client }: { client: any }) {
       {mayRecord && (
         <div className="mt-4 space-y-3 rounded-md border p-3">
           <div className="text-xs font-medium">Record consent you already have</div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Only if this client has actually agreed — in person, on a signed service agreement,
             or over the phone. This is stored as staff-recorded and is auditable. If you are not
             sure, send them their portal link and let them opt in themselves.
           </p>
-          <blockquote className="rounded border-l-2 border-muted-foreground/30 bg-muted/40 p-2 text-[11px] italic">
+          <blockquote className="rounded border-l-2 border-muted-foreground/30 bg-muted/40 p-2 text-2xs italic">
             {SMS_CONSENT_TEXT}
           </blockquote>
           {/* An unticked-by-default attestation, not a bare button. The whole
               point of the consent record is that somebody stands behind it;
               a one-click "mark consented" is how a book of 300 clients gets
               rubber-stamped in an afternoon. */}
-          <label className="flex items-start gap-2 text-[11px]">
+          <label className="flex items-start gap-2 text-2xs">
             <Checkbox
               checked={attested}
               onCheckedChange={(v) => setAttested(v === true)}

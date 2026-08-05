@@ -1454,7 +1454,7 @@ function ServiceDrawer({
                 <dd className="flex items-center gap-2 font-medium">
                   {finalCents != null ? `$${(finalCents / 100).toFixed(2)}` : "—"}
                   {priceSource && (
-                    <Badge variant={priceSource === "custom" ? "outline" : "secondary"} className="text-[10px]">
+                    <Badge variant={priceSource === "custom" ? "outline" : "secondary"} className="text-3xs">
                       {priceSource === "zone"
                         ? "Zone"
                         : priceSource === "standard"

@@ -363,17 +363,17 @@ function ClientsList() {
                       <span className="font-medium">{c.display_name}</span>
                       <Badge
                         variant={c.account_type === "commercial" ? "default" : "secondary"}
-                        className="text-[10px]"
+                        className="text-3xs"
                       >
                         {humanizeEnum(c.account_type)}
                       </Badge>
                       {(c.churn_score ?? 0) >= 60 && (
-                        <Badge variant="destructive" className="text-[10px]">
+                        <Badge variant="destructive" className="text-3xs">
                           At risk
                         </Badge>
                       )}
                       {c.comms_paused && (
-                        <Badge variant="outline" className="text-[10px]">
+                        <Badge variant="outline" className="text-3xs">
                           Comms paused
                         </Badge>
                       )}
@@ -400,13 +400,13 @@ function ClientsList() {
                       {c.outstanding_cents > 0 && (
                         <div className="font-medium text-amber-600">
                           {money(c.outstanding_cents)}{" "}
-                          <span className="text-[11px] font-normal">owed</span>
+                          <span className="text-2xs font-normal">owed</span>
                         </div>
                       )}
                       {c.credit_balance_cents > 0 && (
                         <div className="text-emerald-600">
                           +{money(c.credit_balance_cents)}{" "}
-                          <span className="text-[11px] text-emerald-700/70">credit</span>
+                          <span className="text-2xs text-emerald-700/70">credit</span>
                         </div>
                       )}
                       {!(c.outstanding_cents > 0) && !(c.credit_balance_cents > 0) && (
@@ -419,7 +419,7 @@ function ClientsList() {
                   <span>{c.dog_count} dogs</span>
                   <span>{c.active_subscription_count} subs</span>
                   {(c.frequencies ?? []).length > 0 && (
-                    <Badge variant="outline" className="text-[10px]">
+                    <Badge variant="outline" className="text-3xs">
                       {(c.frequencies as string[]).map((f) => frequencyLabel(f)).join(", ")}
                     </Badge>
                   )}
@@ -472,7 +472,7 @@ function ClientsList() {
                         {c.display_name}
                       </Link>
                       {(c.churn_score ?? 0) >= 60 && (
-                        <Badge variant="destructive" className="ml-2 text-[10px]">
+                        <Badge variant="destructive" className="ml-2 text-3xs">
                           At risk
                         </Badge>
                       )}
@@ -519,7 +519,7 @@ function ClientsList() {
                         <span className="text-emerald-600">Active</span>
                       )}
                       {c.comms_paused && (
-                        <Badge variant="outline" className="ml-2 text-[10px]">
+                        <Badge variant="outline" className="ml-2 text-3xs">
                           Comms paused
                         </Badge>
                       )}

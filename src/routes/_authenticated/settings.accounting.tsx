@@ -104,7 +104,7 @@ function AccountingSettings() {
     <div className="space-y-8">
       {dialog}
       <div>
-        <h1 className="text-2xl font-semibold">Accounting sync</h1>
+        <h2 className="text-lg font-semibold">Accounting sync</h2>
         <p className="text-sm text-muted-foreground">
           Push paid invoices to QuickBooks Online or Xero. Use the Connect buttons below to authorize your accounting provider. Tokens are refreshed automatically.
         </p>

@@ -36,9 +36,9 @@ function SkipRulesPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="flex items-center gap-2 text-2xl font-semibold">
+        <h2 className="flex items-center gap-2 text-lg font-semibold">
           Skip billing rules <HelpTip article="skip-rules" />
-        </h1>
+        </h2>
         <p className="text-sm text-muted-foreground">
           When a tech skips a visit with a given reason, this percent of the subscription price is
           billed on the next invoice. Defaults follow industry practice; override any you like.

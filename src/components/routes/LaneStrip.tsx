@@ -97,7 +97,7 @@ export function LaneStrip({
 
   if (techs.length === 0 && !unassigned) return null;
 
-  const cell = compact ? "h-6 text-[10px]" : "h-8 text-[11px]";
+  const cell = compact ? "h-6 text-3xs" : "h-8 text-2xs";
 
   return (
     <div className="overflow-x-auto rounded-lg border bg-card">
@@ -110,7 +110,7 @@ export function LaneStrip({
             {days.map((d) => (
               <th key={d} className="px-1 py-1.5 text-center font-normal text-muted-foreground">
                 <div>{DOW[at(d).getDay()]}</div>
-                <div className="text-[10px]">{at(d).getDate()}</div>
+                <div className="text-3xs">{at(d).getDate()}</div>
               </th>
             ))}
           </tr>
@@ -193,7 +193,7 @@ export function LaneStrip({
           )}
         </tbody>
       </table>
-      <div className="border-t px-3 py-1.5 text-[11px] text-muted-foreground">
+      <div className="border-t px-3 py-1.5 text-2xs text-muted-foreground">
         Click any day to open its board. <span className="text-amber-700">Amber</span> is time
         off — <strong>!3</strong> means three visits are still assigned to someone who is away.
       </div>

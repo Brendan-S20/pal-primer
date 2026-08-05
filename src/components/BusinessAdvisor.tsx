@@ -253,7 +253,7 @@ export function BusinessAdvisor() {
               Computed from your own data over the selected window, in your organization&apos;s time
               zone.
               {report && (
-                <Badge variant="outline" className="ml-1.5 align-middle text-[10px]">
+                <Badge variant="outline" className="ml-1.5 align-middle text-3xs">
                   {report.aiGenerated ? "AI analysis" : "Direct calculation"}
                 </Badge>
               )}

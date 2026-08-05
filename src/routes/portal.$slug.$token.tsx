@@ -192,7 +192,7 @@ function BottomTabs({ token, slug, isCommercial }: { token: string; slug: string
                     immediately instead of waiting on a chunk download (the
                     "highlighted but didn't navigate" dead click). */}
                 <Link to={t.to} params={{ slug, token }} preload="render"
-                  className={`flex flex-col items-center gap-0.5 px-1 py-2 text-[10px] font-medium transition-colors ${
+                  className={`flex flex-col items-center gap-0.5 px-1 py-2 text-3xs font-medium transition-colors ${
                     active ? "text-primary" : "text-muted-foreground hover:text-foreground"
                   }`}>
                   <Icon className="h-5 w-5" />

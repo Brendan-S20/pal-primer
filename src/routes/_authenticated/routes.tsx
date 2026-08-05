@@ -786,13 +786,13 @@ function RoutesPage() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium">Hide weekends</div>
-                  <div className="text-[11px] text-muted-foreground">
+                  <div className="text-2xs text-muted-foreground">
                     Skip Sat/Sun in Week and Month views.
                   </div>
                 </div>
                 <Switch checked={hideWeekends} onCheckedChange={setHideWeekendsPersist} />
               </div>
-              <p className="border-b pb-3 text-[11px] text-muted-foreground">
+              <p className="border-b pb-3 text-2xs text-muted-foreground">
                 Workday hours, work days and travel assumptions live in{" "}
                 <Link to="/settings/scheduling" className="underline underline-offset-2">
                   Settings → Scheduling
@@ -801,7 +801,7 @@ function RoutesPage() {
               </p>
               <div className="space-y-1.5">
                 <div className="text-sm font-medium">Density</div>
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-2xs text-muted-foreground">
                   Compact fits roughly twice as many stops per lane before scrolling.
                 </div>
                 <div className="inline-flex rounded-md border p-0.5 text-xs">
@@ -819,7 +819,7 @@ function RoutesPage() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium">Map beside the board</div>
-                  <div className="text-[11px] text-muted-foreground">
+                  <div className="text-2xs text-muted-foreground">
                     Keeps a pin and its lane on screen together. Stacks below 1280px.
                   </div>
                 </div>
@@ -827,7 +827,7 @@ function RoutesPage() {
               </div>
               <div className="space-y-1.5">
                 <div className="text-sm font-medium">Board layout</div>
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-2xs text-muted-foreground">
                   How tech lanes are arranged on the board.
                 </div>
                 <div className="inline-flex rounded-md border p-0.5 text-xs">
@@ -858,7 +858,7 @@ function RoutesPage() {
               <PopoverContent align="end" className="w-80 p-0">
                 <div className="border-b px-3 py-2">
                   <div className="text-sm font-medium">Who runs routes</div>
-                  <div className="text-[11px] text-muted-foreground">
+                  <div className="text-2xs text-muted-foreground">
                     Everyone switched on here gets a lane on the board and can be assigned
                     work. Everyone else stays in the office.
                   </div>
@@ -880,7 +880,7 @@ function RoutesPage() {
                       >
                         <div className="min-w-0">
                           <div className="truncate text-sm">{s.display_name}</div>
-                          <div className="text-[11px] text-muted-foreground capitalize">
+                          <div className="text-2xs text-muted-foreground capitalize">
                             {s.role ? humanizeRole(s.role) : "—"}
                             {/* Only ever shown for someone being switched OFF,
                                 where it is the consequence rather than trivia:
@@ -898,7 +898,7 @@ function RoutesPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-7 px-2 text-[11px]"
+                            className="h-7 px-2 text-2xs"
                             onClick={() => setRoutingDialogStaff(s)}
                             title="Time off and route endpoints"
                           >
@@ -917,7 +917,7 @@ function RoutesPage() {
                     ))
                   )}
                 </div>
-                <div className="border-t px-3 py-2 text-[11px] text-muted-foreground">
+                <div className="border-t px-3 py-2 text-2xs text-muted-foreground">
                   Switching somebody off doesn&apos;t move their visits — use{" "}
                   <strong>Cover</strong> on their lane for that.
                 </div>
@@ -1135,7 +1135,7 @@ function RoutesPage() {
                 <div className="flex justify-end">
                   <button
                     onClick={() => setShowLoadPersist(false)}
-                    className="rounded px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                    className="rounded px-2 py-0.5 text-2xs text-muted-foreground hover:bg-muted hover:text-foreground"
                   >
                     Hide tech load
                   </button>
@@ -1148,7 +1148,7 @@ function RoutesPage() {
             ) : (
               <button
                 onClick={() => setShowLoadPersist(true)}
-                className="w-full rounded-lg border border-dashed px-3 py-1.5 text-left text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="w-full rounded-lg border border-dashed px-3 py-1.5 text-left text-2xs text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 Show tech load
               </button>
@@ -1220,7 +1220,7 @@ function RoutesPage() {
                     laneAction={
                       <button
                         onClick={() => setCoverFor({ id: s.id, name: s.display_name })}
-                        className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                        className="rounded px-1.5 py-0.5 text-3xs text-muted-foreground hover:bg-muted hover:text-foreground"
                         title={`${s.display_name} is out — move their work`}
                       >
                         Cover
@@ -1248,7 +1248,7 @@ function RoutesPage() {
                       <button
                         onClick={() => routingMut.mutate({ staffId: s.id, isFieldTech: true })}
                         disabled={routingMut.isPending}
-                        className="rounded border border-rose-300 px-1.5 py-0.5 text-[10px] text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                        className="rounded border border-rose-300 px-1.5 py-0.5 text-3xs text-rose-700 hover:bg-rose-50 disabled:opacity-50"
                         title={`Let ${s.display_name} run routes`}
                       >
                         Let them run routes
@@ -1471,7 +1471,7 @@ function MapPanel({
       <div className={`flex flex-wrap items-center justify-between gap-2 ${compact ? "mb-2" : "mb-3"}`}>
         <div>
           <h2 className="text-sm font-semibold">Map</h2>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {mappable} of {visits.length} visits on map. Click a pin or a card to view details.
           </p>
         </div>
@@ -1479,7 +1479,7 @@ function MapPanel({
           <select
             value={baseStyle}
             onChange={(e) => onBaseStyle(e.target.value as TileVariant)}
-            className="h-7 rounded-md border bg-background px-2 text-[11px]"
+            className="h-7 rounded-md border bg-background px-2 text-2xs"
             title={BASE_STYLES.find((b) => b.value === baseStyle)?.hint}
             aria-label="Map style"
           >
@@ -1496,7 +1496,7 @@ function MapPanel({
             </Button>
           )}
           {groups.map((g) => (
-            <div key={g.staffId ?? "u"} className="flex items-center gap-1 text-[11px]">
+            <div key={g.staffId ?? "u"} className="flex items-center gap-1 text-2xs">
               <span
                 className="inline-block h-2.5 w-2.5 rounded-full"
                 style={{ background: g.color }}
@@ -1602,17 +1602,17 @@ function Column({
           <div className="flex items-center gap-1.5 text-sm font-medium">
             <span className="truncate">{title}</span>
             {offToday && (
-              <Badge variant="outline" className="border-amber-400 text-amber-700 text-[10px]">
+              <Badge variant="outline" className="border-amber-400 text-amber-700 text-3xs">
                 Away
               </Badge>
             )}
             {offRoutes && !offToday && (
-              <Badge variant="outline" className="border-amber-400 text-amber-700 text-[10px]">
+              <Badge variant="outline" className="border-amber-400 text-amber-700 text-3xs">
                 Off routes
               </Badge>
             )}
             {notRoutable && (
-              <Badge variant="outline" className="border-rose-400 text-rose-700 text-[10px]">
+              <Badge variant="outline" className="border-rose-400 text-rose-700 text-3xs">
                 Doesn&apos;t run routes
               </Badge>
             )}
@@ -1639,7 +1639,7 @@ function Column({
           {onSelectLane && items.length > 0 && (
             <button
               onClick={() => onSelectLane(items.map((v) => v.id))}
-              className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="rounded px-1.5 py-0.5 text-3xs text-muted-foreground hover:bg-muted hover:text-foreground"
               title="Select every visit in this lane"
             >
               All
@@ -1647,7 +1647,7 @@ function Column({
           )}
           <Badge variant="secondary">{items.length}</Badge>
           {totalCents > 0 && (
-            <div className="mt-0.5 text-[10px] text-muted-foreground">
+            <div className="mt-0.5 text-3xs text-muted-foreground">
               ${(totalCents / 100).toFixed(0)}
             </div>
           )}
@@ -1833,7 +1833,7 @@ function VisitCardView({
             </div>
           )}
           {(visit.eta_start || visit.travel_min != null) && (
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-3xs text-muted-foreground">
               {visit.eta_start && (
                 <span>
                   ETA{" "}
@@ -1858,17 +1858,17 @@ function VisitCardView({
             const e = (useSub ? sub.latest_time : p?.latest_service_time)?.slice(0, 5);
             if (!s && !e) return null;
             const label = s && e ? `${s}-${e}` : s ? `${s} onward` : `until ${e}`;
-            return <div className="mt-0.5 text-[10px] text-muted-foreground">Window {label}</div>;
+            return <div className="mt-0.5 text-3xs text-muted-foreground">Window {label}</div>;
           })()}
           <div className="mt-1 flex flex-wrap items-center gap-1">
             {visit.zones?.name && (
-              <Badge variant="outline" className="h-4 px-1 text-[10px]">
+              <Badge variant="outline" className="h-4 px-1 text-3xs">
                 {visit.zones.name}
               </Badge>
             )}
-            <StatusChip status={visit.status} className="h-4 px-1 text-[10px]" />
+            <StatusChip status={visit.status} className="h-4 px-1 text-3xs" />
             {visit.window_violated && (
-              <Badge variant="destructive" className="h-4 px-1 text-[10px]">
+              <Badge variant="destructive" className="h-4 px-1 text-3xs">
                 Late
               </Badge>
             )}
@@ -1880,7 +1880,7 @@ function VisitCardView({
                   href={dirUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] hover:bg-muted"
+                  className="inline-flex items-center gap-1 rounded border px-2 py-1 text-2xs hover:bg-muted"
                 >
                   <Navigation className="h-3 w-3" /> Directions
                 </a>
@@ -1890,7 +1890,7 @@ function VisitCardView({
                   type="button"
                   onClick={() => onComplete!(visit.id)}
                   disabled={completing}
-                  className="inline-flex items-center gap-1 rounded border border-emerald-600/40 bg-emerald-600/10 px-2 py-1 text-[11px] text-emerald-700 hover:bg-emerald-600/20 disabled:opacity-50 dark:text-emerald-400"
+                  className="inline-flex items-center gap-1 rounded border border-emerald-600/40 bg-emerald-600/10 px-2 py-1 text-2xs text-emerald-700 hover:bg-emerald-600/20 disabled:opacity-50 dark:text-emerald-400"
                 >
                   <CheckCircle2 className="h-3 w-3" /> {completing ? "…" : "Complete"}
                 </button>
@@ -1954,7 +1954,7 @@ function HeatmapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold">Tech load</h2>
           {unassigned > 0 && (
-            <Badge variant="destructive" className="text-[10px]">
+            <Badge variant="destructive" className="text-3xs">
               {unassigned} unassigned
             </Badge>
           )}

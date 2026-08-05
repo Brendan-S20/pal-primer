@@ -50,7 +50,7 @@ function AddonsCatalog() {
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6">
       <div>
-        <h1 className="text-2xl font-semibold">Add-on services</h1>
+        <h2 className="text-lg font-semibold">Add-on services</h2>
         <p className="text-sm text-muted-foreground">
           Cross-sells your team can bill from the office or in the field.
         </p>
@@ -127,7 +127,7 @@ function AddonsCatalog() {
                     {s.name}
                     <span className="ml-2 text-xs text-muted-foreground">({s.code})</span>
                     {!s.active && <Badge variant="outline" className="ml-2">inactive</Badge>}
-                    <Badge variant="secondary" className="ml-2 text-[10px]">{s.kind}</Badge>
+                    <Badge variant="secondary" className="ml-2 text-3xs">{s.kind}</Badge>
                   </div>
                   {s.description && <div className="text-xs text-muted-foreground">{s.description}</div>}
                 </div>

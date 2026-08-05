@@ -179,7 +179,7 @@ function ProfilePage() {
       {dialog}
 
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Your account</h1>
+        <h1 className="text-2xl font-semibold">Your account</h1>
         <p className="text-sm text-muted-foreground">
           How you appear to the rest of your team, and how you sign in.
         </p>

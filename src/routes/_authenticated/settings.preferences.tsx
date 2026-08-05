@@ -68,7 +68,15 @@ function PreferencesPage() {
   }, []);
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="max-w-2xl space-y-6">
+      {/* See the note in settings.deep-clean: this page also opened straight
+          into a card while the other eighteen led with a heading. */}
+      <div>
+        <h2 className="text-lg font-semibold">Preferences</h2>
+        <p className="text-sm text-muted-foreground">
+          Language, branding and the defaults this workspace uses.
+        </p>
+      </div>
       <Card>
         <CardHeader>
           <CardTitle>Language</CardTitle>

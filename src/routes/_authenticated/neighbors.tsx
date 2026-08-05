@@ -337,7 +337,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: "go
   return (
     <Card>
       <CardContent className="p-3">
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground">{label}</div>
         <div className={`text-2xl font-semibold ${tone === "good" ? "text-emerald-600" : ""}`}>{value}</div>
       </CardContent>
     </Card>

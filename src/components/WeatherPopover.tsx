@@ -83,11 +83,11 @@ function DayColumn({ day }: { day: DayCell }) {
         day.risky ? "bg-destructive/10 text-destructive" : ""
       }`}
     >
-      <span className="text-[10px] font-medium uppercase opacity-70">
+      <span className="text-3xs font-medium uppercase opacity-70">
         {weekdayInitial(day.date)}
       </span>
-      <span className="text-[11px] font-semibold tabular-nums">{Math.round(day.temp_max)}°</span>
-      <span className="text-[10px] tabular-nums opacity-60">{Math.round(day.temp_min)}°</span>
+      <span className="text-2xs font-semibold tabular-nums">{Math.round(day.temp_max)}°</span>
+      <span className="text-3xs tabular-nums opacity-60">{Math.round(day.temp_min)}°</span>
       <span className="flex h-3 items-center justify-center">
         {day.precip_prob >= 50 && <Droplets className="h-3 w-3 opacity-80" />}
       </span>
@@ -102,7 +102,7 @@ function AreaCard({ cluster }: { cluster: ZoneForecast[] }) {
     <div className="rounded-md border bg-card p-2">
       <div className="flex items-baseline justify-between gap-2">
         <span className="min-w-0 truncate text-xs font-medium">{lead.name}</span>
-        <span className="flex shrink-0 items-center gap-1.5 text-[10px] text-muted-foreground">
+        <span className="flex shrink-0 items-center gap-1.5 text-3xs text-muted-foreground">
           {extra > 0 && <span>+{extra} more</span>}
           {lead.stale && <span title="Showing a cached forecast">cached</span>}
         </span>
@@ -114,7 +114,7 @@ function AreaCard({ cluster }: { cluster: ZoneForecast[] }) {
           ))}
         </div>
       ) : (
-        <p className="mt-1.5 text-[11px] text-muted-foreground">No forecast available.</p>
+        <p className="mt-1.5 text-2xs text-muted-foreground">No forecast available.</p>
       )}
     </div>
   );
@@ -200,7 +200,7 @@ export function WeatherPopover() {
                 <AreaCard key={c[0].id} cluster={c} />
               ))}
               {failedCount > 0 && (
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   Couldn't load {failedCount} zone{failedCount === 1 ? "" : "s"} (missing
                   coordinates or weather service error).
                 </p>

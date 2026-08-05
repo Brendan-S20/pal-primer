@@ -77,7 +77,7 @@ function SettingsLayout() {
       <nav aria-label="Settings sections" className="space-y-2 border-b pb-3">
         {groups.map((group) => (
           <div key={group.title} className="flex flex-wrap items-baseline gap-1">
-            <span className="w-36 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <span className="w-36 shrink-0 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
               {group.title}
             </span>
             {group.tabs.map((tab) => {

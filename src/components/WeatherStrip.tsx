@@ -184,11 +184,11 @@ export function WeatherStrip({ day }: { day: string }) {
             >
               <div className="min-w-0">
                 <div className="truncate font-medium">{z.name}</div>
-                <div className="truncate text-[11px] opacity-80">
+                <div className="truncate text-2xs opacity-80">
                   {z.risky ? z.reasons.join(" · ") : z.reasons[0] ?? "clear"}
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2 text-[11px] opacity-80">
+              <div className="flex shrink-0 items-center gap-2 text-2xs opacity-80">
                 {z.precip_prob != null && (
                   <span className="inline-flex items-center gap-0.5">
                     <CloudRain className="h-3 w-3" />

@@ -107,7 +107,7 @@ function SchedulingSettings() {
             onChange={(days) => mut.mutate({ work_days: days })}
             disabled={mut.isPending}
           />
-          <p className="mt-1 text-[11px] text-muted-foreground">
+          <p className="mt-1 text-2xs text-muted-foreground">
             New visits are only scheduled on these days. A client&apos;s explicit preferred weekdays
             still win — an agreed Saturday stays a Saturday.
           </p>
@@ -143,7 +143,7 @@ function SchedulingSettings() {
                 }
               }}
             />
-            <p className="mt-1 text-[11px] text-muted-foreground">
+            <p className="mt-1 text-2xs text-muted-foreground">
               90 is a good default — a quarter to plan and sell against. Longer suits annual
               contracts; shorter means less to redo when prices or frequencies change.
             </p>
@@ -151,7 +151,7 @@ function SchedulingSettings() {
           <div className="rounded-md border bg-muted/30 p-3">
             <p className="text-xs font-medium">Currently filled through</p>
             <p className="mt-0.5 text-sm tabular-nums">{horizonLabel}</p>
-            <p className="mt-1 text-[11px] text-muted-foreground">
+            <p className="mt-1 text-2xs text-muted-foreground">
               Clients whose plan has an end date stop on that date, and one-off visits never
               repeat — changing this number does not change either.
             </p>
@@ -214,7 +214,7 @@ function SchedulingSettings() {
               defaultValue={settings.max_drive_minutes ?? 240}
               onBlur={(e) => mut.mutate({ max_drive_minutes: Number(e.target.value) })}
             />
-            <p className="mt-1 text-[11px] text-muted-foreground">
+            <p className="mt-1 text-2xs text-muted-foreground">
               An assignment implying a longer drive than this is flagged as implausible on the
               board. It is a warning, not a limit — nothing is blocked.
             </p>
@@ -232,7 +232,7 @@ function SchedulingSettings() {
             settings.timezone ??
             DEFAULT_TIMEZONE}
         </p>
-        <p className="mt-1 text-[11px] text-muted-foreground">
+        <p className="mt-1 text-2xs text-muted-foreground">
           Arrival windows are anchored to the workday start in this time zone. It also decides what
           counts as &ldquo;today&rdquo; for the customer portal and the end-of-day close-out, so it
           is set once in{" "}

@@ -71,7 +71,7 @@ const STATUS_CHIP: Record<string, string> = {
 function StatusChip({ status }: { status: string }) {
   return (
     <span
-      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_CHIP[status] ?? "bg-muted"}`}
+      className={`rounded-full px-2 py-0.5 text-3xs font-medium ${STATUS_CHIP[status] ?? "bg-muted"}`}
     >
       {status.replace("_", " ")}
     </span>
@@ -159,19 +159,19 @@ export function MobileDayList({
                       <div className="mt-1 flex flex-wrap items-center gap-1">
                         <StatusChip status={v.status} />
                         {v.zones?.name && (
-                          <Badge variant="outline" className="h-4 px-1 text-[10px]">
+                          <Badge variant="outline" className="h-4 px-1 text-3xs">
                             {v.zones.name}
                           </Badge>
                         )}
                         {v.window_violated && (
-                          <Badge variant="destructive" className="h-4 px-1 text-[10px]">
+                          <Badge variant="destructive" className="h-4 px-1 text-3xs">
                             Late
                           </Badge>
                         )}
                         {v.weather_flagged && (
                           <Badge
                             variant="destructive"
-                            className="h-4 gap-0.5 px-1 text-[10px]"
+                            className="h-4 gap-0.5 px-1 text-3xs"
                             title={v.weather_note ?? "Weather risk"}
                           >
                             <CloudRain className="h-2.5 w-2.5" />
@@ -188,7 +188,7 @@ export function MobileDayList({
           </ol>
         </section>
       ))}
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Tap a visit for details, and to complete or cancel it. Moving a visit to another tech or
         another day is on desktop.
       </p>

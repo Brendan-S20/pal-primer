@@ -38,7 +38,7 @@ const OFFICE_TAB_URLS = ["/dashboard", "/routes", "/clients"];
 const TECH_TAB_URLS = ["/my-day"];
 
 const tabClass = (active: boolean) =>
-  `flex min-h-12 w-full flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-[10px] font-medium transition-colors ${
+  `flex min-h-12 w-full flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-3xs font-medium transition-colors ${
     active ? "text-primary" : "text-muted-foreground hover:text-foreground"
   }`;
 
@@ -208,7 +208,7 @@ export function MobileTabBar() {
           <nav aria-label="All sections" className="p-2">
             {moreGroups.map((group) => (
               <div key={group.label} className="py-1">
-                <div className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                <div className="px-3 pb-1 pt-2 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
                   {group.label}
                 </div>
                 <ul>

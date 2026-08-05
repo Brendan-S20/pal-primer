@@ -497,7 +497,7 @@ function GiftSection() {
                     </option>
                   ))}
               </select>
-              <p className="mt-1 text-[11px] text-muted-foreground">
+              <p className="mt-1 text-2xs text-muted-foreground">
                 The redeemed amount is added to this client's account credit.
               </p>
             </div>

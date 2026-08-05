@@ -146,7 +146,7 @@ function PlatformSidebar() {
           <Shield className="h-5 w-5 text-primary" />
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold">Platform admin</div>
-            <div className="truncate text-[11px] text-muted-foreground">HoundStack</div>
+            <div className="truncate text-2xs text-muted-foreground">HoundStack</div>
           </div>
         </div>
       </SidebarHeader>

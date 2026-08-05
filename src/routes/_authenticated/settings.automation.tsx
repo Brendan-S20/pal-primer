@@ -94,7 +94,7 @@ function AutomationPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Automation</h1>
+        <h2 className="text-lg font-semibold">Automation</h2>
         <p className="text-sm text-muted-foreground">
           A nightly worker runs these tasks against your organization.
         </p>

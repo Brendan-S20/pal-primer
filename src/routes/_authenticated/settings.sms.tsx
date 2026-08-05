@@ -31,7 +31,7 @@ function SmsSettings() {
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">SMS settings</h1>
+        <h2 className="text-lg font-semibold">SMS settings</h2>
         <p className="text-sm text-muted-foreground">
           Two-way texting with clients runs on a HoundStack-managed number, provisioned for your
           organization. There is no Twilio account to connect and no carrier registration for you to

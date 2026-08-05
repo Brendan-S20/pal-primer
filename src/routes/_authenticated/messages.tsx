@@ -119,7 +119,7 @@ function MessagesLayout() {
                       {t.clients?.display_name ?? "Unknown client"}
                     </span>
                     {t.clients?.sms_opt_out && (
-                      <span className="rounded bg-destructive/15 px-1.5 text-[10px] font-semibold uppercase text-destructive">
+                      <span className="rounded bg-destructive/15 px-1.5 text-3xs font-semibold uppercase text-destructive">
                         opt-out
                       </span>
                     )}
@@ -128,7 +128,7 @@ function MessagesLayout() {
                     {t.direction === "inbound" ? "↳ " : "→ "}
                     {t.body}
                   </span>
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className="text-3xs text-muted-foreground">
                     {new Date(t.created_at).toLocaleString()}
                   </span>
                 </Link>

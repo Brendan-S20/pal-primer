@@ -77,7 +77,7 @@ function ReviewsSettings() {
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Reviews & referrals</h1>
+        <h2 className="text-lg font-semibold">Reviews & referrals</h2>
         <p className="text-sm text-muted-foreground">
           Ask happy clients for a Google review and reward those who refer new business.
         </p>

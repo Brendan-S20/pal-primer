@@ -259,7 +259,7 @@ function AppShell() {
             >
               <Search className="h-4 w-4 shrink-0" />
               <span className="truncate">Search or jump to…</span>
-              <kbd className="ml-auto hidden shrink-0 rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] sm:inline-block">
+              <kbd className="ml-auto hidden shrink-0 rounded border bg-muted px-1.5 py-0.5 font-mono text-3xs sm:inline-block">
                 {isMac ? "⌘K" : "Ctrl K"}
               </kbd>
             </button>
