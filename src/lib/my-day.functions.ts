@@ -247,7 +247,13 @@ export const completeVisit = createServerFn({ method: "POST" })
         // fall back to email (never the platform SMS number).
         const { resolveOrgTwilioConfig } = await import("@/lib/twilio-credentials.server");
         const tenant = await resolveOrgTwilioConfig(orgId);
-        if (tenant && c.primary_phone && !c.sms_opt_out) {
+        // Same consent gate as every other sender. Without it the nightly
+        // job is the single largest source of un-consented traffic, which is
+        // precisely what a toll-free number gets shut off for.
+        const { data: mayTextDaily } = await (context.supabase as any).rpc("client_may_be_texted", {
+          _client_id: c.id,
+        });
+        if (tenant && mayTextDaily) {
           const firstName = (c.display_name ?? "").split(/\s+/)[0] || "there";
           const template =
             (o.review_ask_template && String(o.review_ask_template).trim()) ||

@@ -975,6 +975,10 @@ export type Database = {
           referred_by_client_id: string | null
           review_asked_at: string | null
           review_submitted_at: string | null
+          sms_consent_at: string | null
+          sms_consent_phone: string | null
+          sms_consent_source: string | null
+          sms_consent_text: string | null
           sms_opt_out: boolean
           stripe_customer_id: string | null
           tags: string[]
@@ -1022,6 +1026,10 @@ export type Database = {
           referred_by_client_id?: string | null
           review_asked_at?: string | null
           review_submitted_at?: string | null
+          sms_consent_at?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
           sms_opt_out?: boolean
           stripe_customer_id?: string | null
           tags?: string[]
@@ -1069,6 +1077,10 @@ export type Database = {
           referred_by_client_id?: string | null
           review_asked_at?: string | null
           review_submitted_at?: string | null
+          sms_consent_at?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_source?: string | null
+          sms_consent_text?: string | null
           sms_opt_out?: boolean
           stripe_customer_id?: string | null
           tags?: string[]

@@ -47,7 +47,12 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
     const tenant = await resolveOrgTwilioConfig(client.organization_id);
     const firstName = (client.display_name ?? "").split(/\s+/)[0] || "there";
 
-    if (tenant && client.primary_phone && !client.sms_opt_out) {
+    // Consent, not merely the absence of a STOP. Asked through SQL so this
+    // path and every other one apply the same rule (30513).
+    const { data: mayTextReview } = await (supabase as any).rpc("client_may_be_texted", {
+      _client_id: client.id,
+    });
+    if (tenant && mayTextReview && client.primary_phone) {
       const template =
         org.review_ask_template?.trim() ||
         `Hi {name}, thanks for choosing ${org.name ?? "us"}! If we did a great job, a quick review would mean the world: {link} Reply STOP to opt out.`;

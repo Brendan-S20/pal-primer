@@ -1063,3 +1063,63 @@ export const endClientHold = createServerFn({ method: "POST" })
     });
     return { ok: true };
   });
+
+// ── Texting consent ───────────────────────────────────────────────────────
+//
+// Twilio 30513 rejected toll-free verification because there was no opt-in to
+// describe: `sms_opt_out` only ever went true AFTER a STOP reply, so a client
+// nobody had asked read as sendable. Consent is now a recorded fact with the
+// wording attached — see migration 20260805020000.
+
+/** The exact words a client agrees to. Exported because three things must not
+ *  drift apart: what the client is shown, what gets stored as evidence, and
+ *  what the public SMS policy page says a HoundStack client agreed to. A
+ *  carrier asks for this verbatim. */
+export const SMS_CONSENT_TEXT =
+  "I agree to receive service text messages about my appointments, visit " +
+  "updates, and billing from this business at the number provided. Consent " +
+  "is not a condition of purchase. Message and data rates may apply. Message " +
+  "frequency varies. Reply STOP to opt out or HELP for help.";
+
+export const recordSmsConsent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const orgId = await resolveOrgId(context.supabase, context.userId);
+    // Same-org check before the RPC so a uuid from another tenant reads as
+    // "not your client" rather than a policy error.
+    const { data: who } = await (context.supabase.from("clients") as any)
+      .select("id")
+      .eq("id", data.clientId)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (!who) throw new Error("That client is not in your organization.");
+
+    // 'staff' — recorded on the client's behalf by someone in the office, which
+    // an audit must be able to tell apart from the client ticking a box.
+    const { error } = await (context.supabase as any).rpc("record_client_sms_consent", {
+      _client_id: data.clientId,
+      _text: SMS_CONSENT_TEXT,
+      _source: "staff",
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true, text: SMS_CONSENT_TEXT };
+  });
+
+/** How much of the book can actually be texted. Drives the banner, so the gap
+ *  is a number on screen rather than a mystery about why reminders stopped. */
+export const getSmsConsentCoverage = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { data, error } = await (context.supabase as any).rpc("sms_consent_coverage", {
+      _org_id: orgId,
+    });
+    if (error) throw new Error(error.message);
+    const row = (data ?? [])[0] ?? { with_phone: 0, consented: 0, opted_out: 0 };
+    return {
+      withPhone: Number(row.with_phone),
+      consented: Number(row.consented),
+      optedOut: Number(row.opted_out),
+    };
+  });

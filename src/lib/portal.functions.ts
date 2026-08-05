@@ -1161,3 +1161,44 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
       businessName: client?.display_name as string,
     };
   });
+
+// ── The client opting themselves in ───────────────────────────────────────
+//
+// The strongest evidence a carrier can be shown: the end user, authenticated
+// on their own portal session, ticking a box whose exact words are stored with
+// the timestamp. Source is 'portal' so an audit can tell this apart from a
+// staff member recording consent on someone's behalf.
+
+export const portalSetSmsConsent = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z.object({ token: z.string().uuid(), optIn: z.boolean() }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
+    const session = await requirePortalSession(data.token);
+    const sb = await admin();
+
+    const clientId = (session as any).clientId ?? (session as any).client_id;
+    if (!clientId) throw new Error("No client on this portal session");
+
+    if (!data.optIn) {
+      // Opting out is not "clear the consent record" — the record of what they
+      // once agreed to is the audit trail, and deleting it on withdrawal would
+      // destroy the evidence for every message already sent. sms_opt_out is
+      // the live switch; the consent columns stay as history.
+      const { error } = await (sb.from("clients") as any)
+        .update({ sms_opt_out: true })
+        .eq("id", clientId);
+      if (error) throw new Error(error.message);
+      return { ok: true, optedIn: false };
+    }
+
+    const { SMS_CONSENT_TEXT } = await import("@/lib/clients.functions");
+    const { error } = await sb.rpc("record_client_sms_consent" as any, {
+      _client_id: clientId,
+      _text: SMS_CONSENT_TEXT,
+      _source: "portal",
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true, optedIn: true, text: SMS_CONSENT_TEXT };
+  });
