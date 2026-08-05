@@ -50,6 +50,9 @@ const NAV: NavEntry[] = [
   { label: "Reviews", to: "/settings/reviews", group: "Settings" },
   { label: "Add-ons", to: "/settings/addons", group: "Settings" },
   { label: "Accounting", to: "/settings/accounting", group: "Settings" },
+  // Yours, not the company's — hence its own group rather than sitting among
+  // the org settings a technician cannot open.
+  { label: "Your account", to: "/profile", group: "Account" },
 ];
 
 type ClientHit = { id: string; name: string };

@@ -109,7 +109,7 @@ export const startVisit = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { error } = await context.supabase.rpc("start_visit", {
       _visit_id: data.visitId,
-      _started_at: data.startedAt ?? null,
+      _started_at: data.startedAt ?? undefined,
     });
     if (error) throw new Error(error.message);
     try {
@@ -156,7 +156,7 @@ export const completeVisit = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { error } = await context.supabase.rpc("complete_visit", {
       _visit_id: data.visitId,
-      _completed_at: data.completedAt ?? null,
+      _completed_at: data.completedAt ?? undefined,
     });
     if (error) throw new Error(error.message);
     try {
@@ -333,7 +333,7 @@ export const skipVisit = createServerFn({ method: "POST" })
       _visit_id: data.visitId,
       _reason: data.reason,
       _code: data.code,
-      _skipped_at: data.skippedAt ?? null,
+      _skipped_at: data.skippedAt ?? undefined,
     });
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -473,7 +473,7 @@ export const confirmOpenVisit = createServerFn({ method: "POST" })
     const { data: outcome, error } = await (supabase as any).rpc("confirm_open_visit", {
       _visit_id: data.visitId,
       _completed: data.completed,
-      _completed_at: data.completedAt ?? null,
+      _completed_at: data.completedAt ?? undefined,
       _note: data.note ?? null,
     });
     if (error) throw new Error(error.message);

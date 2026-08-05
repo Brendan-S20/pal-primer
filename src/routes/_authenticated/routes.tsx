@@ -930,7 +930,7 @@ function RoutesPage() {
         </div>
       </div>
 
-      {/* Dispatch tools: things you DO to the day in front of you.
+      {/* Auto-routing: things you DO to the day in front of you.
           The configuration that used to share this drawer — workday hours,
           work days, speed and traffic assumptions — moved to Settings →
           Scheduling. One button held both, so "Planning tools" meant a date
@@ -938,12 +938,17 @@ function RoutesPage() {
           you had to open it to find out which you were about to get.
           The day picker that sat here too is gone: the header already has one,
           and two date inputs on one screen setting the same day is not a
-          choice anybody wants to make. */}
+          choice anybody wants to make.
+          It renders FLOATING now (fixed, bottom-right) rather than inline. As
+          an inline block it pushed the board down the moment you opened it, so
+          you lost sight of the schedule exactly when you started rearranging
+          it. Its position in this file no longer affects where it appears. */}
       {toolsOpen && (
         <AutoRoutingPanel
           day={day}
           staff={staff}
           onApplied={() => setLocalColumns(null)}
+          onClose={() => setToolsOpen(false)}
         />
       )}
 
