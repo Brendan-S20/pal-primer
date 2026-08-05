@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -393,8 +393,11 @@ function ChurnTab() {
         <p className="text-xs text-muted-foreground mt-1">
           Grouped by AI-scored churn reason. Revenue at risk = paid revenue from these clients in
           the last 180 days, <span className="font-medium">before refunds</span> — this is an
-          estimate for prioritising outreach, not a reported figure. Score churn from{" "}
-          <span className="font-medium">AI Tools → Churn</span>.
+          estimate for prioritising outreach, not a reported figure. Score churn from the{" "}
+          <Link to="/clients" className="font-medium underline underline-offset-2">
+            Clients
+          </Link>{" "}
+          list.
         </p>
       </CardHeader>
       <CardContent>
