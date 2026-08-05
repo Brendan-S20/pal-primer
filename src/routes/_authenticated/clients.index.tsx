@@ -31,7 +31,7 @@ export const Route = createFileRoute("/_authenticated/clients/")({
   component: ClientsList,
 });
 
-type StatusFilter = "all" | "active" | "inactive" | "outstanding" | "at_risk";
+type StatusFilter = "all" | "active" | "inactive" | "outstanding" | "at_risk" | "no_plan";
 type TypeFilter = "all" | "residential" | "commercial";
 
 function money(cents: number) {
@@ -98,7 +98,16 @@ function ClientsList() {
     const outstanding = clients.filter((c: any) => c.outstanding_cents > 0).length;
     const owedTotal = clients.reduce((sum: number, c: any) => sum + (c.outstanding_cents ?? 0), 0);
     const atRisk = clients.filter((c: any) => (c.churn_score ?? 0) >= 60).length;
-    return { total: clients.length, active, outstanding, owedTotal, atRisk };
+    // A client with no service plan is never visited, never invoiced, never
+    // routed. Until now the list showed them in green as "Active", identical
+    // to somebody on a weekly route — and on this database that is 287 of
+    // them, sitting in a count of 297 that the schedule flatly contradicts.
+    // "Active" is a flag somebody set; having work is a fact. They are not the
+    // same thing and the list was only showing the flag.
+    const noPlan = clients.filter(
+      (c: any) => c.active && (c.active_subscription_count ?? 0) === 0,
+    ).length;
+    return { total: clients.length, active, outstanding, owedTotal, atRisk, noPlan };
   }, [clients]);
 
   const filtered = useMemo(() => {
@@ -109,6 +118,8 @@ function ClientsList() {
       if (status === "inactive" && c.active) return false;
       if (status === "outstanding" && !(c.outstanding_cents > 0)) return false;
       if (status === "at_risk" && !((c.churn_score ?? 0) >= 60)) return false;
+      if (status === "no_plan" && !(c.active && (c.active_subscription_count ?? 0) === 0))
+        return false;
       if (!needle) return true;
       const hay = [c.display_name, c.primary_email, c.primary_phone]
         .filter(Boolean)
@@ -210,9 +221,30 @@ function ClientsList() {
           </div>
           <p className="mt-1 text-2xl font-semibold">{stats.atRisk}</p>
         </Card>
-        <Card className="p-4">
-          <div className="text-xs text-muted-foreground">Inactive</div>
-          <p className="mt-1 text-2xl font-semibold">{stats.total - stats.active}</p>
+        {/* Replaces the "Inactive" tile. Inactive was already derivable from
+            Active and the total, and it is the less useful of the two: an
+            archived client is a decision somebody made, whereas an active
+            client with no plan is usually an oversight — an import that was
+            never finished, or a service that ended and was never replaced.
+            Those are the ones that quietly stop earning. */}
+        <Card
+          className={`p-4 ${stats.noPlan > 0 ? "cursor-pointer hover:bg-muted/40" : ""}`}
+          onClick={() => stats.noPlan > 0 && setStatus("no_plan")}
+        >
+          <div
+            className="text-xs text-muted-foreground"
+            title="Active clients with no running service. They are never scheduled, never invoiced, and never appear on a route."
+          >
+            No service plan
+          </div>
+          <p
+            className={`mt-1 text-2xl font-semibold ${stats.noPlan > 0 ? "text-amber-600" : ""}`}
+          >
+            {stats.noPlan}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {stats.total - stats.active} archived
+          </p>
         </Card>
       </div>
 
@@ -236,6 +268,7 @@ function ClientsList() {
             <SelectItem value="inactive">Inactive</SelectItem>
             <SelectItem value="outstanding">Has balance</SelectItem>
             <SelectItem value="at_risk">At churn risk</SelectItem>
+            <SelectItem value="no_plan">No service plan</SelectItem>
           </SelectContent>
         </Select>
         <Select value={type} onValueChange={(v) => setType(v as TypeFilter)}>
@@ -351,10 +384,15 @@ function ClientsList() {
                     <div className="text-xs text-muted-foreground">{c.primary_phone ?? ""}</div>
                   </div>
                   <div className="text-right">
-                    {c.active ? (
-                      <span className="text-xs text-emerald-600">Active</span>
-                    ) : (
+                    {/* Three states, not two. "Active with no plan" was
+                        rendering as plain green "Active", which is the same
+                        thing it says about somebody on a weekly route. */}
+                    {!c.active ? (
                       <span className="text-xs text-muted-foreground">Inactive</span>
+                    ) : (c.active_subscription_count ?? 0) === 0 ? (
+                      <span className="text-xs text-amber-600">No service plan</span>
+                    ) : (
+                      <span className="text-xs text-emerald-600">Active</span>
                     )}
                     {/* Show owed and credit distinctly and labeled — a client
                         can carry both at once (finding #22). */}
@@ -469,10 +507,16 @@ function ClientsList() {
                       <div className="text-xs">{c.primary_phone ?? ""}</div>
                     </td>
                     <td className="px-4 py-3">
-                      {c.active ? (
-                        <span className="text-emerald-600">Active</span>
-                      ) : (
+                      {/* Same three states as the mobile cards above — the two
+                          views disagreeing about what "Active" means is how
+                          somebody checks on a phone and gets a different
+                          answer than the person beside them on a laptop. */}
+                      {!c.active ? (
                         <span className="text-muted-foreground">Inactive</span>
+                      ) : (c.active_subscription_count ?? 0) === 0 ? (
+                        <span className="text-amber-600">No service plan</span>
+                      ) : (
+                        <span className="text-emerald-600">Active</span>
                       )}
                       {c.comms_paused && (
                         <Badge variant="outline" className="ml-2 text-[10px]">
