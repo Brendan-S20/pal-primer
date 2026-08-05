@@ -6,10 +6,6 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import {
   listVisitsForDay,
-  assignRoute,
-  optimizeRoute,
-  optimizeWeek,
-  reoptimizeAll,
   listStaff,
   reassignVisit,
   reorderRoute,
@@ -124,11 +120,9 @@ function todayISO() {
 
 function RoutesPage() {
   const [day, setDay] = useState(todayISO());
-  const [assignStaffId, setAssignStaffId] = useState<string>("");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [localColumns, setLocalColumns] = useState<Record<string, Visit[]> | null>(null);
 
-  const [weekDays, setWeekDays] = useState(7);
   const [viewMode, setViewMode] = useState<"map" | "board">(() =>
     typeof localStorage !== "undefined" && localStorage.getItem("routes.viewMode") === "board"
       ? "board"
@@ -336,10 +330,6 @@ function RoutesPage() {
   const listV = useServerFn(listVisitsForDay);
   const listS = useServerFn(listStaff);
   const setRouting = useServerFn(setStaffRouting);
-  const assign = useServerFn(assignRoute);
-  const optimize = useServerFn(optimizeRoute);
-  const optWeek = useServerFn(optimizeWeek);
-  const reoptAll = useServerFn(reoptimizeAll);
   const reassign = useServerFn(reassignVisit);
 
   const reorder = useServerFn(reorderRoute);
@@ -580,45 +570,11 @@ function RoutesPage() {
       toast.warning(w.message, { duration: 8000 });
     }
   };
-  const assignMut = useMutation({
-    mutationFn: () => assign({ data: { staffId: assignStaffId, day, reassign: false } }),
-    onSuccess: (r) => {
-      toast.success(`Auto-assigned ${r.assigned} visits`);
-      warnRoute((r as any).warnings);
-      setLocalColumns(null);
-      qc.invalidateQueries({ queryKey: ["visits", day] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-  const optimizeMut = useMutation({
-    mutationFn: () => optimize({ data: { staffId: assignStaffId, day, reassign: true } }),
-    onSuccess: (r) => {
-      toast.success(`Optimized ${r.assigned} stops (nearest-neighbor)`);
-      warnRoute((r as any).warnings);
-      setLocalColumns(null);
-      qc.invalidateQueries({ queryKey: ["visits", day] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-  const weekMut = useMutation({
-    mutationFn: () => optWeek({ data: { startDate: day, days: weekDays } }),
-    onSuccess: (r) => {
-      const total = (r.results ?? []).reduce((s: number, x: any) => s + (x.assigned ?? 0), 0);
-      toast.success(`Optimized ${total} stops across ${weekDays} day(s)`);
-      setLocalColumns(null);
-      qc.invalidateQueries({ queryKey: ["visits"] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-  const reoptMut = useMutation({
-    mutationFn: () => reoptAll({ data: { day } }),
-    onSuccess: (r) => {
-      toast.success(`Re-optimized ${r.total} stops across ${r.techs} tech(s)`);
-      setLocalColumns(null);
-      qc.invalidateQueries({ queryKey: ["visits", day] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  // assignMut / optimizeMut / weekMut / reoptMut lived here. They backed the
+  // deleted "One tech, one day" card, and optimizeMut sent `reassign: true` —
+  // the call that reassigned an entire day's visits, across every tech, to one
+  // person. Removing the JSX alone would have left that call in the bundle,
+  // unreachable today and one careless re-wire from being reachable again.
   const listTimeOffFn = useServerFn(listTimeOff);
   const timeOffQ = useQuery({
     queryKey: ["time-off", rangeStart, rangeEnd],
@@ -836,6 +792,13 @@ function RoutesPage() {
                 </div>
                 <Switch checked={hideWeekends} onCheckedChange={setHideWeekendsPersist} />
               </div>
+              <p className="border-b pb-3 text-[11px] text-muted-foreground">
+                Workday hours, work days and travel assumptions live in{" "}
+                <Link to="/settings/scheduling" className="underline underline-offset-2">
+                  Settings → Scheduling
+                </Link>
+                .
+              </p>
               <div className="space-y-1.5">
                 <div className="text-sm font-medium">Density</div>
                 <div className="text-[11px] text-muted-foreground">
@@ -984,102 +947,21 @@ function RoutesPage() {
         />
       )}
 
-      {toolsOpen && (
-        <div className="space-y-4 rounded-lg border bg-card p-5">
-          <div className="text-xs font-medium text-muted-foreground">
-            One tech, one day
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="tech">Assign or optimize one tech&apos;s day</Label>
-              <div className="flex gap-2">
-                <select
-                  id="tech"
-                  value={assignStaffId}
-                  onChange={(e) => setAssignStaffId(e.target.value)}
-                  className="h-10 flex-1 rounded-md border bg-background px-3 text-sm"
-                >
-                  <option value="">Select…</option>
-                  {staff.map((s: any) => (
-                    <option key={s.id} value={s.id}>
-                      {s.display_name}
-                    </option>
-                  ))}
-                </select>
-                <Button
-                  onClick={() => assignMut.mutate()}
-                  disabled={!assignStaffId || assignMut.isPending}
-                  variant="secondary"
-                >
-                  Assign
-                </Button>
-                <Button
-                  onClick={() => optimizeMut.mutate()}
-                  disabled={!assignStaffId || optimizeMut.isPending}
-                >
-                  {optimizeMut.isPending ? "…" : "Optimize"}
-                </Button>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Assign gives them {day}&apos;s unassigned stops. Optimize re-sequences what they
-                already have, using time windows and traffic from their start address.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Optimize across several days</Label>
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  type="number"
-                  min={1}
-                  max={31}
-                  value={weekDays}
-                  onChange={(e) =>
-                    setWeekDays(Math.max(1, Math.min(31, Number(e.target.value) || 1)))
-                  }
-                  className="w-20"
-                />
-                <span className="text-sm text-muted-foreground">days from {day}</span>
-                <Button onClick={() => weekMut.mutate()} disabled={weekMut.isPending}>
-                  {weekMut.isPending ? "…" : "Optimize"}
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => reoptMut.mutate()}
-                  disabled={reoptMut.isPending}
-                  title="Recompute sequence for every tech using their remaining stops"
-                >
-                  {reoptMut.isPending ? "…" : "Re-optimize today"}
-                </Button>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Spreads unassigned visits round-robin by zone, then optimizes each tech&apos;s day.
-                Balance moves stops off anyone whose day runs past the workday end.
-              </p>
-            </div>
-          </div>
-
-
-          <div className="border-t pt-4">
-            <AiSection
-              title="AI dispatch"
-              description="Suggest value-aware reassignments for a day."
-            >
-              <DispatchPanel />
-            </AiSection>
-          </div>
-
-          {/* Pointer, not a second control — the same shape the timezone move
-              left behind, so nobody goes looking for these on the old screen. */}
-          <p className="border-t pt-4 text-[11px] text-muted-foreground">
-            Workday hours, work days and travel assumptions live in{" "}
-            <Link to="/settings/scheduling" className="underline underline-offset-2">
-              Settings → Scheduling
-            </Link>
-            .
-          </p>
-        </div>
-      )}
+      {/* The "One tech, one day" card that stood here is gone, and with it a
+          live data-loss bug.
+          Its Optimize button sent `reassign: true`. In optimize_route_v2 that
+          branch selects EVERY scheduled visit on the day — org-wide, not the
+          selected tech's — and writes assigned_staff_id = the chosen tech onto
+          all of them. Pick a tech, press Optimize, and the whole day belonged
+          to one person. There was no confirm, no preview and no undo, and the
+          helper text under the button said it "re-sequences what they already
+          have".
+          Everything the card could do is reachable from Auto-routing above,
+          which previews first and never silently reassigns: Assign is covered
+          because plan_route already ingests unassigned stops; one-tech and
+          multi-day optimize are the tech and date pickers; "Re-optimize today"
+          is no techs selected with today's date.
+          The Settings pointer it carried survives, in the Display popover. */}
 
       {range !== "today" && (
         <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -1192,9 +1074,13 @@ function RoutesPage() {
                 onOpenVisit={setDetailVisitId}
                 onGeocode={() => geocodeMut.mutate()}
                 geocoding={geocodeMut.isPending}
-                // Week/month is a coverage view: per-day sequences repeat, so
-                // ordered polylines/numbers only draw for a single day.
-                drawRoutes={false}
+                // Routes DO draw here now. They used to be off because
+                // buildTechGroups keyed on tech alone, so a week's stops sorted
+                // by `sequence` — which restarts at 1 daily — zig-zagged across
+                // days. Grouping per tech per day fixes the cause; `multiDay`
+                // then draws every day faintly and hover lifts one.
+                drawRoutes
+                multiDay
               />
             </div>
           )}
@@ -1547,6 +1433,7 @@ function MapPanel({
   geocoding,
   compact = false,
   drawRoutes = true,
+  multiDay = false,
 }: {
   baseStyle: TileVariant;
   onBaseStyle: (v: TileVariant) => void;
@@ -1562,8 +1449,14 @@ function MapPanel({
    *  1080p display — the arrangement exists to keep both visible. */
   compact?: boolean;
   drawRoutes?: boolean;
+  multiDay?: boolean;
 }) {
-  const groups = useMemo(() => buildTechGroups(visits as any, staff as any), [visits, staff]);
+  // perDay must match multiDay: grouping and rendering disagreeing is exactly
+  // the bug this replaces.
+  const groups = useMemo(
+    () => buildTechGroups(visits as any, staff as any, multiDay),
+    [visits, staff, multiDay],
+  );
   const mappable = visits.filter(
     (v: any) => v.properties?.latitude != null && v.properties?.longitude != null,
   ).length;
@@ -1614,6 +1507,7 @@ function MapPanel({
           height={compact ? 320 : 420}
           onVisitClick={onOpenVisit}
           drawRoutes={drawRoutes}
+          multiDay={multiDay}
           baseStyle={baseStyle}
           hoveredVisitId={hoveredVisitId}
           onHoverVisit={onHoverVisit}

@@ -40,6 +40,7 @@
   },
   "function_overloads": {},
   "uncalled_rpcs": {
+    "assign_route_for_day": "Superseded by plan_route/optimize_route_v3. Its only caller was the legacy one-tech card, deleted in 20260805060000 along with the whole-day reassignment bug. EXECUTE is revoked from authenticated in that same migration, so it is unreachable rather than merely uncalled; the definition stays because the eligibility migration's record is written around it.",
     "is_visit_tech": "Called from ~10 SQL bodies in this tree and from the storage policy in 20260701161658. The previous reason claimed the scanner could not see it because bootstrap-dump policies are not files \u2014 but that policy IS a file, so the stated premise was false even though the exemption is harmless. Kept as a no-op guard against the scanner's SQL-body parsing regressing."
   },
   "unwired_server_fns": {
