@@ -10,7 +10,6 @@ import { requirePermission } from "@/lib/authz.server";
 // office managers reach these; that was both an authz hole (I7) and the reason
 // the nav/route audience diverged.
 
-
 // Frictionless-signup gate: Stripe Express stays locked until the owner
 // verifies their email (Brendan's re-review). Money movement needs a real,
 // reachable owner address.
@@ -22,18 +21,26 @@ async function requireVerifiedEmail(orgId: string): Promise<void> {
     .eq("id", orgId)
     .maybeSingle();
   if (!data?.email_verified_at) {
-    throw new Error("Verify your email address to unlock payments. Check your inbox or resend the link from the Payments page.");
+    throw new Error(
+      "Verify your email address to unlock payments. Check your inbox or resend the link from the Payments page.",
+    );
   }
 }
 
 export const getStripeConnectStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_org_billing");
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_org_billing",
+    );
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data } = await (supabaseAdmin as any)
       .from("organizations")
-      .select("stripe_connect_account_id, stripe_connect_status, stripe_connect_charges_enabled, stripe_connect_connected_at, email_verified_at")
+      .select(
+        "stripe_connect_account_id, stripe_connect_status, stripe_connect_charges_enabled, stripe_connect_connected_at, email_verified_at",
+      )
       .eq("id", orgId)
       .maybeSingle();
     return {
@@ -55,7 +62,11 @@ export const startStripeConnect = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ origin: z.string().url() }).parse(d))
   .handler(async ({ data, context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_org_billing");
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_org_billing",
+    );
     await requireVerifiedEmail(orgId);
     const { data: userData } = await context.supabase.auth.getUser();
     const email = userData.user?.email ?? undefined;
@@ -77,10 +88,15 @@ export const startStripeConnect = createServerFn({ method: "POST" })
 export const ensureStripeConnectAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_org_billing");
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_org_billing",
+    );
     await requireVerifiedEmail(orgId);
     const { data: userData } = await context.supabase.auth.getUser();
-    const { ensureExpressAccount, resolveOrgStripeAccount } = await import("@/lib/stripe-connect.server");
+    const { ensureExpressAccount, resolveOrgStripeAccount } =
+      await import("@/lib/stripe-connect.server");
     const accountId = await ensureExpressAccount(orgId, userData.user?.email ?? undefined);
     const acct = await resolveOrgStripeAccount(orgId);
     return { accountId, chargesEnabled: !!acct?.chargesEnabled };
@@ -114,9 +130,14 @@ export const ensureStripeConnectAccount = createServerFn({ method: "POST" })
 export const createStripeAccountSession = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_org_billing");
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_org_billing",
+    );
     await requireVerifiedEmail(orgId);
-    const { resolveOrgStripeAccount, connectStripe, connectPublishableKey } = await import("@/lib/stripe-connect.server");
+    const { resolveOrgStripeAccount, connectStripe, connectPublishableKey } =
+      await import("@/lib/stripe-connect.server");
     const acct = await resolveOrgStripeAccount(orgId);
     if (!acct) throw new Error("Connect a Stripe account first.");
     const stripe = await connectStripe();
@@ -253,16 +274,24 @@ export const createStripeAccountSession = createServerFn({ method: "POST" })
 export const refreshStripeConnect = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_org_billing");
-    const { resolveOrgStripeAccount, fetchConnectAccountState } = await import("@/lib/stripe-connect.server");
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_org_billing",
+    );
+    const { resolveOrgStripeAccount, fetchConnectAccountState } =
+      await import("@/lib/stripe-connect.server");
     const acct = await resolveOrgStripeAccount(orgId);
     if (!acct) return { connected: false, chargesEnabled: false, status: null as string | null };
     const state = await fetchConnectAccountState(acct.accountId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    await (supabaseAdmin as any).from("organizations").update({
-      stripe_connect_charges_enabled: state.chargesEnabled,
-      stripe_connect_status: state.status,
-    }).eq("id", orgId);
+    await (supabaseAdmin as any)
+      .from("organizations")
+      .update({
+        stripe_connect_charges_enabled: state.chargesEnabled,
+        stripe_connect_status: state.status,
+      })
+      .eq("id", orgId);
     return { connected: true, chargesEnabled: state.chargesEnabled, status: state.status };
   });
 
@@ -276,8 +305,13 @@ export const refreshStripeConnect = createServerFn({ method: "POST" })
 export const auditClientCardRefs = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_org_billing");
-    const { requireOrgStripeAccount, connectStripe, verifyClientStripeCustomer } = await import("@/lib/stripe-connect.server");
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_org_billing",
+    );
+    const { requireOrgStripeAccount, connectStripe, verifyClientStripeCustomer } =
+      await import("@/lib/stripe-connect.server");
     const acct = await requireOrgStripeAccount(orgId);
     const stripe = await connectStripe();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -302,8 +336,13 @@ export const auditClientCardRefs = createServerFn({ method: "POST" })
 export const disconnectStripeConnect = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_org_billing");
-    const { resolveOrgStripeAccount, connectStripe, clearOrgClientStripeRefs } = await import("@/lib/stripe-connect.server");
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_org_billing",
+    );
+    const { resolveOrgStripeAccount, connectStripe, clearOrgClientStripeRefs } =
+      await import("@/lib/stripe-connect.server");
     const acct = await resolveOrgStripeAccount(orgId);
     if (acct) {
       try {
@@ -316,12 +355,90 @@ export const disconnectStripeConnect = createServerFn({ method: "POST" })
       }
     }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    await (supabaseAdmin as any).from("organizations").update({
-      stripe_connect_account_id: null,
-      stripe_connect_status: "disconnected",
-      stripe_connect_charges_enabled: false,
-      stripe_connect_connected_at: null,
-    }).eq("id", orgId);
+    await (supabaseAdmin as any)
+      .from("organizations")
+      .update({
+        stripe_connect_account_id: null,
+        stripe_connect_status: "disconnected",
+        stripe_connect_charges_enabled: false,
+        stripe_connect_connected_at: null,
+      })
+      .eq("id", orgId);
     await clearOrgClientStripeRefs(orgId);
     return { ok: true };
+  });
+
+/**
+ * Balance and next payout, answered without waiting for an iframe.
+ *
+ * The Money tab was two embedded Stripe components, each fetching
+ * independently, so the question the page exists to answer — how much have I
+ * got, and when does it reach my bank — took a couple of seconds and a layout
+ * shift. This is one call, rendered as text above them.
+ *
+ * It does NOT replace the embedded components. They own the detail (per-currency
+ * breakdowns, the payout list, changing the schedule); this is the headline.
+ */
+export const getStripeBalanceSummary = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_org_billing",
+    );
+
+    const { data: org } = await (context.supabase.from("organizations") as any)
+      .select("stripe_connect_account_id, stripe_connect_charges_enabled")
+      .eq("id", orgId)
+      .maybeSingle();
+
+    const acct = org?.stripe_connect_account_id;
+    if (!acct || !org?.stripe_connect_charges_enabled) return { connected: false as const };
+
+    const secret = process.env.STRIPE_SECRET_KEY;
+    if (!secret) throw new Error("Stripe is not configured on the server");
+    const { makeStripe } = await import("@/lib/stripe-client.server");
+    const stripe = await makeStripe(secret);
+
+    try {
+      const [balance, payouts] = await Promise.all([
+        stripe.balance.retrieve({}, { stripeAccount: acct }),
+        stripe.payouts.list({ limit: 1 }, { stripeAccount: acct }),
+      ]);
+
+      // Summed per currency, not flattened to one number. A connected account
+      // can hold several, and adding cents across currencies would produce a
+      // figure that is wrong in every one of them.
+      const sum = (rows: Array<{ amount: number; currency: string }>) => {
+        const m = new Map<string, number>();
+        for (const r of rows) m.set(r.currency, (m.get(r.currency) ?? 0) + r.amount);
+        return [...m.entries()].map(([currency, amount]) => ({ currency, amount }));
+      };
+
+      const next = payouts.data[0];
+      return {
+        connected: true as const,
+        // "available" is what can be paid out now; "pending" is still clearing.
+        // Showing only the total would overstate what the owner can actually
+        // draw today, which is the number they came to find.
+        available: sum(balance.available ?? []),
+        pending: sum(balance.pending ?? []),
+        lastPayout: next
+          ? {
+              amount: next.amount,
+              currency: next.currency,
+              status: next.status,
+              // `arrival_date` is seconds, and it is an ESTIMATE from Stripe —
+              // labelled as such in the UI rather than presented as a promise.
+              arrivalDate: next.arrival_date ? next.arrival_date * 1000 : null,
+            }
+          : null,
+      };
+    } catch (e: any) {
+      // A balance we cannot fetch must not take the tab down — the embedded
+      // components below still work and are the authoritative view.
+      return { connected: true as const, error: e?.message ?? "Could not load balance" };
+    }
   });

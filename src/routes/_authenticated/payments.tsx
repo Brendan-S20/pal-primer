@@ -13,6 +13,7 @@ import {
 } from "@stripe/react-connect-js";
 import {
   getStripeConnectStatus,
+  getStripeBalanceSummary,
   ensureStripeConnectAccount,
   createStripeAccountSession,
   startStripeConnect,
@@ -117,13 +118,43 @@ function PaymentsSettings() {
     // window size.
     <div className="max-w-5xl space-y-6">
       {dialog}
-      <div>
-        <h1 className="text-2xl font-semibold">Payments</h1>
-        <p className="text-sm text-muted-foreground">
-          Connect your own Stripe account to charge your clients. Invoice payments, saved cards,
-          autopay, and the client portal all run on your account, and funds settle directly to you.
-          Your payments, payouts, and account settings appear right here.
-        </p>
+      {/* The three-sentence explanation that used to live here is onboarding
+          copy: true, and re-read by a returning owner on every single visit.
+          It now shows only before an account is connected, which is the one
+          moment it answers a question somebody has. */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Payments</h1>
+          <p className="text-sm text-muted-foreground">
+            {cfg?.connected
+              ? "Your Stripe account. Money in, money out, and the settings behind both."
+              : "Get paid by card and bank transfer, straight to your own account."}
+          </p>
+        </div>
+        {cfg?.connected && (
+          <div className="flex items-center gap-2">
+            <span
+              className={`rounded px-2 py-0.5 text-xs ${
+                cfg.chargesEnabled
+                  ? "bg-emerald-100 text-emerald-800"
+                  : "bg-amber-100 text-amber-800"
+              }`}
+            >
+              {cfg.chargesEnabled ? "Charges enabled" : "Setup unfinished"}
+            </span>
+            <span className="text-xs text-muted-foreground" title={cfg.accountId}>
+              {maskAccountId(cfg.accountId)}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => refresh.mutate()}
+              disabled={refresh.isPending}
+            >
+              {refresh.isPending ? "…" : "Refresh"}
+            </Button>
+          </div>
+        )}
       </div>
 
       {q.isLoading ? (
@@ -150,107 +181,96 @@ function PaymentsSettings() {
         </div>
       ) : (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card p-3 text-sm">
-            <span>
-              {cfg.chargesEnabled ? (
-                <span className="rounded bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">
-                  Charges enabled
-                </span>
-              ) : (
-                <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
-                  Finish the steps below to enable charges
-                </span>
-              )}
-              <span className="ml-2 text-xs text-muted-foreground" title={cfg.accountId}>
-                Stripe account {maskAccountId(cfg.accountId)}
-              </span>
-            </span>
-            {/* Disconnect used to live here, beside Refresh, at identical
-                weight (outline/sm) and firing on one click with no
-                confirmation — a misclick took payment collection down for the
-                whole organization. It is now at the foot of the Account tab,
-                styled destructive, behind a confirm that names what breaks. */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => refresh.mutate()}
-              disabled={refresh.isPending}
-            >
-              Refresh
-            </Button>
-          </div>
-
+          {/* The status bar that sat here duplicated the header's chip and
+              account id. Disconnect also used to live in it, beside Refresh at
+              identical weight (outline/sm), firing on one click with no
+              confirmation — a misclick took payment collection down for the
+              whole organization. It is in the Account tab now, destructive and
+              behind a confirm that names what breaks. */}
           <ConnectDashboard
             chargesEnabled={!!cfg.chargesEnabled}
             onOnboardingExit={() => refresh.mutate()}
-            danger={
-              <div className="rounded-lg border border-destructive/40 p-4">
-                <div className="text-sm font-medium">Disconnect this Stripe account</div>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Stops all card and bank payments immediately — invoices, autopay, and the
-                  client portal. Saved client cards belong to this Stripe account and will not
-                  work on a different one.
-                </p>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="mt-3"
-                  disabled={disconnect.isPending}
-                  onClick={async () => {
-                    const ok = await confirm({
-                      title: "Disconnect Stripe?",
-                      description: (
-                        <>
-                          Clients will not be able to pay you through HoundStack until another
-                          account is connected. Autopay stops. Saved cards are tied to this
-                          account and will need re-entering if you connect a different one.
-                        </>
-                      ),
-                      confirmLabel: "Disconnect",
-                      destructive: true,
-                    });
-                    if (ok) disconnect.mutate();
-                  }}
-                >
-                  {disconnect.isPending ? "Disconnecting…" : "Disconnect"}
-                </Button>
-              </div>
+            settings={cfg.chargesEnabled ? <ProcessingFeeCard /> : null}
+            accountExtras={
+              <>
+                {/* Was a permanently-visible amber box at the foot of the page,
+                    warning about a hypothetical ("if you connect a different
+                    account") whether or not anybody was switching. A warning
+                    that is always on screen is one nobody reads. It lives next
+                    to Disconnect now, where switching accounts is the thing you
+                    are actually contemplating. */}
+                <div className="rounded-lg border p-4">
+                  <div className="text-sm font-medium">Saved client cards</div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Saved cards and autopay belong to the Stripe account that stored them. Connect a
+                    different account and clients will have to re-enter their card. This check finds
+                    cards that no longer resolve on the current account.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => auditCards.mutate()}
+                    disabled={auditCards.isPending}
+                  >
+                    {auditCards.isPending ? "Checking…" : "Check saved client cards"}
+                  </Button>
+                </div>
+
+                <div className="rounded-lg border border-destructive/40 p-4">
+                  <div className="text-sm font-medium">Disconnect this Stripe account</div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Stops all card and bank payments immediately — invoices, autopay, and the client
+                    portal. Saved client cards belong to this Stripe account and will not work on a
+                    different one.
+                  </p>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="mt-3"
+                    disabled={disconnect.isPending}
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: "Disconnect Stripe?",
+                        description: (
+                          <>
+                            Clients will not be able to pay you through HoundStack until another
+                            account is connected. Autopay stops. Saved cards are tied to this
+                            account and will need re-entering if you connect a different one.
+                          </>
+                        ),
+                        confirmLabel: "Disconnect",
+                        destructive: true,
+                      });
+                      if (ok) disconnect.mutate();
+                    }}
+                  >
+                    {disconnect.isPending ? "Disconnecting…" : "Disconnect"}
+                  </Button>
+                </div>
+              </>
             }
           />
 
-          <p className="text-xs text-muted-foreground">
-            Trouble with the embedded steps?{" "}
-            <button
-              className="underline"
-              onClick={() => hostedFallback.mutate()}
-              disabled={hostedFallback.isPending}
-            >
-              Open Stripe-hosted onboarding
-            </button>
-            .
-          </p>
+          {/* Only while setup is unfinished. "Trouble with the embedded steps?"
+              under a completed onboarding is an offer to fix a problem that
+              cannot exist, and it invited people back into a flow they had
+              already finished. */}
+          {!cfg.chargesEnabled && (
+            <p className="text-xs text-muted-foreground">
+              Trouble with the embedded steps?{" "}
+              <button
+                className="underline"
+                onClick={() => hostedFallback.mutate()}
+                disabled={hostedFallback.isPending}
+              >
+                Open Stripe-hosted onboarding
+              </button>
+              .
+            </p>
+          )}
         </>
       )}
-
-      {cfg?.connected && cfg?.chargesEnabled && <ProcessingFeeCard />}
-
-      <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
-        <p>
-          <strong>Switching accounts?</strong> Saved client cards and autopay are tied to the Stripe
-          account that stored them. If you connect a different Stripe account, clients will need to
-          re-enter their card the next time they pay.
-        </p>
-        {cfg?.connected && cfg?.chargesEnabled && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => auditCards.mutate()}
-            disabled={auditCards.isPending}
-          >
-            {auditCards.isPending ? "Checking saved cards…" : "Check saved client cards"}
-          </Button>
-        )}
-      </div>
     </div>
   );
 }
@@ -321,8 +341,7 @@ function ProcessingFeeCard() {
         <span className="text-sm">
           <span className="font-medium">Pass processing fees to the client</span>
           <span className="block text-muted-foreground">
-            Applies to automatic payments and saved cards. Cards also need the
-            confirmation below.
+            Applies to automatic payments and saved cards. Cards also need the confirmation below.
           </span>
         </span>
       </label>
@@ -356,10 +375,9 @@ function ProcessingFeeCard() {
             </li>
           </ul>
           <p className="mt-3 border-t pt-2 text-xs text-muted-foreground">
-            These apply to automatic payments and saved cards. When a client
-            pays from a link or the portal and picks their own method at
-            checkout, you absorb the fee — the amount is fixed before they
-            choose.
+            These apply to automatic payments and saved cards. When a client pays from a link or the
+            portal and picks their own method at checkout, you absorb the fee — the amount is fixed
+            before they choose.
           </p>
           {ex.card.shortfallCents > 0 && !ex.card.suppressed && (
             <p className="mt-2 text-xs text-muted-foreground">
@@ -418,13 +436,19 @@ function ProcessingFeeCard() {
 // @stripe/connect-js on the client only; the Account Session is minted
 // server-side via createStripeAccountSession.
 function ConnectDashboard({
-  danger,
+  settings,
+  accountExtras,
   chargesEnabled,
   onOnboardingExit,
 }: {
   /** Rendered at the foot of the Account tab. Passed in rather than built here
    *  so the disconnect mutation stays with the other account mutations. */
-  danger?: ReactNode;
+  /** Who pays the card fee. A setting, not a dashboard — it belongs behind its
+   *  own tab rather than stacked under three iframes where it was the last
+   *  thing on a long page. */
+  settings?: ReactNode;
+  /** Account-tab content between the Stripe panel and the danger zone. */
+  accountExtras?: ReactNode;
   chargesEnabled: boolean;
   onOnboardingExit: () => void;
 }) {
@@ -507,10 +531,12 @@ function ConnectDashboard({
             <TabsList>
               <TabsTrigger value="money">Money</TabsTrigger>
               <TabsTrigger value="activity">Activity</TabsTrigger>
+              {settings && <TabsTrigger value="fees">Fees</TabsTrigger>}
               <TabsTrigger value="account">Account</TabsTrigger>
             </TabsList>
 
             <TabsContent value="money" className="mt-4 space-y-4">
+              <BalanceSummary />
               <ConnectCard title="Balance">{(h) => <ConnectBalances {...h} />}</ConnectCard>
               <ConnectCard
                 title="Payouts"
@@ -529,6 +555,12 @@ function ConnectDashboard({
               </ConnectCard>
             </TabsContent>
 
+            {settings && (
+              <TabsContent value="fees" className="mt-4">
+                {settings}
+              </TabsContent>
+            )}
+
             <TabsContent value="account" className="mt-4 space-y-4">
               <ConnectCard
                 title="Business details"
@@ -536,7 +568,7 @@ function ConnectDashboard({
               >
                 {(h) => <ConnectAccountManagement {...h} />}
               </ConnectCard>
-              {danger}
+              {accountExtras}
             </TabsContent>
           </Tabs>
         )}
@@ -613,6 +645,87 @@ function ConnectCard({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * The headline the Money tab exists to give: how much is available now, how
+ * much is still clearing, and when the last payout lands.
+ *
+ * Rendered above the embedded components rather than instead of them. They own
+ * the detail — per-currency breakdown, the payout history, changing the
+ * schedule — but each is an iframe that fetches on its own, so the one number
+ * an owner opens this page for arrived last and moved the layout when it did.
+ */
+function BalanceSummary() {
+  const fn = useServerFn(getStripeBalanceSummary);
+  const q = useQuery({ queryKey: ["stripe-balance"], queryFn: () => fn() });
+  const d = q.data as any;
+
+  if (q.isLoading) {
+    return (
+      <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
+        Loading balance…
+      </div>
+    );
+  }
+  // A balance we could not fetch is silent rather than alarming: the embedded
+  // Payouts and Balances panels below are the authoritative view and still
+  // work, so an error banner here would be noise about a duplicate source.
+  if (!d || !d.connected || d.error) return null;
+
+  const fmt = (amount: number, currency: string) =>
+    new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currency.toUpperCase(),
+    }).format(amount / 100);
+
+  const avail: Array<{ amount: number; currency: string }> = d.available ?? [];
+  const pending: Array<{ amount: number; currency: string }> = d.pending ?? [];
+
+  return (
+    <div className="grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-3">
+      <div>
+        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+          Available now
+        </div>
+        <div className="text-xl font-semibold">
+          {avail.length ? avail.map((b) => fmt(b.amount, b.currency)).join(" · ") : "—"}
+        </div>
+      </div>
+      <div>
+        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+          Still clearing
+        </div>
+        {/* Kept separate from "available" rather than summed. A single total
+            overstates what can actually be drawn today, which is the number
+            somebody opens this page to find. */}
+        <div className="text-xl font-semibold text-muted-foreground">
+          {pending.length ? pending.map((b) => fmt(b.amount, b.currency)).join(" · ") : "—"}
+        </div>
+      </div>
+      <div>
+        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+          Latest payout
+        </div>
+        {d.lastPayout ? (
+          <div className="text-sm">
+            <span className="font-semibold">{fmt(d.lastPayout.amount, d.lastPayout.currency)}</span>
+            <span className="ml-1.5 text-muted-foreground">{d.lastPayout.status}</span>
+            {d.lastPayout.arrivalDate && (
+              // "Expected" because arrival_date is Stripe's estimate, not a
+              // commitment from the bank. Presenting it flat would make us
+              // answerable for a date we do not control.
+              <div className="text-[11px] text-muted-foreground">
+                Expected {new Date(d.lastPayout.arrivalDate).toLocaleDateString()}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-sm text-muted-foreground">None yet</div>
+        )}
+      </div>
     </div>
   );
 }
