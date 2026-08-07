@@ -55,5 +55,8 @@
     "unlink_franchise_child": "The SQL half of a capability whose screen was never built. Its only TypeScript caller, unlinkFranchiseLocation, was one of the 28 unwired server functions and was deleted on 2026-08-07 after investigation: /franchise is a royalty ROLLUP, and hanging a destructive \"unlink this location\" action off a reporting row is the wrong place for an operation that orphans a live organization's clients, invoices and royalty history. The RPC stays rather than being dropped because it is the only way to perform the operation at all — a platform admin can call it directly for the support case. Clear this by building the screen deliberately, with the consequences stated, not by re-adding a bare wrapper."
   },
   "unwired_server_fns": {},
-  "write_only_columns": {}
+  "write_only_columns": {},
+  "unreachable_modules": {
+    "src/lib/route-plausibility.ts": "KNOWN GAP — findRouteWarnings was built for QA finding #10: the optimizer would schedule a stop 1,850 km / 61 h from the depot with no warning, and could show an arrival time inconsistent with the drive it displayed. The helper is pure, has 7 tests, and no screen calls it, so the dispatcher still gets no warning. Surfaced by rule 6 on its first run, 2026-08-07. Clear it by rendering the warnings on the routes board (it takes the visit rows that page already has) — not by deleting tested safety work."
+  }
 }

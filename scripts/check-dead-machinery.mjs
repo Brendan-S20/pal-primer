@@ -49,7 +49,7 @@
 //   node scripts/check-dead-machinery.mjs --json      (machine-readable)
 
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -264,6 +264,100 @@ let appFilesCache = null;
 function appFiles() {
   appFilesCache ??= appSources().map((f) => [f, readFileSync(f, "utf8")]);
   return appFilesCache;
+}
+
+let codeFilesCache = null;
+
+/** appFiles(), comment-stripped once.
+ *
+ *  `tsCode()` walks its input character by character to skip string, template
+ *  and regex literals, so it is not cheap. Rule 5 asks "does any other file
+ *  mention this name" once per server function, and there are ~200 of those
+ *  against ~490 files: calling tsCode() inside that loop is ~100k parses of the
+ *  same text. It cost 90 seconds when rule 5 stopped short-circuiting on the
+ *  first match (it now needs every mention, to tell "mentioned nowhere" from
+ *  "mentioned only by dead files"). Strip each file once instead. */
+function codeFiles() {
+  codeFilesCache ??= appFiles().map(([path, text]) => [path, tsCode(text)]);
+  return codeFilesCache;
+}
+
+// ── module reachability ────────────────────────────────────────────────────
+//
+// Which files the shipped app can actually run. Rules 5 and 6 both need it:
+// "nothing imports this" is only meaningful if the things doing the importing
+// are themselves reachable.
+//
+// Vendored code is exempt. `components/ui/**` is the shadcn scaffold — it
+// arrives as a full component library and most apps use a third of it, so
+// reporting the unused two thirds would be twenty findings nobody authored and
+// nobody will act on. That is the noise this file's header warns about, not a
+// gap. Same for the Lovable integration shim.
+const UNREACHABLE_EXEMPT = [/\/src\/components\/ui\//, /\/src\/integrations\/lovable\//];
+
+/** `@/x`, `./x` and `../x` resolved to a real file, or null for a package. */
+function resolveImport(spec, fromFile, known) {
+  let base;
+  if (spec.startsWith("@/")) base = join(SRC, spec.slice(2));
+  else if (spec.startsWith(".")) base = resolve(dirname(fromFile), spec);
+  else return null; // node_modules — not ours to trace
+  for (const candidate of [
+    `${base}.ts`,
+    `${base}.tsx`,
+    join(base, "index.ts"),
+    join(base, "index.tsx"),
+    base,
+  ]) {
+    if (known.has(candidate)) return candidate;
+  }
+  return null;
+}
+
+let reachableCache = null;
+
+/**
+ * Files reachable from an entry point, as a Set of absolute paths.
+ *
+ * Roots are every file under `src/routes` — in file-based routing each one IS
+ * an entry point, mounted by the generated route tree — plus the four
+ * top-level bootstraps. Edges come from static `from "..."` and dynamic
+ * `import("...")` alike, since this codebase uses lazy imports freely for
+ * server-only modules.
+ *
+ * Read from comment-stripped source: a comment naming a module is not an
+ * import, and mistaking one for the other is how `LanguageToggle` looked alive
+ * for months on the strength of a line reading "// LanguageToggle moved to
+ * Settings → Preferences" — a comment that was true about the feature and false
+ * about the component, which had been left behind.
+ */
+function reachableAppFiles() {
+  if (reachableCache) return reachableCache;
+
+  const known = new Set(appSources());
+  const edges = new Map();
+  for (const [path, code] of codeFiles()) {
+    const out = new Set();
+    for (const m of code.matchAll(/(?:from\s*|import\s*\(\s*)["']([^"']+)["']/g)) {
+      const target = resolveImport(m[1], path, known);
+      if (target) out.add(target);
+    }
+    edges.set(path, out);
+  }
+
+  const isRoot = (f) =>
+    f.startsWith(join(SRC, "routes")) || /\/(router|server|start|routeTree\.gen)\.(ts|tsx)$/.test(f);
+  const seen = new Set([...known].filter(isRoot));
+  const queue = [...seen];
+  while (queue.length) {
+    for (const next of edges.get(queue.pop()) ?? []) {
+      if (!seen.has(next)) {
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+  }
+  reachableCache = seen;
+  return seen;
 }
 
 function sqlText() {
@@ -854,37 +948,91 @@ function checkUndeclaredOverloads(baseline) {
 // does the bundler, because an export is a public API by definition. A server
 // function wired to no UI falls precisely between the two.
 //
-// Conservative, per this file's rule: a `createServerFn` export counts as dead
-// only when its name appears in NO other file at all. One mention anywhere —
-// a route, a component, another lib, even a test — vouches for it. That will
-// miss a function whose only caller is itself dead, and that is the right
-// trade: false positives here would train people to ignore the check.
+// A `createServerFn` export counts as dead when no REACHABLE file mentions it.
+//
+// The original version asked only "does any other file mention this", and said
+// so knowingly: "That will miss a function whose only caller is itself dead,
+// and that is the right trade: false positives here would train people to
+// ignore the check."
+//
+// The miss turned out to be real. `WeatherStrip.tsx` — 220 lines, finished,
+// with a bulk weather-reschedule flow — was never rendered anywhere. It was the
+// only importer of `analyzeDayWeather`, `rescheduleVisits` and
+// `undoReschedule`, so all three read as WIRED to this check while being
+// reachable from nothing. One dead file was vouching for three dead functions.
+//
+// The predicted cost of fixing it — false positives — did not materialise,
+// because reachability is not a guess in a file-based-routing app: every screen
+// is a file under src/routes, so the reachable set is exactly what
+// moduleGraph() reaches from there. Measured when this changed: 23 of 487 files
+// unreachable, 20 of them unused shadcn/ui primitives that ship with the
+// scaffold (excluded as vendored, see UNREACHABLE_EXEMPT), and the three that
+// remained were all genuine.
+//
+// Still conservative in the way that matters: one mention from one reachable
+// file vouches for a function. This does not try to prove the mention is a
+// call.
 function checkUnwiredServerFns(baseline) {
-  const files = appFiles();
+  const files = codeFiles();
+  const reachable = reachableAppFiles();
   const dead = [];
 
-  for (const [path, text] of files) {
+  for (const [path, code] of files) {
     if (!path.includes("/lib/")) continue;
-    const code = tsCode(text);
     // `export const NAME = createServerFn(` — the entry-point form. A plain
     // exported helper is ordinary TypeScript and out of scope.
     for (const m of code.matchAll(/export\s+const\s+(\w+)\s*=\s*createServerFn\b/g)) {
       const name = m[1];
       if (baseline.unwired_server_fns?.[name]) continue;
-      const referenced = [...files].some(
-        ([other, otherText]) => other !== path && tsCode(otherText).includes(name),
+      const mentions = files.filter(
+        ([other, otherCode]) => other !== path && otherCode.includes(name),
       );
-      if (!referenced) {
+      if (mentions.length === 0) {
         dead.push({
           kind: "server fn",
           name,
           where: path.replace(/^.*\/src\//, "src/"),
           why: "exported createServerFn that no other file mentions — no UI can reach it",
         });
+        continue;
+      }
+      // Mentioned, but only by files that are themselves unreachable. Naming
+      // them matters: the fix is usually to the importer, not to this function.
+      if (!mentions.some(([other]) => reachable.has(other))) {
+        const via = mentions.map(([o]) => o.replace(/^.*\/src\//, "src/")).join(", ");
+        dead.push({
+          kind: "server fn",
+          name,
+          where: path.replace(/^.*\/src\//, "src/"),
+          why: `only mentioned by unreachable file(s) — ${via} — so no UI can reach it either`,
+        });
       }
     }
   }
   return dead.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// ── Rule 6: a module nothing reachable imports ─────────────────────────────
+//
+// The root cause behind rule 5's blind spot, reported in its own right so the
+// fix lands on the importer rather than on whatever it happened to import.
+//
+// `tsc` will not catch this either: an unimported module is not an error, it is
+// simply never bundled. It compiles, its tests pass, and it does nothing.
+function checkUnreachableModules(baseline) {
+  const reachable = reachableAppFiles();
+  return appSources()
+    .filter((f) => !reachable.has(f))
+    .filter((f) => !UNREACHABLE_EXEMPT.some((re) => re.test(f)))
+    .map((f) => f.replace(/^.*\/src\//, "src/"))
+    .filter((rel) => !baseline.unreachable_modules?.[rel])
+    .map((rel) => ({
+      kind: "module",
+      name: rel,
+      where: rel,
+      why: "no file reachable from src/routes imports this — it is compiled, never bundled, and runs nowhere",
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // ── report ─────────────────────────────────────────────────────────────────
@@ -898,6 +1046,7 @@ function main() {
     ...checkWriteOnlyColumns(baseline),
     ...checkUndeclaredOverloads(baseline),
     ...checkUnwiredServerFns(baseline),
+    ...checkUnreachableModules(baseline),
   ];
 
   if (process.argv.includes("--json")) {
@@ -916,6 +1065,7 @@ function main() {
     ["write_only_columns", "column"],
     ["function_overloads", "overload"],
     ["unwired_server_fns", "server fn"],
+    ["unreachable_modules", "module"],
   ];
   const gaps = [];
   let exceptions = 0;
