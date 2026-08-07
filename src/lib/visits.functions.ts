@@ -27,34 +27,6 @@ export const generateVisits = createServerFn({ method: "POST" })
     return { inserted: (count as number) ?? 0 };
   });
 
-export const updateStaffStart = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z
-      .object({
-        staffId: z.string().uuid(),
-        start_address: z.string().nullable().optional(),
-        start_latitude: z.number().nullable().optional(),
-        start_longitude: z.number().nullable().optional(),
-      })
-      .parse(d),
-  )
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const orgId = await resolveOrgId(supabase, userId);
-    const { error } = await supabase
-      .from("staff")
-      .update({
-        start_address: data.start_address ?? null,
-        start_latitude: data.start_latitude ?? null,
-        start_longitude: data.start_longitude ?? null,
-      })
-      .eq("id", data.staffId)
-      .eq("organization_id", orgId);
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
-
 export const listVisitsForDay = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   // throughDay (optional, inclusive) widens the window so the Routes map can
@@ -141,127 +113,6 @@ export const listStaff = createServerFn({ method: "GET" })
       .order("display_name");
     if (error) throw new Error(error.message);
     return { staff: data ?? [] };
-  });
-
-// Finding #27: capacity-aware planning. Detect field techs whose day exceeds a
-// working-day capacity (drive + service minutes), and move the overflow (their
-// last stops) to the least-loaded available tech under capacity, or to
-// Unassigned. Returns per-tech load and the moves made so the dispatcher can
-// re-optimize the affected routes.
-export const balanceOverloadedRoutes = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ day: z.string(), apply: z.boolean().default(false) }).parse(d))
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const orgId = await resolveOrgId(supabase, userId);
-
-    const [{ data: org }, { data: staff, error: sErr }, { data: visits, error: vErr }] = await Promise.all([
-      (supabase.from("organizations") as any)
-        .select("workday_start, workday_end")
-        .eq("id", orgId)
-        .maybeSingle(),
-      (supabase.from("staff") as any)
-        .select("id, display_name, is_field_tech, routing_available, active, daily_capacity_minutes")
-        .eq("organization_id", orgId)
-        .eq("active", true),
-      supabase
-        .from("visits")
-        .select("id, assigned_staff_id, sequence, status, travel_min, properties(service_duration_min)")
-        .eq("organization_id", orgId)
-        .eq("scheduled_on", data.day)
-        .in("status", ["scheduled", "in_progress"]),
-    ]);
-    if (sErr) throw new Error(sErr.message);
-    if (vErr) throw new Error(vErr.message);
-
-    const toMin = (t: string | null, def: number) =>
-      t ? Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5)) : def;
-    // Org-wide workday length is the fallback; each tech can override it with a
-    // per-tech daily capacity (#27).
-    const orgCapacityMin = Math.max(60, toMin(org?.workday_end ?? null, 17 * 60) - toMin(org?.workday_start ?? null, 8 * 60));
-
-    const routableTechs = (staff ?? []).filter((s: any) => s.is_field_tech && s.routing_available);
-    const techIds = new Set(routableTechs.map((s: any) => s.id));
-    const capFor = new Map<string, number>();
-    for (const t of routableTechs) {
-      const per = Number((t as any).daily_capacity_minutes);
-      capFor.set(t.id, per > 0 ? per : orgCapacityMin);
-    }
-
-    const visitMin = (v: any) => Number(v.travel_min ?? 0) + Number(v.properties?.service_duration_min ?? 8);
-    // Per-tech load, visits sorted by sequence.
-    const load = new Map<string, { total: number; visits: any[] }>();
-    for (const t of routableTechs) load.set(t.id, { total: 0, visits: [] });
-    for (const v of visits ?? []) {
-      const sid = (v as any).assigned_staff_id;
-      if (!sid || !load.has(sid)) continue;
-      const entry = load.get(sid)!;
-      entry.total += visitMin(v);
-      entry.visits.push(v);
-    }
-    for (const entry of load.values()) entry.visits.sort((a, b) => (a.sequence ?? 9999) - (b.sequence ?? 9999));
-
-    const moves: Array<{ visitId: string; from: string | null; to: string | null }> = [];
-    // Greedy: for each overloaded tech, peel off trailing stops until under
-    // their capacity, placing each on the least-loaded tech that has room under
-    // ITS OWN capacity, else Unassigned.
-    for (const [techId, entry] of load) {
-      const cap = capFor.get(techId) ?? orgCapacityMin;
-      while (entry.total > cap && entry.visits.length > 1) {
-        const v = entry.visits.pop()!;
-        const cost = visitMin(v);
-        entry.total -= cost;
-        let target: string | null = null;
-        let best = Infinity;
-        for (const [otherId, other] of load) {
-          if (otherId === techId) continue;
-          const otherCap = capFor.get(otherId) ?? orgCapacityMin;
-          if (other.total + cost <= otherCap && other.total < best) {
-            best = other.total;
-            target = otherId;
-          }
-        }
-        if (target) {
-          load.get(target)!.total += cost;
-          load.get(target)!.visits.push(v);
-        }
-        moves.push({ visitId: v.id, from: techId, to: target });
-      }
-    }
-
-    if (data.apply && moves.length) {
-      for (const m of moves) {
-        await supabase.rpc("reassign_visit", { _visit_id: m.visitId, _staff_id: m.to as string });
-      }
-      // Re-optimize every route that gained or lost a stop so both sides come
-      // back tidy (#27) — no separate manual "Re-optimize" click needed.
-      const touched = new Set<string>();
-      for (const m of moves) {
-        if (m.from) touched.add(m.from);
-        if (m.to) touched.add(m.to);
-      }
-      for (const staffId of touched) {
-        await supabase.rpc("optimize_route_v2", { _org_id: orgId, _staff_id: staffId, _day: data.day, _reassign: false });
-      }
-    }
-
-    return {
-      capacityMinutes: orgCapacityMin,
-      loads: routableTechs.map((t: any) => {
-        const cap = capFor.get(t.id) ?? orgCapacityMin;
-        return {
-          staffId: t.id,
-          name: t.display_name,
-          loadMinutes: Math.round(load.get(t.id)?.total ?? 0),
-          capacityMinutes: cap,
-          overCapacity: (load.get(t.id)?.total ?? 0) > cap,
-        };
-      }),
-      moves,
-      applied: data.apply ? moves.length : 0,
-      reoptimized: data.apply ? new Set(moves.flatMap((m) => [m.from, m.to].filter(Boolean))).size : 0,
-      techsAvailable: techIds.size,
-    };
   });
 
 /**
@@ -650,28 +501,6 @@ export const updateDispatchSettings = createServerFn({ method: "POST" })
       _auto_generate_days_ahead: data.auto_generate_days_ahead ?? null,
       _notify_schedule_horizon: data.notify_schedule_horizon ?? null,
     });
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
-
-export const updatePropertyWindow = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z.object({
-      propertyId: z.string().uuid(),
-      earliest_service_time: z.string().nullable().optional(),
-      latest_service_time: z.string().nullable().optional(),
-      service_duration_min: z.number().int().min(1).max(240).optional(),
-    }).parse(d),
-  )
-  .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
-    const { propertyId, ...patch } = data;
-    const { error } = await context.supabase
-      .from("properties")
-      .update(patch)
-      .eq("id", propertyId)
-      .eq("organization_id", orgId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

@@ -14,18 +14,56 @@ async function resolveManagerOrgId(supabase: any, userId: string): Promise<strin
 
 // ---------- Promo codes ----------
 
-const promoSchema = z.object({
+// `appliesTo` has no "recurring" any more. One redemption posts one credit, and
+// a lump credit is not a discount repeated over N cycles — `portal_redeem_promo`
+// refuses recurring codes outright (migration 20260807030000), so accepting one
+// here would only mint something the customer gets turned away from. The column
+// still permits it and legacy rows still read back; this closes the writer.
+// `recurringCycles` went with it: it was the count of cycles nothing counted.
+const promoFields = z.object({
   code: z.string().min(2).max(40),
   description: z.string().max(400).optional(),
   discountType: z.enum(["percent", "fixed"]),
   discountValueCents: z.number().int().min(0).optional(),
-  discountPercent: z.number().min(0).max(100).optional(),
-  appliesTo: z.enum(["first_visit", "recurring", "one_time"]).default("first_visit"),
-  recurringCycles: z.number().int().min(1).max(60).optional(),
+  // Mirrors promo_codes_percent_range_chk. 100 is allowed on purpose: a free
+  // first visit is a promotion people actually run. 0 is not a discount.
+  discountPercent: z.number().gt(0).max(100).optional(),
+  appliesTo: z.enum(["first_visit", "one_time"]).default("first_visit"),
   maxRedemptions: z.number().int().min(1).optional(),
   expiresAt: z.string().optional(), // ISO
   active: z.boolean().default(true),
 });
+
+// Mirrors promo_codes_discount_shape_chk. Without it a percent code could be
+// saved with no percent on it, and the constraint would come back as a Postgres
+// error string instead of something an office manager can act on.
+//
+// Written as a standalone refiner rather than chained onto `promoFields`
+// because `.superRefine()` returns a ZodEffects, which has no `.extend()` — the
+// upsert validator below needs to add `id` to the same shape.
+function checkDiscountShape(
+  v: z.infer<typeof promoFields>,
+  ctx: z.RefinementCtx,
+): void {
+  if (v.discountType === "percent" && v.discountPercent === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["discountPercent"],
+      message: "A percentage code needs a percentage.",
+    });
+  }
+  if (v.discountType === "fixed" && v.discountValueCents === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["discountValueCents"],
+      message: "A fixed-amount code needs an amount.",
+    });
+  }
+}
+
+const promoUpsertSchema = promoFields
+  .extend({ id: z.string().uuid().optional() })
+  .superRefine(checkDiscountShape);
 
 export const listPromoCodes = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -45,36 +83,27 @@ export const listPromoCodes = createServerFn({ method: "GET" })
 
 export const upsertPromoCode = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => promoSchema.extend({ id: z.string().uuid().optional() }).parse(d))
+  .inputValidator((d) => promoUpsertSchema.parse(d))
   .handler(async ({ data, context }) => {
     const orgId = await resolveManagerOrgId(context.supabase, context.userId);
     // Reject bare-number / placeholder codes like "10" (G8, I11).
     const validCode = assertValidPromoCode(data.code);
-    // Percentage codes cannot be redeemed. `discount_percent` has no reader in
-    // SQL or in this app, and `portal_redeem_promo` refuses anything that is
-    // not a fixed amount — so minting one produces a code that fails in the
-    // customer's hands. The form no longer offers the option; refusing here
-    // too, because removing a <SelectItem> does not close a POST endpoint.
-    // The `percent` value stays in the schema and the CHECK constraint so the
-    // codes already on file keep loading and can be read back.
-    if (data.discountType === "percent") {
-      throw new Error(
-        "Percentage codes are not supported yet — nothing applies the discount, so the code " +
-          "would be refused at redemption. Create a fixed-amount code instead.",
-      );
-    }
+    const isPercent = data.discountType === "percent";
     const row = {
       organization_id: orgId,
       code: validCode.toUpperCase(),
       description: data.description ?? null,
-      // Narrowed to "fixed" by the throw above, so the percent branches that
-      // used to live here are gone rather than left as unreachable code that
-      // reads like support.
-      discount_type: "fixed" as const,
-      discount_value_cents: data.discountValueCents ?? 0,
-      discount_percent: null,
+      discount_type: data.discountType,
+      // Exactly one of these carries the discount, and the other is explicitly
+      // nulled rather than left at whatever an edit used to hold. A row with
+      // both set would redeem off the type alone and read as a contradiction
+      // to anyone auditing it later.
+      discount_value_cents: isPercent ? null : (data.discountValueCents ?? 0),
+      discount_percent: isPercent ? (data.discountPercent ?? null) : null,
       applies_to: data.appliesTo,
-      recurring_cycles: data.appliesTo === "recurring" ? (data.recurringCycles ?? null) : null,
+      // The column stays for legacy rows; nothing counts cycles, and the
+      // `recurring` value that gave it meaning is no longer accepted.
+      recurring_cycles: null,
       max_redemptions: data.maxRedemptions ?? null,
       expires_at: data.expiresAt ? new Date(data.expiresAt).toISOString() : null,
       active: data.active,

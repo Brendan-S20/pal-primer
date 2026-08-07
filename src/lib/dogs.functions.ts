@@ -241,28 +241,6 @@ export const updateDog = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// Kept for legacy call sites; the refactored UI deactivates dogs instead.
-export const deleteDog = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const { orgId } = await requireCanWriteOrg(context.supabase, context.userId);
-    const { data: rows, error } = await context.supabase
-      .from("dogs")
-      .delete()
-      .eq("id", data.id)
-      .eq("organization_id", orgId)
-      .select("property_id");
-    if (error) throw new Error(error.message);
-    if (!rows?.length) throw new Error("Dog not found");
-    const propertyId = rows?.[0]?.property_id;
-    if (propertyId) {
-      const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
-      await recomputePropertyEstimate(context.supabase, propertyId);
-    }
-    return { ok: true };
-  });
-
 const dnaSchema = z.object({
   id: z.string().uuid(),
   registered: z.boolean(),

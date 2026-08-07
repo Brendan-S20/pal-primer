@@ -179,6 +179,23 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           }
 
           if (org.auto_invoice_enabled) {
+            // Recurring add-ons, FIRST — before the invoice run, so a charge
+            // that comes due today lands on today's invoice instead of waiting
+            // a full cycle.
+            //
+            // This link was missing entirely. `addon_subscriptions` held the
+            // recurring sale, `run_billing_cycles` invoiced any `addon_charges`
+            // already sitting at 'pending', and nothing in the product ever
+            // turned the first into the second: the only producer was a server
+            // function no screen imported. `addon_charges` had zero rows with
+            // source = 'recurring', ever. See migration 20260807040000 for the
+            // admin_ split that lets this run without a user session.
+            const { data: ac, error: acErr } = await (supabaseAdmin as any).rpc(
+              "admin_generate_addon_charges_through",
+              { _org_id: org.id, _through: todayStr },
+            );
+            perOrg.addon_charges_generated = acErr ? `err: ${acErr.message}` : (ac as number);
+
             // Full auto billing with grace: run_billing_cycles respects each
             // client's billing_frequency and stamps send_after (grace window),
             // replacing the old cadence-blind admin_generate_invoices_for_org

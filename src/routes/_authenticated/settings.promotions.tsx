@@ -11,6 +11,7 @@ import {
   createGiftCard,
   voidGiftCard,
   redeemGiftCard,
+  listGiftCardRedemptions,
 } from "@/lib/promotions.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,8 +24,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Trash2, Ban, Copy, Printer } from "lucide-react";
+import { Trash2, Ban, Copy, Printer, ChevronDown, ChevronRight } from "lucide-react";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { formatDay } from "@/lib/format";
 import { getMyOrg } from "@/lib/org.functions";
 import { listClients } from "@/lib/clients.functions";
 
@@ -123,22 +125,21 @@ function PromoSection() {
   const delFn = useServerFn(deletePromoCode);
   const { data, isLoading } = useQuery({ queryKey: ["promo-codes"], queryFn: () => listFn() });
 
-  // Fixed amount only, and the "Applies to" choices are down to the two that
-  // describe a single credit.
+  // Percent codes work now (migration 20260807030000): redemption resolves the
+  // percentage against the customer's per-visit plan price and credits the
+  // result. Fixed stays the default because it is the one whose value the
+  // office can state before the customer redeems it.
   //
-  // Percent used to be the DEFAULT here, and it produced a code no customer
-  // could ever redeem: nothing in this system reads `discount_percent`, and
-  // `portal_redeem_promo` refuses anything that is not a fixed amount. The
-  // "Recurring (N cycles)" option was the same shape of promise — redemption
-  // credits the account once, so the cycle count was decoration on a one-off.
-  //
-  // Both are still allowed by the database, and the three percent codes already
-  // on file still render below, marked as not redeemable. This stops new ones
-  // being minted; it does not pretend the old ones work.
+  // "Recurring (N cycles)" is still gone, and stays gone. Redemption credits
+  // the account once; a cycle count on a one-off credit was decoration. The
+  // database still permits the value for legacy rows, and any that exist render
+  // below with their label intact.
   const empty = {
     code: "",
     description: "",
+    discountType: "fixed" as "fixed" | "percent",
     discountValueCents: 0,
+    discountPercent: 10,
     appliesTo: "first_visit" as "first_visit" | "one_time",
     maxRedemptions: undefined as number | undefined,
     expiresAt: "",
@@ -152,8 +153,13 @@ function PromoSection() {
         data: {
           code: v.code,
           description: v.description || undefined,
-          discountType: "fixed" as const,
-          discountValueCents: Math.round(v.discountValueCents),
+          discountType: v.discountType,
+          // Only the field the chosen type uses is sent. The server refuses a
+          // percent code with no percent and a fixed code with no amount, so
+          // sending both would just make one of them a lie on the row.
+          ...(v.discountType === "percent"
+            ? { discountPercent: v.discountPercent }
+            : { discountValueCents: Math.round(v.discountValueCents) }),
           appliesTo: v.appliesTo,
           maxRedemptions: v.maxRedemptions,
           expiresAt: v.expiresAt || undefined,
@@ -199,18 +205,52 @@ function PromoSection() {
               placeholder="10% off first visit"
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-3">
             <div>
-              <Label>Amount ($)</Label>
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                value={form.discountValueCents / 100}
-                onChange={(e) =>
-                  setForm({ ...form, discountValueCents: Math.round(Number(e.target.value) * 100) })
-                }
-              />
+              <Label>Discount</Label>
+              <Select
+                value={form.discountType}
+                onValueChange={(v: any) => setForm({ ...form, discountType: v })}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="fixed">Fixed amount</SelectItem>
+                  <SelectItem value="percent">Percentage</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              {form.discountType === "percent" ? (
+                <>
+                  <Label>Percent (%)</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={100}
+                    step="0.5"
+                    value={form.discountPercent}
+                    onChange={(e) =>
+                      setForm({ ...form, discountPercent: Number(e.target.value) })
+                    }
+                  />
+                </>
+              ) : (
+                <>
+                  <Label>Amount ($)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={form.discountValueCents / 100}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        discountValueCents: Math.round(Number(e.target.value) * 100),
+                      })
+                    }
+                  />
+                </>
+              )}
             </div>
             <div>
               <Label>What it's for</Label>
@@ -226,10 +266,22 @@ function PromoSection() {
               </Select>
             </div>
           </div>
+          {/* The percentage line says what the percentage is OF, because that
+              is the question the number does not answer on its own. */}
           <p className="text-xs text-muted-foreground">
-            Redeeming adds this amount to the customer's account credit, once, and it comes off
-            their next invoice automatically. "What it's for" is your own label — it does not change
-            what the code does.
+            {form.discountType === "percent" ? (
+              <>
+                Redeeming takes {form.discountPercent || 0}% off one visit at the customer's own
+                plan price and adds that as account credit, once. A customer with no active plan is
+                told the code needs one — there is nothing to take a percentage of.
+              </>
+            ) : (
+              <>
+                Redeeming adds this amount to the customer's account credit, once, and it comes off
+                their next invoice automatically.
+              </>
+            )}{" "}
+            "What it's for" is your own label — it does not change what the code does.
           </p>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -282,13 +334,16 @@ function PromoSection() {
                     {p.expires_at && new Date(p.expires_at) < new Date() && (
                       <Badge variant="destructive">expired</Badge>
                     )}
-                    {p.discount_type === "percent" && (
+                    {/* Legacy rows only — the form has not offered "recurring"
+                        since it was found to pay out once. Flagged here rather
+                        than left to fail in the customer's hands. */}
+                    {p.applies_to === "recurring" && (
                       <Badge variant="destructive">not redeemable</Badge>
                     )}
                   </div>
                   <div className="mt-0.5 text-xs text-muted-foreground">
                     {p.discount_type === "percent"
-                      ? `${p.discount_percent}% off`
+                      ? `${Number(p.discount_percent)}% off one visit`
                       : fmtMoney(p.discount_value_cents ?? 0) + " credit"}
                     {" · "}
                     {p.applies_to === "recurring" ? "recurring" : p.applies_to.replace("_", " ")}
@@ -296,12 +351,10 @@ function PromoSection() {
                     used {p.redemption_count}
                     {p.max_redemptions ? ` / ${p.max_redemptions}` : ""}
                   </div>
-                  {/* Said plainly on the row rather than discovered by the
-                      customer at the moment they try to use it. */}
-                  {p.discount_type === "percent" && (
+                  {p.applies_to === "recurring" && (
                     <p className="mt-1 text-xs text-destructive">
-                      Percentage codes are not applied anywhere yet — a customer entering this in
-                      their portal is turned away. Replace it with a fixed-amount code.
+                      Recurring codes are refused at redemption — one redemption posts one credit,
+                      which is not a discount repeated every cycle. Replace it with a one-off code.
                     </p>
                   )}
                   {p.description && (
@@ -329,6 +382,72 @@ function PromoSection() {
           </ul>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Where a gift card's money went.
+ *
+ * The row above says "$40.00 of $100.00 remaining" and nothing else, so the
+ * $60.00 is unaccounted for on screen: which clients, on what dates, against
+ * which invoices. `listGiftCardRedemptions` was written to answer exactly that
+ * and then never called by anything — one of the 28 unwired server functions
+ * the dead-machinery detector has been carrying.
+ *
+ * Collapsed by default and fetched only on open: the common case is a card with
+ * nothing to explain, and the list names clients, which is not something to put
+ * on screen unasked.
+ */
+function GiftCardHistory({ card }: { card: any }) {
+  const [open, setOpen] = useState(false);
+  const listFn = useServerFn(listGiftCardRedemptions);
+  const { data, isLoading } = useQuery({
+    queryKey: ["gift-card-redemptions", card.id],
+    queryFn: () => listFn({ data: { giftCardId: card.id } }),
+    enabled: open,
+  });
+  const spent = (card.initial_balance_cents ?? 0) - (card.remaining_balance_cents ?? 0);
+  // A void wipes remaining_balance_cents to 0, so "spent" on a voided card is
+  // mostly the write-off, not redemptions. Offer the history anyway — that is
+  // precisely the card where somebody asks what was used before it was voided.
+  if (spent <= 0 && card.status === "active") return null;
+
+  const rows = data?.redemptions ?? [];
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1 text-2xs text-muted-foreground underline-offset-2 hover:underline"
+        aria-expanded={open}
+      >
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        {card.status === "void" ? "Redemptions before it was voided" : "Where it was used"}
+      </button>
+      {open && (
+        <div className="mt-1 space-y-0.5 border-l pl-2">
+          {isLoading ? (
+            <p className="text-2xs text-muted-foreground">Loading…</p>
+          ) : rows.length === 0 ? (
+            <p className="text-2xs text-muted-foreground">
+              No redemptions recorded
+              {card.status === "void" ? " — the balance was written off by the void." : "."}
+            </p>
+          ) : (
+            rows.map((r: any) => (
+              <div key={r.id} className="text-2xs text-muted-foreground">
+                <span className="tabular-nums">{fmtMoney(r.amount_cents)}</span>
+                {" · "}
+                {r.clients?.display_name ?? "unknown client"}
+                {" · "}
+                {formatDay(r.created_at)}
+                {r.note ? ` · ${r.note}` : ""}
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -561,6 +680,7 @@ function GiftSection() {
                     )}
                     {c.recipient_name ? ` · for ${c.recipient_name}` : ""}
                   </div>
+                  <GiftCardHistory card={c} />
                 </div>
                 <div className="flex items-center">
                   {c.status === "active" && (

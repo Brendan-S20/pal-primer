@@ -18,17 +18,6 @@ export const listMyNotifications = createServerFn({ method: "GET" })
     return { notifications: rows, unread: rows.filter((r) => !r.read_at).length };
   });
 
-export const getUnreadNotificationCount = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { count, error } = await (context.supabase as any)
-      .from("app_notifications")
-      .select("id", { count: "exact", head: true })
-      .is("read_at", null);
-    if (error) throw new Error(error.message);
-    return { unread: count ?? 0 };
-  });
-
 export const markNotificationRead = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))

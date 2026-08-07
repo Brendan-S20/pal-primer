@@ -328,23 +328,6 @@ export const updateClient = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-/** Office notes on the client record (gate quirks, preferences, history). */
-export const updateClientNotes = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z.object({ clientId: z.string().uuid(), notes: z.string().max(8000) }).parse(d),
-  )
-  .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    await requirePermission(supabase, context.userId, "view_client_directory");
-    const { error } = await supabase
-      .from("clients")
-      .update({ notes: data.notes || null, updated_at: new Date().toISOString() })
-      .eq("id", data.clientId);
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
-
 /** Full visit history for the Visits tab: scheduled window vs actual
  * start/completion so "estimated" and "actually happened" never blur. */
 export const listClientVisitHistory = createServerFn({ method: "GET" })
@@ -387,25 +370,6 @@ export const listClientVisitHistory = createServerFn({ method: "GET" })
       a.scheduled_on < b.scheduled_on ? 1 : a.scheduled_on > b.scheduled_on ? -1 : 0,
     );
     return { visits: rows };
-  });
-
-/** Recent visit history for the client detail page (newest first). */
-export const listRecentClientVisits = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    await requirePermission(supabase, context.userId, "view_client_directory");
-    const { data: rows, error } = await supabase
-      .from("visits")
-      .select(
-        "id, scheduled_on, status, completed_at, skip_reason_code, properties(street), staff:assigned_staff_id(display_name)",
-      )
-      .eq("client_id", data.clientId)
-      .order("scheduled_on", { ascending: false })
-      .limit(8);
-    if (error) throw new Error(error.message);
-    return { visits: rows ?? [] };
   });
 
 /** Every dog across the client's properties, for the detail page. */

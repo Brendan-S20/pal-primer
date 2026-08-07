@@ -117,20 +117,3 @@ export const sendEmailVerification = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const getEmailVerificationStatus = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { data: role } = await context.supabase
-      .from("user_roles")
-      .select("organization_id")
-      .eq("user_id", context.userId)
-      .maybeSingle();
-    if (!role) return { verified: false };
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data } = await (supabaseAdmin as any)
-      .from("organizations")
-      .select("email_verified_at")
-      .eq("id", role.organization_id)
-      .maybeSingle();
-    return { verified: !!data?.email_verified_at };
-  });

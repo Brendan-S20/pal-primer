@@ -19,6 +19,7 @@ import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
 import { isInvoiceOverdue } from "@/lib/overdue";
 import { formatDay } from "@/lib/format";
 import { invoiceKindLabel } from "@/lib/invoice-labels";
+import { appUrl } from "@/lib/app-origin";
 
 export type InvoiceRowData = {
   id: string;
@@ -70,7 +71,10 @@ function useInvoiceMenuActions(invoice: InvoiceRowData, actions: RowAction[]): R
           {
             label: "Copy pay link",
             onSelect: () => {
-              const url = `${window.location.origin}/pay/i/${invoice.public_token}`;
+              // appUrl(), not window.location.origin — same reason as the
+              // drawer's copy: the link is for a customer, so it has to name
+              // the host the product lives at, not the one staff are on.
+              const url = appUrl(`/pay/i/${invoice.public_token}`);
               navigator.clipboard.writeText(url).then(
                 () => toast.success("Pay link copied to clipboard"),
                 () => toast.error("Copy failed"),

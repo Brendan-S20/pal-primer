@@ -520,14 +520,3 @@ export const revokeFranchiseLinkCode = createServerFn({ method: "POST" })
     return { ok: true as const, alreadyClosed: !updated };
   });
 
-export const unlinkFranchiseLocation = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ childOrgId: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }) => {
-    await resolveOrgId(context.supabase, context.userId);
-    const { error } = await (context.supabase as any).rpc("unlink_franchise_child", {
-      _child_org_id: data.childOrgId,
-    });
-    if (error) throw new Error(error.message);
-    return { ok: true as const };
-  });

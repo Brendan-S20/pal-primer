@@ -443,19 +443,3 @@ export const declineAddonRequest = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const generateAddonCharges = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ through: z.string() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const { orgId } = await requirePermission(
-      context.supabase,
-      context.userId,
-      "manage_client_billing",
-    );
-    const { data: n, error } = await context.supabase.rpc("generate_addon_charges_through", {
-      _org_id: orgId,
-      _through: data.through,
-    });
-    if (error) throw new Error(error.message);
-    return { generated: (n as number) ?? 0 };
-  });

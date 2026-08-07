@@ -149,31 +149,3 @@ export const subscribeStaffNativePush = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const subscribeClientNativePush = createServerFn({ method: "POST" })
-  .inputValidator((d) => nativeSchema.extend({ token: z.string().min(10), portalToken: z.string().uuid() }).parse(d))
-  .handler(async ({ data }) => {
-    const { requirePortalSession } = await import("@/lib/portal-auth.server");
-    await requirePortalSession(data.portalToken);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: client, error: cErr } = await supabaseAdmin
-      .from("clients")
-      .select("id, organization_id")
-      .eq("portal_token", data.portalToken)
-      .maybeSingle();
-    if (cErr) throw new Error(cErr.message);
-    if (!client) throw new Error("Invalid portal link");
-    const { error } = await supabaseAdmin.from("push_subscriptions").upsert(
-      {
-        client_id: client.id,
-        organization_id: client.organization_id,
-        native_token: data.token,
-        platform: data.platform,
-        user_agent: data.userAgent ?? null,
-        disabled: false,
-        last_error: null,
-      },
-      { onConflict: "native_token" },
-    );
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });

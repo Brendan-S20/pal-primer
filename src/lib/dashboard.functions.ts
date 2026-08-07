@@ -154,18 +154,3 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
     };
   });
 
-export const resolveConcern = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context, data }: any) => {
-    const { supabase } = context;
-    const { error } = await supabase
-      .from("qc_tickets")
-      .update({
-        status: "resolved",
-        resolved_at: new Date().toISOString(),
-        resolved_by: context.userId,
-      })
-      .eq("id", data.ticketId);
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
