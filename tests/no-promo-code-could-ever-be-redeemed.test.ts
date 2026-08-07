@@ -155,31 +155,32 @@ describe("the win-back control asks for dollars", () => {
   });
 });
 
-describe("no new unredeemable codes get minted", () => {
-  it("the form does not offer a percent option", () => {
-    expect(promoPage).not.toMatch(/<SelectItem value="percent">/);
-    expect(promoPage).not.toMatch(/Percent off/);
+// ── SUPERSEDED, DELIBERATELY ──────────────────────────────────────────────
+//
+// This file used to assert that percent codes were refused everywhere — in the
+// form, at the endpoint, and on the row. That refusal was the right answer to
+// "the feature does not exist"; it was never the destination. Migration
+// 20260807030000 resolves a percentage against the customer's per-visit plan
+// price, so the refusal is gone and those three assertions would now be pinning
+// a stopgap in place.
+//
+// What survives here is what is still true: recurring codes never worked and
+// still do not, and the win-back flow still deals in dollars. The assertions
+// that moved live in tests/fifteen-percent-of-nothing-in-particular.test.ts.
+describe("what the stopgap left behind", () => {
+  it("the percent refusal is gone from the endpoint", () => {
+    expect(codeOnly(promoFns)).not.toMatch(/Percentage codes are not supported yet/);
   });
 
-  it("the server refuses percent too, because a removed SelectItem is not a closed endpoint", () => {
-    expect(promoFns).toMatch(/data\.discountType === "percent"/);
-    expect(promoFns).toMatch(/Percentage codes are not supported yet/);
-  });
-
-  it("still accepts 'percent' in the schema so existing rows read back", () => {
+  it("the schema still round-trips 'percent', as it always had to", () => {
     expect(promoFns).toMatch(/discountType: z\.enum\(\["percent", "fixed"\]\)/);
   });
 
-  it("drops the recurring-cycles promise, which credited once regardless", () => {
+  it("the recurring-cycles promise stays dropped", () => {
+    // Unlike percent, this one has no implementation waiting behind it: a
+    // redemption posts one credit, and no amount of column-reading turns one
+    // credit into a discount repeated over N cycles.
     expect(codeOnly(promoPage)).not.toMatch(/Recurring \(N cycles\)/);
     expect(codeOnly(promoPage)).not.toMatch(/cycles`/);
-  });
-});
-
-describe("the codes already on file are labelled, not hidden", () => {
-  it("percent codes still render, marked not redeemable", () => {
-    expect(promoPage).toMatch(/p\.discount_type === "percent" && \(/);
-    expect(promoPage).toMatch(/not redeemable/);
-    expect(promoPage).toMatch(/a customer entering this in/);
   });
 });

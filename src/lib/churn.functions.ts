@@ -167,16 +167,18 @@ function makePromoCode(clientName: string, dollars: number) {
  *    The insert happens before the email is enqueued, so at least nobody was
  *    ever mailed a code — the feature was simply inert.
  *
- * 2. It also asked for `discount_type: "percent"`, and nothing in this system
- *    applies a percentage. `discount_percent` has no reader in SQL or in the
- *    app; `portal_redeem_promo` credits `discount_value_cents` and refuses
- *    everything else. Fixing only the CHECK violation would have started
- *    mailing lapsed customers codes their portal rejects — worse than inert.
+ * 2. It also asked for `discount_type: "percent"`, and at the time nothing in
+ *    this system applied a percentage — `discount_percent` had no reader at
+ *    all. Fixing only the CHECK violation would have started mailing lapsed
+ *    customers codes their portal rejects: worse than inert.
  *
- * "20% off a month of service" also has no base to compute from:
- * `subscriptions.price_cents` is per VISIT, and no visits-per-cycle rule
- * exists anywhere in this codebase. Rather than invent one inside a flow that
- * writes to the credit ledger, the offer is the number the sender types.
+ * Percent codes redeem now (migration 20260807030000), against the customer's
+ * per-visit plan price. Win-back stays a dollar amount anyway, and that is now
+ * a choice rather than a limitation: the base a percentage would resolve
+ * against is ONE VISIT, so "20% off" to a lapsed customer is a few dollars, not
+ * the month of service the phrase implies. `subscriptions.price_cents` is per
+ * visit and no visits-per-cycle rule exists anywhere in this codebase. The
+ * offer is the number the sender types, and the sender can see it.
  */
 export const sendWinBack = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
