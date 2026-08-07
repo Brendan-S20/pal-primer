@@ -17,6 +17,7 @@ import {
 } from "@/lib/visits.functions";
 import { backfillPropertyGeocodes } from "@/lib/properties.functions";
 import { RouteMap, buildTechGroups, techColorMap } from "@/components/RouteMap";
+import { WeatherStrip } from "@/components/WeatherStrip";
 import { BASE_STYLES, storedBaseStyle, storeBaseStyle, type TileVariant } from "@/lib/map-tiles";
 import { StatusChip } from "@/components/client-detail/primitives";
 import { listTimeOff } from "@/lib/users.functions";
@@ -215,6 +216,28 @@ function RoutesPage() {
     setShowLoad(v);
     try {
       localStorage.setItem("routes.showLoad", v ? "1" : "0");
+    } catch {
+      /* private mode */
+    }
+  };
+
+  /** Weather, same collapsed-by-default treatment and for the same reason.
+   *
+   *  WeatherStrip was finished and never rendered — the only component in the
+   *  codebase nothing referenced. The header's forecast popover SHOWS you which
+   *  days are risky and gives you nothing to do about them; this is the other
+   *  half, and it takes exactly the `day` this page already has.
+   *
+   *  Its three server functions (analyzeDayWeather, rescheduleVisits,
+   *  undoReschedule) had one importer each — this component — so they read as
+   *  wired to the dead-machinery check while being reachable from nothing. */
+  const [showWeather, setShowWeather] = useState<boolean>(
+    () => typeof localStorage !== "undefined" && localStorage.getItem("routes.showWeather") === "1",
+  );
+  const setShowWeatherPersist = (v: boolean) => {
+    setShowWeather(v);
+    try {
+      localStorage.setItem("routes.showWeather", v ? "1" : "0");
     } catch {
       /* private mode */
     }
@@ -1130,6 +1153,32 @@ function RoutesPage() {
               an occasional question, and it used to sit permanently between the
               map and the board pushing the thing you came for down the page. */}
           <div className="min-w-0 space-y-4">
+            {/* Weather sits above tech load: "is today workable at all" comes
+                before "is anybody overloaded". Only for the single-day view —
+                the strip analyses one date, and offering it while the board
+                shows a week or a month would be a control that silently acts on
+                a day you are not looking at. */}
+            {range === "today" &&
+              (showWeather ? (
+                <div className="space-y-1">
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => setShowWeatherPersist(false)}
+                      className="rounded px-2 py-0.5 text-2xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      Hide weather
+                    </button>
+                  </div>
+                  <WeatherStrip day={day} />
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowWeatherPersist(true)}
+                  className="w-full rounded-lg border border-dashed px-3 py-1.5 text-left text-2xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  Show weather
+                </button>
+              ))}
             {showLoad ? (
               <div className="space-y-1">
                 <div className="flex justify-end">
