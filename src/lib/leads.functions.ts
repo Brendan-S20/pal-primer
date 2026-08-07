@@ -28,45 +28,6 @@ function anonClient() {
   return createClient<Database>(url, key, { auth: { persistSession: false } });
 }
 
-export const submitLead = createServerFn({ method: "POST" })
-  .inputValidator((d) => leadSchema.parse(d))
-  .handler(async ({ data }) => {
-    const supabase = anonClient();
-    // Lead capture resolves by portal_slug (what Settings hands out), not the
-    // signup-gated public_get_org_by_slug (#3).
-    const { data: orgRows } = await supabase.rpc("public_get_org_for_lead_form", { _slug: data.slug });
-    const orgId = (orgRows as Array<{ id: string }> | null)?.[0]?.id ?? null;
-    if (!orgId) throw new Error("Unknown business");
-    const payload = {
-      organization_id: orgId,
-      name: data.name,
-      email: data.email.toLowerCase(),
-      phone: data.phone || null,
-      company: data.company || null,
-      location: data.location || null,
-      dog_count: data.dog_count ?? null,
-      frequency: data.frequency || null,
-      message: data.message || null,
-      source: data.source || "website",
-    };
-    const { error } = await (supabase.from("leads") as any).insert(payload);
-    if (error) throw new Error(error.message);
-    // In-app notification to the office that a new website lead came in.
-    try {
-      const { notifyRoles } = await import("@/lib/notify-center.server");
-      await notifyRoles(["owner", "office_manager", "dispatcher"], {
-        orgId,
-        type: "lead",
-        title: "New website lead",
-        body: `${data.name}${data.location ? ` · ${data.location}` : ""}`,
-        link: "/leads",
-      });
-    } catch (e) {
-      console.error("lead in-app notification failed", (e as Error).message);
-    }
-    return { ok: true };
-  });
-
 // Finding #25: config + basic analytics for the tenant's embeddable lead form.
 
 // Default copy + field visibility for the hosted/embedded lead form. name +

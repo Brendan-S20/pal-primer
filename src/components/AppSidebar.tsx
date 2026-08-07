@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useMyRole, canAccess } from "@/hooks/useMyRole";
 import { getPlatformContext } from "@/lib/platform.functions";
+import { getReviewQueueCount } from "@/lib/review-queue.functions";
 import {
   LayoutDashboard,
   Users,
@@ -143,6 +144,26 @@ export function AppSidebar() {
   });
   const isPlatformAdmin = !!platform.data?.isPlatformAdmin;
 
+  // "In the nav rather than URL-only on purpose — a queue of things we refused
+  // to guess about is worthless if nobody knows it exists" (the NAV_GROUPS note
+  // above). A nav entry that looks identical whether the queue holds 0 items or
+  // 40 does not tell anybody it exists either, which is why getReviewQueueCount
+  // was written — "Open-item count for a nav badge. Cheap, and separate from the
+  // list so the badge doesn't pull 200 rows on every page." It then sat unwired
+  // for long enough to end up in the dead-machinery baseline.
+  //
+  // Only fetched when the nav item is actually visible to this role, and
+  // deliberately allowed to fail quietly: a badge is not worth an error state.
+  const reviewCountFn = useServerFn(getReviewQueueCount);
+  const reviewCount = useQuery({
+    queryKey: ["review-queue", "count"],
+    queryFn: () => reviewCountFn(),
+    enabled: canAccess(role, "/review"),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const openReviews = reviewCount.data?.openCount ?? 0;
+
   const visibleGroups = NAV_GROUPS.map((g) => ({
     ...g,
     items: g.items.filter((it) => canAccess(role, it.url)),
@@ -188,10 +209,33 @@ export function AppSidebar() {
               <SidebarMenu>
                 {group.items.map((item) => (
                   <SidebarMenuItem key={item.url}>
-                    <SidebarMenuButton asChild isActive={isActive(item.url)} tooltip={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive(item.url)}
+                      tooltip={
+                        item.url === "/review" && openReviews > 0
+                          ? `${item.title} (${openReviews})`
+                          : item.title
+                      }
+                    >
                       <Link to={item.url} className="flex items-center gap-2" data-tour={item.url}>
                         <item.icon className="h-4 w-4 shrink-0" />
                         {!collapsed && <span className="truncate">{item.title}</span>}
+                        {/* Expanded: a count. Collapsed to the icon rail there is
+                            no room for one, so it degrades to a dot — still
+                            "there is something here", which is the whole job. */}
+                        {item.url === "/review" &&
+                          openReviews > 0 &&
+                          (collapsed ? (
+                            <span
+                              aria-hidden
+                              className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-destructive"
+                            />
+                          ) : (
+                            <span className="ml-auto shrink-0 rounded-full bg-destructive/15 px-1.5 py-0.5 text-2xs font-medium tabular-nums text-destructive">
+                              {openReviews > 99 ? "99+" : openReviews}
+                            </span>
+                          ))}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

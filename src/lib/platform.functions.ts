@@ -27,43 +27,6 @@ const updatePlanSchema = z.object({
   plan_status: z.enum(["trialing", "active", "past_due", "canceled", "paused"]).nullable(),
 });
 
-export const updateOrgPlan = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((data) => updatePlanSchema.parse(data))
-  .handler(async ({ data, context }) => {
-    await assertPlatformAdmin(context.supabase, context.userId);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
-    // Snapshot the "before" values for the audit trail.
-    const { data: before } = await supabaseAdmin
-      .from("organizations")
-      .select("billing_tier, plan_status")
-      .eq("id", data.organization_id)
-      .maybeSingle();
-
-    const patch: { billing_tier?: string; plan_status?: any } = {};
-    if (data.billing_tier !== null) patch.billing_tier = data.billing_tier;
-    if (data.plan_status !== null) patch.plan_status = data.plan_status;
-    const { error } = await supabaseAdmin
-      .from("organizations")
-      .update(patch)
-      .eq("id", data.organization_id);
-    if (error) throw new Error(error.message);
-
-    // Log to platform_admin_audit — best-effort; never block the mutation.
-    try {
-      await supabaseAdmin.from("platform_admin_audit").insert({
-        actor_user_id: context.userId,
-        organization_id: data.organization_id,
-        action: "update_org_plan",
-        before_json: before ?? null,
-        after_json: patch,
-      });
-    } catch { /* ignore audit failures */ }
-
-    return { ok: true };
-  });
-
 // ---------- Plan catalog editing (platform admin → Plans page) ----------
 
 const updatePlatformPlanSchema = z.object({
@@ -129,19 +92,6 @@ export const updatePlatformPlan = createServerFn({ method: "POST" })
     } catch { /* audit best-effort */ }
 
     return { ok: true };
-  });
-
-export const listPlatformAudit = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    await assertPlatformAdmin(context.supabase, context.userId);
-    const { data, error } = await context.supabase
-      .from("platform_admin_audit")
-      .select("id, actor_user_id, organization_id, action, before_json, after_json, created_at")
-      .order("created_at", { ascending: false })
-      .limit(50);
-    if (error) throw new Error(error.message);
-    return { rows: data ?? [] };
   });
 
 // ---------- Impersonation ----------

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { getPlatformContext, updatePlatformPlan } from "@/lib/platform.functions";
+import { reassignAllBillingTiers } from "@/lib/platform-billing.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Pencil } from "lucide-react";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 
 export const Route = createFileRoute("/platform/plans")({
   component: PlansPage,
@@ -96,6 +98,21 @@ function PlansPage() {
       if (error) throw new Error(error.message);
       return (data ?? []) as Plan[];
     },
+  });
+
+  const { confirm, dialog } = useConfirmDialog();
+  const recomputeFn = useServerFn(reassignAllBillingTiers);
+  const recompute = useMutation({
+    mutationFn: () => recomputeFn(),
+    onSuccess: (r: { count: number }) => {
+      toast.success(
+        r.count === 0
+          ? "Every tenant was already on the right tier"
+          : `Moved ${r.count} organization${r.count === 1 ? "" : "s"} onto a different tier`,
+      );
+      qc.invalidateQueries({ queryKey: ["platform"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const [editing, setEditing] = useState<Plan | null>(null);
@@ -191,16 +208,44 @@ function PlansPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Plans</h1>
-        <p className="text-sm text-muted-foreground">
-          Per-employee SaaS pricing, matching houndstack.com. Each tier includes a set number of
-          employees; additional active employees are billed at the per-employee overage rate.
-          <strong> Customers, dogs, jobs, routes, and zones are unlimited on every plan.</strong>{" "}
-          New signups start on a 14-day free trial. Stripe products/prices are mirrored from here
-          once the platform Stripe key is set.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Plans</h1>
+          <p className="text-sm text-muted-foreground">
+            Per-employee SaaS pricing, matching houndstack.com. Each tier includes a set number of
+            employees; additional active employees are billed at the per-employee overage rate.
+            <strong> Customers, dogs, jobs, routes, and zones are unlimited on every plan.</strong>{" "}
+            New signups start on a 14-day free trial. Stripe products/prices are mirrored from here
+            once the platform Stripe key is set.
+          </p>
+        </div>
+        {/* Editing a plan's bands here does not move anybody onto or off it —
+            each org's tier was decided the last time assign_billing_tier_for_org
+            ran for them. Without this, changing a band leaves every existing org
+            on the tier the OLD band put them in, with nothing in the product to
+            recompute it. reassignAllBillingTiers has existed for exactly this
+            and had no caller; it is one of the 28 the dead-machinery detector
+            has been carrying. */}
+        <Button
+          variant="outline"
+          className="shrink-0"
+          disabled={recompute.isPending}
+          onClick={async () => {
+            if (
+              await confirm({
+                title: "Recompute every tenant's billing tier?",
+                description:
+                  "Re-runs the tier rules against each organization's current employee count and moves any that no longer match. Run this after changing a plan's included employees or price bands — otherwise existing tenants keep the tier their old band gave them.",
+                confirmLabel: "Recompute tiers",
+              })
+            )
+              recompute.mutate();
+          }}
+        >
+          {recompute.isPending ? "Recomputing…" : "Recompute tiers"}
+        </Button>
       </div>
+      {dialog}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Catalog</CardTitle>

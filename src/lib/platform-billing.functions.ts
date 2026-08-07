@@ -232,15 +232,3 @@ export const reassignAllBillingTiers = createServerFn({ method: "POST" })
     return { count: data as number };
   });
 
-export const reassignBillingTierForOrg = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ organization_id: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context.supabase, context.userId);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: slug, error } = await supabaseAdmin.rpc("assign_billing_tier_for_org", {
-      _org_id: data.organization_id,
-    });
-    if (error) throw new Error(error.message);
-    return { slug: slug as string | null };
-  });

@@ -126,17 +126,3 @@ export const setLocationChargebackPolicy = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
-export const setLocationRoyaltyPercent = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z.object({ organizationId: z.string().uuid(), percent: z.number().min(0).max(100) }).parse(d),
-  )
-  .handler(async ({ data, context }) => {
-    await requireFranchiseParent(context.supabase, context.userId);
-    const { error } = await (context.supabase as any).rpc("set_child_royalty_percent", {
-      _child_org_id: data.organizationId,
-      _percent: data.percent,
-    });
-    if (error) throw new Error(error.message);
-    return { ok: true as const };
-  });

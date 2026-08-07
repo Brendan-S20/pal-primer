@@ -543,33 +543,18 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
     };
   });
 
-// Public pay links (QA round 8): staff copy a no-login /pay/i/{token} link.
-// The client lands on a clean invoice document and pays right there — no
-// portal OTP, no checkout.stripe.com. Replaces the old getInvoicePortalLink.
-export const getInvoicePayLink = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ invoiceId: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    await requirePermission(supabase, context.userId, "manage_client_billing");
-    const { data: invoice, error } = await supabase
-      .from("invoices")
-      .select("id, public_token")
-      .eq("id", data.invoiceId)
-      .single();
-    if (error) throw new Error(error.message);
-    const token = invoice.public_token;
-    if (!token) throw new Error("This invoice has no pay link yet");
-    const base = appOrigin();
-    return { url: `${base}/pay/i/${token}` };
-  });
-
 // Shared saved-card charge implementation (B7): the same off-session charge
-// autopay/the portal use, on demand from the invoice drawer. Used by BOTH
-// chargeInvoiceWithSavedCard and chargeAutopayForInvoice so the
-// processing-PI guard, reconcile-before-charge, idempotency key, and activity
-// log exist exactly once. Charges the invoice's OPEN amount
-// (total_cents - credit_applied_cents), never the gross total.
+// autopay/the portal use, on demand from the invoice drawer. The processing-PI
+// guard, reconcile-before-charge, idempotency key and activity log exist here
+// exactly once. Charges the invoice's OPEN amount (total_cents -
+// credit_applied_cents), never the gross total.
+//
+// It had two callers. `chargeInvoiceWithSavedCard` was a bare wrapper that no
+// screen ever imported, and it charged the open amount WITHOUT first applying
+// the client's account credit — wiring it up would have taken money from a
+// customer who had already paid part of the bill. Deleted rather than fixed:
+// chargeAutopayForInvoice below is the same call done in the right order, and
+// it is the one the invoice drawer and the full invoice page both use.
 async function chargeSavedCardCore(
   supabase: SupabaseClient<Database>,
   actorUserId: string,
@@ -770,17 +755,6 @@ async function chargeSavedCardCore(
   }
 }
 
-// Staff "charge saved card": thin wrapper over chargeSavedCardCore.
-export const chargeInvoiceWithSavedCard = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ invoiceId: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    await requirePermission(supabase, context.userId, "manage_client_billing");
-    const res = await chargeSavedCardCore(supabase, context.userId, data.invoiceId);
-    return { ok: true, status: res.status };
-  });
-
 // Immediately reconcile an invoice against Stripe after a client-side
 // PaymentElement confirmation. The webhook is the real-time path, but the UI
 // refetches right away — without this, a just-paid invoice reads back "open"
@@ -899,9 +873,10 @@ export const applyCreditToInvoice = createServerFn({ method: "POST" })
 
 /** "Charge autopay" for one invoice (B2/B7, I8 "credits auto-applied first"):
  * applies available credit first, then charges only the remaining due to the
- * client's default saved card via the same implementation as
- * chargeInvoiceWithSavedCard (processing-PI guard, reconcile, idempotency,
- * activity log included). */
+ * client's default saved card via chargeSavedCardCore (processing-PI guard,
+ * reconcile, idempotency, activity log included). The ONE way staff take a
+ * saved-card payment — see the note on chargeSavedCardCore for what the other
+ * one did wrong. */
 export const chargeAutopayForInvoice = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ invoiceId: z.string().uuid() }).parse(d))
@@ -939,27 +914,6 @@ export const chargeAutopayForInvoice = createServerFn({ method: "POST" })
       chargedCents: charge.chargedCents,
       status: charge.status,
     };
-  });
-
-export const listUnbilledForClient = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const { supabase } = context;
-    await requirePermission(supabase, context.userId, "manage_client_billing");
-    const { data: visits, error } = await supabase
-      .from("visits")
-      .select(
-        "id, scheduled_on, completed_at, subscription_id, subscriptions(price_cents), invoice_line_items(id)",
-      )
-      .eq("client_id", data.clientId)
-      .eq("status", "completed")
-      .order("scheduled_on");
-    if (error) throw new Error(error.message);
-    return (visits ?? []).filter(
-      (v: { invoice_line_items?: unknown[] }) =>
-        !v.invoice_line_items || (v.invoice_line_items as unknown[]).length === 0,
-    );
   });
 
 export const generatePrepaidInvoice = createServerFn({ method: "POST" })

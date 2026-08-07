@@ -11,6 +11,7 @@ import {
   createGiftCard,
   voidGiftCard,
   redeemGiftCard,
+  listGiftCardRedemptions,
 } from "@/lib/promotions.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,8 +24,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Trash2, Ban, Copy, Printer } from "lucide-react";
+import { Trash2, Ban, Copy, Printer, ChevronDown, ChevronRight } from "lucide-react";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { formatDay } from "@/lib/format";
 import { getMyOrg } from "@/lib/org.functions";
 import { listClients } from "@/lib/clients.functions";
 
@@ -384,6 +386,72 @@ function PromoSection() {
   );
 }
 
+/**
+ * Where a gift card's money went.
+ *
+ * The row above says "$40.00 of $100.00 remaining" and nothing else, so the
+ * $60.00 is unaccounted for on screen: which clients, on what dates, against
+ * which invoices. `listGiftCardRedemptions` was written to answer exactly that
+ * and then never called by anything — one of the 28 unwired server functions
+ * the dead-machinery detector has been carrying.
+ *
+ * Collapsed by default and fetched only on open: the common case is a card with
+ * nothing to explain, and the list names clients, which is not something to put
+ * on screen unasked.
+ */
+function GiftCardHistory({ card }: { card: any }) {
+  const [open, setOpen] = useState(false);
+  const listFn = useServerFn(listGiftCardRedemptions);
+  const { data, isLoading } = useQuery({
+    queryKey: ["gift-card-redemptions", card.id],
+    queryFn: () => listFn({ data: { giftCardId: card.id } }),
+    enabled: open,
+  });
+  const spent = (card.initial_balance_cents ?? 0) - (card.remaining_balance_cents ?? 0);
+  // A void wipes remaining_balance_cents to 0, so "spent" on a voided card is
+  // mostly the write-off, not redemptions. Offer the history anyway — that is
+  // precisely the card where somebody asks what was used before it was voided.
+  if (spent <= 0 && card.status === "active") return null;
+
+  const rows = data?.redemptions ?? [];
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1 text-2xs text-muted-foreground underline-offset-2 hover:underline"
+        aria-expanded={open}
+      >
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        {card.status === "void" ? "Redemptions before it was voided" : "Where it was used"}
+      </button>
+      {open && (
+        <div className="mt-1 space-y-0.5 border-l pl-2">
+          {isLoading ? (
+            <p className="text-2xs text-muted-foreground">Loading…</p>
+          ) : rows.length === 0 ? (
+            <p className="text-2xs text-muted-foreground">
+              No redemptions recorded
+              {card.status === "void" ? " — the balance was written off by the void." : "."}
+            </p>
+          ) : (
+            rows.map((r: any) => (
+              <div key={r.id} className="text-2xs text-muted-foreground">
+                <span className="tabular-nums">{fmtMoney(r.amount_cents)}</span>
+                {" · "}
+                {r.clients?.display_name ?? "unknown client"}
+                {" · "}
+                {formatDay(r.created_at)}
+                {r.note ? ` · ${r.note}` : ""}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GiftSection() {
   const qc = useQueryClient();
   const { confirm, dialog } = useConfirmDialog();
@@ -612,6 +680,7 @@ function GiftSection() {
                     )}
                     {c.recipient_name ? ` · for ${c.recipient_name}` : ""}
                   </div>
+                  <GiftCardHistory card={c} />
                 </div>
                 <div className="flex items-center">
                   {c.status === "active" && (

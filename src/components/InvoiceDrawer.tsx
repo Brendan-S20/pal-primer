@@ -25,6 +25,7 @@ import { sendInvoiceEmail } from "@/lib/notifications.functions";
 // working; the implementation now lives in the shared domain lib (I3).
 export { isInvoiceOverdue } from "@/lib/overdue";
 import { isInvoiceOverdue } from "@/lib/overdue";
+import { appUrl } from "@/lib/app-origin";
 
 function fmtCents(c: number | null | undefined, currency = "usd") {
   return new Intl.NumberFormat("en-US", {
@@ -94,7 +95,11 @@ export function InvoiceDrawer({
 
   const copyPayLink = () => {
     if (!inv) return;
-    const url = `${window.location.origin}/pay/i/${inv.public_token}`;
+    // appUrl(), not window.location.origin: this link goes to a CUSTOMER, and
+    // the origin the staffer happens to be on is not necessarily the host the
+    // product lives at — a Lovable preview URL would produce a pay link that
+    // works today and 404s next week. See src/lib/app-origin.ts.
+    const url = appUrl(`/pay/i/${inv.public_token}`);
     navigator.clipboard.writeText(url).then(
       () => {
         setCopied(true);
