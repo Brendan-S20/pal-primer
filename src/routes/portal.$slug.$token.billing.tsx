@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Button } from "@/components/ui/button";
+import { X } from "lucide-react";
 import { toast } from "sonner";
 import {
   portalCreateSetupIntent,
@@ -12,13 +13,30 @@ import {
   portalStartPrepaidTopup,
 } from "@/lib/portal.functions";
 import {
-  usePortalCtx, EmptyBox, InvoiceStatusBadge, PromoRedeemCard, TopupRow,
-  fmtDayShort, money,
+  usePortalCtx,
+  EmptyBox,
+  InvoiceStatusBadge,
+  PromoRedeemCard,
+  TopupRow,
+  fmtDayShort,
+  money,
 } from "@/lib/portal-ui";
 import { invoiceKindLabel } from "@/lib/invoice-labels";
 
 export const Route = createFileRoute("/portal/$slug/$token/billing")({
   component: PortalBilling,
+  // The pay page has always navigated here with `?paid=…` after a successful
+  // charge — from the embedded flow and from the ACH redirect return — and
+  // nothing on this route read it. Somebody who had just handed over money
+  // landed on a list of invoices with no acknowledgement that anything had
+  // happened. Declaring it is what makes it readable at all.
+  //
+  // `paid` is OPTIONAL in the return type, and the key is omitted rather than
+  // set to undefined when absent. A validator that always returns the key
+  // makes `search` a required prop on every <Link> to this route, and there
+  // are three of them that have no business knowing about payment status.
+  validateSearch: (search: Record<string, unknown>): { paid?: "succeeded" | "processing" } =>
+    search.paid === "succeeded" || search.paid === "processing" ? { paid: search.paid } : {},
 });
 
 // Cache Stripe.js per (publishable key + connected account) — Connect direct
@@ -27,17 +45,19 @@ const stripeCache = new Map<string, Promise<StripeJs | null>>();
 function getStripe(pk: string, stripeAccount?: string) {
   const key = `${pk}|${stripeAccount ?? ""}`;
   let p = stripeCache.get(key);
-  if (!p) { p = loadStripe(pk, stripeAccount ? { stripeAccount } : undefined); stripeCache.set(key, p); }
+  if (!p) {
+    p = loadStripe(pk, stripeAccount ? { stripeAccount } : undefined);
+    stripeCache.set(key, p);
+  }
   return p;
 }
 
 function PortalBilling() {
   const { slug, token } = Route.useParams();
+  const { paid } = Route.useSearch();
   const navigate = useNavigate();
-  const {
-    clientQ, invoicesQ, subsQ,
-    setAutopayMut, removeCardMut, paySavedMut, promoMut,
-  } = usePortalCtx();
+  const { clientQ, invoicesQ, subsQ, setAutopayMut, removeCardMut, paySavedMut, promoMut } =
+    usePortalCtx();
   const c = clientQ.data as any;
   const [showCard, setShowCard] = useState(false);
 
@@ -59,6 +79,41 @@ function PortalBilling() {
     <div className="space-y-4">
       <h2 className="text-lg font-semibold">Billing</h2>
 
+      {paid && (
+        <div
+          role="status"
+          className="flex items-start justify-between gap-3 rounded-md border border-primary/40 bg-primary/5 p-3 text-sm"
+        >
+          <div>
+            <div className="font-medium">
+              {paid === "processing" ? "Payment started" : "Payment received"}
+            </div>
+            <p className="mt-0.5 text-muted-foreground">
+              {paid === "processing"
+                ? // ACH takes days to settle. Saying "received" here is the
+                  // reassurance a customer acts on — and then the invoice
+                  // still reads open tomorrow and they call.
+                  "Bank payments take a few business days to clear. We'll email you when it does, and the invoice below stays open until then."
+                : "Thanks — your invoice below is marked paid. A receipt is on its way to your email."}
+            </p>
+          </div>
+          <button
+            onClick={() =>
+              navigate({
+                to: "/portal/$slug/$token/billing",
+                params: { slug, token },
+                search: {} as never,
+                replace: true,
+              })
+            }
+            className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground"
+            aria-label="Dismiss"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Payment method */}
       <div className="rounded-md border bg-card p-3 text-sm space-y-3">
         <p className="text-xs uppercase tracking-wider text-muted-foreground">Payment method</p>
@@ -70,18 +125,25 @@ function PortalBilling() {
                   {c.card_brand ?? "Card"} ending in {c.card_last4 ?? "····"}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  Autopay {c.autopay_enabled ? "on. Open invoices are charged automatically." : "off."}
+                  Autopay{" "}
+                  {c.autopay_enabled ? "on. Open invoices are charged automatically." : "off."}
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button size="sm" variant={c.autopay_enabled ? "outline" : "default"}
+                <Button
+                  size="sm"
+                  variant={c.autopay_enabled ? "outline" : "default"}
                   disabled={setAutopayMut.isPending}
-                  onClick={() => setAutopayMut.mutate(!c.autopay_enabled)}>
+                  onClick={() => setAutopayMut.mutate(!c.autopay_enabled)}
+                >
                   {c.autopay_enabled ? "Turn off autopay" : "Turn on autopay"}
                 </Button>
-                <Button size="sm" variant="outline"
+                <Button
+                  size="sm"
+                  variant="outline"
                   disabled={removeCardMut.isPending}
-                  onClick={() => removeCardMut.mutate()}>
+                  onClick={() => removeCardMut.mutate()}
+                >
                   Remove
                 </Button>
               </div>
@@ -103,11 +165,15 @@ function PortalBilling() {
         {showCard && (
           <CardSetup
             token={token}
-            onDone={() => { setShowCard(false); clientQ.refetch(); }}
+            onDone={() => {
+              setShowCard(false);
+              clientQ.refetch();
+            }}
           />
         )}
         <p className="text-xs text-muted-foreground">
-          We accept credit and debit cards plus ACH bank transfers. Your card details never touch our servers.
+          We accept credit and debit cards plus ACH bank transfers. Your card details never touch
+          our servers.
         </p>
       </div>
 
@@ -123,21 +189,33 @@ function PortalBilling() {
               {money(invoicesQ.data!.openTotalCents)}
             </span>
             {(invoicesQ.data!.overdueCount ?? 0) > 0 && (
-              <span className="font-medium text-destructive"> · {invoicesQ.data!.overdueCount} overdue</span>
+              <span className="font-medium text-destructive">
+                {" "}
+                · {invoicesQ.data!.overdueCount} overdue
+              </span>
             )}
           </p>
         )}
         {(invoicesQ.data?.invoices ?? []).length === 0 ? (
-          <EmptyBox title="No invoices yet" body="Your first invoice will appear here after service." />
+          <EmptyBox
+            title="No invoices yet"
+            body="Your first invoice will appear here after service."
+          />
         ) : (
           <ul className="divide-y rounded-md border bg-card">
             {invoicesQ.data!.invoices.map((i, idx) => {
               const invNo = `#${String(invoicesQ.data!.invoices.length - idx).padStart(4, "0")}`;
-              const label = i.kind === "prepaid_topup" ? invoiceKindLabel(i.kind)
-                : i.period_start ? `Service ${fmtDayShort(i.period_start)} - ${fmtDayShort(i.period_end)}`
-                : "Service";
+              const label =
+                i.kind === "prepaid_topup"
+                  ? invoiceKindLabel(i.kind)
+                  : i.period_start
+                    ? `Service ${fmtDayShort(i.period_start)} - ${fmtDayShort(i.period_end)}`
+                    : "Service";
               return (
-                <li key={i.invoice_id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
+                <li
+                  key={i.invoice_id}
+                  className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm"
+                >
                   <div>
                     <div className="font-medium">
                       Invoice {invNo}
@@ -159,26 +237,36 @@ function PortalBilling() {
                         </span>
                       )}
                       {i.due_on && i.status === "open" && (
-                        <span className={`text-xs ${i.overdue ? "font-medium text-destructive" : "text-muted-foreground"}`}>
+                        <span
+                          className={`text-xs ${i.overdue ? "font-medium text-destructive" : "text-muted-foreground"}`}
+                        >
                           Due {fmtDayShort(i.due_on)}
                         </span>
                       )}
                       {i.issued_at && (
-                        <span className="text-xs text-muted-foreground">Issued {fmtDayShort(i.issued_at)}</span>
+                        <span className="text-xs text-muted-foreground">
+                          Issued {fmtDayShort(i.issued_at)}
+                        </span>
                       )}
                     </div>
                   </div>
                   {i.status !== "paid" && i.status !== "void" && (
                     <div className="flex gap-2">
                       {c?.has_saved_card && (
-                        <Button size="sm" variant="default"
+                        <Button
+                          size="sm"
+                          variant="default"
                           disabled={paySavedMut.isPending}
-                          onClick={() => paySavedMut.mutate(i.invoice_id)}>
+                          onClick={() => paySavedMut.mutate(i.invoice_id)}
+                        >
                           Pay with saved card
                         </Button>
                       )}
                       <Button asChild size="sm" variant={c?.has_saved_card ? "outline" : "default"}>
-                        <Link to="/portal/$slug/$token/pay/$invoiceId" params={{ slug, token, invoiceId: i.invoice_id }}>
+                        <Link
+                          to="/portal/$slug/$token/pay/$invoiceId"
+                          params={{ slug, token, invoiceId: i.invoice_id }}
+                        >
                           Pay now
                         </Link>
                       </Button>
@@ -193,12 +281,19 @@ function PortalBilling() {
 
       {(subsQ.data ?? []).length > 0 && (
         <div>
-          <p className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Prepaid top-up</p>
+          <p className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">
+            Prepaid top-up
+          </p>
           <ul className="space-y-2">
             {subsQ.data!.map((s) => (
-              <TopupRow key={s.subscription_id} s={s}
-                onSubmit={(count) => topupMut.mutate({ subscriptionId: s.subscription_id, visitCount: count })}
-                pending={topupMut.isPending} />
+              <TopupRow
+                key={s.subscription_id}
+                s={s}
+                onSubmit={(count) =>
+                  topupMut.mutate({ subscriptionId: s.subscription_id, visitCount: count })
+                }
+                pending={topupMut.isPending}
+              />
             ))}
           </ul>
         </div>
@@ -218,11 +313,13 @@ function CardSetup({ token, onDone }: { token: string; onDone: () => void }) {
     staleTime: 5 * 60 * 1000,
   });
   const stripePromise = useMemo(
-    () => (q.data ? getStripe((q.data as any).publishableKey, (q.data as any).stripeAccount) : null),
+    () =>
+      q.data ? getStripe((q.data as any).publishableKey, (q.data as any).stripeAccount) : null,
     [(q.data as any)?.publishableKey, (q.data as any)?.stripeAccount],
   );
 
-  if (q.isLoading) return <p className="text-xs text-muted-foreground">Loading secure card form…</p>;
+  if (q.isLoading)
+    return <p className="text-xs text-muted-foreground">Loading secure card form…</p>;
   if (q.error) return <p className="text-xs text-destructive">{(q.error as Error).message}</p>;
   if (!q.data || !stripePromise) return null;
 
@@ -246,9 +343,18 @@ function CardSetupInner({ token, onDone }: { token: string; onDone: () => void }
     if (!stripe || !elements) return;
     setBusy(true);
     try {
-      const { error, setupIntent } = await stripe.confirmSetup({ elements, redirect: "if_required" });
-      if (error) { toast.error(error.message ?? "Couldn't save the card"); return; }
-      if (!setupIntent?.id) { toast.error("Card wasn't saved. Please try again."); return; }
+      const { error, setupIntent } = await stripe.confirmSetup({
+        elements,
+        redirect: "if_required",
+      });
+      if (error) {
+        toast.error(error.message ?? "Couldn't save the card");
+        return;
+      }
+      if (!setupIntent?.id) {
+        toast.error("Card wasn't saved. Please try again.");
+        return;
+      }
       await finalizeFn({ data: { token, setupIntentId: setupIntent.id } });
       toast.success("Card saved");
       onDone();

@@ -1,7 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { CalendarDays } from "lucide-react";
 import {
-  usePortalCtx, UpcomingVisitsList, PlanRow, VacationHoldCard, EmptyBox,
+  usePortalCtx,
+  UpcomingVisitsList,
+  PlanRow,
+  VacationHoldCard,
+  EmptyBox,
   ServiceHistorySection,
 } from "@/lib/portal-ui";
 
@@ -11,8 +15,17 @@ export const Route = createFileRoute("/portal/$slug/$token/visits")({
 
 function PortalVisits() {
   const {
-    clientQ, visitsQ, subsQ, token, historyQ, signPhotosFn, concernMut,
-    skipMut, rescheduleMut, freqMut, vacationMut,
+    clientQ,
+    visitsQ,
+    subsQ,
+    token,
+    historyQ,
+    signPhotosFn,
+    concernMut,
+    skipMut,
+    rescheduleMut,
+    freqMut,
+    vacationMut,
   } = usePortalCtx();
   const c = clientQ.data as any;
   const isCommercial = c?.account_type === "commercial";
@@ -24,9 +37,11 @@ function PortalVisits() {
           <CalendarDays className="h-4 w-4" /> Upcoming visits
         </h2>
         {(visitsQ.data ?? []).length === 0 ? (
-          <EmptyBox icon={<CalendarDays className="h-6 w-6" />}
+          <EmptyBox
+            icon={<CalendarDays className="h-6 w-6" />}
             title="No visits scheduled yet"
-            body="We'll text you when the next one is on the calendar." />
+            body="We'll text you when the next one is on the calendar."
+          />
         ) : (
           <UpcomingVisitsList
             rows={visitsQ.data ?? []}
@@ -43,20 +58,35 @@ function PortalVisits() {
           <h2 className="mb-2 text-lg font-semibold">Your plan</h2>
           <ul className="space-y-2">
             {subsQ.data!.map((s) => (
-              <PlanRow key={s.subscription_id} s={s} isCommercial={isCommercial}
+              <PlanRow
+                key={s.subscription_id}
+                s={s}
+                isCommercial={isCommercial}
                 allowChange={!!c?.allow_frequency_change}
                 autoApply={!!c?.auto_apply_changes}
-                onChange={(f) => freqMut.mutate({ subscriptionId: s.subscription_id, frequency: f })}
-                pending={freqMut.isPending} />
+                onChange={(f) =>
+                  freqMut.mutate({ subscriptionId: s.subscription_id, frequency: f })
+                }
+                pending={freqMut.isPending}
+              />
             ))}
           </ul>
-          {c?.allow_vacation_hold && (
-            <div className="mt-3">
-              <VacationHoldCard autoApply={!!c?.auto_apply_changes}
-                onSubmit={(v) => vacationMut.mutate(v)}
-                pending={vacationMut.isPending} />
-            </div>
-          )}
+        </section>
+      )}
+
+      {/* Outside the plan block on purpose. `subsQ` is
+          portal_list_prepaid_subscriptions — it filters billing_cadence =
+          'prepaid' — so nesting the hold inside it meant a POSTPAID customer
+          saw no vacation hold on this tab at all, however the org had set
+          allow_vacation_hold. The permission is the gate; having prepaid a
+          balance is not. */}
+      {c?.allow_vacation_hold && (
+        <section>
+          <VacationHoldCard
+            autoApply={!!c?.auto_apply_changes}
+            onSubmit={(v) => vacationMut.mutate(v)}
+            pending={vacationMut.isPending}
+          />
         </section>
       )}
 

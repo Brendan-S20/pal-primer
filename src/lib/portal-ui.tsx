@@ -442,9 +442,12 @@ type Branding = {
 function PortalBrandedShell({
   branding,
   children,
+  footer = "Trouble getting the code? Call or text us and we can read it to you.",
 }: {
   branding: Branding;
   children: React.ReactNode;
+  /** The verify flow's line is about codes; a dead-end page needs its own. */
+  footer?: React.ReactNode;
 }) {
   const brand =
     branding && isHex(branding.brandColor) ? (branding.brandColor as string) : "#16a34a";
@@ -474,10 +477,52 @@ function PortalBrandedShell({
       >
         {children}
       </div>
-      <p className="mt-4 text-center text-xs text-muted-foreground">
-        Trouble getting the code? Call or text us and we can read it to you.
-      </p>
+      {footer ? <p className="mt-4 text-center text-xs text-muted-foreground">{footer}</p> : null}
     </div>
+  );
+}
+
+/**
+ * Every way the portal can stop working, in the same branded card as the rest
+ * of it.
+ *
+ * The comment on PortalBrandedShell says "no unbranded portal page exists
+ * anywhere". Four did: the route's errorComponent, its notFoundComponent, and
+ * the two inline bail-outs in the shell. They rendered a bare centred div —
+ * and the error one printed `error.message` straight at the customer, which is
+ * whatever Postgres or fetch said. A homeowner reading
+ * "JWT expired: token is expired by 3h2m" learns nothing they can act on and
+ * has no idea who the page belongs to.
+ *
+ * The technical text is kept, behind a disclosure, because the person on the
+ * phone to support needs it and hiding it entirely just moves the dead end.
+ */
+export function PortalDeadEnd({
+  branding = null,
+  title,
+  body,
+  detail,
+}: {
+  branding?: Branding;
+  title: string;
+  body: React.ReactNode;
+  /** Raw error text. Shown collapsed, never as the headline. */
+  detail?: string | null;
+}) {
+  return (
+    <PortalBrandedShell
+      branding={branding}
+      footer="If this keeps happening, call or text us — we can sort it out in a minute."
+    >
+      <h1 className="text-center text-lg font-semibold">{title}</h1>
+      <div className="mt-2 text-center text-sm text-muted-foreground">{body}</div>
+      {detail ? (
+        <details className="mt-4 text-xs text-muted-foreground">
+          <summary className="cursor-pointer select-none">Technical details</summary>
+          <p className="mt-1 break-words font-mono text-2xs">{detail}</p>
+        </details>
+      ) : null}
+    </PortalBrandedShell>
   );
 }
 
@@ -1449,10 +1494,7 @@ export function ServiceHistorySection({
   // Key the signing round-trip on the actual photo paths, not the rows array
   // identity — the query result is a fresh array each settle, and this section
   // now lives on the busy Visits tab where sibling queries re-render it.
-  const pathsKey = useMemo(
-    () => rows.flatMap((r) => r.photo_paths ?? []).join("\n"),
-    [rows],
-  );
+  const pathsKey = useMemo(() => rows.flatMap((r) => r.photo_paths ?? []).join("\n"), [rows]);
   useEffect(() => {
     if (!pathsKey) return;
     const paths = pathsKey.split("\n");

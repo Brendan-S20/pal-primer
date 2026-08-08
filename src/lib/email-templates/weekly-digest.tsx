@@ -98,7 +98,9 @@ const Digest = ({
               What stood out
             </Heading>
             {insights.map((line, i) => (
-              <Text key={i} style={styles.text}>• {line}</Text>
+              <Text key={i} style={styles.text}>
+                • {line}
+              </Text>
             ))}
           </>
         )}
@@ -110,7 +112,9 @@ const Digest = ({
               Suggested next steps
             </Heading>
             {recommendations.map((line, i) => (
-              <Text key={i} style={styles.text}>{i + 1}. {line}</Text>
+              <Text key={i} style={styles.text}>
+                {i + 1}. {line}
+              </Text>
             ))}
           </>
         )}
@@ -122,7 +126,9 @@ const Digest = ({
               Needs attention
             </Heading>
             {alerts.map((line, i) => (
-              <Text key={i} style={styles.text}>• {line}</Text>
+              <Text key={i} style={styles.text}>
+                • {line}
+              </Text>
             ))}
           </>
         )}

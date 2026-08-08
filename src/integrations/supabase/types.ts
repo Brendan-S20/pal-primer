@@ -2808,6 +2808,7 @@ export type Database = {
           brand_color: string | null
           card_surcharge_attested_at: string | null
           chargeback_responsibility: string
+          contact_address: string | null
           contact_email: string | null
           contact_phone: string | null
           created_at: string
@@ -2922,6 +2923,7 @@ export type Database = {
           brand_color?: string | null
           card_surcharge_attested_at?: string | null
           chargeback_responsibility?: string
+          contact_address?: string | null
           contact_email?: string | null
           contact_phone?: string | null
           created_at?: string
@@ -3036,6 +3038,7 @@ export type Database = {
           brand_color?: string | null
           card_surcharge_attested_at?: string | null
           chargeback_responsibility?: string
+          contact_address?: string | null
           contact_email?: string | null
           contact_phone?: string | null
           created_at?: string

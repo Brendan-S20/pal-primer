@@ -1,9 +1,9 @@
 import * as React from "react";
 import { Body, Container, Head, Heading, Html, Preview, Text } from "@react-email/components";
-import { styles, fmtMoney } from "./_shared";
+import { styles, fmtMoney, OrgFooter, type OrgContact } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
-interface Props {
+interface Props extends OrgContact {
   orgName?: string;
   clientName?: string;
   /** The invoice amount — NOT necessarily what the card was charged. */
@@ -24,6 +24,7 @@ const PaymentReceived = ({
   amountCents = 0,
   surchargeCents = 0,
   paidAt,
+  ...orgContact
 }: Props) => (
   <Html lang="en">
     <Head />
@@ -31,7 +32,9 @@ const PaymentReceived = ({
     <Body style={styles.main}>
       <Container style={styles.container}>
         <Heading style={styles.h1}>Payment received</Heading>
-        <Text style={styles.text}>Thanks {clientName}. {orgName} received your payment.</Text>
+        <Text style={styles.text}>
+          Thanks {clientName}. {orgName} received your payment.
+        </Text>
         <Text style={styles.amount}>{fmtMoney(charged(amountCents, surchargeCents))}</Text>
         {surchargeCents > 0 ? (
           <Text style={styles.small}>
@@ -40,6 +43,7 @@ const PaymentReceived = ({
         ) : null}
         {paidAt ? <Text style={styles.text}>Paid on {paidAt}.</Text> : null}
         <Text style={styles.small}>This email serves as your receipt.</Text>
+        <OrgFooter {...orgContact} orgName={orgName} />
       </Container>
     </Body>
   </Html>

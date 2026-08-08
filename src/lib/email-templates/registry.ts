@@ -10,7 +10,6 @@ import { template as winBackTemplate } from "./win-back";
 import { template as weeklyDigestTemplate } from "./weekly-digest";
 import { template as reviewRequestTemplate } from "./review-request";
 
-
 export interface TemplateEntry {
   component: ComponentType<any>;
   subject: string | ((data: Record<string, any>) => string);

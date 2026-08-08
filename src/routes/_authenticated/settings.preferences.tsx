@@ -271,8 +271,7 @@ function PortalAddressCard() {
   });
 
   if (!canEdit) return null;
-  const base =
-    typeof window !== "undefined" ? window.location.origin : appOrigin();
+  const base = typeof window !== "undefined" ? window.location.origin : appOrigin();
 
   return (
     <Card>
@@ -330,6 +329,7 @@ function BrandingCard() {
   const [logoUrl, setLogoUrl] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [contactEmail, setContactEmail] = useState("");
+  const [contactAddress, setContactAddress] = useState("");
   const [cutoff, setCutoff] = useState(18);
   const [allowResched, setAllowResched] = useState(true);
   const [allowHold, setAllowHold] = useState(true);
@@ -342,6 +342,7 @@ function BrandingCard() {
     setLogoUrl(q.data.logo_url ?? "");
     setContactPhone(q.data.contact_phone ?? "");
     setContactEmail(q.data.contact_email ?? "");
+    setContactAddress(q.data.contact_address ?? "");
     setCutoff(q.data.portal_reschedule_cutoff_hours ?? 18);
     setAllowResched(q.data.portal_allow_self_reschedule);
     setAllowHold(q.data.portal_allow_vacation_hold);
@@ -357,6 +358,7 @@ function BrandingCard() {
           logoUrl: logoUrl.trim() || null,
           contactPhone: contactPhone.trim() || null,
           contactEmail: contactEmail.trim() || null,
+          contactAddress: contactAddress.trim() || null,
           portalRescheduleCutoffHours: cutoff,
           portalAllowSelfReschedule: allowResched,
           portalAllowVacationHold: allowHold,
@@ -441,6 +443,25 @@ function BrandingCard() {
                 who hits Reply today is writing to nobody.
               </p>
             )}
+          </div>
+          <div>
+            <Label className="text-xs">Business address</Label>
+            <Input
+              className="mt-1"
+              value={contactAddress}
+              onChange={(e) => setContactAddress(e.target.value)}
+              placeholder="123 Main St, Springfield, IL 62704"
+              maxLength={300}
+            />
+            {/* One free-text line, not street/city/state: nothing routes to
+                this or geocodes it, it is printed in the footer of customer
+                emails. Split fields would imply otherwise, and would not fit
+                the tenants trading from a PO box. */}
+            <p className="mt-1 text-xs text-muted-foreground">
+              {contactAddress.trim()
+                ? "Shown in the footer of emails to your customers."
+                : "Optional, but it goes in the footer of your customer emails — a service company with an address on it reads as a real local business."}
+            </p>
           </div>
           <div>
             <Label className="text-xs">Change cutoff (hours before visit)</Label>

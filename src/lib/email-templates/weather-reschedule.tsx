@@ -1,9 +1,9 @@
 import * as React from "react";
 import { Body, Container, Head, Heading, Html, Preview, Text } from "@react-email/components";
-import { styles } from "./_shared";
+import { styles, OrgFooter, type OrgContact } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
-interface Props {
+interface Props extends OrgContact {
   orgName?: string;
   clientName?: string;
   originalDate?: string;
@@ -17,6 +17,7 @@ const WeatherReschedule = ({
   originalDate = "",
   newDate = "",
   reason,
+  ...orgContact
 }: Props) => (
   <Html lang="en">
     <Head />
@@ -25,10 +26,11 @@ const WeatherReschedule = ({
       <Container style={styles.container}>
         <Heading style={styles.h1}>Visit rescheduled</Heading>
         <Text style={styles.text}>
-          Hi {clientName}, due to weather{reason ? ` (${reason})` : ""} we're moving your visit
-          from <strong>{originalDate}</strong> to <strong>{newDate}</strong>.
+          Hi {clientName}, due to weather{reason ? ` (${reason})` : ""} we're moving your visit from{" "}
+          <strong>{originalDate}</strong> to <strong>{newDate}</strong>.
         </Text>
         <Text style={styles.text}>No action needed on your end. {orgName} will be there.</Text>
+        <OrgFooter {...orgContact} orgName={orgName} />
       </Container>
     </Body>
   </Html>

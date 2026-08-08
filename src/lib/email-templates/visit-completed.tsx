@@ -1,9 +1,9 @@
 import * as React from "react";
 import { Body, Container, Head, Heading, Html, Preview, Text, Img } from "@react-email/components";
-import { styles } from "./_shared";
+import { styles, OrgFooter, type OrgContact } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
-interface Props {
+interface Props extends OrgContact {
   orgName?: string;
   clientName?: string;
   visitDate?: string;
@@ -17,6 +17,7 @@ const VisitCompleted = ({
   visitDate = "",
   address = "",
   photoUrls = [],
+  ...orgContact
 }: Props) => (
   <Html lang="en">
     <Head />
@@ -26,12 +27,20 @@ const VisitCompleted = ({
         <Heading style={styles.h1}>Visit complete</Heading>
         <Text style={styles.text}>
           Hi {clientName}, {orgName} completed your visit
-          {visitDate ? ` on ${visitDate}` : ""}{address ? ` at ${address}` : ""}.
+          {visitDate ? ` on ${visitDate}` : ""}
+          {address ? ` at ${address}` : ""}.
         </Text>
         {photoUrls.slice(0, 3).map((url, i) => (
-          <Img key={i} src={url} alt="Visit photo" width="480" style={{ borderRadius: 8, margin: "8px 0" }} />
+          <Img
+            key={i}
+            src={url}
+            alt="Visit photo"
+            width="480"
+            style={{ borderRadius: 8, margin: "8px 0" }}
+          />
         ))}
         <Text style={styles.small}>Thanks for trusting us with the dirty work.</Text>
+        <OrgFooter {...orgContact} orgName={orgName} />
       </Container>
     </Body>
   </Html>
