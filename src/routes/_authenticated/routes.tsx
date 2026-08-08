@@ -700,6 +700,24 @@ function RoutesPage() {
     }
   }
 
+  /** Refetch, then drop the optimistic snapshot.
+   *
+   *  `columns` returns `localColumns` whenever it is set, so leaving it in
+   *  place after a drag freezes the board on that snapshot until something
+   *  else happens to clear it: the invalidate refetches, the query updates,
+   *  and nothing on screen moves. Everything ELSE on the page — the map, the
+   *  calendar, the tech-load panel, the route-warnings banner — reads the
+   *  fresh `visits`, so a stale snapshot means two panes on one screen
+   *  disagreeing about where a visit is.
+   *
+   *  Awaiting the refetch BEFORE clearing is what keeps this from flickering:
+   *  the fresh data is already in place when the snapshot goes, so the board
+   *  never falls back to the pre-drag order for a frame. */
+  const settle = async () => {
+    await qc.invalidateQueries({ queryKey: ["visits", day] });
+    setLocalColumns(null);
+  };
+
   function onDragStart(e: DragStartEvent) {
     setActiveId(String(e.active.id));
   }
@@ -729,7 +747,7 @@ function RoutesPage() {
       next[toCol] = fromItems;
       setLocalColumns(next);
       await persistColumn(toCol, next[toCol]);
-      qc.invalidateQueries({ queryKey: ["visits", day] });
+      await settle();
       return;
     }
 
@@ -748,9 +766,15 @@ function RoutesPage() {
       if (toCol !== UNASSIGNED) await persistColumn(toCol, next[toCol]);
       if (fromCol !== UNASSIGNED) await persistColumn(fromCol, next[fromCol]);
     } catch (err) {
+      // Drop the optimistic move. Without this the reassign fails, a toast
+      // appears, and the card STAYS in the lane it never reached — so the
+      // board says one tech has the visit and the database says another.
+      // Nobody drives to that yard. `persistColumn`, twenty lines up, has
+      // always done this; only the cross-lane path forgot.
+      setLocalColumns(null);
       toast.error((err as Error).message);
     }
-    qc.invalidateQueries({ queryKey: ["visits", day] });
+    await settle();
   }
 
   const activeVisit = activeId ? visits.find((v) => v.id === activeId) : null;

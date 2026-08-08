@@ -703,16 +703,31 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
                     size="sm"
                     disabled={addingId === a.id}
                     onClick={async () => {
-                      if (
-                        a.billing_interval !== "one_time" ||
-                        (await confirm({
-                          title: `Purchase ${a.name}?`,
-                          description: `${a.name} is a one-time ${formatUsd(a.price_cents)} charge on your next invoice.`,
-                          confirmLabel: "Purchase",
-                        }))
-                      ) {
-                        subscribe.mutate(a.id);
-                      }
+                      // This condition used to read `billing_interval !==
+                      // "one_time" || await confirm(...)`, which short-circuits
+                      // — so the RECURRING purchase skipped the dialog and the
+                      // one-time purchase got it. Exactly backwards: the
+                      // one-time charge lands on the next invoice, while the
+                      // recurring one invoices and charges the card on file
+                      // today (`proration_behavior: "always_invoice"`). The
+                      // app's own success toast has been saying so all along.
+                      const oneTime = a.billing_interval === "one_time";
+                      // Annual orgs pay a monthly-priced add-on at 12x, per
+                      // the note on the price above. Confirm the number they
+                      // will actually be billed, not the one on the label.
+                      const billedYearly =
+                        planInterval === "year" && a.billing_interval === "month";
+                      const rate = billedYearly
+                        ? `${formatUsd(a.price_cents * 12)} per year`
+                        : `${formatUsd(a.price_cents)} per ${a.billing_interval}`;
+                      const ok = await confirm({
+                        title: oneTime ? `Purchase ${a.name}?` : `Add ${a.name} to your plan?`,
+                        description: oneTime
+                          ? `${a.name} is a one-time ${formatUsd(a.price_cents)} charge on your next invoice.`
+                          : `${a.name} is ${rate}. The prorated amount for the rest of this billing period is charged to your card today, and it appears on every invoice after that until you remove it.`,
+                        confirmLabel: oneTime ? "Purchase" : "Add to my plan",
+                      });
+                      if (ok) subscribe.mutate(a.id);
                     }}
                   >
                     {addingId === a.id

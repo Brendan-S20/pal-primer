@@ -1020,6 +1020,13 @@ function VisitCard({
           : `${photoKind[0].toUpperCase() + photoKind.slice(1)} photo uploaded`,
       );
       if (!r.queued) invalidate();
+      // Back to the kind that finishes the visit. The picker used to keep
+      // whatever was chosen last, so a tech who shot a Before filed every
+      // photo after it as a Before too — including the one they took to
+      // finish the job. The Complete button stayed locked, the hint below it
+      // kept asking for a completion photo, and the only clue that anything
+      // was wrong was the word "Before" in a toast that had already gone.
+      setPhotoKind("completion");
     } catch (e: any) {
       haptic("error");
       toast.error(e.message ?? "Upload failed");
