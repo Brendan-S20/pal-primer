@@ -163,19 +163,22 @@ describe("the three files the new rule found", () => {
     expect(existsSync(join(root, "src/components/LanguageToggle.tsx"))).toBe(false);
   });
 
-  it("route-plausibility is recorded as a gap, with what would clear it", () => {
-    const reason = baseline.unreachable_modules?.["src/lib/route-plausibility.ts"];
-    expect(reason).toBeTruthy();
-    // KNOWN GAP entries are counted and named on every run, green or not, so
-    // writing it down is not the same as dealing with it.
-    expect(reason).toMatch(/^KNOWN GAP/);
-    expect(reason).toMatch(/not by deleting tested safety work/);
+  it("route-plausibility was recorded as a gap, then cleared the way it said to", () => {
+    // It sat here as a KNOWN GAP — counted and named on every run, so writing
+    // it down was not the same as dealing with it. The reason said: "Clear it
+    // by rendering the warnings on the routes board (it takes the visit rows
+    // that page already has) — not by deleting tested safety work." That is
+    // what happened; see the-dispatcher-never-saw-the-warning.test.ts.
+    expect(baseline.unreachable_modules?.["src/lib/route-plausibility.ts"]).toBeUndefined();
+    expect(existsSync(join(root, "src/lib/route-plausibility.ts"))).toBe(true);
+    expect(existsSync(join(root, "tests/route-plausibility.test.ts"))).toBe(true);
   });
 
-  it("keeps route-plausibility's own tests passing meanwhile", () => {
-    // The helper is unwired, not broken. Deleting it would delete seven tests
-    // covering a real repro (a stop 1,850 km from the depot).
-    expect(existsSync(join(root, "tests/route-plausibility.test.ts"))).toBe(true);
-    expect(existsSync(join(root, "src/lib/route-plausibility.ts"))).toBe(true);
+  it("so the module is reachable now, not exempted", () => {
+    // The distinction that matters: it is gone from the baseline because a
+    // screen calls it, not because the check was told to stop looking.
+    const routes = readFileSync(join(root, "src/routes/_authenticated/routes.tsx"), "utf8");
+    expect(routes).toMatch(/from "@\/lib\/route-plausibility"/);
+    expect(codeOnly(script)).not.toMatch(/route-plausibility/);
   });
 });
