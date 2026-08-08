@@ -14,10 +14,12 @@ import {
   bulkRescheduleVisits,
   getStaffUpcomingLoad,
   redistributeStaffWork,
+  getDispatchSettings,
 } from "@/lib/visits.functions";
 import { backfillPropertyGeocodes } from "@/lib/properties.functions";
 import { RouteMap, buildTechGroups, techColorMap } from "@/components/RouteMap";
 import { WeatherStrip } from "@/components/WeatherStrip";
+import { findRouteWarnings } from "@/lib/route-plausibility";
 import { BASE_STYLES, storedBaseStyle, storeBaseStyle, type TileVariant } from "@/lib/map-tiles";
 import { StatusChip } from "@/components/client-detail/primitives";
 import { listTimeOff } from "@/lib/users.functions";
@@ -40,6 +42,7 @@ import {
   ChevronRight,
   Users,
   CalendarOff,
+  AlertTriangle,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -429,6 +432,53 @@ function RoutesPage() {
     .filter((s: any) => !s.is_field_tech && assignedIds.has(s.id))
     .sort((a: any, b: any) => (a.display_name ?? "").localeCompare(b.display_name ?? ""));
   const visits: Visit[] = visitsData?.visits ?? [];
+
+  /** Route plausibility (QA finding #10).
+   *
+   *  The optimizer would schedule a stop 1,850 km / 61 h from the depot without
+   *  saying anything, and could show an arrival time that its own drive figure
+   *  does not allow. `findRouteWarnings` was written to catch both, tested
+   *  against that exact repro, and then rendered nowhere — the dispatcher went
+   *  on getting no warning until rule 6 of the dead-machinery check found the
+   *  module unreachable.
+   *
+   *  Thresholds come from the org's dispatch settings, not the helper's
+   *  defaults: an org whose day starts at 06:00 or whose cap is 90 minutes
+   *  would otherwise be measured against 08:00 and 240, and warned either far
+   *  too much or not at all. The query is the same one Settings > Scheduling
+   *  uses, so it is usually already in cache. */
+  const dispatchFn = useServerFn(getDispatchSettings);
+  const dispatchQ = useQuery({
+    queryKey: ["dispatch-settings"],
+    queryFn: () => dispatchFn(),
+    staleTime: 5 * 60_000,
+  });
+  const routeWarnings = useMemo(() => {
+    const s = dispatchQ.data?.settings as
+      | { max_drive_minutes?: number | null; workday_start?: string | null }
+      | undefined;
+    // "08:30:00" -> 510. Left undefined when unset so the helper's default
+    // applies rather than a silent 0, which would flag every stop.
+    const startMin = (() => {
+      const [h, m] = (s?.workday_start ?? "").split(":");
+      const mins = Number(h) * 60 + Number(m);
+      return Number.isFinite(mins) ? mins : undefined;
+    })();
+    return findRouteWarnings(
+      visits.map((v: any) => ({
+        id: v.id,
+        clientName: v.clients?.display_name ?? null,
+        travel_km: v.travel_km,
+        travel_min: v.travel_min,
+        eta_start: v.eta_start,
+        scheduled_on: v.scheduled_on,
+      })),
+      {
+        maxDriveMinutes: s?.max_drive_minutes ?? undefined,
+        workdayStartMinutes: startMin,
+      },
+    );
+  }, [visits, dispatchQ.data]);
 
   // One colour per tech, shared with the map. Built from the map's own grouping
   // so a calendar chip and that visit's pin can never end up different colours.
@@ -1153,6 +1203,43 @@ function RoutesPage() {
               an occasional question, and it used to sit permanently between the
               map and the board pushing the thing you came for down the page. */}
           <div className="min-w-0 space-y-4">
+            {/* Implausible routes come first and are NOT collapsible.
+
+                Weather and tech load are questions you choose to ask; this is
+                the board telling you something is wrong with what it just drew.
+                A 61-hour drive or an arrival time the route's own drive figure
+                cannot produce is not a preference — hiding it behind a toggle
+                is how it went unnoticed for as long as the helper existed with
+                nothing rendering it. */}
+            {routeWarnings.length > 0 && (
+              <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-destructive">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  {routeWarnings.length} implausible{" "}
+                  {routeWarnings.length === 1 ? "stop" : "stops"} on this route
+                </div>
+                <ul className="mt-2 space-y-1">
+                  {routeWarnings.map((w) => (
+                    <li key={`${w.visitId}-${w.reason}`}>
+                      <button
+                        type="button"
+                        onClick={() => setDetailVisitId(w.visitId)}
+                        className="text-left text-xs text-destructive underline-offset-2 hover:underline"
+                      >
+                        {w.message}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-2xs text-muted-foreground">
+                  Thresholds come from{" "}
+                  <Link to="/settings/scheduling" className="underline underline-offset-2">
+                    Settings → Scheduling
+                  </Link>
+                  .
+                </p>
+              </div>
+            )}
             {/* Weather sits above tech load: "is today workable at all" comes
                 before "is anybody overloaded". Only for the single-day view —
                 the strip analyses one date, and offering it while the board

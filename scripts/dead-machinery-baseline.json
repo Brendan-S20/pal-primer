@@ -56,7 +56,5 @@
   },
   "unwired_server_fns": {},
   "write_only_columns": {},
-  "unreachable_modules": {
-    "src/lib/route-plausibility.ts": "KNOWN GAP — findRouteWarnings was built for QA finding #10: the optimizer would schedule a stop 1,850 km / 61 h from the depot with no warning, and could show an arrival time inconsistent with the drive it displayed. The helper is pure, has 7 tests, and no screen calls it, so the dispatcher still gets no warning. Surfaced by rule 6 on its first run, 2026-08-07. Clear it by rendering the warnings on the routes board (it takes the visit rows that page already has) — not by deleting tested safety work."
-  }
+  "unreachable_modules": {}
 }
