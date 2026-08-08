@@ -1,6 +1,6 @@
 {
-  "_comment": "IMP-2 baseline. Repo migration files present in the live database that the NAME match cannot see, because they were applied under different names/timestamps than their filenames. Everything dated before the 2026-07-09 consolidated bootstrap dump (01_extensions..13_triggers) is covered by that dump; the rest were applied under renamed versions. CORRECTION (2026-08-02): the previous wording claimed each of these was \"verified individually by checking that the objects they create exist\". That was not true and could not have been checked at this granularity \u2014 public.seed_demo_org(uuid) is defined in two files listed here and existed in neither copy of the live database, while the app called it by name for a month. A per-FILE exemption has nowhere to record that five of the six functions in a file landed. That gap is now closed by scripts/check-baseline-objects.mjs, which replays every CREATE and DROP across every migration and asserts each surviving object is in the live catalog. This list still suppresses the filename comparison; it no longer suppresses anything about the schema itself. Do NOT add new entries to skip a genuinely unapplied migration \u2014 that is the incident this check exists to prevent.",
-  "_verified_on": "2026-08-02",
+  "_comment": "IMP-2 baseline. Repo migration files present in the live database that the NAME match cannot see, because they were applied under different names/timestamps than their filenames. Everything dated before the 2026-07-09 consolidated bootstrap dump (01_extensions..13_triggers) is covered by that dump; the rest were applied under renamed versions. CORRECTION (2026-08-02): the previous wording claimed each of these was \"verified individually by checking that the objects they create exist\". That was not true and could not have been checked at this granularity — public.seed_demo_org(uuid) is defined in two files listed here and existed in neither copy of the live database, while the app called it by name for a month. A per-FILE exemption has nowhere to record that five of the six functions in a file landed. That gap is now closed by scripts/check-baseline-objects.mjs, which replays every CREATE and DROP across every migration and asserts each surviving object is in the live catalog. This list still suppresses the filename comparison; it no longer suppresses anything about the schema itself. Do NOT add new entries to skip a genuinely unapplied migration — that is the incident this check exists to prevent.",
+  "_verified_on": "2026-08-08",
   "files": [
     "20260701160430_6415de81-3da8-495f-9f28-53b08a25e0a2.sql",
     "20260701160454_aede5e72-7942-4079-8f31-1d348c89c9b2.sql",
@@ -83,6 +83,10 @@
     "20260710290000_sms-from-number-unique.sql",
     "20260711130000_app-notifications-delete-own.sql",
     "20260716130000_company-name-backfill-fix.sql",
-    "20260716180000_prepaid-invoice-period-fix.sql"
-  ]
+    "20260716180000_prepaid-invoice-period-fix.sql",
+    "20260803223000_ai-usage-state-would-read-any-orgs-billing-exposure.sql",
+    "20260804190000_the-schedule-only-existed-two-weeks-out-and-a-button-filled-it.sql",
+    "20260804200000_the-rolling-horizon-is-the-tenants-to-choose-and-invisible-until-it-tells-you.sql"
+  ],
+  "_addendum_2026_08_08": "Three files added on 2026-08-08, all applied under renamed versions before this date: 20260803223000_ai-usage-state... is live as 20260803222241 ai_usage_state_read_any_orgs_billing_exposure; 20260804190000_the-schedule-only-existed-two-weeks-out... as 20260804184208 the_schedule_only_existed_two_weeks_out; 20260804200000_the-rolling-horizon-is-the-tenants-to-choose... as 20260804190309 rolling_horizon_is_the_tenants_to_choose. Evidence, queried per object rather than inferred from the similar names: public.ai_usage_state present (1); public.update_org_dispatch_settings present (1); constraint organizations_auto_generate_days_ahead_check present (1); organizations.auto_generate_days_ahead default = 90 and auto_generate_visits default = true, both of which that file sets; and 0 organizations remain at the old 14-day horizon the same file's UPDATE was written to clear. These entries suppress the FILENAME comparison only; check-baseline-objects.mjs still asserts every surviving object exists."
 }
