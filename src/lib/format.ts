@@ -26,6 +26,26 @@ export function formatDay(iso: string | null | undefined): string {
   });
 }
 
+/** A payment's parts, when a card surcharge was passed through.
+ *
+ *  `payments.amount_cents` is the invoice amount; `surcharge_cents` sits
+ *  beside it so the surcharge is never counted as revenue. Their sum is the
+ *  only number the customer ever sees — it is what hit the card — so any
+ *  screen showing a payment has to show the sum, and say where it came from
+ *  or it looks like the invoice was wrong.
+ *
+ *  Returns null when there is no surcharge, which is the common case and
+ *  means "just render the amount". */
+export function surchargeSplit(
+  amountCents: number | null | undefined,
+  surchargeCents: number | null | undefined,
+): { chargedCents: number; baseCents: number; feeCents: number } | null {
+  const base = amountCents ?? 0;
+  const fee = surchargeCents ?? 0;
+  if (fee <= 0) return null;
+  return { chargedCents: base + fee, baseCents: base, feeCents: fee };
+}
+
 /** "Jul 20, 3:42 PM" for timestamps. */
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return "";

@@ -1120,6 +1120,7 @@ export type Database = {
           kind: string
           note: string | null
           organization_id: string
+          promo_code_id: string | null
           visit_id: string | null
         }
         Insert: {
@@ -1131,6 +1132,7 @@ export type Database = {
           kind: string
           note?: string | null
           organization_id: string
+          promo_code_id?: string | null
           visit_id?: string | null
         }
         Update: {
@@ -1142,6 +1144,7 @@ export type Database = {
           kind?: string
           note?: string | null
           organization_id?: string
+          promo_code_id?: string | null
           visit_id?: string | null
         }
         Relationships: [
@@ -1164,6 +1167,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_ledger_promo_code_id_fkey"
+            columns: ["promo_code_id"]
+            isOneToOne: false
+            referencedRelation: "promo_codes"
             referencedColumns: ["id"]
           },
           {
@@ -5712,6 +5722,14 @@ export type Database = {
     }
     Functions: {
       accept_org_invite_for_current_user: { Args: never; Returns: string }
+      addon_frequency_step: {
+        Args: { _f: Database["public"]["Enums"]["addon_frequency"] }
+        Returns: string
+      }
+      admin_generate_addon_charges_through: {
+        Args: { _org_id: string; _through: string }
+        Returns: number
+      }
       admin_generate_invoice_for_client: {
         Args: { _client_id: string; _through: string }
         Returns: string
@@ -6566,6 +6584,10 @@ export type Database = {
       }
       run_billing_cycles: { Args: { _org_id?: string }; Returns: number }
       seed_demo_org: { Args: { _org_id: string }; Returns: Json }
+      set_addon_subscription_status: {
+        Args: { _id: string; _status: string }
+        Returns: Json
+      }
       set_chargeback_responsibility: {
         Args: { _child_org_id: string; _responsibility: string }
         Returns: undefined

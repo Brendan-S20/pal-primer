@@ -16,7 +16,7 @@ import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
 import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
-import { formatDateTime, formatDay } from "@/lib/format";
+import { formatDateTime, formatDay, surchargeSplit } from "@/lib/format";
 import { formatLineItemDescription, invoiceKindLabel } from "@/lib/invoice-labels";
 import { getInvoiceDetail, voidInvoice } from "@/lib/invoices.functions";
 import { sendInvoiceEmail } from "@/lib/notifications.functions";
@@ -328,9 +328,28 @@ export function InvoiceDrawer({
                       </span>
                       <span className="flex items-center gap-2">
                         <StatusChip status={p.status} />
-                        <span className="font-medium">
-                          {fmtCents(p.amount_cents, inv.currency ?? "usd")}
-                        </span>
+                        {(() => {
+                          // What the card was charged. `amount_cents` alone is
+                          // the invoice amount, which is not the number on the
+                          // customer's statement when a surcharge applies.
+                          const split = surchargeSplit(p.amount_cents, p.surcharge_cents);
+                          return (
+                            <span className="text-right">
+                              <span className="font-medium">
+                                {fmtCents(
+                                  split?.chargedCents ?? p.amount_cents,
+                                  inv.currency ?? "usd",
+                                )}
+                              </span>
+                              {split && (
+                                <span className="block text-2xs font-normal text-muted-foreground">
+                                  {fmtCents(split.baseCents, inv.currency ?? "usd")} service +{" "}
+                                  {fmtCents(split.feeCents, inv.currency ?? "usd")} card fee
+                                </span>
+                              )}
+                            </span>
+                          );
+                        })()}
                       </span>
                     </li>
                   ))}
