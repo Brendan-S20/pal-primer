@@ -123,7 +123,11 @@ export async function markInvoicePaidFromStripe(
       clientId,
       actorLabel: "Stripe",
       kind: "payment.received",
-      summary: `Payment of $${(args.amountCents / 100).toFixed(2)} received for invoice #${args.invoiceId.slice(0, 8)}`,
+      summary:
+        `Payment of $${((args.amountCents + (args.surchargeCents ?? 0)) / 100).toFixed(2)} received for invoice #${args.invoiceId.slice(0, 8)}` +
+        (args.surchargeCents
+          ? ` (includes $${(args.surchargeCents / 100).toFixed(2)} card processing)`
+          : ""),
     });
   } catch (e) {
     console.warn("payment activity log failed", e);
@@ -140,6 +144,11 @@ export async function markInvoicePaidFromStripe(
         idempotencyKey: `receipt-${args.invoiceId}`,
         templateData: {
           amountCents: args.amountCents,
+          // The receipt used to quote args.amountCents alone — the invoice
+          // amount. With a surcharge the card was charged more than that, so
+          // HoundStack's own receipt disagreed with the customer's statement
+          // and nothing in the product could explain the gap.
+          surchargeCents: args.surchargeCents ?? 0,
           paidAt: new Date().toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",

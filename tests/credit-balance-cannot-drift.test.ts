@@ -133,10 +133,20 @@ describe("the promo kind that could never be written", () => {
     expect(constraint!).toMatch(/'promo'/);
   });
 
-  it("is the value the dedupe guard reads", () => {
-    // The guard inside portal_redeem_promo matches kind = 'promo', so the value
-    // is load-bearing — swapping it for an existing kind would silently let a
-    // customer redeem the same code twice.
-    expect(bodyOf("portal_redeem_promo")).toMatch(/kind = 'promo'/);
+  it("is still the kind the redemption writes", () => {
+    // RETIRED, not deleted: this used to assert that the dedupe guard reads
+    // `kind = 'promo'`, because for a while that was what it keyed on. It no
+    // longer does — 20260808170000 moved the guard onto `promo_code_id`,
+    // since a guard keyed on kind + a parsed note could be defeated by
+    // renaming the code. What survives from the original intent is that the
+    // kind written is still 'promo', which the constraint above allows and
+    // the ledger UI groups on.
+    expect(bodyOf("portal_redeem_promo")).toMatch(/'promo', _note, _p\.id/);
+  });
+
+  it("and the guard keys on the code's id, not on the note", () => {
+    const body = bodyOf("portal_redeem_promo");
+    expect(body).toMatch(/promo_code_id = _p\.id/);
+    expect(body).not.toMatch(/split_part\(note/);
   });
 });

@@ -286,12 +286,30 @@ export const setAddonSubscriptionStatus = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await requirePermission(context.supabase, context.userId, "manage_client_billing");
-    const { error } = await context.supabase
-      .from("addon_subscriptions")
-      .update({ status: data.status, updated_at: new Date().toISOString() })
-      .eq("id", data.id);
+    // Was a bare table UPDATE writing `status` and nothing else. Pausing left
+    // `next_charge_on` where it was, so resuming five months later handed the
+    // nightly generator five months of arrears to bill in one night — for a
+    // period during which the customer received nothing.
+    //
+    // The roll-forward has to happen in the same statement as the status
+    // change or there is a window where one is done and the other isn't, and
+    // it needs the cadence table, which lives in SQL. Both are inside
+    // set_addon_subscription_status, which re-checks the permission itself.
+    const { data: raw, error } = await context.supabase.rpc("set_addon_subscription_status", {
+      _id: data.id,
+      _status: data.status,
+    });
     if (error) throw new Error(error.message);
-    return { ok: true };
+    // The function returns jsonb, which the generated types widen to Json.
+    // Narrowed to the shape it actually builds rather than cast to any.
+    const r = (raw ?? {}) as { next_charge_on?: string | null; skipped_periods?: number };
+    return {
+      ok: true,
+      nextChargeOn: r.next_charge_on ?? null,
+      /** Periods that elapsed while this was paused. Nonzero means the resume
+       *  skipped them rather than billing for them. */
+      skippedPeriods: Number(r.skipped_periods ?? 0),
+    };
   });
 
 // ── Client portal add-on requests (QA round 8) ──────────────────────────────

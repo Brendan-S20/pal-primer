@@ -33,7 +33,7 @@ import {
 } from "@/lib/invoices.functions";
 import { InvoiceDrawer } from "@/components/InvoiceDrawer";
 import { InvoiceRow } from "@/components/InvoiceRow";
-import { formatDay } from "@/lib/format";
+import { formatDay, surchargeSplit } from "@/lib/format";
 import { humanizeEnum } from "@/lib/humanize";
 import { addonBillingTrail } from "@/lib/addon-billing";
 import {
@@ -234,7 +234,26 @@ export function BillingPanel({ clientId }: { clientId: string }) {
                   )}
                   <StatusChip status={p.status} className="ml-2" />
                 </span>
-                <span className="font-medium">${(p.amount_cents / 100).toFixed(2)}</span>
+                {(() => {
+                  // The charged total, not the invoice amount. A $45.75
+                  // invoice paid by card can be $47.13 on the customer's
+                  // statement, and showing only the first number is how a
+                  // "why is this different" call starts.
+                  const split = surchargeSplit(p.amount_cents, p.surcharge_cents);
+                  return (
+                    <span className="text-right">
+                      <span className="font-medium">
+                        ${((split?.chargedCents ?? p.amount_cents) / 100).toFixed(2)}
+                      </span>
+                      {split && (
+                        <span className="block text-2xs text-muted-foreground">
+                          ${(split.baseCents / 100).toFixed(2)} service + $
+                          {(split.feeCents / 100).toFixed(2)} card fee
+                        </span>
+                      )}
+                    </span>
+                  );
+                })()}
               </li>
             ))}
           </ul>
@@ -380,7 +399,25 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
   const statusMut = useMutation({
     mutationFn: (v: { id: string; status: "active" | "paused" | "canceled" }) =>
       setSubStatus({ data: v }),
-    onSuccess: () => invalidate(),
+    onSuccess: (r, v) => {
+      invalidate();
+      if (v.status !== "active") {
+        toast.success(v.status === "paused" ? "Add-on paused" : "Add-on canceled");
+        return;
+      }
+      // Resuming used to be a silent status flip that also, invisibly,
+      // handed the nightly job every period the plan sat paused. It now
+      // skips them — and says so, because "we are not billing you for
+      // November through February" is not something to leave implied.
+      const skipped = Number(r?.skippedPeriods ?? 0);
+      const next = r?.nextChargeOn ? formatDay(r.nextChargeOn) : null;
+      toast.success(
+        skipped > 0
+          ? `Resumed. The ${skipped} billing period${skipped === 1 ? "" : "s"} it was paused for ${skipped === 1 ? "is" : "are"} skipped${next ? `; next charge ${next}` : ""}.`
+          : `Resumed${next ? `. Next charge ${next}` : ""}.`,
+      );
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   return (

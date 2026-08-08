@@ -88,7 +88,13 @@ export const getInvoice = createServerFn({ method: "GET" })
     if (iErr) throw new Error(iErr.message);
     const { data: payments } = await supabase
       .from("payments")
-      .select("id, amount_cents, status, stripe_payment_intent_id, paid_at, created_at")
+      // surcharge_cents: `amount_cents` is the invoice amount, NOT what the
+      // card was charged. When a surcharge applies the difference is what the
+      // customer sees on their statement, and no screen could reconstruct it
+      // while this column went unselected.
+      .select(
+        "id, amount_cents, surcharge_cents, status, stripe_payment_intent_id, paid_at, created_at",
+      )
       .eq("invoice_id", data.id)
       .order("created_at", { ascending: false });
     return { invoice, items: items ?? [], payments: payments ?? [] };
@@ -987,7 +993,7 @@ export const getClientBillingSummary = createServerFn({ method: "GET" })
       ? await supabase
           .from("payments")
           .select(
-            "id, invoice_id, amount_cents, status, stripe_payment_intent_id, paid_at, created_at",
+            "id, invoice_id, amount_cents, surcharge_cents, status, stripe_payment_intent_id, paid_at, created_at",
           )
           .in("invoice_id", invoiceIds)
           .order("created_at", { ascending: false })
@@ -1055,7 +1061,9 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
         .order("created_at"),
       supabase
         .from("payments")
-        .select("id, amount_cents, status, paid_at, created_at, stripe_payment_intent_id")
+        .select(
+          "id, amount_cents, surcharge_cents, status, paid_at, created_at, stripe_payment_intent_id",
+        )
         .eq("invoice_id", data.invoiceId)
         .order("created_at", { ascending: false }),
     ]);

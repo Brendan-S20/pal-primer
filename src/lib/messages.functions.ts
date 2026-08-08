@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
+import { formatDay } from "@/lib/format";
 
 export const listMessageThreads = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -214,12 +215,17 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
     const name = propContact?.visit_contact_phone
       ? (propContact.visit_contact_name ?? "there")
       : ((v as any).clients?.display_name ?? "there");
+    // `scheduled_on` is a date column: interpolating it raw sent customers
+    // "scheduled for 2026-08-12" — the database's format, in the two
+    // highest-volume customer-facing strings in the product. formatDay gives
+    // "Wed, Aug 12"; its noon anchor means the weekday can't slip a day.
+    const day = formatDay(v.scheduled_on);
     const body =
       data.kind === "reminder"
-        ? `Hi ${name}, this is a reminder your yard cleanup is scheduled for ${v.scheduled_on}. Reply STOP to opt out.`
+        ? `Hi ${name}, this is a reminder your yard cleanup is scheduled for ${day}. Reply STOP to opt out.`
         : data.kind === "on_my_way"
           ? `Hi ${name}, your tech is on the way for today's yard cleanup. Reply STOP to opt out.`
-          : `Hi ${name}, your yard cleanup is complete for ${v.scheduled_on}. Thanks! Reply STOP to opt out.`;
+          : `Hi ${name}, your yard cleanup is complete for ${day}. Thanks! Reply STOP to opt out.`;
 
     // Reuse sendSmsToClient path by inlining its logic isn't trivial; call directly.
     const { data: client, error: cErr } = await supabase
