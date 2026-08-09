@@ -24,6 +24,14 @@ export const FREQUENCY_LABELS: Record<string, string> = {
   monthly: "Monthly",
   one_time: "One time",
   every_n_days: "Every few days",
+  // The two `addon_frequency` values that no service plan uses. They live here
+  // because the portal's active-add-on row renders a cadence off the SAME
+  // helper as the plan row, and an unmapped value falls through to the
+  // de-underscored raw string — so a quarterly add-on read "$35.00 · quarterly"
+  // in a list where everything else was capitalised. Cheaper to complete the
+  // map than to give add-ons a second one that will drift from this.
+  quarterly: "Quarterly",
+  yearly: "Yearly",
 };
 
 export function frequencyLabel(value: string): string {

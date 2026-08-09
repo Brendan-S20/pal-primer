@@ -93,7 +93,10 @@ function NotificationsPage() {
               const inner = (
                 <div className={`flex items-start gap-3 px-4 py-3 ${n.read_at ? "" : "bg-primary/5"}`}>
                   {!n.read_at && <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary" />}
-                  <div className="min-w-0 flex-1">
+                  {/* Room for the delete button, which is always visible on
+                      touch rather than revealed on hover — see below. Without
+                      the reserved gutter it lands on top of the title. */}
+                  <div className="min-w-0 flex-1 max-md:pr-11">
                     <div className="text-sm font-medium">{n.title}</div>
                     {n.body && <div className="text-sm text-muted-foreground">{n.body}</div>}
                     <div className="mt-1 text-xs text-muted-foreground">{timeAgo(n.created_at)}</div>
@@ -108,13 +111,26 @@ function NotificationsPage() {
                   ) : (
                     <button type="button" onClick={onClick} className="block w-full text-left hover:bg-muted">{inner}</button>
                   )}
-                  <div className="absolute right-3 top-3 hidden gap-1 group-hover:flex">
+                  {/* `hidden group-hover:flex` alone made deleting a
+                      notification impossible on a phone: hover does not exist
+                      on touch, so the row's only destructive control never
+                      appeared. Below `md` the container is simply shown —
+                      muted, the same way NotificationBell handles its copy of
+                      this control.
+
+                      "Mark read" is dropped on touch rather than enlarged.
+                      Tapping the row already marks it read, so on a phone it
+                      would be a second button doing the same thing, sitting on
+                      top of the title it duplicates. `group-focus-within`
+                      covers the keyboard, which had the same problem as touch
+                      and for the same reason. */}
+                  <div className="absolute right-3 top-3 hidden gap-1 group-hover:flex group-focus-within:flex max-md:flex">
                     {!n.read_at && (
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); markOne.mutate(n.id); }}
                         disabled={markOne.isPending}
-                        className="rounded px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground"
+                        className="rounded px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground max-md:hidden"
                       >
                         Mark read
                       </button>
@@ -125,7 +141,7 @@ function NotificationsPage() {
                       title="Delete"
                       onClick={(e) => { e.stopPropagation(); deleteOne.mutate(n.id); }}
                       disabled={deleteOne.isPending}
-                      className="rounded p-1 text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground"
+                      className="rounded p-1 text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground max-md:-mr-1.5 max-md:-mt-1.5 max-md:p-3.5 max-md:opacity-60"
                     >
                       <X className="h-4 w-4" />
                     </button>

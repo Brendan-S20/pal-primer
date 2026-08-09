@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 // Shapes returned by getWeatherForZones (see src/lib/weather.functions.ts).
 type DayCell = {
   date: string;
-  precip_mm: number;
+  precip_in: number;
   precip_prob: number;
   wind_max: number;
   temp_max: number;
@@ -70,9 +70,12 @@ function weekdayInitial(iso: string): string {
 }
 
 function DayColumn({ day }: { day: DayCell }) {
+  // The tooltip spells the unit out on both ends. The column below can afford
+  // it only once, and a bare "36" is exactly what sent a Texas dispatcher
+  // looking for a coat on a 97-degree day.
   const tooltip = [
     day.date,
-    `${Math.round(day.temp_min)}° to ${Math.round(day.temp_max)}°`,
+    `${Math.round(day.temp_min)}°F to ${Math.round(day.temp_max)}°F`,
     `${day.precip_prob}% precip`,
     ...(day.risky ? day.reasons : []),
   ].join(" · ");
@@ -86,7 +89,10 @@ function DayColumn({ day }: { day: DayCell }) {
       <span className="text-3xs font-medium uppercase opacity-70">
         {weekdayInitial(day.date)}
       </span>
-      <span className="text-2xs font-semibold tabular-nums">{Math.round(day.temp_max)}°</span>
+      {/* The unit rides on the high only. Repeating °F under it would double
+          the column's width for a number the reader has already been told the
+          unit of one line above. */}
+      <span className="text-2xs font-semibold tabular-nums">{Math.round(day.temp_max)}°F</span>
       <span className="text-3xs tabular-nums opacity-60">{Math.round(day.temp_min)}°</span>
       <span className="flex h-3 items-center justify-center">
         {day.precip_prob >= 50 && <Droplets className="h-3 w-3 opacity-80" />}

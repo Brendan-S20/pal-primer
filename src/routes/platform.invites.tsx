@@ -22,6 +22,11 @@ export const Route = createFileRoute("/platform/invites")({
   component: InvitesPage,
 });
 
+/** Values only; the words come from humanizeRole. Matches the role enum
+ *  createPlatformInvite validates against, so the form cannot offer a role the
+ *  server will reject. */
+const PLATFORM_INVITE_ROLES = ["owner", "office_manager", "dispatcher", "tech"] as const;
+
 const STATUS_TONE: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   pending: "default", accepted: "secondary", revoked: "outline", expired: "outline",
 };
@@ -204,11 +209,14 @@ function NewInviteDialog() {
               <Label>Role</Label>
               <select value={role} onChange={(e) => setRole(e.target.value as any)}
                 className="w-full rounded-md border bg-background px-2 py-2 text-sm">
-                <option value="owner">Owner</option>
-                <option value="office_manager">Office manager</option>
-                <option value="dispatcher">Dispatcher</option>
-                <option value="tech">Tech</option>
-                
+                {/* The drift this pass was looking for, found in the wild: this
+                    list said "Tech" while the table below it — same page, four
+                    lines of JSX away — renders humanizeRole and says
+                    "Technician". Nobody chose two words; the second list was
+                    just typed later. Both now read from the one map. */}
+                {PLATFORM_INVITE_ROLES.map((r) => (
+                  <option key={r} value={r}>{humanizeRole(r)}</option>
+                ))}
               </select>
             </div>
             {mode === "new" ? (

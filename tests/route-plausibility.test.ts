@@ -2,13 +2,19 @@ import { describe, expect, it } from "vitest";
 import { findRouteWarnings, DEFAULT_MAX_DRIVE_MINUTES } from "@/lib/route-plausibility";
 
 describe("findRouteWarnings (finding #10)", () => {
-  it("flags the 1,854 km / 3,708 min repro as an excessive drive", () => {
+  // The stored figure is still 1854.2 km — only the sentence changed units.
+  // 1854.2 km is 1152 miles, and the dispatcher reading this warning measures
+  // their patch in miles.
+  it("flags the 1,152 mile / 3,708 min repro as an excessive drive", () => {
     const w = findRouteWarnings([
       { id: "v1", clientName: "Far Away Co", travel_km: 1854.2, travel_min: 3708, scheduled_on: "2026-07-08" },
     ]);
     expect(w).toHaveLength(1);
     expect(w[0].reason).toBe("excessive_drive");
-    expect(w[0].message).toMatch(/1854 km/);
+    expect(w[0].message).toMatch(/1152 mi/);
+    // The unit is spelled out, not implied. "1152" alone is the bug this
+    // replaces, one order of magnitude quieter.
+    expect(w[0].message).not.toMatch(/\bkm\b/);
   });
 
   it("passes a normal in-town stop", () => {

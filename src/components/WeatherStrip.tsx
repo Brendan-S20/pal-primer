@@ -195,16 +195,21 @@ export function WeatherStrip({ day }: { day: string }) {
                     {z.precip_prob}%
                   </span>
                 )}
+                {/* Both of these were bare numbers: a wind icon followed by
+                    "23", and a temperature with a degree sign but no scale, in
+                    a product whose users are American and whose forecast was
+                    arriving in km/h and Celsius. An icon says what is being
+                    measured, not in what. */}
                 {z.wind_max != null && (
                   <span className="inline-flex items-center gap-0.5">
                     <Wind className="h-3 w-3" />
-                    {Math.round(z.wind_max)}
+                    {Math.round(z.wind_max)} mph
                   </span>
                 )}
                 {z.temp_max != null && (
                   <span className="inline-flex items-center gap-0.5">
                     <Thermometer className="h-3 w-3" />
-                    {Math.round(z.temp_max)}°
+                    {Math.round(z.temp_max)}°F
                   </span>
                 )}
                 <Badge variant="outline" className="ml-1">

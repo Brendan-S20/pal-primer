@@ -13,30 +13,63 @@ async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   return data.organization_id as string;
 }
 
+// ── UNITS ─────────────────────────────────────────────────────────────────
+//
+// Open-Meteo's defaults are Celsius, km/h and millimetres, and this request
+// never asked it for anything else. The person reading the resulting board
+// runs a pet-waste business in the United States. They saw "36°" on a 97°F
+// day, a bare "23" next to a wind icon with no unit at all, and a "hard
+// freeze" warning wired to `temp_max <= -5` — a number no US forecast prints.
+//
+// The request now asks for fahrenheit / mph / inch, so the numbers are right
+// at the source instead of being converted on the way to each screen. One
+// place to be wrong rather than five, and the field names below say which
+// unit they are in so the next reader does not have to find this comment.
+//
+// `precip_prob` is a percentage and is the same in any unit system.
 export type DayForecast = {
   date: string;
-  precip_mm: number;
+  precip_in: number;
   precip_prob: number;
+  /** Miles per hour. */
   wind_max: number;
+  /** Degrees Fahrenheit. */
   temp_max: number;
+  /** Degrees Fahrenheit. */
   temp_min: number;
   weathercode: number;
   risky: boolean;
   reasons: string[];
 };
 
+/** What makes a day risky to run a route in.
+ *
+ *  These are the SAME thresholds as before, restated in the units the reader
+ *  uses: -5°C is 23°F, 40 km/h is 25 mph, 5mm is 0.2in. Changing units must
+ *  not quietly change policy — if any of these lines is wrong for the work,
+ *  that is a separate decision, made deliberately, by someone who knows what
+ *  a crew will and will not go out in. */
 function assessRisk(day: Omit<DayForecast, "risky" | "reasons">): {
   risky: boolean;
   reasons: string[];
 } {
   const reasons: string[] = [];
-  if (day.precip_mm >= 5) reasons.push(`${day.precip_mm.toFixed(1)}mm rain`);
+  if (day.precip_in >= 0.2) reasons.push(`${day.precip_in.toFixed(2)}" rain`);
   if (day.precip_prob >= 70) reasons.push(`${day.precip_prob}% chance`);
-  if (day.wind_max >= 40) reasons.push(`wind ${Math.round(day.wind_max)}km/h`);
+  if (day.wind_max >= 25) reasons.push(`wind ${Math.round(day.wind_max)} mph`);
   if (day.weathercode >= 95) reasons.push("thunderstorm");
-  if (day.temp_max <= -5) reasons.push("hard freeze");
+  if (day.temp_max <= 23) reasons.push("hard freeze");
   return { risky: reasons.length > 0, reasons };
 }
+
+/** The unit system this build asks Open-Meteo for.
+ *
+ *  Written into `weather_forecast_cache.units` and part of that table's key.
+ *  A cached payload is bare numbers — nothing about it says which system it
+ *  came from — so without this, flipping the request would have served every
+ *  existing Celsius row as Fahrenheit, immediately for three hours and then
+ *  indefinitely through the stale-on-error fallback. */
+const FORECAST_UNITS = "imperial";
 
 async function fetchForecast(
   lat: number,
@@ -55,6 +88,18 @@ async function fetchForecast(
     "daily",
     "precipitation_sum,precipitation_probability_max,wind_speed_10m_max,temperature_2m_max,temperature_2m_min,weather_code",
   );
+  // See the units note above. Open-Meteo converts server-side, so nothing
+  // downstream has to know a conversion happened.
+  //
+  // These three lines are duplicated in supabase/functions/weather-forecast,
+  // which relays this exact request and is the path that actually runs in
+  // production. If only one of the two is changed, the units of the forecast
+  // depend on which network route succeeded — the same board showing °F or °C
+  // depending on the day. The old "keep in sync with the server" comment was
+  // not a mechanism; tests/a-forecast-in-degrees-nobody-here-uses.test.ts is.
+  url.searchParams.set("temperature_unit", "fahrenheit");
+  url.searchParams.set("wind_speed_unit", "mph");
+  url.searchParams.set("precipitation_unit", "inch");
   url.searchParams.set("timezone", "auto");
   url.searchParams.set("start_date", from);
   url.searchParams.set("end_date", to);
@@ -104,7 +149,7 @@ async function fetchForecast(
   for (let i = 0; i < (d?.time?.length ?? 0); i++) {
     const base = {
       date: d.time[i],
-      precip_mm: Number(d.precipitation_sum?.[i] ?? 0),
+      precip_in: Number(d.precipitation_sum?.[i] ?? 0),
       precip_prob: Number(d.precipitation_probability_max?.[i] ?? 0),
       wind_max: Number(d.wind_speed_10m_max?.[i] ?? 0),
       temp_max: Number(d.temperature_2m_max?.[i] ?? 0),
@@ -161,6 +206,9 @@ export async function cachedForecast(
     .eq("lon_key", lonKey)
     .eq("from_date", from)
     .eq("to_date", to)
+    // Without this the stale-on-error branch below would happily serve a
+    // Celsius row from before the unit change, at any age, as Fahrenheit.
+    .eq("units", FORECAST_UNITS)
     .maybeSingle();
 
   const cached = row ? validForecast(row.payload) : null;
@@ -179,10 +227,14 @@ export async function cachedForecast(
         lon_key: lonKey,
         from_date: from,
         to_date: to,
+        units: FORECAST_UNITS,
         payload: forecast,
         fetched_at: new Date().toISOString(),
       },
-      { onConflict: "lat_key,lon_key,from_date,to_date" },
+      // Must match the table's unique constraint exactly. Omitting `units`
+      // here would target a constraint that no longer exists and turn every
+      // cache write into an error.
+      { onConflict: "lat_key,lon_key,from_date,to_date,units" },
     );
     if (writeErr) {
       // A silently dead cache would quietly reintroduce the 429s.
