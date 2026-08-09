@@ -22,6 +22,17 @@ export interface SyncCallers {
   recordVisitPhoto: (args: {
     data: { visitId: string; storagePath: string; kind: "before" | "completion" | "issue" };
   }) => Promise<unknown>;
+  logStationService: (args: {
+    data: {
+      visitId: string;
+      wasteStationId: string;
+      bagsCollected: number;
+      linerReplaced: boolean;
+      refillBagsAdded: number;
+      notes?: string;
+      servicedAt?: string;
+    };
+  }) => Promise<unknown>;
 }
 
 async function runOne(action: PendingAction, callers: SyncCallers): Promise<void> {
@@ -56,6 +67,26 @@ async function runOne(action: PendingAction, callers: SyncCallers): Promise<void
           reason: action.reason,
           code: action.code,
           skippedAt: new Date(action.ts).toISOString(),
+        },
+      });
+      return;
+    case "station":
+      // The bag counts a commercial account is invoiced against, so the same
+      // rule as the three above applies with more force: `serviced_at` is what
+      // an HOA disputing a month of visits is answered with, and a replay that
+      // stamped 4pm on work done at 9:15 in a basement garage would answer it
+      // wrongly and confidently. `log_station_service` hardcoded now() until
+      // the migration that added `_serviced_at`; without passing it here that
+      // parameter would exist and never be used.
+      await callers.logStationService({
+        data: {
+          visitId: action.visitId,
+          wasteStationId: action.wasteStationId,
+          bagsCollected: action.bagsCollected,
+          linerReplaced: action.linerReplaced,
+          refillBagsAdded: action.refillBagsAdded,
+          notes: action.notes,
+          servicedAt: new Date(action.ts).toISOString(),
         },
       });
       return;

@@ -17,6 +17,7 @@ import { useCallback, useMemo } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { startVisit, completeVisit, skipVisit, recordVisitPhoto } from "@/lib/my-day.functions";
+import { logStationService } from "@/lib/stations.functions";
 import { flushThenClearAndSignOut } from "@/lib/offline/sign-out";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 
@@ -25,14 +26,19 @@ export function useOfflineSignOut() {
   const completeFn = useServerFn(completeVisit);
   const skipFn = useServerFn(skipVisit);
   const photoFn = useServerFn(recordVisitPhoto);
+  // Every kind the queue can hold has to be replayable from here. A caller
+  // missing from this set is a queued action the flush cannot send, which the
+  // tech is then asked to discard on the way out the door.
+  const stationFn = useServerFn(logStationService);
   const callers = useMemo(
     () => ({
       startVisit: startFn,
       completeVisit: completeFn,
       skipVisit: skipFn,
       recordVisitPhoto: photoFn,
+      logStationService: stationFn,
     }),
-    [startFn, completeFn, skipFn, photoFn],
+    [startFn, completeFn, skipFn, photoFn, stationFn],
   );
 
   const { confirm, dialog } = useConfirmDialog();

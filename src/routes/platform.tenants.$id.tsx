@@ -334,10 +334,17 @@ function OverviewTab({ t }: { t: TenantDetail }) {
   return (
     <Card><CardContent className="pt-6">
       <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+        {/* Two of these values are single unbreakable tokens: a 36-character
+            organization UUID and a Stripe subscription id. Their min-content
+            width is the whole token, a flex item is never laid out narrower than
+            that, and label plus value then exceeds a phone — so the row, the
+            card and the page all scroll sideways. `break-all` gives the value
+            somewhere to break; `shrink-0` stops the label being squeezed to one
+            word per line while it does. */}
         {rows.map(([k, v]) => (
           <div key={k} className="flex justify-between gap-4 border-b py-2 text-sm last:border-0 sm:last:border-b">
-            <dt className="text-muted-foreground">{k}</dt>
-            <dd className="text-right font-medium">{v}</dd>
+            <dt className="shrink-0 text-muted-foreground">{k}</dt>
+            <dd className="break-all text-right font-medium">{v}</dd>
           </div>
         ))}
       </dl>
@@ -383,13 +390,13 @@ function BillingTab({ t }: { t: TenantDetail }) {
           <span className="text-muted-foreground">Billing status</span>
           <TenantStatusBadge status={t.billing_status} />
         </div>
-        <div className="flex justify-between border-b py-2">
-          <span className="text-muted-foreground">Stripe customer</span>
-          <span className="font-mono text-xs">{t.stripe_customer_id ?? "-"}</span>
+        <div className="flex justify-between gap-4 border-b py-2">
+          <span className="shrink-0 text-muted-foreground">Stripe customer</span>
+          <span className="break-all font-mono text-xs">{t.stripe_customer_id ?? "-"}</span>
         </div>
-        <div className="flex justify-between border-b py-2">
-          <span className="text-muted-foreground">Stripe subscription</span>
-          <span className="font-mono text-xs">{t.stripe_subscription_id ?? "-"}</span>
+        <div className="flex justify-between gap-4 border-b py-2">
+          <span className="shrink-0 text-muted-foreground">Stripe subscription</span>
+          <span className="break-all font-mono text-xs">{t.stripe_subscription_id ?? "-"}</span>
         </div>
         <div className="pt-2 text-xs text-muted-foreground">
           Plan changes, coupons, and the Stripe portal are managed from the tenant's own Billing settings.
@@ -565,9 +572,14 @@ function NotesTab({ orgId }: { orgId: string }) {
               {rows.map((n) => (
                 <li key={n.id} className="py-3">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                    {/* Without `min-w-0` this wrapper is as wide as the author's
+                        email address, which pushes the Delete button off the
+                        right of a phone — the control is not merely cramped, it
+                        is unreachable. `break-words` then lets the address
+                        itself break once the box is narrower than it. */}
+                    <div className="flex min-w-0 items-center gap-2">
                       <Badge variant="outline">{n.kind}</Badge>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="break-words text-xs text-muted-foreground">
                         {n.author_email ?? n.author_user_id?.slice(0, 8) ?? "system"} · {fmtDate(n.created_at)}
                       </span>
                     </div>
@@ -604,9 +616,9 @@ function AuditTab({ orgId }: { orgId: string }) {
           {rows.map((r) => (
             <li key={r.id} className="py-3 text-sm">
               <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
+                <div className="flex min-w-0 items-center gap-2">
                   <Badge variant="outline">{r.action}</Badge>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="break-words text-xs text-muted-foreground">
                     by {r.actor_email ?? r.actor_user_id.slice(0, 8)}
                   </span>
                 </div>

@@ -26,6 +26,11 @@ person's hand.
 - **Dense grids reflow, they do not shrink.** A seven-column week or a
   six-row month laid out as one grid does not become usable by getting smaller;
   below the breakpoint it needs a different shape, not a scaled one.
+- **Text truncates instead of widening its row.** A flex item is never laid out
+  narrower than its own content unless it is allowed to be — `min-w-0` on the
+  item, or an overflow other than `visible`. Without that the row grows to fit
+  the text, the control beside it goes over the edge, and the `truncate` that
+  was meant to prevent all this never engages.
 - **Test the narrow end properly.** 320–360px is a real phone, not an edge
   case. A fixed `w-80` popover overflows a 360px viewport.
 - **Landscape and tablet are their own sizes.** A layout that only has "phone"
@@ -40,7 +45,7 @@ and do not quietly narrow the scope to the widths that happened to work.
 
 ### Some of this is enforced, so you find out before review
 
-Three of the rules above are checked by tests that scan the whole of `src/`
+Four of the rules above are checked by tests that scan the whole of `src/`
 and name the offending file and line rather than counting violations:
 
 - `tests/hover-does-not-exist-on-a-touchscreen.test.ts` — a `group-hover:`
@@ -52,12 +57,23 @@ and name the offending file and line rather than counting violations:
   columns away with no scrollbar and no way to reach them. Anything built on
   `<Table>` from `ui/table.tsx` already scrolls and is exempt.
 - The same file pins the touch sizing on `ui/tabs.tsx`.
+- `tests/a-flex-row-as-wide-as-its-longest-word.test.ts` — every element that
+  truncates is traced up through the flex rows it sits in, and each item on
+  that chain has to be able to shrink. It parses the JSX rather than matching
+  it, because the question is about nesting. Note which end it names: an
+  element that carries `truncate` is exempt, because `truncate` includes
+  `overflow-hidden` and that is exactly what `min-w-0` would have bought. What
+  fails is the wrapper in between — the `flex-1` div with nothing else on it —
+  and that is what the failure message points at. Deliberately silent on
+  `whitespace-nowrap` alone, on `flex-col`, on grids, and on `shrink-0`.
 
 What is NOT enforced, and still has to be looked at: whether a thing is
-centred, whether text truncates instead of pushing its row wider (a flex
-child usually needs `min-w-0` before `truncate` does anything), and whether a
-layout is merely cramped rather than broken. A green test run is not a
-substitute for opening the page at 360px.
+centred, whether a layout is merely cramped rather than broken, and whether a
+value with no space in it — an address, a link, an id — has somewhere to
+break. That last one is the same fault as the truncation rule with a different
+trigger, and it cannot be checked mechanically: telling a 40-character signup
+URL from an eight-character promo code means knowing the value. A green test
+run is not a substitute for opening the page at 360px.
 
 Prior art worth reading rather than rediscovering: `docs/mobile-ux-audit.md`
 (2026-07-23) audited the staff app against this standard and its findings are

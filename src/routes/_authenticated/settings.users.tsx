@@ -316,11 +316,16 @@ function InvitePanel() {
         {invites.filter((i) => i.status === "pending").length > 0 && (
           <div>
             <div className="mb-1 text-xs font-medium uppercase text-muted-foreground">Pending invites</div>
+            {/* Resend and Revoke are the only two things these rows are for, and
+                an invited address is long enough to push both off the right of a
+                phone. `min-w-0` lets the address side give way instead;
+                `break-words` breaks the address once it is the widest thing
+                left. */}
             <ul className="divide-y">
               {invites.filter((i) => i.status === "pending").map((i) => (
-                <li key={i.id} className="flex items-center justify-between py-2 text-sm">
-                  <span>{i.email} <span className="text-muted-foreground">· {humanizeRole(i.role)}</span></span>
-                  <span className="flex items-center gap-3">
+                <li key={i.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <span className="min-w-0 break-words">{i.email} <span className="text-muted-foreground">· {humanizeRole(i.role)}</span></span>
+                  <span className="flex shrink-0 items-center gap-3">
                     <button className="text-xs underline disabled:opacity-50" onClick={() => resendMut.mutate(i.id)} disabled={resendMut.isPending}>Resend</button>
                     <button className="text-xs text-destructive underline" onClick={() => revokeMut.mutate(i.id)}>Revoke</button>
                   </span>

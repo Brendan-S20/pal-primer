@@ -33,7 +33,12 @@ import { TECH_SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.fun
 import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
 import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { syncQueue } from "@/lib/offline/sync";
-import { countPendingForVisit, countQueuedCompletionPhotos } from "@/lib/offline/queue";
+import {
+  countPendingForVisit,
+  countQueuedCompletionPhotos,
+  enqueueAction,
+} from "@/lib/offline/queue";
+import { runOrQueue } from "@/lib/offline/run-or-queue";
 import { resolveOfflineUserId } from "@/lib/offline/action-owner";
 import { describeReadFreshness, formatCacheAge } from "@/lib/offline/read-cache-policy";
 import { toast } from "sonner";
@@ -218,14 +223,16 @@ function MyDay() {
   const completeFn = useServerFn(completeVisit);
   const skipFn = useServerFn(skipVisit);
   const photoFn = useServerFn(recordVisitPhoto);
+  const stationFn = useServerFn(logStationService);
   const callers = useMemo(
     () => ({
       startVisit: startFn,
       completeVisit: completeFn,
       skipVisit: skipFn,
       recordVisitPhoto: photoFn,
+      logStationService: stationFn,
     }),
-    [startFn, completeFn, skipFn, photoFn],
+    [startFn, completeFn, skipFn, photoFn, stationFn],
   );
 
   const runSync = useCallback(async () => {
@@ -1642,11 +1649,41 @@ function StationsSubpanel({ visitId }: { visitId: string }) {
     queryFn: () => listFn({ data: { visitId } }),
   });
 
+  // Through the queue, like Start / Complete / Skip / photos.
+  //
+  // This was a bare useMutation whose only failure path was `toast.error`, on
+  // the one screen guaranteed to be used out of signal. Waste stations live at
+  // apartment complexes and HOAs — parking garages, basements, service
+  // corridors — so the place a tech logs one is the place their phone has
+  // nothing, and the record they lost is the proof of service that answers a
+  // commercial billing dispute.
   const mut = useMutation({
-    mutationFn: (v: any) => logFn({ data: v }),
-    onSuccess: () => {
-      toast.success("Station logged");
-      qc.invalidateQueries({ queryKey: ["visit-stations", visitId] });
+    mutationFn: (v: {
+      wasteStationId: string;
+      bagsCollected: number;
+      linerReplaced: boolean;
+      refillBagsAdded: number;
+      notes?: string;
+    }) =>
+      runOrQueue({
+        online: typeof navigator === "undefined" ? true : navigator.onLine,
+        label: "Log station",
+        send: () => logFn({ data: { visitId, ...v } }),
+        queue: async () => {
+          await enqueueAction({
+            kind: "station",
+            visitId,
+            ...v,
+            userId: await resolveOfflineUserId(),
+          });
+        },
+      }),
+    onSuccess: (r) => {
+      toast.success(r.queued ? "Queued. Logs when back online" : "Station logged");
+      // Only when it actually landed. Refetching after a queue write would show
+      // the tech the server's copy — no log for this station — directly
+      // contradicting the toast that just said it was saved.
+      if (!r.queued) qc.invalidateQueries({ queryKey: ["visit-stations", visitId] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -1673,7 +1710,7 @@ function StationsSubpanel({ visitId }: { visitId: string }) {
             key={s.id}
             station={s}
             existing={existing}
-            onSave={(payload) => mut.mutate({ visitId, wasteStationId: s.id, ...payload })}
+            onSave={(payload) => mut.mutate({ wasteStationId: s.id, ...payload })}
             disabled={mut.isPending}
           />
         );

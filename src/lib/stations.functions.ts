@@ -138,17 +138,27 @@ export const getVisitStations = createServerFn({ method: "GET" })
     return { stations: stations.data ?? [], logs: logs.data ?? [] };
   });
 
+// `servicedAt` is when the tech was actually at the station. Only the offline
+// replay sends it — an online save is happening now and says nothing, which is
+// why the RPC parameter defaults to now(). The database bounds it to the last
+// seven days and falls back to now() outside that, so a wrong device clock
+// cannot back-date a proof-of-service record.
 export const logStationService = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({
-    visitId: z.string().uuid(),
-    wasteStationId: z.string().uuid(),
-    bagsCollected: z.number().int().min(0).max(9999).default(0),
-    linerReplaced: z.boolean().default(false),
-    refillBagsAdded: z.number().int().min(0).max(9999).default(0),
-    notes: z.string().max(500).optional(),
-    photoUrl: z.string().url().optional(),
-  }).parse(d))
+  .inputValidator((d) =>
+    z
+      .object({
+        visitId: z.string().uuid(),
+        wasteStationId: z.string().uuid(),
+        bagsCollected: z.number().int().min(0).max(9999).default(0),
+        linerReplaced: z.boolean().default(false),
+        refillBagsAdded: z.number().int().min(0).max(9999).default(0),
+        notes: z.string().max(500).optional(),
+        photoUrl: z.string().url().optional(),
+        servicedAt: z.string().datetime().optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     const { data: id, error } = await context.supabase.rpc("log_station_service", {
       _visit_id: data.visitId,
@@ -158,6 +168,7 @@ export const logStationService = createServerFn({ method: "POST" })
       _refill_bags_added: data.refillBagsAdded,
       _notes: data.notes ?? undefined,
       _photo_url: data.photoUrl ?? undefined,
+      _serviced_at: data.servicedAt ?? undefined,
     });
     if (error) throw new Error(error.message);
     return { id: id as string };

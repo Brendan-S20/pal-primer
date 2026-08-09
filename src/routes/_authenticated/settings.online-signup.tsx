@@ -139,7 +139,10 @@ function OnlineSignupSettings() {
             {publicUrl ? (
               <>
                 <div className="flex flex-wrap items-center gap-2">
-                  <code className="rounded bg-muted px-2 py-1 text-xs">{publicUrl}</code>
+                  {/* Same shape as the hosted lead form's link: one unbreakable
+                      token, wider than a phone, in a flex row that cannot shrink
+                      it. */}
+                  <code className="break-all rounded bg-muted px-2 py-1 text-xs">{publicUrl}</code>
                   <button
                     className="text-xs text-primary underline"
                     onClick={() => copy(publicUrl, "Link")}
