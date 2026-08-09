@@ -34,6 +34,15 @@ export const READ_CACHE_KEY_PREFIX = "hs:offline-reads:";
  *                     what to render and RoleGuard bounces the tech off the
  *                     route before they see anything.
  *  - "visit-stations" waste stations for a visit, shown inside the visit card.
+ *                     Allowlisted from the start, but for a long time nothing
+ *                     ever put one on a device: the panel is behind a button
+ *                     and the query is inside the panel, so it only ever ran
+ *                     when a tech tapped Stations — which they do standing at
+ *                     the property, in the underground parking level where the
+ *                     stations are and the signal is not. My Day now prefetches
+ *                     it for the commercial stops on the day (routes/
+ *                     _authenticated/my-day.tsx), which is what makes this
+ *                     entry mean anything.
  *
  * Deliberately NOT here: "addon-services" (a price list feeding a charge the
  * tech cannot create offline anyway), anything under clients/invoices/reports.
@@ -118,13 +127,43 @@ interface PersistableQuery {
 }
 
 /**
- * Filter a dehydrated query list down to what may be stored, newest first,
- * stopping at the byte budget.
+ * Which roots get first claim on the byte budget.
  *
- * Sorting by dataUpdatedAt before the budget check means the entries that get
- * dropped when a device has accumulated many days are the OLDEST ones — the
- * days a tech is least likely to open — rather than whichever the cache
- * happened to enumerate last, which would have silently evicted today.
+ * Newest-first was the whole answer while every persisted entry was a day's
+ * route: a device that had accumulated many days dropped the oldest ones. It
+ * stopped being the whole answer once the station lists began being prefetched,
+ * because a prefetch for a visit necessarily resolves AFTER the route that
+ * named the visit. On a device sitting near the ceiling, today's station lists
+ * are therefore newer than today's route and evict it — and a tech opens the
+ * app in a dead zone holding a complete set of station lists for visits they
+ * cannot see.
+ *
+ * A route with no station lists is a bad morning. Station lists with no route
+ * is no morning at all. So rank decides first and age only separates entries of
+ * equal rank.
+ */
+const BUDGET_RANK: Record<string, number> = {
+  "my-org": 0,
+  "my-day": 0,
+  "visit-stations": 1,
+};
+
+/** Unranked roots sort LAST on purpose. A root added to the allowlist and
+ * forgotten here should lose the budget fight, not win it against the route. */
+function budgetRank(queryKey: unknown): number {
+  const root = Array.isArray(queryKey) ? queryKey[0] : undefined;
+  if (typeof root !== "string") return Number.MAX_SAFE_INTEGER;
+  return BUDGET_RANK[root] ?? Number.MAX_SAFE_INTEGER;
+}
+
+/**
+ * Filter a dehydrated query list down to what may be stored, highest-ranked and
+ * newest first, stopping at the byte budget.
+ *
+ * Sorting before the budget check means the entries that get dropped when a
+ * device has accumulated many days are the ones a tech is least likely to need
+ * — rather than whichever the cache happened to enumerate last, which would
+ * have silently evicted today.
  */
 export function selectPersistableQueries<T extends PersistableQuery>(
   queries: readonly T[],
@@ -135,7 +174,11 @@ export function selectPersistableQueries<T extends PersistableQuery>(
 
   const eligible = queries
     .filter((q) => isPersistableQueryKey(q.queryKey))
-    .sort((a, b) => (b.state?.dataUpdatedAt ?? 0) - (a.state?.dataUpdatedAt ?? 0));
+    .sort(
+      (a, b) =>
+        budgetRank(a.queryKey) - budgetRank(b.queryKey) ||
+        (b.state?.dataUpdatedAt ?? 0) - (a.state?.dataUpdatedAt ?? 0),
+    );
 
   const kept: T[] = [];
   let used = 0;
