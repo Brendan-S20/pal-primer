@@ -1,9 +1,18 @@
 import * as React from "react";
-import { Body, Button, Container, Head, Heading, Html, Preview, Text } from "@react-email/components";
-import { styles } from "./_shared";
+import {
+  Body,
+  Button,
+  Container,
+  Head,
+  Heading,
+  Html,
+  Preview,
+  Text,
+} from "@react-email/components";
+import { styles, OrgFooter, type OrgContact } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
-interface Props {
+interface Props extends OrgContact {
   orgName?: string;
   clientName?: string;
   reviewUrl?: string;
@@ -13,6 +22,7 @@ const ReviewRequest = ({
   orgName = "your service",
   clientName = "there",
   reviewUrl = "",
+  ...orgContact
 }: Props) => (
   <Html lang="en">
     <Head />
@@ -30,6 +40,7 @@ const ReviewRequest = ({
           </Button>
         ) : null}
         <Text style={styles.small}>Thanks for trusting us with the dirty work.</Text>
+        <OrgFooter {...orgContact} orgName={orgName} />
       </Container>
     </Body>
   </Html>

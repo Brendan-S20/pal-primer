@@ -1,12 +1,26 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
-  CalendarDays, Home, Receipt, MapPin as MapPinIcon, MessageCircleWarning, User,
-  Mail, Phone,
+  CalendarDays,
+  Home,
+  Receipt,
+  MapPin as MapPinIcon,
+  MessageCircleWarning,
+  User,
+  Mail,
+  Phone,
 } from "lucide-react";
 import { PushToggle } from "@/components/PushToggle";
 import {
-  PortalProvider, usePortalCtx, PortalVerifyGate, money, fmtDayShort, fmtTime, friendlyFrequency,
-  isHex, relativeFromToday,
+  PortalProvider,
+  usePortalCtx,
+  PortalVerifyGate,
+  PortalDeadEnd,
+  money,
+  fmtDayShort,
+  fmtTime,
+  friendlyFrequency,
+  isHex,
+  relativeFromToday,
 } from "@/lib/portal-ui";
 
 export const Route = createFileRoute("/portal/$slug/$token")({
@@ -17,14 +31,35 @@ export const Route = createFileRoute("/portal/$slug/$token")({
     ],
   }),
   component: PortalLayout,
+  // These two run OUTSIDE the provider, so there is no branding to hand them
+  // — but a plain card with real sentences still beats a bare div with a
+  // database error in it.
   errorComponent: ({ error }) => (
-    <div className="mx-auto max-w-md p-8 text-center">
-      <h1 className="text-xl font-semibold">Portal unavailable</h1>
-      <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
-    </div>
+    <PortalDeadEnd
+      title="We can't load your account right now"
+      body={
+        <>
+          <p>This is on our side, not yours. Nothing about your service has changed.</p>
+          <p className="mt-2">
+            Try again in a minute, or reply to any of our texts or emails and we'll help.
+          </p>
+        </>
+      }
+      detail={error.message}
+    />
   ),
   notFoundComponent: () => (
-    <div className="mx-auto max-w-md p-8 text-center">Portal not found.</div>
+    <PortalDeadEnd
+      title="That link doesn't go anywhere"
+      body={
+        <>
+          <p>The address may have been copied incompletely, or the page has moved.</p>
+          <p className="mt-2">
+            The link in your most recent text or email is always the current one.
+          </p>
+        </>
+      }
+    />
   ),
 });
 
@@ -42,20 +77,57 @@ function PortalShell() {
 
   // Auth gate (finding #4): resolve the session before anything else.
   if (contextQ.isLoading) {
-    return <div className="mx-auto max-w-3xl p-8 text-center text-sm text-muted-foreground">Loading your portal…</div>;
+    return (
+      <div className="mx-auto max-w-3xl p-8 text-center text-sm text-muted-foreground">
+        Loading your portal…
+      </div>
+    );
   }
   const ctx = contextQ.data as any;
+  // "Invalid or expired portal link." was the whole page. It does not say
+  // which of the two it is, that links expire on purpose, or how to get a
+  // working one — and portal links DO expire, so this is a screen real
+  // customers reach on the ordinary path, not an error state.
   if (!ctx || ctx.valid === false) {
-    return <div className="mx-auto max-w-md p-8 text-center">Invalid or expired portal link.</div>;
+    return (
+      <PortalDeadEnd
+        branding={ctx?.branding ?? null}
+        title="This link has expired"
+        body={
+          <>
+            <p>Portal links expire after a while to keep your account private.</p>
+            <p className="mt-2">
+              Open the link in your most recent text or email — that one still works.
+            </p>
+          </>
+        }
+      />
+    );
   }
   if (!verified) {
     return <PortalVerifyGate />;
   }
   if (clientQ.isLoading) {
-    return <div className="mx-auto max-w-3xl p-8 text-center text-sm text-muted-foreground">Loading your portal…</div>;
+    return (
+      <div className="mx-auto max-w-3xl p-8 text-center text-sm text-muted-foreground">
+        Loading your portal…
+      </div>
+    );
   }
   if (clientQ.error || !clientQ.data) {
-    return <div className="mx-auto max-w-md p-8 text-center">Invalid or expired portal link.</div>;
+    return (
+      <PortalDeadEnd
+        branding={ctx?.branding ?? null}
+        title="We can't load your account right now"
+        body={
+          <>
+            <p>This is on our side. Nothing about your service has changed.</p>
+            <p className="mt-2">Try again in a minute, or reply to any of our texts or emails.</p>
+          </>
+        }
+        detail={(clientQ.error as Error | null)?.message ?? null}
+      />
+    );
   }
   const c = clientQ.data as any;
   const isCommercial = c.account_type === "commercial";
@@ -84,21 +156,37 @@ function PortalShell() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 {c.logo_url ? (
-                  <img src={c.logo_url} alt={c.org_name} className="h-8 w-8 rounded bg-white/20 object-contain p-0.5" />
+                  <img
+                    src={c.logo_url}
+                    alt={c.org_name}
+                    className="h-8 w-8 rounded bg-white/20 object-contain p-0.5"
+                  />
                 ) : null}
                 <div className="text-xs uppercase tracking-wider opacity-80">{c.org_name}</div>
               </div>
-              <h1 className="mt-1 truncate text-2xl font-semibold sm:text-3xl">Hello, {c.display_name} 👋</h1>
+              <h1 className="mt-1 truncate text-2xl font-semibold sm:text-3xl">
+                Hello, {c.display_name} 👋
+              </h1>
 
               <div className="mt-3 flex flex-wrap gap-2 text-sm">
                 {nextVisitDate ? (
-                  <Link to="/portal/$slug/$token/visits" params={{ slug, token }}
-                    className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur hover:bg-white/25">
+                  <Link
+                    to="/portal/$slug/$token/visits"
+                    params={{ slug, token }}
+                    className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur hover:bg-white/25"
+                  >
                     <CalendarDays className="h-3.5 w-3.5" />
                     <span>
                       Next: <strong>{fmtDayShort(nextVisitDate)}</strong>
-                      {nextVisitEtaStart && <> · {fmtTime(nextVisitEtaStart)}–{fmtTime(nextVisitEtaEnd)}</>}
-                      {relativeFromToday(nextVisitDate) && <span className="opacity-80"> · {relativeFromToday(nextVisitDate)}</span>}
+                      {nextVisitEtaStart && (
+                        <>
+                          {" "}
+                          · {fmtTime(nextVisitEtaStart)}–{fmtTime(nextVisitEtaEnd)}
+                        </>
+                      )}
+                      {relativeFromToday(nextVisitDate) && (
+                        <span className="opacity-80"> · {relativeFromToday(nextVisitDate)}</span>
+                      )}
                     </span>
                   </Link>
                 ) : (
@@ -107,8 +195,11 @@ function PortalShell() {
                   </div>
                 )}
                 {c.primary_frequency && (
-                  <Link to="/portal/$slug/$token/visits" params={{ slug, token }}
-                    className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur hover:bg-white/25">
+                  <Link
+                    to="/portal/$slug/$token/visits"
+                    params={{ slug, token }}
+                    className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur hover:bg-white/25"
+                  >
                     {planChip}
                   </Link>
                 )}
@@ -118,17 +209,24 @@ function PortalShell() {
                     positive side to "Account credit" so it can't be
                     misread as "you owe $0". */}
                 {c.credit_balance_cents !== 0 && (
-                  <Link to="/portal/$slug/$token/billing" params={{ slug, token }}
-                    className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur hover:bg-white/25">
-                    <span className="opacity-80">{c.credit_balance_cents > 0 ? "Account credit" : "Amount due"}</span>
+                  <Link
+                    to="/portal/$slug/$token/billing"
+                    params={{ slug, token }}
+                    className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur hover:bg-white/25"
+                  >
+                    <span className="opacity-80">
+                      {c.credit_balance_cents > 0 ? "Account credit" : "Amount due"}
+                    </span>
                     <span className="font-semibold">{money(Math.abs(c.credit_balance_cents))}</span>
                   </Link>
                 )}
               </div>
             </div>
 
-            <PushToggle portalToken={token}
-              className="bg-white/15 text-white border-white/30 hover:bg-white/25 hover:text-white" />
+            <PushToggle
+              portalToken={token}
+              className="bg-white/15 text-white border-white/30 hover:bg-white/25 hover:text-white"
+            />
           </div>
         </header>
 
@@ -140,17 +238,26 @@ function PortalShell() {
           <p className="font-medium text-foreground">Questions? We're here.</p>
           <div className="mt-2 flex flex-wrap items-center justify-center gap-3">
             {c.contact_phone && (
-              <a href={`tel:${c.contact_phone}`} className="inline-flex items-center gap-1.5 hover:text-foreground">
+              <a
+                href={`tel:${c.contact_phone}`}
+                className="inline-flex items-center gap-1.5 hover:text-foreground"
+              >
                 <Phone className="h-4 w-4" /> {c.contact_phone}
               </a>
             )}
             {c.contact_phone && (
-              <a href={`sms:${c.contact_phone}`} className="inline-flex items-center gap-1.5 hover:text-foreground">
+              <a
+                href={`sms:${c.contact_phone}`}
+                className="inline-flex items-center gap-1.5 hover:text-foreground"
+              >
                 Text us
               </a>
             )}
             {c.contact_email && (
-              <a href={`mailto:${c.contact_email}`} className="inline-flex items-center gap-1.5 hover:text-foreground">
+              <a
+                href={`mailto:${c.contact_email}`}
+                className="inline-flex items-center gap-1.5 hover:text-foreground"
+              >
                 <Mail className="h-4 w-4" /> {c.contact_email}
               </a>
             )}
@@ -169,20 +276,37 @@ const TABS = [
   { to: "/portal/$slug/$token/visits", label: "Visits", icon: CalendarDays, end: false },
   { to: "/portal/$slug/$token/billing", label: "Billing", icon: Receipt, end: false },
   { to: "/portal/$slug/$token/property", label: "Property", icon: MapPinIcon, end: false },
-  { to: "/portal/$slug/$token/requests", label: "Requests", icon: MessageCircleWarning, end: false },
+  {
+    to: "/portal/$slug/$token/requests",
+    label: "Requests",
+    icon: MessageCircleWarning,
+    end: false,
+  },
   { to: "/portal/$slug/$token/account", label: "Account", icon: User, end: false },
 ] as const;
 
-function BottomTabs({ token, slug, isCommercial }: { token: string; slug: string; isCommercial: boolean }) {
+function BottomTabs({
+  token,
+  slug,
+  isCommercial,
+}: {
+  token: string;
+  slug: string;
+  isCommercial: boolean;
+}) {
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   return (
-    <nav aria-label="Portal sections"
-      className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/80">
+    <nav
+      aria-label="Portal sections"
+      className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/80"
+    >
       <div className="mx-auto max-w-3xl">
         <ul className="grid grid-cols-6">
           {TABS.map((t) => {
             const target = t.to.replace("$slug", slug).replace("$token", token);
-            const active = t.end ? pathname === target : pathname === target || pathname.startsWith(target + "/");
+            const active = t.end
+              ? pathname === target
+              : pathname === target || pathname.startsWith(target + "/");
             const Icon = t.icon;
             const label = t.label === "Property" && isCommercial ? "Property" : t.label;
             return (
@@ -191,10 +315,14 @@ function BottomTabs({ token, slug, isCommercial }: { token: string; slug: string
                     soon as the tab bar mounts, so the first tap swaps content
                     immediately instead of waiting on a chunk download (the
                     "highlighted but didn't navigate" dead click). */}
-                <Link to={t.to} params={{ slug, token }} preload="render"
+                <Link
+                  to={t.to}
+                  params={{ slug, token }}
+                  preload="render"
                   className={`flex flex-col items-center gap-0.5 px-1 py-2 text-3xs font-medium transition-colors ${
                     active ? "text-primary" : "text-muted-foreground hover:text-foreground"
-                  }`}>
+                  }`}
+                >
                   <Icon className="h-5 w-5" />
                   <span>{label}</span>
                 </Link>

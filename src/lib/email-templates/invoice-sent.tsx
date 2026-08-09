@@ -1,9 +1,18 @@
 import * as React from "react";
-import { Body, Container, Head, Heading, Html, Preview, Text, Button } from "@react-email/components";
-import { styles, fmtMoney } from "./_shared";
+import {
+  Body,
+  Container,
+  Head,
+  Heading,
+  Html,
+  Preview,
+  Text,
+  Button,
+} from "@react-email/components";
+import { styles, fmtMoney, OrgFooter, type OrgContact } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
-interface Props {
+interface Props extends OrgContact {
   orgName?: string;
   clientName?: string;
   amountCents?: number;
@@ -20,6 +29,7 @@ const InvoiceSent = ({
   invoiceUrl,
   periodLabel,
   reminder = false,
+  ...orgContact
 }: Props) => (
   <Html lang="en">
     <Head />
@@ -39,11 +49,16 @@ const InvoiceSent = ({
         <Text style={styles.amount}>{fmtMoney(amountCents)}</Text>
         {periodLabel ? <Text style={styles.text}>{periodLabel}</Text> : null}
         {invoiceUrl ? (
-          <Button style={styles.button} href={invoiceUrl}>View &amp; pay invoice</Button>
+          <Button style={styles.button} href={invoiceUrl}>
+            View &amp; pay invoice
+          </Button>
         ) : null}
         <Text style={styles.small}>
-          {reminder ? "If you've already paid, please ignore this email." : "Thanks for your business."}
+          {reminder
+            ? "If you've already paid, please ignore this email."
+            : "Thanks for your business."}
         </Text>
+        <OrgFooter {...orgContact} orgName={orgName} />
       </Container>
     </Body>
   </Html>

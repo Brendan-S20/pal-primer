@@ -71,7 +71,11 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
     .from("organizations")
     // BUILD-5: contact_email is the reply-to. Without it a customer who hits
     // Reply on their invoice writes to noreply@ and is never heard from.
-    .select(`id, name, contact_email, ${params.notifyKey}`)
+    //
+    // contact_phone and contact_address join it here because every template
+    // now ends in an OrgFooter. They were already on this row and already
+    // editable in Settings; nothing had ever put them in an email.
+    .select(`id, name, contact_email, contact_phone, contact_address, ${params.notifyKey}`)
     .eq("id", params.organizationId)
     .maybeSingle();
   if (!org || (org as any)[params.notifyKey] === false) {
@@ -102,9 +106,22 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
   if (suppressed) return { ok: false, reason: "suppressed" };
 
   // Render
+  // The select above interpolates params.notifyKey, so supabase-js infers
+  // nothing about the row. Narrowed once here rather than cast at each field.
+  const orgContact = org as {
+    contact_phone?: string | null;
+    contact_email?: string | null;
+    contact_address?: string | null;
+  };
   const mergedData = {
     siteName: (org as any).name || SITE_NAME,
     orgName: (org as any).name,
+    // Spread BEFORE params.templateData so a caller can still override, but
+    // no caller has to remember to pass them — the failure mode this replaces
+    // is exactly "the data was available and nobody wired it up".
+    orgPhone: orgContact.contact_phone ?? null,
+    orgEmail: orgContact.contact_email ?? null,
+    orgAddress: orgContact.contact_address ?? null,
     clientName: client.display_name,
     ...params.templateData,
   };

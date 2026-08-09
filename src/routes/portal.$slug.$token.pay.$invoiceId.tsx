@@ -3,12 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
-import {
-  Elements,
-  PaymentElement,
-  useElements,
-  useStripe,
-} from "@stripe/react-stripe-js";
+import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Button } from "@/components/ui/button";
 import { Loader2, ArrowLeft, ShieldCheck } from "lucide-react";
 import { portalCreateInvoicePaymentIntent } from "@/lib/portal.functions";
@@ -53,10 +48,10 @@ function PayInvoice() {
       navigate({
         to: "/portal/$slug/$token/billing",
         params: { slug, token },
-        search: { paid: "1" } as never,
+        search: { paid: redirectStatus } as never,
       });
     }
-  }, [returningFromRedirect, navigate, slug, token]);
+  }, [returningFromRedirect, redirectStatus, navigate, slug, token]);
 
   const intentQ = useQuery({
     queryKey: ["portal-pi", token, invoiceId],
@@ -67,7 +62,10 @@ function PayInvoice() {
   });
 
   const stripePromise = useMemo(
-    () => (intentQ.data ? getStripe(intentQ.data.publishableKey, (intentQ.data as any).stripeAccount) : null),
+    () =>
+      intentQ.data
+        ? getStripe(intentQ.data.publishableKey, (intentQ.data as any).stripeAccount)
+        : null,
     [intentQ.data?.publishableKey, (intentQ.data as any)?.stripeAccount],
   );
 
@@ -86,9 +84,7 @@ function PayInvoice() {
         {intentQ.data && (
           <p className="mt-1 text-sm text-muted-foreground">
             {intentQ.data.businessName}: total{" "}
-            <span className="font-medium text-foreground">
-              {money(intentQ.data.amountCents)}
-            </span>
+            <span className="font-medium text-foreground">{money(intentQ.data.amountCents)}</span>
           </p>
         )}
       </div>
@@ -113,7 +109,12 @@ function PayInvoice() {
             appearance: stripeAppearance(),
           }}
         >
-          <PayForm slug={slug} token={token} invoiceId={invoiceId} amountCents={intentQ.data.amountCents} />
+          <PayForm
+            slug={slug}
+            token={token}
+            invoiceId={invoiceId}
+            amountCents={intentQ.data.amountCents}
+          />
         </Elements>
       )}
 
@@ -159,7 +160,7 @@ function PayForm({
     }
 
     const returnUrl = `${window.location.origin}/portal/${slug}/${token}/pay/${invoiceId}`;
-    const { error: confirmError } = await stripe.confirmPayment({
+    const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
       elements,
       confirmParams: { return_url: returnUrl },
       redirect: "if_required",
@@ -176,10 +177,16 @@ function PayForm({
     // billing page refetches and actually shows the invoice as paid instead
     // of the stale open state.
     await qc.invalidateQueries({ queryKey: ["portal", token] });
+    // Carry the REAL status, not a flat "paid=1". An ACH debit lands here as
+    // `processing` and will not settle for days; telling that customer
+    // "payment received" is the kind of reassurance they act on and we can't
+    // honour.
     navigate({
       to: "/portal/$slug/$token/billing",
       params: { slug, token },
-      search: { paid: "1" } as never,
+      search: {
+        paid: paymentIntent?.status === "processing" ? "processing" : "succeeded",
+      } as never,
     });
   }
 

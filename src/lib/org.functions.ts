@@ -201,6 +201,9 @@ const brandingSchema = z.object({
   logoUrl: z.string().url().max(500).nullable().optional(),
   contactPhone: z.string().max(30).nullable().optional(),
   contactEmail: z.string().email().max(255).nullable().optional(),
+  // Free text, one field, printed not parsed — see the migration header.
+  // Max matches the CHECK on the column so the two cannot disagree.
+  contactAddress: z.string().trim().min(1).max(300).nullable().optional(),
   portalRescheduleCutoffHours: z.number().int().min(0).max(168).optional(),
   portalAllowSelfReschedule: z.boolean().optional(),
   portalAllowVacationHold: z.boolean().optional(),
@@ -220,7 +223,7 @@ export const getOrgBranding = createServerFn({ method: "GET" })
     if (!role) throw new Error("No org");
     const { data, error } = await (supabase.from("organizations") as any)
       .select(
-        "id, name, brand_color, logo_url, contact_phone, contact_email, portal_reschedule_cutoff_hours, portal_allow_self_reschedule, portal_allow_vacation_hold, portal_allow_frequency_change, portal_auto_apply_changes",
+        "id, name, brand_color, logo_url, contact_phone, contact_email, contact_address, portal_reschedule_cutoff_hours, portal_allow_self_reschedule, portal_allow_vacation_hold, portal_allow_frequency_change, portal_auto_apply_changes",
       )
       .eq("id", role.organization_id)
       .single();
@@ -232,6 +235,7 @@ export const getOrgBranding = createServerFn({ method: "GET" })
       logo_url: string | null;
       contact_phone: string | null;
       contact_email: string | null;
+      contact_address: string | null;
       portal_reschedule_cutoff_hours: number;
       portal_allow_self_reschedule: boolean;
       portal_allow_vacation_hold: boolean;
@@ -251,6 +255,7 @@ export const updateOrgBranding = createServerFn({ method: "POST" })
     if (data.logoUrl !== undefined) patch.logo_url = data.logoUrl;
     if (data.contactPhone !== undefined) patch.contact_phone = data.contactPhone;
     if (data.contactEmail !== undefined) patch.contact_email = data.contactEmail;
+    if (data.contactAddress !== undefined) patch.contact_address = data.contactAddress;
     if (data.portalRescheduleCutoffHours !== undefined)
       patch.portal_reschedule_cutoff_hours = data.portalRescheduleCutoffHours;
     if (data.portalAllowSelfReschedule !== undefined)

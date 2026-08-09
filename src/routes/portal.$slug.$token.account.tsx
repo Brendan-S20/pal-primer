@@ -7,11 +7,10 @@ import { toast } from "sonner";
 import { PushToggle } from "@/components/PushToggle";
 import { Switch } from "@/components/ui/switch";
 import { SMS_CONSENT_TEXT } from "@/lib/clients.functions";
-import { usePortalCtx, ReferralCard, EmptyBox } from "@/lib/portal-ui";
+import { usePortalCtx, ReferralCard, EmptyBox, VacationHoldCard } from "@/lib/portal-ui";
 import { PORTAL_FREQUENCY_VALUES, frequencyLabel } from "@/lib/frequency-request";
 import {
   portalSelfServeOptions,
-  portalRequestVacationHold,
   portalSetSmsConsent,
   portalChangeFrequency,
 } from "@/lib/portal.functions";
@@ -55,26 +54,42 @@ function PortalAccount() {
 
       <section>
         <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
-          <Gift className="h-4 w-4" /> {isCommercial ? "Refer another property" : "Refer a neighbor"}
+          <Gift className="h-4 w-4" />{" "}
+          {isCommercial ? "Refer another property" : "Refer a neighbor"}
         </h2>
         {referralQ.data?.referral_code ? (
-          <ReferralCard code={referralQ.data.referral_code}
+          <ReferralCard
+            code={referralQ.data.referral_code}
             orgName={c?.org_name ?? ""}
-            isCommercial={isCommercial} />
+            isCommercial={isCommercial}
+          />
         ) : (
-          <EmptyBox title="No referral code yet"
-            body="We'll email you one to share once your account is fully set up." />
+          <EmptyBox
+            title="No referral code yet"
+            body="We'll email you one to share once your account is fully set up."
+          />
         )}
       </section>
 
       <section>
         <h2 className="mb-2 text-lg font-semibold">Account</h2>
         <div className="rounded-md border bg-card p-4 text-sm space-y-2">
-          <div><span className="text-muted-foreground">Name:</span> <strong>{c?.display_name}</strong></div>
-          {c?.primary_email && <div><span className="text-muted-foreground">Email:</span> {c.primary_email}</div>}
-          {c?.primary_phone && <div><span className="text-muted-foreground">Phone:</span> {c.primary_phone}</div>}
+          <div>
+            <span className="text-muted-foreground">Name:</span> <strong>{c?.display_name}</strong>
+          </div>
+          {c?.primary_email && (
+            <div>
+              <span className="text-muted-foreground">Email:</span> {c.primary_email}
+            </div>
+          )}
+          {c?.primary_phone && (
+            <div>
+              <span className="text-muted-foreground">Phone:</span> {c.primary_phone}
+            </div>
+          )}
           <p className="mt-3 text-xs text-muted-foreground">
-            Need to update your details? Reply to any {c?.org_name ?? "our"} email or text and we'll take care of it.
+            Need to update your details? Reply to any {c?.org_name ?? "our"} email or text and we'll
+            take care of it.
           </p>
         </div>
       </section>
@@ -84,27 +99,34 @@ function PortalAccount() {
 
 // Finding #36: render the vacation-hold and change-frequency controls only when
 // the owner has enabled the matching self-serve permission.
+//
+// The vacation hold used to be reimplemented here, and the reimplementation
+// lied. It toasted `Vacation hold set. ${r.skippedCount ?? 0} visit(s)
+// skipped.` unconditionally — but when the org has auto-apply off, the RPC
+// skips nothing and returns 0, so the customer read "hold set", ignored the
+// zero, went away, and the truck came all week. It also had no minimum date
+// (a hold could start in the past), no note field, and no idea whether the
+// hold applies immediately or waits for the office.
+//
+// `VacationHoldCard` in portal-ui had all four right the whole time, and the
+// shared `vacationMut` says "sent to the office for review" when nothing was
+// skipped. This renders that one instead.
 function SelfServeSection({ token }: { token: string }) {
+  const { clientQ, vacationMut } = usePortalCtx();
+  const c = clientQ.data as any;
   const optsFn = useServerFn(portalSelfServeOptions);
-  const holdFn = useServerFn(portalRequestVacationHold);
   const freqFn = useServerFn(portalChangeFrequency);
-  const optsQ = useQuery({ queryKey: ["portal-selfserve", token], queryFn: () => optsFn({ data: { token } }) });
+  const optsQ = useQuery({
+    queryKey: ["portal-selfserve", token],
+    queryFn: () => optsFn({ data: { token } }),
+  });
   const opts = optsQ.data as any;
 
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
   const [freq, setFreq] = useState("");
 
-  const holdMut = useMutation({
-    mutationFn: () => holdFn({ data: { token, startDate: start, endDate: end } }),
-    onSuccess: (r: any) => {
-      toast.success(`Vacation hold set. ${r.skippedCount ?? 0} visit(s) skipped.`);
-      setStart(""); setEnd("");
-    },
-    onError: (e) => toast.error((e as Error).message),
-  });
   const freqMut = useMutation({
-    mutationFn: () => freqFn({ data: { token, subscriptionId: opts.subscription.id, frequency: freq as any } }),
+    mutationFn: () =>
+      freqFn({ data: { token, subscriptionId: opts.subscription.id, frequency: freq as any } }),
     onSuccess: (r: any) => {
       toast.success(
         r?.status === "requested"
@@ -125,26 +147,11 @@ function SelfServeSection({ token }: { token: string }) {
           <h2 className="mb-2 text-lg font-semibold flex items-center gap-2">
             <CalendarClock className="h-4 w-4" /> Vacation hold
           </h2>
-          <div className="rounded-md border bg-card p-4 text-sm">
-            <p className="mb-3 text-muted-foreground">Going away? Pause your service for a date range and we'll skip those visits.</p>
-            <div className="flex flex-wrap items-end gap-3">
-              <label className="text-xs">
-                <span className="mb-1 block text-muted-foreground">From</span>
-                <input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="rounded border bg-background px-2 py-1.5" />
-              </label>
-              <label className="text-xs">
-                <span className="mb-1 block text-muted-foreground">To</span>
-                <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="rounded border bg-background px-2 py-1.5" />
-              </label>
-              <button
-                onClick={() => holdMut.mutate()}
-                disabled={!start || !end || holdMut.isPending}
-                className="rounded bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
-              >
-                {holdMut.isPending ? "Setting…" : "Request hold"}
-              </button>
-            </div>
-          </div>
+          <VacationHoldCard
+            autoApply={!!c?.auto_apply_changes}
+            onSubmit={(v) => vacationMut.mutate(v)}
+            pending={vacationMut.isPending}
+          />
         </section>
       )}
 
@@ -155,7 +162,11 @@ function SelfServeSection({ token }: { token: string }) {
           </h2>
           <div className="rounded-md border bg-card p-4 text-sm">
             <p className="mb-3 text-muted-foreground">
-              Currently <strong>{FREQ_LABELS[opts.subscription.frequency] ?? opts.subscription.frequency}</strong>.
+              Currently{" "}
+              <strong>
+                {FREQ_LABELS[opts.subscription.frequency] ?? opts.subscription.frequency}
+              </strong>
+              .
             </p>
             <div className="flex flex-wrap items-end gap-3">
               <select
@@ -164,19 +175,20 @@ function SelfServeSection({ token }: { token: string }) {
                 className="rounded border bg-background px-2 py-1.5 text-sm"
               >
                 {Object.entries(FREQ_LABELS).map(([v, l]) => (
-                  <option key={v} value={v}>{l}</option>
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
                 ))}
               </select>
               <button
                 onClick={() => freqMut.mutate()}
-                disabled={freqMut.isPending || (freq || opts.subscription.frequency) === opts.subscription.frequency}
+                disabled={
+                  freqMut.isPending ||
+                  (freq || opts.subscription.frequency) === opts.subscription.frequency
+                }
                 className="rounded bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
               >
-                {freqMut.isPending
-                  ? "Sending…"
-                  : opts.autoApply
-                    ? "Update"
-                    : "Request change"}
+                {freqMut.isPending ? "Sending…" : opts.autoApply ? "Update" : "Request change"}
               </button>
             </div>
             {!opts.autoApply && (
@@ -190,7 +202,6 @@ function SelfServeSection({ token }: { token: string }) {
     </>
   );
 }
-
 
 /**
  * The client opting themselves in to texts.
@@ -237,11 +248,7 @@ function TextOptIn({ token, client }: { token: string; client: any }) {
       </div>
       {/* The words themselves, not a link to them. This is what gets stored as
           the consent record, and what a carrier asks to see. */}
-      {!optedIn && (
-        <p className="mt-2 text-2xs text-muted-foreground">
-          {SMS_CONSENT_TEXT}
-        </p>
-      )}
+      {!optedIn && <p className="mt-2 text-2xs text-muted-foreground">{SMS_CONSENT_TEXT}</p>}
     </div>
   );
 }

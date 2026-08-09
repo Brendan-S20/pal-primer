@@ -1,9 +1,18 @@
 import * as React from "react";
-import { Body, Container, Head, Heading, Html, Preview, Text, Button } from "@react-email/components";
-import { styles } from "./_shared";
+import {
+  Body,
+  Container,
+  Head,
+  Heading,
+  Html,
+  Preview,
+  Text,
+  Button,
+} from "@react-email/components";
+import { styles, OrgFooter, type OrgContact } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
-interface Props {
+interface Props extends OrgContact {
   orgName?: string;
   clientName?: string;
   /**
@@ -28,6 +37,7 @@ const WinBack = ({
   promoCode = "COMEBACK",
   expiresOn,
   portalUrl,
+  ...orgContact
 }: Props) => (
   <Html lang="en">
     <Head />
@@ -36,22 +46,26 @@ const WinBack = ({
       <Container style={styles.container}>
         <Heading style={styles.h1}>We miss you, {clientName}</Heading>
         <Text style={styles.text}>
-          It's been a while since we've seen you at {orgName}. We'd love to have you back. Here's
-          {" "}{discountAmount} of credit toward your next service.
+          It's been a while since we've seen you at {orgName}. We'd love to have you back. Here's{" "}
+          {discountAmount} of credit toward your next service.
         </Text>
-        <Text style={{ ...styles.amount, fontSize: 22 }}>Code: <strong>{promoCode}</strong></Text>
+        <Text style={{ ...styles.amount, fontSize: 22 }}>
+          Code: <strong>{promoCode}</strong>
+        </Text>
         <Text style={styles.small}>
           Enter it under Billing in your customer portal and the credit is applied to your account.
         </Text>
-        {expiresOn && (
-          <Text style={styles.small}>Offer valid through {expiresOn}.</Text>
-        )}
+        {expiresOn && <Text style={styles.small}>Offer valid through {expiresOn}.</Text>}
         {portalUrl && (
-          <Button style={styles.button} href={portalUrl}>Reactivate service</Button>
+          <Button style={styles.button} href={portalUrl}>
+            Reactivate service
+          </Button>
         )}
         <Text style={styles.small}>
-          If you had an issue with your service, just reply to this email. We'd like to make it right.
+          If you had an issue with your service, just reply to this email. We'd like to make it
+          right.
         </Text>
+        <OrgFooter {...orgContact} orgName={orgName} />
       </Container>
     </Body>
   </Html>

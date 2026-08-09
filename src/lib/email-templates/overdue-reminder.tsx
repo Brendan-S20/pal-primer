@@ -1,9 +1,18 @@
 import * as React from "react";
-import { Body, Container, Head, Heading, Html, Preview, Text, Button } from "@react-email/components";
-import { styles, fmtMoney } from "./_shared";
+import {
+  Body,
+  Container,
+  Head,
+  Heading,
+  Html,
+  Preview,
+  Text,
+  Button,
+} from "@react-email/components";
+import { styles, fmtMoney, OrgFooter, type OrgContact } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
-interface Props {
+interface Props extends OrgContact {
   orgName?: string;
   clientName?: string;
   amountCents?: number;
@@ -17,6 +26,7 @@ const OverdueReminder = ({
   amountCents = 0,
   daysPastDue = 0,
   invoiceUrl,
+  ...orgContact
 }: Props) => (
   <Html lang="en">
     <Head />
@@ -25,13 +35,17 @@ const OverdueReminder = ({
       <Container style={styles.container}>
         <Heading style={styles.h1}>Friendly reminder</Heading>
         <Text style={styles.text}>
-          Hi {clientName}, your invoice from {orgName} is {daysPastDue} day{daysPastDue === 1 ? "" : "s"} past due.
+          Hi {clientName}, your invoice from {orgName} is {daysPastDue} day
+          {daysPastDue === 1 ? "" : "s"} past due.
         </Text>
         <Text style={styles.amount}>{fmtMoney(amountCents)}</Text>
         {invoiceUrl ? (
-          <Button style={styles.button} href={invoiceUrl}>Pay now</Button>
+          <Button style={styles.button} href={invoiceUrl}>
+            Pay now
+          </Button>
         ) : null}
         <Text style={styles.small}>If you've already paid, please ignore this email.</Text>
+        <OrgFooter {...orgContact} orgName={orgName} />
       </Container>
     </Body>
   </Html>
@@ -39,7 +53,8 @@ const OverdueReminder = ({
 
 export const template = {
   component: OverdueReminder,
-  subject: (d: Record<string, any>) => `Past due: ${fmtMoney(d.amountCents ?? 0)} - ${d.orgName ?? "your service"}`,
+  subject: (d: Record<string, any>) =>
+    `Past due: ${fmtMoney(d.amountCents ?? 0)} - ${d.orgName ?? "your service"}`,
   displayName: "Overdue reminder",
   previewData: {
     orgName: "Acme Scoop Co.",
