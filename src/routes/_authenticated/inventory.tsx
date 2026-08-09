@@ -201,7 +201,11 @@ function InventoryPage() {
               </div>
             </div>
           )}
-          <div className="rounded-lg border bg-card">
+          {/* Seven and six columns of stock figures. The card scrolls, not the
+              page — the third table here is narrow enough that its scroller
+              never engages, and it carries the class anyway so all three
+              behave the same when a column is added. */}
+          <div className="overflow-x-auto rounded-lg border bg-card">
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
                 <tr>
@@ -277,7 +281,11 @@ function InventoryPage() {
           <div className="mb-3 flex justify-end">
             <AssignDialog items={(items.data ?? []).filter((i) => i.active)} staffList={staff.data ?? []} />
           </div>
-          <div className="rounded-lg border bg-card">
+          {/* Seven and six columns of stock figures. The card scrolls, not the
+              page — the third table here is narrow enough that its scroller
+              never engages, and it carries the class anyway so all three
+              behave the same when a column is added. */}
+          <div className="overflow-x-auto rounded-lg border bg-card">
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
                 <tr>
@@ -308,7 +316,11 @@ function InventoryPage() {
         </TabsContent>
 
         <TabsContent value="movements" className="mt-4">
-          <div className="rounded-lg border bg-card">
+          {/* Seven and six columns of stock figures. The card scrolls, not the
+              page — the third table here is narrow enough that its scroller
+              never engages, and it carries the class anyway so all three
+              behave the same when a column is added. */}
+          <div className="overflow-x-auto rounded-lg border bg-card">
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
                 <tr>

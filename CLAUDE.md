@@ -38,6 +38,27 @@ Check it at roughly 360px, 768px, 1280px and 1920px. If a view genuinely cannot
 work at one of those widths, say so and say why — do not ship it silently broken
 and do not quietly narrow the scope to the widths that happened to work.
 
+### Some of this is enforced, so you find out before review
+
+Three of the rules above are checked by tests that scan the whole of `src/`
+and name the offending file and line rather than counting violations:
+
+- `tests/hover-does-not-exist-on-a-touchscreen.test.ts` — a `group-hover:`
+  that reveals a control must have a `max-md:` escape. Decoration
+  (`group-hover:scale-105`) is deliberately not caught.
+- `tests/wide-things-that-set-the-width-of-the-page.test.ts` — every raw
+  `<table>` with four or more columns needs a horizontal scroll container,
+  and must not be inside `overflow-hidden`, which clips the right-hand
+  columns away with no scrollbar and no way to reach them. Anything built on
+  `<Table>` from `ui/table.tsx` already scrolls and is exempt.
+- The same file pins the touch sizing on `ui/tabs.tsx`.
+
+What is NOT enforced, and still has to be looked at: whether a thing is
+centred, whether text truncates instead of pushing its row wider (a flex
+child usually needs `min-w-0` before `truncate` does anything), and whether a
+layout is merely cramped rather than broken. A green test run is not a
+substitute for opening the page at 360px.
+
 Prior art worth reading rather than rediscovering: `docs/mobile-ux-audit.md`
 (2026-07-23) audited the staff app against this standard and its findings are
 still the best map of where the weak points are.

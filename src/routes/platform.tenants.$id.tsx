@@ -68,7 +68,10 @@ function TenantDetailPage() {
       <TenantHeader t={t} onChange={() => qc.invalidateQueries({ queryKey: ["platform", "tenant", id] })} />
 
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="flex-wrap">
+        {/* Wrapping is a desktop answer for seven tabs. Below `md` it fought
+            the scroller on TabsList — wrap and overflow-x together means the
+            bar neither scrolls nor fits. */}
+        <TabsList className="md:flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>

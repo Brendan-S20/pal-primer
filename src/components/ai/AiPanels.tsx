@@ -203,7 +203,13 @@ export function ChurnPanel() {
           {m.isPending ? "Scoring…" : "Re-score all active clients"}
         </Button>
       </div>
-      <div className="overflow-hidden rounded-lg border bg-card">
+      {/* `overflow-hidden` here did not tidy the corners, it CLIPPED the
+          table: these run four, seven and nine columns wide, and on a phone
+          everything past the fold — Confidence, Why, the numbers a decision
+          rests on — was cut off with no scrollbar and no way to reach it.
+          `overflow-x-auto` still establishes the rounding clip, and lets the
+          table scroll inside its own box rather than the page. */}
+      <div className="overflow-x-auto rounded-lg border bg-card">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
             <tr>
@@ -349,7 +355,13 @@ export function DispatchPanel() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-lg border bg-card">
+      {/* `overflow-hidden` here did not tidy the corners, it CLIPPED the
+          table: these run four, seven and nine columns wide, and on a phone
+          everything past the fold — Confidence, Why, the numbers a decision
+          rests on — was cut off with no scrollbar and no way to reach it.
+          `overflow-x-auto` still establishes the rounding clip, and lets the
+          table scroll inside its own box rather than the page. */}
+      <div className="overflow-x-auto rounded-lg border bg-card">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
             <tr>
@@ -451,7 +463,13 @@ export function PricingPanel() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-lg border bg-card">
+      {/* `overflow-hidden` here did not tidy the corners, it CLIPPED the
+          table: these run four, seven and nine columns wide, and on a phone
+          everything past the fold — Confidence, Why, the numbers a decision
+          rests on — was cut off with no scrollbar and no way to reach it.
+          `overflow-x-auto` still establishes the rounding clip, and lets the
+          table scroll inside its own box rather than the page. */}
+      <div className="overflow-x-auto rounded-lg border bg-card">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
             <tr>

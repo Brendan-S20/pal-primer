@@ -248,8 +248,16 @@ function LtvTab() {
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className={`grid gap-4 mb-4 text-sm ${anyRefunds ? "grid-cols-4" : "grid-cols-3"}`}>
+      {/* The seven-column table below is the widest thing on this page. It had
+          no scroll container, so it widened the whole document instead of
+          itself. */}
+      <CardContent className="overflow-x-auto">
+        {/* Two tiles per row on a phone. Four across a 360px screen gives each
+            money figure about 80px, and "Avg monthly / client" alone needs
+            more than that before the number underneath it. */}
+        <div
+          className={`mb-4 grid grid-cols-2 gap-4 text-sm ${anyRefunds ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}
+        >
           <Stat label="Clients shown" value={String(rows.length)} />
           {anyRefunds && <Stat label="Refunded" value={`-${fmt(totalRefunds)}`} />}
           <Stat label="Net paid revenue" value={fmt(totalRev)} />
@@ -348,7 +356,7 @@ function ZoneTab() {
           <Button onClick={() => setApplied({ from, to })}>Apply</Button>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="overflow-x-auto">
         {q.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : (
@@ -400,7 +408,7 @@ function ChurnTab() {
           list.
         </p>
       </CardHeader>
-      <CardContent>
+      <CardContent className="overflow-x-auto">
         <div className="mb-4 text-sm">
           <Stat label="Total revenue at risk (180d)" value={fmt(totalAtRisk)} />
         </div>
@@ -528,7 +536,8 @@ function WinBackTab() {
             No at-risk clients right now. Run "Re-score all" to refresh.
           </p>
         ) : (
-          <div className="overflow-hidden rounded-md border">
+          // Six columns clipped, not scrolled — see AiPanels for the same fix.
+          <div className="overflow-x-auto rounded-md border">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                 <tr>

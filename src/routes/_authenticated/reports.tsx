@@ -207,7 +207,10 @@ function ReportsPage() {
           <CardHeader>
             <CardTitle>Tech productivity</CardTitle>
           </CardHeader>
-          <CardContent>
+          {/* Four columns of figures in a half-width card. Without a scroll
+              container the table sets the width of the page rather than of
+              itself, which is the one thing a layout must never do. */}
+          <CardContent className="overflow-x-auto">
             {data.perTech.length === 0 ? (
               <p className="text-sm text-muted-foreground">No visits.</p>
             ) : (
@@ -239,7 +242,7 @@ function ReportsPage() {
           <CardHeader>
             <CardTitle>Zone activity</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="overflow-x-auto">
             {data.perZone.length === 0 ? (
               <p className="text-sm text-muted-foreground">No visits.</p>
             ) : (
@@ -276,7 +279,7 @@ function ReportsPage() {
             tile above, less anything paid without an invoice.
           </p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="overflow-x-auto">
           {data.topClients.length === 0 ? (
             <p className="text-sm text-muted-foreground">No payments received in this range.</p>
           ) : (
