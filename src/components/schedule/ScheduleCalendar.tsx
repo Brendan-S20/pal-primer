@@ -81,6 +81,16 @@ export function calendarWindow(day: string, range: "week" | "month") {
   return { days, leadingBlanks, from: days[0], to: days[days.length - 1] };
 }
 
+/** Mon…Sun in the viewer's locale, for the month grid's column header.
+ *
+ *  1 Jan 2024 was a Monday, which is where the grid's week starts — see the
+ *  `(getDay() + 6) % 7` in `calendarWindow`. Deriving the labels from a known
+ *  Monday rather than from `days` matters because a month's first cell is the
+ *  1st, which is any weekday at all. */
+const WEEKDAY_LABELS = Array.from({ length: 7 }, (_, i) =>
+  new Date(2024, 0, 1 + i).toLocaleDateString(undefined, { weekday: "short" }),
+);
+
 function statusTone(status: string) {
   if (status === "completed") return "line-through opacity-60";
   if (status === "skipped") return "line-through opacity-50 italic";
@@ -218,13 +228,61 @@ export function ScheduleCalendar({
     return dow === 0 || dow === 6;
   };
   const cols = hideWeekends ? 5 : 7;
-  const monthBlanks = range === "month" ? Math.min(leadingBlanks, cols - 1) : 0;
+  const isMonth = range === "month";
+  const monthBlanks = isMonth ? Math.min(leadingBlanks, cols - 1) : 0;
   const visibleDays = hideWeekends ? days.filter((d) => !isWeekend(d)) : days;
   const todayIso = iso(new Date());
 
+  // ── The two ranges need different answers on a phone ──────────────────────
+  //
+  // This grid was `grid-cols-7` at every width. At 360px that is seven columns
+  // of about 45px each, holding a weekday, a date and chips with client names
+  // in them — legible on a laptop and unusable in a driveway. Shrinking a dense
+  // grid does not make it work; below the breakpoint it needs a different
+  // shape.
+  //
+  // A WEEK becomes one column: seven full-width day rows, each with its visits
+  // underneath, which is the same information at a size a thumb can use.
+  //
+  // A MONTH keeps its seven columns, because the shape of a month IS the
+  // information — which week a date falls in, where the gaps are — and thirty
+  // stacked rows would destroy that while adding a very long scroll. What
+  // changes is density: on a phone a month cell shows the date and how many
+  // visits, and tapping it opens that day. Chips are only hidden where the day
+  // itself is one tap away.
+  //
+  // The month cell's own arithmetic, because it is what decides whether the
+  // page scrolls sideways: at 320px, seven columns leave roughly 34px each and
+  // about 22px of that is inside the padding. "MON 31 12" on one line needs
+  // more than twice that, so the weekday moved OUT of the cell into a column
+  // header the whole grid shares, and the count stacks under the date until
+  // there is room for it alongside. What is left in a cell is a two-digit
+  // number, which fits with room to spare.
+  const gridCls = isMonth
+    ? cols === 5
+      ? "grid-cols-5"
+      : "grid-cols-7"
+    : cols === 5
+      ? "grid-cols-1 md:grid-cols-5"
+      : "grid-cols-1 md:grid-cols-7";
+
   return (
-    <div className="rounded-lg border bg-card p-4">
-      <div className={`grid gap-2 ${cols === 5 ? "grid-cols-5" : "grid-cols-7"}`}>
+    <div className="rounded-lg border bg-card p-2 sm:p-4">
+      {/* Only a month gets a column header. A week is one column below `md`,
+          where seven labels over one column would be a lie. */}
+      {isMonth && (
+        <div
+          className={`mb-1.5 grid gap-1.5 px-1 sm:gap-2 ${cols === 5 ? "grid-cols-5" : "grid-cols-7"}`}
+          aria-hidden
+        >
+          {(hideWeekends ? WEEKDAY_LABELS.slice(0, 5) : WEEKDAY_LABELS).map((label) => (
+            <span key={label} className="truncate text-center text-3xs uppercase text-muted-foreground">
+              {label}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className={`grid gap-1.5 sm:gap-2 ${gridCls}`}>
         {Array.from({ length: monthBlanks }).map((_, i) => (
           <div key={`blank-${i}`} />
         ))}
@@ -237,9 +295,11 @@ export function ScheduleCalendar({
           return (
             <div
               key={d}
-              className={`flex min-h-[7rem] flex-col rounded-md border p-1.5 text-xs ${
-                d === todayIso ? "ring-1 ring-primary" : ""
-              } ${d === day ? "bg-muted/40" : ""}`}
+              className={`flex flex-col rounded-md border p-1.5 text-xs md:min-h-[7rem] ${
+                isMonth ? "min-h-[3.5rem]" : ""
+              } ${d === todayIso ? "ring-1 ring-primary" : ""} ${
+                d === day ? "bg-muted/40" : ""
+              }`}
             >
               {/* The date is the control that opens the day. The chips are their
                   own controls, so the whole cell is deliberately NOT a button —
@@ -247,19 +307,31 @@ export function ScheduleCalendar({
                   own click. */}
               <button
                 onClick={() => onPickDay(d)}
-                className="mb-1 flex items-baseline gap-1.5 rounded px-1 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                className={`mb-1 flex rounded px-1 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary md:min-h-0 md:flex-none md:flex-row md:items-baseline md:gap-1.5 ${
+                  isMonth
+                    ? "min-h-[2.75rem] flex-1 flex-col items-center justify-center gap-0"
+                    : "min-h-[2.75rem] items-center gap-1.5"
+                }`}
                 title={`Open ${dt.toLocaleDateString()} on the board`}
               >
-                <span className="text-3xs uppercase text-muted-foreground">
-                  {dt.toLocaleDateString(undefined, { weekday: "short" })}
-                </span>
+                {/* A month's weekday lives in the column header above; repeating
+                    it in all thirty cells is what made them too wide to fit. */}
+                {!isMonth && (
+                  <span className="text-3xs uppercase text-muted-foreground">
+                    {dt.toLocaleDateString(undefined, { weekday: "short" })}
+                  </span>
+                )}
                 <span className="font-medium">{dt.getDate()}</span>
                 {list.length > 0 && (
-                  <span className="ml-auto text-3xs text-muted-foreground">{list.length}</span>
+                  <span
+                    className={`text-3xs text-muted-foreground ${isMonth ? "md:ml-auto" : "ml-auto"}`}
+                  >
+                    {list.length}
+                  </span>
                 )}
               </button>
 
-              <div className="flex flex-col gap-0.5">
+              <div className={`flex-col gap-0.5 ${isMonth ? "hidden md:flex" : "flex"}`}>
                 {shown.map((v) => (
                   <VisitChip
                     key={v.id}
@@ -282,14 +354,20 @@ export function ScheduleCalendar({
                       return next;
                     })
                   }
-                  className="mt-0.5 px-1 text-left text-3xs text-muted-foreground hover:text-foreground"
+                  className={`mt-0.5 px-1 text-left text-3xs text-muted-foreground hover:text-foreground ${
+                    isMonth ? "hidden md:block" : ""
+                  }`}
                 >
                   {isOpen ? "Show less" : `+${list.length - CHIPS_PER_DAY} more`}
                 </button>
               )}
 
               {unassigned > 0 && (
-                <span className="mt-auto px-1 pt-1 text-3xs text-amber-700">
+                <span
+                  className={`mt-auto px-1 pt-1 text-3xs text-amber-700 ${
+                    isMonth ? "hidden md:block" : ""
+                  }`}
+                >
                   {unassigned} unassigned
                 </span>
               )}
@@ -297,9 +375,20 @@ export function ScheduleCalendar({
           );
         })}
       </div>
+      {/* This used to read "Hover a visit for who and where". Hover does not
+          exist on a touchscreen, so on the device where this board is most
+          used the sentence described a gesture the reader could not make — and
+          the hover card it pointed at is a shortcut, not the only way in.
+          Tapping a chip opens the visit, which is where all of it lives. */}
       <p className="mt-3 text-2xs text-muted-foreground">
-        Colours match the map — each technician keeps the same colour in both. Hover a visit for
-        who and where; click the date to open that day&apos;s board.
+        Colours match the map — each technician keeps the same colour in both. Open a visit for who
+        and where, or the date for that day&apos;s board.
+        {isMonth && (
+          <span className="md:hidden">
+            {" "}
+            A month shows each day&apos;s visit count; open the day to see who is on it.
+          </span>
+        )}
       </p>
     </div>
   );
