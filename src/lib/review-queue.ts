@@ -22,9 +22,68 @@ export type ReviewKind = (typeof REVIEW_KINDS)[number];
 export const REVIEW_STATUSES = ["open", "resolved", "dismissed"] as const;
 export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
 
+// ── WHAT /review IS ALLOWED TO SHOW ────────────────────────────────────────
+//
+// `review_items` stopped being the visit detector's private table. Four other
+// features now file into it — refunds, chargebacks, dispute inquiries, failed
+// billing runs, AI allowance warnings — because it is the one place a human
+// looks, and that was the right call for each of them individually. What was
+// never done is the other half: telling /review which of those it OWNS.
+//
+// It read the whole table. The damage was not cosmetic:
+//
+//   1. A chargeback rendered as the literal string `payment_chargeback`, with
+//      no label and no guidance, because REVIEW_KIND_COPY has no entry for it.
+//   2. Worse, it rendered with a "Record a decision" button. /disputes derives
+//      a dispute's state from the reversal ledger and never looks at
+//      `review_items.status`, so an office manager marking a live chargeback
+//      "resolved" here changed nothing about the dispute and made the two
+//      screens disagree about money that is still with the bank.
+//   3. The nav badge counted every open row of every kind, so "7 needs review"
+//      led to a list of three.
+//
+// So the queue names its kinds. An allowlist and not a denylist: a kind added
+// to the CHECK constraint by some future migration cannot appear on this page
+// until someone puts it here on purpose, which is the safe direction — the
+// failure mode is a new alert nobody sees yet, not a new alert everybody can
+// resolve with a button that does nothing.
+//
+// Adding to this list is deliberate in the compiler's eyes too: REVIEW_KIND_COPY
+// is keyed on it, so a new kind does not typecheck until its label, its
+// explanation and its "what do I do" have been written. That is the whole
+// point — an item nobody understands is an item nobody resolves.
+export const REVIEW_QUEUE_KINDS = [
+  // Spread rather than relisted: the three visit kinds are the detector's own
+  // output and dropping one here while it kept being filed would hide it
+  // silently. They cannot fall off this list by editing accident.
+  ...REVIEW_KINDS,
+  // Filed by run_billing_cycles when a client's invoicing throws. The queue is
+  // its ONLY reader — before it, the failure was a RAISE WARNING in a log
+  // nobody read, and fifteen days of failed invoicing looked like a clean run.
+  "billing_run_failed",
+  // Filed by recordAiUsage at 80% of the included allowance. Also read nowhere
+  // else: BUILD-2 chose this queue precisely so the warning would not need a
+  // second notification surface of its own.
+  "ai_allowance_warning",
+] as const;
+export type ReviewQueueKind = (typeof REVIEW_QUEUE_KINDS)[number];
+
+/**
+ * Does this row belong on /review?
+ *
+ * Deliberately NOT the inverse of DISPUTE_KINDS. Testing "is it a dispute" and
+ * showing everything else is how `payment_refunded` — which is neither a
+ * dispute nor anything /review can act on — ended up on the page, and how the
+ * next money kind would too. The question this page has to answer is "is this
+ * mine", and only the list above can answer it.
+ */
+export function isReviewQueueKind(kind: string): kind is ReviewQueueKind {
+  return (REVIEW_QUEUE_KINDS as readonly string[]).includes(kind);
+}
+
 /** What a reader needs to understand an item without opening the record. */
 export const REVIEW_KIND_COPY: Record<
-  ReviewKind,
+  ReviewQueueKind,
   { label: string; whatItMeans: string; howToFix: string }
 > = {
   visit_timestamps_unreliable: {
@@ -45,6 +104,24 @@ export const REVIEW_KIND_COPY: Record<
     whatItMeans:
       "This visit is still marked in progress after its scheduled day ended. The end-of-day close-out normally catches these while the tech is still in the app.",
     howToFix: "Confirm whether it was completed.",
+  },
+  // The two below were filed into this queue by their own features and then
+  // rendered here as their raw kind strings, because nobody wrote them copy.
+  // A card headed `billing_run_failed` with no explanation is not meaningfully
+  // better than the log line it replaced.
+  billing_run_failed: {
+    label: "This client could not be invoiced",
+    whatItMeans:
+      "The nightly invoicing run reached this client and the invoice failed to generate. The run itself finished — one client's failure is caught so it cannot stop everyone else's — which means nothing else anywhere will tell you this happened. Work is still being recorded; it is only the bill that did not get made.",
+    howToFix:
+      "Open the client and check their billing setup and unbilled work. Invoicing them by hand clears the backlog; the run retries on its own each night, so if the cause is fixed it will simply succeed and this stops re-filing.",
+  },
+  ai_allowance_warning: {
+    label: "AI usage is near this month's allowance",
+    whatItMeans:
+      "You have used most of the AI actions included in your plan for this month. Nothing is paused and nothing is broken — this is here so the overage on the next invoice is not the first you hear of it.",
+    howToFix:
+      "Nothing, if the spend is expected. If it is not, the monthly ceiling and which tools may spend against it are in Settings → AI Tools.",
   },
 };
 

@@ -386,6 +386,49 @@ function RoutesPage() {
     if (range === "today") return { from: day, to: day };
     return calendarWindow(day, range === "month" ? "month" : "week");
   }, [range, day]);
+
+  // The heading was the literal word "Today", and it stayed that way while the
+  // range selector switched the page to a whole week or month and the arrows
+  // walked the selected day off today entirely.
+  //
+  // That is not a cosmetic mismatch on this page. Everything below is a live
+  // dispatch surface — drag a card, bulk-reassign a lane, complete a visit from
+  // the office — and the heading is the ONLY thing that says which day those
+  // actions land on. A dispatcher who glanced at "Today", saw a board, and
+  // moved work was moving it on whatever day the page actually held.
+  //
+  // Built from the same rangeStart/rangeEnd the query fetches and the calendar
+  // draws, so the title cannot drift from the data underneath it — the drift
+  // above is precisely what happens when a heading is written independently of
+  // the window it describes.
+  const heading = useMemo(() => {
+    // Parsed as LOCAL midnight, never `new Date("2026-08-09")`, which is
+    // UTC midnight and renders as the previous day west of Greenwich.
+    const at = (iso: string) => new Date(`${iso}T00:00:00`);
+    if (range === "month") {
+      return at(rangeStart).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    }
+    if (range === "week") {
+      const from = at(rangeStart);
+      const to = at(rangeEnd);
+      // The year only when the week straddles one, so the common case stays
+      // short and the awkward case stays unambiguous.
+      const opts: Intl.DateTimeFormatOptions =
+        from.getFullYear() === to.getFullYear()
+          ? { month: "short", day: "numeric" }
+          : { month: "short", day: "numeric", year: "numeric" };
+      return `${from.toLocaleDateString(undefined, opts)} – ${to.toLocaleDateString(undefined, opts)}`;
+    }
+    // Still literally "Today" when it is today — the word is the right one for
+    // the case people are in nearly all of the time, and losing it to a date
+    // string would make the ordinary day read as an unusual one.
+    if (day === todayISO()) return "Today";
+    return at(day).toLocaleDateString(undefined, {
+      weekday: "long",
+      month: "short",
+      day: "numeric",
+    });
+  }, [range, day, rangeStart, rangeEnd]);
   const { data: visitsData } = useQuery({
     queryKey: ["visits", rangeStart, rangeEnd],
     queryFn: () =>
@@ -783,7 +826,7 @@ function RoutesPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Today</h1>
+          <h1 className="text-2xl font-semibold">{heading}</h1>
           <p className="text-sm text-muted-foreground">
             Dispatch, route, map, and mark visits complete, all in one view.
           </p>

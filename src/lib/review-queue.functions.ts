@@ -2,7 +2,13 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
-import { REVIEW_KINDS, REVIEW_STATUSES, type ReviewKind, type ReviewStatus } from "@/lib/review-queue";
+import {
+  REVIEW_KINDS,
+  REVIEW_QUEUE_KINDS,
+  REVIEW_STATUSES,
+  type ReviewQueueKind,
+  type ReviewStatus,
+} from "@/lib/review-queue";
 
 // BUILD-10 — reading and resolving review items.
 //
@@ -22,7 +28,8 @@ import { REVIEW_KINDS, REVIEW_STATUSES, type ReviewKind, type ReviewStatus } fro
 
 export type ReviewItemRow = {
   id: string;
-  kind: ReviewKind;
+  /** Always one of REVIEW_QUEUE_KINDS — every read below filters on it. */
+  kind: ReviewQueueKind;
   subject_table: string;
   subject_id: string;
   reason: string;
@@ -62,6 +69,12 @@ export const listReviewItems = createServerFn({ method: "POST" })
       .from("review_items")
       .select("id, kind, subject_table, subject_id, reason, detail, status, detected_at, resolved_at, resolution_note")
       .eq("organization_id", orgId)
+      // The allowlist, not "everything in the table" — see REVIEW_QUEUE_KINDS.
+      // Without it this page showed live chargebacks under their raw kind
+      // string and offered to resolve them, while /disputes went on reading the
+      // reversal ledger and never saw the decision. Two screens, two answers,
+      // about money the bank is still holding.
+      .in("kind", [...REVIEW_QUEUE_KINDS])
       .order("status", { ascending: true })
       .order("detected_at", { ascending: false })
       .limit(200);
@@ -133,6 +146,13 @@ export const resolveReviewItem = createServerFn({ method: "POST" })
       })
       .eq("id", data.itemId)
       .eq("organization_id", orgId)
+      // The same allowlist the list is drawn from, applied to the WRITE.
+      // Hiding a chargeback from the list stops anyone reaching this by
+      // clicking, but the item id travels in the request body, and a decision
+      // recorded against a dispute would be a decision no other screen honours.
+      // A row this queue does not own falls through to `alreadyDecided`, which
+      // is the honest answer: nothing here decided it.
+      .in("kind", [...REVIEW_QUEUE_KINDS])
       .eq("status", "open")
       .select("id, kind, subject_id")
       .maybeSingle();
@@ -159,7 +179,11 @@ export const resolveReviewItem = createServerFn({ method: "POST" })
   });
 
 /** Open-item count for a nav badge. Cheap, and separate from the list so the
- *  badge doesn't pull 200 rows on every page. */
+ *  badge doesn't pull 200 rows on every page.
+ *
+ *  Being separate is exactly why it has to repeat the kind filter: a badge that
+ *  counts rows the list will not show is a badge that sends people to a page to
+ *  find nothing, and after the second time they stop going. */
 export const getReviewQueueCount = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -173,8 +197,9 @@ export const getReviewQueueCount = createServerFn({ method: "GET" })
       .from("review_items")
       .select("id", { count: "exact", head: true })
       .eq("organization_id", orgId)
+      .in("kind", [...REVIEW_QUEUE_KINDS])
       .eq("status", "open");
     return { openCount: count ?? 0 };
   });
 
-export { REVIEW_KINDS, REVIEW_STATUSES };
+export { REVIEW_KINDS, REVIEW_QUEUE_KINDS, REVIEW_STATUSES };

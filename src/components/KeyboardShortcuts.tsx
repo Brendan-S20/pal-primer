@@ -1,11 +1,18 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 
+// "Schedule", not "Routes", for /routes. There is no `routes` table and never
+// was — a route is visits filtered by day and by tech — and the mobile tab bar
+// has said "Schedule" for that same destination all along, so desktop and
+// mobile were naming one page two things. The URL is deliberately untouched:
+// nobody reads it, every link and test in the app is built on it, and renaming
+// it would be a large change bought for nothing. The `r` chord stays too, since
+// it is muscle memory and the destination has not moved.
 const SHORTCUTS: Array<{ keys: string; label: string; to: string }> = [
   { keys: "g d", label: "Dashboard", to: "/dashboard" },
   { keys: "g c", label: "Clients", to: "/clients" },
   { keys: "g m", label: "My day", to: "/my-day" },
-  { keys: "g r", label: "Routes", to: "/routes" },
+  { keys: "g r", label: "Schedule", to: "/routes" },
   { keys: "g i", label: "Invoices", to: "/invoices" },
   { keys: "g l", label: "Leads", to: "/leads" },
 ];

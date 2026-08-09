@@ -589,7 +589,11 @@ function MyDay() {
                 : t("myDay.nothingScheduled")}
             </p>
             <Button asChild variant="outline" size="sm" className="mt-4">
-              <Link to="/routes">View routes</Link>
+              {/* "Schedule", the name the tab bar directly below this button
+                  already uses for the same destination. A tech with an empty
+                  day was being sent to "routes" and landing on a page headed
+                  and tabbed "Schedule". The URL is unchanged. */}
+              <Link to="/routes">View schedule</Link>
             </Button>
           </div>
         )}

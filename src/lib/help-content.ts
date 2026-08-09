@@ -132,7 +132,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Techs see the final order on [My Day](article:my-day) the moment you're done.",
       "Workday hours, work days and travel assumptions are set once in [Settings → Scheduling](/settings/scheduling), not on the routes screen.",
     ],
-    appLink: { to: "/routes", label: "Open Routes" },
+    // The button says "Schedule" because that is what the page is called in the
+    // sidebar and in the mobile tab bar. Help that sends someone to look for
+    // "Routes" in a nav that says "Schedule" is help that costs a support
+    // ticket. The `to` is untouched — the URL is an implementation detail
+    // nobody reads, and renaming it would break every link and test built on it
+    // for no gain a customer can perceive.
+    appLink: { to: "/routes", label: "Open Schedule" },
     related: ["zones", "weather", "my-day"],
   },
   {
@@ -144,7 +150,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "To act on a risky day, open [Routes](/routes): the weather check there flags at-risk visits and can move them to a safe day. Clients can get an automatic weather-reschedule email when their visit moves.",
       "Forecasts are cached, so if the weather service is briefly unavailable you'll see the last saved forecast instead of an error.",
     ],
-    appLink: { to: "/routes", label: "Open Routes" },
+    // Same page, same name as the nav gives it. See routes-planning above.
+    appLink: { to: "/routes", label: "Open Schedule" },
     related: ["zones", "routes-planning", "blackouts"],
   },
   {

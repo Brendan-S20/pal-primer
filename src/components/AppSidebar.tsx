@@ -72,7 +72,14 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { title: "Clients", url: "/clients", icon: Users },
       { title: "Zones", url: "/zones", icon: MapPin },
-      { title: "Routes", url: "/routes", icon: RouteIcon },
+      // "Schedule", not "Routes": there is no `routes` table — a route is
+      // visits filtered by a day and a tech — and MobileTabBar already called
+      // this Schedule, so desktop and phone were naming the same screen two
+      // different things. Label only; the URL stays /routes because moving it
+      // would touch the dispatcher landing redirect, the onboarding tour
+      // anchors and the nightly push deep-links, to change a string no
+      // customer ever reads.
+      { title: "Schedule", url: "/routes", icon: RouteIcon },
     ],
   },
   {
