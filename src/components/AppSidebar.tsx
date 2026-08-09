@@ -46,11 +46,15 @@ import { APP_NAME } from "@/lib/scoop";
 import { Logo } from "@/components/Logo";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useMyProfile } from "@/hooks/useMyProfile";
+import { useCommercialAccounts } from "@/components/CommercialOnly";
 
 export type NavItem = {
   title: string;
   url: string;
   icon: React.ComponentType<{ className?: string }>;
+  /** Only meaningful for an org that serves HOAs, apartment complexes or dog
+   *  parks. Hidden when the owner has said they do not — see CommercialOnly. */
+  commercialOnly?: boolean;
 };
 
 // Single source of nav truth — also consumed by MobileTabBar's "More" sheet so
@@ -79,7 +83,12 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       { title: "Messages", url: "/messages", icon: MessageSquare },
       { title: "Concerns", url: "/concerns", icon: MessageCircleWarning },
       { title: "Neighbor canvassing", url: "/neighbors", icon: MapPin },
-      { title: "DNA compliance", url: "/dna", icon: Dna },
+      // Commercial-only: /dna lists clients filtered to account_type
+      // 'commercial', so for a residential-only business this entry opens a
+      // permanently empty workspace. Hidden by commercialOnly below rather
+      // than removed, because the orgs that do serve HOAs bill violation
+      // fines from it.
+      { title: "DNA compliance", url: "/dna", icon: Dna, commercialOnly: true },
     ],
   },
   {
@@ -164,9 +173,17 @@ export function AppSidebar() {
   });
   const openReviews = reviewCount.data?.openCount ?? 0;
 
+  // Two independent filters, and they answer different questions. `canAccess`
+  // is about permission — a dispatcher may not see Payments. `commercialOnly`
+  // is about what kind of business this is, chosen by the owner about their
+  // own sidebar. Neither is a security boundary on its own; the routes and the
+  // server functions behind them keep their own gates.
+  const { enabled: commercialEnabled } = useCommercialAccounts();
   const visibleGroups = NAV_GROUPS.map((g) => ({
     ...g,
-    items: g.items.filter((it) => canAccess(role, it.url)),
+    items: g.items.filter(
+      (it) => canAccess(role, it.url) && (!it.commercialOnly || commercialEnabled),
+    ),
   })).filter((g) => g.items.length > 0);
 
   if (isPlatformAdmin) {

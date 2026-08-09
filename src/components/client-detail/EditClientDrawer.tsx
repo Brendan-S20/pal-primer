@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { updateClient } from "@/lib/clients.functions";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
+import { useCommercialAccounts } from "@/components/CommercialOnly";
 
 export function EditClientDrawer({
   open,
@@ -57,6 +58,8 @@ export function EditClientDrawer({
   }, [open, initial]);
 
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
+  const { enabled: commercialEnabled } = useCommercialAccounts();
+
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
@@ -70,7 +73,18 @@ export function EditClientDrawer({
           company: form.company.trim() || null,
           primaryPhone: form.primaryPhone,
           primaryEmail: form.primaryEmail as string,
-          accountType: form.accountType,
+          // Omitted, not defaulted, when the picker is hidden.
+          //
+          // `form.accountType` initialises to `client?.account_type ??
+          // "residential"`. If the input is hidden for a residential-only org
+          // but the field keeps riding along in the payload, then saving any
+          // unrelated edit to an existing COMMERCIAL client rewrites it to
+          // residential — while its subscription keeps account_type
+          // 'commercial' and a unit_count, so the two disagree and the
+          // services tab starts rendering "Dogs: —". The server writes this
+          // column unconditionally when present, so the only safe hiding is
+          // not sending it.
+          ...(commercialEnabled ? { accountType: form.accountType } : {}),
           active: form.active,
           tags: form.tags
             .split(",")
@@ -158,18 +172,20 @@ export function EditClientDrawer({
           </div>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="ec-type">Client type</Label>
-            <select
-              id="ec-type"
-              value={form.accountType}
-              onChange={(e) => set("accountType", e.target.value as "residential" | "commercial")}
-              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-            >
-              <option value="residential">Residential</option>
-              <option value="commercial">Commercial / HOA</option>
-            </select>
-          </div>
+          {commercialEnabled && (
+            <div>
+              <Label htmlFor="ec-type">Client type</Label>
+              <select
+                id="ec-type"
+                value={form.accountType}
+                onChange={(e) => set("accountType", e.target.value as "residential" | "commercial")}
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="residential">Residential</option>
+                <option value="commercial">Commercial / HOA</option>
+              </select>
+            </div>
+          )}
           <div>
             <Label htmlFor="ec-status">Status</Label>
             <select

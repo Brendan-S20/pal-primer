@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useCommercialAccounts } from "@/components/CommercialOnly";
 
 // Zone saves re-run zone detection across the org's properties (QA round 8:
 // "I updated a zone and none of the properties adjusted to it").
@@ -146,7 +147,16 @@ export function ZoneDrawer({
 
   const [name, setName] = useState<string>(zone?.name ?? "");
   const [priceNote, setPriceNote] = useState<string>(zone?.price_note ?? "");
-  const [zoneType, setZoneType] = useState<ZoneType>((zone?.account_type as ZoneType) ?? "all");
+  // A NEW zone defaults to the kind of work this business actually does.
+  // It used to default to "all", which meant every operator — including one
+  // with forty driveways and no HOAs — was shown a commercial pricing block
+  // (base + per unit + per acre + per station) before they had typed a name.
+  // An EXISTING zone always shows what it is; this only chooses the default
+  // for a zone being created.
+  const { enabled: commercialEnabled } = useCommercialAccounts();
+  const [zoneType, setZoneType] = useState<ZoneType>(
+    (zone?.account_type as ZoneType) ?? (commercialEnabled ? "all" : "residential"),
+  );
   const [priority, setPriority] = useState<string>(String(zone?.priority ?? 0));
   const [zips, setZips] = useState<string[]>(zone?.zip_codes ?? []);
 

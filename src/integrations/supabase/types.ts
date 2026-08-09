@@ -2808,6 +2808,7 @@ export type Database = {
           brand_color: string | null
           card_surcharge_attested_at: string | null
           chargeback_responsibility: string
+          commercial_accounts: boolean
           contact_address: string | null
           contact_email: string | null
           contact_phone: string | null
@@ -2923,6 +2924,7 @@ export type Database = {
           brand_color?: string | null
           card_surcharge_attested_at?: string | null
           chargeback_responsibility?: string
+          commercial_accounts?: boolean
           contact_address?: string | null
           contact_email?: string | null
           contact_phone?: string | null
@@ -3038,6 +3040,7 @@ export type Database = {
           brand_color?: string | null
           card_surcharge_attested_at?: string | null
           chargeback_responsibility?: string
+          commercial_accounts?: boolean
           contact_address?: string | null
           contact_email?: string | null
           contact_phone?: string | null
@@ -4582,11 +4585,14 @@ export type Database = {
           postal_code: string
           provisioned_client_id: string | null
           recurring_price_cents: number
+          refunded_amount_cents: number | null
+          refunded_at: string | null
           region: string | null
           status: string
           street: string
           stripe_checkout_session_id: string | null
           stripe_payment_intent_id: string | null
+          stripe_refund_id: string | null
           updated_at: string
           zone_id: string | null
         }
@@ -4606,11 +4612,14 @@ export type Database = {
           postal_code: string
           provisioned_client_id?: string | null
           recurring_price_cents: number
+          refunded_amount_cents?: number | null
+          refunded_at?: string | null
           region?: string | null
           status?: string
           street: string
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
+          stripe_refund_id?: string | null
           updated_at?: string
           zone_id?: string | null
         }
@@ -4630,11 +4639,14 @@ export type Database = {
           postal_code?: string
           provisioned_client_id?: string | null
           recurring_price_cents?: number
+          refunded_amount_cents?: number | null
+          refunded_at?: string | null
           region?: string | null
           status?: string
           street?: string
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
+          stripe_refund_id?: string | null
           updated_at?: string
           zone_id?: string | null
         }
@@ -6191,6 +6203,7 @@ export type Database = {
       }
       org_accepts_public_leads: { Args: { _org_id: string }; Returns: boolean }
       org_can_add_client: { Args: { _org_id: string }; Returns: boolean }
+      org_has_commercial_data: { Args: { _org_id: string }; Returns: boolean }
       org_seat_overage_cents: { Args: { _org_id: string }; Returns: number }
       phone_digits: { Args: { _p: string }; Returns: string }
       plan_route: {
@@ -6460,10 +6473,13 @@ export type Database = {
       public_get_org_by_slug: {
         Args: { _slug: string }
         Returns: {
+          brand_color: string | null
           currency: string
           id: string
+          logo_url: string | null
           name: string
           public_signup_enabled: boolean
+          resolved_slug: string | null
         }[]
       }
       public_get_org_for_lead_form: {
@@ -6602,6 +6618,10 @@ export type Database = {
       set_location_payment_routing: {
         Args: { _child_org_id: string; _collected_by_parent: boolean }
         Returns: undefined
+      }
+      set_org_commercial_accounts: {
+        Args: { _enabled: boolean }
+        Returns: Json
       }
       set_staff_active: {
         Args: { _active: boolean; _staff_id: string }
