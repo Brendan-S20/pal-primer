@@ -152,7 +152,22 @@ export const portalGetClient = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     const row = rows?.[0];
     if (!row) throw new Error("Invalid or expired portal link");
-    return row;
+    // What a portal skip actually costs, so the Skip button can stop guessing.
+    //
+    // `portal_request_skip` bills the visit at the org's `customer_requested`
+    // percentage and ends with `IF _pct IS NULL THEN _pct := 0` — no row means
+    // free, and skip-rules.functions.ts deliberately seeds that reason at 0 to
+    // match. So on a default org the customer was warned about a charge that
+    // could not be raised. This is read here rather than added to
+    // portal_get_client because it needs no migration: the handler already
+    // holds the org id from the row and runs as service_role.
+    const { data: rule } = await sb
+      .from("skip_billing_rules")
+      .select("billable_pct")
+      .eq("organization_id", row.organization_id)
+      .eq("reason_code", "customer_requested")
+      .maybeSingle();
+    return { ...row, skip_billable_pct: rule?.billable_pct ?? 0 };
   });
 
 export const portalListUpcomingVisits = createServerFn({ method: "GET" })

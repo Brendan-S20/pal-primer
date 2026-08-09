@@ -11,15 +11,28 @@
 // that survivable: three copies of a rule drift, three call sites of one
 // function do not.
 
+import { humanizeRole } from "@/lib/humanize";
+
 export const LOCATION_MEMBER_ROLES = ["owner", "office_manager", "dispatcher", "tech"] as const;
 export type LocationMemberRole = (typeof LOCATION_MEMBER_ROLES)[number];
 
-export const ROLE_LABEL: Record<LocationMemberRole, string> = {
-  owner: "Owner",
-  office_manager: "Office manager",
-  dispatcher: "Dispatcher",
-  tech: "Technician",
-};
+/**
+ * Derived, not typed out again. This map used to be a fourth hand-written copy
+ * of the same four strings — humanize.ts, the profile page and the Users &
+ * roles picker had the others — and four copies of a label is how one screen
+ * ends up calling a `tech` a Technician while another calls them a Field tech.
+ * The same reasoning as the rules above: three copies of a rule drift, three
+ * call sites of one function do not.
+ *
+ * Built eagerly off LOCATION_MEMBER_ROLES rather than exported as a function,
+ * because both call sites index it (`ROLE_LABEL[i.role]`, and a `.map` over the
+ * tuple) and changing their shape is churn for nothing. A role added to the
+ * tuple needs its label in humanize.ts; without one it falls through
+ * humanizeEnum to a readable-but-generic "Route planner" rather than a blank.
+ */
+export const ROLE_LABEL: Record<LocationMemberRole, string> = Object.fromEntries(
+  LOCATION_MEMBER_ROLES.map((r) => [r, humanizeRole(r)]),
+) as Record<LocationMemberRole, string>;
 
 /** Deliberately not in LOCATION_MEMBER_ROLES, and the SQL refuses it too: a
  *  tenant cannot mint platform access by naming it in a staff list. */

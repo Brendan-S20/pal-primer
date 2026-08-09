@@ -220,12 +220,21 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
     // highest-volume customer-facing strings in the product. formatDay gives
     // "Wed, Aug 12"; its noon anchor means the weekday can't slip a day.
     const day = formatDay(v.scheduled_on);
+    // One word for one thing. These three texts called the job a "yard cleanup";
+    // every other thing the customer reads calls it a visit — the portal's
+    // "Upcoming visits" list and its Skip/Reschedule buttons, the visit-completed
+    // and weather-reschedule emails ("Visit complete", "Visit rescheduled"), and
+    // the SMS terms page, which promises "visit-completed confirmations" in those
+    // words. "Visit" won on count and on being the term the product is built
+    // around; "yard cleanup" survived only in this one switch. A customer who
+    // skipped a visit in the portal and then got a text about a cleanup had to
+    // work out for themselves that it was the same appointment.
     const body =
       data.kind === "reminder"
-        ? `Hi ${name}, this is a reminder your yard cleanup is scheduled for ${day}. Reply STOP to opt out.`
+        ? `Hi ${name}, this is a reminder your visit is scheduled for ${day}. Reply STOP to opt out.`
         : data.kind === "on_my_way"
-          ? `Hi ${name}, your tech is on the way for today's yard cleanup. Reply STOP to opt out.`
-          : `Hi ${name}, your yard cleanup is complete for ${day}. Thanks! Reply STOP to opt out.`;
+          ? `Hi ${name}, your tech is on the way for today's visit. Reply STOP to opt out.`
+          : `Hi ${name}, your visit is complete for ${day}. Thanks! Reply STOP to opt out.`;
 
     // Reuse sendSmsToClient path by inlining its logic isn't trivial; call directly.
     const { data: client, error: cErr } = await supabase

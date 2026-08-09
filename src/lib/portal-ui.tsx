@@ -924,12 +924,15 @@ export function UpcomingVisitsList({
   rows,
   cutoffHours,
   allowReschedule,
+  skipBillablePct = 0,
   onSkip,
   onReschedule,
 }: {
   rows: Array<any>;
   cutoffHours: number;
   allowReschedule: boolean;
+  /** Percentage of the visit price a portal skip still bills. See VisitRow. */
+  skipBillablePct?: number;
   onSkip: (id: string, reason: string) => void;
   onReschedule: (id: string, newDate: string) => void;
 }) {
@@ -953,6 +956,7 @@ export function UpcomingVisitsList({
             showAddress={!sharedAddress}
             cutoffHours={cutoffHours}
             allowReschedule={allowReschedule}
+            skipBillablePct={skipBillablePct}
             onSkip={(reason) => onSkip(v.visit_id, reason)}
             onReschedule={(d) => onReschedule(v.visit_id, d)}
           />
@@ -967,6 +971,7 @@ function VisitRow({
   showAddress,
   cutoffHours,
   allowReschedule,
+  skipBillablePct = 0,
   onSkip,
   onReschedule,
 }: {
@@ -974,6 +979,10 @@ function VisitRow({
   showAddress: boolean;
   cutoffHours: number;
   allowReschedule: boolean;
+  /** The org's `customer_requested` skip-billing percentage, 0–100. Zero on a
+   *  default org, and zero is the honest majority case — see the note by the
+   *  copy below. */
+  skipBillablePct?: number;
   onSkip: (reason: string) => void;
   onReschedule: (newDate: string) => void;
 }) {
@@ -1049,9 +1058,36 @@ function VisitRow({
         </div>
       </div>
 
+      {/* Two things were wrong with the single line this replaces —
+          "{cutoffCopy} A skipped visit may still be billable per your
+          agreement." — and they pulled in opposite directions.
+
+          It was shown on RESCHEDULE as well as on skip, because the condition
+          is `skipOpen || reschedOpen`. Rescheduling bills nothing:
+          portal_reschedule_visit moves scheduled_on, clears the routing, and
+          never touches skip_charge_cents — it even refuses a visit that has
+          already been invoiced. A customer opening the date picker to move a
+          visit two days was told they might be charged for doing it.
+
+          And on skip it was usually false. portal_request_skip multiplies the
+          visit price by the org's `customer_requested` percentage, which is 0
+          unless an owner deliberately raised it, so on most orgs the charge it
+          warns about cannot happen. "May still be billable per your agreement"
+          is the kind of hedge that reads as a threat and tells the reader
+          nothing they can act on — the point of a cutoff notice is to let
+          someone decide, and a maybe-charge of an unstated size does not.
+
+          So: the cutoff line stands on both actions, since the cutoff really
+          does govern both; the money line appears only when skipping, only
+          when the org charges for it, and says how much. */}
       {(skipOpen || reschedOpen) && (
         <p className="mt-2 text-xs text-muted-foreground">
-          {cutoffCopy} A skipped visit may still be billable per your agreement.
+          {cutoffCopy}
+          {skipOpen && skipBillablePct > 0
+            ? skipBillablePct >= 100
+              ? " Skipping this visit is still billed at the full visit price."
+              : ` Skipping this visit is still billed at ${skipBillablePct}% of the visit price.`
+            : ""}
         </p>
       )}
 

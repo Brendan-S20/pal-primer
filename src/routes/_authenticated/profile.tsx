@@ -32,6 +32,7 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { supabase } from "@/integrations/supabase/client";
 import { appOrigin } from "@/lib/app-origin";
+import { humanizeRole } from "@/lib/humanize";
 import {
   changeMyEmail,
   sendMyPasswordReset,
@@ -42,13 +43,6 @@ import {
 export const Route = createFileRoute("/_authenticated/profile")({
   component: ProfilePage,
 });
-
-const ROLE_LABEL: Record<string, string> = {
-  owner: "Owner",
-  office_manager: "Office manager",
-  dispatcher: "Dispatcher",
-  tech: "Technician",
-};
 
 // Only what a browser will reliably paint in an <img>. HEIC off a recent
 // iPhone decodes inconsistently, and a silently broken avatar is worse than
@@ -343,7 +337,14 @@ function ProfilePage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-2 text-sm">
-          <Badge variant="secondary">{ROLE_LABEL[staff.role] ?? staff.role}</Badge>
+          {/* This page told you your role from its own private copy of the
+              label map, and Settings → Users & roles — the page the card above
+              sends you to — told you from another. Two spellings of one job
+              title is a small thing until they disagree, which is what four
+              hand-maintained copies of the same four strings eventually do.
+              humanizeRole is the single map; the raw-enum fallback it carries
+              is better than the one here was, which printed "office_manager". */}
+          <Badge variant="secondary">{humanizeRole(staff.role)}</Badge>
           {staff.is_field_tech ? (
             <Badge variant="outline">Runs routes</Badge>
           ) : (

@@ -5,7 +5,7 @@ import { Building2, Dog, Sparkles, CheckCircle2, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   usePortalCtx, StationsPanel, DogsGrid, AddonCard, EmptyBox,
-  money, fmtDayShort,
+  money, fmtDayShort, friendlyFrequency,
 } from "@/lib/portal-ui";
 import { portalListProperties } from "@/lib/portal.functions";
 
@@ -86,8 +86,19 @@ function PortalProperty() {
                   <div className="font-medium flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-emerald-600" /> {a.name}
                   </div>
+                  {/* `a.frequency` is the raw addon_frequency enum off the RPC.
+                      Printed as-is it gave a homeowner "$35.00 · biweekly · next
+                      Aug 14" — the database's word, lower-cased, in the one
+                      place a customer checks what they are paying for. Worse,
+                      "biweekly" is the ambiguous one: the rest of the portal
+                      spells that cadence "Every 2 weeks" precisely so nobody has
+                      to guess between twice a week and every other week.
+                      friendlyFrequency is the portal's own label helper (it
+                      backs the plan row and the frequency-change picker), so
+                      this row now reads the same cadence the same way. */}
                   <div className="text-xs text-muted-foreground">
-                    {money(a.price_cents)} · {a.frequency} · next {fmtDayShort(a.next_charge_on)}
+                    {money(a.price_cents)} · {friendlyFrequency(a.frequency)} · next{" "}
+                    {fmtDayShort(a.next_charge_on)}
                     {properties.length > 1 && (a as any).property_label ? ` · ${(a as any).property_label}` : ""}
                   </div>
                 </div>

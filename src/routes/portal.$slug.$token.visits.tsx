@@ -47,6 +47,10 @@ function PortalVisits() {
             rows={visitsQ.data ?? []}
             cutoffHours={c?.reschedule_cutoff_hours ?? 18}
             allowReschedule={!!c?.allow_self_reschedule}
+            // Defaults to 0 — no charge — because that is what the database
+            // does when the org has never configured a skip rule, and because
+            // a missing field must not invent a charge on screen.
+            skipBillablePct={Number(c?.skip_billable_pct ?? 0)}
             onSkip={(id, reason) => skipMut.mutate({ visitId: id, reason })}
             onReschedule={(id, newDate) => rescheduleMut.mutate({ visitId: id, newDate })}
           />

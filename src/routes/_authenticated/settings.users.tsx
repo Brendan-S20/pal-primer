@@ -29,12 +29,17 @@ export const Route = createFileRoute("/_authenticated/settings/users")({
   component: UsersPage,
 });
 
-const ROLES = [
-  { value: "owner", label: "Owner" },
-  { value: "office_manager", label: "Office manager" },
-  { value: "dispatcher", label: "Dispatcher" },
-  { value: "tech", label: "Technician" },
-];
+/** Every role this page can assign, in the order it offers them. Only the
+ *  values live here — the words come from humanizeRole, the same helper the
+ *  read-only badge two lines away from the picker already used. The picker
+ *  having its own copy meant one cell of one table could show a role spelled
+ *  two ways depending on whether you were allowed to change it.
+ *
+ *  `INVITE_ROLES` is a subset, not a second list: `users.functions.ts` refuses
+ *  an invite for `owner` (inviteRoleEnum), so offering it here would be a form
+ *  that fails on submit. */
+const ROLES = ["owner", "office_manager", "dispatcher", "tech"] as const;
+const INVITE_ROLES = ["tech", "dispatcher", "office_manager"] as const;
 
 async function geocode(q: string): Promise<{ lat: number; lng: number } | null> {
   if (!q.trim()) return null;
@@ -164,7 +169,9 @@ function UsersPage() {
                                 <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   {ROLES.map((r) => (
-                                    <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                                    <SelectItem key={r} value={r}>
+                                      {humanizeRole(r)}
+                                    </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
@@ -291,9 +298,11 @@ function InvitePanel() {
           <div>
             <Label className="text-xs">Role</Label>
             <select value={role} onChange={(e) => setRole(e.target.value as any)} className="h-10 rounded-md border bg-background px-3 text-sm">
-              <option value="tech">Technician</option>
-              <option value="dispatcher">Dispatcher</option>
-              <option value="office_manager">Office manager</option>
+              {INVITE_ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {humanizeRole(r)}
+                </option>
+              ))}
             </select>
           </div>
           <Button type="submit" disabled={createMut.isPending || !email.trim()}>
