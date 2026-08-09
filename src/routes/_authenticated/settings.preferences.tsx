@@ -32,6 +32,7 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { US_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/route-window";
 import { appOrigin } from "@/lib/app-origin";
+import { getMyOrgFeatures, setCommercialAccounts } from "@/lib/org-features.functions";
 
 export const Route = createFileRoute("/_authenticated/settings/preferences")({
   component: PreferencesPage,
@@ -172,6 +173,7 @@ function PreferencesPage() {
       <PricingBaselineCard />
       <PortalAddressCard />
       <BrandingCard />
+      <CommercialAccountsCard />
       <DemoDataCard />
     </div>
   );
@@ -561,6 +563,81 @@ function DemoDataCard() {
         >
           {mut.isPending ? "Reseeding…" : "Reseed demo data"}
         </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Does this business serve HOAs, apartment complexes and dog parks?
+ *
+ * It reads like a preference and it is not one: switching it off removes the
+ * DNA compliance workspace from the sidebar and the client-type picker from
+ * every client form. So the copy says what disappears, rather than asking an
+ * abstract question and letting the owner discover the consequences.
+ *
+ * Turning it OFF is refused by the server while commercial clients,
+ * properties, stations or DNA enrolment exist — hiding those screens would
+ * strand a customer's unit charges, station service proof and violation
+ * fines. The switch pre-empts that refusal so the owner reads an explanation
+ * instead of an error toast.
+ */
+function CommercialAccountsCard() {
+  const qc = useQueryClient();
+  const getFn = useServerFn(getMyOrgFeatures);
+  const setFn = useServerFn(setCommercialAccounts);
+  const { role } = useMyRole();
+  const canEdit = role === "owner" || role === "office_manager";
+  const q = useQuery({ queryKey: ["my-org-features"], queryFn: () => getFn() });
+
+  const mut = useMutation({
+    mutationFn: (enabled: boolean) => setFn({ data: { enabled } }),
+    onSuccess: (_r, enabled) => {
+      // Invalidate rather than set: the sidebar reads the same query key, and
+      // it should redraw from the server's answer, not from what we asked for.
+      qc.invalidateQueries({ queryKey: ["my-org-features"] });
+      toast.success(
+        enabled
+          ? "Commercial accounts are on. HOA and apartment tools are back in the sidebar."
+          : "Commercial accounts are off. Your screens now only mention homes.",
+      );
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const on = !!q.data?.commercialAccounts;
+  const locked = on && !!q.data?.hasCommercialData;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Commercial accounts</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-sm font-medium">
+              We serve HOAs, apartment complexes or dog parks
+            </div>
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              Off: every screen talks about homes and dogs, and the DNA compliance workspace and
+              client-type picker are hidden. On: you also get unit rosters, waste stations and
+              per-unit pricing.
+            </div>
+          </div>
+          <Switch
+            checked={on}
+            disabled={!canEdit || locked || mut.isPending || q.isLoading}
+            onCheckedChange={(v) => mut.mutate(v)}
+          />
+        </div>
+        {locked && (
+          <p className="text-xs text-muted-foreground">
+            This can&apos;t be switched off while you have commercial clients, properties or waste
+            stations on the books — their units, service records and any DNA fines live on the
+            screens it would hide. Move them to residential first if you no longer serve them.
+          </p>
+        )}
       </CardContent>
     </Card>
   );

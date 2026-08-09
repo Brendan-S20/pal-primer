@@ -445,13 +445,18 @@ charge built without it. It also asserts the fee is computed from the SAME
 variable the charge uses — a fee derived from gross rather than the amount left
 after credit was applied would collect, look fine, and be wrong.
 
-**The refund asymmetry, which Stripe does not solve for you.** The app never
-calls `refunds.create` — refunds are learned about only through the
-`charge.refunded` webhook, because tenants refund from their own Stripe
-dashboard. On a direct charge, a connected account's refund does NOT reverse the
-platform's application fee: without intervention the tenant is out the refunded
-amount AND our 50 bps on a transaction that was unwound. Decision: give it back
-proportionally.
+**The refund asymmetry, which Stripe does not solve for you.** Tenant-issued
+refunds are learned about only through the `charge.refunded` webhook, because
+tenants refund from their own Stripe dashboard. On a direct charge, a connected
+account's refund does NOT reverse the platform's application fee: without
+intervention the tenant is out the refunded amount AND our 50 bps on a
+transaction that was unwound. Decision: give it back proportionally.
+
+The app calls `refunds.create` in exactly one place, and it is not that case:
+`provisionSignup` refunds a public signup whose card settled and whose
+provisioning then failed, so the homeowner is not left paying for an account
+that does not exist. That one passes `refund_application_fee: true` and reverses
+the fee inside the same call rather than learning about it afterwards.
 
 That reversal is idempotent by construction, and the construction is the point.
 `amount_refunded` is CUMULATIVE and `charge.refunded` fires once per refund, so

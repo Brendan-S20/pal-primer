@@ -97,6 +97,7 @@ import { Route as AuthenticatedSettingsReferralsRouteImport } from './routes/_au
 import { Route as AuthenticatedSettingsPromotionsRouteImport } from './routes/_authenticated/settings.promotions'
 import { Route as AuthenticatedSettingsPreferencesRouteImport } from './routes/_authenticated/settings.preferences'
 import { Route as AuthenticatedSettingsPaymentsRouteImport } from './routes/_authenticated/settings.payments'
+import { Route as AuthenticatedSettingsOnlineSignupRouteImport } from './routes/_authenticated/settings.online-signup'
 import { Route as AuthenticatedSettingsLeadFormRouteImport } from './routes/_authenticated/settings.lead-form'
 import { Route as AuthenticatedSettingsInvoicingRouteImport } from './routes/_authenticated/settings.invoicing'
 import { Route as AuthenticatedSettingsFranchiseRouteImport } from './routes/_authenticated/settings.franchise'
@@ -587,6 +588,12 @@ const AuthenticatedSettingsPaymentsRoute =
     path: '/payments',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedSettingsOnlineSignupRoute =
+  AuthenticatedSettingsOnlineSignupRouteImport.update({
+    id: '/online-signup',
+    path: '/online-signup',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedSettingsLeadFormRoute =
   AuthenticatedSettingsLeadFormRouteImport.update({
     id: '/lead-form',
@@ -860,6 +867,7 @@ export interface FileRoutesByFullPath {
   '/settings/franchise': typeof AuthenticatedSettingsFranchiseRoute
   '/settings/invoicing': typeof AuthenticatedSettingsInvoicingRoute
   '/settings/lead-form': typeof AuthenticatedSettingsLeadFormRoute
+  '/settings/online-signup': typeof AuthenticatedSettingsOnlineSignupRoute
   '/settings/payments': typeof AuthenticatedSettingsPaymentsRoute
   '/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute
   '/settings/promotions': typeof AuthenticatedSettingsPromotionsRoute
@@ -977,6 +985,7 @@ export interface FileRoutesByTo {
   '/settings/franchise': typeof AuthenticatedSettingsFranchiseRoute
   '/settings/invoicing': typeof AuthenticatedSettingsInvoicingRoute
   '/settings/lead-form': typeof AuthenticatedSettingsLeadFormRoute
+  '/settings/online-signup': typeof AuthenticatedSettingsOnlineSignupRoute
   '/settings/payments': typeof AuthenticatedSettingsPaymentsRoute
   '/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute
   '/settings/promotions': typeof AuthenticatedSettingsPromotionsRoute
@@ -1101,6 +1110,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/franchise': typeof AuthenticatedSettingsFranchiseRoute
   '/_authenticated/settings/invoicing': typeof AuthenticatedSettingsInvoicingRoute
   '/_authenticated/settings/lead-form': typeof AuthenticatedSettingsLeadFormRoute
+  '/_authenticated/settings/online-signup': typeof AuthenticatedSettingsOnlineSignupRoute
   '/_authenticated/settings/payments': typeof AuthenticatedSettingsPaymentsRoute
   '/_authenticated/settings/preferences': typeof AuthenticatedSettingsPreferencesRoute
   '/_authenticated/settings/promotions': typeof AuthenticatedSettingsPromotionsRoute
@@ -1226,6 +1236,7 @@ export interface FileRouteTypes {
     | '/settings/franchise'
     | '/settings/invoicing'
     | '/settings/lead-form'
+    | '/settings/online-signup'
     | '/settings/payments'
     | '/settings/preferences'
     | '/settings/promotions'
@@ -1343,6 +1354,7 @@ export interface FileRouteTypes {
     | '/settings/franchise'
     | '/settings/invoicing'
     | '/settings/lead-form'
+    | '/settings/online-signup'
     | '/settings/payments'
     | '/settings/preferences'
     | '/settings/promotions'
@@ -1466,6 +1478,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/franchise'
     | '/_authenticated/settings/invoicing'
     | '/_authenticated/settings/lead-form'
+    | '/_authenticated/settings/online-signup'
     | '/_authenticated/settings/payments'
     | '/_authenticated/settings/preferences'
     | '/_authenticated/settings/promotions'
@@ -2170,6 +2183,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsPaymentsRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/settings/online-signup': {
+      id: '/_authenticated/settings/online-signup'
+      path: '/online-signup'
+      fullPath: '/settings/online-signup'
+      preLoaderRoute: typeof AuthenticatedSettingsOnlineSignupRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/settings/lead-form': {
       id: '/_authenticated/settings/lead-form'
       path: '/lead-form'
@@ -2469,6 +2489,7 @@ interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsFranchiseRoute: typeof AuthenticatedSettingsFranchiseRoute
   AuthenticatedSettingsInvoicingRoute: typeof AuthenticatedSettingsInvoicingRoute
   AuthenticatedSettingsLeadFormRoute: typeof AuthenticatedSettingsLeadFormRoute
+  AuthenticatedSettingsOnlineSignupRoute: typeof AuthenticatedSettingsOnlineSignupRoute
   AuthenticatedSettingsPaymentsRoute: typeof AuthenticatedSettingsPaymentsRoute
   AuthenticatedSettingsPreferencesRoute: typeof AuthenticatedSettingsPreferencesRoute
   AuthenticatedSettingsPromotionsRoute: typeof AuthenticatedSettingsPromotionsRoute
@@ -2495,6 +2516,8 @@ const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsFranchiseRoute: AuthenticatedSettingsFranchiseRoute,
   AuthenticatedSettingsInvoicingRoute: AuthenticatedSettingsInvoicingRoute,
   AuthenticatedSettingsLeadFormRoute: AuthenticatedSettingsLeadFormRoute,
+  AuthenticatedSettingsOnlineSignupRoute:
+    AuthenticatedSettingsOnlineSignupRoute,
   AuthenticatedSettingsPaymentsRoute: AuthenticatedSettingsPaymentsRoute,
   AuthenticatedSettingsPreferencesRoute: AuthenticatedSettingsPreferencesRoute,
   AuthenticatedSettingsPromotionsRoute: AuthenticatedSettingsPromotionsRoute,

@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Loader2 } from "lucide-react";
-import { MarketingLayout } from "@/components/marketing/MarketingLayout";
+import { TenantSignupShell } from "@/components/marketing/TenantSignupShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -130,26 +130,31 @@ function SignupPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Before the lookup resolves there is no tenant to be branded as, so these
+  // two states carry no branding at all rather than borrowing ours. The
+  // unavailable state in particular used to sit under a HoundStack header —
+  // the one page a prospect reaches when a tenant's link is wrong, wearing the
+  // name of a company they have never heard of.
   if (orgQ.isLoading) {
     return (
-      <MarketingLayout>
+      <TenantSignupShell orgName={null}>
         <div className="mx-auto max-w-2xl px-6 py-24 text-center text-muted-foreground">
           Loading…
         </div>
-      </MarketingLayout>
+      </TenantSignupShell>
     );
   }
 
   if (orgQ.error || !orgQ.data) {
     return (
-      <MarketingLayout>
+      <TenantSignupShell orgName={null}>
         <div className="mx-auto max-w-2xl px-6 py-24 text-center">
           <h1 className="text-2xl font-semibold">Signup unavailable</h1>
           <p className="mt-3 text-muted-foreground">
             This company isn't taking online signups right now.
           </p>
         </div>
-      </MarketingLayout>
+      </TenantSignupShell>
     );
   }
 
@@ -167,7 +172,7 @@ function SignupPage() {
     form.street.trim();
 
   return (
-    <MarketingLayout>
+    <TenantSignupShell orgName={org.name} logoUrl={org.logo_url} brandColor={org.brand_color}>
       <section className="mx-auto max-w-6xl px-6 pt-16 pb-24">
         <div className="mb-8">
           <div className="text-sm text-muted-foreground">{org.name}</div>
@@ -372,7 +377,7 @@ function SignupPage() {
           </aside>
         </div>
       </section>
-    </MarketingLayout>
+    </TenantSignupShell>
   );
 }
 

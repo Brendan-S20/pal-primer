@@ -43,12 +43,21 @@
 // `feeReversalCents` below and the `charge.refunded` branch of the Connect
 // webhook, which is the only place a refund is ever learned about.
 //
-// "Learned about" rather than "issued": HoundStack never calls `refunds.create`
-// itself. Tenants refund through the embedded Stripe payments component on the
-// Payments page — in-app, on their own connected account — and the webhook is
-// how this side finds out. That is why the refund ledger has to be correct
-// about redelivery and partials: nothing here initiates a refund, so nothing
-// here knows one happened until Stripe says so.
+// "Learned about" rather than "issued" for every refund a TENANT makes: those
+// go through the embedded Stripe payments component on the Payments page —
+// in-app, on their own connected account — and the webhook is how this side
+// finds out. That is why the refund ledger has to be correct about redelivery
+// and partials: nothing here initiates those, so nothing here knows one
+// happened until Stripe says so.
+//
+// There is exactly ONE refund this app issues itself, and it is deliberately
+// not routed through `feeReversalCents`: `provisionSignup` in the Connect
+// webhook, when a public signup's card settled and provisioning then failed.
+// That call passes `refund_application_fee: true`, so Stripe reverses the fee
+// in the same operation rather than the webhook learning about it afterwards —
+// the charge is being unwound in full by us, so there is nothing to apportion.
+// It also writes no `payments` row, which is why the `charge.refunded` branch
+// finds nothing to reconcile and correctly does nothing.
 
 /** Basis points. 50 bps = 0.5%. */
 export const PLATFORM_FEE_BPS = 50;

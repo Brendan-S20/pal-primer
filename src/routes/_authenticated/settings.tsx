@@ -25,6 +25,11 @@ const TAB_GROUPS: TabGroup[] = [
     title: "Customer-facing",
     tabs: [
       { label: "Lead form", to: "/settings/lead-form" },
+      // The two gates on /signup/{slug} had no UI at all, which is why the
+      // whole public signup flow shipped unreachable. Sits next to Lead form
+      // because they are the same decision seen from two sides: capture the
+      // stranger's details, or let the stranger buy.
+      { label: "Online signup", to: "/settings/online-signup" },
       { label: "Promotions", to: "/settings/promotions" },
       { label: "Refer a business", to: "/settings/referrals" },
       // BUILD-6: the child side of a franchise. Reachable by any plan on
