@@ -6473,13 +6473,13 @@ export type Database = {
       public_get_org_by_slug: {
         Args: { _slug: string }
         Returns: {
-          brand_color: string | null
+          brand_color: string
           currency: string
           id: string
-          logo_url: string | null
+          logo_url: string
           name: string
           public_signup_enabled: boolean
-          resolved_slug: string | null
+          resolved_slug: string
         }[]
       }
       public_get_org_for_lead_form: {

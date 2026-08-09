@@ -42,7 +42,9 @@ import { join } from "node:path";
 const ROOT = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 const MIGRATION = () =>
-  read("supabase/migrations/20260809010000_a-residential-operator-should-not-have-to-learn-about-hoas.sql");
+  read(
+    "supabase/migrations/20260809010000_a-residential-operator-should-not-have-to-learn-about-hoas.sql",
+  );
 
 /** Comment lines stripped, so a `not.toMatch` cannot be defeated by the prose
  *  documenting what was removed. */
@@ -104,9 +106,7 @@ describe("switching it off is refused while the data is live", () => {
   });
 
   it("and refuses to disable while commercial data exists", () => {
-    expect(MIGRATION()).toMatch(
-      /IF NOT _enabled AND public\.org_has_commercial_data\(_org\) THEN/,
-    );
+    expect(MIGRATION()).toMatch(/IF NOT _enabled AND public\.org_has_commercial_data\(_org\) THEN/);
   });
 
   it("one definition of 'has commercial data', not two", () => {
@@ -133,7 +133,9 @@ describe("the gate is presentational, and says so", () => {
   it("fails OPEN on error", () => {
     // A decluttering preference must never be the reason a customer's unit
     // charges become unreachable.
-    expect(gate()).toMatch(/if \(q\.isError \|\| !q\.data\) return \{ enabled: true, known: true \}/);
+    expect(gate()).toMatch(
+      /if \(q\.isError \|\| !q\.data\) return \{ enabled: true, known: true \}/,
+    );
   });
 
   it("offers no upgrade prompt, because there is nothing to sell", () => {
@@ -168,7 +170,9 @@ describe("the account-type picker is omitted from the payload, not defaulted", (
 
   it("which the server already supports — it only patches what it is sent", () => {
     const clients = read("src/lib/clients.functions.ts");
-    expect(clients).toMatch(/accountType: z\.enum\(\["residential", "commercial"\]\)\.optional\(\)/);
+    expect(clients).toMatch(
+      /accountType: z\.enum\(\["residential", "commercial"\]\)\.optional\(\)/,
+    );
     expect(clients).toMatch(/if \(data\.accountType !== undefined\) \{/);
   });
 });

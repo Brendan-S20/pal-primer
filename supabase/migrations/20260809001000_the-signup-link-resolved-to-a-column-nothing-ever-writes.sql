@@ -27,8 +27,8 @@
 -- tenant has one or can mint one from Settings → Preferences, `ensureOrgSlug`
 -- backfills it, and the portal and lead form are both addressed by it.
 --
--- This is the third time this shape has been fixed. 20260711120000 hit it on
--- the lead form and introduced `public_get_org_for_lead_form`, resolving
+-- This is the second time this exact shape has been fixed. 20260711120000 hit
+-- it on the lead form and introduced `public_get_org_for_lead_form`, resolving
 -- `portal_slug OR slug`. Its header says `public_get_org_by_slug` was "left
 -- untouched for the signup flow, where the gate is correct" — and the
 -- signup-enabled gate IS correct. The slug half was never the gate anybody
@@ -77,8 +77,8 @@
 -- ── AND A PLACE TO RECORD THE MONEY GOING BACK ────────────────────────────
 --
 -- Once the flow is reachable it can take a card, and `provisionSignup` in the
--- Connect webhook can still fail after the charge settles — a seat limit, a
--- canceled plan, a constraint. Until now that path wrote status 'failed' and
+-- Connect webhook can still fail after the charge settles — a canceled plan,
+-- an expired trial, a constraint. Until now that path wrote status 'failed' and
 -- kept the money, and the success page told the prospect "we got your payment,
 -- but hit a snag" and nothing else. The webhook now refunds the charge in that
 -- catch, and a refund that is not recorded is a refund the next redelivery

@@ -83,16 +83,25 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
 
     // The entitlement gate, BEFORE any money moves.
     //
-    // `org_can_add_client` is enforced by a trigger on `clients`, so a tenant
-    // whose plan has lapsed or whose seat allowance is spent cannot have a
-    // client row inserted. That trigger fires in `provisionSignup`, which runs
-    // in the Stripe webhook — i.e. AFTER the prospect's card has been charged.
-    // Without this check the failure mode is a homeowner who has paid for a
-    // first cleanup and a first visit at a business that is not allowed to
-    // take them on, discovering it from an apologetic page and a support
-    // email. The webhook now refunds that charge, but a refund the customer
-    // has to notice and wait out is a worse outcome than never taking the
-    // card, and it costs the tenant the Stripe fee either way.
+    // `org_can_add_client` is enforced by `tg_clients_enforce_plan_limit`, a
+    // trigger on `clients`, so a tenant whose plan is canceled or whose trial
+    // has run out cannot have a client row inserted. That trigger fires inside
+    // `provisionSignup`, which runs in the Stripe webhook — i.e. AFTER the
+    // prospect's card has been charged. Without this check the failure mode is
+    // a homeowner who has paid for a first cleanup and a first visit at a
+    // business that is not allowed to take them on, learning it from an
+    // apologetic page and a support email. The webhook now refunds that
+    // charge, but a refund the customer has to notice and wait out is a worse
+    // outcome than never taking the card, and it costs the tenant the Stripe
+    // fee either way.
+    //
+    // What it actually checks, read from the live definition rather than
+    // assumed: plan_status in (active, past_due, free), an unexpired trial, or
+    // an admin-granted grace window. Despite the trigger's name there is no
+    // client-count or seat cap in it today, so this gate is "is this tenant's
+    // subscription alive", not "do they have room". If a real limit is added
+    // later this call picks it up with no change here, which is the reason to
+    // call the same function the trigger calls instead of re-deriving the rule.
     //
     // Read with the service-role client on purpose: the function RAISEs for a
     // signed-in caller who is not a member of `_org_id`, and a prospect is not
@@ -109,8 +118,9 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
       console.error("signup entitlement check failed", q.organization_id, gateErr);
     } else if (canAdd === false) {
       // Said to a member of the public, so it names no plan state and blames
-      // nobody: the prospect cannot act on "the seat limit is reached" and the
-      // tenant would rather not have it announced.
+      // nobody: the prospect cannot act on "this business's subscription has
+      // lapsed" and the tenant would rather not have it announced to the
+      // people they are trying to sell to.
       throw new Error(
         "This business isn't accepting new online signups right now. Please contact them directly and they'll get you set up.",
       );
@@ -199,7 +209,7 @@ export const getSignupStatus = createServerFn({ method: "GET" })
     // and "we have refunded you" is only sayable if the refund actually
     // happened. `error_message` is deliberately NOT returned — it carries
     // Postgres constraint text written for us, not for a homeowner.
-    const { data: org } = await (supabaseAdmin as any)
+    const { data: org } = await supabaseAdmin
       .from("organizations")
       .select("name, logo_url, brand_color")
       .eq("id", row.organization_id)
@@ -236,7 +246,7 @@ export const getSignupSettings = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
-    const { data: org, error } = await (context.supabase as any)
+    const { data: org, error } = await context.supabase
       .from("organizations")
       .select("name, slug, portal_slug, public_signup_enabled")
       .eq("id", orgId)
@@ -288,7 +298,7 @@ export const setSignupSettings = createServerFn({ method: "POST" })
         // tenant's portal address would make which business a prospect reaches
         // depend on the RPC's tie-break.
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { data: taken } = await (supabaseAdmin as any)
+        const { data: taken } = await supabaseAdmin
           .from("organizations")
           .select("id")
           .or(`slug.eq.${clean},portal_slug.eq.${clean}`)

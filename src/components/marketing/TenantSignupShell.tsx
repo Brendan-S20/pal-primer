@@ -33,12 +33,16 @@ import type { ReactNode } from "react";
 // the middle of. That layout had no other caller once these two routes stopped
 // using it, so it was deleted rather than left compiled and unreachable.
 //
-// Kept: Privacy and Terms. Those were reachable from nowhere else in the app —
-// MarketingLayout's footer was their only link — and this is a page that takes
-// a card, so removing the terms the transaction runs under along with the
-// branding would have been the wrong half of the same edit. Also kept: that
-// Stripe handles the card, which is reassurance the buyer actually wants, and
-// which the payment form says again next to the button.
+// Kept: Privacy, Terms, and SMS Consent. This is a page that takes a card AND
+// collects a phone number, and PublicFooter's own docstring is explicit that
+// Twilio's toll-free verification reviewers look for privacy and SMS
+// consent/opt-out disclosures linked from the pages where phone numbers are
+// collected. MarketingLayout's footer was carrying that duty for /signup/{slug}
+// as a side effect of being the layout; dropping the branding and the
+// compliance links in the same edit would have quietly taken a phone-collecting
+// public page out of compliance. Also kept: that Stripe handles the card, which
+// is reassurance the buyer actually wants, and which the payment form says
+// again next to the button.
 export function TenantSignupShell({
   orgName,
   logoUrl,
@@ -60,11 +64,7 @@ export function TenantSignupShell({
       <header className="border-b border-border/60 bg-background/75 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-4">
           {logoUrl ? (
-            <img
-              src={logoUrl}
-              alt={orgName ?? ""}
-              className="h-9 max-w-[180px] object-contain"
-            />
+            <img src={logoUrl} alt={orgName ?? ""} className="h-9 max-w-[180px] object-contain" />
           ) : null}
           {orgName ? (
             <span className="text-base font-semibold tracking-tight" style={{ color: accent }}>
@@ -85,6 +85,9 @@ export function TenantSignupShell({
             </Link>
             <Link to="/legal/terms" className="hover:text-foreground">
               Terms
+            </Link>
+            <Link to="/legal/sms" className="hover:text-foreground">
+              SMS Consent
             </Link>
           </nav>
         </div>

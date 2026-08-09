@@ -202,7 +202,7 @@ async function provisionSignup(
     // `createSignupPaymentIntent` now pre-checks the entitlement gate, which is
     // the common cause and the better fix because it declines before the card
     // is touched. This is the backstop for everything else — a constraint, a
-    // seat limit crossed between the quote and the payment, an outage
+    // subscription that lapsed between the quote and the payment, an outage
     // mid-provision — and a backstop that returns money must be safe to run
     // twice, because Stripe redelivers.
     //

@@ -182,7 +182,7 @@ describe("the card is not charged before the tenant is allowed to take a client"
   });
 
   it("and what the prospect is told names no plan state", () => {
-    // The homeowner cannot act on "the seat limit is reached", and the tenant
+    // The homeowner cannot act on "their subscription lapsed", and the tenant
     // would rather it not be announced to their prospects.
     const block = codeOnly(fns.slice(fns.indexOf("canAdd === false")));
     expect(block.slice(0, 600)).toMatch(/isn't accepting new online signups right now/);
@@ -221,9 +221,9 @@ describe("a signup that cannot be provisioned gives the money back", () => {
     // Both call sites have to supply it or the refund silently finds nothing.
     const calls = hook.match(/await provisionSignup\(/g) ?? [];
     expect(calls.length).toBe(2);
-    expect((hook.match(/\{ stripe, stripeAccount: event\.account \?\? null \}/g) ?? []).length).toBe(
-      2,
-    );
+    expect(
+      (hook.match(/\{ stripe, stripeAccount: event\.account \?\? null \}/g) ?? []).length,
+    ).toBe(2);
   });
 
   it("and reverses our platform fee with it", () => {
@@ -344,7 +344,9 @@ describe("an owner can find, turn on and copy their signup link", () => {
   it("and shows the URL the RPC will actually answer on", () => {
     // Showing the signup slug when portal_slug is what resolves would hand out
     // a link that fails for precisely the reason this page exists.
-    expect(page).toMatch(/cfg\?\.portalSlug \|\| \(slug\.trim\(\) \? slug\.trim\(\) : cfg\?\.signupSlug\)/);
+    expect(page).toMatch(
+      /cfg\?\.portalSlug \|\| \(slug\.trim\(\) \? slug\.trim\(\) : cfg\?\.signupSlug\)/,
+    );
     expect(page).toMatch(/\/signup\/\$\{effective\}/);
     expect(page).toMatch(/Copy link/);
     expect(page).toMatch(/Preview/);
@@ -388,9 +390,30 @@ describe("a tenant's prospect sees the tenant", () => {
     const shell = read("src/components/marketing/TenantSignupShell.tsx");
     expect(codeOnly(shell)).not.toMatch(/houndstack\.com/);
     expect(codeOnly(shell)).not.toMatch(/APP_NAME|<Logo/);
-    // Not even a way out: every link MarketingLayout carries is either a dead
+    // Not even a way out: every link MarketingLayout carried is either a dead
     // end for a homeowner or an exit from the checkout they are in.
     expect(codeOnly(shell)).not.toMatch(/to="\/auth"/);
+  });
+
+  it("but the compliance links survive the rebrand", () => {
+    // This is the half of the edit that was easy to get wrong. The signup page
+    // takes a card AND collects a phone number, and MarketingLayout's footer
+    // was the only thing linking Privacy, Terms and SMS Consent from it —
+    // PublicFooter's own docstring says Twilio's toll-free reviewers look for
+    // exactly those, on exactly the pages where phone numbers are collected.
+    // Dropping the branding and the disclosures together would have taken a
+    // public page out of compliance while looking like a styling change.
+    const shell = read("src/components/marketing/TenantSignupShell.tsx");
+    expect(shell).toMatch(/to="\/legal\/privacy"/);
+    expect(shell).toMatch(/to="\/legal\/terms"/);
+    expect(shell).toMatch(/to="\/legal\/sms"/);
+  });
+
+  it("and the layout it replaced is deleted, not left compiled and unreachable", () => {
+    // Its only two callers were these routes. scripts/check-dead-machinery.mjs
+    // flags a module nothing reachable from src/routes imports, and the honest
+    // answer to that flag is deletion rather than a baseline entry.
+    expect(() => read("src/components/marketing/MarketingLayout.tsx")).toThrow();
   });
 });
 
