@@ -94,6 +94,22 @@ jobs:
   migrations:
     name: Migrations applied to the live database
     runs-on: ubuntu-latest
+    # Skipped on pull requests, and this costs nothing real: every step below
+    # already carried `continue-on-error: ${{ github.event_name ==
+    # 'pull_request' }}`, so on a PR the whole job could only ever produce
+    # warnings. It was spending a runner — checkout, node, five checks — to
+    # tell us something it was not allowed to fail on.
+    #
+    # It remains a HARD gate on main and on manual dispatch, which is where
+    # the IMP-2 incident actually lives: code landing on main must not depend
+    # on schema production lacks. A PR legitimately contains migrations that
+    # have not been applied yet, which is why it was advisory there in the
+    # first place.
+    #
+    # To check before merging without spending the run, the three schema
+    # scripts take offline captures (--applied-from / --live-from /
+    # --catalog-from). scripts/ci-local.sh documents how.
+    if: github.event_name != 'pull_request'
     # IMP-2: a production incident already came from "migrations never applied
     # to the live DB". The codebase can be entirely correct while prod runs old
     # schema, and nothing surfaces it until a query fails in front of a
