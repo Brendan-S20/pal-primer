@@ -221,7 +221,12 @@ function ClientDetail() {
         {/* Mobile Phase 2: below `md` the 9 pills scroll horizontally on one
             line (no wrap, hidden scrollbar) instead of wrapping into pill
             soup. Desktop keeps the wrapping layout. ?tab= behavior unchanged. */}
-        <TabsList className="no-scrollbar inline-flex h-auto w-auto flex-wrap justify-start max-md:flex max-md:w-full max-md:flex-nowrap max-md:overflow-x-auto">
+        {/* The phone half of this — no-scrollbar, full width, nowrap,
+            overflow-x-auto — moved onto TabsList itself, so every tab bar in
+            the app behaves the same. What is left here is the desktop-only
+            part: nine tabs are too many for one 36px row, so above `md` they
+            wrap on purpose. */}
+        <TabsList className="inline-flex h-auto w-auto flex-wrap justify-start max-md:flex-nowrap">
           <TabsTrigger
             value="summary"
             className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md px-3 py-1.5"

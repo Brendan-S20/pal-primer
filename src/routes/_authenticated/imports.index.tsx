@@ -150,7 +150,8 @@ function ImportsPage() {
         ) : !data?.batches.length ? (
           <p className="text-sm text-muted-foreground">No imports yet.</p>
         ) : (
-          <div className="overflow-hidden rounded-lg border bg-card">
+          // Six columns clipped, not scrolled — see AiPanels for the same fix.
+          <div className="overflow-x-auto rounded-lg border bg-card">
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
                 <tr>

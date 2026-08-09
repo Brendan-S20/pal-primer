@@ -868,7 +868,9 @@ function InvoiceHistory() {
   const invoices: any[] = (data as any)?.invoices ?? [];
 
   return (
-    <section className="rounded-xl border bg-card p-6 shadow-sm">
+    // Five columns of invoice history, with no scroll container of their own —
+    // so the table set the width of the settings page instead of its own.
+    <section className="overflow-x-auto rounded-xl border bg-card p-6 shadow-sm">
       <h2 className="text-lg font-semibold">Billing history</h2>
       {isLoading ? (
         <p className="mt-2 text-sm text-muted-foreground">Loading…</p>

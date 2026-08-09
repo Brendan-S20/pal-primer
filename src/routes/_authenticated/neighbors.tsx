@@ -255,7 +255,9 @@ function NeighborsPage() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="p-0">
+        {/* Five columns of canvassing results, previously sizing the page
+            rather than themselves. */}
+        <CardContent className="overflow-x-auto p-0">
           {view === "map" ? (
             <div className="p-3">
               {rows.every((r) => r.latitude == null || r.longitude == null) ? (

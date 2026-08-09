@@ -995,7 +995,10 @@ function RoutesPage() {
                   <span className="ml-1.5 max-sm:hidden">Crew</span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="end" className="w-80 p-0">
+              {/* 320px of popover does not fit a 320px phone. The cap matches
+                  WeatherPopover's, which is the pattern the other popovers on
+                  this board already use. */}
+              <PopoverContent align="end" className="w-80 max-w-[calc(100vw-1rem)] p-0">
                 <div className="border-b px-3 py-2">
                   <div className="text-sm font-medium">Who runs routes</div>
                   <div className="text-2xs text-muted-foreground">
