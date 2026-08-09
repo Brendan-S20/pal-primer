@@ -81,7 +81,13 @@ function LeadFormSettings() {
           <div className="rounded-lg border bg-card p-4">
             <h2 className="mb-2 text-sm font-medium">Hosted form link</h2>
             <div className="flex flex-wrap items-center gap-2">
-              <code className="rounded bg-muted px-2 py-1 text-xs">{hostedUrl}</code>
+              {/* A URL has no space to wrap at, so its min-content width is the
+                  whole address, and a flex item is never laid out narrower than
+                  that. With a slug like sunset-ridge-property-care this line is
+                  wider than a phone and takes the card and the page with it.
+                  `break-all` is what the referral link and the platform invite
+                  link already do with theirs. */}
+              <code className="break-all rounded bg-muted px-2 py-1 text-xs">{hostedUrl}</code>
               <button className="text-xs text-primary underline" onClick={() => copy(hostedUrl!, "Link")}>Copy link</button>
               <a className="text-xs text-primary underline" href={hostedUrl!} target="_blank" rel="noreferrer">Preview</a>
             </div>

@@ -45,6 +45,15 @@ export type PendingAction =
   | ({ kind: "complete"; visitId: string } & ActionBase)
   | ({ kind: "skip"; visitId: string; reason: string; code: string } & ActionBase)
   | ({
+      kind: "station";
+      visitId: string;
+      wasteStationId: string;
+      bagsCollected: number;
+      linerReplaced: boolean;
+      refillBagsAdded: number;
+      notes?: string;
+    } & ActionBase)
+  | ({
       kind: "photo";
       visitId: string;
       photoKind: "before" | "completion" | "issue";
@@ -108,6 +117,19 @@ function getDb() {
           db.createObjectStore("photos", { keyPath: "id" });
         }
         // v3 needs no migration: `attempts` is optional and absent means 0.
+        //
+        // The `station` kind that arrived after v3 needs no version at all,
+        // which is worth spelling out because the instinct is to bump. A
+        // version exists to run an `upgrade` callback, and there is nothing
+        // for one to do here: no new store, no new index, no change to the
+        // keyPath, and no existing row that becomes wrong. `station` is a new
+        // member of a union stored in a store that has never been typed at the
+        // IndexedDB level — every existing row is still exactly what it was
+        // and still replays through the same switch. Bumping would be worse
+        // than pointless: `openDB` blocks on other open tabs before it can
+        // upgrade, so a tech with My Day open on a phone and a tablet would
+        // hit a `blocked` event and a queue that will not open, in exchange
+        // for a callback that does nothing.
       },
     });
   }

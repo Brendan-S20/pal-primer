@@ -136,9 +136,36 @@ function Dashboard() {
   const total = sum?.visitCounts.total ?? 0;
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-  // Mobile (below `md`): today's operational glance (alerts → map/techs
-  // progress) leads, KPI money tiles follow, AI panels last — pure CSS
-  // ordering; desktop keeps the original DOM order via md:order-none.
+  // ── THE PHONE READS THIS PAGE IN A DIFFERENT ORDER ────────────────────────
+  //
+  // The DOM below is the desktop order, and it is deliberately still the
+  // desktop order: money tiles, map, techs, then the AI panels. Above `md`
+  // nothing here applies and the page is exactly the laid-out grid it always
+  // was. Below `md` the same markup is re-sequenced so that "what is happening
+  // today" — the alert chips, then per-tech progress, then the map — is what
+  // you get for the first screenful, and the money tiles and AI panels are
+  // scrolled to rather than scrolled past. An owner opening this in a driveway
+  // is asking who is where and what went wrong, not what was collected MTD.
+  //
+  // Two things about how it is done, both of which are easy to undo by
+  // accident:
+  //
+  //   It is `max-md:order-N` and not `order-N md:order-none`. The second form
+  //   emits a rule that applies at every width and then a second rule that
+  //   takes it back, so any future `md:`-and-up utility that lands in the same
+  //   cascade layer can leave a stray order on the desktop grid. `max-md:` is
+  //   only ever inside `@media (width < 48rem)`, which is what makes "desktop
+  //   is untouched" a property of the CSS rather than of remembering to pair
+  //   every order with its reset.
+  //
+  //   The header, the onboarding card and the alert strip carry no order class
+  //   at all. `order` defaults to 0 and every numbered sibling here is
+  //   positive, so they sort ahead of all three ordered blocks for free — the
+  //   phone order is 0,0,0 → 1 → 2 → 3. Giving one of them an explicit
+  //   `max-md:order-N` would silently drop it below the ones that have none.
+  //
+  // No query, no branch and no formatting changes with width; this is purely
+  // where the boxes sit.
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-2">
@@ -146,14 +173,20 @@ function Dashboard() {
           <h1 className="text-2xl font-semibold">{org.name}</h1>
           <p className="text-sm text-muted-foreground">Signed in as {humanizeRole(org.role)}</p>
         </div>
+        {/* `size="sm"` is `h-8` — a 32px target, and on a phone these two are
+            the only navigation in the header of the first screen the owner
+            sees. `max-md:min-h-11` wins over the variant's fixed `height`
+            because used height is max(min-height, height), so the button grows
+            to 44px on touch without a second size variant and without moving a
+            pixel above `md`. Same lever as `ui/tabs.tsx`. */}
         <div className="flex gap-2">
           <Link to="/routes">
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" className="max-md:min-h-11">
               Today's routes
             </Button>
           </Link>
           <Link to="/clients">
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" className="max-md:min-h-11">
               Clients
             </Button>
           </Link>
@@ -166,9 +199,17 @@ function Dashboard() {
         <div className="flex flex-wrap gap-2">
           {alerts.map((a, i) => {
             const Icon = a.icon;
+            // Almost every alert carries a `to`, so this strip is mostly a row
+            // of links — and since the reorder above it is now the first thing
+            // under the header on a phone, it is the most-tapped control on the
+            // page. `py-1.5` around a 20px line box is 32px. The min-height is
+            // on the chip rather than only on the linked ones so a rare
+            // unlinked alert does not sit two-thirds the height of its
+            // neighbours; `items-center` keeps the glyph and label centred in
+            // the taller box, so nothing looks padded.
             const content = (
               <div
-                className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm ${
+                className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm max-md:min-h-11 ${
                   a.tone === "danger"
                     ? "border-destructive/40 bg-destructive/5 text-destructive"
                     : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400"

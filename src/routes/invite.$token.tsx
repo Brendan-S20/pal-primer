@@ -83,8 +83,12 @@ function InvitePage() {
                 <div className="text-lg font-semibold">
                   {q.data.organization_name ?? "a new organization"}
                 </div>
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  as <Badge variant="outline">{humanizeRole(q.data.role)}</Badge> · for <span className="font-mono">{q.data.email}</span>
+                {/* "as", "· for" and the address are four flex items on one
+                    line, and the monospace address alone is most of a phone's
+                    width. Wrapping is the only way this fits; the address still
+                    needs somewhere to break when it is the whole line. */}
+                <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                  as <Badge variant="outline">{humanizeRole(q.data.role)}</Badge> · for <span className="break-all font-mono">{q.data.email}</span>
                 </div>
               </div>
 

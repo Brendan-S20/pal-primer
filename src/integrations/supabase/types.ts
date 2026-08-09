@@ -6139,6 +6139,7 @@ export type Database = {
           _notes?: string
           _photo_url?: string
           _refill_bags_added?: number
+          _serviced_at?: string
           _visit_id: string
           _waste_station_id: string
         }

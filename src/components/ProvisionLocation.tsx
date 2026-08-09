@@ -119,11 +119,16 @@ export function ProvisionLocation() {
           <ul className="divide-y">
             {done.invited.map((i) => (
               <li key={i.email} className="flex items-center justify-between gap-2 py-2">
-                <span>
+                <span className="min-w-0 break-words">
                   {i.email}{" "}
                   <span className="text-muted-foreground">— {ROLE_LABEL[i.role]}</span>
                 </span>
-                <span className={i.emailed ? "text-muted-foreground" : "text-amber-600"}>
+                {/* "Email not sent" is the whole point of the row — it must not
+                    be the part that gets pushed off the edge by a long
+                    address. */}
+                <span
+                  className={`shrink-0 ${i.emailed ? "text-muted-foreground" : "text-amber-600"}`}
+                >
                   {i.emailed ? "Invited" : "Email not sent"}
                 </span>
               </li>
