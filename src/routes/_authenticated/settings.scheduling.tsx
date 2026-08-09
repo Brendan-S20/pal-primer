@@ -22,6 +22,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { US_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/route-window";
+import { MAX_SPEED_MPH, MIN_SPEED_MPH, mphFromStoredKmh, mphToStoredKmh } from "@/lib/measures";
 import { WorkDaysPicker } from "@/components/schedule/WorkDaysPicker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +43,12 @@ function SchedulingSettings() {
     avg_speed_kmh: 30,
     traffic_profile: "normal",
   };
+
+  /** The speed the field shows, in the units the operator thinks in.
+   *
+   *  Also the value the blur handler compares against, so an untouched field
+   *  writes nothing — see the note on the input. */
+  const shownSpeedMph = mphFromStoredKmh(settings.avg_speed_kmh ?? 30);
 
   /** The date the horizon currently reaches, spelled out.
    *
@@ -184,13 +191,31 @@ function SchedulingSettings() {
         </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
-            <Label className="text-xs">Average speed (km/h)</Label>
+            {/* Shown and typed in mph, stored in km/h.
+
+                This field used to read "Average speed (km/h)" and write the
+                typed number straight to the column. A dispatcher entering the
+                number they know — 25, meaning miles per hour — set the ETA
+                engine to 25 km/h, which is 15.5 mph, and every arrival time in
+                the app ran about 60% slow with no error anywhere.
+
+                The guard against writing on a blur that changed nothing is not
+                tidiness. `effective_speed_kmh()` treats any stored value other
+                than 30 as "this tenant has set their own speed" and stops
+                deriving it from `area_type`. Rounding 30 km/h to 19 mph and
+                back gives 31, so tabbing through this field would have quietly
+                taken an org off area-based speeds forever. */}
+            <Label className="text-xs">Average speed (mph)</Label>
             <Input
               type="number"
-              min={5}
-              max={120}
-              defaultValue={settings.avg_speed_kmh ?? 30}
-              onBlur={(e) => mut.mutate({ avg_speed_kmh: Number(e.target.value) })}
+              min={MIN_SPEED_MPH}
+              max={MAX_SPEED_MPH}
+              defaultValue={shownSpeedMph}
+              onBlur={(e) => {
+                const mph = Number(e.target.value);
+                if (!Number.isFinite(mph) || mph === shownSpeedMph) return;
+                mut.mutate({ avg_speed_kmh: mphToStoredKmh(mph) });
+              }}
             />
           </div>
           <div>

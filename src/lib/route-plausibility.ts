@@ -3,6 +3,12 @@
 // and could show an arrival time inconsistent with the computed drive. These
 // pure helpers flag both so the dispatcher sees a warning instead of silently
 // accepting an impossible route.
+//
+// The stored figure is `travel_km` and the message now reads miles — the
+// conversion happens here, at the sentence, and nothing about the data
+// changes. See src/lib/measures.ts.
+
+import { kmToMiles } from "@/lib/measures";
 
 export const DEFAULT_MAX_DRIVE_MINUTES = 240;
 export const DEFAULT_WORKDAY_START_MINUTES = 8 * 60; // 08:00
@@ -56,8 +62,12 @@ export function findRouteWarnings(
         travelKm: driveKm,
         travelMin: driveMin,
         message:
+          // `travel_km` is stored in kilometres and stays that way; only the
+          // sentence a dispatcher reads is converted. Printing "1,850 km" to
+          // someone who measures their patch in miles makes them do the
+          // arithmetic to find out how bad the problem is.
           `${name}: ${fmtHours(driveMin)} drive` +
-          (driveKm != null ? ` (${driveKm.toFixed(0)} km)` : "") +
+          (driveKm != null ? ` (${kmToMiles(driveKm).toFixed(0)} mi)` : "") +
           ` exceeds the ${fmtHours(limit)} limit. Check the technician's depot address.`,
       });
       continue; // one warning per stop is enough

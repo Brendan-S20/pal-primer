@@ -70,6 +70,15 @@ Deno.serve(async (req) => {
     "daily",
     "precipitation_sum,precipitation_probability_max,wind_speed_10m_max,temperature_2m_max,temperature_2m_min,weather_code",
   );
+  // Fahrenheit / mph / inches. This relay is not a neutral pipe: the caller
+  // parses whatever comes back into fields it believes are °F and mph, so if
+  // these three lines drift from the server's copy in
+  // src/lib/weather.functions.ts, the units of the board depend on which
+  // network path happened to succeed — and the direct path is the one that
+  // fails in production, so this file is usually the one deciding.
+  url.searchParams.set("temperature_unit", "fahrenheit");
+  url.searchParams.set("wind_speed_unit", "mph");
+  url.searchParams.set("precipitation_unit", "inch");
   url.searchParams.set("timezone", "auto");
   url.searchParams.set("start_date", fromDate);
   url.searchParams.set("end_date", toDate);
