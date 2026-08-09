@@ -8,7 +8,15 @@ async function provisionSignup(
   signupRequestId: string,
   // Works for both flows: legacy hosted Checkout (session id) and the
   // in-app Payment Element (payment intent id).
-  paid: { amountTotalCents: number; stripeRef: string },
+  //
+  // `paymentIntentId` is separate from `stripeRef` because the refund below
+  // needs the intent specifically: on the Checkout path `stripeRef` is a
+  // session id, which `refunds.create` will not accept.
+  paid: { amountTotalCents: number; stripeRef: string; paymentIntentId: string | null },
+  // The connected account the charge lives on, and a Stripe client that can
+  // reach it. Direct charges settle into the tenant's balance, so a refund has
+  // to be issued against THEIR account or it finds nothing.
+  refundVia: { stripe: import("stripe").Stripe; stripeAccount: string | null },
 ) {
   const { data: sr, error } = await supabaseAdmin
     .from("signup_requests")
@@ -20,21 +28,71 @@ async function provisionSignup(
     return;
   }
   if (sr.status === "provisioned" && sr.provisioned_client_id) return;
+  // Already refunded on an earlier attempt: the prospect's money is back, so
+  // there is nothing left that this signup has paid for. Provisioning it now
+  // on a webhook redelivery would hand out a service nobody is paying for and
+  // send a welcome email to someone who has been told the sale did not happen.
+  if (sr.refunded_at) {
+    console.warn("provisionSignup: already refunded, not retrying", signupRequestId);
+    return;
+  }
 
   try {
-    // Create client
-    const { data: client, error: cErr } = await supabaseAdmin
+    // The customer this signup belongs to — reused, not duplicated.
+    //
+    // This used to be a blind INSERT. A homeowner who signs up twice (a second
+    // property, a browser back-button, a card that failed and was retried
+    // through a fresh request) got a SECOND client row with the same email, a
+    // second portal_token and therefore a second portal account. The office
+    // then sees two customers and bills them separately, and the homeowner has
+    // two welcome emails with two links, only one of which shows the service
+    // they just bought. There is no unique constraint on (organization_id,
+    // primary_email) to lean on, so the dedupe happens here.
+    //
+    // The ilike is a PRE-FILTER, not the comparison: PostgREST passes the
+    // pattern through to LIKE, where `_` and `%` are wildcards and both are
+    // legal in an email local-part, so `a_b@x.com` would also match
+    // `axb@x.com`. Wildcards can only over-match, never under-match, so every
+    // candidate is re-checked in JS on lowercased equality — which is what
+    // "(organization_id, lower(primary_email))" actually means.
+    const email = (sr.email as string).trim().toLowerCase();
+    const { data: candidates } = await supabaseAdmin
       .from("clients")
-      .insert({
-        organization_id: sr.organization_id,
-        display_name: sr.name,
-        account_type: "residential",
-        primary_email: sr.email,
-        primary_phone: sr.phone,
-      })
-      .select("id, portal_token")
-      .single();
-    if (cErr || !client) throw new Error(cErr?.message || "client insert failed");
+      .select("id, portal_token, primary_email")
+      .eq("organization_id", sr.organization_id)
+      .ilike("primary_email", email);
+    const existing =
+      (candidates ?? []).find(
+        (c: { primary_email: string | null }) =>
+          (c.primary_email ?? "").trim().toLowerCase() === email,
+      ) ?? null;
+
+    let client: { id: string; portal_token: string | null };
+    if (existing) {
+      // Attach to the account they already have. Deliberately no UPDATE of
+      // display_name or phone: the office may have corrected those, and a
+      // signup form is not a more authoritative source than the record the
+      // business has been maintaining.
+      client = { id: existing.id, portal_token: existing.portal_token };
+      console.warn("provisionSignup: attaching to existing client", {
+        signupRequestId,
+        clientId: existing.id,
+      });
+    } else {
+      const { data: created, error: cErr } = await supabaseAdmin
+        .from("clients")
+        .insert({
+          organization_id: sr.organization_id,
+          display_name: sr.name,
+          account_type: "residential",
+          primary_email: email,
+          primary_phone: sr.phone,
+        })
+        .select("id, portal_token")
+        .single();
+      if (cErr || !created) throw new Error(cErr?.message || "client insert failed");
+      client = created;
+    }
 
     // Create property
     const { data: property, error: pErr } = await supabaseAdmin
@@ -68,6 +126,26 @@ async function provisionSignup(
       started_on: new Date().toISOString().slice(0, 10),
     });
     if (subErr) throw new Error(subErr.message);
+
+    // An active service must have visits immediately (QA follow-up 1.6). Every
+    // other path that creates a subscription — the client wizard, the service
+    // form, resume — calls this; the signup webhook was the one that did not,
+    // so a homeowner who had just prepaid saw an empty schedule until the
+    // nightly job ran, which is up to a day of "did my payment work?" on the
+    // one screen they were sent to.
+    //
+    // Guarded, and the guard is the point: `generateVisitHorizon` already
+    // swallows an RPC error, but nothing stops it throwing for another reason,
+    // and provisioning has succeeded by this line. A thrown error here would
+    // fall into the catch below, mark a provisioned signup 'failed', and refund
+    // a customer who now has an account — so the schedule being late must not
+    // be able to become the sale being reversed.
+    try {
+      const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
+      await generateVisitHorizon(supabaseAdmin, sr.organization_id);
+    } catch (e) {
+      console.error("signup visit generation failed", signupRequestId, e);
+    }
 
     // Credit the prepay portion to the client's balance
     const prepay = paid.amountTotalCents - (sr.initial_cleanup_cents ?? 0);
@@ -111,10 +189,82 @@ async function provisionSignup(
     }
   } catch (e) {
     console.error("provisionSignup failed", e);
-    await supabaseAdmin
-      .from("signup_requests")
-      .update({ status: "failed", error_message: (e as Error).message })
-      .eq("id", signupRequestId);
+
+    // Give the money back.
+    //
+    // This branch means the card has already been charged — the webhook only
+    // runs after the intent succeeded — and no account exists to show for it.
+    // Until now it wrote 'failed' and stopped, so the tenant kept a homeowner's
+    // first cleanup plus a prepaid visit for a service that was never set up,
+    // and the only notice anyone got was a success page saying "we hit a snag".
+    // Nothing swept those up: there is no reconcile job for signup_requests.
+    //
+    // `createSignupPaymentIntent` now pre-checks the entitlement gate, which is
+    // the common cause and the better fix because it declines before the card
+    // is touched. This is the backstop for everything else — a constraint, a
+    // seat limit crossed between the quote and the payment, an outage
+    // mid-provision — and a backstop that returns money must be safe to run
+    // twice, because Stripe redelivers.
+    //
+    // The refund is issued and recorded BEFORE the row is marked failed, so the
+    // ordering is one a redelivery survives: `stripe_refund_id` is written in
+    // the same UPDATE, and the `refunded_at` guard at the top of this function
+    // stops a second attempt from provisioning or refunding again. The
+    // idempotency key makes the Stripe side safe on its own even if this
+    // process dies between the API call and the write.
+    const refundPatch: Record<string, unknown> = {
+      status: "failed",
+      error_message: (e as Error).message,
+    };
+    if (paid.paymentIntentId) {
+      try {
+        const refund = await refundVia.stripe.refunds.create(
+          {
+            payment_intent: paid.paymentIntentId,
+            reason: "requested_by_customer",
+            // Hand our 50 bps back too. `feeReversalCents` and the
+            // charge.refunded branch below exist for refunds the TENANT issues
+            // from their own dashboard, where the platform learns about it
+            // after the fact; here we are the one issuing it, so Stripe can
+            // reverse the application fee as part of the same call. Keeping a
+            // fee on a sale that was unwound and refunded in full would be
+            // charging the tenant for our own failure.
+            refund_application_fee: true,
+          },
+          {
+            idempotencyKey: `signup-refund-${signupRequestId}`,
+            ...(refundVia.stripeAccount ? { stripeAccount: refundVia.stripeAccount } : {}),
+          },
+        );
+        refundPatch.stripe_refund_id = refund.id;
+        refundPatch.refunded_at = new Date().toISOString();
+        refundPatch.refunded_amount_cents = refund.amount ?? paid.amountTotalCents;
+        console.warn("provisionSignup refunded the charge", {
+          signupRequestId,
+          refundId: refund.id,
+        });
+      } catch (refundErr) {
+        // A refund that would not go through is worse news than the failure
+        // that caused it, because now someone has to move money by hand. Say
+        // so in the row the office reads, and keep the original cause: the
+        // success page reads `refunded_at`, so it will correctly NOT promise a
+        // refund that did not happen.
+        console.error("provisionSignup refund failed", signupRequestId, refundErr);
+        refundPatch.error_message =
+          `${(e as Error).message} — AND the automatic refund failed ` +
+          `(${(refundErr as Error).message}). This customer has been charged and has no account; ` +
+          `refund payment intent ${paid.paymentIntentId} manually.`;
+      }
+    } else {
+      // No intent id means no refundable handle reached this function, which is
+      // a wiring bug in the caller rather than a payment that cannot be
+      // refunded. Record it where the office will see it.
+      refundPatch.error_message =
+        `${(e as Error).message} — no payment intent was passed to provisioning, ` +
+        `so no refund could be issued automatically. Stripe reference ${paid.stripeRef}.`;
+    }
+
+    await supabaseAdmin.from("signup_requests").update(refundPatch).eq("id", signupRequestId);
   }
 }
 
@@ -354,10 +504,21 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 .eq("id", signupRequestId)
                 .maybeSingle();
               if (await accountMatches((sr as any)?.organization_id)) {
-                await provisionSignup(supabaseAdmin, signupRequestId, {
-                  amountTotalCents: session.amount_total ?? 0,
-                  stripeRef: session.id,
-                });
+                await provisionSignup(
+                  supabaseAdmin,
+                  signupRequestId,
+                  {
+                    amountTotalCents: session.amount_total ?? 0,
+                    stripeRef: session.id,
+                    // The session's own intent, so a failed provision can be
+                    // refunded. A session id is not refundable.
+                    paymentIntentId:
+                      typeof session.payment_intent === "string"
+                        ? session.payment_intent
+                        : (session.payment_intent?.id ?? null),
+                  },
+                  { stripe, stripeAccount: event.account ?? null },
+                );
               } else {
                 console.error("signup webhook account mismatch", {
                   signupRequestId,
@@ -409,10 +570,16 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 .eq("id", piSignupId)
                 .maybeSingle();
               if (await accountMatches((sr as any)?.organization_id)) {
-                await provisionSignup(supabaseAdmin, piSignupId, {
-                  amountTotalCents: pi.amount,
-                  stripeRef: pi.id,
-                });
+                await provisionSignup(
+                  supabaseAdmin,
+                  piSignupId,
+                  {
+                    amountTotalCents: pi.amount,
+                    stripeRef: pi.id,
+                    paymentIntentId: pi.id,
+                  },
+                  { stripe, stripeAccount: event.account ?? null },
+                );
               } else {
                 console.error("signup webhook account mismatch", {
                   signupRequestId: piSignupId,

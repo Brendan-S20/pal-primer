@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
@@ -51,10 +51,30 @@ function LeadFormSettings() {
         </div>
       ) : (
         <>
+          {/* This used to be an amber warning saying the hosted form "won't
+              accept submissions" while public signup was off, and that has been
+              untrue since 20260711120000. Lead capture was DELIBERATELY
+              decoupled from the signup gate in that migration —
+              `public_get_org_for_lead_form` does not look at
+              public_signup_enabled at all, and `/api/public/leads` resolves the
+              org through it — precisely because collecting a name is not the
+              same decision as taking a card.
+
+              The cost of leaving it was not cosmetic. It told owners their
+              working lead form was broken and pointed them at a switch that
+              would not have fixed it, so the rational response was to stop
+              using the form, or to turn on public signup for a reason that was
+              never real. What replaces it says the true thing and offers the
+              upsell the old warning was clumsily reaching for. */}
           {!cfg.publicSignupEnabled && (
-            <div className="rounded-md border border-amber-400/50 bg-amber-50 p-3 text-sm text-amber-900">
-              Public intake is currently off, so the hosted form won't accept submissions. Turn on
-              public signup/intake for <strong>{cfg.orgName}</strong> to start collecting leads.
+            <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+              This form collects leads whether or not you take signups online — the two are
+              independent. If you'd also like homeowners to price their yard and pay without
+              calling, turn on{" "}
+              <Link to="/settings/online-signup" className="text-primary underline">
+                online signup
+              </Link>
+              .
             </div>
           )}
 
