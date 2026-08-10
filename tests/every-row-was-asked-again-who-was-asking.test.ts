@@ -49,21 +49,24 @@
 // one clears the violation; a new migration that introduces a bare one raises
 // it, wherever in the directory it lands.
 //
-// That replay is checked against reality rather than trusted: it reconstructs
-// 150 policies in `public`, and `select count(*) from pg_policy` on the live
-// database at the time of writing returned 150. If the parser silently stopped
-// matching, that count would collapse and the vacuous-pass guard below fires
-// before the rule gets a chance to report success on an empty set.
+// That replay is checked against reality rather than trusted: if the parser
+// silently stopped matching, the reconstructed count would collapse and the
+// vacuous-pass guard below fires before the rule gets a chance to report
+// success on an empty set.
 //
-// Only 141 of those 150 have a CREATE POLICY anywhere in this directory. The
-// other nine — the `Service role can …` policies on email_send_log,
-// email_send_state, email_unsubscribe_tokens and suppressed_emails, the same
-// nine that test `auth.role()` rather than `auth.uid()` — arrived in the
-// 2026-07-09 consolidated bootstrap that scripts/check-migrations.mjs already
-// documents as applied under names the filenames do not match. Their first
-// appearance in the tracked migrations is the ALTER that wrapped them. That is
-// worth knowing before reading a count here as a schema census: this replay
-// covers what the repo says, and the repo has always been nine short.
+// The number moves, so it is worth saying where it comes from rather than
+// leaving a bare literal. `select count(*) from pg_policy` in `public` returned
+// 150 when this file was written; 20260810120000 split 45 FOR ALL policies into
+// 117 per-command ones and took it to 222. Nine of those have no CREATE POLICY
+// anywhere in this directory — the `Service role can …` policies on
+// email_send_log, email_send_state, email_unsubscribe_tokens and
+// suppressed_emails, the same nine that test `auth.role()` rather than
+// `auth.uid()`. They arrived in the 2026-07-09 consolidated bootstrap that
+// scripts/check-migrations.mjs already documents as applied under names the
+// filenames do not match, and their first appearance in the tracked migrations
+// is the ALTER that wrapped them. So the replay can see at most 213, and this
+// is worth knowing before reading any count here as a schema census: it covers
+// what the repo says, and the repo has always been nine short.
 //
 // ── WHAT THE RULE DELIBERATELY DOES NOT COVER ─────────────────────────────
 //
@@ -80,106 +83,21 @@
 // of the scan. That is a different question with a different answer.
 
 import { describe, expect, it } from "vitest";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import {
+  IDENT,
+  migrationFiles,
+  readMigration,
+  statements,
+  stripLineComments,
+  unquote,
+} from "./support/sql-migrations";
 
-const ROOT = new URL("..", import.meta.url).pathname;
-const MIGRATIONS = join(ROOT, "supabase", "migrations");
 const THIS_MIGRATION = "20260809200000_every-row-was-asked-again-who-was-asking.sql";
 
-/** Read lazily. A file read resolved while the module is loading turns a
- *  missing file into an import-time throw, and vitest reports an import-time
- *  throw as "no tests" — which reads as a pass. */
-const migrationFiles = (): string[] =>
-  readdirSync(MIGRATIONS)
-    .filter((f) => f.endsWith(".sql"))
-    .sort();
-const readMigration = (f: string): string => readFileSync(join(MIGRATIONS, f), "utf8");
-
-/** Strip `--` comments without being fooled by one inside a string literal.
- *  The prose in these migrations quotes the very pattern being banned, so a
- *  rule that reads comments reports its own documentation as a violation. */
-function stripLineComments(sql: string): string {
-  return sql
-    .split("\n")
-    .map((line) => {
-      let out = "";
-      let quote: string | null = null;
-      for (let i = 0; i < line.length; i++) {
-        const c = line[i];
-        if (quote) {
-          out += c;
-          if (c === quote) quote = null;
-          continue;
-        }
-        if (c === "'" || c === '"') {
-          quote = c;
-          out += c;
-          continue;
-        }
-        if (c === "-" && line[i + 1] === "-") break;
-        out += c;
-      }
-      return out;
-    })
-    .join("\n");
-}
-
-/** Split on `;` at the top level, respecting quotes and dollar-quoted bodies —
- *  these migrations are full of `DO $pre$ ... $pre$;` blocks whose contents
- *  contain semicolons that do not end a statement. */
-function statements(sql: string): string[] {
-  const out: string[] = [];
-  let cur = "";
-  let quote: string | null = null;
-  let dollar: string | null = null;
-  for (let i = 0; i < sql.length; i++) {
-    const c = sql[i];
-    if (dollar) {
-      if (sql.startsWith(dollar, i)) {
-        cur += sql.slice(i, i + dollar.length);
-        i += dollar.length - 1;
-        dollar = null;
-      } else {
-        cur += c;
-      }
-      continue;
-    }
-    if (quote) {
-      cur += c;
-      if (c === quote) quote = null;
-      continue;
-    }
-    const tag = /^\$[a-zA-Z_]*\$/.exec(sql.slice(i));
-    if (tag) {
-      dollar = tag[0];
-      cur += dollar;
-      i += dollar.length - 1;
-      continue;
-    }
-    if (c === "'" || c === '"') {
-      quote = c;
-      cur += c;
-      continue;
-    }
-    if (c === ";") {
-      if (cur.trim()) out.push(cur.trim());
-      cur = "";
-      continue;
-    }
-    cur += c;
-  }
-  if (cur.trim()) out.push(cur.trim());
-  return out;
-}
-
-const IDENT = String.raw`("(?:[^"]|"")+"|[A-Za-z_][A-Za-z_0-9$]*)`;
 const POLICY_HEAD = new RegExp(
   String.raw`^(CREATE|ALTER|DROP)\s+POLICY\s+(?:IF\s+EXISTS\s+)?${IDENT}\s+ON\s+(?:${IDENT}\s*\.\s*)?${IDENT}`,
   "is",
 );
-
-const unquote = (s: string) => (s.startsWith('"') ? s.slice(1, -1).replace(/""/g, '"') : s);
 
 type Effective = { key: string; schema: string; file: string; sql: string };
 
@@ -210,9 +128,11 @@ describe("no policy in public asks who you are once per row", () => {
   it("reconstructs the policy surface rather than passing on an empty set", () => {
     const all = effectivePolicies();
     const inPublic = all.filter((p) => p.schema === "public");
-    // 150 live in pg_policy when this was written. A parser that quietly
-    // stopped matching would report zero violations and look green.
-    expect(inPublic.length).toBeGreaterThanOrEqual(150);
+    // 222 live in pg_policy after 20260810120000, of which 213 are creatable
+    // from this directory (see the nine-short note in the header). A parser
+    // that quietly stopped matching would report zero violations and look
+    // green, so the floor is raised whenever the real number moves.
+    expect(inPublic.length).toBeGreaterThanOrEqual(213);
     expect(all.length).toBeGreaterThan(inPublic.length); // storage is seen too
   });
 
