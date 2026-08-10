@@ -14,13 +14,34 @@
 //     app.houndstack.com          GET / → 307 /auth  (its own routing, fine)
 //                                 preflight → 204, allow-origin + expose-headers
 //     www.app.houndstack.com      GET / → 302 to the bare host
-//                                 preflight → 307   ← now the broken one
+//                                 preflight → 307   ← the broken one that day
 //
-// So the direction has REVERSED, and this constant reversed with it. The bare
-// host is authoritative, which is what every doc and comment in the repo said
-// all along; the www form is now the redirect. `scripts/check-app-origin.mjs`
-// is what caught the flip, and a test pins its copy of this constant to this
-// one so the two cannot drift.
+// So the direction REVERSED, and this constant reversed with it. The bare host
+// is authoritative, which is what every doc and comment in the repo said all
+// along. `scripts/check-app-origin.mjs` is what caught the flip, and a test
+// pins its copy of this constant to this one so the two cannot drift.
+//
+// ── AND THEN THE WWW HOST STOPPED EXISTING (2026-08-10) ───────────────────
+//
+// The block above is history, not current state. `www.app.houndstack.com` no
+// longer resolves — NXDOMAIN, no A record, nothing to redirect from:
+//
+//     www.app.houndstack.com      DNS → NXDOMAIN
+//     app.houndstack.com          185.158.133.1, GET / → 307 /auth (same host)
+//
+// Worth writing down because a dead host is a WORSE failure than a redirect
+// and looks like nothing. A redirect at least answers; NXDOMAIN produces a
+// connection error with no status code, which every dashboard renders as an
+// unexplained red row. The Resend suppression webhook had been configured
+// against the www host back when it still answered, and sat silently disabled
+// for eight days after the record went away — bounces and spam complaints
+// going nowhere, while the app kept sending mail perfectly well.
+//
+// The lesson that became a rule: a stale host does not spread through code,
+// which this module already prevents. It spreads through COMMENTS that
+// document a URL for someone to paste into a provider's dashboard. So the
+// hardcoded-host test now also pins any `VERB https://…` comment line to this
+// constant — see tests/one-app-origin.test.ts.
 //
 // ── WHY A DEFAULT AT ALL, AND WHY THIS ONE ────────────────────────────────
 //

@@ -1,7 +1,20 @@
-// Public JSON endpoint for the external marketing site to submit contact leads.
-// POST https://www.app.houndstack.com/api/public/leads
-// CORS: allow all origins (the marketing site is not deployed yet). Lock down
-// later by echoing the request Origin against an allow-list.
+// Public JSON endpoint for a lead form embedded on a tenant's own website.
+//
+// POST https://app.houndstack.com/api/public/leads
+//
+// That host was wrong on this line until 2026-08-10: it read
+// `www.app.houndstack.com`, which no longer has a DNS record at all. The app's
+// own lead page (routes/lead.$slug.tsx) posts to the relative path and was
+// never affected — but a tenant embedding this form copies the absolute URL
+// from a line exactly like this one, and a Resend webhook configured against
+// the same stale host sat disabled for eight days before anyone noticed. A
+// test now pins every `VERB https://…` comment in the repo to appOrigin(); see
+// tests/one-app-origin.test.ts.
+//
+// CORS: allow all origins, because the callers are tenant websites on domains
+// this app does not know ahead of time. Narrowing it means echoing the request
+// Origin against a site the tenant has registered, which needs somewhere to
+// store that — not built, and deliberately not half-built here.
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
@@ -62,10 +75,15 @@ export const Route = createFileRoute("/api/public/leads")({
         // Resolve the tenant from its public slug (SECURITY DEFINER RPC, so it
         // works for the anonymous key). Lead capture matches portal_slug and is
         // not gated on public_signup_enabled (#3).
-        const { data: orgRows } = await supabase.rpc("public_get_org_for_lead_form", { _slug: data.slug });
+        const { data: orgRows } = await supabase.rpc("public_get_org_for_lead_form", {
+          _slug: data.slug,
+        });
         const orgId = (orgRows as Array<{ id: string }> | null)?.[0]?.id ?? null;
         if (!orgId) {
-          return new Response(JSON.stringify({ error: "Unknown business" }), { status: 404, headers: jsonHeaders });
+          return new Response(JSON.stringify({ error: "Unknown business" }), {
+            status: 404,
+            headers: jsonHeaders,
+          });
         }
         const { error } = await (supabase.from("leads") as any).insert({
           organization_id: orgId,
