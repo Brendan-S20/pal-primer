@@ -208,13 +208,7 @@ function MyDay() {
   const { role } = useMyRole();
   const isOfficeRole = role === "owner" || role === "office_manager" || role === "dispatcher";
 
-  const {
-    data,
-    isLoading,
-    isError,
-    dataUpdatedAt,
-    refetch,
-  } = useQuery({
+  const { data, isLoading, isError, dataUpdatedAt, refetch } = useQuery({
     queryKey: ["my-day", day, staffParam ?? ""],
     queryFn: () => fn({ data: staffParam ? { day, staffId: staffParam } : { day } }),
   });
@@ -912,7 +906,9 @@ function DogsRow({ dogs }: { dogs: any }) {
           >
             🐕 {d?.name ?? "Dog"}
             {d?.temperament && (
-              <span className="opacity-80">· {DOG_TEMPERAMENT_LABELS[d.temperament] ?? d.temperament}</span>
+              <span className="opacity-80">
+                · {DOG_TEMPERAMENT_LABELS[d.temperament] ?? d.temperament}
+              </span>
             )}
           </span>
         );
@@ -1629,7 +1625,7 @@ function VisitCard({
               onDone={() => setShowDna(false)}
             />
           )}
-          {showStations && <StationsSubpanel visitId={visit.id} />}
+          {showStations && <StationsSubpanel visitId={visit.id} readOnly={preview} />}
         </div>
       )}
     </li>
@@ -1762,7 +1758,16 @@ function useQueuedStationIds(visitId: string): Set<string> {
   return ids;
 }
 
-function StationsSubpanel({ visitId }: { visitId: string }) {
+/** `readOnly` is the preview case, and it is the whole reason this prop exists.
+ *  The header of /my-day badges an office role viewing a tech's day as
+ *  "Preview · read-only", and every other control on the card honours that
+ *  through `canPerformVisit`. This panel did not: `log_station_service` accepts
+ *  `can_write_org OR is_visit_tech`, so office staff ARE permitted, and the
+ *  Save button wrote a real station-service record against another person's
+ *  visit from a screen promising to write nothing. The read stays — seeing
+ *  which bins a tech has logged is exactly what an office user opens a preview
+ *  for — and only the write goes. */
+function StationsSubpanel({ visitId, readOnly = false }: { visitId: string; readOnly?: boolean }) {
   const qc = useQueryClient();
   const listFn = useServerFn(getVisitStations);
   const logFn = useServerFn(logStationService);
@@ -1862,6 +1867,7 @@ function StationsSubpanel({ visitId }: { visitId: string }) {
             queued={queuedStationIds.has(s.id)}
             onSave={(payload) => mut.mutate({ wasteStationId: s.id, ...payload })}
             disabled={mut.isPending}
+            readOnly={readOnly}
           />
         );
       })}
@@ -1875,6 +1881,7 @@ function StationRow({
   queued,
   onSave,
   disabled,
+  readOnly = false,
 }: {
   station: any;
   existing?: any;
@@ -1888,6 +1895,12 @@ function StationRow({
     notes?: string;
   }) => void;
   disabled: boolean;
+  /** Preview: show the record, offer no way to change it. Distinct from
+   *  `disabled`, which is the transient in-flight state of a save that IS
+   *  allowed. The inputs go down with the button — a field left editable under
+   *  a heading that says read-only invites someone to type numbers that can
+   *  never be saved. */
+  readOnly?: boolean;
 }) {
   const [bags, setBags] = useState<string>(String(existing?.bags_collected ?? "0"));
   const [liner, setLiner] = useState<boolean>(existing?.liner_replaced ?? false);
@@ -1918,8 +1931,9 @@ function StationRow({
             type="number"
             min="0"
             value={bags}
+            disabled={readOnly}
             onChange={(e) => setBags(e.target.value)}
-            className="h-9 w-full rounded-md border bg-background px-2"
+            className="h-9 w-full rounded-md border bg-background px-2 disabled:opacity-60"
           />
         </label>
         <label className="col-span-2">
@@ -1928,40 +1942,49 @@ function StationRow({
             type="number"
             min="0"
             value={refill}
+            disabled={readOnly}
             onChange={(e) => setRefill(e.target.value)}
-            className="h-9 w-full rounded-md border bg-background px-2"
+            className="h-9 w-full rounded-md border bg-background px-2 disabled:opacity-60"
           />
         </label>
         <label className="col-span-2 flex items-center gap-2 pt-4">
           <input
             type="checkbox"
             checked={liner}
+            disabled={readOnly}
             onChange={(e) => setLiner(e.target.checked)}
-            className="h-4 w-4"
+            className="h-4 w-4 disabled:opacity-60"
           />
           <span>Liner replaced</span>
         </label>
         <input
-          className="col-span-6 h-9 rounded-md border bg-background px-2"
+          className="col-span-6 h-9 rounded-md border bg-background px-2 disabled:opacity-60"
           placeholder="Notes (optional)"
           value={notes}
+          disabled={readOnly}
           onChange={(e) => setNotes(e.target.value)}
         />
-        <Button
-          size="sm"
-          className="col-span-6"
-          disabled={disabled}
-          onClick={() =>
-            onSave({
-              bagsCollected: parseInt(bags, 10) || 0,
-              linerReplaced: liner,
-              refillBagsAdded: parseInt(refill, 10) || 0,
-              notes: notes.trim() || undefined,
-            })
-          }
-        >
-          {existing ? "Update" : "Save"}
-        </Button>
+        {readOnly ? (
+          <p className="col-span-6 text-2xs text-muted-foreground">
+            Read-only while previewing another technician's day.
+          </p>
+        ) : (
+          <Button
+            size="sm"
+            className="col-span-6"
+            disabled={disabled}
+            onClick={() =>
+              onSave({
+                bagsCollected: parseInt(bags, 10) || 0,
+                linerReplaced: liner,
+                refillBagsAdded: parseInt(refill, 10) || 0,
+                notes: notes.trim() || undefined,
+              })
+            }
+          >
+            {existing ? "Update" : "Save"}
+          </Button>
+        )}
       </div>
     </div>
   );
