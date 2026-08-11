@@ -17,7 +17,29 @@ concurrency:
 jobs:
   verify:
     name: Typecheck, lint, tests
-    runs-on: ubuntu-latest
+    # ── WHERE THIS RUNS, AND WHY IT IS A VARIABLE ─────────────────────────
+    #
+    # Unset — the default — means GitHub's hosted runners, exactly as before.
+    # Setting the repository variable `CI_RUNNER` to `self-hosted` points CI at
+    # a machine of ours instead, with no edit to this file and no commit.
+    #
+    # It is a variable rather than a hardcoded `self-hosted` because of how
+    # Actions behaves when no matching runner is online: the job does not fail,
+    # it QUEUES, and it keeps queueing for 24 hours before GitHub terminates
+    # it. A laptop that is closed for the evening would turn every push — and
+    # every merge to main, which is the hard migration gate — into a check that
+    # sits pending overnight and then fails for a reason that has nothing to do
+    # with the code. A red X is recoverable; a check that is neither red nor
+    # green for a day is the kind of thing people learn to ignore.
+    #
+    # So the switch back is Settings → Secrets and variables → Actions →
+    # Variables → delete `CI_RUNNER`. One click, no PR, effective on the next
+    # run. See docs/self-hosted-runner.md.
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    # A hosted runner is destroyed after each job; a self-hosted one is not, so
+    # a wedged step there holds the machine until someone notices. The whole
+    # job takes about three minutes.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -93,7 +115,15 @@ jobs:
 
   migrations:
     name: Migrations applied to the live database
+    # Deliberately NOT following `CI_RUNNER`. Two reasons, and either alone
+    # would be enough. It shells out to `psql`, which the step below notes
+    # ships on ubuntu-latest and will not be on a laptop unless someone
+    # installed it; and it is the job that holds SUPABASE_DB_URL and
+    # STRIPE_SECRET_KEY, which is the last place to want an environment nobody
+    # can reproduce. It runs only on main and on manual dispatch, so it is
+    # rare enough that hosted minutes are not the concern here anyway.
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # Skipped on pull requests, and this costs nothing real: every step below
     # already carried `continue-on-error: ${{ github.event_name ==
     # 'pull_request' }}`, so on a PR the whole job could only ever produce
