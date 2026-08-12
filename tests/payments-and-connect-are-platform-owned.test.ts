@@ -34,9 +34,18 @@ function migrationFiles(): string[] {
 }
 
 /** CREATE OR REPLACE means the LAST migration defining a function is the one in
- *  force; comparing against an earlier copy would let a regression pass. */
+ *  force; comparing against an earlier copy would let a regression pass.
+ *
+ *  DEFINING, not mentioning. This used to match any `FUNCTION public.<name>(`,
+ *  which a `REVOKE ... ON FUNCTION` satisfies just as well as a CREATE — so a
+ *  later migration that only changed a grant became "the definition" and every
+ *  assertion below read an empty body and failed. `COMMENT ON FUNCTION` and
+ *  `ALTER FUNCTION ... OWNER TO` would have done the same. */
 function latestDefinitionOf(fnName: string): string {
-  const re = new RegExp(`FUNCTION\\s+public\\.${fnName}\\s*\\(`, "i");
+  const re = new RegExp(
+    `CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fnName}\\s*\\(`,
+    "i",
+  );
   let found = "";
   for (const f of migrationFiles()) {
     const sql = readFileSync(join(MIGRATIONS, f), "utf8");

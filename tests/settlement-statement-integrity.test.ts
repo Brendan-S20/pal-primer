@@ -28,9 +28,14 @@ function migrationFiles(): string[] {
     .sort();
 }
 
-/** CREATE OR REPLACE means the LAST definition is the one that runs. */
+/** CREATE OR REPLACE means the LAST definition is the one that runs.
+ *
+ *  A DEFINITION, not a mention: `REVOKE ... ON FUNCTION public.<name>()` names
+ *  the function too, and matching it made a grant-only migration "the latest
+ *  definition" — after which `bodyOf` returned "" and every assertion here
+ *  failed against nothing. */
 function latestDefinitionOf(fn: string): string {
-  const re = new RegExp(`FUNCTION\\s+public\\.${fn}\\s*\\(`, "i");
+  const re = new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fn}\\s*\\(`, "i");
   let found = "";
   for (const f of migrationFiles()) {
     const sql = readFileSync(join(MIGRATIONS, f), "utf8");
@@ -45,7 +50,10 @@ function latestDefinitionOf(fn: string): string {
  *  of the arithmetic is how a check ends up green while measuring nothing. */
 function bodyOf(fn: string): string {
   const sql = latestDefinitionOf(fn);
-  const i = sql.indexOf(`FUNCTION public.${fn}`);
+  // Same reason as above: start at the CREATE, not at the first mention.
+  const i = sql.search(
+    new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fn}\\s*\\(`, "i"),
+  );
   if (i < 0) return "";
   const body = sql.slice(i);
   return body.slice(0, body.indexOf("$function$;"));
