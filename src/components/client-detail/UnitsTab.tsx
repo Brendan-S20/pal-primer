@@ -449,7 +449,10 @@ function UnitCard({
           {(u.resident_phone || u.resident_email || u.notes) && (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
               {u.resident_phone && <span>{u.resident_phone}</span>}
-              {u.resident_email && <span>{u.resident_email}</span>}
+              {/* One unbreakable token as a flex item: without `break-all` this
+                  row is at least as wide as the resident's address, which sets
+                  the width of the unit card. */}
+              {u.resident_email && <span className="break-all">{u.resident_email}</span>}
               {u.notes && <span>{u.notes}</span>}
             </div>
           )}

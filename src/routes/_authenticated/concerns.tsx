@@ -251,7 +251,7 @@ function ConcernsPage() {
             return (
               <li key={c.id} className="rounded-lg border bg-card p-4">
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="flex items-start gap-2.5">
+                  <div className="flex min-w-0 items-start gap-2.5">
                     {status !== "resolved" && (
                       <Checkbox
                         className="mt-0.5"
@@ -260,7 +260,13 @@ function ConcernsPage() {
                         aria-label={`Select concern from ${client?.display_name ?? "client"}`}
                       />
                     )}
-                    <div>
+                    {/* The submitted line below ends in the client's email
+                        address. With no `min-w-0` on this wrapper or on the row
+                        above it, the card's minimum width is that one token and
+                        the whole PAGE scrolls sideways. `break-words` breaks the
+                        address once the box is narrower than it; it is the
+                        address the office replies to, so it is not truncated. */}
+                    <div className="min-w-0">
                     <div className="flex items-center gap-2 max-md:flex-wrap">
                       <span className="font-medium">{client?.display_name ?? "Client"}</span>
                       <Badge variant="outline">{CONCERN_CATEGORY_LABELS[c.category] ?? humanizeEnum(c.category)}</Badge>
@@ -268,7 +274,7 @@ function ConcernsPage() {
                         {STATUS_LABEL[status]}
                       </Badge>
                     </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
+                    <div className="mt-1 break-words text-xs text-muted-foreground">
                       Submitted {fmt(c.created_at)}
                       {client?.primary_phone ? ` · ${client.primary_phone}` : ""}
                       {client?.primary_email ? ` · ${client.primary_email}` : ""}
