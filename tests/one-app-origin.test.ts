@@ -10,9 +10,13 @@ import { appOrigin, appUrl } from "@/lib/app-origin";
 // On 2026-08-02 that was the bare host: `app.houndstack.com` 307'd to
 // `www.app.houndstack.com`, and the native app pointed at the documented host
 // could not call a single server function. The owner removed the CDN rule the
-// same day and it reversed: `app.houndstack.com` now answers 204 with
+// same day and it reversed: `app.houndstack.com` answers 204 with
 // `allow-origin: capacitor://localhost` and the `x-tss-*` expose-headers, and
-// `www.app.houndstack.com` 302s back to it.
+// `www.app.houndstack.com` 302'd back to it.
+//
+// On 2026-08-10 the www host stopped resolving entirely — NXDOMAIN, nothing
+// there to redirect. See the second half of this file for what that cost and
+// the rule it added.
 //
 // That reversal is the argument for this file. Before it, twenty-four places in
 // src/ wrote an app host by hand and disagreed — portal links, unsubscribe URLs,
@@ -143,11 +147,18 @@ function tsCode(src: string): string {
 }
 
 function tsFiles(dir: string): string[] {
+  return allFiles(dir).filter((f) => /\.(ts|tsx)$/.test(f));
+}
+
+/** Every readable file under `dir`, whatever its extension — the documented-URL
+ *  rule below has to see .sql and .md as well as .ts. */
+function allFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir)) {
+    if (entry === "node_modules" || entry === "dist" || entry.startsWith(".")) continue;
     const full = join(dir, entry);
-    if (statSync(full).isDirectory()) out.push(...tsFiles(full));
-    else if (/\.(ts|tsx)$/.test(entry)) out.push(full);
+    if (statSync(full).isDirectory()) out.push(...allFiles(full));
+    else out.push(full);
   }
   return out;
 }
@@ -172,6 +183,113 @@ describe("nothing writes the host by hand", () => {
       ).not.toMatch(/https:\/\/(www\.)?app\.houndstack\.com/);
     });
   }
+});
+
+/**
+ * The other way a host spreads, which the rule above deliberately does not see.
+ *
+ * `tsCode()` strips comments on purpose — a doc block that mentions a host in
+ * passing is not a defect, and failing on prose is how a check gets switched
+ * off. That reasoning is still right for prose. It is wrong for one specific
+ * shape, and 2026-08-10 is the day that became clear.
+ *
+ * `src/routes/api/public/leads.ts` opened with the line
+ *
+ *     // POST https://www.app.houndstack.com/api/public/leads
+ *
+ * which is not prose. It is an instruction: it names the URL an integrator
+ * pastes into their own site or a provider's dashboard. It had been wrong for
+ * some time and no test could see it, because it is a comment.
+ *
+ * What that costs was demonstrated the same week by the Resend suppression
+ * webhook, which had been configured against `www.app.houndstack.com` while
+ * that host still answered. When the DNS record went away the endpoint began
+ * failing with no HTTP status at all — a connect error — Resend disabled it
+ * after repeated failures, and it stayed disabled for eight days. Bounces and
+ * spam complaints recorded nowhere; `suppressed_emails` frozen at 14 rows with
+ * its newest dated 2026-08-02, while the app went on sending mail normally.
+ * Nothing in the app was broken, so nothing in the app complained.
+ *
+ * So: a comment naming a host is still fine. A comment naming a host in
+ * CALLABLE position — an HTTP verb followed by an absolute URL — is a fact
+ * about where this app lives, and has to agree with the one constant that says
+ * where this app lives.
+ *
+ * Deliberately narrow. It matches `VERB https://…` at the start of a comment
+ * line and nothing else, which repo-wide is one line today. It does not touch
+ * the marketing hosts (`houndstack.com`, `www.houndstack.com`) — a different
+ * property with a different origin — and it does not touch prose that happens
+ * to contain a URL, including the worked example in
+ * `src/lib/server-fn-origin.ts` of a value that deliberately does NOT work.
+ */
+describe("a URL written for someone else to call names the right host", () => {
+  const ENDPOINT_COMMENT =
+    /^[ \t]*(?:\/\/|--|#|\*)[ \t]*(GET|POST|PUT|PATCH|DELETE|OPTIONS)[ \t]+(https?:\/\/[^\s)"'`]+)/gim;
+
+  const ROOT = new URL("..", import.meta.url).pathname;
+
+  const documented = (): { file: string; line: number; verb: string; url: string }[] => {
+    const out: { file: string; line: number; verb: string; url: string }[] = [];
+    for (const dir of ["src", "scripts", "supabase", "docs"]) {
+      let files: string[];
+      try {
+        files = allFiles(join(ROOT, dir));
+      } catch {
+        continue; // a directory that does not exist is not a failure
+      }
+      for (const file of files) {
+        let text: string;
+        try {
+          text = readFileSync(file, "utf8");
+        } catch {
+          continue; // unreadable or binary
+        }
+        for (const m of text.matchAll(ENDPOINT_COMMENT)) {
+          out.push({
+            file: file.slice(ROOT.length),
+            line: text.slice(0, m.index).split("\n").length,
+            verb: m[1],
+            url: m[2],
+          });
+        }
+      }
+    }
+    return out;
+  };
+
+  it("finds the documented endpoints at all, rather than passing on none", () => {
+    // If this drops to zero the rule below is vacuous. One line matches today;
+    // the assertion is that the scan still works, not that the count is fixed.
+    expect(documented().length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("points every one of them at the host this app actually answers on", () => {
+    delete process.env.APP_ORIGIN;
+    delete process.env.PUBLIC_APP_ORIGIN;
+    delete process.env.APP_URL;
+    const expected = new URL(appOrigin()).host;
+
+    const wrong = documented()
+      .filter((d) => /houndstack\.com/.test(d.url))
+      .filter((d) => {
+        const host = new URL(d.url).host;
+        // The marketing site is a separate property, not this app.
+        if (host === "houndstack.com" || host === "www.houndstack.com") return false;
+        return host !== expected;
+      })
+      .map((d) => `${d.file}:${d.line}  ${d.verb} ${d.url}`);
+
+    expect(
+      wrong,
+      wrong.length
+        ? `these lines tell an integrator to call a host this app does not answer on ` +
+            `(expected ${expected}).\nA wrong host here does not break a test or a build — ` +
+            `it gets pasted into someone else's\nconfiguration and fails there, with no status ` +
+            `code and nothing on this side reporting it:\n` +
+            wrong.map((w) => `  ${w}`).join("\n")
+        : "",
+    ).toEqual([]);
+  });
 });
 
 describe("the script and the module agree on the default", () => {

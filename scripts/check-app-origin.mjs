@@ -12,10 +12,14 @@
 // could not call a single server function.
 //
 // The owner removed the CDN rule the same day, and the direction REVERSED: the
-// bare host now serves and the www form redirects. This script caught that flip
-// on the next run, which is the whole argument for its existence. The CORS and
+// bare host served and the www form redirected. This script caught that flip on
+// the next run, which is the whole argument for its existence. The CORS and
 // CSRF work was right throughout; only ever the host was wrong, and which host
 // is wrong is a fact that lives at the edge and nowhere in this repo.
+//
+// Since 2026-08-10 the www host does not resolve at all (NXDOMAIN). Which is
+// the same argument again, one step further: the edge can not only reverse a
+// redirect, it can delete a host, and nothing in the repo would know.
 //
 // ── WHAT IT ASSERTS ───────────────────────────────────────────────────────
 //
@@ -86,10 +90,11 @@ async function main() {
 
   // Only a redirect that leaves the ORIGIN is a finding.
   //
-  // The first version of this flagged the default host, because
-  // `www.app.houndstack.com/` answers 307 → `/auth` — the app's own routing for
-  // a signed-out visitor, which is correct. Failing a check on correct
-  // behaviour is how a check gets switched off, so the test is
+  // The first version of this flagged the default host for answering 307 →
+  // `/auth` — the app's own routing for a signed-out visitor, which is correct.
+  // (It was `www.app.houndstack.com` doing that then; today it is
+  // `app.houndstack.com`, still 307 → `/auth`, still correct.) Failing a check
+  // on correct behaviour is how a check gets switched off, so the test is
   // "does it send me to a different host", not "does it redirect".
   if (crossOrigin(base, root)) {
     problems.push(

@@ -37,10 +37,15 @@ import {
   countPendingForVisit,
   countQueuedCompletionPhotos,
   enqueueAction,
+  listPending,
 } from "@/lib/offline/queue";
 import { runOrQueue } from "@/lib/offline/run-or-queue";
 import { resolveOfflineUserId } from "@/lib/offline/action-owner";
-import { describeReadFreshness, formatCacheAge } from "@/lib/offline/read-cache-policy";
+import {
+  describeReadFreshness,
+  formatCacheAge,
+  READ_CACHE_MAX_AGE_MS,
+} from "@/lib/offline/read-cache-policy";
 import { toast } from "sonner";
 import {
   Navigation,
@@ -82,6 +87,30 @@ export const Route = createFileRoute("/_authenticated/my-day")({
 // dataUpdatedAt predates it was restored from the device rather than fetched
 // now — that is what separates "today's route" from "the copy on disk".
 const SESSION_STARTED_AT = Date.now();
+
+/**
+ * How long a fetched station list stays in the query cache — and it is the
+ * whole point of the prefetch, not a tuning knob.
+ *
+ * React Query drops a query five minutes after its last observer goes away, and
+ * a prefetched query never has one. So a station list fetched while the truck
+ * had signal at 7am was gone from memory by 7:05, `dehydrate` had nothing to
+ * write, and the tech reached the property at 11 with an empty panel — the
+ * prefetch would have looked like it worked and changed nothing.
+ *
+ * Held for as long as the device is allowed to keep the day's reads at all
+ * (READ_CACHE_MAX_AGE_MS) so memory and disk expire on one rule rather than
+ * two: a list that is still on disk is still worth showing, and one that is too
+ * old for disk is too old for the panel.
+ *
+ * `staleTime` only keeps the prefetch from re-firing on every render of the
+ * day; opening the panel with signal still refetches, which is what picks up a
+ * log another tech filed against the same visit.
+ */
+const VISIT_STATIONS_CACHE = {
+  gcTime: READ_CACHE_MAX_AGE_MS,
+  staleTime: 60_000,
+} as const;
 
 function todayISO() {
   const d = new Date();
@@ -179,13 +208,7 @@ function MyDay() {
   const { role } = useMyRole();
   const isOfficeRole = role === "owner" || role === "office_manager" || role === "dispatcher";
 
-  const {
-    data,
-    isLoading,
-    isError,
-    dataUpdatedAt,
-    refetch,
-  } = useQuery({
+  const { data, isLoading, isError, dataUpdatedAt, refetch } = useQuery({
     queryKey: ["my-day", day, staffParam ?? ""],
     queryFn: () => fn({ data: staffParam ? { day, staffId: staffParam } : { day } }),
   });
@@ -300,6 +323,44 @@ function MyDay() {
 
   const visits = data?.visits ?? [];
   const staff = data?.staff;
+
+  // ── the read half of the same basement garage ────────────────────────────
+  //
+  // Logging a station survives a dead zone now (runOrQueue → IndexedDB →
+  // syncQueue). Seeing which stations there are did not, and a queue is worth
+  // nothing if the tech never gets a row to press.
+  //
+  // "visit-stations" has been on the offline allowlist since the read cache was
+  // written, which made this look covered and is why it went unnoticed: the
+  // allowlist says what MAY be persisted, not what ever gets fetched. The query
+  // lives inside StationsSubpanel, the subpanel is rendered only while
+  // `showStations`, and a tech taps Stations when they are standing at the
+  // stations — under an apartment complex, with no signal. So the one fetch
+  // that could have filled the cache was always attempted from the one place it
+  // could not succeed, and the allowlisted entry was never written.
+  //
+  // Prefetching here moves that fetch to the morning, on the run through the
+  // day list, where the truck still has a bar. Only the commercial and
+  // multi-unit stops — the same test the Stations button itself uses, because a
+  // residential property has no stations and fetching one per house would spend
+  // the device's whole byte budget proving it.
+  const stationsFn = useServerFn(getVisitStations);
+  const dayVisits = data?.visits;
+  useEffect(() => {
+    // Offline this would only mint a failed query per commercial stop, and a
+    // failed query is not persisted — it would evict nothing and fix nothing.
+    if (!online || !dayVisits) return;
+    type Stop = { id: string; properties?: { account_type?: string; has_units?: boolean } | null };
+    for (const v of dayVisits as Stop[]) {
+      const prop = v?.properties;
+      if (!(prop?.account_type === "commercial" || prop?.has_units)) continue;
+      void qc.prefetchQuery({
+        queryKey: ["visit-stations", v.id],
+        queryFn: () => stationsFn({ data: { visitId: v.id } }),
+        ...VISIT_STATIONS_CACHE,
+      });
+    }
+  }, [online, dayVisits, qc, stationsFn]);
 
   // "Done" means COMPLETED (H1): a skipped visit is not a finished job, so it
   // must not inflate the progress bar (the "2 of 7 done · 29%" with 0 completed
@@ -845,7 +906,9 @@ function DogsRow({ dogs }: { dogs: any }) {
           >
             🐕 {d?.name ?? "Dog"}
             {d?.temperament && (
-              <span className="opacity-80">· {DOG_TEMPERAMENT_LABELS[d.temperament] ?? d.temperament}</span>
+              <span className="opacity-80">
+                · {DOG_TEMPERAMENT_LABELS[d.temperament] ?? d.temperament}
+              </span>
             )}
           </span>
         );
@@ -1562,7 +1625,7 @@ function VisitCard({
               onDone={() => setShowDna(false)}
             />
           )}
-          {showStations && <StationsSubpanel visitId={visit.id} />}
+          {showStations && <StationsSubpanel visitId={visit.id} readOnly={preview} />}
         </div>
       )}
     </li>
@@ -1640,13 +1703,86 @@ function DnaSamplePanel({
   );
 }
 
-function StationsSubpanel({ visitId }: { visitId: string }) {
+/**
+ * Which of this visit's stations have a log sitting in the queue.
+ *
+ * The green "saved" tick is driven by the server's own logs, so offline every
+ * row a tech had just filled in still read as untouched — on the screen where
+ * they are working down a wall of identical bins and the only way to tell which
+ * ones are done is to look. The visit card's pending count and the "Queued"
+ * toast both said something happened; the row itself, the only place that
+ * answers "did I already do this one", said nothing.
+ *
+ * Read from IndexedDB rather than remembered in component state so it survives
+ * the panel being closed, the card collapsing, and the app being killed in a
+ * pocket — all of which happen between the first station and the last.
+ *
+ * Scoped to this user for the reason every read of the queue is: on a shared
+ * tablet the previous tech's queued logs are not this tech's work, and marking
+ * a bin done on their behalf is how one gets skipped.
+ */
+function useQueuedStationIds(visitId: string): Set<string> {
+  const [ids, setIds] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      resolveOfflineUserId()
+        .then((userId) => listPending(userId))
+        .then((actions) => {
+          if (cancelled) return;
+          setIds(
+            new Set(
+              actions
+                .filter((a) => a.kind === "station" && a.visitId === visitId)
+                .map((a) => (a as { wasteStationId: string }).wasteStationId),
+            ),
+          );
+        })
+        .catch(() => {
+          // No resolvable owner means no queue we may attribute. An empty set
+          // understates; inventing one would mark bins done that are not.
+          if (!cancelled) setIds(new Set());
+        });
+    };
+    refresh();
+    // Both edges matter: enqueue marks a row, and the delete that syncQueue
+    // does on a successful replay is what un-marks it once the server has it.
+    window.addEventListener("offline-queue-change", refresh);
+    window.addEventListener("online", refresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("offline-queue-change", refresh);
+      window.removeEventListener("online", refresh);
+    };
+  }, [visitId]);
+  return ids;
+}
+
+/** `readOnly` is the preview case, and it is the whole reason this prop exists.
+ *  The header of /my-day badges an office role viewing a tech's day as
+ *  "Preview · read-only", and every other control on the card honours that
+ *  through `canPerformVisit`. This panel did not: `log_station_service` accepts
+ *  `can_write_org OR is_visit_tech`, so office staff ARE permitted, and the
+ *  Save button wrote a real station-service record against another person's
+ *  visit from a screen promising to write nothing. The read stays — seeing
+ *  which bins a tech has logged is exactly what an office user opens a preview
+ *  for — and only the write goes. */
+function StationsSubpanel({ visitId, readOnly = false }: { visitId: string; readOnly?: boolean }) {
   const qc = useQueryClient();
   const listFn = useServerFn(getVisitStations);
   const logFn = useServerFn(logStationService);
-  const { data } = useQuery({
+  const online = useOnline();
+  const queuedStationIds = useQueuedStationIds(visitId);
+  const { data, isPending } = useQuery({
     queryKey: ["visit-stations", visitId],
     queryFn: () => listFn({ data: { visitId } }),
+    // The same options the day's prefetch used. If they differed, the entry the
+    // prefetch put in the cache and the entry this panel wants would still be
+    // one query — React Query keeps the longest gcTime any observer asked for —
+    // but the prefetch's three days would be the only thing holding it, and a
+    // reader that quietly relies on somebody else's setting is one edit away
+    // from a panel that is empty again with nothing to point at.
+    ...VISIT_STATIONS_CACHE,
   });
 
   // Through the queue, like Start / Complete / Skip / photos.
@@ -1692,6 +1828,24 @@ function StationsSubpanel({ visitId }: { visitId: string }) {
   const logs: any[] = data?.logs ?? [];
   const logFor = (sid: string) => logs.find((l) => l.waste_station_id === sid);
 
+  // "No stations configured" is an answer from the server, and it used to be
+  // printed whenever `data` was missing for ANY reason — including the fetch
+  // having failed in the dead zone this panel is opened in. So the app told a
+  // tech standing in front of a row of bins that the property has none and to
+  // go and ask the office, which is a specific, confident, wrong instruction.
+  // Not knowing has to look different from knowing there are none.
+  if (!data) {
+    return (
+      <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+        {isPending
+          ? "Loading stations…"
+          : online
+            ? "Couldn't load this property's stations. Try again in a moment."
+            : "No saved copy of this property's stations on this device. Open My Day where you have signal and they'll be here next time."}
+      </div>
+    );
+  }
+
   if (stations.length === 0) {
     return (
       <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
@@ -1710,8 +1864,10 @@ function StationsSubpanel({ visitId }: { visitId: string }) {
             key={s.id}
             station={s}
             existing={existing}
+            queued={queuedStationIds.has(s.id)}
             onSave={(payload) => mut.mutate({ wasteStationId: s.id, ...payload })}
             disabled={mut.isPending}
+            readOnly={readOnly}
           />
         );
       })}
@@ -1722,11 +1878,16 @@ function StationsSubpanel({ visitId }: { visitId: string }) {
 function StationRow({
   station,
   existing,
+  queued,
   onSave,
   disabled,
+  readOnly = false,
 }: {
   station: any;
   existing?: any;
+  /** This station has a log waiting in the offline queue — saved on the device,
+   *  not yet on the server, and therefore invisible to `existing`. */
+  queued?: boolean;
   onSave: (v: {
     bagsCollected: number;
     linerReplaced: boolean;
@@ -1734,6 +1895,12 @@ function StationRow({
     notes?: string;
   }) => void;
   disabled: boolean;
+  /** Preview: show the record, offer no way to change it. Distinct from
+   *  `disabled`, which is the transient in-flight state of a save that IS
+   *  allowed. The inputs go down with the button — a field left editable under
+   *  a heading that says read-only invites someone to type numbers that can
+   *  never be saved. */
+  readOnly?: boolean;
 }) {
   const [bags, setBags] = useState<string>(String(existing?.bags_collected ?? "0"));
   const [liner, setLiner] = useState<boolean>(existing?.liner_replaced ?? false);
@@ -1741,9 +1908,18 @@ function StationRow({
   const [notes, setNotes] = useState<string>(existing?.notes ?? "");
   return (
     <div className="rounded-md border bg-background p-2">
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-medium">{station.label}</div>
-        {existing && <span className="text-2xs text-emerald-600">saved</span>}
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0 truncate text-sm font-medium">{station.label}</div>
+        {/* Queued outranks saved: if both are true the tech has logged this
+            station again since the server's copy, and "saved" would point at
+            the older of the two answers. */}
+        {queued ? (
+          <span className="shrink-0 text-2xs font-medium text-amber-600 dark:text-amber-500">
+            queued
+          </span>
+        ) : (
+          existing && <span className="shrink-0 text-2xs text-emerald-600">saved</span>
+        )}
       </div>
       {station.location_description && (
         <div className="text-2xs text-muted-foreground">{station.location_description}</div>
@@ -1755,8 +1931,9 @@ function StationRow({
             type="number"
             min="0"
             value={bags}
+            disabled={readOnly}
             onChange={(e) => setBags(e.target.value)}
-            className="h-9 w-full rounded-md border bg-background px-2"
+            className="h-9 w-full rounded-md border bg-background px-2 disabled:opacity-60"
           />
         </label>
         <label className="col-span-2">
@@ -1765,40 +1942,49 @@ function StationRow({
             type="number"
             min="0"
             value={refill}
+            disabled={readOnly}
             onChange={(e) => setRefill(e.target.value)}
-            className="h-9 w-full rounded-md border bg-background px-2"
+            className="h-9 w-full rounded-md border bg-background px-2 disabled:opacity-60"
           />
         </label>
         <label className="col-span-2 flex items-center gap-2 pt-4">
           <input
             type="checkbox"
             checked={liner}
+            disabled={readOnly}
             onChange={(e) => setLiner(e.target.checked)}
-            className="h-4 w-4"
+            className="h-4 w-4 disabled:opacity-60"
           />
           <span>Liner replaced</span>
         </label>
         <input
-          className="col-span-6 h-9 rounded-md border bg-background px-2"
+          className="col-span-6 h-9 rounded-md border bg-background px-2 disabled:opacity-60"
           placeholder="Notes (optional)"
           value={notes}
+          disabled={readOnly}
           onChange={(e) => setNotes(e.target.value)}
         />
-        <Button
-          size="sm"
-          className="col-span-6"
-          disabled={disabled}
-          onClick={() =>
-            onSave({
-              bagsCollected: parseInt(bags, 10) || 0,
-              linerReplaced: liner,
-              refillBagsAdded: parseInt(refill, 10) || 0,
-              notes: notes.trim() || undefined,
-            })
-          }
-        >
-          {existing ? "Update" : "Save"}
-        </Button>
+        {readOnly ? (
+          <p className="col-span-6 text-2xs text-muted-foreground">
+            Read-only while previewing another technician's day.
+          </p>
+        ) : (
+          <Button
+            size="sm"
+            className="col-span-6"
+            disabled={disabled}
+            onClick={() =>
+              onSave({
+                bagsCollected: parseInt(bags, 10) || 0,
+                linerReplaced: liner,
+                refillBagsAdded: parseInt(refill, 10) || 0,
+                notes: notes.trim() || undefined,
+              })
+            }
+          >
+            {existing ? "Update" : "Save"}
+          </Button>
+        )}
       </div>
     </div>
   );
