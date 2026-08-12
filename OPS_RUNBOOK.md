@@ -19,7 +19,8 @@ for these paths.
 | `RESEND_WEBHOOK_SECRET` | Resend delivery/bounce callbacks |
 | `SERVICE_ROLE_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`) | Service-role DB access; also accepted as cron authorization |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Web push. Unset ⇒ web push silently unavailable. |
-| `APNS_AUTH_KEY` / `APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_TOPIC` / `APNS_ENVIRONMENT` / `FCM_SERVER_KEY` | Native iOS / Android push |
+| `APNS_AUTH_KEY` / `APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_TOPIC` / `APNS_ENVIRONMENT` | Native iOS push |
+| `FCM_SERVICE_ACCOUNT` | Native Android push — the whole service-account JSON from Firebase → Project settings → Service accounts. Replaces `FCM_SERVER_KEY`, whose legacy endpoint Google decommissioned; setting the old name now does nothing. |
 | `GOOGLE_PLACES_API_KEY` | Address autocomplete on signup and property forms |
 | `QBO_CLIENT_ID` / `QBO_CLIENT_SECRET` / `QBO_ENVIRONMENT` / `XERO_CLIENT_ID` / `XERO_CLIENT_SECRET` | QuickBooks / Xero OAuth |
 
