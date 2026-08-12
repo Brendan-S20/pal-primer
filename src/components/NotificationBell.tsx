@@ -45,19 +45,31 @@ export function NotificationBell() {
   const deleteOne = useMutation({ mutationFn: (id: string) => deleteFn({ data: { id } }), onSuccess: invalidate });
 
   return (
-    <div className="relative">
+    <div className="relative shrink-0">
       <button
         type="button"
         aria-label="Notifications"
         onClick={() => setOpen((o) => !o)}
-        className="relative rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground max-md:p-2.5"
+        // A 16px glyph centred in a 44px box, the shape ui/dialog.tsx and
+        // ui/sheet.tsx already use. Padding was carrying the size here — `p-2`
+        // is a 32px target and `max-md:p-2.5` around a 20px glyph reaches 40,
+        // so the one control that opens this panel was under the minimum on
+        // every width, phone included. Growing the padding further would have
+        // made the bell look bigger; the box takes the size instead.
+        className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
       >
-        <Bell className="h-4 w-4 max-md:h-5 max-md:w-5" />
-        {unread > 0 && (
-          <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-3xs font-semibold leading-none text-white">
-            {unread > 9 ? "9+" : unread}
-          </span>
-        )}
+        {/* The unread count is anchored to the GLYPH rather than to the hit
+            area. Pinned to the button's corner it would sit out in the empty
+            padding of the 44px box, reading as a badge floating beside the
+            bell instead of on it. */}
+        <span className="relative flex items-center justify-center">
+          <Bell className="h-4 w-4 max-md:h-5 max-md:w-5" />
+          {unread > 0 && (
+            <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-3xs font-semibold leading-none text-white">
+              {unread > 9 ? "9+" : unread}
+            </span>
+          )}
+        </span>
       </button>
 
       {open && (
@@ -88,8 +100,12 @@ export function NotificationBell() {
               ) : (
                 <ul className="divide-y">
                   {items.map((n) => {
+                    // `pr-12` reserves the delete button's corner. Without it a
+                    // long title runs underneath a control that is permanently
+                    // visible at phone widths, so the tap that was meant to
+                    // open the notification dismisses it instead.
                     const inner = (
-                      <div className={`px-3 py-2.5 ${n.read_at ? "" : "bg-primary/5"}`}>
+                      <div className={`py-2.5 pl-3 pr-12 ${n.read_at ? "" : "bg-primary/5"}`}>
                         <div className="flex items-start gap-2">
                           {!n.read_at && <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />}
                           <div className="min-w-0">
@@ -117,7 +133,15 @@ export function NotificationBell() {
                           // Hover-only visibility is unreachable on touch: below
                           // `md` the delete stays visible at reduced opacity
                           // (and on focus for keyboard users).
-                          className="absolute right-2 top-2 hidden rounded p-0.5 text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground group-hover:block group-focus-within:block max-md:block max-md:p-1.5 max-md:opacity-60"
+                          //
+                          // Being reachable was not the same as being hittable.
+                          // A 14px glyph in `p-1.5` is a 26px target sitting on
+                          // top of a row that is itself a link — a near miss
+                          // opens the notification instead of dismissing it, and
+                          // the only feedback is the wrong thing happening. Now
+                          // the same glyph in the 44px box from ui/dialog.tsx;
+                          // `flex` rather than `block` is what centres it.
+                          className="absolute right-0 top-0 hidden h-11 w-11 items-center justify-center rounded text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground group-hover:flex group-focus-within:flex max-md:flex max-md:opacity-60"
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>

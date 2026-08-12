@@ -62,6 +62,7 @@ import { FOCUS_MY_DAY_SCHEDULE_EVENT } from "@/components/MobileTabBar";
 import { useTranslation } from "react-i18next";
 import { haptic } from "@/lib/haptics";
 import { useMyRole } from "@/hooks/useMyRole";
+import { useTabletTier } from "@/hooks/useTabletTier";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { CloseOutOpenVisits } from "@/components/CloseOutOpenVisits";
@@ -207,6 +208,30 @@ function MyDay() {
   const { t } = useTranslation();
   const { role } = useMyRole();
   const isOfficeRole = role === "owner" || role === "office_manager" || role === "dispatcher";
+
+  // This page has two layers that have to get out of the tab bar's way: the
+  // scroll container's bottom padding, and the NEXT UP bar that parks directly
+  // on top of the tab bar. Both were written as `max-md:` back when the tab bar
+  // was `md:hidden` and that was the only breakpoint in the app. The bar now
+  // reaches `lg` for field roles (useTabletTier), so on a 800px crew tablet the
+  // tab bar sat on top of NEXT UP and on top of the last visit's Complete
+  // button — the exact failure the hook's own comment warns about, in the one
+  // place that had not been converted.
+  //
+  // Reading `barThroughTablet` rather than spelling a breakpoint is what keeps
+  // these in step by construction: if the tier ever changes its mind about who
+  // keeps the bar, this follows without anyone remembering it exists. Both
+  // branches are written out in full because Tailwind scans for literal class
+  // names and never sees a string it had to assemble.
+  const { barThroughTablet } = useTabletTier();
+  // 7rem clears the NEXT UP bar on its own; the wider value adds the tab bar's
+  // 3.5rem on top of it, for exactly as long as the tab bar is on screen.
+  const belowTabBarPadding = barThroughTablet
+    ? "pb-[calc(7rem+env(safe-area-inset-bottom))] max-lg:pb-[calc(10.5rem+env(safe-area-inset-bottom))]"
+    : "pb-[calc(7rem+env(safe-area-inset-bottom))] max-md:pb-[calc(10.5rem+env(safe-area-inset-bottom))]";
+  const nextUpAboveTabBar = barThroughTablet
+    ? "max-lg:bottom-[calc(3.5rem+env(safe-area-inset-bottom))] max-lg:pb-0"
+    : "max-md:bottom-[calc(3.5rem+env(safe-area-inset-bottom))] max-md:pb-0";
 
   const { data, isLoading, isError, dataUpdatedAt, refetch } = useQuery({
     queryKey: ["my-day", day, staffParam ?? ""],
@@ -413,7 +438,7 @@ function MyDay() {
     );
 
   return (
-    <div className="-mx-4 -my-6 pb-[calc(7rem+env(safe-area-inset-bottom))] max-md:pb-[calc(10.5rem+env(safe-area-inset-bottom))]">
+    <div className={`-mx-4 -my-6 ${belowTabBarPadding}`}>
       {/* BUILD-11: a visit started on an earlier day (or before today's workday
           ended) that was never closed. Asks the tech what happened rather than
           guessing — nothing here completes anything on its own. */}
@@ -673,11 +698,15 @@ function MyDay() {
         </ol>
       </div>
 
-      {/* Sticky bottom "Next up" action bar. Below `md` it sits directly on
-          top of the MobileTabBar (whose height is 3.5rem + safe-area inset);
-          the tab bar already absorbs the safe-area, so no extra inset here. */}
+      {/* Sticky bottom "Next up" action bar. Wherever the MobileTabBar is on
+          screen this sits directly on top of it (the bar is 3.5rem + safe-area
+          inset), and the tab bar already absorbs the safe-area, so no extra
+          inset is added on that branch. Which widths those are is the tier's
+          call, not a fixed breakpoint — see nextUpAboveTabBar above. */}
       {nextUp && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70 animate-fade-in max-md:bottom-[calc(3.5rem+env(safe-area-inset-bottom))] max-md:pb-0">
+        <div
+          className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70 animate-fade-in ${nextUpAboveTabBar}`}
+        >
           <a
             href={`#visit-${nextUp.id}`}
             onClick={() => haptic("select")}
