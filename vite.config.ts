@@ -137,7 +137,13 @@ export default defineConfig({
           theme_color: "#fdfaf1",
           background_color: "#fdfaf1",
           display: "standalone",
-          start_url: "/my-day",
+          // "/" and not "/my-day". /my-day is the technician's screen: an
+          // owner or office manager who installed the app landed every time on
+          // a route their role has no visits on. "/" redirects to /auth, which
+          // when a session already exists runs `landingPathForUser` and sends
+          // each role to its own home — the same path the app uses after
+          // sign-in, so the installed app opens where the browser would.
+          start_url: "/",
           scope: "/",
           icons: [
             { src: "/pwa-192.png", sizes: "192x192", type: "image/png" },

@@ -180,14 +180,17 @@ function ClientsList() {
   return (
     <div className="space-y-6">
       {dialog}
-      <div className="flex items-center justify-between">
-        <div>
+      {/* flex-wrap, because at 360px "Export CSV" and "New client" beside a
+          two-line title is about 480px of content in a 360px row: without it
+          the buttons go over the right edge rather than dropping under. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Clients</h1>
           <p className="text-sm text-muted-foreground">
             {stats.total} total · {stats.active} active
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             disabled={!filtered.length}

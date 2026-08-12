@@ -193,7 +193,7 @@ function PlatformHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-card/80 px-3 backdrop-blur sm:px-4">
+    <header className="sticky top-[var(--hs-banner-h,0px)] z-30 flex h-14 items-center gap-2 border-b bg-card/80 px-3 backdrop-blur sm:px-4">
       <SidebarTrigger className="min-h-11 min-w-11" />
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <Shield className="h-4 w-4 shrink-0 text-primary sm:hidden" />

@@ -443,9 +443,12 @@ function MyDay() {
           ended) that was never closed. Asks the tech what happened rather than
           guessing — nothing here completes anything on its own. */}
       <CloseOutOpenVisits />
-      {/* Sticky, blurred top bar — feels like a native nav */}
+      {/* Sticky, blurred top bar — feels like a native nav.
+          `top` is the impersonation banner's measured height, 0 when there is
+          no banner: both are sticky to the same edge and the banner wins on
+          z-index, so a fixed top-0 here vanished under it. */}
       <div
-        className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+        className="sticky top-[var(--hs-banner-h,0px)] z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60"
         style={{ paddingTop: "env(safe-area-inset-top)" }}
       >
         <div className="space-y-3 px-4 py-3">

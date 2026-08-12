@@ -188,10 +188,14 @@ describe("the same page on a laptop is the page it was", () => {
     // `min-h-11` on the desktop header would make two 44px buttons next to a
     // 36px heading, which is the fix showing up where it was not needed.
     const sized = classTokens(codeOnly(read(DASHBOARD))).filter((t) => /(?:^|:)min-h-11/.test(t));
-    // Three: the two header buttons and the alert chip. Same reason as above —
-    // a page with no touch sizing left must not satisfy "the touch sizing is
-    // correctly scoped".
-    expect(sized.length).toBe(3);
+    // Four: the two header buttons, the alert chip, and the phone-only Show
+    // map toggle. That last one is `md:hidden` and so could never render at a
+    // desktop width whatever its height class said — it is scoped anyway,
+    // because a rule that has to be argued with per element is not a rule, and
+    // the argument is invisible from here. Same reason as above for asserting
+    // the count first: a page with no touch sizing left must not satisfy "the
+    // touch sizing is correctly scoped".
+    expect(sized.length).toBe(4);
     expect(sized.filter((t) => !t.startsWith("max-md:"))).toEqual([]);
   });
 

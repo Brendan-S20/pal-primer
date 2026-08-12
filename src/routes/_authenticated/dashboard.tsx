@@ -38,6 +38,9 @@ function Dashboard() {
   const sumFn = useServerFn(getDashboardSummary);
   const billingFn = useServerFn(getBillingStatus);
   const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
+  // Collapsed by default, phones only — see the note by the toggle. Desktop
+  // ignores this entirely: the map is always rendered above `md`.
+  const [mapOpen, setMapOpen] = useState(false);
 
   const { data: orgData, isLoading: orgLoading } = useQuery({
     queryKey: ["my-org"],
@@ -283,23 +286,50 @@ function Dashboard() {
 
       <div className="grid gap-4 max-md:order-1 lg:grid-cols-3">
         <div className="rounded-lg border bg-card p-4 max-md:order-2 lg:col-span-2">
-          <div className="mb-3 flex items-center justify-between">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold">Today's map</h2>
-            <Link to="/routes" className="text-xs text-primary hover:underline">
-              Open routes →
-            </Link>
+            <div className="flex items-center gap-3">
+              {/* Phone only. A 380px interactive map in the middle of a
+                  scrolling page is a scroll trap on touch: a drag that starts
+                  on the map pans the map, so the thumb has to find the narrow
+                  margin beside it to get past. On a pointer device the wheel
+                  scrolls the page and there is nothing to escape, which is why
+                  this is `md:hidden` rather than a control everywhere. */}
+              <button
+                type="button"
+                onClick={() => setMapOpen((v) => !v)}
+                className="max-md:min-h-11 text-xs text-primary underline-offset-2 hover:underline md:hidden"
+                aria-expanded={mapOpen}
+              >
+                {mapOpen ? "Hide map" : "Show map"}
+              </button>
+              <Link to="/routes" className="text-xs text-primary hover:underline">
+                Open routes →
+              </Link>
+            </div>
           </div>
-          {sumLoading ? (
-            <div className="flex h-[380px] items-center justify-center text-sm text-muted-foreground">
-              Loading map…
-            </div>
-          ) : groups.length === 0 ? (
-            <div className="flex h-[380px] items-center justify-center text-sm text-muted-foreground">
-              No visits scheduled today.
-            </div>
-          ) : (
-            <RouteMap groups={groups} height={380} onVisitClick={(id) => setDetailVisitId(id)} />
-          )}
+          <div className={mapOpen ? "" : "max-md:hidden"}>
+            {sumLoading ? (
+              <div className="flex h-[380px] items-center justify-center text-sm text-muted-foreground">
+                Loading map…
+              </div>
+            ) : groups.length === 0 ? (
+              <div className="flex h-[380px] items-center justify-center text-sm text-muted-foreground">
+                No visits scheduled today.
+              </div>
+            ) : (
+              <RouteMap groups={groups} height={380} onVisitClick={(id) => setDetailVisitId(id)} />
+            )}
+          </div>
+          {/* Not a placeholder for the map: the count is the one thing the map
+              was being scrolled past to learn. */}
+          <p className={`text-xs text-muted-foreground md:hidden ${mapOpen ? "hidden" : ""}`}>
+            {sumLoading
+              ? "Loading…"
+              : groups.length === 0
+                ? "No visits scheduled today."
+                : `${groups.reduce((n, g) => n + g.visits.length, 0)} visits across ${groups.length} route${groups.length === 1 ? "" : "s"}.`}
+          </p>
         </div>
 
         <div className="space-y-4 max-md:order-1">
