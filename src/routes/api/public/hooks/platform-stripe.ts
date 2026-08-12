@@ -126,13 +126,27 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
                 { onConflict: "stripe_invoice_id" },
               );
 
-              // Mirror plan status hints from invoice outcomes
-              if (orgId) {
-                if (event.type === "invoice.payment_failed") {
-                  await supabaseAdmin.from("organizations").update({ plan_status: "past_due" }).eq("id", orgId);
-                } else if (event.type === "invoice.paid") {
-                  await supabaseAdmin.from("organizations").update({ plan_status: "active" }).eq("id", orgId);
-                }
+              // Mirror plan status hints from invoice outcomes.
+              //
+              // `billing_status` moves with it. It used not to, anywhere in
+              // this file, and that column is the one MRR, active_tenants and
+              // the /platform/tenants chip all read — so a tenant who paid and
+              // never opened Settings → Billing read as `free` forever. See
+              // src/lib/platform-billing-status.server.ts.
+              const invoiceMovesStatus =
+                event.type === "invoice.paid" || event.type === "invoice.payment_failed";
+              if (orgId && invoiceMovesStatus) {
+                const next = event.type === "invoice.payment_failed" ? "past_due" : "active";
+                await supabaseAdmin
+                  .from("organizations")
+                  .update({ plan_status: next })
+                  .eq("id", orgId);
+                const { applyPlatformBillingStatus } =
+                  await import("@/lib/platform-billing-status.server");
+                await applyPlatformBillingStatus(supabaseAdmin, orgId as string, next, {
+                  source: "platform_webhook",
+                  detail: { event: event.type, invoice: inv.id ?? null },
+                });
               }
               break;
             }
@@ -230,6 +244,17 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
                   .from("organizations")
                   .update(orgUpdate as any)
                   .eq("id", orgId);
+                // The same status against the column the console actually
+                // reads. Deliberately a second write rather than a field on
+                // `orgUpdate`: it refuses to overwrite an admin suspension, and
+                // it files the conversion event "Converted this month" has been
+                // counting since the day it shipped.
+                const { applyPlatformBillingStatus } =
+                  await import("@/lib/platform-billing-status.server");
+                await applyPlatformBillingStatus(supabaseAdmin, orgId, mapped, {
+                  source: "platform_webhook",
+                  detail: { event: event.type, subscription: sub.id, stripe_status: sub.status },
+                });
                 // A dead subscription takes its bolt-on add-ons with it: mark
                 // them canceled and switch their feature flags off, so the org
                 // doesn't keep paid features free (and can re-buy cleanly).

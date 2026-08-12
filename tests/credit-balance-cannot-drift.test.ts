@@ -28,7 +28,9 @@ const ROOT = new URL("..", import.meta.url).pathname;
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 
 function migrationFiles(): string[] {
-  return readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();
+  return readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
 }
 
 function latestDefinitionOf(fn: string): string {
@@ -127,7 +129,9 @@ describe("the promo kind that could never be written", () => {
     // it, so EVERY promo redeemed from the client portal threw. Proven:
     // "kind=promo REJECTED by the check constraint".
     const constraint = /ADD CONSTRAINT credit_ledger_kind_check[\s\S]*?;/i.exec(
-      ALL_MIGRATION_SQL.slice(ALL_MIGRATION_SQL.lastIndexOf("ADD CONSTRAINT credit_ledger_kind_check")),
+      ALL_MIGRATION_SQL.slice(
+        ALL_MIGRATION_SQL.lastIndexOf("ADD CONSTRAINT credit_ledger_kind_check"),
+      ),
     )?.[0];
     expect(constraint).toBeTruthy();
     expect(constraint!).toMatch(/'promo'/);

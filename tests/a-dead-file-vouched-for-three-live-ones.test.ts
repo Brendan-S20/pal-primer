@@ -45,7 +45,9 @@ import { join } from "node:path";
 
 const root = join(import.meta.dirname, "..");
 const script = readFileSync(join(root, "scripts/check-dead-machinery.mjs"), "utf8");
-const baseline = JSON.parse(readFileSync(join(root, "scripts/dead-machinery-baseline.json"), "utf8"));
+const baseline = JSON.parse(
+  readFileSync(join(root, "scripts/dead-machinery-baseline.json"), "utf8"),
+);
 
 /** Comment lines stripped, so a `not.toMatch` cannot be satisfied or defeated
  *  by the prose that documents the fix. */

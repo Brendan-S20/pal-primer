@@ -34,6 +34,7 @@ import {
 import { toast } from "sonner";
 import { ArrowLeft, ExternalLink, MoreHorizontal, Trash2, UserCog } from "lucide-react";
 import { TenantStatusBadge } from "@/components/TenantStatusBadge";
+import { auditActorLabel } from "@/lib/platform-audit";
 
 export const Route = createFileRoute("/platform/tenants/$id")({
   head: () => ({ meta: [{ title: "Tenant · Platform admin" }, { name: "robots", content: "noindex" }] }),
@@ -619,7 +620,7 @@ function AuditTab({ orgId }: { orgId: string }) {
                 <div className="flex min-w-0 items-center gap-2">
                   <Badge variant="outline">{r.action}</Badge>
                   <span className="break-words text-xs text-muted-foreground">
-                    by {r.actor_email ?? r.actor_user_id.slice(0, 8)}
+                    by {auditActorLabel(r)}
                   </span>
                 </div>
                 <span className="text-xs text-muted-foreground">{fmtDate(r.created_at)}</span>

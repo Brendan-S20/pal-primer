@@ -286,7 +286,7 @@ export const listTenantInvoices = createServerFn({ method: "GET" })
 // ── Audit (per tenant) ───────────────────────────────────────────────
 export type TenantAuditRow = {
   id: string;
-  actor_user_id: string;
+  actor_user_id: string | null;
   actor_email: string | null;
   action: string;
   before_json: any;
@@ -316,7 +316,11 @@ export const listTenantAudit = createServerFn({ method: "GET" })
       } catch { /* ignore */ }
     }));
     return {
-      rows: (rows ?? []).map((r) => ({ ...r, actor_email: emails.get(r.actor_user_id) ?? null })),
+      // actor_user_id is null on a webhook-written row; the label falls back.
+      rows: (rows ?? []).map((r) => ({
+        ...r,
+        actor_email: r.actor_user_id ? (emails.get(r.actor_user_id) ?? null) : null,
+      })),
     };
   });
 

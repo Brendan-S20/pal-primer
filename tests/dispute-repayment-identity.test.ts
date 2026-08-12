@@ -22,7 +22,9 @@ const ROOT = new URL("..", import.meta.url).pathname;
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 
 function migrationFiles(): string[] {
-  return readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();
+  return readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
 }
 
 /** CREATE OR REPLACE means the LAST definition is the one that runs. */
@@ -57,16 +59,18 @@ describe("which uniqueness rule owns which row", () => {
   it("finds the cumulative index at all", () => {
     // Every assertion below is a regex over this string, and every regex over
     // "" that uses .not is a pass measuring nothing.
-    expect(latestIndexSql("franchise_adjustments_payment_kind_cumulative_key").length)
-      .toBeGreaterThan(0);
+    expect(
+      latestIndexSql("franchise_adjustments_payment_kind_cumulative_key").length,
+    ).toBeGreaterThan(0);
   });
 
   it("scopes the cumulative index to rows with no dispute id", () => {
     // Cumulative amount is the right identity for a REFUND, where Stripe sends
     // `amount_refunded` as a running total and re-billing a partial refund is
     // the thing to prevent. It is the wrong identity for a dispute.
-    expect(latestIndexSql("franchise_adjustments_payment_kind_cumulative_key"))
-      .toMatch(/WHERE\s+dispute_ref\s+IS\s+NULL/i);
+    expect(latestIndexSql("franchise_adjustments_payment_kind_cumulative_key")).toMatch(
+      /WHERE\s+dispute_ref\s+IS\s+NULL/i,
+    );
   });
 
   it("keeps a uniqueness rule for rows that DO carry a dispute id", () => {

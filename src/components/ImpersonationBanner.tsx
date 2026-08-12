@@ -45,6 +45,7 @@ export function ImpersonationBanner() {
   const [expired, setExpired] = useState(false);
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
   const infoRef = useRef<Info | null>(null);
+  const barRef = useRef<HTMLDivElement | null>(null);
   const [reimpersonateState, setReimpersonateState] = useState<"idle" | "asked" | "unavailable">(
     "idle",
   );
@@ -126,6 +127,37 @@ export function ImpersonationBanner() {
       document.removeEventListener("visibilitychange", tick);
     };
   }, [info?.sessionExpiresAt, expire]);
+
+  // Publish the bar's height so the app's own sticky headers can sit under it.
+  //
+  // The banner is `sticky top-0 z-[100]`; /my-day, /route and /platform each
+  // have a header that is `sticky top-0 z-30`. Both stick to the same edge and
+  // the banner wins on z-index, so while impersonating the page's header slid
+  // underneath it and disappeared — taking the back button, the date switcher
+  // and the account menu with it, on exactly the sessions where an operator is
+  // working in somebody else's account and most needs to see where they are.
+  //
+  // A fixed offset would be wrong: the bar wraps to two and three lines as the
+  // viewport narrows, so its height is a measurement, not a constant. Measured
+  // here and read as `top-[var(--hs-banner-h,0px)]` at each header.
+  useEffect(() => {
+    const el = barRef.current;
+    const root = document.documentElement;
+    if (!el) {
+      root.style.removeProperty("--hs-banner-h");
+      return;
+    }
+    const publish = () => root.style.setProperty("--hs-banner-h", `${el.offsetHeight}px`);
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty("--hs-banner-h");
+    };
+    // `info` and `expired` decide whether the bar renders at all, so the
+    // measurement has to be re-taken when either changes.
+  }, [info, expired]);
 
   if (!info) return null;
 
@@ -244,6 +276,7 @@ export function ImpersonationBanner() {
 
   return (
     <div
+      ref={barRef}
       role="alert"
       className="sticky top-0 z-[100] flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-amber-500 px-4 py-2 text-center text-sm font-medium text-amber-950"
     >

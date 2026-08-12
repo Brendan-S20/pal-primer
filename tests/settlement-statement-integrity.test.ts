@@ -23,7 +23,9 @@ const ROOT = new URL("..", import.meta.url).pathname;
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 
 function migrationFiles(): string[] {
-  return readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();
+  return readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
 }
 
 /** CREATE OR REPLACE means the LAST definition is the one that runs. */
@@ -172,8 +174,12 @@ describe("a stale statement cannot be issued", () => {
   it("mirrors the settlement's own collector split", () => {
     // If this summed differently from the adj CTE, every statement would look
     // stale and none could be issued.
-    expect(body).toMatch(/location_share_cents[\s\S]*collected_by_organization_id = NEW\.parent_organization_id/);
-    expect(body).toMatch(/franchise_share_cents[\s\S]*IS DISTINCT FROM NEW\.parent_organization_id/);
+    expect(body).toMatch(
+      /location_share_cents[\s\S]*collected_by_organization_id = NEW\.parent_organization_id/,
+    );
+    expect(body).toMatch(
+      /franchise_share_cents[\s\S]*IS DISTINCT FROM NEW\.parent_organization_id/,
+    );
   });
 
   it("only blocks the draft-to-issued transition", () => {

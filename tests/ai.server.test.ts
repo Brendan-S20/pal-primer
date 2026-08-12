@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { AiGenerationError, generateAiText, generateStructured, type AiConfig } from "@/lib/ai.server";
+import {
+  AiGenerationError,
+  generateAiText,
+  generateStructured,
+  type AiConfig,
+} from "@/lib/ai.server";
 
 const SCHEMA = z.object({ reply: z.string(), notes: z.string() });
 const JSON_SCHEMA = {
@@ -9,7 +14,11 @@ const JSON_SCHEMA = {
   required: ["reply", "notes"],
 };
 
-const ANTHROPIC: AiConfig = { provider: "anthropic", apiKey: "sk-ant-test", model: "claude-sonnet-5" };
+const ANTHROPIC: AiConfig = {
+  provider: "anthropic",
+  apiKey: "sk-ant-test",
+  model: "claude-sonnet-5",
+};
 const OPENAI: AiConfig = { provider: "openai", apiKey: "sk-openai-test", model: "gpt-4o" };
 
 function structuredOpts(overrides: Partial<Parameters<typeof generateStructured>[0]> = {}) {
@@ -24,7 +33,10 @@ function structuredOpts(overrides: Partial<Parameters<typeof generateStructured>
 }
 
 function apiResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 const fetchMock = vi.fn();
@@ -41,7 +53,9 @@ afterEach(() => {
 const anthropicOk = () =>
   apiResponse({
     stop_reason: "tool_use",
-    content: [{ type: "tool_use", name: "emit_result", input: { reply: "Thanks!", notes: "none" } }],
+    content: [
+      { type: "tool_use", name: "emit_result", input: { reply: "Thanks!", notes: "none" } },
+    ],
   });
 
 const openaiOk = () =>
@@ -49,7 +63,16 @@ const openaiOk = () =>
     choices: [
       {
         finish_reason: "tool_calls",
-        message: { tool_calls: [{ function: { name: "emit_result", arguments: JSON.stringify({ reply: "Hi", notes: "none" }) } }] },
+        message: {
+          tool_calls: [
+            {
+              function: {
+                name: "emit_result",
+                arguments: JSON.stringify({ reply: "Hi", notes: "none" }),
+              },
+            },
+          ],
+        },
       },
     ],
   });
@@ -68,14 +91,20 @@ describe("generateStructured — Anthropic", () => {
 
   it("throws a typed error (never a silent empty) on schema mismatch", async () => {
     fetchMock.mockResolvedValueOnce(
-      apiResponse({ stop_reason: "tool_use", content: [{ type: "tool_use", name: "emit_result", input: { reply: 42 } }] }),
+      apiResponse({
+        stop_reason: "tool_use",
+        content: [{ type: "tool_use", name: "emit_result", input: { reply: 42 } }],
+      }),
     );
     await expect(generateStructured(structuredOpts())).rejects.toThrow(AiGenerationError);
   });
 
   it("throws on truncation at max_tokens", async () => {
     fetchMock.mockResolvedValueOnce(
-      apiResponse({ stop_reason: "max_tokens", content: [{ type: "tool_use", name: "emit_result", input: {} }] }),
+      apiResponse({
+        stop_reason: "max_tokens",
+        content: [{ type: "tool_use", name: "emit_result", input: {} }],
+      }),
     );
     await expect(generateStructured(structuredOpts())).rejects.toThrow(/cut off/i);
   });
@@ -94,8 +123,12 @@ describe("generateStructured — OpenAI", () => {
   });
 
   it("throws a typed error when OpenAI returns no function call", async () => {
-    fetchMock.mockResolvedValueOnce(apiResponse({ choices: [{ finish_reason: "stop", message: { content: "nope" } }] }));
-    await expect(generateStructured(structuredOpts({ config: OPENAI }))).rejects.toThrow(/no structured result/i);
+    fetchMock.mockResolvedValueOnce(
+      apiResponse({ choices: [{ finish_reason: "stop", message: { content: "nope" } }] }),
+    );
+    await expect(generateStructured(structuredOpts({ config: OPENAI }))).rejects.toThrow(
+      /no structured result/i,
+    );
   });
 });
 
@@ -121,7 +154,9 @@ describe("generateStructured — shared behavior", () => {
   });
 
   it("retries transient 5xx then succeeds", async () => {
-    fetchMock.mockResolvedValueOnce(new Response("overloaded", { status: 529 })).mockResolvedValueOnce(anthropicOk());
+    fetchMock
+      .mockResolvedValueOnce(new Response("overloaded", { status: 529 }))
+      .mockResolvedValueOnce(anthropicOk());
     const out = await generateStructured(structuredOpts());
     expect(out.reply).toBe("Thanks!");
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -131,16 +166,24 @@ describe("generateStructured — shared behavior", () => {
 describe("generateAiText", () => {
   it("returns Anthropic text", async () => {
     fetchMock.mockResolvedValueOnce(apiResponse({ content: [{ type: "text", text: "Digest." }] }));
-    await expect(generateAiText({ config: ANTHROPIC, label: "Digest", prompt: "p" })).resolves.toBe("Digest.");
+    await expect(generateAiText({ config: ANTHROPIC, label: "Digest", prompt: "p" })).resolves.toBe(
+      "Digest.",
+    );
   });
 
   it("returns OpenAI text", async () => {
-    fetchMock.mockResolvedValueOnce(apiResponse({ choices: [{ message: { content: "Digest." } }] }));
-    await expect(generateAiText({ config: OPENAI, label: "Digest", prompt: "p" })).resolves.toBe("Digest.");
+    fetchMock.mockResolvedValueOnce(
+      apiResponse({ choices: [{ message: { content: "Digest." } }] }),
+    );
+    await expect(generateAiText({ config: OPENAI, label: "Digest", prompt: "p" })).resolves.toBe(
+      "Digest.",
+    );
   });
 
   it("throws on empty output instead of returning nothing", async () => {
     fetchMock.mockResolvedValueOnce(apiResponse({ content: [] }));
-    await expect(generateAiText({ config: ANTHROPIC, label: "Digest", prompt: "p" })).rejects.toThrow(AiGenerationError);
+    await expect(
+      generateAiText({ config: ANTHROPIC, label: "Digest", prompt: "p" }),
+    ).rejects.toThrow(AiGenerationError);
   });
 });

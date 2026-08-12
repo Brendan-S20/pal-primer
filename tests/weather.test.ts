@@ -82,6 +82,8 @@ describe("weather fetch (finding #15)", () => {
 
   it("throws (surfacing an error state) instead of silently returning empty on a 400", async () => {
     fetchMock.mockResolvedValueOnce(new Response("invalid variable", { status: 400 }));
-    await expect(fetchForecastLike(30.25, -97.75, "2026-07-10", "2026-07-11")).rejects.toThrow(/400/);
+    await expect(fetchForecastLike(30.25, -97.75, "2026-07-10", "2026-07-11")).rejects.toThrow(
+      /400/,
+    );
   });
 });

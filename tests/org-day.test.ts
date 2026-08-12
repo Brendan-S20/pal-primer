@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-  DEFAULT_ORG_TIMEZONE,
-  daysBetweenOrgDays,
-  orgLocalDay,
-  orgToday,
-} from "@/lib/org-day";
+import { DEFAULT_ORG_TIMEZONE, daysBetweenOrgDays, orgLocalDay, orgToday } from "@/lib/org-day";
 import { isInvoiceOverdue, summarizeAr } from "@/lib/ar";
 
 // Seven surfaces decided what day it was using the SERVER's clock. For an
@@ -110,9 +105,9 @@ describe("AR overdue at the boundary", () => {
   });
 
   it("is overdue once the organization's day has actually moved on", () => {
-    expect(isInvoiceOverdue(invoice, orgToday("America/Chicago", new Date("2026-08-01T14:00:00Z")))).toBe(
-      true,
-    );
+    expect(
+      isInvoiceOverdue(invoice, orgToday("America/Chicago", new Date("2026-08-01T14:00:00Z"))),
+    ).toBe(true);
   });
 
   it("summarizeAr agrees with isInvoiceOverdue at that boundary", () => {

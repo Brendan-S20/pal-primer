@@ -49,7 +49,9 @@ describe("visitDurationMinutes / formatVisitDuration (I13 #10)", () => {
     // Distinct from the identical-timestamp fabrication above: a real 20-second
     // visit rounds to 0 minutes but is a genuine service.
     expect(visitDurationMinutes("2026-07-16T06:05:00Z", "2026-07-16T06:05:20Z")).toBe(0);
-    expect(formatVisitDuration("2026-07-16T06:05:00Z", "2026-07-16T06:05:20Z")).toBe("Under a minute");
+    expect(formatVisitDuration("2026-07-16T06:05:00Z", "2026-07-16T06:05:20Z")).toBe(
+      "Under a minute",
+    );
   });
 
   it("returns null / 'Not recorded' when a timestamp is missing", () => {
@@ -60,9 +62,7 @@ describe("visitDurationMinutes / formatVisitDuration (I13 #10)", () => {
   });
 
   it("returns null when completion precedes start (invalid ordering)", () => {
-    expect(
-      visitDurationMinutes("2026-07-16T07:00:00Z", "2026-07-16T06:00:00Z"),
-    ).toBeNull();
+    expect(visitDurationMinutes("2026-07-16T07:00:00Z", "2026-07-16T06:00:00Z")).toBeNull();
   });
 
   it("rounds to the nearest minute", () => {
@@ -75,24 +75,22 @@ describe("isMissedVisitCandidate (I13 #8)", () => {
   const TODAY = "2026-07-17";
 
   it("flags a past scheduled visit that was never started", () => {
-    expect(
-      isMissedVisitCandidate({ status: "scheduled", scheduled_on: "2026-07-09" }, TODAY),
-    ).toBe(true);
-    expect(
-      isMissedVisitCandidate({ status: "scheduled", scheduled_on: "2026-07-16" }, TODAY),
-    ).toBe(true);
+    expect(isMissedVisitCandidate({ status: "scheduled", scheduled_on: "2026-07-09" }, TODAY)).toBe(
+      true,
+    );
+    expect(isMissedVisitCandidate({ status: "scheduled", scheduled_on: "2026-07-16" }, TODAY)).toBe(
+      true,
+    );
   });
 
   it("leaves today's scheduled visit alone (ambiguous — may still be serviced)", () => {
-    expect(
-      isMissedVisitCandidate({ status: "scheduled", scheduled_on: TODAY }, TODAY),
-    ).toBe(false);
+    expect(isMissedVisitCandidate({ status: "scheduled", scheduled_on: TODAY }, TODAY)).toBe(false);
   });
 
   it("leaves a future scheduled visit alone", () => {
-    expect(
-      isMissedVisitCandidate({ status: "scheduled", scheduled_on: "2026-07-20" }, TODAY),
-    ).toBe(false);
+    expect(isMissedVisitCandidate({ status: "scheduled", scheduled_on: "2026-07-20" }, TODAY)).toBe(
+      false,
+    );
   });
 
   it("leaves a past scheduled visit that has a partial start (in-flight anomaly)", () => {
@@ -106,9 +104,7 @@ describe("isMissedVisitCandidate (I13 #8)", () => {
 
   it("never touches completed, skipped, canceled, in_progress, or already-missed visits", () => {
     for (const status of ["completed", "skipped", "canceled", "in_progress", "missed"]) {
-      expect(
-        isMissedVisitCandidate({ status, scheduled_on: "2026-07-09" }, TODAY),
-      ).toBe(false);
+      expect(isMissedVisitCandidate({ status, scheduled_on: "2026-07-09" }, TODAY)).toBe(false);
     }
   });
 });

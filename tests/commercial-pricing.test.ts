@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  computeCommercialZonePrice,
-  zoneHasCommercialPricing,
-  SQM_PER_ACRE,
-} from "@/lib/pricing";
+import { computeCommercialZonePrice, zoneHasCommercialPricing, SQM_PER_ACRE } from "@/lib/pricing";
 
 // An HOA zone: $100 base + $3.50 per unit + $40 per acre of grounds.
 const HOA_ZONE = {
@@ -44,7 +40,11 @@ describe("computeCommercialZonePrice", () => {
 
   it("treats missing components as zero", () => {
     const r = computeCommercialZonePrice(
-      { commercial_base_cents: null, commercial_per_unit_cents: 500, commercial_per_acre_cents: null },
+      {
+        commercial_base_cents: null,
+        commercial_per_unit_cents: 500,
+        commercial_per_acre_cents: null,
+      },
       { unitCount: 10, boundaryAreaSqm: SQM_PER_ACRE },
     );
     expect(r.perVisitCents).toBe(5000);

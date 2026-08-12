@@ -44,10 +44,17 @@ export const getPlatformOverview = createServerFn({ method: "GET" })
         .select("id", { count: "exact", head: true })
         .is("deleted_at", null)
         .gte("created_at", weekAgo),
+      // `subscription_created` used to be in this filter beside
+      // `billing_status_change`. Neither string was written by anything — the
+      // live audit table holds five distinct actions and has never held
+      // either — so this KPI read 0 from the day it shipped and would have kept
+      // reading 0 through a hundred conversions. The event is now emitted by
+      // platform-billing-status.server.ts, and the name nothing writes is gone
+      // rather than left as a second thing to look for.
       supabaseAdmin
         .from("platform_admin_audit")
-        .select("organization_id, action, after_json, created_at")
-        .in("action", ["subscription_created", "billing_status_change"])
+        .select("organization_id, action, before_json, after_json, created_at")
+        .eq("action", "billing_status_change")
         .gte("created_at", monthStart.toISOString()),
     ]);
     if (orgsRes.error) throw new Error(orgsRes.error.message);
@@ -69,12 +76,20 @@ export const getPlatformOverview = createServerFn({ method: "GET" })
       (o) => (o.active_client_count ?? 0) === 3 && o.billing_status === "free",
     ).length;
 
+    // A conversion is BECOMING a payer, not being one. Reading only the after
+    // status counted past_due → active and grace → active, which are a lapsed
+    // customer's card finally clearing: the same tenant again, and no new
+    // revenue. The transition decides — paying now, not paying before.
+    const PAYING = ["active", "grace", "past_due"];
     const convertedIds = new Set<string>();
     for (const a of convRes.data ?? []) {
-      const nextStatus = (a.after_json as { billing_status?: string } | null)?.billing_status;
-      if (nextStatus && ["active", "grace", "past_due"].includes(nextStatus)) {
-        if (a.organization_id) convertedIds.add(a.organization_id);
-      }
+      const after = a.after_json as { billing_status?: string; became_paying?: boolean } | null;
+      const before = (a.before_json as { billing_status?: string } | null)?.billing_status ?? null;
+      const becamePaying =
+        typeof after?.became_paying === "boolean"
+          ? after.became_paying
+          : PAYING.includes(after?.billing_status ?? "") && !PAYING.includes(before ?? "");
+      if (becamePaying && a.organization_id) convertedIds.add(a.organization_id);
     }
 
     return {

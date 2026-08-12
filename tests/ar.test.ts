@@ -11,7 +11,11 @@ import {
 // "Outstanding" must agree for the same invoice data. They now share this
 // math; the fixture mirrors the demo tenant (12 open invoices → $5,270.00).
 const INVOICES = [
-  ...Array.from({ length: 11 }, (_, i) => ({ status: "open", total_cents: 44000, client_id: `c${i}` })),
+  ...Array.from({ length: 11 }, (_, i) => ({
+    status: "open",
+    total_cents: 44000,
+    client_id: `c${i}`,
+  })),
   { status: "open", total_cents: 43000, client_id: "c0" },
   { status: "paid", total_cents: 90000, client_id: "c0" },
   { status: "void", total_cents: 10000, client_id: "c1" },
@@ -99,10 +103,16 @@ describe("summarizeAr — dashboard equals the ledger (B1, I13 #1)", () => {
   });
 
   it("overdue keys on due_on, not issued_at + 30 days", () => {
-    expect(isInvoiceOverdue({ status: "open", total_cents: 100, due_on: "2026-07-16" }, TODAY)).toBe(true);
-    expect(isInvoiceOverdue({ status: "open", total_cents: 100, due_on: "2026-07-17" }, TODAY)).toBe(false);
+    expect(
+      isInvoiceOverdue({ status: "open", total_cents: 100, due_on: "2026-07-16" }, TODAY),
+    ).toBe(true);
+    expect(
+      isInvoiceOverdue({ status: "open", total_cents: 100, due_on: "2026-07-17" }, TODAY),
+    ).toBe(false);
     expect(isInvoiceOverdue({ status: "open", total_cents: 100, due_on: null }, TODAY)).toBe(false);
-    expect(isInvoiceOverdue({ status: "paid", total_cents: 100, due_on: "2026-01-01" }, TODAY)).toBe(false);
+    expect(
+      isInvoiceOverdue({ status: "paid", total_cents: 100, due_on: "2026-01-01" }, TODAY),
+    ).toBe(false);
   });
 
   it("overdue balances are net of applied credit", () => {

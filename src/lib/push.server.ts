@@ -79,44 +79,184 @@ async function sendWebPush(subs: WebSub[], payload: PushPayload) {
   return { sent, failed };
 }
 
-// ─── FCM (Android) via legacy HTTP API ─────────────────────────────────────
-// Uses FCM_SERVER_KEY (Firebase Console → Cloud Messaging → "Server key").
-// Not the newest HTTP v1 protocol, but works today and requires no OAuth
-// dance. Migrate to HTTP v1 with a service-account JWT if Google fully sunsets.
+// ─── FCM (Android) via the HTTP v1 API ─────────────────────────────────────
+//
+// This used to post to `https://fcm.googleapis.com/fcm/send` with an
+// `Authorization: key=…` server key. That is the legacy API, and Google
+// decommissioned it — the endpoint does not accept sends any more, so every
+// Android notification this app has ever tried has failed. The comment above
+// it said to migrate "if Google fully sunsets", which they did.
+//
+// v1 differs in three ways that matter, and only the first is obvious:
+//
+//   The auth is an OAuth2 access token, not a static key. It is minted by
+//   signing a JWT with the service account's private key and exchanging it at
+//   Google's token endpoint. Tokens last an hour, so they are cached — a fan-out
+//   to fifty devices must not do fifty token exchanges.
+//
+//   `data` values must all be strings. Legacy accepted arbitrary JSON and
+//   `PushPayload.data` is a `Record<string, unknown>`, so a caller passing a
+//   number or an object would now get INVALID_ARGUMENT for the whole send.
+//   Coerced rather than trusted; see `fcmDataStrings`.
+//
+//   `click_action`, `icon` and `tag` moved under `android.notification` and
+//   were renamed. `tag` is what collapses repeated notifications on the device,
+//   so silently dropping it would give a tech twelve identical rows.
+//
+// Configured with FCM_SERVICE_ACCOUNT: the JSON Firebase hands you at Project
+// settings → Service accounts → Generate new private key, pasted whole. One
+// variable rather than three, because that is the shape it arrives in and
+// splitting it invites a private key mangled by a shell.
+
+type FcmCredentials = { projectId: string; clientEmail: string; privateKey: string };
+
+/** Parse the service-account JSON. Returns null — never throws — so an absent
+ *  or malformed credential leaves Android push unconfigured in the same way
+ *  every other channel here does, rather than taking a notification fan-out
+ *  down with it. */
+export function parseFcmCredentials(raw: string | undefined): FcmCredentials | null {
+  if (!raw) return null;
+  try {
+    const j = JSON.parse(raw);
+    const projectId = j.project_id;
+    const clientEmail = j.client_email;
+    // A key pasted through an environment variable usually arrives with its
+    // newlines escaped. Google's own libraries do this same replacement.
+    const privateKey = typeof j.private_key === "string" ? j.private_key.replace(/\\n/g, "\n") : null;
+    if (!projectId || !clientEmail || !privateKey) return null;
+    return { projectId, clientEmail, privateKey };
+  } catch {
+    return null;
+  }
+}
+
+/** FCM v1 rejects a message whose `data` holds anything but strings, and the
+ *  rejection is for the whole send rather than the offending key. Numbers and
+ *  booleans stringify; objects and arrays go through JSON so the receiver can
+ *  parse them back; null and undefined are dropped rather than becoming the
+ *  strings "null" and "undefined" on the device. */
+export function fcmDataStrings(data: Record<string, unknown> | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(data ?? {})) {
+    if (v === null || v === undefined) continue;
+    out[k] = typeof v === "string" ? v : typeof v === "object" ? JSON.stringify(v) : String(v);
+  }
+  return out;
+}
+
+/** The v1 message body for one device. Pure, so the shape is testable without
+ *  a credential or a network. */
+export type FcmMessage = {
+  message: {
+    token: string;
+    notification: { title: string; body: string };
+    android: { notification: Record<string, string> };
+    data: Record<string, string>;
+  };
+};
+
+export function fcmMessageFor(token: string, payload: PushPayload): FcmMessage {
+  return {
+    message: {
+      token,
+      notification: { title: payload.title, body: payload.body ?? "" },
+      android: {
+        notification: {
+          // Renamed in v1: tag collapses repeats on the device, click_action
+          // names the intent filter the tap opens.
+          ...(payload.tag ? { tag: payload.tag } : {}),
+          ...(payload.icon ? { icon: payload.icon } : {}),
+          ...(payload.url ? { click_action: "FCM_PLUGIN_ACTIVITY" } : {}),
+        },
+      },
+      // The URL rides in data as well as in click_action: the Capacitor plugin
+      // hands `data` to the app on tap, and that is what routes it.
+      data: { url: payload.url ?? "", ...fcmDataStrings(payload.data) },
+    },
+  };
+}
+
+/** An access token good for an hour, cached until a minute before it expires
+ *  so a fan-out does one exchange rather than one per device. */
+let fcmToken: { value: string; expiresAt: number } | null = null;
+
+async function fcmAccessToken(creds: FcmCredentials): Promise<string | null> {
+  if (fcmToken && Date.now() < fcmToken.expiresAt) return fcmToken.value;
+  const now = Math.floor(Date.now() / 1000);
+  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const signingInput =
+    `${b64({ alg: "RS256", typ: "JWT" })}.` +
+    b64({
+      iss: creds.clientEmail,
+      scope: "https://www.googleapis.com/auth/firebase.messaging",
+      aud: "https://oauth2.googleapis.com/token",
+      iat: now,
+      exp: now + 3600,
+    });
+  const crypto = await import("crypto");
+  const sig = crypto.sign("RSA-SHA256", Buffer.from(signingInput), creds.privateKey);
+  const assertion = `${signingInput}.${sig.toString("base64url")}`;
+
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion,
+    }),
+  });
+  const json: any = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.access_token) {
+    // Logged rather than thrown: a broken credential must not stop the web and
+    // iOS halves of the same fan-out from going out.
+    console.error("fcm token exchange failed", res.status, json?.error_description ?? json?.error);
+    return null;
+  }
+  const ttl = Number(json.expires_in ?? 3600);
+  fcmToken = { value: json.access_token, expiresAt: Date.now() + (ttl - 60) * 1000 };
+  return fcmToken.value;
+}
+
+/** v1 reports a dead token as UNREGISTERED (404) or as INVALID_ARGUMENT (400)
+ *  when the token is malformed. Both mean stop sending to this row; every other
+ *  error is transient and the row stays enabled. */
+export function fcmErrorIsGone(status: number, body: unknown): boolean {
+  const b = body as { error?: { status?: string; details?: Array<{ errorCode?: string }> } };
+  if (status === 404) return true;
+  const code = b?.error?.details?.find((d) => d?.errorCode)?.errorCode;
+  if (code === "UNREGISTERED" || code === "INVALID_ARGUMENT") return true;
+  return b?.error?.status === "NOT_FOUND";
+}
+
 async function sendFcm(subs: NativeSub[], payload: PushPayload) {
-  const key = process.env.FCM_SERVER_KEY;
-  if (!key || subs.length === 0) return { sent: 0, failed: 0 };
+  const creds = parseFcmCredentials(process.env.FCM_SERVICE_ACCOUNT);
+  if (!creds || subs.length === 0) return { sent: 0, failed: 0 };
+  const accessToken = await fcmAccessToken(creds);
+  if (!accessToken) return { sent: 0, failed: subs.length };
+  const url = `https://fcm.googleapis.com/v1/projects/${creds.projectId}/messages:send`;
   let sent = 0, failed = 0;
   await Promise.all(subs.map(async (s) => {
     try {
-      const res = await fetch("https://fcm.googleapis.com/fcm/send", {
+      const res = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `key=${key}`,
+          Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({
-          to: s.native_token,
-          notification: {
-            title: payload.title,
-            body: payload.body ?? "",
-            icon: payload.icon,
-            tag: payload.tag,
-            click_action: payload.url,
-          },
-          data: { url: payload.url ?? "", ...(payload.data ?? {}) },
-        }),
+        body: JSON.stringify(fcmMessageFor(s.native_token, payload)),
       });
-      const json: any = await res.json().catch(() => ({}));
-      if (!res.ok || json?.failure) {
-        const err = json?.results?.[0]?.error || `fcm_${res.status}`;
-        const gone = err === "NotRegistered" || err === "InvalidRegistration";
-        await markError(s.id, err, gone);
-        failed++;
-      } else {
+      if (res.ok) {
         sent++;
         await markSent(s.id);
+        return;
       }
+      const json: any = await res.json().catch(() => ({}));
+      const err =
+        json?.error?.details?.find((d: any) => d?.errorCode)?.errorCode ??
+        json?.error?.status ??
+        `fcm_${res.status}`;
+      await markError(s.id, err, fcmErrorIsGone(res.status, json));
+      failed++;
     } catch (e: any) {
       failed++;
       await markError(s.id, String(e?.message || e));

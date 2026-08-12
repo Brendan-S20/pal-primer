@@ -24,7 +24,10 @@ import { TRIAL_DAYS } from "@/lib/trial";
 //      reason 20260731160000 exists.
 
 const SQL = readFileSync(
-  join(process.cwd(), "supabase/migrations/20260731160000_a-provisioned-location-is-a-real-account.sql"),
+  join(
+    process.cwd(),
+    "supabase/migrations/20260731160000_a-provisioned-location-is-a-real-account.sql",
+  ),
   "utf8",
 );
 
@@ -64,7 +67,9 @@ describe("a location starts a trial like any other account", () => {
   it("sets trialing and an end date in the INSERT", () => {
     // Not an UPDATE afterwards: organizations.plan_status defaults to 'free',
     // so any window between the two is an org that reads as free.
-    expect(SQL).toMatch(/INSERT INTO public\.organizations \(name, timezone, plan_status, trial_ends_at\)/);
+    expect(SQL).toMatch(
+      /INSERT INTO public\.organizations \(name, timezone, plan_status, trial_ends_at\)/,
+    );
     expect(SQL).toMatch(/'trialing'::public\.org_plan_status/);
   });
 
@@ -83,12 +88,15 @@ describe("duplicate addresses are refused, not merged", () => {
     // Merging would silently demote the owner to tech and then fail the owner
     // check for a reason nobody could see. Verified against the live function
     // before shipping.
-    expect(locationProblem("North Austin", [m("Boss@Example.com", "owner"), m("boss@example.com")]))
-      .toMatch(/more than once/i);
+    expect(
+      locationProblem("North Austin", [m("Boss@Example.com", "owner"), m("boss@example.com")]),
+    ).toMatch(/more than once/i);
   });
 
   it("is case- and whitespace-insensitive, like the database", () => {
-    expect(locationProblem("N", [owner, m("  A@Ex.com "), m("a@ex.com")])).toMatch(/more than once/i);
+    expect(locationProblem("N", [owner, m("  A@Ex.com "), m("a@ex.com")])).toMatch(
+      /more than once/i,
+    );
     expect(SQL).toMatch(/lower\(btrim\(m\.value->>'email'\)\)/);
     expect(SQL).toMatch(/listed more than once/);
   });
@@ -111,7 +119,10 @@ describe("what the form sends", () => {
   });
 
   it("caps the list", () => {
-    const many = [owner, ...Array.from({ length: MAX_LOCATION_MEMBERS }, (_, i) => m(`t${i}@x.io`))];
+    const many = [
+      owner,
+      ...Array.from({ length: MAX_LOCATION_MEMBERS }, (_, i) => m(`t${i}@x.io`)),
+    ];
     expect(locationProblem("N", many)).toMatch(new RegExp(String(MAX_LOCATION_MEMBERS)));
   });
 });

@@ -33,7 +33,9 @@ import { findRouteWarnings } from "@/lib/route-plausibility";
 
 const root = join(import.meta.dirname, "..");
 const routes = readFileSync(join(root, "src/routes/_authenticated/routes.tsx"), "utf8");
-const baseline = JSON.parse(readFileSync(join(root, "scripts/dead-machinery-baseline.json"), "utf8"));
+const baseline = JSON.parse(
+  readFileSync(join(root, "scripts/dead-machinery-baseline.json"), "utf8"),
+);
 
 /** The parse as the board does it, extracted so the edge cases are testable
  *  rather than asserted about by reading the source. */
@@ -67,7 +69,13 @@ describe("the board parses the org's workday start", () => {
 
 describe("the org's thresholds actually change the answer", () => {
   const stop = [
-    { id: "v1", clientName: "Far Away Co", travel_km: 120, travel_min: 150, scheduled_on: "2026-08-07" },
+    {
+      id: "v1",
+      clientName: "Far Away Co",
+      travel_km: 120,
+      travel_min: 150,
+      scheduled_on: "2026-08-07",
+    },
   ];
 
   it("a 150-minute drive is fine under the 240 default", () => {

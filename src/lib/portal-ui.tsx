@@ -4,6 +4,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { frequencyLabel } from "@/lib/frequency-request";
+import { stationDisplayName } from "@/lib/dna-linkage";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -922,14 +923,12 @@ export function InvoiceStatusBadge({ status }: { status: string }) {
 
 export function UpcomingVisitsList({
   rows,
-  cutoffHours,
   allowReschedule,
   skipBillablePct = 0,
   onSkip,
   onReschedule,
 }: {
   rows: Array<any>;
-  cutoffHours: number;
   allowReschedule: boolean;
   /** Percentage of the visit price a portal skip still bills. See VisitRow. */
   skipBillablePct?: number;
@@ -954,7 +953,6 @@ export function UpcomingVisitsList({
             key={v.visit_id}
             v={v}
             showAddress={!sharedAddress}
-            cutoffHours={cutoffHours}
             allowReschedule={allowReschedule}
             skipBillablePct={skipBillablePct}
             onSkip={(reason) => onSkip(v.visit_id, reason)}
@@ -969,7 +967,6 @@ export function UpcomingVisitsList({
 function VisitRow({
   v,
   showAddress,
-  cutoffHours,
   allowReschedule,
   skipBillablePct = 0,
   onSkip,
@@ -977,7 +974,6 @@ function VisitRow({
 }: {
   v: any;
   showAddress: boolean;
-  cutoffHours: number;
   allowReschedule: boolean;
   /** The org's `customer_requested` skip-billing percentage, 0–100. Zero on a
    *  default org, and zero is the honest majority case — see the note by the
@@ -993,11 +989,25 @@ function VisitRow({
   const maxDate = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
   const [newDate, setNewDate] = useState(minDate);
 
-  const scheduled = toDate(v.scheduled_on);
-  const cutoff = scheduled ? new Date(scheduled.getTime() - cutoffHours * 3600 * 1000) : null;
+  // The deadline is the server's. It used to be derived here — the visit date
+  // read at the BROWSER's midnight, less the org's cutoff hours — which is a
+  // different instant for a customer who is travelling, and which the RPCs
+  // then enforced not at all: both accepted a skip or a reschedule long past
+  // the cutoff, and one accepted a skip of a visit the tech had already
+  // started. `portal_list_upcoming_visits` now returns
+  // `changes_allowed_until`, computed by `portal_change_deadline` in the ORG's
+  // timezone, and the same function is what the writers refuse against. See
+  // 20260812120000_the-portal-cutoff-was-only-a-hidden-button.sql.
+  //
+  // Comparing two instants, so the browser's timezone is only ever used to
+  // PRINT this — which is right, since the reader is the one being told when
+  // they have until.
+  const cutoff = v.changes_allowed_until ? new Date(v.changes_allowed_until) : null;
   const pastCutoff = cutoff ? Date.now() > cutoff.getTime() : false;
 
-  const cutoffCopy = `Changes allowed until ${cutoff ? cutoff.toLocaleDateString(undefined, { weekday: "long" }) + " at " + cutoff.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }) : "24h before"}.`;
+  const cutoffCopy = cutoff
+    ? `Changes allowed until ${cutoff.toLocaleDateString(undefined, { weekday: "long" })} at ${cutoff.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}.`
+    : "";
 
   return (
     <li className="p-3 text-sm">
@@ -1080,14 +1090,21 @@ function VisitRow({
           So: the cutoff line stands on both actions, since the cutoff really
           does govern both; the money line appears only when skipping, only
           when the org charges for it, and says how much. */}
-      {(skipOpen || reschedOpen) && (
+      {(skipOpen || reschedOpen) && (cutoffCopy || (skipOpen && skipBillablePct > 0)) && (
         <p className="mt-2 text-xs text-muted-foreground">
-          {cutoffCopy}
-          {skipOpen && skipBillablePct > 0
-            ? skipBillablePct >= 100
-              ? " Skipping this visit is still billed at the full visit price."
-              : ` Skipping this visit is still billed at ${skipBillablePct}% of the visit price.`
-            : ""}
+          {[
+            // Empty when the server did not send a deadline, which is the only
+            // way it can be unknown now. Better a missing sentence than an
+            // invented "24h before" that nothing enforces.
+            cutoffCopy,
+            skipOpen && skipBillablePct > 0
+              ? skipBillablePct >= 100
+                ? "Skipping this visit is still billed at the full visit price."
+                : `Skipping this visit is still billed at ${skipBillablePct}% of the visit price.`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
         </p>
       )}
 
@@ -1314,14 +1331,26 @@ export function StationsPanel({ rows }: { rows: Array<any> }) {
       {rows.map((s) => (
         <li key={s.station_id} className="p-3 text-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div className="font-medium">{s.label}</div>
+            <div className="min-w-0">
+              {/* The same helper the office and the field use. `label` is
+                  nullable since BUG-10, so rendering it alone put a blank
+                  heading above a location description belonging to nothing —
+                  and the number is how the crew refers to the bin on the
+                  phone. */}
+              <div className="font-medium break-words">
+                {stationDisplayName(s.station_number, s.label)}
+              </div>
               {s.location_description && (
-                <div className="text-xs text-muted-foreground">{s.location_description}</div>
+                <div className="text-xs text-muted-foreground break-words">
+                  {s.location_description}
+                </div>
               )}
             </div>
-            <div className="text-xs text-muted-foreground text-right">
-              {s.capacity_liners && <div>Capacity: {s.capacity_liners} liners</div>}
+            {/* Capacity used to print here from `capacity_liners`, which
+                stations.functions.ts stopped writing in QA round 8 and the
+                staff editor stopped showing. A number nobody can change reads
+                as current, so it is gone rather than stale. */}
+            <div className="shrink-0 text-xs text-muted-foreground text-right">
               <div>Last serviced: {s.last_serviced_on ? fmtDayShort(s.last_serviced_on) : "-"}</div>
             </div>
           </div>

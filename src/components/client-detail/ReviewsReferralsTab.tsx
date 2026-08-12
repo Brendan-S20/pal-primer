@@ -106,11 +106,20 @@ function PortalStatusPanel({ client, clientId }: { client: any; clientId: string
     <section className="rounded-lg border bg-card shadow-sm p-5">
       {dialog}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        {/* `verifyDest` ends in the client's email address, one unbreakable
+            token whose min-content width is the whole thing — without `min-w-0`
+            this column is never laid out narrower than it and the Open / Copy
+            link / Regenerate cluster beside it goes over the right edge of a
+            phone. `break-words` then breaks the address rather than the
+            sentence, which has to stay readable: it is how the office confirms
+            where the code was sent. */}
+        <div className="min-w-0">
           <h2 className="text-sm font-medium">Client portal</h2>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm">
             <StatusChip status="enabled" />
-            <span className="text-xs text-muted-foreground">Sign-in code {verifyDest}</span>
+            <span className="min-w-0 break-words text-xs text-muted-foreground">
+              Sign-in code {verifyDest}
+            </span>
           </div>
           {code && (
             <p className="mt-2 text-sm">

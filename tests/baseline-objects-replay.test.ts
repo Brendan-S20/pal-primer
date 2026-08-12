@@ -26,8 +26,7 @@ import { expectedObjects, sqlCode } from "../scripts/check-baseline-objects.mjs"
 // ways it can be wrong — expecting something that should not exist, or failing
 // to expect something that should.
 
-const replay = (sql: string, name = "0001_test.sql") =>
-  expectedObjects([{ name, sql }]);
+const replay = (sql: string, name = "0001_test.sql") => expectedObjects([{ name, sql }]);
 
 describe("sqlCode strips what is not executable", () => {
   it("removes single-quoted literals", () => {

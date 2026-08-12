@@ -101,7 +101,9 @@ describe("both consumers read the shared rule", () => {
     expect(src).toMatch(/useTabletTier\(\)/);
     expect(src).toMatch(/\$\{mainBottomPadding\}/);
     // The old literal must be gone, or the two disagree for tech users.
-    expect(src).not.toMatch(/pb-\[calc\(4\.5rem\+env\(safe-area-inset-bottom\)\)\] sm:px-6 sm:pt-8 md:pb-8/);
+    expect(src).not.toMatch(
+      /pb-\[calc\(4\.5rem\+env\(safe-area-inset-bottom\)\)\] sm:px-6 sm:pt-8 md:pb-8/,
+    );
   });
 
   it("the dispatch board still renders from md up", () => {

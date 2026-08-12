@@ -1117,6 +1117,77 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               // either, so the entire amount really is gone.
               revenueAmount = amount;
               disputeRef = typeof obj?.id === "string" ? obj.id : null;
+
+              // ── AND OUR FEE GOES BACK TOO ───────────────────────────────
+              //
+              // `charge.refunded` reverses the application fee a hundred lines
+              // up. A lost chargeback did not, and a lost chargeback is the
+              // case where it matters most: on a refund the tenant chose to
+              // give the money back, whereas here the bank took the entire
+              // charge off them AND charged them a dispute fee on top. Keeping
+              // our 50 bps out of that is charging a commission on money the
+              // tenant never got to keep.
+              //
+              // Only when money actually moved. `planDisputeEvent` exists
+              // precisely because `charge.dispute.created` / `closed` carry
+              // inquiries as well as real chargebacks, and an inquiry that is
+              // simply dropped moves nothing — reversing a fee on one would be
+              // the same class of error in the other direction.
+              //
+              // The delta shape is copied deliberately from the refund path,
+              // and it is what makes this safe without having to be certain
+              // what Stripe does on our behalf: the target is computed from
+              // the fee, and what Stripe has ALREADY refunded of that fee is
+              // subtracted. If Stripe reverses the fee automatically on a lost
+              // dispute, `amount_refunded` already equals the fee, the delta is
+              // zero and this does nothing. If it does not, we reverse it. Both
+              // worlds are correct, and a replayed webhook is a no-op in each.
+              //
+              // Isolated in its own try/catch for the reason the refund path
+              // gives: the tenant's ledger and their alert are the facts that
+              // have to be right, and our own fee is reconcilable afterwards
+              // from Stripe's records.
+              if (movesMoney) {
+                const chargeId: string | null =
+                  typeof obj?.charge === "string" ? obj.charge : (obj?.charge?.id ?? null);
+                if (chargeId) {
+                  try {
+                    // Fees are the PLATFORM's, so no { stripeAccount } here —
+                    // the same rule the refund path calls out. Listed by charge
+                    // rather than read off the event, because a dispute object
+                    // carries no application fee; only the charge does, and the
+                    // charge lives on the connected account.
+                    const fees = await stripe.applicationFees.list({ charge: chargeId, limit: 1 });
+                    const fee = fees?.data?.[0];
+                    if (fee) {
+                      // The charge total, base + surcharge, from the row already
+                      // loaded above — cheaper than fetching the charge from the
+                      // connected account, and it is the same number: a
+                      // surcharged payment is charged base + surcharge.
+                      const chargeTotal =
+                        Number(pay.amount_cents ?? 0) + Number(pay.surcharge_cents ?? 0);
+                      const target = feeReversalCents(
+                        Number(fee.amount ?? 0),
+                        chargeTotal,
+                        // The DISPUTED amount, not the charge total. A partial
+                        // dispute takes part of the charge and should take the
+                        // matching part of the fee.
+                        amount,
+                      );
+                      const delta = target - Number(fee.amount_refunded ?? 0);
+                      if (delta > 0) {
+                        await stripe.applicationFees.createRefund(fee.id, { amount: delta });
+                      }
+                    }
+                  } catch (e) {
+                    console.error(
+                      "application fee reversal on dispute failed",
+                      { chargeId, paymentIntentId, disputeRef },
+                      e,
+                    );
+                  }
+                }
+              }
             }
 
             if (kind) {

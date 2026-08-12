@@ -34,23 +34,25 @@ const sbFor = (role: AppRole) => stubSupabase({ organization_id: ORG, role });
 
 describe("H1 — technician cannot read the DNA compliance registry", () => {
   it("rejects a tech at the view_client_directory gate the DNA read fns use", async () => {
-    await expect(
-      requirePermission(sbFor("tech"), "u", "view_client_directory"),
-    ).rejects.toThrow("Not authorized");
+    await expect(requirePermission(sbFor("tech"), "u", "view_client_directory")).rejects.toThrow(
+      "Not authorized",
+    );
   });
 
   it("still allows a dispatcher/office_manager/owner to read the registry", async () => {
     for (const role of ["dispatcher", "office_manager", "owner"] as const) {
-      await expect(
-        requirePermission(sbFor(role), "u", "view_client_directory"),
-      ).resolves.toEqual({ orgId: ORG, role });
+      await expect(requirePermission(sbFor(role), "u", "view_client_directory")).resolves.toEqual({
+        orgId: ORG,
+        role,
+      });
     }
   });
 
   it("keeps the tech's sample-logging capability (record_field_addons)", async () => {
-    await expect(
-      requirePermission(sbFor("tech"), "u", "record_field_addons"),
-    ).resolves.toEqual({ orgId: ORG, role: "tech" });
+    await expect(requirePermission(sbFor("tech"), "u", "record_field_addons")).resolves.toEqual({
+      orgId: ORG,
+      role: "tech",
+    });
   });
 });
 
@@ -62,9 +64,9 @@ describe("H4 — dispatcher cannot read client billing via the data fn", () => {
   });
 
   it("rejects a dispatcher from financial KPIs (view_financials) too", async () => {
-    await expect(
-      requirePermission(sbFor("dispatcher"), "u", "view_financials"),
-    ).rejects.toThrow("Not authorized");
+    await expect(requirePermission(sbFor("dispatcher"), "u", "view_financials")).rejects.toThrow(
+      "Not authorized",
+    );
   });
 
   it("still allows an office_manager to read client billing", async () => {
@@ -76,22 +78,23 @@ describe("H4 — dispatcher cannot read client billing via the data fn", () => {
 
 describe("G2 — only owner/office_manager can reveal a sign-in code", () => {
   it("rejects a dispatcher at the reveal_signin_code gate", async () => {
-    await expect(
-      requirePermission(sbFor("dispatcher"), "u", "reveal_signin_code"),
-    ).rejects.toThrow("Not authorized");
+    await expect(requirePermission(sbFor("dispatcher"), "u", "reveal_signin_code")).rejects.toThrow(
+      "Not authorized",
+    );
   });
 
   it("rejects a tech at the reveal_signin_code gate", async () => {
-    await expect(
-      requirePermission(sbFor("tech"), "u", "reveal_signin_code"),
-    ).rejects.toThrow("Not authorized");
+    await expect(requirePermission(sbFor("tech"), "u", "reveal_signin_code")).rejects.toThrow(
+      "Not authorized",
+    );
   });
 
   it("allows owner and office_manager", async () => {
     for (const role of ["owner", "office_manager"] as const) {
-      await expect(
-        requirePermission(sbFor(role), "u", "reveal_signin_code"),
-      ).resolves.toEqual({ orgId: ORG, role });
+      await expect(requirePermission(sbFor(role), "u", "reveal_signin_code")).resolves.toEqual({
+        orgId: ORG,
+        role,
+      });
     }
   });
 });

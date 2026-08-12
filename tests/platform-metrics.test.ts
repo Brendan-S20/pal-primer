@@ -11,27 +11,51 @@ import { isValidOrgName } from "@/lib/dna-linkage";
 
 // Catalog rows mirror the live platform_plans (H5 fixture).
 const SCALE: PlanForMrr = {
-  slug: "scale", name: "Scale", price_cents: 44900, annual_price_cents: 449000,
-  interval: "month", included_seats: 30, price_per_seat_cents: 1000, is_free: false,
+  slug: "scale",
+  name: "Scale",
+  price_cents: 44900,
+  annual_price_cents: 449000,
+  interval: "month",
+  included_seats: 30,
+  price_per_seat_cents: 1000,
+  is_free: false,
 };
 const GROWTH: PlanForMrr = {
-  slug: "growth", name: "Growth", price_cents: 19900, annual_price_cents: 199000,
-  interval: "month", included_seats: 10, price_per_seat_cents: 1000, is_free: false,
+  slug: "growth",
+  name: "Growth",
+  price_cents: 19900,
+  annual_price_cents: 199000,
+  interval: "month",
+  included_seats: 10,
+  price_per_seat_cents: 1000,
+  is_free: false,
 };
 const LAUNCH: PlanForMrr = {
-  slug: "launch", name: "Launch", price_cents: 7900, annual_price_cents: 79000,
-  interval: "month", included_seats: 3, price_per_seat_cents: 1000, is_free: false,
+  slug: "launch",
+  name: "Launch",
+  price_cents: 7900,
+  annual_price_cents: 79000,
+  interval: "month",
+  included_seats: 3,
+  price_per_seat_cents: 1000,
+  is_free: false,
 };
 
 // The live demo tenant: on Scale ($449/mo), 4 seats (within 30 included), active.
 const DEMO: OrgForMrr = {
-  id: "demo", name: "Demo Pet Waste Co", billing_status: "active",
-  active_seat_count: 4, plan: SCALE,
+  id: "demo",
+  name: "Demo Pet Waste Co",
+  billing_status: "active",
+  active_seat_count: 4,
+  plan: SCALE,
 };
 // Free tenants on the client-count freemium tier — pay HoundStack nothing.
 const FREE_ORGS: OrgForMrr[] = Array.from({ length: 6 }, (_, i) => ({
-  id: `free${i}`, name: `Free Co ${i}`, billing_status: "free",
-  active_seat_count: 1, plan: LAUNCH,
+  id: `free${i}`,
+  name: `Free Co ${i}`,
+  billing_status: "free",
+  active_seat_count: 1,
+  plan: LAUNCH,
 }));
 
 // What the demo tenant collected from ITS OWN clients this period (the `payments`
@@ -83,9 +107,9 @@ describe("platform SaaS MRR is derived from subscriptions, not tenant collection
     // Seat overage stays on top of the monthly-equivalent base, and — like the
     // base — the annual plan's per-seat rate is a YEARLY charge, so it is also
     // divided by 12: 34 seats on Scale (30 included) → 4 × $10/yr → /12.
-    expect(
-      monthlyEquivalentCents({ ...DEMO, plan: annualScale, active_seat_count: 34 }),
-    ).toBe(Math.round(449000 / 12) + Math.round((4 * 1000) / 12));
+    expect(monthlyEquivalentCents({ ...DEMO, plan: annualScale, active_seat_count: 34 })).toBe(
+      Math.round(449000 / 12) + Math.round((4 * 1000) / 12),
+    );
 
     // The rollup uses the same conversion, so ARR of a single annual tenant is
     // 12 × its monthly equivalent (i.e. the annual price, up to rounding).
@@ -116,7 +140,11 @@ describe("tier is keyed off the subscribed plan, not the stale billing_tier text
 
   it("per-tier MRR splits across mixed paying tiers", () => {
     const growthOrg: OrgForMrr = {
-      id: "g", name: "Growth Co", billing_status: "active", active_seat_count: 5, plan: GROWTH,
+      id: "g",
+      name: "Growth Co",
+      billing_status: "active",
+      active_seat_count: 5,
+      plan: GROWTH,
     };
     const m = computePlatformSaasMetrics([DEMO, growthOrg, ...FREE_ORGS]);
     expect(m.mrrCents).toBe(44900 + 19900);
@@ -213,8 +241,12 @@ describe("recurring add-ons count toward platform MRR (BUG-11)", () => {
 
   it("does not count a tenant that has add-ons but no priced plan", () => {
     const noPlan: OrgForMrr = {
-      id: "x", name: "Add-ons only", billing_status: "active",
-      active_seat_count: 1, plan: null, addons: [RECEPTIONIST],
+      id: "x",
+      name: "Add-ons only",
+      billing_status: "active",
+      active_seat_count: 1,
+      plan: null,
+      addons: [RECEPTIONIST],
     };
     const m = computePlatformSaasMetrics([noPlan]);
     expect(m.payingTenants).toBe(0);
@@ -266,8 +298,13 @@ describe("comped tenants", () => {
   });
 
   it("does not drag real tenants down with it", () => {
-    const paying: OrgForMrr = { id: "p", name: "Real Co", billing_status: "active",
-      active_seat_count: 2, plan: GROWTH };
+    const paying: OrgForMrr = {
+      id: "p",
+      name: "Real Co",
+      billing_status: "active",
+      active_seat_count: 2,
+      plan: GROWTH,
+    };
     const m = computePlatformSaasMetrics([COMPED, paying]);
     expect(m.mrrCents).toBe(19900);
     expect(m.payingTenants).toBe(1);

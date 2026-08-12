@@ -45,7 +45,9 @@ function PortalVisits() {
         ) : (
           <UpcomingVisitsList
             rows={visitsQ.data ?? []}
-            cutoffHours={c?.reschedule_cutoff_hours ?? 18}
+            // No cutoff prop: each row carries `changes_allowed_until` from
+            // the server, computed in the org's timezone by the same function
+            // the reschedule and skip RPCs refuse against.
             allowReschedule={!!c?.allow_self_reschedule}
             // Defaults to 0 — no charge — because that is what the database
             // does when the org has never configured a skip rule, and because

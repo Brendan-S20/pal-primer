@@ -57,9 +57,7 @@ describe("one control open at a time", () => {
     expect(panel).toMatch(/type Section = "dates" \| "techs" \| "level" \| null/);
     expect(panel).toMatch(/const \[section, setSection\] = useState<Section>\(null\)/);
     for (const s of ["dates", "techs", "level"]) {
-      expect(panel).toMatch(
-        new RegExp(`setSection\\(section === "${s}" \\? null : "${s}"\\)`),
-      );
+      expect(panel).toMatch(new RegExp(`setSection\\(section === "${s}" \\? null : "${s}"\\)`));
     }
   });
 

@@ -3291,7 +3291,7 @@ export type Database = {
       platform_admin_audit: {
         Row: {
           action: string
-          actor_user_id: string
+          actor_user_id: string | null
           after_json: Json | null
           before_json: Json | null
           created_at: string
@@ -3300,7 +3300,7 @@ export type Database = {
         }
         Insert: {
           action: string
-          actor_user_id: string
+          actor_user_id?: string | null
           after_json?: Json | null
           before_json?: Json | null
           created_at?: string
@@ -3309,7 +3309,7 @@ export type Database = {
         }
         Update: {
           action?: string
-          actor_user_id?: string
+          actor_user_id?: string | null
           after_json?: Json | null
           before_json?: Json | null
           created_at?: string
@@ -5609,6 +5609,7 @@ export type Database = {
           lon_key: number
           payload: Json
           to_date: string
+          units: string
         }
         Insert: {
           fetched_at?: string
@@ -5618,6 +5619,7 @@ export type Database = {
           lon_key: number
           payload: Json
           to_date: string
+          units?: string
         }
         Update: {
           fetched_at?: string
@@ -5627,6 +5629,7 @@ export type Database = {
           lon_key?: number
           payload?: Json
           to_date?: string
+          units?: string
         }
         Relationships: []
       }
@@ -6230,6 +6233,14 @@ export type Database = {
         Args: { _addon_subscription_id: string; _token: string }
         Returns: undefined
       }
+      portal_change_deadline: {
+        Args: {
+          _cutoff_hours: number
+          _scheduled_on: string
+          _timezone: string
+        }
+        Returns: string
+      }
       portal_change_frequency: {
         Args: {
           _new_frequency: Database["public"]["Enums"]["service_frequency"]
@@ -6369,17 +6380,18 @@ export type Database = {
       portal_list_stations: {
         Args: { _token: string }
         Returns: {
-          capacity_liners: number
           label: string
           last_serviced_on: string
           liner_size: string
           location_description: string
           station_id: string
+          station_number: number
         }[]
       }
       portal_list_upcoming_visits: {
         Args: { _token: string }
         Returns: {
+          changes_allowed_until: string
           city: string
           eta_end: string
           eta_start: string

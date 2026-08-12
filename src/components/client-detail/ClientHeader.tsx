@@ -208,9 +208,14 @@ export function ClientHeader({
                 <StatusChip status="warning" label="No phone" />
               )}
               {client.primary_email ? (
+                // The name above truncates because it is the page's title and is
+                // repeated everywhere; this is the only place the address is
+                // shown, so it wraps instead. `min-w-0` is what lets it: the
+                // `min-w-0` chain above means the address overflows the header
+                // visibly rather than being clipped by it.
                 <a
                   href={`mailto:${client.primary_email}`}
-                  className="hover:text-foreground hover:underline"
+                  className="min-w-0 break-words hover:text-foreground hover:underline"
                 >
                   {client.primary_email}
                 </a>

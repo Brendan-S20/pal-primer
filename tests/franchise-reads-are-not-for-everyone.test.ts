@@ -25,7 +25,9 @@ const ROOT = new URL("..", import.meta.url).pathname;
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 
 function migrationFiles(): string[] {
-  return readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();
+  return readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
 }
 
 /** The LAST migration creating policies on the table is the one in force. */

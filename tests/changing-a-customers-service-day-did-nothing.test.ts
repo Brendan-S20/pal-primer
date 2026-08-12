@@ -78,7 +78,9 @@ describe("the splice is safe to apply and to re-apply", () => {
   it("asserts its anchor appears exactly once", () => {
     // `replace()` that matches nothing returns the original string, so an
     // unguarded splice installs an unpatched copy and reports success.
-    expect(migration).toMatch(/IF _n <> 1 THEN\s*\n\s*RAISE EXCEPTION 'expected exactly 1 chained-step assignment/);
+    expect(migration).toMatch(
+      /IF _n <> 1 THEN\s*\n\s*RAISE EXCEPTION 'expected exactly 1 chained-step assignment/,
+    );
   });
 
   it("is idempotent", () => {

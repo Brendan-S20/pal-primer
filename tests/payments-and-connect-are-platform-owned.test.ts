@@ -28,7 +28,9 @@ const ROOT = new URL("..", import.meta.url).pathname;
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 
 function migrationFiles(): string[] {
-  return readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();
+  return readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
 }
 
 /** CREATE OR REPLACE means the LAST migration defining a function is the one in
@@ -196,7 +198,10 @@ describe("a recorded payment is a fact, not a field", () => {
     // webhook writing statuses at all. The migration asserts this at deploy
     // time; this asserts the assertion is still there.
     const sql = readFileSync(
-      join(MIGRATIONS, migrationFiles().find((f) => f.includes("redirect-the-orgs-card-payments"))!),
+      join(
+        MIGRATIONS,
+        migrationFiles().find((f) => f.includes("redirect-the-orgs-card-payments"))!,
+      ),
       "utf8",
     );
     expect(sql).toMatch(/relforcerowsecurity/i);
@@ -207,7 +212,9 @@ describe("a recorded payment is a fact, not a field", () => {
     // refuse it silently — PostgREST reports a zero-row UPDATE as a success.
     // Better to fail here than to ship a green toast over nothing.
     const writes = tableWrites("payments");
-    expect(writes.length, "found no payments writes at all — the scan is broken").toBeGreaterThan(0);
+    expect(writes.length, "found no payments writes at all — the scan is broken").toBeGreaterThan(
+      0,
+    );
     expect(writes.filter((w) => !isServiceRole(w)).map((w) => `${w.file} (${w.op})`)).toEqual([]);
   });
 });

@@ -12,7 +12,7 @@ import { humanizeAuditAction } from "@/lib/humanize";
 // after_json — surfaced inline so the log answers "who was impersonated, and
 // for how long" without expanding Details (H2). Pure, so it and the filter can
 // be tested together; they have to agree on what a row contains (BUG-14).
-import { auditRowMatches, impersonationDetail } from "@/lib/platform-audit";
+import { auditActorLabel, auditRowMatches, impersonationDetail } from "@/lib/platform-audit";
 
 export const Route = createFileRoute("/platform/audit")({
   head: () => ({ meta: [{ title: "Audit · Platform admin" }, { name: "robots", content: "noindex" }] }),
@@ -100,9 +100,7 @@ function AuditItem({ row }: { row: PlatformAuditRow }) {
               {detail}
             </span>
           )}
-          <span className="text-xs text-muted-foreground">
-            by {row.actor_email ?? row.actor_user_id.slice(0, 8)}
-          </span>
+          <span className="text-xs text-muted-foreground">by {auditActorLabel(row)}</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">{fmtDate(row.created_at)}</span>

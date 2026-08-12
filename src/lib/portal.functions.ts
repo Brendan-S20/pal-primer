@@ -938,8 +938,8 @@ export const portalListStations = createServerFn({ method: "GET" })
     const { data: rows, error } = await sb.rpc("portal_list_stations" as any, { _token: data.token });
     if (error) throw new Error(error.message);
     return (rows ?? []) as Array<{
-      station_id: string; label: string; location_description: string | null;
-      liner_size: string | null; capacity_liners: number | null;
+      station_id: string; station_number: number | null; label: string | null;
+      location_description: string | null; liner_size: string | null;
       last_serviced_on: string | null;
     }>;
   });

@@ -57,7 +57,8 @@ const franchiseGateSql = readFileSync(FRANCHISE_GATE_MIGRATION, "utf8");
 /** The (tier, entitlement) pairs in has_plan_entitlement's VALUES list. */
 function parseSqlMatrix(source: string): Array<[string, string]> {
   const start = source.indexOf("CREATE OR REPLACE FUNCTION public.has_plan_entitlement");
-  if (start === -1) throw new Error("has_plan_entitlement is not defined in the expected migration");
+  if (start === -1)
+    throw new Error("has_plan_entitlement is not defined in the expected migration");
   const body = source.slice(start, source.indexOf("$$;", start));
   const valuesAt = body.indexOf("FROM (VALUES");
   if (valuesAt === -1) throw new Error("has_plan_entitlement no longer uses a VALUES matrix");
@@ -76,7 +77,8 @@ function parseSqlSlugMap(source: string): Record<string, string> {
   const body = source.slice(start, source.indexOf("$$;", start));
   const out: Record<string, string> = {};
   for (const m of body.matchAll(/WHEN\s+'([a-z_]+)'\s+THEN\s+'([a-z_]+)'/g)) out[m[1]] = m[2];
-  if (Object.keys(out).length === 0) throw new Error("Parsed no slug arms out of plan_tier_for_org");
+  if (Object.keys(out).length === 0)
+    throw new Error("Parsed no slug arms out of plan_tier_for_org");
   return out;
 }
 
@@ -120,7 +122,10 @@ describe("TS ↔ SQL entitlement parity (BUILD-1)", () => {
       const db = sqlSlugMap[slug];
       if (ts !== db) mismatches.push(`${slug}: TypeScript → ${ts}, SQL → ${db ?? "(absent)"}`);
     }
-    expect(mismatches, `plan_tier_for_org has drifted from SLUG_TO_TIER:\n  ${mismatches.join("\n  ")}`).toEqual([]);
+    expect(
+      mismatches,
+      `plan_tier_for_org has drifted from SLUG_TO_TIER:\n  ${mismatches.join("\n  ")}`,
+    ).toEqual([]);
   });
 
   it("covers every plan slug in the live catalog", () => {
@@ -141,7 +146,10 @@ describe("TS ↔ SQL entitlement parity (BUILD-1)", () => {
       "kennel",
     ];
     const unmapped = LIVE_CATALOG_SLUGS.filter((s) => !KNOWN_PLAN_SLUGS.includes(s));
-    expect(unmapped, `Plan slugs in the catalog with no tier mapping: ${unmapped.join(", ")}`).toEqual([]);
+    expect(
+      unmapped,
+      `Plan slugs in the catalog with no tier mapping: ${unmapped.join(", ")}`,
+    ).toEqual([]);
     for (const slug of LIVE_CATALOG_SLUGS) expect(sqlSlugMap[slug]).toBeTruthy();
   });
 });
@@ -312,9 +320,10 @@ describe("franchise_structure is gated in SQL, not only in TypeScript (BUILD-1)"
 
   it("puts a franchise_structure check in every one of them", () => {
     const missing = PARENT_SIDE_FRANCHISE_RPCS.filter(
-      (fn) => !/public\.has_plan_entitlement\(\s*\w+\s*,\s*'franchise_structure'\s*\)/.test(
-        franchiseGateBodies[fn] ?? "",
-      ),
+      (fn) =>
+        !/public\.has_plan_entitlement\(\s*\w+\s*,\s*'franchise_structure'\s*\)/.test(
+          franchiseGateBodies[fn] ?? "",
+        ),
     );
     expect(
       missing,
@@ -347,9 +356,10 @@ describe("franchise_structure is gated in SQL, not only in TypeScript (BUILD-1)"
       `${PLAN_UPGRADE_REQUIRED}: ${ENTITLEMENT_LABELS.franchise_structure} is included on ` +
       `${TIER_NAMES[needed as PlanTier]} and above. This organization is on %.`;
     for (const fn of PARENT_SIDE_FRANCHISE_RPCS) {
-      expect(franchiseGateBodies[fn], `${fn}'s refusal has drifted from upgradeMessage()`).toContain(
-        sqlText,
-      );
+      expect(
+        franchiseGateBodies[fn],
+        `${fn}'s refusal has drifted from upgradeMessage()`,
+      ).toContain(sqlText);
     }
     expect(upgradeMessage("franchise_structure", "launch")).toBe(
       sqlText.replace("%.", `${TIER_NAMES.launch}.`),

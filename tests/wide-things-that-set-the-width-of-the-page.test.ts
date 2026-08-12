@@ -213,6 +213,8 @@ describe("two more things measured at 360px", () => {
     // Four money figures across 360px is about 80px each, and
     // "Avg monthly / client" needs more than that before the number under it.
     const src = codeOnly(read("src/routes/_authenticated/analytics.tsx"));
-    expect(src).toMatch(/grid-cols-2 gap-4 text-sm \$\{anyRefunds \? "sm:grid-cols-4" : "sm:grid-cols-3"\}/);
+    expect(src).toMatch(
+      /grid-cols-2 gap-4 text-sm \$\{anyRefunds \? "sm:grid-cols-4" : "sm:grid-cols-3"\}/,
+    );
   });
 });

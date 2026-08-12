@@ -99,7 +99,10 @@ describe("levels mean what they say", () => {
     // actually evaluate.
     const plan = lastBody("plan_route");
     expect(plan).toMatch(/SELECT array_agg\(x ORDER BY ord DESC\) INTO _rev/);
-    expect(plan.match(/_order\[1:_i-1\] \|\| _rev \|\| _order\[_j\+1:array_length\(_order,1\)\]/g)?.length).toBe(2);
+    expect(
+      plan.match(/_order\[1:_i-1\] \|\| _rev \|\| _order\[_j\+1:array_length\(_order,1\)\]/g)
+        ?.length,
+    ).toBe(2);
   });
 });
 
@@ -113,10 +116,7 @@ describe("it refuses to invent a saving", () => {
   });
 
   it("sums the saving only over days that had one", () => {
-    const fn = readFileSync(
-      join(import.meta.dirname, "..", "src/lib/visits.functions.ts"),
-      "utf8",
-    );
+    const fn = readFileSync(join(import.meta.dirname, "..", "src/lib/visits.functions.ts"), "utf8");
     expect(fn).toMatch(/const measured = days\.filter\(\(d\) => d\.before_known\)/);
     expect(fn).toMatch(/measured\.reduce/);
   });
@@ -145,10 +145,7 @@ describe("the guards still apply, and refusals are visible", () => {
   });
 
   it("a skipped day is reported, not swallowed", () => {
-    const fn = readFileSync(
-      join(import.meta.dirname, "..", "src/lib/visits.functions.ts"),
-      "utf8",
-    );
+    const fn = readFileSync(join(import.meta.dirname, "..", "src/lib/visits.functions.ts"), "utf8");
     expect(fn).toMatch(/skipped\.push\(/);
     const ui = readFileSync(
       join(import.meta.dirname, "..", "src/components/routes/AutoRoutingPanel.tsx"),

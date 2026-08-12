@@ -216,15 +216,27 @@ function AppShell() {
 
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
-  // My Day carries its own sticky header; below `md` the shell header would
-  // stack a second bar on top of it (the audit's "double header"), so hide the
-  // shell header there. Desktop (`md`+) is unchanged.
+  // My Day carries its own sticky header; wherever the app is in its phone
+  // shape the shell header would stack a second bar on top of it (the audit's
+  // "double header"), so it is hidden there.
+  //
+  // "Phone shape" is the tab bar's reach, not a fixed breakpoint. This read
+  // `max-md:` from when the bar was `md:hidden` and that was the app's only
+  // breakpoint; once field roles kept the bar to `lg`, a tech on an 800px crew
+  // tablet got the double header back AND the tab bar over the bottom of the
+  // page — both of the things the tablet tier was built to stop, on the one
+  // route it was built for.
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   const isMyDay = pathname === "/my-day" || pathname.startsWith("/my-day/");
 
   const brand = useBrandAccent();
-  // Q-2's tablet tier: the tab bar's reach and this padding are one decision.
-  const { mainBottomPadding } = useTabletTier();
+  // Q-2's tablet tier: the tab bar's reach, this padding, and the header above
+  // are one decision, so they all read it from here rather than each writing a
+  // breakpoint of their own. Both class strings are spelled out in full —
+  // Tailwind scans source for literal class names and cannot see an assembled
+  // one.
+  const { mainBottomPadding, barThroughTablet } = useTabletTier();
+  const myDayHeaderHidden = barThroughTablet ? "max-lg:hidden" : "max-md:hidden";
   // Scope the tenant brand color to the internal staff app only. Platform-admin
   // routes and the sign-in page live outside this shell and stay HoundStack-branded.
   const brandStyle = brand
@@ -247,8 +259,8 @@ function AppShell() {
         <AppSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <header
-            className={`sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-card/80 px-4 backdrop-blur ${
-              isMyDay ? "max-md:hidden" : ""
+            className={`sticky top-[var(--hs-banner-h,0px)] z-30 flex h-14 items-center gap-2 border-b bg-card/80 px-4 backdrop-blur ${
+              isMyDay ? myDayHeaderHidden : ""
             }`}
           >
             <SidebarTrigger />
@@ -267,7 +279,15 @@ function AppShell() {
               to="/help"
               search={{ article: undefined }}
               aria-label="Knowledge Center"
-              className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground max-md:p-2.5"
+              // A 16px glyph centred in a 44px box, the shape ui/dialog.tsx and
+              // ui/sheet.tsx already use. Padding was carrying the size — `p-2`
+              // made a 32px target, and `max-md:p-2.5` around a 20px glyph got
+              // it to 40, still under the minimum on the widths where it is
+              // actually thumbed. The glyph is untouched, so the header looks
+              // the same; only the part a thumb can miss changed. `shrink-0`
+              // because the search button beside it is `flex-1` and would
+              // otherwise squeeze this back below 44 at 360px.
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <HelpCircle className="h-4 w-4 max-md:h-5 max-md:w-5" />
             </Link>

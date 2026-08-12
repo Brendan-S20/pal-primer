@@ -222,7 +222,13 @@ function LeadsPage() {
                     ) : null}
                   </div>
                   <div className="mt-1 text-sm text-muted-foreground">
-                    <a href={`mailto:${l.email}`} className="underline">
+                    {/* The action column beside this is a hard `w-40`, so the
+                        lead body is about 96px wide on a phone. A lead's email
+                        is the only copy of it anywhere in the app — it cannot be
+                        truncated away — so `break-all` gives the address
+                        somewhere to break instead of setting the width of the
+                        row. */}
+                    <a href={`mailto:${l.email}`} className="break-all underline">
                       {l.email}
                     </a>
                     {l.phone ? (

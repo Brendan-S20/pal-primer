@@ -515,7 +515,7 @@ export const getPlatformHealth = createServerFn({ method: "GET" })
 
 export type PlatformAuditRow = {
   id: string;
-  actor_user_id: string;
+  actor_user_id: string | null;
   actor_email: string | null;
   organization_id: string | null;
   organization_name: string | null;
@@ -565,7 +565,8 @@ export const getPlatformAudit = createServerFn({ method: "GET" })
     const rows: PlatformAuditRow[] = (audit ?? []).map((r) => ({
       id: r.id,
       actor_user_id: r.actor_user_id,
-      actor_email: actorEmailsMap.get(r.actor_user_id) ?? null,
+      // Null on a webhook-written row; the label falls back in the UI.
+      actor_email: r.actor_user_id ? (actorEmailsMap.get(r.actor_user_id) ?? null) : null,
       organization_id: r.organization_id,
       organization_name: r.organization_id ? orgNames.get(r.organization_id) ?? null : null,
       action: r.action,

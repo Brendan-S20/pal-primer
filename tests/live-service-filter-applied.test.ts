@@ -74,9 +74,12 @@ describe("every 'is this service live' query uses the shared rule", () => {
     // restated here.
     const { readdirSync } = require("node:fs") as typeof import("node:fs");
     const dir = join(ROOT, "supabase/migrations");
-    const re = /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.admin_generate_seasonal_deepcleans\s*\(/i;
+    const re =
+      /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.admin_generate_seasonal_deepcleans\s*\(/i;
     let latest: string | null = null;
-    for (const f of readdirSync(dir).filter((x) => x.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(dir)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
       const sql = readFileSync(join(dir, f), "utf8");
       if (re.test(sql)) latest = sql;
     }

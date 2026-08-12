@@ -20,12 +20,7 @@ import { REVERSAL_KINDS, reducesIncome } from "@/lib/cpa-reports";
 // looks like a plausible number: a lost dispute silently adding money back, a
 // display toggle leaking into a tax figure, or an outcome inferred from age.
 
-const ev = (
-  kind: string,
-  day: string,
-  amountCents = 100_000,
-  disputeId = "",
-): DisputeEvent => ({
+const ev = (kind: string, day: string, amountCents = 100_000, disputeId = ""): DisputeEvent => ({
   kind,
   day,
   amountCents,
@@ -111,7 +106,12 @@ describe("planning a charge.dispute.* webhook", () => {
   });
 
   it("never bills anything for an inquiry, open or closed", () => {
-    for (const s of ["warning_needs_response", "warning_under_review", "warning_closed", "prevented"]) {
+    for (const s of [
+      "warning_needs_response",
+      "warning_under_review",
+      "warning_closed",
+      "prevented",
+    ]) {
       expect(planDisputeEvent("charge.dispute.created", s).movesMoney, s).toBe(false);
       expect(planDisputeEvent("charge.dispute.closed", s).movesMoney, s).toBe(false);
     }
@@ -465,11 +465,51 @@ describe("the analytics toggle", () => {
 describe("queue totals", () => {
   it("splits money and counts by outcome", () => {
     const totals = summarizeDisputes([
-      { paymentId: "a", disputeId: "dp_a", outcome: "open", amountCents: 10_000, openedOn: "2026-05-01", decidedOn: null, moneyLeft: true },
-      { paymentId: "b", disputeId: "dp_b", outcome: "open", amountCents: 5_000, openedOn: "2026-05-02", decidedOn: null, moneyLeft: true },
-      { paymentId: "c", disputeId: "dp_c", outcome: "lost", amountCents: 7_500, openedOn: "2026-04-01", decidedOn: "2026-05-01", moneyLeft: true },
-      { paymentId: "d", disputeId: "dp_d", outcome: "won", amountCents: 2_500, openedOn: "2026-03-01", decidedOn: "2026-04-01", moneyLeft: false },
-      { paymentId: "e", disputeId: "dp_e", outcome: "inquiry", amountCents: 60_000, openedOn: "2026-05-03", decidedOn: null, moneyLeft: false },
+      {
+        paymentId: "a",
+        disputeId: "dp_a",
+        outcome: "open",
+        amountCents: 10_000,
+        openedOn: "2026-05-01",
+        decidedOn: null,
+        moneyLeft: true,
+      },
+      {
+        paymentId: "b",
+        disputeId: "dp_b",
+        outcome: "open",
+        amountCents: 5_000,
+        openedOn: "2026-05-02",
+        decidedOn: null,
+        moneyLeft: true,
+      },
+      {
+        paymentId: "c",
+        disputeId: "dp_c",
+        outcome: "lost",
+        amountCents: 7_500,
+        openedOn: "2026-04-01",
+        decidedOn: "2026-05-01",
+        moneyLeft: true,
+      },
+      {
+        paymentId: "d",
+        disputeId: "dp_d",
+        outcome: "won",
+        amountCents: 2_500,
+        openedOn: "2026-03-01",
+        decidedOn: "2026-04-01",
+        moneyLeft: false,
+      },
+      {
+        paymentId: "e",
+        disputeId: "dp_e",
+        outcome: "inquiry",
+        amountCents: 60_000,
+        openedOn: "2026-05-03",
+        decidedOn: null,
+        moneyLeft: false,
+      },
     ]);
     expect(totals).toEqual({
       inquiryCount: 1,

@@ -45,7 +45,8 @@ function currentSeederSource(): { file: string; body: string } {
     // be able to satisfy or break an assertion about the code.
     const open = src.indexOf("AS $fn$", src.indexOf(MARKER));
     const close = src.indexOf("$fn$;", open);
-    if (open < 0 || close < 0) throw new Error(`${f} defines seed_demo_org but not with $fn$ quoting`);
+    if (open < 0 || close < 0)
+      throw new Error(`${f} defines seed_demo_org but not with $fn$ quoting`);
     return { file: f, body: src.slice(open + "AS $fn$".length, close) };
   }
   throw new Error("no migration defines public.seed_demo_org");

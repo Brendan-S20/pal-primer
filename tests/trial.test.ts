@@ -117,7 +117,12 @@ describe("a plan that ended stops being paid", () => {
     // suspendTenant writes billing_status='suspended' and never touches
     // plan_status, so a tenant suspended for fraud kept plan_status='active'.
     const s = trialStateFor(
-      { planStatus: "active", billingStatus: "suspended", trialEndsAt: null, hasSubscription: true },
+      {
+        planStatus: "active",
+        billingStatus: "suspended",
+        trialEndsAt: null,
+        hasSubscription: true,
+      },
       NOW,
     );
     expect(s.phase).toBe("lapsed");
