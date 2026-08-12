@@ -6380,12 +6380,12 @@ export type Database = {
       portal_list_stations: {
         Args: { _token: string }
         Returns: {
-          capacity_liners: number
           label: string
           last_serviced_on: string
           liner_size: string
           location_description: string
           station_id: string
+          station_number: number
         }[]
       }
       portal_list_upcoming_visits: {

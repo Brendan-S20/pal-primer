@@ -4,6 +4,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { frequencyLabel } from "@/lib/frequency-request";
+import { stationDisplayName } from "@/lib/dna-linkage";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -1330,14 +1331,26 @@ export function StationsPanel({ rows }: { rows: Array<any> }) {
       {rows.map((s) => (
         <li key={s.station_id} className="p-3 text-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div className="font-medium">{s.label}</div>
+            <div className="min-w-0">
+              {/* The same helper the office and the field use. `label` is
+                  nullable since BUG-10, so rendering it alone put a blank
+                  heading above a location description belonging to nothing —
+                  and the number is how the crew refers to the bin on the
+                  phone. */}
+              <div className="font-medium break-words">
+                {stationDisplayName(s.station_number, s.label)}
+              </div>
               {s.location_description && (
-                <div className="text-xs text-muted-foreground">{s.location_description}</div>
+                <div className="text-xs text-muted-foreground break-words">
+                  {s.location_description}
+                </div>
               )}
             </div>
-            <div className="text-xs text-muted-foreground text-right">
-              {s.capacity_liners && <div>Capacity: {s.capacity_liners} liners</div>}
+            {/* Capacity used to print here from `capacity_liners`, which
+                stations.functions.ts stopped writing in QA round 8 and the
+                staff editor stopped showing. A number nobody can change reads
+                as current, so it is gone rather than stale. */}
+            <div className="shrink-0 text-xs text-muted-foreground text-right">
               <div>Last serviced: {s.last_serviced_on ? fmtDayShort(s.last_serviced_on) : "-"}</div>
             </div>
           </div>
