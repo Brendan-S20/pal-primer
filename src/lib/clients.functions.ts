@@ -34,7 +34,18 @@ export const listClients = createServerFn({ method: "GET" })
     // Fetch aggregate side-data in parallel; ignore individual failures.
     const [propsRes, subsRes, invRes] = await Promise.all([
       ids.length
-        ? supabase.from("properties").select("id, client_id, dogs(id)").in("client_id", ids)
+        ? supabase
+            // Inactive dogs and archived properties are excluded HERE because
+            // the client detail page excludes them there — PropertiesTab
+            // counts `d.active !== false`, and the dog-mismatch warning on a
+            // service compares the billed count against that number. Marking a
+            // dog inactive is the documented alternative to deleting one, so
+            // without this filter the list keeps showing a count that no other
+            // surface agrees with: the same records, two answers.
+            .from("properties")
+            .select("id, client_id, dogs(id, active)")
+            .is("archived_at", null)
+            .in("client_id", ids)
         : Promise.resolve({ data: [] as any[] }),
       ids.length
         ? supabase
@@ -56,8 +67,14 @@ export const listClients = createServerFn({ method: "GET" })
     // Dogs live on properties (dogs.property_id), so aggregate through the
     // property → client relationship instead of a non-existent dogs.client_id.
     const dogsByClient = new Map<string, number>();
-    for (const p of (propsRes.data ?? []) as Array<{ client_id: string; dogs: unknown[] | null }>) {
-      const n = Array.isArray(p.dogs) ? p.dogs.length : 0;
+    for (const p of (propsRes.data ?? []) as Array<{
+      client_id: string;
+      dogs: Array<{ active?: boolean | null }> | null;
+    }>) {
+      // `active !== false`, not `active === true`: the column is nullable and
+      // a null has always meant active. This mirrors PropertiesTab exactly —
+      // if the two ever diverge again it will be here.
+      const n = Array.isArray(p.dogs) ? p.dogs.filter((d) => d?.active !== false).length : 0;
       if (!p.client_id) continue;
       dogsByClient.set(p.client_id, (dogsByClient.get(p.client_id) ?? 0) + n);
     }

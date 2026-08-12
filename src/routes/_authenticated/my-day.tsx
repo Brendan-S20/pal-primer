@@ -1560,9 +1560,15 @@ function VisitCard({
                   <div className="text-xs font-medium text-muted-foreground">
                     Bill an add-on to this client
                   </div>
+                  {/* Six columns at every width gave the quantity box and the
+                      Bill button one column each — about 38px on the one
+                      screen in this product that is a phone screen by
+                      definition, for the control that charges a card. Below
+                      `sm` the service picker takes the row and quantity sits
+                      beside a full-width Bill. */}
                   <div className="grid grid-cols-6 gap-2">
                     <select
-                      className="col-span-4 h-9 rounded-md border bg-background px-2 text-sm"
+                      className="col-span-6 h-9 rounded-md border bg-background px-2 text-sm sm:col-span-4"
                       value={addonSvcId}
                       onChange={(e) => setAddonSvcId(e.target.value)}
                     >
@@ -1576,7 +1582,7 @@ function VisitCard({
                     <input
                       type="number"
                       min="1"
-                      className="col-span-1 h-9 rounded-md border bg-background px-2 text-sm"
+                      className="col-span-2 h-9 rounded-md border bg-background px-2 text-sm max-md:min-h-11 sm:col-span-1"
                       value={addonQty}
                       onChange={(e) => setAddonQty(e.target.value)}
                     />
@@ -1588,7 +1594,7 @@ function VisitCard({
                       <AlertDialogTrigger asChild>
                         <Button
                           size="sm"
-                          className="col-span-1"
+                          className="col-span-4 max-md:min-h-11 sm:col-span-1"
                           disabled={!addonSvcId || !svc || addonMut.isPending || !cardOnline}
                         >
                           {addonMut.isPending ? "…" : "Bill"}

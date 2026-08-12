@@ -237,6 +237,18 @@ function AppShell() {
   // one.
   const { mainBottomPadding, barThroughTablet } = useTabletTier();
   const myDayHeaderHidden = barThroughTablet ? "max-lg:hidden" : "max-md:hidden";
+  // Sign out lives in the tab bar's More sheet wherever the tab bar reaches, so
+  // the header avatar hides over exactly the same range. This was hardcoded
+  // `max-md:hidden` while the bar itself was already following the hook, which
+  // put the avatar in the header AND Sign out in the sheet together from 768 to
+  // 1023px — the duplication the tier was introduced to remove.
+  //
+  // A separate constant from `myDayHeaderHidden` on purpose, even though the
+  // two spell the same thing today: that one answers "does My Day get the shell
+  // header at all", this one answers "is Sign out already in the sheet". They
+  // agree because both follow the bar's reach, not because they are the same
+  // question, and collapsing them would hide that.
+  const accountMenuHidden = barThroughTablet ? "max-lg:hidden" : "max-md:hidden";
   // Scope the tenant brand color to the internal staff app only. Platform-admin
   // routes and the sign-in page live outside this shell and stay HoundStack-branded.
   const brandStyle = brand
@@ -293,13 +305,13 @@ function AppShell() {
             </Link>
             <WeatherPopover />
             <NotificationBell />
-            {/* Below `md` this lives in the tab bar's More sheet — the most
-                dangerous action doesn't belong in a phone header.
+            {/* Wherever the tab bar reaches, this lives in its More sheet —
+                the most dangerous action doesn't belong in a phone header.
                 It was a bare "Sign out" button, which made the header's only
                 trace of the signed-in person a one-click way to leave. The
                 avatar answers "which account am I in" and puts Sign out one
                 level down. */}
-            <div className="max-md:hidden">
+            <div className={accountMenuHidden}>
               <AccountMenu onSignOut={handleSignOut} />
             </div>
           </header>

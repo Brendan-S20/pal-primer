@@ -145,7 +145,10 @@ export const getMyOrg = createServerFn({ method: "GET" })
     const { data: org, error: orgErr } = await (supabase as any)
       .from("organizations")
       .select(
-        "id, name, portal_slug, active_client_count, billing_tier, plan_status, current_period_end, stripe_customer_id, stripe_subscription_id",
+        // `timezone` is here for useOrgToday: components that judge whether a
+        // date has passed must ask the org's calendar, not the server's
+        // default. See src/hooks/useOrgToday.ts.
+        "id, name, portal_slug, timezone, active_client_count, billing_tier, plan_status, current_period_end, stripe_customer_id, stripe_subscription_id",
       )
       .eq("id", role.organization_id)
       .single();

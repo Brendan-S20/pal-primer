@@ -86,7 +86,6 @@ function NewClientWizard() {
   const [region, setRegion] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [gateCode, setGateCode] = useState("");
-  const [yardSize, setYardSize] = useState<"" | "small" | "medium" | "large" | "xlarge">("");
   const [hazardNotes, setHazardNotes] = useState("");
   // P3.5 optional on-site visit contact (tenant/property manager)
   const [vcName, setVcName] = useState("");
@@ -206,7 +205,6 @@ function NewClientWizard() {
           region: region || undefined,
           postalCode,
           gateCode: gateCode || undefined,
-          yardSize: yardSize || undefined,
           hazardNotes: hazardNotes || undefined,
           visitContactName: vcName || undefined,
           visitContactPhone: vcPhone || undefined,
@@ -406,21 +404,15 @@ function NewClientWizard() {
                 <Label htmlFor="gc">Gate code (optional)</Label>
                 <Input id="gc" value={gateCode} onChange={(e) => setGateCode(e.target.value)} />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="ys">Yard size</Label>
-                <select
-                  id="ys"
-                  value={yardSize}
-                  onChange={(e) => setYardSize(e.target.value as any)}
-                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                >
-                  <option value="">(choose)</option>
-                  <option value="small">Small (under 1/8 acre)</option>
-                  <option value="medium">Medium (1/8-1/4 acre)</option>
-                  <option value="large">Large (1/4-1/2 acre)</option>
-                  <option value="xlarge">Extra large (1/2+ acre)</option>
-                </select>
-              </div>
+              {/* No yard-size picker. It is derived from the property
+                  boundary by a database trigger, and properties.functions.ts
+                  says so where it stopped writing the field: "yard_size is
+                  derived from the boundary by a DB trigger now; the field is
+                  still accepted (older forms send it) but never written."
+                  This wizard was the older form. A hand-picked size is worse
+                  than none, because the tech reading it in the field cannot
+                  tell a guess from a measurement — and nothing here has a
+                  boundary to measure yet, since one is drawn afterwards. */}
             </div>
 
             <div className="rounded-md border bg-muted/20 p-3">

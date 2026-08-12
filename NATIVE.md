@@ -14,24 +14,38 @@ bunx cap add ios
 bunx cap add android
 ```
 
-## Dev workflow (live-reload against the hosted app)
+## Dev workflow (live-reload against a dev server)
 
-`capacitor.config.ts` points `server.url` to `https://pal-primer.lovable.app`. The native shell just loads that URL, so any Lovable deploy is instantly available in the app — no rebuild required.
+`capacitor.config.ts` sets **no** `server.url` by default — the shell loads the
+bundled assets in `webDir`. It used to hard-code
+`https://pal-primer.lovable.app`, a preview domain, with a comment saying to
+remove it before a store build; nothing enforced that, so a binary built on any
+given day could ship pointing at a preview host. Live reload is opt-in through
+an environment variable instead, and the flag that permits cleartext is derived
+from the URL rather than left on:
 
 ```bash
-bunx cap sync
+CAP_SERVER_URL=http://192.168.1.10:8080 bunx cap sync
 bunx cap open ios      # or: bunx cap open android
 # Press ▶ in Xcode / Android Studio
 ```
 
+Leave `CAP_SERVER_URL` unset and the app runs entirely from the bundle, offline
+included.
+
 ## Store-ready build (bundled assets, no live server)
 
-1. Comment out the `server` block in `capacitor.config.ts`.
+1. Nothing to comment out — with `CAP_SERVER_URL` unset there is no `server.url`.
 2. Build the web app and copy assets:
    ```bash
-   bun run build
+   bun run build:native   # NOT `bun run build`
    bunx cap sync
    ```
+   `build:native` is the one that produces a bootable shell. `bun run build` is
+   the hosted web build: Nitro packages it into `.output/{server,public}` and
+   `.output/public` contains assets and **no index.html**, so a WebView pointed
+   at it has nothing to load. `webDir` is `dist-native/client`, which only
+   `build:native` writes — see the comment on `webDir` in `capacitor.config.ts`.
 3. Open the native project and archive:
    ```bash
    bunx cap open ios      # Product → Archive → App Store Connect
@@ -72,6 +86,6 @@ Import from `@/lib/native` — every helper no-ops on web, uses the plugin nativ
 - ✅ Haptics: `haptic()` routes to Capacitor `Haptics` on device, `navigator.vibrate` on web.
 - ✅ Status bar: dark brand style applied in the authenticated shell.
 - ✅ Offline queue: unchanged — IndexedDB works inside the WebView.
-- ⏳ Push tokens: `push_subscriptions` schema is web-push (endpoint/p256dh/auth). Wire APNs/FCM by adding a `native_token` + `platform` column and calling `registerPushNotifications()` from the authenticated shell.
+- ✅ Push tokens: `push_subscriptions` carries `native_token` + `platform` alongside the web-push columns, and `src/lib/push.server.ts` fans out to Web Push, APNs and FCM from one call. Android uses **FCM HTTP v1** with a service-account JWT (`FCM_SERVICE_ACCOUNT`); the legacy `fcm.googleapis.com/fcm/send` server-key API it used before was decommissioned by Google. Each channel is skipped silently when its credentials are absent, so an unconfigured one never takes the others down.
 - ⏳ GPS start-route: `getCurrentPositionNative()` is ready; hook into the tech "Start" action when route optimization needs a live pin.
 

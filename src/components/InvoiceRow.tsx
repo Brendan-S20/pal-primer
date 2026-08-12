@@ -17,6 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RowActions, type RowAction } from "@/components/RowActions";
 import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
 import { isInvoiceOverdue } from "@/lib/overdue";
+import { useOrgToday } from "@/hooks/useOrgToday";
 import { formatDay } from "@/lib/format";
 import { invoiceKindLabel } from "@/lib/invoice-labels";
 import { appUrl } from "@/lib/app-origin";
@@ -109,7 +110,12 @@ export function InvoiceRow({
   actions?: RowAction[];
 }) {
   const client = Array.isArray(invoice.clients) ? invoice.clients[0] : invoice.clients;
-  const overdue = isInvoiceOverdue(invoice.status, invoice.due_on);
+  // The ORG's today, not the server default. See src/hooks/useOrgToday.ts —
+  // this used to take the `America/Chicago` fallback while the dashboard read
+  // the real setting, so the two disagreed about the same invoice for an hour
+  // a night on any org east of Central.
+  const today = useOrgToday();
+  const overdue = isInvoiceOverdue(invoice.status, invoice.due_on, today);
   // Only the non-default kind (a prepaid top-up) is worth a chip; a plain
   // "Service" invoice needs no label. Either way the enum is never shown raw.
   const showKind = invoice.kind === "prepaid_topup";
@@ -199,7 +205,12 @@ export function InvoiceCard({
   actions?: RowAction[];
 }) {
   const client = Array.isArray(invoice.clients) ? invoice.clients[0] : invoice.clients;
-  const overdue = isInvoiceOverdue(invoice.status, invoice.due_on);
+  // The ORG's today, not the server default. See src/hooks/useOrgToday.ts —
+  // this used to take the `America/Chicago` fallback while the dashboard read
+  // the real setting, so the two disagreed about the same invoice for an hour
+  // a night on any org east of Central.
+  const today = useOrgToday();
+  const overdue = isInvoiceOverdue(invoice.status, invoice.due_on, today);
   const showKind = invoice.kind === "prepaid_topup";
   const menuActions = useInvoiceMenuActions(invoice, actions);
 
