@@ -438,13 +438,17 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
             <div>
               <SectionLabel>One-time add-on</SectionLabel>
               <form
+                // Six columns at every width put the price box and the submit
+                // button in one column each — about 37px at 360px, on a form
+                // that charges a card. The add-credit form in BillingTab.tsx
+                // already reflows exactly this way.
                 className="mt-2 grid grid-cols-6 items-end gap-2"
                 onSubmit={(e) => {
                   e.preventDefault();
                   chargeMut.mutate();
                 }}
               >
-                <div className="col-span-3">
+                <div className="col-span-6 sm:col-span-3">
                   <Label htmlFor="addon-svc" className="text-xs">
                     Service
                   </Label>
@@ -466,7 +470,7 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
                     ))}
                   </select>
                 </div>
-                <div className="col-span-1">
+                <div className="col-span-3 sm:col-span-1">
                   <Label htmlFor="addon-qty" className="text-xs">
                     Qty
                   </Label>
@@ -479,7 +483,7 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
                     onChange={(e) => setQty(e.target.value)}
                   />
                 </div>
-                <div className="col-span-1">
+                <div className="col-span-3 sm:col-span-1">
                   <Label htmlFor="addon-price" className="text-xs">
                     Price ($)
                   </Label>
@@ -496,7 +500,7 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
                 <Button
                   type="submit"
                   size="sm"
-                  className="col-span-1"
+                  className="col-span-6 max-md:min-h-11 sm:col-span-1"
                   disabled={chargeMut.isPending || !svcId}
                 >
                   Add
@@ -510,13 +514,17 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
             <div>
               <SectionLabel>Recurring add-on</SectionLabel>
               <form
+                // Six columns at every width put the price box and the submit
+                // button in one column each — about 37px at 360px, on a form
+                // that charges a card. The add-credit form in BillingTab.tsx
+                // already reflows exactly this way.
                 className="mt-2 grid grid-cols-6 items-end gap-2"
                 onSubmit={(e) => {
                   e.preventDefault();
                   subMut.mutate();
                 }}
               >
-                <div className="col-span-3">
+                <div className="col-span-6 sm:col-span-3">
                   <Label htmlFor="addon-sub-svc" className="text-xs">
                     Service
                   </Label>
@@ -538,7 +546,7 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
                     ))}
                   </select>
                 </div>
-                <div className="col-span-1">
+                <div className="col-span-3 sm:col-span-1">
                   <Label htmlFor="addon-sub-freq" className="text-xs">
                     Repeats
                   </Label>
@@ -555,7 +563,7 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
                     <option value="yearly">Yr</option>
                   </select>
                 </div>
-                <div className="col-span-1">
+                <div className="col-span-3 sm:col-span-1">
                   <Label htmlFor="addon-sub-price" className="text-xs">
                     Price ($)
                   </Label>
@@ -572,7 +580,7 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
                 <Button
                   type="submit"
                   size="sm"
-                  className="col-span-1"
+                  className="col-span-6 max-md:min-h-11 sm:col-span-1"
                   disabled={subMut.isPending || !subSvcId}
                 >
                   Start

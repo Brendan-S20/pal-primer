@@ -25,6 +25,7 @@ import { sendInvoiceEmail } from "@/lib/notifications.functions";
 // working; the implementation now lives in the shared domain lib (I3).
 export { isInvoiceOverdue } from "@/lib/overdue";
 import { isInvoiceOverdue } from "@/lib/overdue";
+import { useOrgToday } from "@/hooks/useOrgToday";
 import { appUrl } from "@/lib/app-origin";
 
 function fmtCents(c: number | null | undefined, currency = "usd") {
@@ -111,7 +112,9 @@ export function InvoiceDrawer({
   };
 
   const open = inv?.status === "open";
-  const overdue = inv ? isInvoiceOverdue(inv.status, inv.due_on) : false;
+  // The org's today — see src/hooks/useOrgToday.ts.
+  const today = useOrgToday();
+  const overdue = inv ? isInvoiceOverdue(inv.status, inv.due_on, today) : false;
   // Grace window (full auto billing): auto-generated invoice, not yet emailed.
   const inGrace = open && !inv?.sent_at && !!inv?.send_after;
 
