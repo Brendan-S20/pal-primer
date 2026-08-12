@@ -30,7 +30,9 @@ import { join } from "node:path";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
-const files = readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();
+const files = readdirSync(MIGRATIONS)
+  .filter((f) => f.endsWith(".sql"))
+  .sort();
 const allSql = files.map((f) => readFileSync(join(MIGRATIONS, f), "utf8"));
 
 /** The body of the LAST policy created for a table+command. */
@@ -85,7 +87,12 @@ describe("the leads insert policy", () => {
 describe("the resolver the policy depends on", () => {
   const fn =
     allSql
-      .flatMap((sql) => sql.match(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.org_accepts_public_leads[\s\S]*?\$\$;/gi) ?? [])
+      .flatMap(
+        (sql) =>
+          sql.match(
+            /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.org_accepts_public_leads[\s\S]*?\$\$;/gi,
+          ) ?? [],
+      )
       .pop() ?? "";
 
   it("is SECURITY DEFINER with a pinned search_path", () => {
@@ -106,7 +113,9 @@ describe("the resolver the policy depends on", () => {
 
   it("is not granted to PUBLIC", () => {
     const grantSql = allSql.find((s) => s.includes("org_accepts_public_leads")) ?? "";
-    expect(grantSql).toMatch(/REVOKE\s+ALL\s+ON\s+FUNCTION\s+public\.org_accepts_public_leads\(uuid\)\s+FROM\s+PUBLIC/i);
+    expect(grantSql).toMatch(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+public\.org_accepts_public_leads\(uuid\)\s+FROM\s+PUBLIC/i,
+    );
   });
 });
 
@@ -149,6 +158,9 @@ describe("no write policy anywhere is unconditional", () => {
         offenders.push(`${files[i]}: ${stmt.slice(0, 90).replace(/\s+/g, " ")}…`);
       }
     }
-    expect(offenders, `unconditional write policies still standing:\n${offenders.join("\n")}`).toEqual([]);
+    expect(
+      offenders,
+      `unconditional write policies still standing:\n${offenders.join("\n")}`,
+    ).toEqual([]);
   });
 });

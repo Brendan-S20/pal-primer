@@ -147,7 +147,10 @@ describe("billed_through_parent is gone", () => {
       for (const e of readdirSync(join(ROOT, dir))) {
         const rel = `${dir}/${e}`;
         if (statSync(join(ROOT, rel)).isDirectory()) walk(rel);
-        else if (/\.(ts|tsx)$/.test(e) && readFileSync(join(ROOT, rel), "utf8").includes("billed_through_parent")) {
+        else if (
+          /\.(ts|tsx)$/.test(e) &&
+          readFileSync(join(ROOT, rel), "utf8").includes("billed_through_parent")
+        ) {
           hits.push(rel);
         }
       }
@@ -159,10 +162,16 @@ describe("billed_through_parent is gone", () => {
   it("is out of the platform-columns trigger", () => {
     // A trigger naming a dropped column fails EVERY organizations UPDATE.
     const mig = readFileSync(
-      join(ROOT, "supabase/migrations/20260804070000_a-column-that-promised-consolidated-franchise-billing.sql"),
+      join(
+        ROOT,
+        "supabase/migrations/20260804070000_a-column-that-promised-consolidated-franchise-billing.sql",
+      ),
       "utf8",
     );
-    const fn = /CREATE OR REPLACE FUNCTION public\.tg_orgs_protect_platform_columns[\s\S]*$/.exec(mig)?.[0] ?? "";
+    const fn =
+      /CREATE OR REPLACE FUNCTION public\.tg_orgs_protect_platform_columns[\s\S]*$/.exec(
+        mig,
+      )?.[0] ?? "";
     expect(fn).not.toBe("");
     expect(fn).not.toContain("billed_through_parent");
     // The sibling that IS wired stays protected.

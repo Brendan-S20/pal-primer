@@ -143,7 +143,9 @@ describe("people without a photo are still distinguishable", () => {
 describe("the account is reachable from everywhere it should be", () => {
   it("the header avatar replaced the bare Sign out button", () => {
     expect(shell).toMatch(/<AccountMenu onSignOut=\{handleSignOut\} \/>/);
-    expect(shell).not.toMatch(/onClick=\{handleSignOut\} className="max-md:hidden">\s*\n?\s*Sign out/);
+    expect(shell).not.toMatch(
+      /onClick=\{handleSignOut\} className="max-md:hidden">\s*\n?\s*Sign out/,
+    );
   });
 
   it("sign out moved one level in, and stays destructive", () => {

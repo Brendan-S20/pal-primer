@@ -188,9 +188,11 @@ describe("no charge escapes the fee", () => {
     const BASE_VARS = new Set(["dueCents", "amountCents"]);
     const CHARGE_VARS = new Set([...BASE_VARS, "quote.totalCents"]);
     for (const f of found) {
-      const pairs = [...f.src.matchAll(
-        /amount:\s*([\w.]+),\s*\n\s*application_fee_amount:\s*platformFeeCents\((\w+)\)/g,
-      )];
+      const pairs = [
+        ...f.src.matchAll(
+          /amount:\s*([\w.]+),\s*\n\s*application_fee_amount:\s*platformFeeCents\((\w+)\)/g,
+        ),
+      ];
       expect(pairs.length, `${f.file} has no amount/fee pair to check`).toBeGreaterThan(0);
       for (const [, amountVar, feeVar] of pairs) {
         expect(

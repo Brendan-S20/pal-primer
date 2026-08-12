@@ -74,7 +74,9 @@ describe("consent is a recorded fact, not an absent refusal", () => {
     // Inventing consent for rows already in the table would recreate the exact
     // fiction the carrier rejected, and would be worse for looking like proof.
     expect(SQL).not.toMatch(/UPDATE public\.clients\s+SET sms_consent_at = now\(\)\s*;/);
-    expect(SQL).not.toMatch(/UPDATE public\.clients[\s\S]{0,200}sms_consent_at[\s\S]{0,120}WHERE sms_consent_at IS NULL/);
+    expect(SQL).not.toMatch(
+      /UPDATE public\.clients[\s\S]{0,200}sms_consent_at[\s\S]{0,120}WHERE sms_consent_at IS NULL/,
+    );
   });
 });
 

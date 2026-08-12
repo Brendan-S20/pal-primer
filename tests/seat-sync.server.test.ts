@@ -38,7 +38,10 @@ import { syncOrgSeatQuantity } from "@/lib/seat-sync.server";
 const ORG = "342d4d1e-56f7-4b6e-ad40-524d370e1a36";
 
 function sub(items: { id: string; price: string; quantity?: number }[], status = "active") {
-  return { status, items: { data: items.map((i) => ({ id: i.id, price: { id: i.price }, quantity: i.quantity })) } };
+  return {
+    status,
+    items: { data: items.map((i) => ({ id: i.id, price: { id: i.price }, quantity: i.quantity })) },
+  };
 }
 
 beforeEach(() => {
@@ -53,7 +56,10 @@ beforeEach(() => {
   h.results.platform_plans = { data: { included_seats: 10, stripe_seat_price_id: "price_seat" } };
   h.results.staff = { count: 13 };
   h.stripe.subscriptions.retrieve.mockResolvedValue(
-    sub([{ id: "si_base", price: "price_base", quantity: 1 }, { id: "si_seat", price: "price_seat", quantity: 1 }]),
+    sub([
+      { id: "si_base", price: "price_base", quantity: 1 },
+      { id: "si_seat", price: "price_seat", quantity: 1 },
+    ]),
   );
 });
 
@@ -73,7 +79,9 @@ describe("syncOrgSeatQuantity", () => {
 
   it("creates the seat item when the subscription doesn't have one yet", async () => {
     h.results.staff = { count: 12 };
-    h.stripe.subscriptions.retrieve.mockResolvedValue(sub([{ id: "si_base", price: "price_base", quantity: 1 }]));
+    h.stripe.subscriptions.retrieve.mockResolvedValue(
+      sub([{ id: "si_base", price: "price_base", quantity: 1 }]),
+    );
     const r = await syncOrgSeatQuantity(ORG);
     expect(r).toEqual({ synced: true, quantity: 2, changed: true });
     expect(h.stripe.subscriptionItems.create).toHaveBeenCalledWith({
@@ -88,12 +96,17 @@ describe("syncOrgSeatQuantity", () => {
     h.results.staff = { count: 8 };
     const r = await syncOrgSeatQuantity(ORG);
     expect(r).toEqual({ synced: true, quantity: 0, changed: true });
-    expect(h.stripe.subscriptionItems.del).toHaveBeenCalledWith("si_seat", { proration_behavior: "create_prorations" });
+    expect(h.stripe.subscriptionItems.del).toHaveBeenCalledWith("si_seat", {
+      proration_behavior: "create_prorations",
+    });
   });
 
   it("is a no-op when the quantity already matches", async () => {
     h.stripe.subscriptions.retrieve.mockResolvedValue(
-      sub([{ id: "si_base", price: "price_base", quantity: 1 }, { id: "si_seat", price: "price_seat", quantity: 3 }]),
+      sub([
+        { id: "si_base", price: "price_base", quantity: 1 },
+        { id: "si_seat", price: "price_seat", quantity: 3 },
+      ]),
     );
     const r = await syncOrgSeatQuantity(ORG);
     expect(r).toEqual({ synced: true, quantity: 3, changed: false });
@@ -122,7 +135,9 @@ describe("syncOrgSeatQuantity", () => {
   });
 
   it("skips a canceled subscription", async () => {
-    h.stripe.subscriptions.retrieve.mockResolvedValue(sub([{ id: "si_base", price: "price_base" }], "canceled"));
+    h.stripe.subscriptions.retrieve.mockResolvedValue(
+      sub([{ id: "si_base", price: "price_base" }], "canceled"),
+    );
     const r = await syncOrgSeatQuantity(ORG);
     expect(r).toEqual({ skipped: "status_canceled" });
   });

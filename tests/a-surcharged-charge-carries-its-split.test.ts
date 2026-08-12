@@ -192,7 +192,9 @@ describe("the reconcile paths use the split, not the raw charge", () => {
     // and then silently lost the succeeded payment row — money banked, revenue
     // short by the full amount, nothing reported.
     const src = readFileSync("src/lib/invoice-reconcile.server.ts", "utf8");
-    expect(src).toMatch(/const \{ error: payErr \} = await supabaseAdmin\s*\n?\s*\.from\("payments"\)\.insert/);
+    expect(src).toMatch(
+      /const \{ error: payErr \} = await supabaseAdmin\s*\n?\s*\.from\("payments"\)\.insert/,
+    );
     expect(src).toContain('payErr.code === "23505"');
   });
 
@@ -201,7 +203,6 @@ describe("the reconcile paths use the split, not the raw charge", () => {
     expect(recon).toContain("surcharge_cents: args.surchargeCents ?? 0");
   });
 });
-
 
 // ── the other half of the coverage guard ───────────────────────────────────
 //

@@ -2,10 +2,7 @@
 // The marker keys off the minted auth session's JWT session_id — exact match,
 // no heuristics — so a user's own concurrent sessions can never be marked.
 import { describe, expect, it } from "vitest";
-import {
-  impersonationMetaFor,
-  sessionIdFromAuthHeader,
-} from "@/lib/impersonation-marker";
+import { impersonationMetaFor, sessionIdFromAuthHeader } from "@/lib/impersonation-marker";
 
 const jwtWith = (payload: Record<string, unknown>) =>
   `Bearer x.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.y`;

@@ -193,11 +193,14 @@ describe("the authorization primitives refuse to answer about a third party", ()
   // turning the primitives back into an oracle any signed-in account can query
   // about any user — walked straight past it with the whole suite green.
   const guardSql = (() => {
-    const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
+    const files = readdirSync(MIGRATIONS_DIR)
+      .filter((f) => f.endsWith(".sql"))
+      .sort();
     let found = "";
     for (const f of files) {
       const sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
-      if (/CREATE\s+(OR\s+REPLACE\s+)?FUNCTION\s+public\.is_org_member\s*\(/i.test(sql)) found = sql;
+      if (/CREATE\s+(OR\s+REPLACE\s+)?FUNCTION\s+public\.is_org_member\s*\(/i.test(sql))
+        found = sql;
     }
     if (!found) throw new Error("no migration defines is_org_member");
     return found;

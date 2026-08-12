@@ -38,7 +38,10 @@ import { join } from "node:path";
 
 const root = join(import.meta.dirname, "..");
 const migration = readFileSync(
-  join(root, "supabase/migrations/20260805080000_a-straight-line-mile-is-not-a-mile-of-driving.sql"),
+  join(
+    root,
+    "supabase/migrations/20260805080000_a-straight-line-mile-is-not-a-mile-of-driving.sql",
+  ),
   "utf8",
 );
 

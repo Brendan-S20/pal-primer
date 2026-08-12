@@ -11,8 +11,26 @@ export interface AuditSearchRow {
   action: string;
   organization_name: string | null;
   actor_email: string | null;
-  actor_user_id: string;
+  actor_user_id: string | null;
   after_json: unknown;
+}
+
+/** Who to credit a row to.
+ *
+ *  `actor_user_id` became nullable when the platform Stripe webhook started
+ *  filing `billing_status_change` — a webhook has no actor, and inventing one
+ *  would put a name on an act nobody performed, in the one table whose job is
+ *  saying who did what. Both routes rendered `actor_user_id.slice(0, 8)`, which
+ *  a null would have crashed on, so the label lives here once rather than being
+ *  guarded twice.
+ *
+ *  Truthiness rather than ??, so an empty string is treated as absent: "by "
+ *  with nothing after it is the one output this must never render. */
+export function auditActorLabel(row: {
+  actor_email: string | null;
+  actor_user_id: string | null;
+}): string {
+  return row.actor_email || row.actor_user_id?.slice(0, 8) || "the billing system";
 }
 
 const asRecord = (v: unknown): Record<string, unknown> =>

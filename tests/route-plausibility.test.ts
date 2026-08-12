@@ -7,7 +7,13 @@ describe("findRouteWarnings (finding #10)", () => {
   // their patch in miles.
   it("flags the 1,152 mile / 3,708 min repro as an excessive drive", () => {
     const w = findRouteWarnings([
-      { id: "v1", clientName: "Far Away Co", travel_km: 1854.2, travel_min: 3708, scheduled_on: "2026-07-08" },
+      {
+        id: "v1",
+        clientName: "Far Away Co",
+        travel_km: 1854.2,
+        travel_min: 3708,
+        scheduled_on: "2026-07-08",
+      },
     ]);
     expect(w).toHaveLength(1);
     expect(w[0].reason).toBe("excessive_drive");
@@ -25,7 +31,13 @@ describe("findRouteWarnings (finding #10)", () => {
   });
 
   it("respects a configured lower threshold", () => {
-    const stop = { id: "v1", clientName: "X", travel_km: 60, travel_min: 90, scheduled_on: "2026-07-08" };
+    const stop = {
+      id: "v1",
+      clientName: "X",
+      travel_km: 60,
+      travel_min: 90,
+      scheduled_on: "2026-07-08",
+    };
     expect(findRouteWarnings([stop])).toHaveLength(0); // under the 240-min default
     expect(findRouteWarnings([stop], { maxDriveMinutes: 60 })).toHaveLength(1);
   });

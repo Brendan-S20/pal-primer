@@ -4,7 +4,10 @@ import { sendTwilioSms } from "@/lib/twilio.server";
 import { twilioSignatureIsValid } from "@/lib/twilio-signature.server";
 
 function ok(body: unknown, status = 201) {
-  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 const fetchMock = vi.fn();
@@ -29,7 +32,9 @@ describe("sendTwilioSms — direct (tenant BYOK)", () => {
     expect(res).toEqual({ sid: "SM1", status: "queued", error_code: null, error_message: null });
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("https://api.twilio.com/2010-04-01/Accounts/ACxxx/Messages.json");
-    expect((init as any).headers.Authorization).toBe(`Basic ${Buffer.from("ACxxx:tok").toString("base64")}`);
+    expect((init as any).headers.Authorization).toBe(
+      `Basic ${Buffer.from("ACxxx:tok").toString("base64")}`,
+    );
     expect(String((init as any).body)).toContain("From=%2B15558675310");
   });
 
@@ -58,7 +63,9 @@ describe("sendTwilioSms — gateway (platform)", () => {
   });
 
   it("throws when neither From nor Messaging Service is supplied", async () => {
-    await expect(sendTwilioSms({ to: "+1", body: "x" })).rejects.toThrow(/From number or a Messaging Service/);
+    await expect(sendTwilioSms({ to: "+1", body: "x" })).rejects.toThrow(
+      /From number or a Messaging Service/,
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
@@ -84,7 +91,10 @@ describe("twilioSignatureIsValid", () => {
   });
 
   it("rejects a wrong token", () => {
-    const forged = crypto.createHmac("sha1", "other").update(Buffer.from(url, "utf-8")).digest("base64");
+    const forged = crypto
+      .createHmac("sha1", "other")
+      .update(Buffer.from(url, "utf-8"))
+      .digest("base64");
     expect(twilioSignatureIsValid(url, params, token, forged)).toBe(false);
   });
 

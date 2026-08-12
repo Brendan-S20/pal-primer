@@ -54,7 +54,11 @@ describe("computeEstimatedMinutes", () => {
   it("doubles for one-time jobs and initial cleanups", () => {
     const weekly = computeEstimatedMinutes({ dogCount: 1, frequency: "weekly" })!;
     const oneTime = computeEstimatedMinutes({ dogCount: 1, frequency: "one_time" })!;
-    const initial = computeEstimatedMinutes({ dogCount: 1, frequency: "weekly", initialCleanup: true })!;
+    const initial = computeEstimatedMinutes({
+      dogCount: 1,
+      frequency: "weekly",
+      initialCleanup: true,
+    })!;
     expect(oneTime).toBe(weekly * DEFAULT_EST_TIME_CONFIG.initialCleanupFactor);
     expect(initial).toBe(weekly * DEFAULT_EST_TIME_CONFIG.initialCleanupFactor);
   });

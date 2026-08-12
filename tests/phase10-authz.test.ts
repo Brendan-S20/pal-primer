@@ -101,6 +101,8 @@ describe("neighbor leads: seed is directory-gated, individual writes are field w
   });
 
   it("individual-lead writes reject a caller with no org", async () => {
-    await expect(resolveCaller(stubSupabase(null), "u")).rejects.toThrow("No organization for user");
+    await expect(resolveCaller(stubSupabase(null), "u")).rejects.toThrow(
+      "No organization for user",
+    );
   });
 });

@@ -46,7 +46,9 @@ describe("no service plan is its own state", () => {
   it("inactive still wins over no-plan", () => {
     // An archived client has no plan either. Reporting that instead of
     // "Inactive" would bury the decision somebody actually made.
-    expect(page).toMatch(/!c\.active \? \(\s*\n?\s*<span className="text-xs text-muted-foreground">Inactive/);
+    expect(page).toMatch(
+      /!c\.active \? \(\s*\n?\s*<span className="text-xs text-muted-foreground">Inactive/,
+    );
   });
 });
 

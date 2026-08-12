@@ -223,7 +223,9 @@ describe("the product stops calling percent codes broken", () => {
   it("no longer marks percent codes not redeemable", () => {
     const code = codeOnly(ui);
     expect(code).not.toMatch(/Percentage codes are not applied anywhere yet/);
-    expect(code).not.toMatch(/discount_type === "percent" &&\s*\(?\s*<Badge variant="destructive">/);
+    expect(code).not.toMatch(
+      /discount_type === "percent" &&\s*\(?\s*<Badge variant="destructive">/,
+    );
   });
 
   it("moves that warning onto the rows that are genuinely stuck", () => {

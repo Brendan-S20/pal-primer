@@ -20,14 +20,94 @@ import { auditCatalog } from "../scripts/check-stripe-catalog.mjs";
 // empty set.
 
 const PRICES = new Map<string, any>([
-  ["p_base_m", { id: "p_base_m", active: true, livemode: false, product: "prod_x", recurring: { interval: "month" }, unit_amount: 7900 }],
-  ["p_base_y", { id: "p_base_y", active: true, livemode: false, product: "prod_x", recurring: { interval: "year" }, unit_amount: 79000 }],
-  ["p_seat_m", { id: "p_seat_m", active: true, livemode: false, product: "prod_x", recurring: { interval: "month" }, unit_amount: 1000 }],
-  ["p_seat_y", { id: "p_seat_y", active: true, livemode: false, product: "prod_x", recurring: { interval: "year" }, unit_amount: 10000 }],
-  ["p_other", { id: "p_other", active: true, livemode: false, product: "prod_other", recurring: { interval: "month" }, unit_amount: 19900 }],
-  ["p_live", { id: "p_live", active: true, livemode: true, product: "prod_x", recurring: { interval: "month" }, unit_amount: 7900 }],
-  ["p_archived", { id: "p_archived", active: false, livemode: false, product: "prod_x", recurring: { interval: "month" }, unit_amount: 7900 }],
-  ["p_once", { id: "p_once", active: true, livemode: false, product: "prod_a", recurring: null, unit_amount: 49900 }],
+  [
+    "p_base_m",
+    {
+      id: "p_base_m",
+      active: true,
+      livemode: false,
+      product: "prod_x",
+      recurring: { interval: "month" },
+      unit_amount: 7900,
+    },
+  ],
+  [
+    "p_base_y",
+    {
+      id: "p_base_y",
+      active: true,
+      livemode: false,
+      product: "prod_x",
+      recurring: { interval: "year" },
+      unit_amount: 79000,
+    },
+  ],
+  [
+    "p_seat_m",
+    {
+      id: "p_seat_m",
+      active: true,
+      livemode: false,
+      product: "prod_x",
+      recurring: { interval: "month" },
+      unit_amount: 1000,
+    },
+  ],
+  [
+    "p_seat_y",
+    {
+      id: "p_seat_y",
+      active: true,
+      livemode: false,
+      product: "prod_x",
+      recurring: { interval: "year" },
+      unit_amount: 10000,
+    },
+  ],
+  [
+    "p_other",
+    {
+      id: "p_other",
+      active: true,
+      livemode: false,
+      product: "prod_other",
+      recurring: { interval: "month" },
+      unit_amount: 19900,
+    },
+  ],
+  [
+    "p_live",
+    {
+      id: "p_live",
+      active: true,
+      livemode: true,
+      product: "prod_x",
+      recurring: { interval: "month" },
+      unit_amount: 7900,
+    },
+  ],
+  [
+    "p_archived",
+    {
+      id: "p_archived",
+      active: false,
+      livemode: false,
+      product: "prod_x",
+      recurring: { interval: "month" },
+      unit_amount: 7900,
+    },
+  ],
+  [
+    "p_once",
+    {
+      id: "p_once",
+      active: true,
+      livemode: false,
+      product: "prod_a",
+      recurring: null,
+      unit_amount: 49900,
+    },
+  ],
 ]);
 
 const plan = (over: Record<string, unknown> = {}) => ({
@@ -99,9 +179,20 @@ describe("the failures that cost money", () => {
   });
 
   it("catches a one-time add-on Stripe has as recurring", () => {
-    const r = audit([], [
-      { slug: "setup", is_active: true, status: "available", price_cents: 7900, billing_interval: "one_time", stripe_product_id: "prod_x", stripe_price_id: "p_base_m" },
-    ]);
+    const r = audit(
+      [],
+      [
+        {
+          slug: "setup",
+          is_active: true,
+          status: "available",
+          price_cents: 7900,
+          billing_interval: "one_time",
+          stripe_product_id: "prod_x",
+          stripe_price_id: "p_base_m",
+        },
+      ],
+    );
     expect(r.problems.join(" ")).toMatch(/should be one-time but Stripe has it recurring/);
   });
 });
@@ -118,14 +209,31 @@ describe("what it deliberately does not flag", () => {
 
   it("ignores a contact-us tier with no prices", () => {
     const r = audit([
-      { slug: "enterprise", is_active: true, price_cents: null, annual_price_cents: null, price_per_seat_cents: 1000, stripe_product_id: null, stripe_price_id: null, stripe_annual_price_id: null, stripe_seat_price_id: null, stripe_annual_seat_price_id: null },
+      {
+        slug: "enterprise",
+        is_active: true,
+        price_cents: null,
+        annual_price_cents: null,
+        price_per_seat_cents: 1000,
+        stripe_product_id: null,
+        stripe_price_id: null,
+        stripe_annual_price_id: null,
+        stripe_seat_price_id: null,
+        stripe_annual_seat_price_id: null,
+      },
     ]);
     expect(r.problems).toEqual([]);
     expect(r.skipped.plans.join(" ")).toMatch(/contact-us tier/);
   });
 
   it("does not require an annual pair — that is a product decision", () => {
-    const r = audit([plan({ stripe_annual_price_id: null, annual_price_cents: null, stripe_annual_seat_price_id: null })]);
+    const r = audit([
+      plan({
+        stripe_annual_price_id: null,
+        annual_price_cents: null,
+        stripe_annual_seat_price_id: null,
+      }),
+    ]);
     expect(r.problems).toEqual([]);
   });
 
@@ -142,7 +250,17 @@ describe("it reports its own coverage", () => {
   it("names every row it skipped, so a tick cannot hide an empty set", () => {
     const r = audit(
       [plan({ slug: "dead", is_active: false })],
-      [{ slug: "ai-receptionist", is_active: false, status: "coming_soon", price_cents: 4900, billing_interval: "month", stripe_product_id: "prod_x", stripe_price_id: "p_base_m" }],
+      [
+        {
+          slug: "ai-receptionist",
+          is_active: false,
+          status: "coming_soon",
+          price_cents: 4900,
+          billing_interval: "month",
+          stripe_product_id: "prod_x",
+          stripe_price_id: "p_base_m",
+        },
+      ],
     );
     expect(r.checked.plans).toBe(0);
     expect(r.checked.addons).toBe(0);

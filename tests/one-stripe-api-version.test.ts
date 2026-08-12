@@ -59,10 +59,7 @@ describe("every Stripe client is built in one place", () => {
       const valueImport = /^\s*import\s+(?!type\b)[^;]*?from\s+["']stripe["']/m.test(src);
       return valueImport || /await import\(["']stripe["']\)/.test(src);
     });
-    expect(
-      offenders,
-      `these import the Stripe SDK directly:\n${offenders.join("\n")}`,
-    ).toEqual([]);
+    expect(offenders, `these import the Stripe SDK directly:\n${offenders.join("\n")}`).toEqual([]);
   });
 });
 
@@ -72,10 +69,7 @@ describe("the pinned version", () => {
     // disagree, the types in the editor stop describing the JSON on the wire.
     // (The constant is ALSO compile-checked against the SDK's own literal type,
     // so an upgrade without a bump fails `tsc` — verified by mutation.)
-    const declared = readFileSync(
-      join(ROOT, "node_modules/stripe/esm/apiVersion.d.ts"),
-      "utf8",
-    );
+    const declared = readFileSync(join(ROOT, "node_modules/stripe/esm/apiVersion.d.ts"), "utf8");
     expect(declared).toContain(`"${STRIPE_API_VERSION}"`);
   });
 });
@@ -113,6 +107,8 @@ describe("both webhook handlers say so when a delivered event disagrees", () => 
 
   it("stays quiet when the versions agree, and when the event names none", () => {
     const src = readFileSync(join(ROOT, HELPER), "utf8");
-    expect(src).toMatch(/if \(!event\.api_version \|\| event\.api_version === STRIPE_API_VERSION\) return;/);
+    expect(src).toMatch(
+      /if \(!event\.api_version \|\| event\.api_version === STRIPE_API_VERSION\) return;/,
+    );
   });
 });

@@ -13,7 +13,11 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 // office would lose the afternoon. So: flush, count what is LEFT, ask, clear.
 // These tests hold that order and that consent.
 
-const listeners = { syncQueue: vi.fn(), clearQueueForUser: vi.fn(), signOutAndClearDevice: vi.fn() };
+const listeners = {
+  syncQueue: vi.fn(),
+  clearQueueForUser: vi.fn(),
+  signOutAndClearDevice: vi.fn(),
+};
 const order: string[] = [];
 let pendingCounts: number[] = [];
 let owner: string | null = "tech-a";

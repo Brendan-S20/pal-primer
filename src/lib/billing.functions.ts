@@ -969,7 +969,6 @@ export const refreshBillingStatus = createServerFn({ method: "POST" })
       const periodEnd = subscriptionPeriodEnd(active);
       const update: Record<string, unknown> = {
         stripe_subscription_id: active.id,
-        billing_status: status,
         plan_status: status,
         // Never null a stored renewal date just because this read couldn't
         // resolve one — omit the column instead.
@@ -991,6 +990,16 @@ export const refreshBillingStatus = createServerFn({ method: "POST" })
         if (planRow?.id) update.plan_id = metaPlanId;
       }
       await supabaseAdmin.from("organizations").update(update as any).eq("id", orgId);
+      // billing_status moved out of the patch above and through the shared
+      // writer, so this path and the platform webhook agree on one rule —
+      // including refusing to lift an admin suspension — and both file the
+      // audit row "Converted this month" reads.
+      const { applyPlatformBillingStatus } = await import("@/lib/platform-billing-status.server");
+      await applyPlatformBillingStatus(supabaseAdmin, orgId, status, {
+        source: "billing_refresh",
+        actorUserId: context.userId,
+        detail: { subscription: active.id, stripe_status: active.status },
+      });
       // Self-heal the seat-overage quantity while we're here, so a seat count
       // that drifted (e.g. an invite accepted since checkout) reconciles the
       // next time billing is viewed. Best-effort.
@@ -1014,10 +1023,15 @@ export const refreshBillingStatus = createServerFn({ method: "POST" })
     );
     if (settling) return { billingStatus: s.billingStatus };
     await supabaseAdmin.from("organizations").update({
-      billing_status: "canceled",
       plan_status: "canceled",
       stripe_subscription_id: null,
     }).eq("id", orgId);
+    const { applyPlatformBillingStatus } = await import("@/lib/platform-billing-status.server");
+    await applyPlatformBillingStatus(supabaseAdmin, orgId, "canceled", {
+      source: "billing_refresh",
+      actorUserId: context.userId,
+      detail: { reason: "no live subscription on the customer" },
+    });
     // Bolt-on add-ons die with the subscription (see platform-addons.server).
     try {
       const { deactivateOrgPlatformAddons } = await import("@/lib/platform-addons.server");

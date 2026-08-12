@@ -130,7 +130,9 @@ describe("credentials are encrypted at every write site", () => {
     // test the module rather than its users.
     const offenders: string[] = [];
     for (const { file, payload } of credentialWrites()) {
-      for (const m of payload.matchAll(/\b(access_token|refresh_token|auth_token)\s*:\s*([^,\n]+)/g)) {
+      for (const m of payload.matchAll(
+        /\b(access_token|refresh_token|auth_token)\s*:\s*([^,\n]+)/g,
+      )) {
         const value = m[2].trim();
         if (/^(null|undefined)\b/.test(value)) continue;
         if (/encryptSecret\(/.test(value)) continue;
@@ -148,14 +150,16 @@ describe("credentials are encrypted at every write site", () => {
  *  commented-out statement still matched the regex. A commented-out guard is
  *  not a guard, in either syntax. */
 function sqlWithoutComments(sql: string): string {
-  return sql
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    // An UNTERMINATED /* comments out the rest of the file. Postgres would
-    // reject such a migration outright, so this case cannot ship — but leaving
-    // it unhandled means the difference between "caught" and "not caught" here
-    // rests on whether someone typed the closing marker.
-    .replace(/\/\*[\s\S]*$/, "")
-    .replace(/^\s*--.*$/gm, "");
+  return (
+    sql
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      // An UNTERMINATED /* comments out the rest of the file. Postgres would
+      // reject such a migration outright, so this case cannot ship — but leaving
+      // it unhandled means the difference between "caught" and "not caught" here
+      // rests on whether someone typed the closing marker.
+      .replace(/\/\*[\s\S]*$/, "")
+      .replace(/^\s*--.*$/gm, "")
+  );
 }
 
 const ALL_MIGRATIONS = readdirSync(MIGRATIONS)

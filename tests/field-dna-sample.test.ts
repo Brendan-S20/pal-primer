@@ -25,7 +25,9 @@ function latestDefinitionOf(fnName: string): string {
     "i",
   );
   let found: string | null = null;
-  for (const f of readdirSync(MIGRATIONS).filter((x) => x.endsWith(".sql")).sort()) {
+  for (const f of readdirSync(MIGRATIONS)
+    .filter((x) => x.endsWith(".sql"))
+    .sort()) {
     const sql = readFileSync(join(MIGRATIONS, f), "utf8");
     if (re.test(sql)) found = sql.slice(sql.search(re));
   }
@@ -42,7 +44,9 @@ describe("log_dna_sample_from_field — what it refuses to accept", () => {
     // The caller must BE the visit's assigned tech. can_write_org or
     // is_org_member here would let any office user — or any tech in the org —
     // file a sample against work they have nothing to do with.
-    expect(sql).toMatch(/IF\s+NOT\s+public\.is_visit_tech\s*\(\s*auth\.uid\(\)\s*,\s*_visit_id\s*\)/i);
+    expect(sql).toMatch(
+      /IF\s+NOT\s+public\.is_visit_tech\s*\(\s*auth\.uid\(\)\s*,\s*_visit_id\s*\)/i,
+    );
     expect(params).not.toMatch(/is_org_member|can_write_org/i);
   });
 
@@ -94,7 +98,9 @@ describe("dna_matches is not writable by every org member any more", () => {
     // is_org_member policy, the field-logging RPC above stops being the only
     // way a tech can touch this table.
     let latest: string | null = null;
-    for (const f of readdirSync(MIGRATIONS).filter((x) => x.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(MIGRATIONS)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
       const s = readFileSync(join(MIGRATIONS, f), "utf8");
       if (/CREATE\s+POLICY[^;]*ON\s+public\.dna_matches/i.test(s)) latest = s;
     }

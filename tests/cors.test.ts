@@ -172,9 +172,11 @@ describe("the response headers the native client must be able to read", () => {
     // If this is empty the extraction broke and the test would pass vacuously.
     expect(needed.length, "extracted no header reads from serverFnFetcher").toBeGreaterThan(0);
 
-    const exposed = (headersOf(corsDecision({ method: "POST", path: RPC, origin: IOS }))[
-      "access-control-expose-headers"
-    ] ?? "")
+    const exposed = (
+      headersOf(corsDecision({ method: "POST", path: RPC, origin: IOS }))[
+        "access-control-expose-headers"
+      ] ?? ""
+    )
       .split(",")
       .map((h) => h.trim().toLowerCase());
 

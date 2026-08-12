@@ -248,8 +248,8 @@ describe("matchZone proximity level: radius and drive_time (finding 5)", () => {
   it("radius-vs-radius equal priority is resolved by type-appropriateness", () => {
     const res = { ...radiusZone, id: "rr", account_type: "residential" as const };
     const comm = { ...radiusZone, id: "rc", account_type: "commercial" as const };
-    expect(
-      matchZone([res, comm], { point: CONGRESS_AVE, accountType: "commercial" })?.id,
-    ).toBe("rc");
+    expect(matchZone([res, comm], { point: CONGRESS_AVE, accountType: "commercial" })?.id).toBe(
+      "rc",
+    );
   });
 });

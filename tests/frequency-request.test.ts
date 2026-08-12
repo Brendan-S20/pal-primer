@@ -15,7 +15,9 @@ describe("parseFrequencyRequest", () => {
 
   it("accepts the ASCII arrow variant", () => {
     expect(
-      parseFrequencyRequest(`Frequency change requested: biweekly -> weekly (subscription ${SUB}).`),
+      parseFrequencyRequest(
+        `Frequency change requested: biweekly -> weekly (subscription ${SUB}).`,
+      ),
     ).toEqual({ subscriptionId: SUB, fromFrequency: "biweekly", toFrequency: "weekly" });
   });
 

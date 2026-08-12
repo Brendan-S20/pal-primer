@@ -131,7 +131,12 @@ describe("the two surfaces cannot disagree on the total", () => {
   const ledger = [
     inv({ total_cents: 10_000, issued_at: "2026-07-05T15:00:00Z" }),
     inv({ total_cents: 20_000, credit_applied_cents: 5_000, issued_at: "2026-06-01T15:00:00Z" }),
-    inv({ status: "paid", total_cents: 9_000, issued_at: "2026-07-02T15:00:00Z", paid_at: "2026-07-03T15:00:00Z" }),
+    inv({
+      status: "paid",
+      total_cents: 9_000,
+      issued_at: "2026-07-02T15:00:00Z",
+      paid_at: "2026-07-03T15:00:00Z",
+    }),
     inv({ total_cents: 3_500, issued_at: "2026-08-01T15:00:00Z" }),
     // Issued ON the as-of day, so the `current` bucket is non-empty. Without
     // one, `aging.current` is 0 anyway and the bucket-sum assertion below
@@ -179,7 +184,9 @@ describe("billedDay", () => {
   });
 
   it("dates the rest by when they were issued", () => {
-    expect(billedDay(inv({ status: "paid", issued_at: "2026-07-05T15:00:00Z" }), TZ)).toBe("2026-07-05");
+    expect(billedDay(inv({ status: "paid", issued_at: "2026-07-05T15:00:00Z" }), TZ)).toBe(
+      "2026-07-05",
+    );
   });
 });
 
@@ -192,7 +199,9 @@ describe("no surface keeps its own copy of this arithmetic", () => {
       .split("\n")
       .filter((l) => !l.trim().startsWith("//") && !l.trim().startsWith("*"))
       .join("\n");
-    expect(code, "still slices an ISO timestamp into a day").not.toMatch(/issued_at\??\.slice\(0,\s*10\)/);
+    expect(code, "still slices an ISO timestamp into a day").not.toMatch(
+      /issued_at\??\.slice\(0,\s*10\)/,
+    );
     expect(code, "still ages by dividing elapsed milliseconds").not.toMatch(/86400000|86_400_000/);
     expect(code, "still filters receivables by current status").not.toMatch(/isOutstanding\(/);
   });

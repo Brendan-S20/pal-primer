@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  auditActorLabel,
   auditRowMatches,
   auditSearchTerms,
   impersonationDetail,
@@ -49,7 +50,10 @@ describe("audit filter (BUG-14)", () => {
   });
 
   it("finds a row by target user id, for events that carry no email", () => {
-    const idOnly = { ...enterRow, after_json: { target_user_id: "22222222-2222-2222-2222-222222222222" } };
+    const idOnly = {
+      ...enterRow,
+      after_json: { target_user_id: "22222222-2222-2222-2222-222222222222" },
+    };
     expect(auditRowMatches(idOnly, "22222222")).toBe(true);
   });
 
@@ -110,11 +114,47 @@ describe("impersonation detail (BUG-14)", () => {
   });
 
   it("returns null for non-impersonation actions", () => {
-    expect(impersonationDetail({ action: "update_plan", after_json: { target_email: "x" } })).toBeNull();
+    expect(
+      impersonationDetail({ action: "update_plan", after_json: { target_email: "x" } }),
+    ).toBeNull();
   });
 
   it("returns null rather than an empty fragment when there is nothing to say", () => {
     expect(impersonationDetail({ action: "start_impersonation", after_json: {} })).toBeNull();
     expect(impersonationDetail({ action: "start_impersonation", after_json: null })).toBeNull();
+  });
+});
+
+// ── Who to credit a row to, once the actor stopped always being a person ────
+//
+// `platform_admin_audit.actor_user_id` was NOT NULL, and that held while every
+// row was a platform admin doing something deliberate. The platform Stripe
+// webhook now files `billing_status_change` — the event "Converted this month"
+// counts — and a webhook has no actor. Both routes rendered
+// `actor_user_id.slice(0, 8)` directly, which a null crashes on, so the label
+// moved here to be decided once.
+describe("auditActorLabel", () => {
+  it("prefers the email, which is what a reader recognises", () => {
+    expect(
+      auditActorLabel({ actor_email: "admin@houndstack.com", actor_user_id: "8b1f2c3d-…" }),
+    ).toBe("admin@houndstack.com");
+  });
+
+  it("falls back to a short id when the email lookup failed", () => {
+    // getUserById is best-effort and capped at 50 per page; a miss must still
+    // identify the actor rather than blame the billing system for their act.
+    expect(auditActorLabel({ actor_email: null, actor_user_id: "8b1f2c3d-9999" })).toBe("8b1f2c3d");
+  });
+
+  it("names the billing system when nobody did it", () => {
+    expect(auditActorLabel({ actor_email: null, actor_user_id: null })).toBe("the billing system");
+  });
+
+  it("does not read an empty string as an actor", () => {
+    // Not a case the database can produce today. Pinned because "by " with
+    // nothing after it is the one output this must never render, and `??`
+    // — the obvious way to write this chain — produces exactly that.
+    expect(auditActorLabel({ actor_email: "", actor_user_id: null })).toBe("the billing system");
+    expect(auditActorLabel({ actor_email: "", actor_user_id: "8b1f2c3d-9999" })).toBe("8b1f2c3d");
   });
 });

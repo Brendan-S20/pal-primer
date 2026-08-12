@@ -24,7 +24,9 @@ const MIGRATIONS = join(ROOT, "supabase", "migrations");
 function latestPolicySql(table: string): string {
   const re = new RegExp(`CREATE\\s+POLICY[^;]*ON\\s+public\\.${table}`, "i");
   let found: string | null = null;
-  for (const f of readdirSync(MIGRATIONS).filter((x) => x.endsWith(".sql")).sort()) {
+  for (const f of readdirSync(MIGRATIONS)
+    .filter((x) => x.endsWith(".sql"))
+    .sort()) {
     const sql = readFileSync(join(MIGRATIONS, f), "utf8");
     if (re.test(sql)) found = sql;
   }

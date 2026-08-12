@@ -127,7 +127,9 @@ describe("visitReviewKind (BUILD-10)", () => {
     // Missing is not the same as contradictory. BUG-9(a) was closed for exactly
     // this distinction — treating "unknown" as "known-bad" invents a defect.
     expect(visitReviewKind(day("2026-07-02"), TODAY)).toBeNull();
-    expect(visitReviewKind(day("2026-07-02", { started_at: "2026-07-02T14:00:00Z" }), TODAY)).toBeNull();
+    expect(
+      visitReviewKind(day("2026-07-02", { started_at: "2026-07-02T14:00:00Z" }), TODAY),
+    ).toBeNull();
   });
 
   it("does NOT claim unparseable timestamps contradict each other", () => {

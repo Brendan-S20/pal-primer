@@ -9,7 +9,10 @@ const ROOT = new URL("..", import.meta.url).pathname;
  *  in prose, so `DO NOTHING` appears in the file describing what was replaced —
  *  matching raw text reports the fix as the bug. */
 const sqlCode = (src: string) =>
-  src.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
+  src
+    .split("\n")
+    .filter((l) => !l.trim().startsWith("--"))
+    .join("\n");
 
 // With pass-through on, a $100 invoice is charged as $103. The payment row
 // keeps those apart on purpose — `surcharge_cents` sits beside `amount_cents`
@@ -110,7 +113,10 @@ describe("splitting a refund", () => {
 describe("the reversal ledger migration", () => {
   const sql = sqlCode(
     readFileSync(
-      join(ROOT, "supabase/migrations/20260804040000_the-second-partial-refund-was-never-deducted.sql"),
+      join(
+        ROOT,
+        "supabase/migrations/20260804040000_the-second-partial-refund-was-never-deducted.sql",
+      ),
       "utf8",
     ),
   );
@@ -121,8 +127,12 @@ describe("the reversal ledger migration", () => {
   });
 
   it("takes the maximum, so an out-of-order redelivery cannot lower the total", () => {
-    expect(sql).toMatch(/GREATEST\(COALESCE\(\(review_items\.detail->>'amount_cents'\)::bigint, 0\), _amount_cents\)/);
-    expect(sql).toMatch(/GREATEST\(COALESCE\(\(review_items\.detail->>'revenue_cents'\)::bigint, 0\), _revenue\)/);
+    expect(sql).toMatch(
+      /GREATEST\(COALESCE\(\(review_items\.detail->>'amount_cents'\)::bigint, 0\), _amount_cents\)/,
+    );
+    expect(sql).toMatch(
+      /GREATEST\(COALESCE\(\(review_items\.detail->>'revenue_cents'\)::bigint, 0\), _revenue\)/,
+    );
   });
 
   it("records what MOVED and what comes off revenue as two fields", () => {
@@ -136,7 +146,9 @@ describe("the reversal ledger migration", () => {
     // Postgres overloads on argument list: leaving the 6-arg version in place
     // means half the callers reach the fixed function and half do not, with
     // nothing to show for it.
-    expect(sql).toMatch(/DROP FUNCTION IF EXISTS public\.file_reversal_review_item\(uuid, uuid, text, bigint, uuid, text\);/);
+    expect(sql).toMatch(
+      /DROP FUNCTION IF EXISTS public\.file_reversal_review_item\(uuid, uuid, text, bigint, uuid, text\);/,
+    );
   });
 
   it("does not re-point adjustment_id on a later filing", () => {

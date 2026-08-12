@@ -40,9 +40,16 @@ function fakeClient(result: { data: unknown; error: { message: string } | null }
 describe("updateOwnOrg", () => {
   it("passes when a row comes back", async () => {
     const c = fakeClient({ data: [{ id: "org-1" }], error: null });
-    await expect(updateOwnOrg(c, "org-1", { timezone: "America/Chicago" })).resolves.toBeUndefined();
+    await expect(
+      updateOwnOrg(c, "org-1", { timezone: "America/Chicago" }),
+    ).resolves.toBeUndefined();
     expect(c.calls).toEqual([
-      { table: "organizations", patch: { timezone: "America/Chicago" }, id: "org-1", selected: "id" },
+      {
+        table: "organizations",
+        patch: { timezone: "America/Chicago" },
+        id: "org-1",
+        selected: "id",
+      },
     ]);
   });
 
