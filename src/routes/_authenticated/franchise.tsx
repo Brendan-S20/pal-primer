@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -17,7 +17,11 @@ import {
   type FranchiseRow,
 } from "@/lib/franchise.functions";
 import { FranchiseAdjustmentTrail } from "@/components/FranchiseAdjustmentTrail";
-import { FranchiseSettlementStatements } from "@/components/FranchiseSettlementStatements";
+import {
+  FranchiseSettlementStatements,
+  type SettlementStatementRow,
+} from "@/components/FranchiseSettlementStatements";
+import { FranchiseLocationDrawer } from "@/components/FranchiseLocationDrawer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -95,6 +99,42 @@ function FranchisePage() {
 
   const [sortBy, setSortBy] = useState<SortKey>("revenue_mtd_cents");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [drillInto, setDrillInto] = useState<FranchiseRow | null>(null);
+
+  // The drill-down reads the SAME query keys the panels below already use, so
+  // this adds no fetch and — more to the point — cannot show a figure that
+  // disagrees with the one further down the page. Re-querying per location
+  // would put two answers to one question on the same screen.
+  const qc = useQueryClient();
+  const listFn = useServerFn(listRoyaltyInvoices);
+  const adjustmentsFn = useServerFn(getFranchiseAdjustments);
+  const royaltySettingsFn = useServerFn(getFranchiseRoyaltySettings);
+  const statusFn = useServerFn(setRoyaltyInvoiceStatus);
+  const invoicesQ = useQuery({
+    queryKey: ["franchise", "royalty-invoices"],
+    queryFn: () => listFn(),
+    enabled: !!ctx.data?.isParent,
+  });
+  const adjustmentsQ = useQuery({
+    queryKey: ["franchise", "adjustments"],
+    queryFn: () => adjustmentsFn(),
+    enabled: !!ctx.data?.isParent,
+  });
+  const royaltySettingsQ = useQuery({
+    queryKey: ["franchise", "royalty-settings"],
+    queryFn: () => royaltySettingsFn(),
+    enabled: !!ctx.data?.isParent,
+  });
+  const drillStatus = useMutation({
+    mutationFn: (v: { invoiceId: string; status: "issued" | "paid" | "void" }) =>
+      statusFn({ data: v }),
+    onSuccess: () => {
+      toast.success("Updated");
+      qc.invalidateQueries({ queryKey: ["franchise", "royalty-invoices"] });
+      qc.invalidateQueries({ queryKey: ["franchise", "adjustments"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const markFn = useServerFn(markSelfAsFranchiseParent);
   const mark = useMutation({
@@ -200,6 +240,13 @@ function FranchisePage() {
   };
 
   const locations = trend.data?.locations ?? [];
+
+  type RoyaltyChild = { id: string; franchise_royalty_percent: number | null };
+  const royaltyChildren = (royaltySettingsQ.data?.children ?? []) as RoyaltyChild[];
+  const drillRoyaltyPercent = drillInto
+    ? (royaltyChildren.find((c) => c.id === drillInto.organization_id)?.franchise_royalty_percent ??
+      null)
+    : null;
 
   return (
     <div className="p-6 space-y-6">
@@ -386,7 +433,20 @@ function FranchisePage() {
                     : 0;
                 return (
                   <TableRow key={r.organization_id}>
-                    <TableCell className="font-medium">{r.organization_name}</TableCell>
+                    <TableCell className="font-medium">
+                      {/* A button rather than a clickable row: a row that opens
+                          something on click has no keyboard or screen-reader
+                          affordance, and on touch it makes every cell in the
+                          row — including the numbers people scroll past — a
+                          hit target for a drawer they did not ask for. */}
+                      <button
+                        type="button"
+                        className="max-w-full truncate text-left underline-offset-4 hover:underline max-md:min-h-11"
+                        onClick={() => setDrillInto(r)}
+                      >
+                        {r.organization_name}
+                      </button>
+                    </TableCell>
                     <TableCell className="text-right">{r.tech_count}</TableCell>
                     <TableCell className="text-right">{r.active_clients}</TableCell>
                     <TableCell className="text-right">
@@ -443,6 +503,16 @@ function FranchisePage() {
           `net_due_cents` at all, so the trail below was explaining a number
           that was not on the screen.) */}
       <AdjustmentTrail />
+
+      <FranchiseLocationDrawer
+        row={drillInto}
+        statements={(invoicesQ.data?.invoices ?? []) as SettlementStatementRow[]}
+        adjustments={adjustmentsQ.data?.rows ?? []}
+        royaltyPercent={drillRoyaltyPercent}
+        onOpenChange={(open) => !open && setDrillInto(null)}
+        onSetStatus={(invoiceId, status) => drillStatus.mutate({ invoiceId, status })}
+        isUpdating={drillStatus.isPending}
+      />
     </div>
   );
 }

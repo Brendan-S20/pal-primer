@@ -33,7 +33,12 @@ import {
 // gives every width the same figures in the same order, so there is no width at
 // which a franchisee is reading a truncated version of their own bill.
 
-export type SettlementStatementRow = SettlementRow & { counterpartyName?: string | null };
+export type SettlementStatementRow = SettlementRow & {
+  counterpartyName?: string | null;
+  /** Present on the parent's rows, which span every location. The location's
+   *  own query has no use for it — every row it can read is its own. */
+  child_organization_id?: string | null;
+};
 
 export function FranchiseSettlementStatements({
   rows,

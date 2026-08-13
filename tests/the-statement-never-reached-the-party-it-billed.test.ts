@@ -276,6 +276,51 @@ describe("the void button the product already told people to press", () => {
   });
 });
 
+describe("one location, on its own", () => {
+  const drawer = codeOnly(read("src/components/FranchiseLocationDrawer.tsx"));
+  const page = codeOnly(read("src/routes/_authenticated/franchise.tsx"));
+
+  it("shows only the statements and adjustments belonging to that location", () => {
+    // The mutation that matters: drop either filter and one location's drawer
+    // shows every location's money, on a screen whose whole purpose is to
+    // isolate one of them.
+    expect(drawer).toMatch(
+      /statements\.filter\(\(s\) => s\.child_organization_id === row\.organization_id\)/,
+    );
+    expect(drawer).toMatch(
+      /adjustments\.filter\(\(a\) => a\.child_organization_id === row\.organization_id\)/,
+    );
+  });
+
+  it("reads the query keys the panels below already use, so it cannot disagree with them", () => {
+    // Re-fetching per location would put two answers to one question on one
+    // screen. Same key, same cache, one fetch.
+    for (const key of ['"royalty-invoices"', '"adjustments"', '"royalty-settings"']) {
+      expect(
+        page.match(new RegExp(`queryKey: \\["franchise", ${key}\\]`, "g"))?.length,
+        `${key} is not shared between the drill-down and the panel`,
+      ).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("keeps the promise that a parent sees totals and not customers", () => {
+    // /franchise tells a franchisee "you see their totals, not their
+    // customers". A drill-down is exactly where that erodes quietly.
+    expect(drawer).not.toMatch(/client_id|visits\(|listClients|clients\./);
+    expect(drawer).toMatch(/active_clients/); // the COUNT is a total, and fine
+  });
+
+  it("opens from a real button rather than a clickable row", () => {
+    // A row that opens something on click has no keyboard affordance, and on
+    // touch it makes every number in the row a hit target for a drawer.
+    const cell = page.slice(page.indexOf("setDrillInto(r)") - 500, page.indexOf("setDrillInto(r)"));
+    expect(cell).toMatch(/<button/);
+    expect(cell).toMatch(/type="button"/);
+    expect(cell).toMatch(/max-md:min-h-11/);
+    expect(cell).toMatch(/truncate/);
+  });
+});
+
 describe("a franchisee reads their own bill on a phone", () => {
   const src = read("src/components/FranchiseSettlementStatements.tsx");
 
