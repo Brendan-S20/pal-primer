@@ -1,0 +1,151 @@
+// The IMP-2 schema gate stopped running, and reported failure while doing it.
+//
+// ── WHAT HAPPENED ─────────────────────────────────────────────────────────
+//
+// `verify` moved to a self-hosted runner when GitHub's hosted allocation for
+// this repository broke on 2026-08-10. The `migrations` job was deliberately
+// left on `ubuntu-latest`, for two reasons that were both sound: its scripts
+// shell out to `psql`, which is not on a Mac unless somebody installed it, and
+// it is the job holding SUPABASE_DB_URL and STRIPE_SECRET_KEY.
+//
+// From 2026-08-12 it stopped receiving a machine at all — `runner_id: 0`, zero
+// steps, two seconds, no logs. Five merges landed in that window and six
+// migrations were applied to the live database, and nothing compared the two.
+//
+// The distinction that matters: a hard gate that CANNOT START is not a lenient
+// gate, it is an absent one — and it is absent while showing red, which is the
+// state that teaches everyone to scroll past it. The last run that actually
+// executed was 2026-08-09, and it passed all three schema checks, so the
+// secret and the scripts were never the problem.
+//
+// ── WHY THE psql STEP EXISTS ──────────────────────────────────────────────
+//
+// This is the trap that would have made "just move the job" fail anyway:
+// `brew install libpq` is KEG-ONLY. It installs psql and deliberately does not
+// put it on PATH, on either architecture. Someone who runs the documented
+// command and re-runs the job gets "psql: command not found" and reasonably
+// concludes the install failed.
+//
+// So the job finds psql itself in the places brew puts it, and if it genuinely
+// is not there, says so with the command to run rather than dying on an ENOENT
+// three steps later.
+
+import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { load } from "js-yaml";
+
+const ROOT = new URL("..", import.meta.url).pathname;
+const raw = readFileSync(ROOT + ".github/workflows/ci.yml", "utf8");
+const wf = load(raw) as {
+  jobs: Record<string, { "runs-on": string; if?: string; steps: Array<Record<string, unknown>> }>;
+};
+const migrations = wf.jobs.migrations;
+const verify = wf.jobs.verify;
+
+describe("the schema gate can be scheduled", () => {
+  it("follows CI_RUNNER, like the job that already had to move", () => {
+    // Pinned to `ubuntu-latest` is exactly the state that made it unrunnable.
+    expect(migrations["runs-on"]).toBe("${{ vars.CI_RUNNER || 'ubuntu-latest' }}");
+  });
+
+  it("uses the same expression as verify, so one variable moves both", () => {
+    // Two jobs with two different spellings is how half of CI ends up on a
+    // machine nobody meant to point it at.
+    expect(migrations["runs-on"]).toBe(verify["runs-on"]);
+  });
+
+  it("still falls back to hosted runners when the variable is unset", () => {
+    // The escape hatch is the point: deleting the repository variable returns
+    // both jobs to GitHub's runners with no PR.
+    expect(migrations["runs-on"]).toContain("|| 'ubuntu-latest'");
+  });
+
+  it("is still a hard gate on main and skipped on pull requests", () => {
+    // The move must not quietly turn the gate advisory. A PR legitimately
+    // contains migrations that have not been applied yet; main must not.
+    expect(migrations.if).toBe("github.event_name != 'pull_request'");
+  });
+});
+
+describe("psql is found rather than assumed", () => {
+  const step = migrations.steps.find((s) => s.name === "Find psql") as
+    | { name: string; run: string }
+    | undefined;
+
+  it("has a step that looks for it", () => {
+    expect(step, "no `Find psql` step in the migrations job").toBeTruthy();
+  });
+
+  it("runs before anything that needs it", () => {
+    const names = migrations.steps.map((s) => (s.name as string) ?? (s.uses as string));
+    const find = names.indexOf("Find psql");
+    const firstCheck = names.findIndex((n) => n?.startsWith("Check repo migrations"));
+    expect(find).toBeGreaterThanOrEqual(0);
+    expect(find, "the psql lookup must precede the first schema check").toBeLessThan(firstCheck);
+  });
+
+  it("looks in libpq's keg-only bin on both architectures", () => {
+    // The actual defect this guards. Checking only /opt/homebrew silently
+    // fails on an Intel Mac and vice versa, and neither is a configuration
+    // anyone would think to write down.
+    //
+    // Asserted against the SEARCH LIST rather than the step body, and that
+    // distinction is not pedantic — it is the difference this test failed to
+    // make on its first draft. The failure message at the bottom of the step
+    // also names every directory it looked in, so deleting a prefix from the
+    // `for` loop left the string present in the step and the assertion green.
+    // The test agreed that a path was checked because the error message
+    // claimed it had been.
+    const loop = /for d in ([\s\S]*?); do/.exec(step!.run);
+    expect(loop, "no search loop found in the psql lookup").toBeTruthy();
+    const searched = loop![1];
+    expect(searched, "Apple Silicon prefix missing from the search").toContain(
+      "/opt/homebrew/opt/libpq/bin",
+    );
+    expect(searched, "Intel prefix missing from the search").toContain(
+      "/usr/local/opt/libpq/bin",
+    );
+  });
+
+  it("puts what it finds on PATH for the later steps", () => {
+    // Discovering psql and not exporting it would be a slower way to fail.
+    expect(step!.run).toContain("GITHUB_PATH");
+  });
+
+  it("names the install command when it finds nothing", () => {
+    // "psql: command not found" is not an actionable message; this is.
+    expect(step!.run).toMatch(/brew install libpq/);
+    expect(step!.run).toMatch(/::error::/);
+  });
+
+  it("fails rather than continuing without it", () => {
+    // Skipping the schema checks because a tool is missing would recreate the
+    // exact fault above: a gate that reports something other than the answer.
+    expect(step!.run).toMatch(/exit 1/);
+    expect(step!.continueOnError ?? (step as Record<string, unknown>)["continue-on-error"]).toBe(
+      undefined,
+    );
+  });
+});
+
+describe("the checks themselves are unchanged", () => {
+  it("still runs all three schema scripts and both live checks", () => {
+    const names = migrations.steps.map((s) => s.name as string).filter(Boolean);
+    for (const expected of [
+      "Check repo migrations against the database",
+      "Check the database against the repo migrations",
+      "Check every object the migrations create still exists",
+      "The published app origin answers the native preflight",
+      "Stripe charges what the catalog says",
+    ]) {
+      expect(names, `${expected} went missing while moving the job`).toContain(expected);
+    }
+  });
+
+  it("still refuses to pass when SUPABASE_DB_URL is absent", () => {
+    // A check that silently passes without checking anything is the failure
+    // mode IMP-2 exists to remove, and moving runners is a plausible moment to
+    // lose the guard.
+    expect(raw.match(/SUPABASE_DB_URL secret is not set/g)?.length).toBeGreaterThanOrEqual(3);
+  });
+});
