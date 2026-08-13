@@ -62,9 +62,12 @@ import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer"
 import { PrepayInline } from "@/components/client-detail/billing-panels";
 import {
   listAddonRequests,
+  listClientAddons,
   approveAddonRequest,
   declineAddonRequest,
 } from "@/lib/addons.functions";
+import { listClientActivity } from "@/lib/activity.functions";
+import { activityChanges } from "@/lib/activity-diff";
 import { generatePrepaidInvoice } from "@/lib/invoices.functions";
 import { generateVisits } from "@/lib/visits.functions";
 import { listStations } from "@/lib/stations.functions";
@@ -528,6 +531,7 @@ export function ServicesTab({
 
       <ServiceDetailDrawer
         subscription={detailSub}
+        clientId={clientId}
         onClose={() => setDetailSub(null)}
         properties={properties}
         zones={zones}
@@ -538,6 +542,141 @@ export function ServicesTab({
           setDrawerSub(sub);
         }}
       />
+    </div>
+  );
+}
+
+/**
+ * What this service has cost over time.
+ *
+ * The drawer showed today's price and nothing about how it got there, on the
+ * screen an owner opens when a customer asks why their bill changed. The
+ * history was already being written: `updateSubscription` and the total-units
+ * propagation in `properties.functions.ts` both log a `service.price_changed`
+ * entry with a before/after in `meta`, and nothing read it.
+ *
+ * Scoped by `subscriptionId` server-side rather than filtered here, so a price
+ * change from two years ago is not lost behind fifty unrelated client edits
+ * that happen to be newer.
+ */
+function ServicePricingHistory({
+  clientId,
+  subscriptionId,
+}: {
+  clientId: string;
+  subscriptionId: string;
+}) {
+  const listFn = useServerFn(listClientActivity);
+  const { data, isLoading } = useQuery({
+    queryKey: ["service-activity", clientId, subscriptionId],
+    queryFn: () => listFn({ data: { clientId, subscriptionId, limit: 50 } }),
+  });
+  const entries = (data?.entries ?? []).filter((e: any) => (e.kind ?? "").startsWith("service."));
+
+  if (isLoading || entries.length === 0) return null;
+
+  return (
+    <div>
+      <SectionLabel>Price &amp; schedule history</SectionLabel>
+      <ul className="mt-1.5 divide-y">
+        {entries.map((e: any) => {
+          const changes = activityChanges(e.meta, e.kind);
+          return (
+            <li key={e.id} className="py-1.5">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                <span className="min-w-0">{e.summary}</span>
+                <span className="text-xs text-muted-foreground">
+                  {formatDay(e.created_at)}
+                  {e.actor_label ? ` · ${e.actor_label}` : ""}
+                </span>
+              </div>
+              {changes.length > 0 && (
+                <ul className="mt-0.5 text-xs">
+                  {changes.map((c) => (
+                    <li key={c.field} className="flex flex-wrap gap-x-1.5">
+                      <span className="text-muted-foreground">{c.label}</span>
+                      <span className="line-through opacity-60">{c.before}</span>
+                      <span className="font-medium">{c.after}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Add-ons billed on this service's visits.
+ *
+ * `addon_charges` has no subscription column — it carries `visit_id`, and a
+ * visit carries the subscription. That hop is the only exact link between a
+ * charge and a service, so it is the one used: matching on `property_id`
+ * instead would sweep in charges from a second service at the same address,
+ * which is a real configuration (two frequencies on one property).
+ *
+ * Behind the billing permission, like every other money figure on this tab.
+ */
+function ServiceAddonCharges({
+  clientId,
+  visitIds,
+  canSeeBilling,
+}: {
+  clientId: string;
+  visitIds: string[];
+  canSeeBilling: boolean;
+}) {
+  const listFn = useServerFn(listClientAddons);
+  const { data } = useQuery({
+    queryKey: ["client-addons", clientId],
+    queryFn: () => listFn({ data: { clientId } }),
+    enabled: canSeeBilling && visitIds.length > 0,
+  });
+
+  if (!canSeeBilling) return null;
+  const ids = new Set(visitIds);
+  const charges = ((data as any)?.charges ?? []).filter(
+    (c: any) => c.visit_id && ids.has(c.visit_id) && c.status !== "void",
+  );
+  if (charges.length === 0) return null;
+
+  const total = charges.reduce((sum: number, c: any) => sum + Number(c.amount_cents ?? 0), 0);
+
+  return (
+    <div>
+      <SectionLabel>Add-ons billed on this service</SectionLabel>
+      <ul className="mt-1.5 divide-y">
+        {charges.map((c: any) => (
+          <li key={c.id} className="flex flex-wrap items-baseline justify-between gap-x-2 py-1.5">
+            <span className="min-w-0">
+              {c.addon_services?.name ?? c.description}
+              {c.quantity > 1 ? ` ×${c.quantity}` : ""}
+            </span>
+            <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
+              <span>{formatDay(c.occurred_on)}</span>
+              {/* "Invoiced" and "paid" are different answers to "was this ever
+                  billed", and listClientAddons resolves both. */}
+              <span>
+                {c.billed_invoice_id
+                  ? c.billed_invoice_status === "paid"
+                    ? "Paid"
+                    : "Invoiced"
+                  : "Not yet invoiced"}
+              </span>
+              <span className="font-medium text-foreground">
+                ${(Number(c.amount_cents) / 100).toFixed(2)}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1.5 text-xs text-muted-foreground">
+        {charges.length} charge{charges.length === 1 ? "" : "s"} · ${(total / 100).toFixed(2)} on
+        top of the per-visit price.
+      </p>
     </div>
   );
 }
@@ -636,6 +775,7 @@ function AddonRequestsPanel({ clientId }: { clientId: string }) {
 
 function ServiceDetailDrawer({
   subscription: s,
+  clientId,
   onClose,
   properties,
   zones,
@@ -644,6 +784,7 @@ function ServiceDetailDrawer({
   onEdit,
 }: {
   subscription: any | null;
+  clientId: string;
   onClose: () => void;
   properties: any[];
   zones: any[];
@@ -713,6 +854,19 @@ function ServiceDetailDrawer({
             </div>
           )}
         </dl>
+
+        {/* What this service has cost over time, and what was billed on top of
+            it. The drawer showed today's price and nothing about how it got
+            there — on the screen an owner opens when a customer asks why their
+            bill changed. Both were recorded all along: price changes land in
+            activity_log as `service.price_changed` with a before/after, and
+            add-on charges carry the visit they were taken on. */}
+        <ServicePricingHistory clientId={clientId} subscriptionId={s.id} />
+        <ServiceAddonCharges
+          clientId={clientId}
+          visitIds={visits.filter((v: any) => v.subscription_id === s.id).map((v: any) => v.id)}
+          canSeeBilling={canManagePricing}
+        />
 
         <div>
           <SectionLabel>Visit history for this service</SectionLabel>

@@ -8,6 +8,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { getMyOrg } from "@/lib/org.functions";
 import { regeneratePortalLink, readPortalVerificationCode } from "@/lib/clients.functions";
@@ -166,21 +167,37 @@ export function ReviewsReferralPanel({ client }: { client: any }) {
             </p>
           )}
           {!client.referred_by_client_id && (
+            /* The heading above is this client's OWN code, to hand out. This
+               field takes SOMEBODY ELSE'S — the two are opposite directions
+               under one heading, and the only thing that said so was a
+               placeholder, which disappears the moment anyone types. A
+               placeholder is not a label. */
             <form
-              className="flex items-center gap-2 pt-1"
+              className="flex flex-wrap items-end gap-2 pt-1"
               onSubmit={(e) => {
                 e.preventDefault();
                 if (code.trim()) applyMut.mutate();
               }}
             >
-              <Input
-                placeholder="Redeem referral code"
-                aria-label="Redeem referral code"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                className="h-8 max-w-[180px]"
-              />
-              <Button type="submit" size="sm" variant="outline" disabled={applyMut.isPending}>
+              <div className="min-w-0 flex-1">
+                <Label htmlFor="redeem-referral-code" className="text-xs text-muted-foreground">
+                  Referred by another client? Enter their code
+                </Label>
+                <Input
+                  id="redeem-referral-code"
+                  placeholder="e.g. HOUND-4KQ2"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  className="mt-1 h-8 w-full max-w-[220px] max-md:min-h-11"
+                />
+              </div>
+              <Button
+                type="submit"
+                size="sm"
+                variant="outline"
+                className="max-md:min-h-11"
+                disabled={applyMut.isPending}
+              >
                 Apply
               </Button>
             </form>
