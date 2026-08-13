@@ -61,14 +61,22 @@ const ROOT = new URL("..", import.meta.url).pathname;
 const THIS_MIGRATION = "20260812190000_a-trigger-function-is-not-an-rpc.sql";
 
 /** Every trigger function this directory creates: a CREATE FUNCTION whose
- *  return type is `trigger`. Replayed across the whole history, last write
- *  winning, because a function re-created later is still one function. */
+ *  return type is `trigger` OR `event_trigger`. Replayed across the whole
+ *  history, last write winning, because a function re-created later is still
+ *  one function.
+ *
+ *  BOTH kinds, and that is the correction. 20260812190000 keyed its catalog
+ *  predicate on `prorettype = 'trigger'::regtype`, which does not match
+ *  `event_trigger` — a separate type, not a variant — so it left
+ *  `rls_auto_enable` executable by `authenticated` on the same day it closed
+ *  the other thirty-four. 20260812210000 revokes it, and this regex is why the
+ *  NEXT one cannot slip through the same crack. */
 function triggerFunctions(): Map<string, string> {
   const map = new Map<string, string>();
   for (const file of migrationFiles()) {
     for (const st of statements(stripLineComments(readMigration(file)))) {
       const m =
-        /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.([a-z0-9_]+)\s*\(\s*\)\s*RETURNS\s+trigger\b/i.exec(
+        /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.([a-z0-9_]+)\s*\(\s*\)\s*RETURNS\s+(?:event_)?trigger\b/i.exec(
           st,
         );
       if (m) map.set(m[1].toLowerCase(), file);
@@ -111,16 +119,17 @@ function revokedAnywhere(): Set<string> {
 
 describe("no trigger function is executable by a signed-in user", () => {
   it("finds the trigger functions rather than passing on an empty set", () => {
-    // Exactly 34, and the same 34 the catalog holds — unusually, this repo
-    // creates every one of its trigger functions in a tracked migration, so
-    // the replay and the database agree with nothing left over. (Not true of
-    // policies or of every function: the 2026-07-09 consolidated bootstrap
-    // left other objects under names the filenames do not match.) A parser
-    // that quietly stopped matching would report zero and look green.
-    expect(triggerFunctions().size).toBe(34);
+    // Thirty-five: the thirty-four row-trigger functions plus the one event
+    // trigger function, `rls_auto_enable`. The same thirty-five the catalog
+    // holds — unusually, this repo creates every one of them in a tracked
+    // migration, so the replay and the database agree with nothing left over.
+    // (Not true of policies or of every function: the 2026-07-09 consolidated
+    // bootstrap left other objects under names the filenames do not match.)
+    // A parser that quietly stopped matching would report zero and look green.
+    expect(triggerFunctions().size).toBe(35);
   });
 
-  it("revokes all thirty-four, by return type and not by name", () => {
+  it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {
     const revoked = revokedHere();
     expect(revoked.size).toBe(34);
     // The two that a `tg_%` sweep would have missed, named so the reason for
@@ -148,6 +157,51 @@ describe("no trigger function is executable by a signed-in user", () => {
             open.map((o) => `  ${o}`).join("\n")
         : "",
     ).toEqual([]);
+  });
+});
+
+describe("the correction: the rule said trigger, and Postgres has two kinds", () => {
+  const FILE = "20260812210000_the-rule-said-trigger-and-postgres-has-two-kinds.sql";
+
+  it("closes the event trigger function the first rule's predicate missed", () => {
+    // `prorettype = 'trigger'::regtype` does not match `event_trigger`. A
+    // separate type, not a variant — which is how a rule written to close
+    // exactly this class left one open on the day it shipped.
+    const sql = stripLineComments(readMigration(FILE));
+    expect(sql).toMatch(
+      /revoke all on function public\.rls_auto_enable\(\) from public, anon, authenticated/i,
+    );
+    expect(sql).toMatch(/'pg_catalog\.event_trigger'::regtype/);
+  });
+
+  it("proves the event trigger still fires, which is the risk that mattered", () => {
+    // rls_auto_enable is what keeps a new table from shipping without RLS. A
+    // revoke that silenced it would be a far worse bug than the one fixed, so
+    // the probe creates a table and reads relrowsecurity rather than trusting
+    // that an event trigger behaves like a row trigger.
+    const sql = readMigration(FILE);
+    expect(sql).toMatch(/event trigger fired with EXECUTE revoked: RLS enabled = true/);
+    expect(sql).toMatch(/direct call refused: permission denied for function rls_auto_enable/);
+    const post = sql.slice(sql.indexOf("do $post$"));
+    expect(post).toMatch(/evtenabled/);
+    expect(post).toMatch(/RLS event trigger is gone or disabled/);
+  });
+
+  it("records that the direct call did NOT error, against expectation", () => {
+    // The reasonable guess — and the one made — was that
+    // pg_event_trigger_ddl_commands() would raise outside an event-trigger
+    // context. It returns no rows instead, so the call succeeded and did
+    // nothing. "It would error anyway" is not the defence; the door not
+    // existing is. Pinned because a future reader will make the same guess.
+    // Line-wrapped in the migration prose, so match without the article.
+    expect(readMigration(FILE)).toMatch(/call SUCCEEDED and did nothing/);
+  });
+
+  it("checks both kinds afterwards, not just the one it revoked", () => {
+    const post = readMigration(FILE).slice(readMigration(FILE).indexOf("do $post$"));
+    expect(post).toMatch(
+      /prorettype in \('pg_catalog\.trigger'::regtype, 'pg_catalog\.event_trigger'::regtype\)/,
+    );
   });
 });
 
