@@ -17,6 +17,7 @@ import {
   type FranchiseRow,
 } from "@/lib/franchise.functions";
 import { FranchiseAdjustmentTrail } from "@/components/FranchiseAdjustmentTrail";
+import { FranchiseSettlementStatements } from "@/components/FranchiseSettlementStatements";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -433,10 +434,14 @@ function FranchisePage() {
 
       <RoyaltyBilling />
 
-      {/* Directly under the statements it explains. The royalty table shows a
-          net figure per period; this is where the refunds and chargebacks
-          inside that figure are itemised, and where a credit from a won dispute
-          says which deduction it gives back. */}
+      {/* Directly under the statements it explains. Each statement shows a net
+          figure per period; this is where the refunds and chargebacks inside
+          that figure are itemised, and where a credit from a won dispute says
+          which deduction it gives back.
+          (This comment used to claim the royalty TABLE showed the net figure.
+          It did not — it showed the gross royalty and never read `direction` or
+          `net_due_cents` at all, so the trail below was explaining a number
+          that was not on the screen.) */}
       <AdjustmentTrail />
     </div>
   );
@@ -516,126 +521,79 @@ function RoyaltyBilling() {
   const rows: any[] = (invoices.data as any)?.invoices ?? [];
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-base">Royalty billing</CardTitle>
-        <Button size="sm" onClick={() => generate.mutate()} disabled={generate.isPending}>
-          {generate.isPending ? "Generating…" : "Generate last month's royalties"}
-        </Button>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div>
+    <>
+      <Card>
+        {/* Wraps below sm. The title and a button reading "Generate last
+            month's royalties" do not fit one 360px row, and a header that
+            refuses to wrap pushes the button off the right edge. */}
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <CardTitle className="text-base">Royalty billing</CardTitle>
+          <Button
+            size="sm"
+            className="max-md:min-h-11 sm:w-auto"
+            onClick={() => generate.mutate()}
+            disabled={generate.isPending}
+          >
+            {generate.isPending ? "Generating…" : "Generate last month's royalties"}
+          </Button>
+        </CardHeader>
+        <CardContent>
           <div className="mb-2 text-xs font-medium uppercase text-muted-foreground">
             Royalty rate per location
           </div>
           <div className="space-y-2">
             {children.map((c) => (
-              <div key={c.id} className="flex items-center gap-3 text-sm">
-                <span className="min-w-40 flex-1">{c.name}</span>
-                <Input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={0.25}
-                  className="w-24"
-                  defaultValue={Number(c.franchise_royalty_percent ?? 0)}
-                  onBlur={(e) => {
-                    const percent = Number(e.target.value);
-                    if (
-                      !Number.isNaN(percent) &&
-                      percent !== Number(c.franchise_royalty_percent ?? 0)
-                    ) {
-                      setRate.mutate({ childOrgId: c.id, percent });
-                    }
-                  }}
-                />
-                <span className="text-muted-foreground">% of collected revenue</span>
+              // The name gets its own line below sm: a location name, a number
+              // box and "% of collected revenue" is far more than 360px of row,
+              // and the trailing label was the part going over the edge.
+              <div
+                key={c.id}
+                className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:gap-3"
+              >
+                <span className="min-w-0 flex-1 truncate sm:min-w-40">{c.name}</span>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.25}
+                    className="w-24 max-md:min-h-11"
+                    aria-label={`Royalty percentage for ${c.name}`}
+                    defaultValue={Number(c.franchise_royalty_percent ?? 0)}
+                    onBlur={(e) => {
+                      const percent = Number(e.target.value);
+                      if (
+                        !Number.isNaN(percent) &&
+                        percent !== Number(c.franchise_royalty_percent ?? 0)
+                      ) {
+                        setRate.mutate({ childOrgId: c.id, percent });
+                      }
+                    }}
+                  />
+                  <span className="text-muted-foreground">% of collected revenue</span>
+                </div>
               </div>
             ))}
             {children.length === 0 && (
               <p className="text-sm text-muted-foreground">No child locations yet.</p>
             )}
           </div>
-        </div>
+        </CardContent>
+      </Card>
 
-        <div>
-          <div className="mb-2 text-xs font-medium uppercase text-muted-foreground">
-            Royalty invoices
-          </div>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Period</TableHead>
-                  <TableHead>Revenue</TableHead>
-                  <TableHead>Rate</TableHead>
-                  <TableHead>Royalty</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((r) => {
-                  const child = Array.isArray(r.organizations)
-                    ? r.organizations[0]
-                    : r.organizations;
-                  return (
-                    <TableRow key={r.id}>
-                      <TableCell>{child?.name ?? "Location"}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {r.period_start} → {r.period_end}
-                      </TableCell>
-                      <TableCell>{money(Number(r.revenue_cents))}</TableCell>
-                      <TableCell>{Number(r.royalty_percent)}%</TableCell>
-                      <TableCell className="font-medium">{money(Number(r.amount_cents))}</TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            r.status === "paid"
-                              ? "secondary"
-                              : r.status === "issued"
-                                ? "default"
-                                : "outline"
-                          }
-                        >
-                          {r.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {r.status === "draft" && (
-                          <button
-                            className="text-xs text-primary underline"
-                            onClick={() => setStatus.mutate({ invoiceId: r.id, status: "issued" })}
-                          >
-                            Issue
-                          </button>
-                        )}
-                        {r.status === "issued" && (
-                          <button
-                            className="text-xs text-primary underline"
-                            onClick={() => setStatus.mutate({ invoiceId: r.id, status: "paid" })}
-                          >
-                            Mark paid
-                          </button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-                {rows.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center text-sm text-muted-foreground">
-                      No royalty invoices yet. Set rates and click Generate.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+      <FranchiseSettlementStatements
+        rows={rows.map((r) => ({
+          ...r,
+          counterpartyName:
+            (Array.isArray(r.organizations) ? r.organizations[0] : r.organizations)?.name ?? null,
+        }))}
+        audience="franchise"
+        isLoading={invoices.isLoading}
+        error={invoices.error ? (invoices.error as Error).message : null}
+        isUpdating={setStatus.isPending}
+        onSetStatus={(invoiceId, status) => setStatus.mutate({ invoiceId, status })}
+      />
+    </>
   );
 }
 

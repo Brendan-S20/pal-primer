@@ -353,8 +353,15 @@ export const listRoyaltyInvoices = createServerFn({ method: "GET" })
     const orgId = await resolveOrgId(context.supabase, context.userId);
     const { data, error } = await (context.supabase as any)
       .from("franchise_royalty_invoices")
+      // `direction` and `net_due_cents` were missing here, and they are the two
+      // columns that say what actually happens. The royalty is not what changes
+      // hands — under parent-collection the franchise is holding the location's
+      // money and owes it back — so a statement billing the location $100 and
+      // one owing the location $900 both rendered as "Royalty $100", on the
+      // screen that has the Issue and Mark paid buttons on it. The CPA report
+      // pack has selected both all along.
       .select(
-        "id, child_organization_id, period_start, period_end, revenue_cents, royalty_percent, amount_cents, status, created_at, organizations!franchise_royalty_invoices_child_organization_id_fkey(name)",
+        "id, child_organization_id, period_start, period_end, revenue_cents, royalty_percent, amount_cents, royalty_cents, adjustments_applied_cents, direction, net_due_cents, status, created_at, organizations!franchise_royalty_invoices_child_organization_id_fkey(name)",
       )
       .eq("parent_organization_id", orgId)
       .order("period_start", { ascending: false })

@@ -21,6 +21,11 @@ import {
   type ReportColumn,
   type ReportId,
 } from "@/lib/cpa-reports";
+import {
+  settlementDirectionLabel,
+  settlementStatusLabel,
+  type SettlementAudience,
+} from "@/lib/franchise-settlement";
 // Static rather than the dynamic import the other reversal readers use: this is
 // the pure arithmetic half of that module (no service-role client behind it),
 // and every sheet below needs it.
@@ -924,11 +929,12 @@ async function buildFranchiseSettlements(ctx: OrgContext, from: string, to: stri
     for (const o of orgs ?? []) names.set(o.id, o.name);
   }
 
-  const DIRECTION: Record<string, string> = {
-    franchise_owes_location: asParent ? "You owe the location" : "The franchise owes you",
-    location_owes_franchise: asParent ? "The location owes you" : "You owe the franchise",
-    settled: "Settled — nothing to move",
-  };
+  // These labels used to be defined here, and here was the only place in the
+  // product that read `direction` at all — the /franchise screen with the Issue
+  // button on it showed the royalty and never said which way the money went.
+  // The vocabulary now lives in franchise-settlement.ts and all three surfaces
+  // read it from there.
+  const audience: SettlementAudience = asParent ? "franchise" : "location";
 
   const rows: ReportRow[] = settlements.map((r: any) => ({
     counterparty:
@@ -940,9 +946,9 @@ async function buildFranchiseSettlements(ctx: OrgContext, from: string, to: stri
     revenueCents: r.revenue_cents ?? 0,
     royaltyCents: r.royalty_cents ?? 0,
     adjustmentsCents: r.adjustments_applied_cents ?? 0,
-    directionLabel: DIRECTION[r.direction] ?? r.direction,
+    directionLabel: settlementDirectionLabel(r.direction, audience),
     netDueCents: r.net_due_cents ?? 0,
-    statusLabel: r.status === "draft" ? "Draft — not yet agreed" : r.status,
+    statusLabel: settlementStatusLabel(r.status),
   }));
 
   return {

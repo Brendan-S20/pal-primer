@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import type { AdjustmentLedgerRow } from "@/lib/franchise-adjustments";
+import type { SettlementRow } from "@/lib/franchise-settlement";
 
 // BUILD-6 — the CHILD side of a franchise relationship.
 //
@@ -113,6 +114,72 @@ export const getMyFranchiseAdjustments = createServerFn({ method: "GET" })
     });
     if (error) throw new Error(error.message);
     return { rows: (data ?? []) as AdjustmentLedgerRow[] };
+  });
+
+/**
+ * The settlement statements this location has been issued.
+ *
+ * ── THE GAP THIS CLOSES ───────────────────────────────────────────────────
+ *
+ * A franchise owner generated statements, pressed Issue, and pressed Mark
+ * paid. All three happened on the parent's screen. The location — the party
+ * the statement bills — had no way to read one. RLS on
+ * `franchise_royalty_invoices` is `can_write_org(auth.uid(),
+ * parent_organization_id)`: the parent's office and nobody else. There was no
+ * server function for the child side and no screen for it.
+ *
+ * So "Issue" moved a status column and delivered nothing. The location learned
+ * what it owed by being told out of band, which makes the software a private
+ * notebook rather than a shared record.
+ *
+ * This is the same rule the rest of this file already runs on, applied to the
+ * document instead of the rate: "a franchisee being unable to see their own
+ * royalty rate in a product that bills them for it would be indefensible", and
+ * "a deduction a franchisee cannot look up is indistinguishable from an error,
+ * and they will assume the worst". A whole statement they cannot look up is
+ * that fault at full size.
+ *
+ * ── WHY SERVICE-ROLE, AND WHY THAT IS NARROW ──────────────────────────────
+ *
+ * A location is not a member of its franchise, so no tenant-scoped client can
+ * read a row whose other party is the parent — the same wall every cross-org
+ * read in BUILD-6 hits. The read is pinned to `child_organization_id = orgId`,
+ * so it can only ever return statements this organization is itself the
+ * subject of. This is not a new pattern: `buildFranchiseSettlements` in the CPA
+ * pack has read the same table the same way, for the same reason, since the
+ * report pack shipped.
+ *
+ * ── DRAFTS ARE NOT DELIVERED ──────────────────────────────────────────────
+ *
+ * `settlementIsDelivered` is the predicate and `franchise-settlement.ts`
+ * carries the argument: the generator rewrites drafts freely, so a draft is a
+ * figure still moving. Issuing is what turns it into a bill, and that is what
+ * makes the Issue button mean something. The CPA pack deliberately differs —
+ * it includes drafts, labelled, because a tax pack that omits rows is
+ * incomplete — and that difference is intentional rather than drift.
+ *
+ * Ungated by plan, like the rest of the child side: a location is not buying
+ * franchise management, it is being billed by one. `view_financials` because
+ * these are money lines.
+ */
+export const getMyFranchiseSettlements = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { orgId } = await requirePermission(context.supabase, context.userId, "view_financials");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data, error } = await (supabaseAdmin as any)
+      .from("franchise_royalty_invoices")
+      .select(
+        "id, period_start, period_end, revenue_cents, royalty_percent, royalty_cents, amount_cents, adjustments_applied_cents, direction, net_due_cents, status",
+      )
+      .eq("child_organization_id", orgId)
+      .neq("status", "draft")
+      .order("period_start", { ascending: false })
+      .limit(200);
+    if (error) throw new Error(error.message);
+
+    return { statements: (data ?? []) as SettlementRow[] };
   });
 
 // BUILD-6: leaveFranchise was removed here (owner decision, 2026-07-30).
