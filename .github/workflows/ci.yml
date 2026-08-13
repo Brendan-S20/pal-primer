@@ -115,14 +115,41 @@ jobs:
 
   migrations:
     name: Migrations applied to the live database
-    # Deliberately NOT following `CI_RUNNER`. Two reasons, and either alone
-    # would be enough. It shells out to `psql`, which the step below notes
-    # ships on ubuntu-latest and will not be on a laptop unless someone
-    # installed it; and it is the job that holds SUPABASE_DB_URL and
+    # ── THIS USED TO SAY "deliberately NOT following CI_RUNNER" ───────────
+    #
+    # It gave two reasons and both were sound: the scripts shell out to `psql`,
+    # which ships on ubuntu-latest and will not be on a laptop unless somebody
+    # installed it; and this is the job holding SUPABASE_DB_URL and
     # STRIPE_SECRET_KEY, which is the last place to want an environment nobody
-    # can reproduce. It runs only on main and on manual dispatch, so it is
-    # rare enough that hosted minutes are not the concern here anyway.
-    runs-on: ubuntu-latest
+    # can reproduce.
+    #
+    # What overrode both: the job stopped running at all. GitHub's HOSTED
+    # allocation for this repository broke on 2026-08-10 — the same failure
+    # that moved `verify` to the self-hosted runner — and this was the last job
+    # left on `ubuntu-latest`. From 2026-08-12 it has been failing in two
+    # seconds with `runner_id: 0`, ZERO steps and no logs at all. It never
+    # receives a machine.
+    #
+    # That is worse than either objection above, and worse than a plain red
+    # build. This is the IMP-2 gate: the check that code landing on main does
+    # not depend on schema production lacks. Five merges landed while it was
+    # unschedulable, six migrations were applied to the live database in that
+    # window, and nothing compared the two. A hard gate that cannot start is
+    # not a lenient gate — it is an absent one, and it is absent while
+    # reporting failure, which is the shape that trains people to ignore it.
+    #
+    # ── ON THE SECRETS, PLAINLY ──────────────────────────────────────────
+    #
+    # Following CI_RUNNER means SUPABASE_DB_URL is decrypted on a long-lived
+    # machine rather than a disposable one. That is a real change and worth
+    # saying out loud rather than burying: the trade is a persistent host
+    # against a gate that runs. It is the owner's own Mac, which is already
+    # where that connection string lives, so this is not new exposure so much
+    # as the same exposure on a box that also keeps a work directory.
+    #
+    # Set the repository variable `CI_RUNNER` back to empty and this returns to
+    # hosted runners with no PR needed, exactly like `verify`.
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     # Skipped on pull requests, and this costs nothing real: every step below
     # already carried `continue-on-error: ${{ github.event_name ==
@@ -155,8 +182,44 @@ jobs:
         with:
           node-version: 22
 
+      # ── FINDING psql, WHICH IS THE WHOLE REASON THIS JOB STAYED HOSTED ──
+      #
+      # It ships on ubuntu-latest. On a Mac it does not, and the trap is that
+      # installing it is not enough either: `brew install libpq` is KEG-ONLY,
+      # so it deliberately leaves psql off PATH on both architectures. Someone
+      # who runs the documented install and re-runs the job still gets "psql:
+      # command not found", which reads as the install having failed.
+      #
+      # So this looks in the places brew actually puts it rather than asking
+      # anyone to edit the runner's shell profile — one `brew install libpq`
+      # and nothing else. Both prefixes are checked because Apple Silicon uses
+      # /opt/homebrew and Intel uses /usr/local, and a runner can move between
+      # machines without this file knowing.
+      #
+      # It fails loudly with the exact command to run rather than letting the
+      # first check die on a confusing ENOENT three steps later.
+      - name: Find psql
+        run: |
+          if command -v psql >/dev/null 2>&1; then
+            echo "psql on PATH: $(command -v psql)"
+            exit 0
+          fi
+          for d in /opt/homebrew/opt/libpq/bin /usr/local/opt/libpq/bin \
+                   /opt/homebrew/bin /usr/local/bin /Applications/Postgres.app/Contents/Versions/latest/bin; do
+            if [ -x "$d/psql" ]; then
+              echo "$d" >> "$GITHUB_PATH"
+              echo "found psql at $d/psql — added to PATH for the steps below"
+              exit 0
+            fi
+          done
+          echo "::error::psql not found on this runner, so the schema checks below cannot run."
+          echo "On the self-hosted macOS runner:  brew install libpq"
+          echo "No PATH edit is needed — this step looks in libpq's keg-only bin directory."
+          echo "Checked: /opt/homebrew/opt/libpq/bin, /usr/local/opt/libpq/bin, /opt/homebrew/bin,"
+          echo "         /usr/local/bin, /Applications/Postgres.app/Contents/Versions/latest/bin"
+          exit 1
+
       - name: Check repo migrations against the database
-        # psql ships on ubuntu-latest runners.
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
