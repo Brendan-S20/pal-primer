@@ -214,6 +214,40 @@ export function ServicesTab({
     onError: (e) => toast.error((e as Error).message),
   });
 
+  /**
+   * Point a service at its property's zone.
+   *
+   * Deliberately carries `price_cents` through unchanged. The zone is what
+   * EXPLAINS a price, not what silently sets it — re-pricing here would change
+   * what a customer is billed as a side effect of correcting a record, and the
+   * owner has a price field and a "Use zone" button for when they mean it.
+   */
+  const syncZoneFn = useServerFn(updateSubscription);
+  const syncZoneMut = useMutation({
+    mutationFn: (v: { sub: any; zoneId: string | null }) =>
+      syncZoneFn({
+        data: {
+          subscriptionId: v.sub.id,
+          propertyId: v.sub.property_id,
+          frequency: v.sub.frequency,
+          intervalWeeks: v.sub.interval_weeks ?? undefined,
+          intervalDays: v.sub.interval_days ?? undefined,
+          priceCents: v.sub.price_cents,
+          dogCount: v.sub.dog_count ?? undefined,
+          zoneId: v.zoneId ?? undefined,
+          billingCadence: v.sub.billing_cadence ?? undefined,
+          startedOn: v.sub.started_on ?? undefined,
+          endsOn: v.sub.ends_on ?? null,
+          preferredWeekdays: v.sub.preferred_weekdays ?? undefined,
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Pricing zone synced from the property. The price is unchanged.");
+      invalidate();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
   const prepayMut = useMutation({
     mutationFn: (v: { subscriptionId: string; visitCount: number }) => prepayFn({ data: v }),
     onSuccess: (r: any) => {
@@ -266,6 +300,19 @@ export function ServicesTab({
               s.account_type === "residential" &&
               s.dog_count != null &&
               s.dog_count !== propertyDogs;
+            // The same question about the zone, which nothing was asking. A
+            // service's zone sets its price; the property's zone is where that
+            // zone comes from. They drifted two ways — a service saved with no
+            // zone at all after being priced from the property's, and a
+            // service moved to another property keeping the first one's zone —
+            // and both are fixed at the source now. This catches the rows that
+            // drifted before that, and any future cause, which is the half a
+            // form fix cannot reach.
+            const propertyZoneId =
+              (properties.find((p: any) => p.id === s.property_id)?.zone_id as string | null) ??
+              null;
+            const zoneMismatch = !!propertyZoneId && s.zone_id !== propertyZoneId;
+            const propertyZoneName = zones.find((z: any) => z.id === propertyZoneId)?.name;
             // QA follow-up 1.6: an active service with no upcoming visit must
             // say why and offer a way out.
             const startsLater = s.started_on && s.started_on > today;
@@ -378,6 +425,26 @@ export function ServicesTab({
                           </Button>
                         )}
                         {propertyDogs === 0 && <span>Add the dogs on the Properties tab.</span>}
+                      </div>
+                    )}
+                    {zoneMismatch && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
+                        <span>
+                          {s.zone_id
+                            ? `Priced from a different zone than this property's (${propertyZoneName ?? "unnamed"}).`
+                            : `No pricing zone recorded, but this property is in ${propertyZoneName ?? "a zone"}.`}
+                        </span>
+                        {canManagePricing && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-xs max-md:min-h-11"
+                            disabled={syncZoneMut.isPending}
+                            onClick={() => syncZoneMut.mutate({ sub: s, zoneId: propertyZoneId })}
+                          >
+                            Use {propertyZoneName ?? "the property's zone"}
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1023,9 +1090,23 @@ function ServiceDrawer({
   const dogsForPricing =
     accountType === "residential" ? Math.max(1, parseInt(form.dogCount, 10) || 1) : 1;
   const selectedProperty = properties.find((p: any) => p.id === form.propertyId);
-  const pricingZone = zones.find(
-    (z: any) => z.id === (form.zoneId || selectedProperty?.zone_id || ""),
-  );
+  // The zone that actually applies, in ONE place.
+  //
+  // This expression used to exist only here, to pick the zone the price
+  // preview is computed from, while the save wrote `form.zoneId || undefined`.
+  // For a client with more than one property those disagree: the form field
+  // starts empty (there is no property selected yet, so nothing to prefill
+  // from), the user picks a property, the preview correctly falls back to that
+  // property's zone and prices the visit from it — and the subscription is
+  // then saved with NO zone at all. The number is right on the day and the row
+  // cannot explain where it came from, so nothing can re-derive it later.
+  //
+  // `zone_id` and not `auto_zone_id`: properties.functions.ts is explicit that
+  // "auto_zone_id is what the matcher detected; zone_id is what actually
+  // applies", and an override exists precisely because the detected one was
+  // wrong.
+  const effectiveZoneId = form.zoneId || selectedProperty?.zone_id || "";
+  const pricingZone = zones.find((z: any) => z.id === effectiveZoneId);
   // The wizard stores multiplied prices (org frequency_multipliers keyed by
   // stored frequency), so the comparison must use the same multiplier for
   // this schedule or "Use zone" would silently discount non-weekly services.
@@ -1172,7 +1253,10 @@ function ServiceDrawer({
           accountType === "commercial"
             ? Math.max(1, propTotalUnits ?? (parseInt(form.unitCount, 10) || 1))
             : undefined,
-        zoneId: form.zoneId || undefined,
+        // The same expression the price was computed from. Writing
+        // `form.zoneId` here is what let a service be priced from a zone it
+        // did not record.
+        zoneId: effectiveZoneId || undefined,
         billingCadence: form.billingCadence,
         startedOn: form.startedOn || undefined,
         endsOn: form.endsOn || null,
@@ -1234,11 +1318,20 @@ function ServiceDrawer({
               onChange={(e) => {
                 const pid = e.target.value;
                 const n = pid ? activeDogsFor(pid) : 0;
+                const next = pid ? properties.find((p: any) => p.id === pid) : null;
                 setForm((f) => ({
                   ...f,
                   propertyId: pid,
                   // Refill from the property's dog records on switch.
                   ...(n > 0 && accountType === "residential" ? { dogCount: String(n) } : {}),
+                  // And from its zone. This line was missing while the dog
+                  // count beside it was not, so editing a service and moving
+                  // it to another property left the OLD property's zone in the
+                  // form — and that zone then priced the visit and was saved
+                  // onto the row. Cleared rather than kept when the new
+                  // property has no zone: carrying the previous address's
+                  // zone across is the bug, not a useful default.
+                  zoneId: (next?.zone_id as string | null | undefined) ?? "",
                 }));
               }}
               className="h-10 w-full rounded-md border bg-background px-3 text-sm"
