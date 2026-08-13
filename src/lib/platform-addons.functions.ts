@@ -3,6 +3,8 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { makeStripe } from "@/lib/stripe-client.server";
+import { addonLookupKey } from "@/lib/stripe-lookup-keys";
+import { loadPriceCatalog, resolvePriceId } from "@/lib/stripe-price-catalog.server";
 
 // Platform -> tenant software add-ons (e.g. AI Receptionist): the upsell
 // catalog shown on Settings -> Billing. Subscribing attaches a Stripe
@@ -155,8 +157,30 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
         .update({ stripe_product_id: productId, updated_at: new Date().toISOString() })
         .eq("id", addon.id);
     }
+    // Ask this account for the add-on's price by name before falling back to
+    // the id the database holds, which is always a LIVE id: under a test key
+    // `subscriptionItems.create({ price: <live id> })` fails outright with "No
+    // such price", so buying an add-on has never been runnable outside the real
+    // account. Both accounts carry `addon_<slug>` (see stripe-lookup-keys.ts).
+    const catalog = await loadPriceCatalog(stripe);
     const ensureStoredPrice = async (): Promise<string> => {
-      if (priceId) return priceId;
+      const resolved = addon.slug
+        ? resolvePriceId(catalog, addonLookupKey(addon.slug), priceId)
+        : priceId && catalog.ids.has(priceId)
+          ? priceId
+          : null;
+      if (resolved) return resolved;
+      // Nothing in this account answers to the name and the stored id is not
+      // here either, so mint one. Note the write-back below only ever fills an
+      // EMPTY column — it must not overwrite a live id with a test one. If the
+      // row already carries a live product id and this is a test key, the
+      // create fails loudly rather than billing anything wrong.
+      if (priceId) {
+        throw new Error(
+          `Add-on ${addon.slug ?? addon.id} has no price in this Stripe account. ` +
+            `Add the lookup key ${addon.slug ? addonLookupKey(addon.slug) : "addon_<slug>"} to it.`,
+        );
+      }
       const price = await stripe.prices.create(
         {
           product: productId!,

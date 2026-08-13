@@ -4,6 +4,12 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { getOrgBillingState, subscriptionPeriodEnd } from "./billing-state.server";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { makeStripe } from "@/lib/stripe-client.server";
+import { planLookupKey } from "@/lib/stripe-lookup-keys";
+import {
+  loadPriceCatalog,
+  resolvePriceId,
+  resolvePriceIdSet,
+} from "@/lib/stripe-price-catalog.server";
 
 // Nothing imports this. $59 is not a price in the current per-employee
 // catalog either — plans come from `platform_plans`, which is the only place
@@ -121,14 +127,14 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
 
     const { data: planRows } = await (supabaseAdmin as any)
       .from("platform_plans")
-      .select("id, name, stripe_price_id, stripe_seat_price_id, stripe_annual_price_id, stripe_annual_seat_price_id, price_cents, annual_price_cents, included_seats")
+      .select("id, name, slug, stripe_price_id, stripe_seat_price_id, stripe_annual_price_id, stripe_annual_seat_price_id, price_cents, annual_price_cents, included_seats")
       .eq("is_active", true)
       .eq("is_enterprise", false)
       .not("stripe_price_id", "is", null)
       .not("included_seats", "is", null)
       .order("included_seats", { ascending: true });
     const plans = (planRows ?? []) as Array<{
-      id: string; name: string; stripe_price_id: string;
+      id: string; name: string; slug: string; stripe_price_id: string;
       stripe_seat_price_id: string | null;
       stripe_annual_price_id: string | null;
       stripe_annual_seat_price_id: string | null;
@@ -143,15 +149,49 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
     }
 
     const targetInterval: "month" | "year" = data.interval ?? "month";
-    const targetPlanPriceId =
-      targetInterval === "year" ? targetPlan.stripe_annual_price_id : targetPlan.stripe_price_id;
-    const targetSeatPriceId =
-      targetInterval === "year" ? targetPlan.stripe_annual_seat_price_id : targetPlan.stripe_seat_price_id;
-    if (!targetPlanPriceId) {
-      throw new Error("Annual billing isn't available for that plan yet. Contact support.");
-    }
 
     const stripe = await makeStripe(secret);
+
+    // Ask Stripe for the account's own prices by NAME, not by the id the
+    // database happens to hold. Every id in `platform_plans` is a live id, and
+    // ids are minted per account — so under a test key those ids resolve to
+    // nothing and the whole signup → subscribe → invoice path has never been
+    // runnable outside the real account. Both accounts now carry the same
+    // eighteen lookup keys, so this one list call answers in either mode.
+    // The stored id remains the fallback (see stripe-price-catalog.server.ts),
+    // which keeps today's behaviour as the floor.
+    const catalog = await loadPriceCatalog(stripe);
+    const planKind = targetInterval === "year" ? "base_annual" : "base_monthly";
+    const seatKind = targetInterval === "year" ? "seat_annual" : "seat_monthly";
+    const targetPlanPriceId = resolvePriceId(
+      catalog,
+      planLookupKey(targetPlan.slug, planKind),
+      targetInterval === "year" ? targetPlan.stripe_annual_price_id : targetPlan.stripe_price_id,
+    );
+    const targetSeatPriceId = resolvePriceId(
+      catalog,
+      planLookupKey(targetPlan.slug, seatKind),
+      targetInterval === "year"
+        ? targetPlan.stripe_annual_seat_price_id
+        : targetPlan.stripe_seat_price_id,
+    );
+    if (!targetPlanPriceId) {
+      // Two different faults land here and they are not the same conversation.
+      // A missing annual column is a product decision — that plan is simply not
+      // sold yearly. Everything else means the account in use has neither the
+      // lookup key nor the stored id, which is a configuration fault worth
+      // saying out loud rather than blaming on the customer's choice of term.
+      const storedForTerm =
+        targetInterval === "year" ? targetPlan.stripe_annual_price_id : targetPlan.stripe_price_id;
+      if (targetInterval === "year" && !storedForTerm) {
+        throw new Error("Annual billing isn't available for that plan yet. Contact support.");
+      }
+      console.error(
+        `plan price unresolvable: no price named ${planLookupKey(targetPlan.slug, planKind)} ` +
+          `in this Stripe account, and the stored id ${storedForTerm ?? "(none)"} is not on it either`,
+      );
+      throw new Error("That plan isn't available. Contact support.");
+    }
 
     // The plan bills a flat base that covers the tier's included employees,
     // plus a per-seat overage price for each active employee beyond that.
@@ -178,16 +218,27 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
         // recognized as "the plan item". Anything else is a bolt-on add-on.
         const { data: allPlanPrices } = await (supabaseAdmin as any)
           .from("platform_plans")
-          .select("stripe_price_id, stripe_seat_price_id, stripe_annual_price_id, stripe_annual_seat_price_id");
-        const planPriceIds = new Set(
-          ((allPlanPrices ?? []) as any[])
-            .flatMap((p) => [p.stripe_price_id, p.stripe_annual_price_id])
-            .filter(Boolean),
+          .select("slug, stripe_price_id, stripe_seat_price_id, stripe_annual_price_id, stripe_annual_seat_price_id");
+        const allPlanRows = (allPlanPrices ?? []) as any[];
+        // Both halves: the ids this account answers to by name, AND the ids the
+        // database stored. The stored ones stay in even when this account does
+        // not have them — this is a membership test, so a live id present while
+        // running in test mode matches nothing and costs nothing, whereas
+        // dropping it would misclassify a subscription created before the
+        // lookup keys existed as a bolt-on add-on and delete the plan item.
+        const planPriceIds = resolvePriceIdSet(
+          catalog,
+          allPlanRows.flatMap((p) =>
+            p.slug ? [planLookupKey(p.slug, "base_monthly"), planLookupKey(p.slug, "base_annual")] : [],
+          ),
+          allPlanRows.flatMap((p) => [p.stripe_price_id, p.stripe_annual_price_id]),
         );
-        const seatPriceIds = new Set(
-          ((allPlanPrices ?? []) as any[])
-            .flatMap((p) => [p.stripe_seat_price_id, p.stripe_annual_seat_price_id])
-            .filter(Boolean),
+        const seatPriceIds = resolvePriceIdSet(
+          catalog,
+          allPlanRows.flatMap((p) =>
+            p.slug ? [planLookupKey(p.slug, "seat_monthly"), planLookupKey(p.slug, "seat_annual")] : [],
+          ),
+          allPlanRows.flatMap((p) => [p.stripe_seat_price_id, p.stripe_annual_seat_price_id]),
         );
 
         // The add-on catalog, keyed by Stripe product, so a year → month
@@ -659,14 +710,27 @@ export const listSubscriptionItems = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: planRows } = await (supabaseAdmin as any)
       .from("platform_plans")
-      .select("id, name, stripe_price_id, stripe_seat_price_id, stripe_annual_price_id, stripe_annual_seat_price_id");
+      .select("id, name, slug, stripe_price_id, stripe_seat_price_id, stripe_annual_price_id, stripe_annual_seat_price_id");
+    // Resolved by name as well as by stored id: a subscription in the account
+    // the stored ids do NOT belong to would otherwise label every line
+    // "Subscription item", which is what a customer would then see on the
+    // billing screen instead of their plan name.
+    const catalog = await loadPriceCatalog(stripe);
     const planByPriceId = new Map<string, { name: string }>();
     const seatPriceIds = new Set<string>();
     for (const p of (planRows ?? []) as any[]) {
-      if (p.stripe_price_id) planByPriceId.set(p.stripe_price_id, { name: p.name });
-      if (p.stripe_annual_price_id) planByPriceId.set(p.stripe_annual_price_id, { name: p.name });
-      if (p.stripe_seat_price_id) seatPriceIds.add(p.stripe_seat_price_id);
-      if (p.stripe_annual_seat_price_id) seatPriceIds.add(p.stripe_annual_seat_price_id);
+      const baseIds = resolvePriceIdSet(
+        catalog,
+        p.slug ? [planLookupKey(p.slug, "base_monthly"), planLookupKey(p.slug, "base_annual")] : [],
+        [p.stripe_price_id, p.stripe_annual_price_id],
+      );
+      for (const id of baseIds) planByPriceId.set(id, { name: p.name });
+      const seatIds = resolvePriceIdSet(
+        catalog,
+        p.slug ? [planLookupKey(p.slug, "seat_monthly"), planLookupKey(p.slug, "seat_annual")] : [],
+        [p.stripe_seat_price_id, p.stripe_annual_seat_price_id],
+      );
+      for (const id of seatIds) seatPriceIds.add(id);
     }
 
     const items = (sub.items?.data ?? []).map((it: any) => {
