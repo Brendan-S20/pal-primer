@@ -199,6 +199,7 @@ jobs:
       # It fails loudly with the exact command to run rather than letting the
       # first check die on a confusing ENOENT three steps later.
       - name: Find psql
+        id: psql
         run: |
           if command -v psql >/dev/null 2>&1; then
             echo "psql on PATH: $(command -v psql)"
@@ -231,6 +232,24 @@ jobs:
           fi
           node scripts/check-migrations.mjs
         continue-on-error: ${{ github.event_name == 'pull_request' }}
+        # ── EVERY CHECK BELOW CARRIES `if: always()` ───────────────────────
+        #
+        # This job reports FIVE independent facts about production, and until
+        # now the first failure skipped the other four. That is not merely
+        # inconvenient: this check says "these migrations are in the repo and
+        # not in the database", and the very next one — does every object those
+        # migrations create actually EXIST — is what tells you whether they
+        # genuinely never ran or merely ran without being recorded. Opposite
+        # problems, opposite fixes, and the run stopped one step short of
+        # distinguishing them.
+        #
+        # The job still fails. It just says everything it knows in one run
+        # rather than one finding per push.
+        #
+        # Gated on the psql lookup rather than a bare `always()`: with no
+        # psql these would each die on a confusing ENOENT and bury the one
+        # message that says what to install, which is exactly what the
+        # lookup step was added to prevent.
 
       - name: Check the database against the repo migrations
         # The other direction. The step above asks "did production run
@@ -248,6 +267,8 @@ jobs:
           fi
           node scripts/check-schema-declared.mjs
         continue-on-error: ${{ github.event_name == 'pull_request' }}
+        # See the note on `if: always()` below the first check.
+        if: always() && steps.psql.conclusion == 'success'
 
       - name: Check every object the migrations create still exists
         # IMP-2b. The two steps above compare NAMES: repo files against the
@@ -271,6 +292,8 @@ jobs:
           fi
           node scripts/check-baseline-objects.mjs
         continue-on-error: ${{ github.event_name == 'pull_request' }}
+        # See the note on `if: always()` below the first check.
+        if: always() && steps.psql.conclusion == 'success'
 
       - name: The published app origin answers the native preflight
         # §3 item 6 of the brief listed this as two curls "only you can confirm".
@@ -284,6 +307,8 @@ jobs:
         # asks it every run instead of leaving it as a step to remember.
         run: node scripts/check-app-origin.mjs
         continue-on-error: ${{ github.event_name == 'pull_request' }}
+        # See the note on `if: always()` below the first check.
+        if: always() && steps.psql.conclusion == 'success'
 
       - name: Stripe charges what the catalog says
         # The database stores a price in cents AND a Stripe price id. The app
@@ -314,3 +339,5 @@ jobs:
           fi
           exit $code
         continue-on-error: ${{ github.event_name == 'pull_request' }}
+        # See the note on `if: always()` below the first check.
+        if: always() && steps.psql.conclusion == 'success'

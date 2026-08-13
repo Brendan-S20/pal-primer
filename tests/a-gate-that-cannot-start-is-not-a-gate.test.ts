@@ -128,6 +128,47 @@ describe("psql is found rather than assumed", () => {
   });
 });
 
+describe("one run reports every fact it knows", () => {
+  // The first time this gate ran after being unblocked it reported "2
+  // migrations exist in the repo but not in the database" and STOPPED — which
+  // left the one question that matters unanswered. Do the objects those
+  // migrations create actually exist? If yes, they ran and were not recorded,
+  // and the fix is a baseline entry. If no, they never ran, and the fix is to
+  // apply them. Opposite problems, opposite fixes, and the run halted one step
+  // short of telling them apart.
+  const checks = migrations.steps.filter(
+    (s) => typeof s.name === "string" && s.name !== "Find psql" && "run" in s,
+  ) as Array<{ name: string; if?: string }>;
+
+  it("lets every check after the first one still run", () => {
+    // The first check is allowed to have no condition — nothing precedes it.
+    const rest = checks.slice(1);
+    expect(rest.length).toBeGreaterThanOrEqual(4);
+    for (const s of rest) {
+      expect(s.if, `${s.name} is skipped when an earlier check fails`).toMatch(/always\(\)/);
+    }
+  });
+
+  it("still skips them all when psql is missing", () => {
+    // A bare `always()` would run each check with no psql and bury the one
+    // message naming the install command under four ENOENTs — undoing the
+    // step that exists to prevent exactly that.
+    for (const s of checks.slice(1)) {
+      expect(s.if, `${s.name} would run without psql`).toContain(
+        "steps.psql.conclusion == 'success'",
+      );
+    }
+  });
+
+  it("keeps the id the condition refers to", () => {
+    // `steps.psql` resolves to nothing without it, and a condition on a
+    // missing step id is silently false — every check would skip and the job
+    // would go green having run nothing.
+    const find = migrations.steps.find((s) => s.name === "Find psql") as { id?: string };
+    expect(find.id).toBe("psql");
+  });
+});
+
 describe("the checks themselves are unchanged", () => {
   it("still runs all three schema scripts and both live checks", () => {
     const names = migrations.steps.map((s) => s.name as string).filter(Boolean);
