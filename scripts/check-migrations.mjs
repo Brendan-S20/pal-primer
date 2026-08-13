@@ -23,15 +23,39 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS_DIR = join(ROOT, "supabase", "migrations");
 const BASELINE_PATH = join(ROOT, "supabase", "migrations-baseline.json");
 
 /** Names differ in separator and case across the CLI, the dashboard and the
- *  MCP tool, so compare on a canonical form. */
-const normalize = (s) => s.toLowerCase().replace(/[-_]/g, "");
+ *  MCP tool, so compare on a canonical form.
+ *
+ *  The leading timestamp goes too, and on BOTH sides — that asymmetry was a
+ *  live false positive. The filename's `20260810120000_` prefix was always
+ *  stripped before comparing, but the ledger's `name` was not, and some rows
+ *  carry the whole filename there rather than the bare name:
+ *
+ *      version           name
+ *      20260810044051    20260810120000_forty-three-pairs-of-policies-...
+ *      20260812020355    the_portal_cutoff_was_only_a_hidden_button
+ *
+ *  Both rows describe an applied migration. Only the second one matched, so
+ *  the first was reported as "exists in the repo but not in the database" —
+ *  about a migration that had been applied, verified and in production for
+ *  three days. A check that cries wolf is the failure mode this script's own
+ *  header warns about: "a plain diff reports ~80 false positives and gets
+ *  ignored, which is worse than no check."
+ *
+ *  The version number is never the thing being compared — Supabase stamps its
+ *  own — so dropping a leading run of digits from either side loses nothing
+ *  and costs a real false positive. */
+export const normalize = (s) =>
+  s
+    .toLowerCase()
+    .replace(/^\d+[-_]?/, "")
+    .replace(/[-_]/g, "");
 
 function repoMigrations() {
   return readdirSync(MIGRATIONS_DIR)
@@ -113,4 +137,7 @@ function main() {
   process.exit(1);
 }
 
-main();
+// Only when run as a command. Importing this file — which the test for the
+// normalisation rule does — must not execute a check that shells out to psql
+// and calls process.exit.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
