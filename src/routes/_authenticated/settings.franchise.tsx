@@ -11,9 +11,11 @@ import { Label } from "@/components/ui/label";
 import {
   getMyFranchiseMembership,
   getMyFranchiseAdjustments,
+  getMyFranchiseSettlements,
   joinFranchise,
 } from "@/lib/franchise-membership.functions";
 import { FranchiseAdjustmentTrail } from "@/components/FranchiseAdjustmentTrail";
+import { FranchiseSettlementStatements } from "@/components/FranchiseSettlementStatements";
 
 // BUILD-6 — the CHILD's side, and deliberately in Settings rather than on
 // /franchise.
@@ -105,6 +107,14 @@ function FranchiseSettings() {
         </Card>
       ) : null}
 
+      {/* The statements themselves. Until now the location could read its
+          royalty RATE and the deduction trail, but never the document that
+          bills it — RLS on franchise_royalty_invoices admits the parent's
+          office and nobody else, and no server function existed for this side.
+          "Issue" moved a status column on the parent's screen and delivered
+          nothing to anyone. */}
+      {m?.isChild ? <MyStatements /> : null}
+
       {/* The deduction trail is the other half of "you can see what you owe".
           A royalty percentage explains the royalty line; it explains nothing
           about a chargeback that was taken off a statement months ago and — if
@@ -161,6 +171,21 @@ function FranchiseSettings() {
         </Card>
       )}
     </div>
+  );
+}
+
+/** The location's own settlement statements. Same reasoning as MyAdjustments
+ *  below — its own query, so the membership card is not held up by it. */
+function MyStatements() {
+  const fn = useServerFn(getMyFranchiseSettlements);
+  const q = useQuery({ queryKey: ["franchise", "my-settlements"], queryFn: () => fn() });
+  return (
+    <FranchiseSettlementStatements
+      rows={q.data?.statements ?? []}
+      audience="location"
+      isLoading={q.isLoading}
+      error={q.error ? (q.error as Error).message : null}
+    />
   );
 }
 

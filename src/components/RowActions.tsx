@@ -4,6 +4,13 @@
 // Purely presentational: callers pass callbacks that reuse existing
 // mutations/navigation. Every click stops propagation so clickable rows
 // (drawer-opening invoice/visit rows) never double-fire.
+//
+// The three buttons are 32px on a pointer and 44px on touch. The compact trio
+// is the point of the spec on a desktop table, but 32px is well under the touch
+// floor, and these are the controls that open, edit and DELETE a row — a
+// mis-hit here is not a cosmetic problem. `max-md:` rather than a change to
+// `ui/button.tsx`'s `size="icon"`, which is 20 other call sites and a density
+// decision that is not this component's to make.
 import { Eye, MoreHorizontal, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,7 +51,7 @@ export function RowActions({
           type="button"
           variant="ghost"
           size="icon"
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          className="h-8 w-8 text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
           aria-label={view.label ?? "View"}
           title={view.label ?? "View"}
           onClick={(e) => {
@@ -60,7 +67,7 @@ export function RowActions({
           type="button"
           variant="ghost"
           size="icon"
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          className="h-8 w-8 text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
           aria-label={edit.label ?? "Edit"}
           title={edit.label ?? "Edit"}
           onClick={(e) => {
@@ -78,7 +85,7 @@ export function RowActions({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
               aria-label="More actions"
               title="More actions"
               onClick={(e) => e.stopPropagation()}
