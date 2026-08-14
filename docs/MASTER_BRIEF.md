@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.21k** · Released 2026-08-04 · Supersedes: v1.21j, v1.21i, v1.21h, v1.21g, v1.21f, v1.21e, v1.21d, v1.21c, v1.21b, v1.21, v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.22** · Released 2026-08-14 · Supersedes: v1.21k, v1.21j, v1.21i, v1.21h, v1.21g, v1.21f, v1.21e, v1.21d, v1.21c, v1.21b, v1.21, v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -19,6 +19,86 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 > sits above v1.21f/g (2026-08-03) for historical reasons. Find an entry by its
 > version number, not its position. The two v1.21e duplicates were corrected on
 > 2026-08-03; see the renumbering notes in place.
+
+### v1.22 — 2026-08-14
+
+**Six merges, and the theme is checks that were measuring nothing.**
+
+`#90` `#91` `#92` `#93` `#94` `#95`. Taken together the day was not about new
+features: it was about the difference between a check that passes and a check
+that checked.
+
+**Stripe prices now resolve by lookup key, across nine send-sites** (#90, #91).
+Every price id in `platform_plans` / `platform_addons` was a LIVE id, so the
+money path could never run outside the real account. `planLookupKey` /
+`addonLookupKey` resolve by an account-scoped stable name, with the stored id
+kept only as a fallback and only when the account actually holds it. The catalog
+script asserts the mapping in both directions, and a test enumerates every
+expression that sends a price to Stripe so a tenth send-site cannot appear
+unnoticed.
+
+**A soft-deleted tenant could still take a homeowner's card** (#90). The free
+thing — leads — was gated on `deleted_at IS NULL`; the paid thing was not.
+Closed in `public_get_org_by_slug`, `public_quote`,
+`public_get_org_for_lead_form`, `org_can_add_client` and the client-limit
+trigger.
+
+**Refunds stopped being counted as collected revenue** (#92, #93, #94). Stripe
+does not reduce `invoice.amount_paid` on a refund — the invoice stays `paid` at
+full amount and the money coming back lives on the charge. `refunded_cents` /
+`refunded_at` keep gross and returned as separate facts, netted through ONE
+shared `collectedNetCents` so two screens cannot derive it differently, with a
+contra line in Settings → Billing.
+
+The handler took three attempts and each failure is worth keeping:
+
+1. The first read `charge.invoice`, a field that does not exist at the pinned
+   API version. The type checker rejected it — **and its six tests passed
+   anyway, because the fixture had invented the field.**
+2. The second joined correctly through `Invoice.payments[].payment.payment_intent`
+   but read it off the webhook payload. **Exercised against the Stripe sandbox
+   on 2026-08-14, that returns null every time**: `payments` is an EXPANDABLE
+   list, and a webhook `data.object` is an unexpanded snapshot. The column was
+   never once going to be written at invoice time. Same mistake as (1) — a
+   payload assumed rather than looked at — and the tests passed for the same
+   reason.
+3. The third asks for it: one `invoices.retrieve(id, { expand: ["payments"] })`
+   when the payload lacked it, on finalized/paid only.
+
+Confirmed against real sandbox objects rather than reasoned about: a Charge has
+no `invoice` field; `Charge.payment_intent` matches what the invoice side
+stored; and `amount_refunded` is CUMULATIVE — refunds of 3000 then 2000 give
+5000, which is why the handler must SET rather than add, or the third redelivery
+trips the CHECK.
+
+**The first browser this repo has ever had** (#94, #95). Every responsive rule
+in `CLAUDE.md` was enforced by static analysis of JSX, which cannot see a layout
+that simply overflows. 58 assertions now measure the six public routes at
+360/768/1280/1920 from computed geometry. That includes the rule the working
+agreement itself called unenforceable — a value with no space in it — because
+parsing cannot tell a signup URL from a promo code but a browser can measure
+both.
+
+**Two sandboxes on the self-hosted Mac** (#94), and the database one failed on
+its first run, which is the best thing it could have done. **Two migrations
+shared version `20260716170000`**, so `schema_migrations` could not record the
+second and no environment could be rebuilt from this repo. Production was never
+affected: both had been applied under their real distinct timestamps and were
+filed into the repo later with a hand-picked one, used twice.
+
+Nothing could see it. `check-migrations` compares NAMES by design; the names
+match. `check-baseline-objects` asks whether the objects exist; they do. Neither
+reads the version, neither builds anything. 286 files, one collision, a month of
+green — visible only to a replay from empty, which nothing had ever done. Fixed,
+plus two static tests so it never needs Docker to catch again.
+
+**And the honest one.** A mutation test reported as verification in #94 was
+invalid: the mutation was injected as a second JSX root, a syntax error, so the
+sweep was measuring Vite's error page. It went green against that page for
+several runs. Every assertion in a sweep like this has the form "nothing is
+wrong", and on a blank page they are all true — so `settle()` now refuses to
+measure a route that did not render. That guard matters more than any rule
+above it.
 
 ### v1.21k — 2026-08-04
 
@@ -3050,16 +3130,20 @@ rather than the following January.
    that no dashboard reports. A wrong *signing secret*, by contrast, returns 401
    and does show up as failed deliveries on Stripe's side.
 
-   **Still open: `STRIPE_SECRET_KEY` in the GitHub Actions secrets.** Reported
-   set on 2026-08-03; the run at 21:56Z still logged an empty value, which is
-   consistent with the secret being saved after that run started. The workflow
-   wiring is correct (`${{ secrets.STRIPE_SECRET_KEY }}`, the same shape as
-   `SUPABASE_DB_URL`, which resolves). **Confirm on the next run that the step no
-   longer prints `NOT ARMED`** — until it does, the gate is not protecting
-   anything, which is precisely how v1.21f's catalog reached the ledger recorded
-   as verified. A restricted key with read on Prices and nothing else is enough:
-   the script makes exactly one call, `GET /v1/prices`, and `keyIsLive` already
-   accepts `rk_live_…`.
+   ~~**Still open: `STRIPE_SECRET_KEY` in the GitHub Actions secrets.**~~ — ✅
+   **armed and confirmed on 2026-08-14.** This entry asked for one thing:
+   "confirm on the next run that the step no longer prints `NOT ARMED`". Read
+   from the `migrations` job on main, run 31803103580:
+
+   ```
+   compared 18 price(s) across 3 plan(s) and 6 add-on(s), in LIVE mode;
+   18 of them checked for the lookup key the app resolves by
+   ✓ Stripe (LIVE) agrees with the catalog on every row it can be compared against.
+   ```
+
+   Not merely armed — comparing in LIVE mode against every active row, including
+   the lookup-key assertion added in #90. The gate that v1.21f's catalog slipped
+   past is now the one guarding it.
 2. ~~**Formspree contact form ID**~~ — ✅ supplied and wired (MKT-4 closed).
 3. **`SUPABASE_DB_URL` secret** — ✅ added, and verified working end-to-end in CI.
 4. ~~**Q-13**~~ — ✅ answered: every add-on available at launch, after QA.
