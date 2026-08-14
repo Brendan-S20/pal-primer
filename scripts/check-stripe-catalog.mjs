@@ -45,6 +45,17 @@
 //   5. PRODUCT. The price belongs to the product the row names, so a copy-paste
 //      from the wrong plan is caught.
 //   6. COMPLETENESS. An active, priced row has the ids it needs to be sold.
+//   7. NAME. Every price carries the `lookup_key` the app resolves it by, and
+//      that key resolves back to the same price. Since 2026-08-13 the checkout
+//      path asks Stripe for `launch_base_monthly` rather than for a stored id,
+//      so a missing key is a SKU that only works in live mode and a misdirected
+//      key is a price this check compared but the customer is not charged.
+//
+// Point this at the LIVE account. It asks whether the database and the account
+// agree about ids, and the sandbox deliberately disagrees — it holds its own
+// prices under the same eighteen lookup keys, which is the entire mechanism
+// that lets the app run against it. Run against a test key this reports every
+// id as missing, correctly and uselessly.
 //
 // Usage:
 //   SUPABASE_DB_URL=... STRIPE_SECRET_KEY=... node scripts/check-stripe-catalog.mjs
@@ -55,6 +66,7 @@
 
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { addonLookupKey, planLookupKey } from "./stripe-lookup-keys.mjs";
 
 export const CATALOG_SQL = `
 select json_build_object(
@@ -70,17 +82,18 @@ select json_build_object(
 ) as catalog;
 `;
 
-/** Which DB column pairs with which interval, per plan row. */
+/** Which DB column pairs with which interval, per plan row. `kind` is the
+ *  suffix on the price's lookup key — see scripts/stripe-lookup-keys.mjs. */
 const PLAN_PRICE_FIELDS = [
-  { id: "stripe_price_id", cents: "price_cents", interval: "month", label: "base monthly" },
-  { id: "stripe_annual_price_id", cents: "annual_price_cents", interval: "year", label: "base annual" },
-  { id: "stripe_seat_price_id", cents: "price_per_seat_cents", interval: "month", label: "per-seat monthly" },
+  { id: "stripe_price_id", cents: "price_cents", interval: "month", label: "base monthly", kind: "base_monthly" },
+  { id: "stripe_annual_price_id", cents: "annual_price_cents", interval: "year", label: "base annual", kind: "base_annual" },
+  { id: "stripe_seat_price_id", cents: "price_per_seat_cents", interval: "month", label: "per-seat monthly", kind: "seat_monthly" },
   // The annual seat price is deliberately NOT the monthly one times twelve —
   // the annual plans carry the same "two months free" discount as the base, so
   // comparing it to `price_per_seat_cents` would fail on correct data. Its
   // amount is checked for existence and interval only, and the ratio is
   // reported for a human to read rather than asserted.
-  { id: "stripe_annual_seat_price_id", cents: null, interval: "year", label: "per-seat annual" },
+  { id: "stripe_annual_seat_price_id", cents: null, interval: "year", label: "per-seat annual", kind: "seat_annual" },
 ];
 
 function catalogFromDatabase(dbUrl) {
@@ -119,11 +132,19 @@ export function auditCatalog(catalog, prices, { expectLive }) {
   // only if you did not ask: one of the four is a contact-us tier with no
   // prices, and every add-on is coming_soon, so the add-on half of this check
   // was measuring nothing and reporting a tick.
-  const checked = { plans: 0, addons: 0, prices: 0 };
+  const checked = { plans: 0, addons: 0, prices: 0, lookupKeys: 0 };
   const skipped = { plans: [], addons: [] };
   const note = (row, msg) => problems.push(`${row}: ${msg}`);
 
-  const checkPrice = (row, label, id, expectedCents, expectedInterval, productId) => {
+  // What `resolvePriceId` sees: the account's own key → id index. Built from
+  // ACTIVE prices only, because that is the set Stripe enforces key uniqueness
+  // over and the set `loadPriceCatalog` reads.
+  const byLookupKey = new Map();
+  for (const p of prices.values()) {
+    if (p.active && p.lookup_key) byLookupKey.set(p.lookup_key, p.id);
+  }
+
+  const checkPrice = (row, label, id, expectedCents, expectedInterval, productId, expectedKey) => {
     const p = prices.get(id);
     if (!p) {
       note(row, `${label} price ${id} does not exist in this Stripe account`);
@@ -156,6 +177,42 @@ export function auditCatalog(catalog, prices, { expectLive }) {
     }
     if (productId && p.product !== productId) {
       note(row, `${label} price ${id} belongs to product ${p.product}, not ${productId}`);
+    }
+
+    // ── 7. NAME ─────────────────────────────────────────────────────────────
+    //
+    // The app no longer resolves a price by the id in the database — it asks
+    // this account for the price named `expectedKey`, because the stored ids
+    // are live ids and a test key cannot see them. That makes the key part of
+    // the contract, and an unkeyed or misnamed price is a checkout that fails
+    // in whichever mode the key is missing from.
+    //
+    // Both directions are checked, and they are different failures:
+    //
+    //   * the price the database names does not carry the key — nothing
+    //     answers to that name, so resolution falls back to the stored id and
+    //     test mode is broken again, silently, for that one SKU;
+    //   * the key resolves to a DIFFERENT price — worse. Resolution succeeds
+    //     and returns a price this check never compared, so every assertion
+    //     above was made about an id the app does not actually charge.
+    if (!expectedKey) return;
+    checked.lookupKeys += 1;
+    if (p.lookup_key !== expectedKey) {
+      note(
+        row,
+        `${label} price ${id} should carry lookup_key "${expectedKey}" but carries ` +
+          `${p.lookup_key ? `"${p.lookup_key}"` : "none"}. The app resolves prices by that ` +
+          `name so the same code works against the sandbox; without it this SKU is live-only.`,
+      );
+    }
+    const named = byLookupKey.get(expectedKey);
+    if (named && named !== id) {
+      note(
+        row,
+        `lookup_key "${expectedKey}" resolves to price ${named}, but the database stores ` +
+          `${id} for ${label}. The app charges the first and this check just compared the ` +
+          `second, so the amount verified above is not the amount billed.`,
+      );
     }
   };
 
@@ -197,7 +254,15 @@ export function auditCatalog(catalog, prices, { expectLive }) {
         note(row, `${f.label} has a Stripe id but the database has no amount for it`);
         continue;
       }
-      checkPrice(row, f.label, id, cents, f.interval, plan.stripe_product_id);
+      checkPrice(
+        row,
+        f.label,
+        id,
+        cents,
+        f.interval,
+        plan.stripe_product_id,
+        plan.slug ? planLookupKey(plan.slug, f.kind) : null,
+      );
     }
   }
 
@@ -221,6 +286,7 @@ export function auditCatalog(catalog, prices, { expectLive }) {
       addon.price_cents,
       addon.billing_interval === "one_time" ? null : addon.billing_interval,
       addon.stripe_product_id,
+      addon.slug ? addonLookupKey(addon.slug) : null,
     );
   }
 
@@ -272,7 +338,8 @@ async function main() {
   // add-on half compared nothing without going and counting rows themselves.
   console.log(
     `compared ${checked.prices} price(s) across ${checked.plans} plan(s) and ` +
-      `${checked.addons} add-on(s), in ${mode} mode`,
+      `${checked.addons} add-on(s), in ${mode} mode; ` +
+      `${checked.lookupKeys} of them checked for the lookup key the app resolves by`,
   );
   for (const s of [...skipped.plans, ...skipped.addons]) console.log(`  skipped: ${s}`);
 

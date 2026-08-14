@@ -25,6 +25,7 @@ const PRICES = new Map<string, any>([
     {
       id: "p_base_m",
       active: true,
+      lookup_key: "launch_base_monthly",
       livemode: false,
       product: "prod_x",
       recurring: { interval: "month" },
@@ -36,6 +37,7 @@ const PRICES = new Map<string, any>([
     {
       id: "p_base_y",
       active: true,
+      lookup_key: "launch_base_annual",
       livemode: false,
       product: "prod_x",
       recurring: { interval: "year" },
@@ -47,6 +49,7 @@ const PRICES = new Map<string, any>([
     {
       id: "p_seat_m",
       active: true,
+      lookup_key: "launch_seat_monthly",
       livemode: false,
       product: "prod_x",
       recurring: { interval: "month" },
@@ -58,6 +61,7 @@ const PRICES = new Map<string, any>([
     {
       id: "p_seat_y",
       active: true,
+      lookup_key: "launch_seat_annual",
       livemode: false,
       product: "prod_x",
       recurring: { interval: "year" },
@@ -243,6 +247,96 @@ describe("what it deliberately does not flag", () => {
     // data — which is how a check earns its way into being switched off.
     const r = audit([plan()]);
     expect(r.problems).toEqual([]);
+  });
+});
+
+describe("the name the app resolves a price by", () => {
+  // The checkout path stopped asking the database for a price id and started
+  // asking Stripe for `launch_base_monthly`, because every stored id is a live
+  // id and a test key cannot see one. That makes the lookup key part of the
+  // contract this script checks, not decoration on the price.
+
+  it("catches a price with no lookup key at all", () => {
+    // The quiet one: live mode keeps working because the stored id still
+    // resolves, so this SKU is broken only in the sandbox — exactly the class
+    // of failure nobody notices until someone tries to test a purchase.
+    const r = audit([plan({ stripe_price_id: "p_other" })]);
+    expect(r.problems.join(" ")).toMatch(/should carry lookup_key "launch_base_monthly" but carries none/);
+  });
+
+  it("catches a price carrying the wrong key", () => {
+    const r = audit([plan({ stripe_annual_price_id: "p_base_m", annual_price_cents: 7900 })]);
+    expect(r.problems.join(" ")).toMatch(
+      /should carry lookup_key "launch_base_annual" but carries "launch_base_monthly"/,
+    );
+  });
+
+  it("catches the key pointing somewhere other than the row's own price", () => {
+    // The dangerous direction, and the reason both are checked. Resolution
+    // SUCCEEDS here — the app charges p_base_m — while every amount, interval
+    // and product assertion above was made about p_seat_y. A green tick over
+    // the wrong price.
+    const prices = new Map(PRICES);
+    prices.set("p_shadow", {
+      id: "p_shadow",
+      active: true,
+      livemode: false,
+      lookup_key: "launch_seat_annual",
+      product: "prod_x",
+      recurring: { interval: "year" },
+      unit_amount: 99900,
+    });
+    // Two active prices cannot really share a key in Stripe; the state this
+    // models is the row pointing at the price that LOST the key.
+    prices.set("p_seat_y", { ...PRICES.get("p_seat_y"), lookup_key: null });
+    const r = auditCatalog({ plans: [plan()], addons: [] }, prices, { expectLive: false });
+    expect(r.problems.join(" ")).toMatch(
+      /lookup_key "launch_seat_annual" resolves to price p_shadow, but the database stores p_seat_y/,
+    );
+  });
+
+  it("checks the add-ons by their own prefixed name", () => {
+    const prices = new Map(PRICES);
+    prices.set("p_addon", {
+      id: "p_addon",
+      active: true,
+      livemode: false,
+      lookup_key: "addon_ai_receptionist",
+      product: "prod_a",
+      recurring: { interval: "month" },
+      unit_amount: 4900,
+    });
+    const addon = {
+      slug: "ai-receptionist",
+      is_active: true,
+      status: "available",
+      price_cents: 4900,
+      billing_interval: "month",
+      stripe_product_id: "prod_a",
+      stripe_price_id: "p_addon",
+    };
+    // The hyphenated slug has to reach the same key the underscore-normalising
+    // rule produced when the keys were written into Stripe.
+    const ok = auditCatalog({ plans: [], addons: [addon] }, prices, { expectLive: false });
+    expect(ok.problems).toEqual([]);
+    expect(ok.checked.lookupKeys).toBe(1);
+  });
+
+  it("counts the keys it checked separately from the prices", () => {
+    // A plan whose slug is missing cannot have a key derived for it, and the
+    // summary must not imply it was checked.
+    const r = audit([plan()]);
+    expect(r.checked.prices).toBe(4);
+    expect(r.checked.lookupKeys).toBe(4);
+    const noSlug = audit([plan({ slug: null })]);
+    expect(noSlug.checked.prices).toBe(4);
+    expect(noSlug.checked.lookupKeys).toBe(0);
+  });
+
+  it("does not count a key check for a price that does not resolve", () => {
+    // "Could not compare" and "compared and fine" are different answers.
+    const r = audit([plan({ stripe_seat_price_id: "p_nope" })]);
+    expect(r.checked.lookupKeys).toBe(3);
   });
 });
 
