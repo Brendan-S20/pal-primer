@@ -4,7 +4,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { getOrgBillingState, subscriptionPeriodEnd } from "./billing-state.server";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { makeStripe } from "@/lib/stripe-client.server";
-import { planLookupKey } from "@/lib/stripe-lookup-keys";
+import { addonLookupKey, planLookupKey } from "@/lib/stripe-lookup-keys";
 import {
   loadPriceCatalog,
   resolvePriceId,
@@ -242,15 +242,33 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
         );
 
         // The add-on catalog, keyed by Stripe product, so a year → month
-        // switch can put each add-on back on its stored monthly price.
+        // switch can put each add-on back on its monthly price.
+        //
+        // Resolved through the catalog like every other price sent to Stripe.
+        // This was the FIFTH send-site and it was missed when the other four
+        // were converted: the value here goes straight into
+        // `itemUpdates.push({ price: storedMonthly })` below, so under a test
+        // key it handed Stripe a live add-on price id and the whole plan switch
+        // failed — the exact fault the lookup keys exist to remove, surviving
+        // in the one path that only fires when a subscription carries a bolt-on
+        // add-on AND changes interval.
+        //
+        // A null here is safe rather than fatal: the caller already falls
+        // through to minting an inline monthly `price_data` from the annual
+        // amount, which is what happens today for any add-on with no stored
+        // monthly price at all.
         const { data: addonRows } = await (supabaseAdmin as any)
           .from("platform_addons")
-          .select("stripe_product_id, stripe_price_id, billing_interval");
+          .select("slug, stripe_product_id, stripe_price_id, billing_interval");
         const monthlyAddonPriceByProduct = new Map<string, string>();
         for (const a of (addonRows ?? []) as any[]) {
-          if (a.stripe_product_id && a.stripe_price_id && a.billing_interval === "month") {
-            monthlyAddonPriceByProduct.set(a.stripe_product_id, a.stripe_price_id);
-          }
+          if (!a.stripe_product_id || a.billing_interval !== "month") continue;
+          const resolved = a.slug
+            ? resolvePriceId(catalog, addonLookupKey(a.slug), a.stripe_price_id)
+            : a.stripe_price_id && catalog.ids.has(a.stripe_price_id)
+              ? a.stripe_price_id
+              : null;
+          if (resolved) monthlyAddonPriceByProduct.set(a.stripe_product_id, resolved);
         }
 
         const existingItems = existingSub.items?.data ?? [];
