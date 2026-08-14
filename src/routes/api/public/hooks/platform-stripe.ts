@@ -66,13 +66,15 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
         });
 
         /**
-         * The PaymentIntent that paid an invoice, if the payload carries it.
+         * The PaymentIntent that paid an invoice, as carried by a payload.
          *
          * Nothing on a Stripe Charge points back to an invoice, so this is the
          * only join a `charge.refunded` handler has, and it has to be captured
-         * from the invoice side. `payments` is optional in the API and may be
-         * absent from a webhook payload — a null here is expected, not an
-         * error, and the refund handler falls back to a lookup.
+         * from the invoice side.
+         *
+         * This reads `payments` and does NOT fetch it. On a webhook payload it
+         * essentially always returns null — see `paymentIntentForInvoice`
+         * below, which is what call sites should use.
          */
         function invoicePaymentIntentId(inv: import("stripe").Stripe.Invoice): string | null {
           for (const p of inv.payments?.data ?? []) {
@@ -88,6 +90,52 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
             if (id) return id;
           }
           return null;
+        }
+
+        /**
+         * The same id, but actually obtainable from a webhook.
+         *
+         * ── WHAT THE SANDBOX SHOWED, 2026-08-14 ──────────────────────────
+         *
+         * `Invoice.payments` is an EXPANDABLE list — its own `url` is
+         * `/v1/invoices/payments`. Retrieved against the sandbox account
+         * (acct_1U0RjEHhx3B6rEuV) the difference is absolute, not occasional:
+         *
+         *   GET /v1/invoices/{id}                       → no `payments` key
+         *   GET /v1/invoices/{id}?expand[]=payments     → payments.data[0] =
+         *       { payment: { payment_intent: "pi_…", type: "payment_intent" } }
+         *
+         * A webhook `data.object` is an unexpanded snapshot. So reading
+         * `inv.payments` off an event returns null EVERY time, not merely
+         * sometimes as the previous comment here supposed — the column was
+         * never once going to be written at invoice time, and every refund
+         * would have paid for the list-and-scan fallback instead. That is the
+         * same shape of mistake as the first `charge.invoice` attempt: a
+         * payload assumed rather than looked at.
+         *
+         * So ask for it. One retrieve, only when the payload lacked it, and
+         * only on the two events where a payment can exist — the InvoicePayment
+         * is created at FINALIZE, one second after the invoice in the sandbox
+         * run, so `invoice.created` genuinely has nothing to fetch.
+         *
+         * Wrapped, because a webhook that throws is a webhook Stripe retries
+         * for three days over what is only a lookup.
+         */
+        async function paymentIntentForInvoice(
+          inv: import("stripe").Stripe.Invoice,
+        ): Promise<string | null> {
+          const carried = invoicePaymentIntentId(inv);
+          if (carried) return carried;
+          if (!inv.id) return null;
+          try {
+            const full = await stripe.invoices.retrieve(inv.id, { expand: ["payments"] });
+            return invoicePaymentIntentId(full);
+          } catch (e) {
+            // Not fatal: the refund handler still has its own fallback. Loud
+            // because a silent miss here is a refund that cannot be linked.
+            console.error(`platform invoice ${inv.id}: could not expand payments`, e);
+            return null;
+          }
         }
 
         async function orgFromCustomer(
@@ -114,6 +162,16 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
               const customerId =
                 typeof inv.customer === "string" ? inv.customer : (inv.customer?.id ?? null);
               const orgId = await orgFromCustomer(customerId);
+
+              // Only where a payment can exist. `invoice.created` fires before
+              // the InvoicePayment does — one second before it, in the sandbox
+              // run — and voided/uncollectible invoices were never paid, so
+              // fetching for those would be an API call per event that could
+              // only ever answer null.
+              const paymentIntentId =
+                event.type === "invoice.finalized" || event.type === "invoice.paid"
+                  ? await paymentIntentForInvoice(inv)
+                  : invoicePaymentIntentId(inv);
 
               // Stripe does not guarantee ORDER and retries for up to 3 days.
               // The per-event idempotency check above is keyed on `event.id`,
@@ -168,12 +226,10 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
                       ? new Date(inv.status_transitions.paid_at * 1000).toISOString()
                       : null,
                   // Captured here because a refund cannot find its way back on
-                  // its own — see 20260814050000. Written only when the payload
-                  // carries it, so a later event that does carry it fills the
+                  // its own — see 20260814050000. Written only when we actually
+                  // have one, so a later event that does resolve it fills the
                   // gap rather than a null overwriting a good value.
-                  ...(invoicePaymentIntentId(inv)
-                    ? { stripe_payment_intent_id: invoicePaymentIntentId(inv) }
-                    : {}),
+                  ...(paymentIntentId ? { stripe_payment_intent_id: paymentIntentId } : {}),
                 },
                 { onConflict: "stripe_invoice_id" },
               );
