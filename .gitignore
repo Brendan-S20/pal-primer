@@ -40,3 +40,9 @@ dist-native
 .env
 .env.local
 .env.*.local
+
+# Playwright's per-run output: screenshots and traces from the viewport sweep,
+# plus its HTML report. Both are regenerated on every run and neither is a
+# source artefact — the sweep's verdict is the exit code, not the folder.
+test-results/
+playwright-report/
