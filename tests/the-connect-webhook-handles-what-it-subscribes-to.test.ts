@@ -57,6 +57,13 @@ describe("every event the Connect endpoint subscribes to has a handler", () => {
 // leaves `invoice.amount_paid` at its full amount and puts the money coming
 // back on the charge instead.
 //
+// All thirteen are handled now. The handler took two attempts: the first read
+// `charge.invoice`, a field that does not exist at the pinned API version, and
+// its tests passed anyway because the fixture had invented it. The join has to
+// be stored at invoice time (`Invoice.payments[].payment.payment_intent`) and
+// read at refund time (`Charge.payment_intent`), because nothing on a charge
+// points back to an invoice — see 20260814050000.
+//
 // The list below is the live endpoint's `enabled_events`, verbatim. It is the
 // thing that drifts: somebody enables an event in the dashboard and no code
 // changes, or somebody deletes a handler and no dashboard changes. Either way
@@ -81,44 +88,73 @@ describe("every event the platform endpoint subscribes to has a handler", () => 
     ],
     ["customer.created", "nothing — the customer→org mapping is written at checkout"],
     ["customer.updated", "nothing — the customer→org mapping is written at checkout"],
+    [
+      "charge.refunded",
+      "a refunded subscription charge stays counted as collected, and the customer sees the invoice paid in full with no sign of the refund",
+    ],
   ])("handles %s — without it, %s", (eventType) => {
     expect(PLATFORM).toContain(`case "${eventType}"`);
   });
 
-  // ── KNOWN GAP ───────────────────────────────────────────────────────────
-  //
-  // `charge.refunded` is the thirteenth enabled event and has NO handler. It
-  // is recorded here rather than quietly dropped from the list above, because
-  // a list that only contains what is already done cannot tell you what is
-  // missing — the same reason scripts/dead-machinery-baseline.json calls
-  // itself "a record of decisions, not a mute button".
-  //
-  // The consequence, unfixed: a refunded HoundStack subscription charge stays
-  // counted as collected revenue, because Stripe leaves `invoice.amount_paid`
-  // at its full amount and puts the money coming back on the charge. The
-  // customer who was refunded also sees the invoice paid in full in
-  // Settings → Billing.
-  //
-  // Why it is not simply written: at the pinned API version (2026-07-29.dahlia)
-  // `Charge` has NO `invoice` field — only `payment_intent` — and `PaymentIntent`
-  // has no `invoice` either. The modern link runs Invoice → `payments[]` →
-  // `payment.payment_intent`, i.e. from the invoice outward, which is the wrong
-  // direction for a handler that starts from a charge. Getting it right needs
-  // either the payment intent stored on `platform_invoices` when the invoice
-  // row is written, or a bounded invoice lookup at refund time — and the live
-  // platform account has ZERO invoices, so neither the payload shape nor the
-  // fix can be verified against real data yet.
-  //
-  // The half that IS shipped: `platform_invoices.refunded_cents` /
-  // `refunded_at` exist, `collectedNetCents` nets them into both the headline
-  // figure and the twelve-month chart, and Settings → Billing renders the
-  // contra line. Everything is ready for the handler; only the handler is
-  // missing, and it reads 0 until one exists.
-  it("records charge.refunded as an unhandled event rather than hiding it", () => {
+  it("handles every enabled event and nothing is left unaccounted for", () => {
+    // The count is the guard the per-event assertions cannot give: it fails if
+    // somebody enables a fourteenth event in the dashboard and this list is not
+    // updated with it.
     const enabledOnTheLiveEndpoint = 13;
-    const handled = [...PLATFORM.matchAll(/case "([a-z_]+\.[a-z_.]+)"/g)].map((m) => m[1]);
-    expect(new Set(handled).size).toBe(enabledOnTheLiveEndpoint - 1);
-    expect(handled).not.toContain("charge.refunded");
+    const handled = new Set([...PLATFORM.matchAll(/case "([a-z_]+\.[a-z_.]+)"/g)].map((m) => m[1]));
+    expect(handled.size).toBe(enabledOnTheLiveEndpoint);
+  });
+});
+
+describe("the refund handler writes what it means to", () => {
+  const branch = () =>
+    PLATFORM.slice(
+      PLATFORM.indexOf('case "charge.refunded"'),
+      PLATFORM.indexOf('case "customer.created"'),
+    );
+
+  it("records the refund beside the payment, never instead of it", () => {
+    // Folding the two into one number is the bug 20260804080000 had to undo:
+    // two screens derive the same money differently and the gross is gone.
+    expect(branch()).toMatch(/refunded_cents:/);
+    expect(branch()).not.toMatch(/amount_paid_cents:/);
+  });
+
+  it("sets the running total rather than adding to it", () => {
+    // `amount_refunded` is already Stripe's cumulative figure and this event
+    // redelivers for up to three days; adding climbs past the charge on the
+    // second delivery and the CHECK from 20260814020000 rejects it.
+    expect(branch()).toMatch(/refunded_cents: charge\.amount_refunded/);
+    expect(branch()).not.toMatch(/refunded_cents:.*\+/);
+  });
+
+  it("dates the refund by the refund, not by the charge", () => {
+    // `charge.created` is the original payment — eleven months earlier on an
+    // annual plan.
+    expect(branch()).toMatch(/refunds\?\.data\?\.\[0\]\?\.created/);
+    expect(branch()).not.toMatch(/refunded_at:\s*new Date\(\(?charge\.created/);
+  });
+
+  it("joins through the payment intent, since nothing else can", () => {
+    expect(branch()).toMatch(/stripe_payment_intent_id/);
+    // The field that does not exist at this API version, and that the first
+    // attempt was built on.
+    expect(branch()).not.toMatch(/charge\.invoice/);
+  });
+
+  it("does not let a best-effort lookup fail the whole delivery", () => {
+    // Without the try/catch a transient Stripe error 500s the event and Stripe
+    // retries it for three days over what was only an optimisation.
+    const fallback = branch().slice(branch().indexOf("invoices.list"));
+    expect(branch().slice(0, branch().indexOf("invoices.list"))).toMatch(/try \{/);
+    expect(fallback).toMatch(/catch/);
+  });
+
+  it("says so loudly when it cannot link a refund", () => {
+    // An unlinked refund is a wrong revenue figure; the only thing worse is one
+    // nobody can find.
+    expect(branch()).toMatch(/console\.error/);
+    expect(branch()).toMatch(/NOT recorded/);
   });
 });
 

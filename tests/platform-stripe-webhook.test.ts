@@ -22,6 +22,24 @@ const PLAN = "22222222-2222-2222-2222-222222222222";
 
 const fake = createFakeAdmin();
 
+// The webhook builds a real Stripe client — signature verification is local
+// crypto and works offline. `invoices.list` is not: the charge.refunded
+// fallback would make a genuine network call from a unit test. So the client is
+// the real one, with that ONE method stubbed.
+const invoicesList = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/stripe-client.server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/stripe-client.server")>();
+  return {
+    ...actual,
+    makeStripe: async (secret: string) => {
+      const client = await actual.makeStripe(secret);
+      return new Proxy(client, {
+        get: (t, p) => (p === "invoices" ? { list: invoicesList } : t[p as keyof typeof t]),
+      });
+    },
+  };
+});
+
 vi.mock("@/integrations/supabase/client.server", () => ({
   supabaseAdmin: new Proxy({}, { get: (_t, p) => fake.admin[p as keyof typeof fake.admin] }),
 }));
@@ -75,6 +93,8 @@ beforeEach(() => {
   process.env.PLATFORM_STRIPE_SECRET_KEY = "sk_test_platform_placeholder";
   process.env.PLATFORM_STRIPE_WEBHOOK_SECRET = WEBHOOK_SECRET;
   deactivated.length = 0;
+  invoicesList.mockReset();
+  invoicesList.mockResolvedValue({ data: [], has_more: false });
   fake.reset({
     organizations: [
       {
@@ -308,3 +328,209 @@ describe("each event is applied once", () => {
   });
 });
 
+// ── charge.refunded ────────────────────────────────────────────────────────
+//
+// The handler 20260814020000 deliberately shipped without. Its columns and
+// every reader that nets by them went out then; this is the writer.
+//
+// The first attempt read `charge.invoice`, which does not exist at the pinned
+// API version. The type checker rejected it — and the six tests written for it
+// PASSED, because the fixture had invented the field. So the fixtures below are
+// built from the shapes the installed SDK actually declares:
+//
+//     Charge.payment_intent: string | PaymentIntent | null
+//     Charge.amount_refunded: number
+//     Charge.refunds?: ApiList<Refund> | null
+//     Invoice.payments?: ApiList<InvoicePayment>
+//     InvoicePayment.payment.type: 'charge' | 'payment_intent' | 'payment_record'
+//     InvoicePayment.payment.payment_intent?: string | PaymentIntent
+//
+// Nothing on a Charge points back to an invoice, which is the whole reason the
+// join has to be stored at invoice time and read here.
+describe("a refunded subscription charge stops counting as collected", () => {
+  const INVOICE = "in_refunded";
+  const PI = "pi_paid_the_invoice";
+
+  const charge = (o: Row = {}) => ({
+    id: "ch_1",
+    payment_intent: PI,
+    customer: CUSTOMER,
+    amount: 9900,
+    amount_refunded: 2500,
+    created: 1_785_000_000,
+    refunds: { data: [{ id: "re_1", created: 1_786_000_000 }] },
+    ...o,
+  });
+
+  const seedInvoice = (o: Row = {}) => {
+    fake.tables.platform_invoices.push({
+      id: "row_1",
+      stripe_invoice_id: INVOICE,
+      stripe_payment_intent_id: PI,
+      organization_id: ORG,
+      amount_due_cents: 9900,
+      amount_paid_cents: 9900,
+      refunded_cents: 0,
+      refunded_at: null,
+      status: "paid",
+      ...o,
+    });
+  };
+  const invoice = () => fake.tables.platform_invoices.find((r) => r.stripe_invoice_id === INVOICE)!;
+
+  it("finds the invoice by the payment intent and records the refund", async () => {
+    seedInvoice();
+    expect((await deliver("charge.refunded", charge())).status).toBe(200);
+    expect(invoice().refunded_cents).toBe(2500);
+  });
+
+  it("does not unmake the payment", async () => {
+    // The gross figure has to survive. Folding the refund into
+    // amount_paid_cents is what 20260804080000 had to undo on the tenant side.
+    seedInvoice();
+    await deliver("charge.refunded", charge());
+    expect(invoice().amount_paid_cents).toBe(9900);
+    expect(invoice().status).toBe("paid");
+  });
+
+  it("dates the refund by the refund, not by the charge", async () => {
+    // `charge.created` is the original payment — eleven months earlier on an
+    // annual plan.
+    seedInvoice();
+    await deliver("charge.refunded", charge());
+    expect(invoice().refunded_at).toBe(new Date(1_786_000_000 * 1000).toISOString());
+  });
+
+  it("survives a redelivery without doubling", async () => {
+    // Stripe retries for up to three days and `amount_refunded` is already its
+    // running total, so this SETS. Adding would climb past the charge on the
+    // second delivery and the CHECK constraint would reject it.
+    seedInvoice();
+    await deliver("charge.refunded", charge());
+    await deliver("charge.refunded", charge());
+    expect(invoice().refunded_cents).toBe(2500);
+  });
+
+  it("carries a later partial refund to the new running total", async () => {
+    seedInvoice();
+    await deliver("charge.refunded", charge());
+    await deliver("charge.refunded", charge({ amount_refunded: 9900 }));
+    expect(invoice().refunded_cents).toBe(9900);
+  });
+
+  it("does nothing for a charge with no payment intent, rather than failing", async () => {
+    // A handler that throws makes Stripe retry a 500 for three days over an
+    // event there was never anything to do about.
+    seedInvoice();
+    const res = await deliver("charge.refunded", charge({ payment_intent: null }));
+    expect(res.status).toBe(200);
+    expect(invoice().refunded_cents).toBe(0);
+  });
+
+  it("leaves the figures alone when no invoice can be found", async () => {
+    // Better a logged error and an untouched row than a refund written against
+    // whichever invoice happened to be first.
+    seedInvoice({ stripe_payment_intent_id: "pi_someone_else" });
+    const res = await deliver("charge.refunded", charge());
+    expect(res.status).toBe(200);
+    expect(invoice().refunded_cents).toBe(0);
+  });
+
+  it("backfills the join from a bounded lookup when the invoice never carried it", async () => {
+    // `Invoice.payments` is optional and may be absent from a webhook payload,
+    // so a row can exist with no payment intent recorded. The handler falls
+    // back to invoices.list, finds the invoice whose payment intent matches,
+    // and writes the join so the lookup happens once per invoice rather than
+    // once per refund.
+    seedInvoice({ stripe_payment_intent_id: null });
+    invoicesList.mockResolvedValue({
+      data: [
+        {
+          id: "in_someone_else",
+          payments: { data: [{ payment: { type: "payment_intent", payment_intent: "pi_other" } }] },
+        },
+        {
+          id: INVOICE,
+          payments: { data: [{ payment: { type: "payment_intent", payment_intent: PI } }] },
+        },
+      ],
+      has_more: false,
+    });
+    expect((await deliver("charge.refunded", charge())).status).toBe(200);
+    expect(invoice().refunded_cents).toBe(2500);
+    expect(invoice().stripe_payment_intent_id, "the join should be backfilled").toBe(PI);
+  });
+
+  it("does not fail the event when the fallback lookup itself errors", async () => {
+    // The lookup is a best-effort backfill, not the event. Letting a transient
+    // Stripe error escape would fail the delivery and have Stripe retry it for
+    // three days over an optimisation. This test is why that try/catch exists —
+    // it returned 500 before.
+    seedInvoice({ stripe_payment_intent_id: null });
+    invoicesList.mockRejectedValue(new Error("Stripe is down"));
+    const res = await deliver("charge.refunded", charge());
+    expect(res.status).toBe(200);
+    expect(invoice().refunded_cents).toBe(0);
+  });
+
+  it("captures the payment intent at invoice time, which is the only join there is", async () => {
+    // Nothing on a Charge points back to an invoice, so if this capture stops
+    // happening every refund falls through to the bounded lookup — and when
+    // that cannot find it either, the refund goes unrecorded. The handler is
+    // only as good as this write.
+    await deliver("invoice.paid", {
+      id: "in_fresh",
+      customer: CUSTOMER,
+      amount_due: 9900,
+      amount_paid: 9900,
+      status: "paid",
+      created: 1_785_000_000,
+      payments: { data: [{ payment: { type: "payment_intent", payment_intent: PI } }] },
+    });
+    const row = fake.tables.platform_invoices.find((r) => r.stripe_invoice_id === "in_fresh")!;
+    expect(row.stripe_payment_intent_id).toBe(PI);
+  });
+
+  it("ignores a payments entry that is not a payment intent", async () => {
+    // `payment.type` is 'charge' | 'payment_intent' | 'payment_record'. Taking
+    // the id regardless would store a charge id in a payment-intent column and
+    // the refund lookup would match nothing, for ever.
+    await deliver("invoice.paid", {
+      id: "in_charge_paid",
+      customer: CUSTOMER,
+      amount_due: 9900,
+      amount_paid: 9900,
+      status: "paid",
+      created: 1_785_000_000,
+      payments: { data: [{ payment: { type: "charge", charge: "ch_legacy" } }] },
+    });
+    const row = fake.tables.platform_invoices.find(
+      (r) => r.stripe_invoice_id === "in_charge_paid",
+    )!;
+    expect(row.stripe_payment_intent_id ?? null).toBeNull();
+  });
+
+  it("says so loudly when a refund cannot be linked to any invoice", async () => {
+    // The guard exists for the log, not for the row: an update keyed on a null
+    // id would match nothing anyway. What must not happen is silence, because
+    // an unlinked refund means collected revenue is overstated and nothing
+    // says by how much.
+    seedInvoice({ stripe_payment_intent_id: "pi_someone_else" });
+    const errs: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...a: unknown[]) => {
+      errs.push(a.map(String).join(" "));
+    });
+    await deliver("charge.refunded", charge());
+    spy.mockRestore();
+    expect(errs.join("\n")).toMatch(/NOT recorded/);
+    expect(errs.join("\n")).toContain(PI);
+  });
+
+  it("accepts an expanded payment intent object, not just an id", async () => {
+    // `Charge.payment_intent` is `string | PaymentIntent | null`; an expanded
+    // payload is the shape that would silently match nothing.
+    seedInvoice();
+    await deliver("charge.refunded", charge({ payment_intent: { id: PI } }));
+    expect(invoice().refunded_cents).toBe(2500);
+  });
+});
