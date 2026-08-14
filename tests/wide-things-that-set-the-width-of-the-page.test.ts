@@ -201,6 +201,72 @@ describe("a tab bar scrolls on a phone instead of wrapping into pills", () => {
   });
 });
 
+describe("the last three controls under the 44px floor", () => {
+  // `ui/button.tsx` and `ui/tabs.tsx` were done first because they are the
+  // loud ones. These three are quieter and they are most of the product: a
+  // form on a phone is inputs and selects, and the bulk-action columns on
+  // every table are checkboxes.
+  //
+  // `min-h`, not `h`, throughout. `min-height` beats `height` in CSS's
+  // used-value calculation no matter which order the utilities land in, so a
+  // caller passing its own `h-8` still gets a 44px target. With `max-md:h-11`
+  // the result depends on class order, which is not a thing to leave to the
+  // order somebody happened to type.
+
+  it("gives a text input a 44px target on touch and leaves the laptop alone", () => {
+    const src = codeOnly(read("src/components/ui/input.tsx"));
+    expect(src).toMatch(/max-md:min-h-11/);
+    // 36px above the breakpoint, exactly as before.
+    expect(src).toMatch(/flex h-9 w-full rounded-md/);
+  });
+
+  it("gives a select trigger AND its options the same floor", () => {
+    // The trigger alone is half the control. `py-1.5` around a 20px line box
+    // is a 32px option row, and picking the wrong service day off a dropdown
+    // in a driveway is the failure this floor exists to prevent.
+    const src = codeOnly(read("src/components/ui/select.tsx"));
+    const trigger = src.slice(src.indexOf("SelectTrigger"), src.indexOf("SelectScrollUpButton"));
+    expect(trigger).toMatch(/max-md:min-h-11/);
+    const item = src.slice(src.indexOf("const SelectItem"), src.indexOf("SelectItem.displayName"));
+    expect(item).toMatch(/max-md:min-h-11/);
+  });
+
+  it("expands the checkbox's hit area without expanding the checkbox", () => {
+    // The one control that cannot take the same fix. A 44px square is a
+    // different component, not a bigger version of this one, so the 44px box
+    // is an out-of-flow pseudo-element and the 16px square is untouched.
+    const src = codeOnly(read("src/components/ui/checkbox.tsx"));
+    expect(src).toMatch(/max-md:before:h-11/);
+    expect(src).toMatch(/max-md:before:w-11/);
+    // Absolute + centred, or it is a 44px block shoving the row open.
+    expect(src).toMatch(/max-md:before:absolute/);
+    expect(src).toMatch(/max-md:before:-translate-x-1\/2/);
+    expect(src).toMatch(/max-md:before:-translate-y-1\/2/);
+    // Tailwind emits no pseudo-element at all without `content`, so this one
+    // missing class would make the whole thing a silent no-op that still
+    // matches every assertion above.
+    expect(src).toMatch(/max-md:before:content-\[''\]/);
+    // The pseudo positions against the box, so the box has to establish one.
+    expect(src).toMatch(/\brelative\b/);
+    // And the square itself is still 16px.
+    expect(src).toMatch(/\bh-4 w-4 shrink-0 rounded-sm\b/);
+  });
+
+  it("keeps all four of them behind max-md:", () => {
+    // A control that got taller on a laptop would be a regression dressed as
+    // a fix — the same check tabs.tsx already carries.
+    for (const f of [
+      "src/components/ui/input.tsx",
+      "src/components/ui/select.tsx",
+      "src/components/ui/checkbox.tsx",
+      "src/components/ui/button.tsx",
+    ]) {
+      const src = codeOnly(read(f));
+      expect(src, `${f} has an unscoped min-h-11`).not.toMatch(/(?<!max-md:)\bmin-h-11\b/);
+    }
+  });
+});
+
 describe("two more things measured at 360px", () => {
   it("caps the Crew popover so it fits a phone", () => {
     // 320px of popover on a 320px screen, with the page's own padding still
