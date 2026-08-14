@@ -152,13 +152,40 @@ describe("credentials are encrypted at every write site", () => {
 function sqlWithoutComments(sql: string): string {
   return (
     sql
+      // ── LINE COMMENTS FIRST, AND THE ORDER IS THE WHOLE FIX ────────────
+      //
+      // This used to run last, and the unterminated-block rule below then ate
+      // most of two migrations. A `--` comment that happens to contain the two
+      // characters `/*` — a file glob is enough, `routes/email/**` — looks like
+      // the start of an unterminated block comment, so everything after it was
+      // discarded as commented-out:
+      //
+      //   20260731240000_any-signed-in-user-could-read-and-bill-any-other-tenant
+      //     11,824 characters invisible, from a prose line at 127 of 461
+      //   20260810140000_six-helpers-that-answered-questions-about-other-peoples-tenants
+      //     9,142 characters invisible
+      //
+      // Both are SECURITY migrations, and every check built on ALL_MIGRATIONS
+      // was reading a fraction of them — including "no migration ever disables
+      // row level security", which is the one that most needs to see the whole
+      // file. Nothing failed; the text simply was not there.
+      //
+      // Found because a deliberately broken migration would not fail the
+      // grant-order scan below. The scan was right and could not see the
+      // statement, which is the same shape as the bug 20260801092000 records:
+      // "One bug in a checker concealed one bug in the schema, which is the
+      // whole argument for mutation-testing the checkers."
+      //
+      // Stripping `--` lines first makes a `/*` inside prose unreachable. A
+      // `--` inside a real block comment is still removed by the block rules
+      // that follow, so nothing is lost the other way.
+      .replace(/^\s*--.*$/gm, "")
       .replace(/\/\*[\s\S]*?\*\//g, "")
       // An UNTERMINATED /* comments out the rest of the file. Postgres would
       // reject such a migration outright, so this case cannot ship — but leaving
       // it unhandled means the difference between "caught" and "not caught" here
       // rests on whether someone typed the closing marker.
       .replace(/\/\*[\s\S]*$/, "")
-      .replace(/^\s*--.*$/gm, "")
   );
 }
 
@@ -222,33 +249,87 @@ describe("a database can actually be built from these files", () => {
     // succeeded, because both had been created outside the migrations. From
     // empty there was nothing to grant on.
     //
-    // Order matters WITHIN a file as well as between files, which is the whole
-    // difficulty: a first pass at this scan collected every CREATE in a file
-    // before checking that file's GRANTs and reported 129 violations, nearly
-    // all of them the ordinary create-then-grant pair. Walking the statements
-    // positionally gives 2.
-    const CREATE_OR_GRANT =
-      /(?<create>CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?<cname>[\w.]+)\s*\()|(?<grant>GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+(?<gname>[\w.]+)\s*\()/gi;
+    // REVOKE counts too, and that is not hypothetical — it is the THIRD fault
+    // the replay found, one round after the grants above were fixed:
+    //
+    //     ERROR: function public.email_queue_dispatch() does not exist
+    //     At statement: 19
+    //     REVOKE EXECUTE ON FUNCTION public.email_queue_dispatch() FROM authenticated
+    //
+    // That function was never created by any migration at all — it arrived with
+    // the Lovable email scaffold, straight into the live database, and was
+    // dropped a day later by 20260801092000. The first version of this scan
+    // looked only at GRANT and sailed straight past it.
+    //
+    // ── THREE THINGS THIS SCAN HAS TO GET RIGHT ──────────────────────────
+    //
+    // 1. POSITION. Order matters within a file as well as between files. A
+    //    first pass collected every CREATE in a file before checking that
+    //    file's GRANTs and reported 129 violations, nearly all of them the
+    //    ordinary create-then-grant pair sitting in one file.
+    //
+    // 2. DROP. A function can be created and later removed, and an ACL
+    //    statement after the DROP is just as broken as one before the CREATE.
+    //
+    // 3. ARITY. Postgres identifies a function by name AND argument types, so
+    //    one name can be several functions — exactly the caveat
+    //    dead-machinery-baseline.json records for skip_visit. Keying on the
+    //    name alone reported file_reversal_review_item as a violation: it has
+    //    FIVE signatures created and dropped across five migrations, and an
+    //    early DROP of the 5-argument version made a later REVOKE on the
+    //    8-argument version look unmatched. Keyed on name + arity: not a
+    //    violation, correctly.
+    //
+    // Each of those three, left out, changes the answer. 129, then 2, then 1.
+    const FUNCTION_STMT =
+      /(?<kind>CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION|DROP\s+FUNCTION(?:\s+IF\s+EXISTS)?|(?:GRANT|REVOKE)\s+EXECUTE\s+ON\s+FUNCTION)\s+(?<name>[\w.]+)\s*\(/gi;
     const bare = (n: string) => n.toLowerCase().replace(/^public\./, "");
 
-    const defined = new Set<string>();
+    /** Argument count, by counting depth-0 commas from the opening paren. */
+    const arity = (sql: string, open: number) => {
+      let depth = 0;
+      let commas = 0;
+      let body = "";
+      for (let i = open; i < sql.length; i++) {
+        const ch = sql[i];
+        if (ch === "(") {
+          depth++;
+          if (depth === 1) continue;
+        } else if (ch === ")") {
+          depth--;
+          if (depth === 0) break;
+        }
+        if (depth === 1) {
+          body += ch;
+          if (ch === ",") commas++;
+        }
+      }
+      return body.trim() === "" ? 0 : commas + 1;
+    };
+
+    const live = new Set<string>();
     const premature: string[] = [];
     for (const { file, sql } of ALL_MIGRATIONS) {
-      for (const m of sql.matchAll(CREATE_OR_GRANT)) {
-        const g = m.groups!;
-        if (g.create) {
-          defined.add(bare(g.cname));
-        } else if (!defined.has(bare(g.gname))) {
-          // A guarded grant — one inside a `to_regprocedure(...) IS NOT NULL`
-          // block — is deliberate and cannot fail, so it is not a violation.
+      for (const m of sql.matchAll(FUNCTION_STMT)) {
+        const kind = m.groups!.kind.toUpperCase();
+        const key = `${bare(m.groups!.name)}/${arity(sql, m.index! + m[0].length - 1)}`;
+        if (kind.startsWith("CREATE")) {
+          live.add(key);
+        } else if (kind.startsWith("DROP")) {
+          live.delete(key);
+        } else if (!live.has(key)) {
+          // An ACL statement inside a `to_regprocedure(...) IS NOT NULL` block
+          // is deliberate and cannot fail, so it is not a violation.
           const before = sql.slice(0, m.index);
           const blockStart = before.lastIndexOf("DO $$");
           const guarded =
             blockStart !== -1 &&
             before.indexOf("END $$", blockStart) === -1 &&
             before.slice(blockStart).includes("to_regprocedure");
-          if (!guarded)
-            premature.push(`${file} grants ${bare(g.gname)}() before anything creates it`);
+          if (!guarded) {
+            const verb = kind.split(/\s+/)[0].toLowerCase();
+            premature.push(`${file} ${verb}s EXECUTE on ${key} when no such function is live`);
+          }
         }
       }
     }
