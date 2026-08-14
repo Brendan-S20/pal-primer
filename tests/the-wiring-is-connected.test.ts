@@ -208,12 +208,61 @@ describe("a database can actually be built from these files", () => {
     expect(collisions, "two migrations cannot share one primary key").toEqual([]);
   });
 
+  it("never grants EXECUTE on a function the sequence has not created yet", () => {
+    // The second fault the Sandboxes replay found, and the same shape as the
+    // first: production is fine because production accumulated state the file
+    // sequence never describes.
+    //
+    //     ERROR: ... At statement: 6
+    //     GRANT EXECUTE ON FUNCTION public.roadmap_vote_counts() TO anon
+    //
+    // Both roadmap functions were granted in 20260731190000 and defined a day
+    // later in 20260801091000 — a file named, with some irony, "the drift check
+    // counted a grant as a definition". Against the live database the grant
+    // succeeded, because both had been created outside the migrations. From
+    // empty there was nothing to grant on.
+    //
+    // Order matters WITHIN a file as well as between files, which is the whole
+    // difficulty: a first pass at this scan collected every CREATE in a file
+    // before checking that file's GRANTs and reported 129 violations, nearly
+    // all of them the ordinary create-then-grant pair. Walking the statements
+    // positionally gives 2.
+    const CREATE_OR_GRANT =
+      /(?<create>CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?<cname>[\w.]+)\s*\()|(?<grant>GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+(?<gname>[\w.]+)\s*\()/gi;
+    const bare = (n: string) => n.toLowerCase().replace(/^public\./, "");
+
+    const defined = new Set<string>();
+    const premature: string[] = [];
+    for (const { file, sql } of ALL_MIGRATIONS) {
+      for (const m of sql.matchAll(CREATE_OR_GRANT)) {
+        const g = m.groups!;
+        if (g.create) {
+          defined.add(bare(g.cname));
+        } else if (!defined.has(bare(g.gname))) {
+          // A guarded grant — one inside a `to_regprocedure(...) IS NOT NULL`
+          // block — is deliberate and cannot fail, so it is not a violation.
+          const before = sql.slice(0, m.index);
+          const blockStart = before.lastIndexOf("DO $$");
+          const guarded =
+            blockStart !== -1 &&
+            before.indexOf("END $$", blockStart) === -1 &&
+            before.slice(blockStart).includes("to_regprocedure");
+          if (!guarded)
+            premature.push(`${file} grants ${bare(g.gname)}() before anything creates it`);
+        }
+      }
+    }
+    expect(premature).toEqual([]);
+  });
+
   it("every migration filename starts with a 14-digit timestamp", () => {
     // The version is parsed off the filename by the Supabase CLI and by the
     // three check scripts. A file that does not carry one is not ordered, not
     // recorded, and not compared — it simply is not part of the sequence,
     // silently.
-    const malformed = ALL_MIGRATIONS.filter(({ file }) => !/^\d{14}_/.test(file)).map((m) => m.file);
+    const malformed = ALL_MIGRATIONS.filter(({ file }) => !/^\d{14}_/.test(file)).map(
+      (m) => m.file,
+    );
     expect(malformed).toEqual([]);
   });
 });
