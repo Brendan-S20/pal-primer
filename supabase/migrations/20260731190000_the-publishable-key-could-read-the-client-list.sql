@@ -101,5 +101,38 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM anon;
 GRANT EXECUTE ON FUNCTION public.public_get_org_by_slug(text) TO anon;
 GRANT EXECUTE ON FUNCTION public.public_get_org_for_lead_form(text) TO anon;
 GRANT EXECUTE ON FUNCTION public.public_quote(text, text, integer, text) TO anon;
-GRANT EXECUTE ON FUNCTION public.roadmap_vote_counts() TO anon;
-GRANT EXECUTE ON FUNCTION public.cast_roadmap_vote(text, text) TO anon;
+
+-- ── THE TWO ROADMAP FUNCTIONS, GRANTED ONLY IF THEY EXIST YET ────────────
+--
+-- These two were granted here unconditionally, and against the live database
+-- that worked: both functions already existed, having been created outside the
+-- migrations. They do not exist at this POINT IN THE SEQUENCE — the definitions
+-- arrive a day later, in
+-- 20260801091000_the-drift-check-counted-a-grant-as-a-definition.sql, a file
+-- named for the mirror image of this same confusion.
+--
+-- So a replay from an empty database died here:
+--
+--     ERROR: ... At statement: 6
+--     GRANT EXECUTE ON FUNCTION public.roadmap_vote_counts() TO anon
+--
+-- which is the second fault the Sandboxes workflow found, after the duplicate
+-- version in 20260716170000. Both have the same shape: production is fine
+-- because production accumulated state that the file sequence never describes,
+-- and no check could see it because nothing ever built a database from these
+-- files.
+--
+-- Guarded rather than moved. The grants are re-applied unconditionally in
+-- 20260809180000 (the lockdown), which runs after the definitions exist, so
+-- skipping them here changes no end state — it only lets the sequence replay.
+-- Editing the statement out entirely would silently drop the grant for anyone
+-- whose database stops between these two migrations.
+DO $$
+BEGIN
+  IF to_regprocedure('public.roadmap_vote_counts()') IS NOT NULL THEN
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.roadmap_vote_counts() TO anon';
+  END IF;
+  IF to_regprocedure('public.cast_roadmap_vote(text, text)') IS NOT NULL THEN
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.cast_roadmap_vote(text, text) TO anon';
+  END IF;
+END $$;
