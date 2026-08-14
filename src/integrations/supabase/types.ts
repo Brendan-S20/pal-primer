@@ -3574,6 +3574,8 @@ export type Database = {
           paid_at: string | null
           period_end: string | null
           period_start: string | null
+          refunded_at: string | null
+          refunded_cents: number
           status: string
           stripe_invoice_id: string | null
           updated_at: string
@@ -3593,6 +3595,8 @@ export type Database = {
           paid_at?: string | null
           period_end?: string | null
           period_start?: string | null
+          refunded_at?: string | null
+          refunded_cents?: number
           status?: string
           stripe_invoice_id?: string | null
           updated_at?: string
@@ -3612,6 +3616,8 @@ export type Database = {
           paid_at?: string | null
           period_end?: string | null
           period_start?: string | null
+          refunded_at?: string | null
+          refunded_cents?: number
           status?: string
           stripe_invoice_id?: string | null
           updated_at?: string

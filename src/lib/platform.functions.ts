@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { fetchPlatformSaasMetrics } from "@/lib/platform-metrics.server";
+import { collectedNetCents } from "@/lib/platform-metrics";
 import { resolveSupabaseUrl } from "@/lib/supabase-url";
 
 
@@ -369,7 +370,7 @@ export const getPlatformRevenueTrend = createServerFn({ method: "GET" })
       fetchPlatformSaasMetrics(supabaseAdmin),
       supabaseAdmin
         .from("platform_invoices")
-        .select("amount_paid_cents, created_at, status")
+        .select("amount_paid_cents, refunded_cents, created_at, status")
         .gte("created_at", startIso),
       supabaseAdmin
         .from("organizations")
@@ -402,7 +403,16 @@ export const getPlatformRevenueTrend = createServerFn({ method: "GET" })
       const d = new Date(inv.created_at);
       const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
       const b = buckets.get(key);
-      if (b) { b.revenue_cents += paid; b.payment_count += 1; }
+      // Net of refunds, the SAME way `collectedMtdCents` above is. Netting one
+      // and not the other is the bug 20260804080000 had to undo on the tenant
+      // side: the chart and the headline figure derive the same money two ways
+      // and disagree, with no way to tell which is wrong.
+      //
+      // `payment_count` deliberately still counts it. A payment did happen;
+      // refunding it later does not unmake the transaction, and a count that
+      // silently drops refunded payments would misstate how many times tenants
+      // actually paid.
+      if (b) { b.revenue_cents += collectedNetCents(inv); b.payment_count += 1; }
     }
     for (const o of orgsRes.data ?? []) {
       const d = new Date(o.created_at);
@@ -414,9 +424,15 @@ export const getPlatformRevenueTrend = createServerFn({ method: "GET" })
     const trailingMonths = Array.from(buckets.values());
 
     // SaaS collected this month (platform_invoices), separate from recurring MRR.
+    //
+    // Net of refunds. Stripe leaves `invoice.amount_paid` at its full amount
+    // when a charge is refunded — the money coming back is only on the charge —
+    // so summing amount_paid alone counts money that was given back, for ever.
+    // `refunded_cents` is written by the charge.refunded handler in the
+    // platform webhook and is 0 on every row that has never been refunded.
     const collectedMtdCents = (invoicesRes.data ?? [])
       .filter((inv) => inv.created_at && inv.created_at >= monthStartIso)
-      .reduce((s, inv) => s + (inv.amount_paid_cents ?? 0), 0);
+      .reduce((s, inv) => s + collectedNetCents(inv), 0);
 
     const ar_open_cents = (arRes.data ?? []).reduce(
       (s, r) => s + Math.max(0, (r.amount_due_cents ?? 0) - (r.amount_paid_cents ?? 0)),

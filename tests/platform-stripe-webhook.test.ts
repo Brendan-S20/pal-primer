@@ -307,3 +307,4 @@ describe("each event is applied once", () => {
     expect(deactivated, "the redelivery cancelled the add-ons a second time").toEqual([ORG]);
   });
 });
+

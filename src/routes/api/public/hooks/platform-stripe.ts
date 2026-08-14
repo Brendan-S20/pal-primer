@@ -12,7 +12,17 @@ import { makeStripe, warnOnApiVersionMismatch } from "@/lib/stripe-client.server
 //   invoice.created, invoice.finalized, invoice.paid, invoice.payment_failed,
 //   invoice.voided, invoice.marked_uncollectible,
 //   customer.subscription.created, customer.subscription.updated, customer.subscription.deleted,
-//   customer.created, customer.updated
+//   customer.subscription.trial_will_end,
+//   customer.created, customer.updated,
+//   charge.refunded
+//
+// That list is the THIRTEEN events the live endpoint actually enables, read
+// from the account rather than remembered — it used to name eleven, omitting
+// `customer.subscription.trial_will_end`, which has a handler, and
+// `charge.refunded`, which did not. An event enabled here and unhandled below
+// is answered 200 and looks healthy; the coverage is pinned in
+// tests/the-connect-webhook-handles-what-it-subscribes-to.test.ts so the two
+// lists cannot drift apart again.
 
 export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
   server: {
