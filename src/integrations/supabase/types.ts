@@ -3577,6 +3577,7 @@ export type Database = {
           refunded_at: string | null
           refunded_cents: number
           status: string
+          stripe_payment_intent_id: string | null
           stripe_invoice_id: string | null
           updated_at: string
         }
@@ -3598,6 +3599,7 @@ export type Database = {
           refunded_at?: string | null
           refunded_cents?: number
           status?: string
+          stripe_payment_intent_id?: string | null
           stripe_invoice_id?: string | null
           updated_at?: string
         }
@@ -3619,6 +3621,7 @@ export type Database = {
           refunded_at?: string | null
           refunded_cents?: number
           status?: string
+          stripe_payment_intent_id?: string | null
           stripe_invoice_id?: string | null
           updated_at?: string
         }

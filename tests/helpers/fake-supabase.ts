@@ -126,8 +126,24 @@ export function createFakeAdmin(): Fake {
       neq: (k, v) => (filters.push([k, "neq", v]), api),
       in: (k, v) => (filters.push([k, "in", v]), api),
       is: (k, v) => (filters.push([k, "is", v]), api),
-      maybeSingle: async () => ({ data: matched()[0] ?? null, error: null }),
+      // `.update(...).select(...).maybeSingle()` is a WRITE that returns the
+      // row, and PostgREST applies it. This used to read `matched()` directly,
+      // so the pending update never ran and the pattern looked like a silent
+      // no-op write — a test could assert the returned row and never notice the
+      // column had not changed. Only a bare `.select()` may skip run().
+      maybeSingle: async () => {
+        if (op === "select") return { data: matched()[0] ?? null, error: null };
+        const { data, error } = await run();
+        return { data: (data as Row[] | null)?.[0] ?? null, error };
+      },
       single: async () => {
+        if (op !== "select") {
+          const { data, error } = await run();
+          const rows = (data as Row[] | null) ?? [];
+          return rows.length === 1
+            ? { data: rows[0], error }
+            : { data: null, error: { message: "no rows" } };
+        }
         const rows = matched();
         return rows.length === 1
           ? { data: rows[0], error: null }

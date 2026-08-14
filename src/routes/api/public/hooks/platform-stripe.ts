@@ -58,11 +58,41 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
           .maybeSingle();
         if (existing?.processed_at) return new Response("ok", { status: 200 });
 
-        await supabaseAdmin
-          .from("platform_stripe_events")
-          .upsert({ id: event.id, type: event.type, payload: event as any, received_at: new Date().toISOString() });
+        await supabaseAdmin.from("platform_stripe_events").upsert({
+          id: event.id,
+          type: event.type,
+          payload: event as any,
+          received_at: new Date().toISOString(),
+        });
 
-        async function orgFromCustomer(customerId: string | null | undefined): Promise<string | null> {
+        /**
+         * The PaymentIntent that paid an invoice, if the payload carries it.
+         *
+         * Nothing on a Stripe Charge points back to an invoice, so this is the
+         * only join a `charge.refunded` handler has, and it has to be captured
+         * from the invoice side. `payments` is optional in the API and may be
+         * absent from a webhook payload — a null here is expected, not an
+         * error, and the refund handler falls back to a lookup.
+         */
+        function invoicePaymentIntentId(inv: import("stripe").Stripe.Invoice): string | null {
+          for (const p of inv.payments?.data ?? []) {
+            // Truthiness is the whole check. The SDK documents
+            // `payment.payment_intent` as populated only when `payment.type` is
+            // `payment_intent` — a `charge`-type entry is surfaced only when
+            // there is no payment intent to surface instead — so a `type` guard
+            // in front of this could never change the answer. It was here, and
+            // it was removed rather than left as a branch no payload can reach
+            // and no test can honestly exercise.
+            const pi = p.payment?.payment_intent;
+            const id = typeof pi === "string" ? pi : pi?.id;
+            if (id) return id;
+          }
+          return null;
+        }
+
+        async function orgFromCustomer(
+          customerId: string | null | undefined,
+        ): Promise<string | null> {
           if (!customerId) return null;
           const { data: org } = await supabaseAdmin
             .from("organizations")
@@ -81,7 +111,8 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
             case "invoice.voided":
             case "invoice.marked_uncollectible": {
               const inv = event.data.object as import("stripe").Stripe.Invoice;
-              const customerId = typeof inv.customer === "string" ? inv.customer : inv.customer?.id ?? null;
+              const customerId =
+                typeof inv.customer === "string" ? inv.customer : (inv.customer?.id ?? null);
               const orgId = await orgFromCustomer(customerId);
 
               // Stripe does not guarantee ORDER and retries for up to 3 days.
@@ -99,7 +130,8 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
               // that would move it backwards; `invoice.voided` and
               // `invoice.marked_uncollectible` are allowed through because they
               // are genuine later transitions rather than stale snapshots.
-              const rewindable = event.type === "invoice.created" || event.type === "invoice.finalized";
+              const rewindable =
+                event.type === "invoice.created" || event.type === "invoice.finalized";
               if (rewindable) {
                 const { data: existing } = await supabaseAdmin
                   .from("platform_invoices")
@@ -125,13 +157,23 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
                   status: inv.status ?? "open",
                   hosted_invoice_url: inv.hosted_invoice_url ?? null,
                   invoice_pdf: inv.invoice_pdf ?? null,
-                  period_start: inv.period_start ? new Date(inv.period_start * 1000).toISOString() : null,
+                  period_start: inv.period_start
+                    ? new Date(inv.period_start * 1000).toISOString()
+                    : null,
                   period_end: inv.period_end ? new Date(inv.period_end * 1000).toISOString() : null,
                   issued_at: inv.created ? new Date(inv.created * 1000).toISOString() : null,
                   due_at: inv.due_date ? new Date(inv.due_date * 1000).toISOString() : null,
-                  paid_at: inv.status === "paid" && inv.status_transitions?.paid_at
-                    ? new Date(inv.status_transitions.paid_at * 1000).toISOString()
-                    : null,
+                  paid_at:
+                    inv.status === "paid" && inv.status_transitions?.paid_at
+                      ? new Date(inv.status_transitions.paid_at * 1000).toISOString()
+                      : null,
+                  // Captured here because a refund cannot find its way back on
+                  // its own — see 20260814050000. Written only when the payload
+                  // carries it, so a later event that does carry it fills the
+                  // gap rather than a null overwriting a good value.
+                  ...(invoicePaymentIntentId(inv)
+                    ? { stripe_payment_intent_id: invoicePaymentIntentId(inv) }
+                    : {}),
                 },
                 { onConflict: "stripe_invoice_id" },
               );
@@ -199,7 +241,8 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
               // or canceled; activation arrives via the incomplete → active
               // subscription.updated event (or invoice.paid).
               if (sub.status === "incomplete" || sub.status === "incomplete_expired") break;
-              const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null;
+              const customerId =
+                typeof sub.customer === "string" ? sub.customer : (sub.customer?.id ?? null);
               const orgId = await orgFromCustomer(customerId);
               if (orgId && event.type === "customer.subscription.deleted") {
                 // Explicitly canceling a stale incomplete sub (retrying the
@@ -270,15 +313,127 @@ export const Route = createFileRoute("/api/public/hooks/platform-stripe")({
                 // doesn't keep paid features free (and can re-buy cleanly).
                 if (event.type === "customer.subscription.deleted" || mapped === "canceled") {
                   try {
-                    const { deactivateOrgPlatformAddons } = await import("@/lib/platform-addons.server");
+                    const { deactivateOrgPlatformAddons } =
+                      await import("@/lib/platform-addons.server");
                     await deactivateOrgPlatformAddons(orgId);
                   } catch (e) {
-                    console.error("addon deactivation on subscription end failed", (e as Error).message);
+                    console.error(
+                      "addon deactivation on subscription end failed",
+                      (e as Error).message,
+                    );
                   }
                 }
               }
               break;
             }
+            case "charge.refunded": {
+              // Stripe does not reduce `invoice.amount_paid` on a refund: the
+              // invoice stays `paid` at its full amount and the money coming
+              // back lives only on the charge. Without this, a refunded
+              // HoundStack subscription payment is counted as collected for
+              // ever, and the refunded customer sees the invoice paid in full
+              // in Settings → Billing.
+              const charge = event.data.object as import("stripe").Stripe.Charge;
+              const pi =
+                typeof charge.payment_intent === "string"
+                  ? charge.payment_intent
+                  : (charge.payment_intent?.id ?? null);
+              if (!pi) {
+                // A charge with no payment intent is not a subscription
+                // payment. Nothing on this account creates one, but saying so
+                // beats wondering later why a refund went unrecorded.
+                console.warn(
+                  `platform charge.refunded ${charge.id}: no payment intent, nothing to link`,
+                );
+                break;
+              }
+
+              const { data: byPi } = await supabaseAdmin
+                .from("platform_invoices")
+                .select("id")
+                .eq("stripe_payment_intent_id", pi)
+                .maybeSingle();
+
+              let invoiceRowId = (byPi as { id?: string } | null)?.id ?? null;
+
+              // Fallback for rows written before the column existed, or whose
+              // payload carried no `payments` list. Bounded, and it backfills
+              // so this costs one lookup per invoice ever rather than one per
+              // refund.
+              if (!invoiceRowId) {
+                const customerId =
+                  typeof charge.customer === "string"
+                    ? charge.customer
+                    : (charge.customer?.id ?? null);
+                if (customerId) {
+                  // Wrapped, because this is a best-effort backfill and not the
+                  // event. Letting a transient Stripe error escape would fail
+                  // the whole delivery and have Stripe retry it for three days
+                  // over a lookup that was only ever an optimisation — and the
+                  // outer catch would mark the event errored, so the retry
+                  // would keep finding work to do.
+                  try {
+                    const list = await stripe.invoices.list({
+                      customer: customerId,
+                      limit: 100,
+                      expand: ["data.payments"],
+                    });
+                    const match = list.data.find((i) => invoicePaymentIntentId(i) === pi);
+                    if (match?.id) {
+                      const { data: row } = await supabaseAdmin
+                        .from("platform_invoices")
+                        .update({ stripe_payment_intent_id: pi })
+                        .eq("stripe_invoice_id", match.id)
+                        .select("id")
+                        .maybeSingle();
+                      invoiceRowId = (row as { id?: string } | null)?.id ?? null;
+                    } else if (list.has_more) {
+                      console.warn(
+                        `platform charge.refunded ${charge.id}: payment intent ${pi} not in the ` +
+                          `first 100 invoices for ${customerId}, and there are more`,
+                      );
+                    }
+                  } catch (e) {
+                    console.error(
+                      `platform charge.refunded ${charge.id}: invoice lookup for ${pi} failed`,
+                      (e as Error).message,
+                    );
+                  }
+                }
+              }
+
+              if (!invoiceRowId) {
+                // Loud rather than quiet. An unlinked refund is a wrong revenue
+                // figure, and the only thing worse than that is one nobody can
+                // find.
+                console.error(
+                  `platform charge.refunded ${charge.id}: no platform_invoices row for payment intent ${pi}; ` +
+                    `refund of ${charge.amount_refunded} NOT recorded and collected revenue is overstated by it`,
+                );
+                break;
+              }
+
+              // SET, never add. `amount_refunded` is already Stripe's running
+              // total for the charge, and this event redelivers for up to three
+              // days — adding would climb past the charge on the second
+              // delivery, which the CHECK from 20260814020000 then rejects.
+              //
+              // Dated by the REFUND, not the charge: `charge.created` is the
+              // original payment, eleven months earlier on an annual plan.
+              const latestRefundAt = charge.refunds?.data?.[0]?.created ?? null;
+              const { error: refErr } = await supabaseAdmin
+                .from("platform_invoices")
+                .update({
+                  refunded_cents: charge.amount_refunded ?? 0,
+                  refunded_at: latestRefundAt
+                    ? new Date(latestRefundAt * 1000).toISOString()
+                    : new Date().toISOString(),
+                })
+                .eq("id", invoiceRowId);
+              if (refErr) throw new Error(refErr.message);
+              break;
+            }
+
             case "customer.created":
             case "customer.updated": {
               // Nothing required — customer→org mapping happens when the org gets
