@@ -689,7 +689,11 @@ export const listPlatformInvoices = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await (supabaseAdmin as any)
       .from("platform_invoices")
-      .select("stripe_invoice_id, number, amount_due_cents, amount_paid_cents, currency, status, hosted_invoice_url, invoice_pdf, period_start, period_end, issued_at, paid_at")
+      // `refunded_cents` so the page that exists to tell a customer what they
+      // were charged can also tell them what came back. Stripe leaves the
+      // invoice `paid` at its full amount after a refund, so without this the
+      // person who was refunded sees no trace of it here.
+      .select("stripe_invoice_id, number, amount_due_cents, amount_paid_cents, refunded_cents, refunded_at, currency, status, hosted_invoice_url, invoice_pdf, period_start, period_end, issued_at, paid_at")
       .eq("organization_id", orgId)
       .order("issued_at", { ascending: false })
       .limit(24);

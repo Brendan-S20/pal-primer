@@ -896,7 +896,19 @@ function InvoiceHistory() {
                 <td className="py-2 text-muted-foreground">
                   {formatBillingPeriod(inv.period_start, inv.period_end)}
                 </td>
-                <td className="py-2">{formatUsd(inv.amount_due_cents)}</td>
+                <td className="py-2">
+                  {formatUsd(inv.amount_due_cents)}
+                  {/* A refund is stated on its own line rather than folded into
+                      the amount. Netting it silently would show a smaller
+                      number than the invoice the customer can open from the
+                      link two columns across, which reads as a mistake in the
+                      invoice rather than as money returned. */}
+                  {(inv.refunded_cents ?? 0) > 0 && (
+                    <span className="block text-xs text-muted-foreground">
+                      −{formatUsd(inv.refunded_cents)} refunded
+                    </span>
+                  )}
+                </td>
                 <td className="py-2">
                   <StatusChip status={inv.status === "open" ? "open" : inv.status} />
                 </td>

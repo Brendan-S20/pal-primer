@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import {
+  collectedNetCents,
   computePlatformSaasMetrics,
   monthlyEquivalentCents,
   addonMonthlyEquivalentCents,
@@ -322,5 +324,71 @@ describe("comped tenants", () => {
     // comping were implemented by writing billing_status='free', the demo would
     // start appearing in the upgrade funnel and hit the client cap.
     expect(COMPED.billing_status).toBe("active");
+  });
+});
+
+// ── Refunds ────────────────────────────────────────────────────────────────
+//
+// `charge.refunded` is enabled on the live platform webhook endpoint and was
+// unhandled until 2026-08-14, so a refunded HoundStack subscription charge was
+// counted as collected for ever. Stripe does not reduce `invoice.amount_paid`
+// on a refund — the invoice stays `paid` at its full amount and the money
+// coming back lives on the charge — so netting has to be done here.
+//
+// This lives in the shared math module rather than at each call site because
+// 20260804080000_the-rollup-and-the-dashboard-netted-refunds-differently is
+// the same bug in the other direction: the headline figure and the twelve-month
+// chart read the same rows, derived the same money two ways, and disagreed.
+describe("collectedNetCents", () => {
+  it("is the payment when nothing was refunded", () => {
+    expect(collectedNetCents({ amount_paid_cents: 9900, refunded_cents: 0 })).toBe(9900);
+  });
+
+  it("subtracts a partial refund", () => {
+    expect(collectedNetCents({ amount_paid_cents: 9900, refunded_cents: 2500 })).toBe(7400);
+  });
+
+  it("is nothing when the whole payment came back", () => {
+    expect(collectedNetCents({ amount_paid_cents: 9900, refunded_cents: 9900 })).toBe(0);
+  });
+
+  it("never goes negative", () => {
+    // A refund larger than the payment is nonsense the database refuses with a
+    // CHECK constraint, but a negative contribution in a sum would silently
+    // eat an unrelated invoice's revenue rather than showing up as itself.
+    expect(collectedNetCents({ amount_paid_cents: 1000, refunded_cents: 5000 })).toBe(0);
+  });
+
+  it("treats a missing refund column as no refund, not as a crash", () => {
+    // Every row written before the column existed reads back undefined.
+    expect(collectedNetCents({ amount_paid_cents: 9900 })).toBe(9900);
+    expect(collectedNetCents({ amount_paid_cents: 9900, refunded_cents: null })).toBe(9900);
+    expect(collectedNetCents({})).toBe(0);
+  });
+});
+
+describe("the platform revenue reads ask for the column they net by", () => {
+  // The quiet failure: `collectedNetCents` reads `refunded_cents`, and a
+  // `.select()` that does not ask for it returns undefined, which nets to
+  // nothing. Every figure stays exactly as wrong as before and every unit test
+  // above still passes, because the function is fine — it is the query that is
+  // not. Same shape as the slug that has to be selected to derive a Stripe
+  // lookup key.
+  const SRC = readFileSync("src/lib/platform.functions.ts", "utf8");
+
+  it("selects refunded_cents wherever it nets by it", () => {
+    const netting = SRC.includes("collectedNetCents(");
+    expect(netting, "collectedNetCents is no longer used — delete this test with it").toBe(true);
+    // The select that feeds the revenue rollup.
+    expect(SRC).toMatch(/\.select\("amount_paid_cents, refunded_cents, created_at, status"\)/);
+  });
+
+  it("nets both the headline figure and the twelve-month chart", () => {
+    // One netted and the other not is the exact disagreement 20260804080000
+    // had to undo. Two call sites, one function.
+    const uses = SRC.match(/collectedNetCents\(/g) ?? [];
+    expect(uses.length, "expected the MTD figure and the chart bucket to both net").toBe(2);
+    // And neither open-codes the subtraction, which is how they drift.
+    expect(SRC).not.toMatch(/amount_paid_cents \?\? 0\) - \(inv\.refunded_cents/);
   });
 });

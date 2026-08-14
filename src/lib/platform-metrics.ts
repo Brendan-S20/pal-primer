@@ -212,3 +212,33 @@ export function computePlatformSaasMetrics(orgs: OrgForMrr[]): PlatformSaasMetri
     byTier,
   };
 }
+
+/** One paid platform invoice, as far as collected revenue is concerned. */
+export type InvoiceForCollected = {
+  amount_paid_cents?: number | null;
+  refunded_cents?: number | null;
+};
+
+/**
+ * What a platform invoice actually contributed, after refunds.
+ *
+ * Stripe does not reduce `invoice.amount_paid` when a charge is refunded — the
+ * invoice stays `paid` at its full amount and the money coming back lives on
+ * the charge. So `amount_paid_cents` alone counts money that was given back.
+ *
+ * This exists as one shared function rather than the same subtraction written
+ * at each call site, because that is the bug
+ * 20260804080000_the-rollup-and-the-dashboard-netted-refunds-differently had to
+ * undo on the tenant side: the headline figure and the twelve-month chart read
+ * the same rows, derived the same money two ways, and disagreed. Both callers
+ * on the platform side now go through here, so they cannot drift.
+ *
+ * Never negative: a refund larger than the payment is nonsense the database
+ * already refuses with a CHECK constraint, and a negative contribution would
+ * silently subtract from an unrelated invoice in a sum.
+ */
+export function collectedNetCents(inv: InvoiceForCollected): number {
+  const paid = inv.amount_paid_cents ?? 0;
+  const refunded = inv.refunded_cents ?? 0;
+  return Math.max(0, paid - refunded);
+}

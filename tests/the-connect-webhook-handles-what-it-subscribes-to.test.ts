@@ -42,6 +42,86 @@ describe("every event the Connect endpoint subscribes to has a handler", () => {
   });
 });
 
+// ── AND THE SAME THING, FOR THE ENDPOINT NOBODY PINNED ────────────────────
+//
+// Failure mode 1 above was written about the Connect endpoint and only ever
+// enforced there. The platform endpoint had exactly one assertion — that its
+// webhook secret has no fallback — and nothing checked which events it acts on.
+//
+// Read from the live account on 2026-08-14, endpoint
+// we_1U0SFdQjJFmqXgZD3yF8GRzZ enables THIRTEEN events. Twelve had a `case`.
+// `charge.refunded` did not, and the switch has no `default`, so it was
+// recorded, stamped processed_at, and answered 200 — the healthy-looking
+// silence this whole file exists to prevent. A refunded HoundStack
+// subscription charge stayed counted as collected revenue, because Stripe
+// leaves `invoice.amount_paid` at its full amount and puts the money coming
+// back on the charge instead.
+//
+// The list below is the live endpoint's `enabled_events`, verbatim. It is the
+// thing that drifts: somebody enables an event in the dashboard and no code
+// changes, or somebody deletes a handler and no dashboard changes. Either way
+// this fails.
+describe("every event the platform endpoint subscribes to has a handler", () => {
+  it.each([
+    ["invoice.created", "the invoice never appears in billing history"],
+    ["invoice.finalized", "the amount owed is never recorded"],
+    ["invoice.paid", "the org is never marked active and revenue is never counted"],
+    [
+      "invoice.payment_failed",
+      "a decline never moves the org to past_due and dunning never starts",
+    ],
+    ["invoice.voided", "a voided invoice still reads as owed"],
+    ["invoice.marked_uncollectible", "a written-off invoice still reads as collectable"],
+    ["customer.subscription.created", "the org's plan and renewal date are never recorded"],
+    ["customer.subscription.updated", "a plan change or lapse never reaches the org row"],
+    ["customer.subscription.deleted", "a cancelled plan keeps its entitlements for ever"],
+    [
+      "customer.subscription.trial_will_end",
+      "the trial-ending warning is never sent and the card is charged unannounced",
+    ],
+    ["customer.created", "nothing — the customer→org mapping is written at checkout"],
+    ["customer.updated", "nothing — the customer→org mapping is written at checkout"],
+  ])("handles %s — without it, %s", (eventType) => {
+    expect(PLATFORM).toContain(`case "${eventType}"`);
+  });
+
+  // ── KNOWN GAP ───────────────────────────────────────────────────────────
+  //
+  // `charge.refunded` is the thirteenth enabled event and has NO handler. It
+  // is recorded here rather than quietly dropped from the list above, because
+  // a list that only contains what is already done cannot tell you what is
+  // missing — the same reason scripts/dead-machinery-baseline.json calls
+  // itself "a record of decisions, not a mute button".
+  //
+  // The consequence, unfixed: a refunded HoundStack subscription charge stays
+  // counted as collected revenue, because Stripe leaves `invoice.amount_paid`
+  // at its full amount and puts the money coming back on the charge. The
+  // customer who was refunded also sees the invoice paid in full in
+  // Settings → Billing.
+  //
+  // Why it is not simply written: at the pinned API version (2026-07-29.dahlia)
+  // `Charge` has NO `invoice` field — only `payment_intent` — and `PaymentIntent`
+  // has no `invoice` either. The modern link runs Invoice → `payments[]` →
+  // `payment.payment_intent`, i.e. from the invoice outward, which is the wrong
+  // direction for a handler that starts from a charge. Getting it right needs
+  // either the payment intent stored on `platform_invoices` when the invoice
+  // row is written, or a bounded invoice lookup at refund time — and the live
+  // platform account has ZERO invoices, so neither the payload shape nor the
+  // fix can be verified against real data yet.
+  //
+  // The half that IS shipped: `platform_invoices.refunded_cents` /
+  // `refunded_at` exist, `collectedNetCents` nets them into both the headline
+  // figure and the twelve-month chart, and Settings → Billing renders the
+  // contra line. Everything is ready for the handler; only the handler is
+  // missing, and it reads 0 until one exists.
+  it("records charge.refunded as an unhandled event rather than hiding it", () => {
+    const enabledOnTheLiveEndpoint = 13;
+    const handled = [...PLATFORM.matchAll(/case "([a-z_]+\.[a-z_.]+)"/g)].map((m) => m[1]);
+    expect(new Set(handled).size).toBe(enabledOnTheLiveEndpoint - 1);
+    expect(handled).not.toContain("charge.refunded");
+  });
+});
+
 describe("each endpoint uses its own account's credentials, with no fallback", () => {
   it("the Connect endpoint reads only the CONNECT key and secret", () => {
     expect(CONNECT).toContain("process.env.STRIPE_CONNECT_SECRET_KEY");
