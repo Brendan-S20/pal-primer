@@ -23,10 +23,12 @@ const PLAN = "22222222-2222-2222-2222-222222222222";
 const fake = createFakeAdmin();
 
 // The webhook builds a real Stripe client — signature verification is local
-// crypto and works offline. `invoices.list` is not: the charge.refunded
-// fallback would make a genuine network call from a unit test. So the client is
-// the real one, with that ONE method stubbed.
+// crypto and works offline. The `invoices` calls are not: `list` (the
+// charge.refunded fallback) and `retrieve` (the payments expand) would each
+// make a genuine network call from a unit test. So the client is the real one,
+// with those TWO methods stubbed.
 const invoicesList = vi.hoisted(() => vi.fn());
+const invoicesRetrieve = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/stripe-client.server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/stripe-client.server")>();
   return {
@@ -34,7 +36,10 @@ vi.mock("@/lib/stripe-client.server", async (importOriginal) => {
     makeStripe: async (secret: string) => {
       const client = await actual.makeStripe(secret);
       return new Proxy(client, {
-        get: (t, p) => (p === "invoices" ? { list: invoicesList } : t[p as keyof typeof t]),
+        get: (t, p) =>
+          p === "invoices"
+            ? { list: invoicesList, retrieve: invoicesRetrieve }
+            : t[p as keyof typeof t],
       });
     },
   };
@@ -95,6 +100,10 @@ beforeEach(() => {
   deactivated.length = 0;
   invoicesList.mockReset();
   invoicesList.mockResolvedValue({ data: [], has_more: false });
+  invoicesRetrieve.mockReset();
+  // The default is a retrieve that carries nothing, so a test only sees a
+  // payment intent if it says so itself.
+  invoicesRetrieve.mockResolvedValue({ payments: { data: [] } });
   fake.reset({
     organizations: [
       {
@@ -489,6 +498,82 @@ describe("a refunded subscription charge stops counting as collected", () => {
     });
     const row = fake.tables.platform_invoices.find((r) => r.stripe_invoice_id === "in_fresh")!;
     expect(row.stripe_payment_intent_id).toBe(PI);
+  });
+
+  it("captures it from a REAL webhook payload, which carries no payments list", async () => {
+    // The test above hands the handler a `payments` list. A webhook does not.
+    //
+    // Read from the sandbox account on 2026-08-14, the difference is absolute
+    // rather than occasional:
+    //
+    //   GET /v1/invoices/{id}                    → no `payments` key at all
+    //   GET /v1/invoices/{id}?expand[]=payments  → payments.data[0].payment
+    //                                              .payment_intent = "pi_…"
+    //
+    // `payments` is an expandable list and a webhook `data.object` is an
+    // unexpanded snapshot, so reading it off an event returns null EVERY time.
+    // The column was never once going to be written from the payload, every
+    // refund would have fallen through to the list-and-scan, and the six tests
+    // covering it all passed — because each one invented the field, which is
+    // precisely how the first `charge.invoice` attempt got shipped.
+    invoicesRetrieve.mockResolvedValue({
+      payments: { data: [{ payment: { type: "payment_intent", payment_intent: PI } }] },
+    });
+    await deliver("invoice.paid", {
+      id: "in_real_payload",
+      customer: CUSTOMER,
+      amount_due: 9900,
+      amount_paid: 9900,
+      status: "paid",
+      created: 1_785_000_000,
+      // No `payments`. That is the point of this test.
+    });
+    expect(invoicesRetrieve).toHaveBeenCalledWith("in_real_payload", {
+      expand: ["payments"],
+    });
+    const row = fake.tables.platform_invoices.find(
+      (r) => r.stripe_invoice_id === "in_real_payload",
+    )!;
+    expect(row.stripe_payment_intent_id).toBe(PI);
+  });
+
+  it("does not spend an API call on an invoice that cannot have been paid", async () => {
+    // The InvoicePayment is created at FINALIZE — one second after the invoice
+    // itself, in the sandbox run. So `invoice.created` has nothing to fetch,
+    // and a voided invoice never had a payment. Fetching for those is an API
+    // call per event whose only possible answer is null.
+    await deliver("invoice.created", {
+      id: "in_draft",
+      customer: CUSTOMER,
+      amount_due: 9900,
+      amount_paid: 0,
+      status: "draft",
+      created: 1_785_000_000,
+    });
+    expect(invoicesRetrieve).not.toHaveBeenCalled();
+  });
+
+  it("survives the expand failing, because a lookup must not fail a delivery", async () => {
+    // Same lesson as the refund fallback: an unhandled throw here 500s the
+    // event and Stripe retries it for three days over what is an optimisation.
+    // The refund handler still has its own fallback.
+    invoicesRetrieve.mockRejectedValue(new Error("Stripe is down"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await deliver("invoice.paid", {
+      id: "in_expand_fails",
+      customer: CUSTOMER,
+      amount_due: 9900,
+      amount_paid: 9900,
+      status: "paid",
+      created: 1_785_000_000,
+    });
+    spy.mockRestore();
+    expect(res.status).toBe(200);
+    const row = fake.tables.platform_invoices.find(
+      (r) => r.stripe_invoice_id === "in_expand_fails",
+    )!;
+    expect(row.amount_paid_cents).toBe(9900);
+    expect(row.stripe_payment_intent_id ?? null).toBeNull();
   });
 
   it("ignores a payments entry that is not a payment intent", async () => {

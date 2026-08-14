@@ -1,0 +1,68 @@
+import { defineConfig, devices } from "@playwright/test";
+
+// ── WHY THIS EXISTS ───────────────────────────────────────────────────────
+//
+// CLAUDE.md states the responsiveness rules and then says, in as many words,
+// that "a green test run is not a substitute for opening the page at 360px."
+// Until now there was no way to do the second half: the repo had no browser of
+// any kind, and all four enforced rules are STATIC analysis — they read JSX and
+// class strings and reason about what the CSS will probably do.
+//
+// That catches the faults it was written for and cannot catch a layout that
+// simply overflows. `min-w-0` present and the row still too wide, a grid whose
+// columns don't fit, an absolutely-positioned element pushing the body — none
+// of those are visible to a parser. They are visible to a browser, measured.
+//
+// So this is the other half, and it is deliberately NOT a replacement: the
+// static tests name a file and a line, which a screenshot cannot, and they run
+// in 30 seconds with no server.
+//
+// ── WHY THE DEV SERVER ────────────────────────────────────────────────────
+//
+// The production build targets the cloudflare-module preset, so `.output` is a
+// Worker bundle rather than something node can serve. Layout is decided by the
+// same Tailwind and the same components either way — bundling is what differs
+// — so the dev server is the right thing to measure and much the simpler one
+// to stand up. If that ever stops being true, this is the assumption to revisit.
+export default defineConfig({
+  testDir: "./tests/viewports",
+  // `.spec.ts`, not `.test.ts`: vitest's include is `tests/**/*.test.{ts,tsx}`
+  // and these must not be swept into that run, where there is no browser. The
+  // separation is by EXTENSION rather than by an exclude, because
+  // tests/the-wiring-is-connected.test.ts fails any vitest exclude naming
+  // `tests/` — a file the runner does not name is a file CI cannot fail on.
+  testMatch: /.*\.spec\.ts$/,
+  // A layout assertion that needs retrying is a layout assertion that is wrong.
+  retries: 0,
+  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
+  use: {
+    baseURL: process.env.SWEEP_BASE_URL ?? "http://127.0.0.1:5599",
+    screenshot: "only-on-failure",
+  },
+  projects: [
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        // Normally Playwright downloads a browser build matched to its own
+        // version. Set SWEEP_CHROMIUM to point at one already on the machine
+        // instead — for a sandbox with no browser download, or a runner where
+        // the pinned build and the installed one disagree. Unset in CI, where
+        // `playwright install` does the right thing.
+        ...(process.env.SWEEP_CHROMIUM
+          ? { launchOptions: { executablePath: process.env.SWEEP_CHROMIUM } }
+          : {}),
+      },
+    },
+  ],
+  // Bound to 127.0.0.1 explicitly. Vite defaults to binding `::`, and a host
+  // without IPv6 fails there with EAFNOSUPPORT before it serves anything.
+  webServer: process.env.SWEEP_BASE_URL
+    ? undefined
+    : {
+        command: "npx vite dev --port 5599 --host 127.0.0.1",
+        url: "http://127.0.0.1:5599/auth",
+        reuseExistingServer: true,
+        timeout: 180_000,
+      },
+});

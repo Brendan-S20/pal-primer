@@ -1,0 +1,134 @@
+name: Sandboxes
+
+# ── WHAT THIS IS FOR ──────────────────────────────────────────────────────
+#
+# `ci.yml` runs the checks that need nothing but a checkout: types, unit tests,
+# a build, the dead-machinery scan, and five questions asked of the LIVE
+# database. This file runs the two things that need a machine with something
+# RUNNING on it, which is why neither existed until now:
+#
+#   1. A Postgres built from the migrations alone, so the three
+#      tests/integration/*.db.test.ts files can execute. They self-skip without
+#      TEST_SUPABASE_*, and nothing has ever set those in CI — so a suite of
+#      RLS and portal-auth backstops written against real policies has been
+#      reported as "skipped" on every run since it was committed.
+#
+#   2. A real browser at four real widths. Every responsive rule in CLAUDE.md
+#      is enforced by STATIC analysis of JSX today. That catches what it was
+#      built for and cannot catch a layout that simply overflows — the working
+#      agreement says as much: "a green test run is not a substitute for
+#      opening the page at 360px."
+#
+# ── WHY IT IS NOT PART OF ci.yml ──────────────────────────────────────────
+#
+# Both jobs are minutes slower than the whole of `verify`, and both need
+# software the runner may not have (Docker, the Supabase CLI, a browser). Tying
+# PR feedback to them would make the common case wait on the rare one. So this
+# runs on main and on demand, and reports its prerequisites loudly instead of
+# dying on a confusing ENOENT three steps in — the same shape as the `Find
+# psql` step in ci.yml, and for the same reason.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: sandboxes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  database:
+    name: A database built from the migrations alone
+    # Follows CI_RUNNER exactly like ci.yml — see docs/self-hosted-runner.md.
+    # Deleting that repository variable puts this back on hosted runners.
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Find Docker and the Supabase CLI
+        id: prereq
+        run: |
+          missing=""
+          docker info >/dev/null 2>&1 || missing="$missing docker"
+          command -v supabase >/dev/null 2>&1 || missing="$missing supabase"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing on this runner:$missing"
+            echo "  Docker Desktop must be INSTALLED AND RUNNING — 'docker info' failing while"
+            echo "  the binary exists means the daemon is not up, which is the usual case on a"
+            echo "  laptop that has just rebooted."
+            echo "  Supabase CLI:  brew install supabase/tap/supabase"
+            exit 1
+          fi
+          echo "docker and supabase are both present"
+
+      # `db reset` drops the local database and replays supabase/migrations/
+      # from nothing. That is a stronger claim than anything in ci.yml, which
+      # only ever compares the repo against a database built incrementally over
+      # a year plus 82 baselined files. If a migration only ever worked because
+      # of the state that preceded it, this is where it fails.
+      - name: Replay every migration into an empty database
+        run: |
+          supabase start
+          supabase db reset --local
+
+      - name: The RLS and portal-auth backstops, finally executed
+        run: npm run test:db
+
+      - name: Stop the stack
+        if: always()
+        run: supabase stop --no-backup || true
+
+  viewports:
+    name: Four real widths in a real browser
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # A self-hosted runner keeps its workspace between jobs, so the browser is
+      # usually already there and this is a no-op after the first run.
+      - name: Install the browser
+        run: npx playwright install --with-deps chromium
+
+      # The dev server is what gets measured, not `.output`: the web build
+      # targets the cloudflare-module preset, so the server bundle is a Worker
+      # rather than something node can serve. Layout comes from the same
+      # Tailwind and the same components either way.
+      #
+      # The Supabase values only need to EXIST for the app to boot; the public
+      # routes this sweep visits do not read from the database. Real values go
+      # in when the sweep grows to cover authenticated routes.
+      - name: Sweep 360 / 768 / 1280 / 1920
+        env:
+          SUPABASE_URL: http://127.0.0.1:54321
+          SUPABASE_PUBLISHABLE_KEY: sb_publishable_placeholder
+          SUPABASE_PROJECT_ID: localdev
+          SERVICE_ROLE_KEY: sb_secret_placeholder
+          VITE_SUPABASE_URL: http://127.0.0.1:54321
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_placeholder
+          VITE_SUPABASE_PROJECT_ID: localdev
+        run: npm run test:viewports
+
+      # Screenshots and traces exist only for failures — on a green run this
+      # uploads nothing, which is the point.
+      - name: Keep what failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: viewport-failures
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
