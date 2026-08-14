@@ -34,6 +34,24 @@ export default defineConfig({
   testMatch: /.*\.spec\.ts$/,
   // A layout assertion that needs retrying is a layout assertion that is wrong.
   retries: 0,
+  // ── WHY 90s AND NOT THE 30s DEFAULT ───────────────────────────────────
+  //
+  // The first run of this on the self-hosted Mac failed exactly two of 54
+  // assertions: /auth at 360px, which are tests 1 and 2 of the run. Both died
+  // inside settle() with "Test timeout of 30000ms exceeded", while every later
+  // test took 2–7 seconds. It was not a layout fault — it was Vite's cold
+  // start.
+  //
+  // `webServer.url` waits for /auth to answer, but this app is server-rendered
+  // and Vite transforms modules lazily: a 200 from the shell arrives long
+  // before the route's module graph is built. So the FIRST navigation pays for
+  // dependency optimisation and the whole SSR transform, on a checkout with no
+  // warm cache, and nothing after it pays anything.
+  //
+  // Raising the ceiling is the honest fix. Warming the server in globalSetup
+  // would hide the cost rather than allow for it, and a retry would turn a
+  // deterministic layout check into a flaky one.
+  timeout: 90_000,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: process.env.SWEEP_BASE_URL ?? "http://127.0.0.1:5599",
@@ -64,5 +82,26 @@ export default defineConfig({
         url: "http://127.0.0.1:5599/auth",
         reuseExistingServer: true,
         timeout: 180_000,
+        // Passed HERE rather than left to a `.env`, deliberately.
+        //
+        // The app needs these to boot; the public routes this sweep visits do
+        // not read from the database, so placeholders are enough. But writing
+        // them to `.env` to get the dev server up ALSO feeds them to vitest,
+        // which loads the same file — and
+        // tests/the-supabase-url-is-not-a-secret.test.ts then fails, because it
+        // asserts on the fallback that a populated SUPABASE_URL displaces.
+        //
+        // That is a nasty trap: running the browser sweep would break the unit
+        // suite, in a file that has nothing to do with either. Scoping the
+        // values to this server keeps them out of every other runner.
+        env: {
+          SUPABASE_URL: "http://127.0.0.1:54321",
+          SUPABASE_PUBLISHABLE_KEY: "sb_publishable_placeholder",
+          SUPABASE_PROJECT_ID: "localdev",
+          SERVICE_ROLE_KEY: "sb_secret_placeholder",
+          VITE_SUPABASE_URL: "http://127.0.0.1:54321",
+          VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_placeholder",
+          VITE_SUPABASE_PROJECT_ID: "localdev",
+        },
       },
 });

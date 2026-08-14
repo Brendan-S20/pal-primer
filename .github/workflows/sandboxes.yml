@@ -106,18 +106,11 @@ jobs:
       # rather than something node can serve. Layout comes from the same
       # Tailwind and the same components either way.
       #
-      # The Supabase values only need to EXIST for the app to boot; the public
-      # routes this sweep visits do not read from the database. Real values go
-      # in when the sweep grows to cover authenticated routes.
+      # Playwright starts that server itself and passes it the placeholder
+      # Supabase values it needs to boot — see the `webServer.env` block in
+      # playwright.config.ts, and the note there on why they must NOT be put in
+      # a `.env` instead.
       - name: Sweep 360 / 768 / 1280 / 1920
-        env:
-          SUPABASE_URL: http://127.0.0.1:54321
-          SUPABASE_PUBLISHABLE_KEY: sb_publishable_placeholder
-          SUPABASE_PROJECT_ID: localdev
-          SERVICE_ROLE_KEY: sb_secret_placeholder
-          VITE_SUPABASE_URL: http://127.0.0.1:54321
-          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_placeholder
-          VITE_SUPABASE_PROJECT_ID: localdev
         run: npm run test:viewports
 
       # Screenshots and traces exist only for failures — on a green run this

@@ -68,12 +68,41 @@ and name the offending file and line rather than counting violations:
   `whitespace-nowrap` alone, on `flex-col`, on grids, and on `shrink-0`.
 
 What is NOT enforced, and still has to be looked at: whether a thing is
-centred, whether a layout is merely cramped rather than broken, and whether a
-value with no space in it — an address, a link, an id — has somewhere to
-break. That last one is the same fault as the truncation rule with a different
-trigger, and it cannot be checked mechanically: telling a 40-character signup
-URL from an eight-character promo code means knowing the value. A green test
-run is not a substitute for opening the page at 360px.
+centred, and whether a layout is merely cramped rather than broken.
+
+**A value with no space in it — an address, a link, an id — used to be on that
+list**, described here as impossible to check mechanically, because telling a
+40-character signup URL from an eight-character promo code means knowing the
+value. That is true of PARSING, which is why the four tests above stop short of
+it: the class list is identical either way and the JSX only says
+`{org.signupUrl}`. It is not true of MEASURING. At render time the string has a
+width and the box has a width, and a browser knows both. See the next section.
+
+### And some of it is now measured in a real browser
+
+`tests/viewports/every-public-page-at-every-width.spec.ts` loads the public
+routes at 360 / 768 / 1280 / 1920 in Chromium and asserts from computed
+geometry: no horizontal page scroll, no control off the side, no control under
+44px below `md`, and nothing clipped with no ellipsis and no scrollbar — the
+long-value fault above. Run it with `npm run test:viewports`; it needs a dev
+server, which the Playwright config starts for you.
+
+Three things about it are worth knowing before you trust or extend it:
+
+- **It does not replace the static tests.** Those name a file and a line, which
+  a screenshot cannot, and they run in seconds with no server. The browser
+  catches what a parser cannot see; the parser says where to go and fix it.
+- **It only covers PUBLIC routes.** Everything behind `/_authenticated` needs a
+  session, so the surfaces `docs/mobile-ux-audit.md` is actually about are not
+  in it yet.
+- **Assertions of the form "nothing is wrong" all pass on a blank page**, so
+  `settle()` refuses to measure a route that did not render. That guard is
+  there because the sweep spent several runs green against a Vite error page
+  during development, and made an earlier mutation test look successful for the
+  wrong reason. If you add a rule here, add it to a page you have proved is
+  rendering.
+
+A green test run is still not a substitute for opening the page at 360px.
 
 Prior art worth reading rather than rediscovering: `docs/mobile-ux-audit.md`
 (2026-07-23) audited the staff app against this standard and its findings are
