@@ -167,6 +167,57 @@ const ALL_MIGRATIONS = readdirSync(MIGRATIONS)
   .sort()
   .map((f) => ({ file: f, sql: sqlWithoutComments(readFileSync(join(MIGRATIONS, f), "utf8")) }));
 
+describe("a database can actually be built from these files", () => {
+  it("no two migrations claim the same version", () => {
+    // `supabase_migrations.schema_migrations.version` is the PRIMARY KEY, and
+    // the version is the filename's leading timestamp. Two files sharing one
+    // means the second can never be recorded, so `supabase db reset` — and any
+    // fresh environment built from this repo — dies partway through with
+    //
+    //     ERROR: duplicate key value violates unique constraint
+    //            "schema_migrations_pkey"
+    //     Key (version)=(20260716170000) already exists.
+    //
+    // ── WHY NOTHING CAUGHT THIS FOR A MONTH ──────────────────────────────
+    //
+    // 20260716170000 was used by BOTH annual-plan-prices.sql and
+    // signup-requests-payment-intent.sql. Production was never affected: both
+    // had already been applied under their real, distinct timestamps
+    // (20260716042822 and 20260716070224) and were filed into the repo later
+    // with a hand-picked one, twice.
+    //
+    // That is exactly the case every existing check is blind to.
+    // check-migrations compares NAMES against the applied ledger, and both
+    // names match. check-baseline-objects asks whether the objects exist, and
+    // they do. Neither reads the version, and neither builds anything. The
+    // fault is only visible to a replay from empty, which nothing did until
+    // the Sandboxes workflow ran for the first time on 2026-08-14 and failed
+    // on its first attempt.
+    //
+    // This test is the cheap half of that discovery: no Docker, no database,
+    // no 286-file replay — just the observation that a primary key has to be
+    // unique.
+    const byVersion = new Map<string, string[]>();
+    for (const { file } of ALL_MIGRATIONS) {
+      const version = file.split("_")[0];
+      byVersion.set(version, [...(byVersion.get(version) ?? []), file]);
+    }
+    const collisions = [...byVersion.entries()]
+      .filter(([, files]) => files.length > 1)
+      .map(([version, files]) => `${version}: ${files.join(" + ")}`);
+    expect(collisions, "two migrations cannot share one primary key").toEqual([]);
+  });
+
+  it("every migration filename starts with a 14-digit timestamp", () => {
+    // The version is parsed off the filename by the Supabase CLI and by the
+    // three check scripts. A file that does not carry one is not ordered, not
+    // recorded, and not compared — it simply is not part of the sequence,
+    // silently.
+    const malformed = ALL_MIGRATIONS.filter(({ file }) => !/^\d{14}_/.test(file)).map((m) => m.file);
+    expect(malformed).toEqual([]);
+  });
+});
+
 describe("row level security stays on", () => {
   it("no migration ever disables it", () => {
     // Policy-text scans are blind to this: every authz test in this repo reads

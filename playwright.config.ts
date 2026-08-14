@@ -34,6 +34,24 @@ export default defineConfig({
   testMatch: /.*\.spec\.ts$/,
   // A layout assertion that needs retrying is a layout assertion that is wrong.
   retries: 0,
+  // ── WHY 90s AND NOT THE 30s DEFAULT ───────────────────────────────────
+  //
+  // The first run of this on the self-hosted Mac failed exactly two of 54
+  // assertions: /auth at 360px, which are tests 1 and 2 of the run. Both died
+  // inside settle() with "Test timeout of 30000ms exceeded", while every later
+  // test took 2–7 seconds. It was not a layout fault — it was Vite's cold
+  // start.
+  //
+  // `webServer.url` waits for /auth to answer, but this app is server-rendered
+  // and Vite transforms modules lazily: a 200 from the shell arrives long
+  // before the route's module graph is built. So the FIRST navigation pays for
+  // dependency optimisation and the whole SSR transform, on a checkout with no
+  // warm cache, and nothing after it pays anything.
+  //
+  // Raising the ceiling is the honest fix. Warming the server in globalSetup
+  // would hide the cost rather than allow for it, and a retry would turn a
+  // deterministic layout check into a flaky one.
+  timeout: 90_000,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: process.env.SWEEP_BASE_URL ?? "http://127.0.0.1:5599",
