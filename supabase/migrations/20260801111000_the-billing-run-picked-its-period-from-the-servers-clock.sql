@@ -169,8 +169,19 @@ BEGIN
   END IF;
 
   -- The nightly job must still point at it, or none of this runs.
-  IF NOT EXISTS (SELECT 1 FROM cron.job
-                  WHERE active AND command ILIKE '%run_billing_cycles%') THEN
+  --
+  -- Guarded on schedules existing at all, for the reason set out at length in
+  -- 20260801092000: a cron job is operations state that no migration in this
+  -- repo creates, so a database built from these files has none and this would
+  -- refuse to apply. An empty `cron.job` is the signature of a fresh build,
+  -- where no billing run exists to protect. Wherever schedules do exist the
+  -- assertion is unchanged.
+  --
+  -- These are the only two cron assertions in the 286 files that raise, so this
+  -- pair is the whole class rather than the next one in a queue.
+  IF EXISTS (SELECT 1 FROM cron.job)
+     AND NOT EXISTS (SELECT 1 FROM cron.job
+                      WHERE active AND command ILIKE '%run_billing_cycles%') THEN
     RAISE EXCEPTION 'no active cron job calls run_billing_cycles';
   END IF;
 END $$;
