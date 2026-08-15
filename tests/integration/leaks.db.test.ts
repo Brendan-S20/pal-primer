@@ -96,6 +96,11 @@ describe.skipIf(!enabled)("DB backstop for finding #1 / #47 leaks", () => {
       display_name: "Leak Test Client",
       account_type: "residential",
       active: true,
+      // Defaults false. log_dna_sample_from_field refuses a client who never
+      // opted into the DNA programme — deliberately, per 20260801023000 — so
+      // without this the field-RPC test below would fail for a correct reason
+      // and read like a broken RPC.
+      dna_compliance_enabled: true,
     });
     const propertyId = await ins("properties", {
       organization_id: orgId,
@@ -261,34 +266,54 @@ describe.skipIf(!enabled)("DB backstop for finding #1 / #47 leaks", () => {
 
   // ── Leak 3: Technician could set DNA fines and mark samples billed ───────
   describe("tech vs DNA billing (leak 3)", () => {
-    // ── OUTCOME FIRST, MECHANISM SECOND ──────────────────────────────────
+    // ── WHAT THE FIRST EVER RUN OF THIS BLOCK ACTUALLY SHOWED ────────────
     //
-    // These two failed on the first run this suite has ever had (2026-08-15),
-    // both on `expect(error).not.toBeNull()`. That assertion cannot say WHICH
-    // of two very different things happened, and the difference is the whole
-    // point of the test:
+    // These tests ran for the first time on 2026-08-15, when the Sandboxes
+    // replay finally built a database for them. Both forbidden-write tests
+    // failed on `expect(error).not.toBeNull()`, so an assertion was added
+    // above them to read the row back first and say which situation it was.
+    // The answer came back on the next run:
     //
-    //   the guard fired and the fine is unchanged, but PostgREST returned no
-    //   error because the UPDATE matched no visible row  -> the tenant is safe;
-    //   the test was describing HOW it is stopped, not THAT it is
+    //     the fine was refused, but silently — no error reached the caller
     //
-    //   the update went through                          -> a technician can
-    //   set an arbitrary fine on a DNA violation, which is the leak this file
-    //   exists to catch
+    // The fine was 0 and the status was not 'billed', so nothing leaked. But
+    // "refused silently" turned out to be the wrong description too, and the
+    // right one is worse for this block than for the product:
     //
-    // So the row is read back FIRST. Whichever way these now fail, the message
-    // names the situation. This cannot hide the vulnerability: the money value
-    // being unchanged IS the security property, and it is now the assertion
-    // that runs before any other.
+    //   1. tg_dna_matches_guard_billing RAISES — it does not quietly revert:
+    //        IF NOT has_permission(auth.uid(), OLD.organization_id,
+    //                              'manage_dna_billing') THEN
+    //          RAISE EXCEPTION 'Setting fines or billing DNA samples requires
+    //                           office permissions';
+    //      So no error means the trigger NEVER FIRED.
+    //   2. It never fired because the UPDATE matched no row. The only UPDATE
+    //      policy on dna_matches is `can_write_org(auth.uid(), organization_id)`
+    //      — office only. A technician cannot update the row at all, so
+    //      PostgREST updates nothing and returns success.
     //
-    // Not weakened, either — the "an error came back" expectation is kept
-    // below it. Both triggers are attached on a database built from these
-    // files (20260708200000 creates them, 20260801021000 asserts them from
-    // pg_trigger and applied cleanly in the replay), so a missing guard is
-    // already ruled out; what is not yet known is whether the refusal is loud
-    // or silent, and that is exactly what these will now report.
+    // The tenant is safe, by RLS rather than by the guard, which is defence in
+    // depth working as intended. What is NOT fine is that this whole block was
+    // vacuous: four tests that read like a proof of a cross-role protection,
+    // none of which reached the protection.
+    //
+    // So the mechanism is asserted directly now. `expect(error).not.toBeNull()`
+    // is gone from these two, not to make them pass, but because it was never
+    // testing what it claimed: a technician gets no error here and never will,
+    // and an expectation that can only be met by a code path RLS makes
+    // unreachable is a false statement about the system.
+    it("cannot even see the row to update it — RLS refuses before the guard", async () => {
+      // The non-vacuity check for everything below. If a technician CAN read a
+      // dna_matches row, this fails and the two tests after it become real
+      // tests of the trigger instead of assertions about an empty result set.
+      const { data: visible } = await tech
+        .from("dna_matches")
+        .select("id")
+        .eq("id", dnaMatchId);
+      expect(visible, "a technician can now read DNA matches — re-read this block").toEqual([]);
+    });
+
     it("cannot set a fine amount", async () => {
-      const { error } = await tech
+      await tech
         .from("dna_matches")
         .update({ fine_cents: 99900 })
         .eq("id", dnaMatchId);
@@ -299,11 +324,10 @@ describe.skipIf(!enabled)("DB backstop for finding #1 / #47 leaks", () => {
         .single();
       expect(check, "the fixture row is gone — nothing was under test").not.toBeNull();
       expect(check!.fine_cents, "a technician set a fine on a DNA violation").toBe(0);
-      expect(error, "the fine was refused, but silently — no error reached the caller").not.toBeNull();
     });
 
     it("cannot mark a sample billed", async () => {
-      const { error } = await tech
+      await tech
         .from("dna_matches")
         .update({ status: "billed" })
         .eq("id", dnaMatchId);
@@ -314,17 +338,52 @@ describe.skipIf(!enabled)("DB backstop for finding #1 / #47 leaks", () => {
         .single();
       expect(check, "the fixture row is gone — nothing was under test").not.toBeNull();
       expect(check!.status, "a technician marked a DNA sample billed").not.toBe("billed");
-      expect(error, "the write was refused, but silently — no error reached the caller").not.toBeNull();
     });
 
-    it("can still perform field status moves (sent_to_lab)", async () => {
-      const { error } = await tech
+    // ── THIS TEST USED TO CLAIM THE OPPOSITE, AND PASSED ON NOTHING ──────
+    //
+    // It read:
+    //
+    //   it("can still perform field status moves (sent_to_lab)", ...)
+    //     const { error } = await tech.from("dna_matches")
+    //       .update({ status: "sent_to_lab" }).eq("id", dnaMatchId);
+    //     expect(error).toBeNull();
+    //
+    // which a technician satisfies by updating nothing at all: PostgREST
+    // returns no error when RLS leaves no row to change. It was green from the
+    // day it was written and had never once exercised the capability it named.
+    //
+    // That capability was removed on purpose, and the file that removed it says
+    // so in as many words. 20260801021000 closed a hole where every policy on
+    // dna_matches was `is_org_member` — a tech could re-point a $250 violation
+    // onto another client's dog. 20260801023000 then gave techs back the ONE
+    // thing they legitimately need, deliberately as an RPC rather than a
+    // policy: "Matching it to a dog, pricing it, and billing it stay office
+    // actions behind can_write_org and manage_dna_billing, exactly as before.
+    // This adds a way to START the trail, not to decide its outcome."
+    //
+    // So the field capability is log_dna_sample_from_field, which takes a
+    // VISIT the tech is assigned to and derives everything else from it. That
+    // is what this now tests, against the visit the fixture already assigns to
+    // this technician — a real call with a real outcome, rather than an absent
+    // error.
+    it("logs a sample through the field RPC, which is the route techs have", async () => {
+      const { data, error } = await tech.rpc("log_dna_sample_from_field", {
+        _visit_id: techVisitId,
+      });
+      expect(error, "a technician cannot log a DNA sample from their own visit").toBeNull();
+      expect(data, "the RPC returned no sample id").toBeTruthy();
+
+      // Derived, never accepted from the caller: it lands unprocessed and
+      // unbilled no matter what the tech would have liked.
+      const { data: row } = await admin
         .from("dna_matches")
-        .update({ status: "sent_to_lab" })
-        .eq("id", dnaMatchId);
-      expect(error).toBeNull();
-      // restore for other tests
-      await admin.from("dna_matches").update({ status: "matched" }).eq("id", dnaMatchId);
+        .select("status, fine_cents, organization_id")
+        .eq("id", data as string)
+        .single();
+      expect(row!.status).toBe("new");
+      expect(row!.fine_cents ?? 0).toBe(0);
+      expect(row!.organization_id).toBe(orgId);
     });
 
     it("owner CAN set a fine and bill (regression)", async () => {
