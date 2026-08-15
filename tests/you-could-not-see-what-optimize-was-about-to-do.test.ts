@@ -60,10 +60,26 @@ describe("one planner, two callers", () => {
   });
 
   it("preview calls the same planner and writes nothing", () => {
+    // UPDATED 2026-08-15 by 20260815190000. This used to read
+    //
+    //   expect(prev).toMatch(/FROM public\.plan_route\(_org_id, _s, _d, ...)/)
+    //
+    // and it was pinning the bug. `plan_route` plans ONE VEHICLE over the whole
+    // organisation's day, so a preview that loops the selected technicians
+    // calling it once each shows every one of them the entire day: 20 + 20 + 20
+    // stops for a twenty-stop day. Correct as "preview and apply share a
+    // planner" — which was true while both were single-technician — and wrong
+    // from the moment Apply learned to divide a day between people.
+    //
+    // The planner they now share is the one that divides it, in its read-only
+    // form. The property being pinned is unchanged: ONE planner, and the
+    // preview is not allowed to be the caller that writes.
     const prev = lastBody("preview_optimize");
-    expect(prev).toMatch(/FROM public\.plan_route\(_org_id, _s, _d, _reassign, _level\)/);
+    expect(prev).toMatch(/FROM public\.plan_day_across_staff_dryrun\(_org_id, _staff_ids, _d,/);
     expect(prev).not.toMatch(/UPDATE public\.visits/);
     expect(prev).not.toMatch(/INSERT INTO public\.visits/);
+    // And not the writing twin, whose name differs by a suffix.
+    expect(prev).not.toMatch(/plan_day_across_staff\(/);
   });
 
   it("the planner itself never touches visits", () => {
@@ -141,7 +157,20 @@ describe("the guards still apply, and refusals are visible", () => {
 
   it("preview skips days the tech is away rather than planning them", () => {
     // Otherwise the preview offers a route whose Apply the trigger refuses.
-    expect(lastBody("preview_optimize")).toMatch(/IF NOT public\.is_staff_off\(_s, _d\) THEN/);
+    //
+    // UPDATED 2026-08-15 by 20260815190000. The test used to look for
+    // `IF NOT public.is_staff_off(_s, _d) THEN` inside preview_optimize, which
+    // was the whole of the preview's idea of eligibility — time off, and
+    // nothing else. It offered routes for people who do not run routes and for
+    // people switched off entirely, and Apply refused every one of them.
+    //
+    // The question is now asked once, by routable_staff, for all three callers.
+    // Pinned in two halves, because either alone can go green while the
+    // eligibility is gone: the preview reaches the planner that asks, and the
+    // thing it asks still knows about time off.
+    expect(lastBody("preview_optimize")).toMatch(/plan_day_across_staff_dryrun\(/);
+    expect(lastBody("plan_day_across_staff_dryrun")).toMatch(/public\.routable_staff\(/);
+    expect(lastBody("routable_staff")).toMatch(/NOT public\.is_staff_off\(s\.id, _day\)/);
   });
 
   it("a skipped day is reported, not swallowed", () => {

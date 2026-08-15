@@ -393,8 +393,15 @@ export function AutoRoutingPanel({
         {p && (
           <div className="rounded-md border bg-muted/40 p-2 text-xs">
             {p.days.length === 0 ? (
+              /* Two ways to get here, and until 20260815190000 only the first
+                 existed. The preview now reports what Apply would actually do,
+                 and Apply does nothing to a day whose stops are all assigned
+                 already unless it is allowed to move work between techs — so
+                 an empty preview on a full day is a correct answer, and the
+                 old sentence ("no scheduled stops") was flatly untrue for it. */
               <span className="text-muted-foreground">
-                Nothing to route in that range — no scheduled stops for those techs on those days.
+                Nothing to route in that range. Either those techs have no scheduled stops, or
+                every stop is already assigned and “Also move work between techs” is off.
               </span>
             ) : (
               <>
