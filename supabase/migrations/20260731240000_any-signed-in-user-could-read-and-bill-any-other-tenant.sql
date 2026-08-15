@@ -386,7 +386,40 @@ REVOKE EXECUTE ON FUNCTION public.enqueue_email(text, jsonb) FROM authenticated;
 REVOKE EXECUTE ON FUNCTION public.read_email_batch(text, integer, integer) FROM authenticated;
 REVOKE EXECUTE ON FUNCTION public.delete_email(text, bigint) FROM authenticated;
 REVOKE EXECUTE ON FUNCTION public.move_to_dlq(text, text, bigint, jsonb) FROM authenticated;
-REVOKE EXECUTE ON FUNCTION public.email_queue_dispatch() FROM authenticated;
+
+-- `email_queue_dispatch` is revoked ONLY IF IT EXISTS, and the story is worth
+-- keeping because this one line has now caused two separate problems.
+--
+-- The function was never created by any migration. It arrived with the Lovable
+-- email scaffold, directly in the live database, and 20260801092000 later
+-- DROPPED it — a SECURITY DEFINER routine that POSTed a vaulted service_role
+-- key to a lovable.app host.
+--
+-- (1) It hid from the drift sweep, because that sweep counted this very REVOKE
+--     as a definition. 20260801092000 says so itself: "One bug in a checker
+--     concealed one bug in the schema, which is the whole argument for
+--     mutation-testing the checkers."
+--
+-- (2) It then broke the replay from empty, which is the third fault the
+--     Sandboxes workflow found:
+--
+--         ERROR: function public.email_queue_dispatch() does not exist
+--         At statement: 19
+--         REVOKE EXECUTE ON FUNCTION public.email_queue_dispatch() FROM authenticated
+--
+--     Against production the REVOKE succeeded, because there the function was
+--     real. From nothing there is nothing to revoke on, and — since it is
+--     dropped a day later anyway — nothing this statement could usefully do.
+--
+-- Guarded rather than deleted, for the same reason as the roadmap grants in
+-- 20260731190000: a database that stops between this migration and the DROP
+-- should still have the privilege removed.
+DO $$
+BEGIN
+  IF to_regprocedure('public.email_queue_dispatch()') IS NOT NULL THEN
+    EXECUTE 'REVOKE EXECUTE ON FUNCTION public.email_queue_dispatch() FROM authenticated';
+  END IF;
+END $$;
 
 REVOKE EXECUTE ON FUNCTION public.plan_tier_for_org(uuid) FROM authenticated;
 REVOKE EXECUTE ON FUNCTION public.has_plan_entitlement(uuid, text) FROM authenticated;
