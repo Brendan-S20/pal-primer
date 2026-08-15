@@ -435,6 +435,70 @@ describe("a database can actually be built from these files", () => {
     expect([...unschedulable]).toEqual([]);
   });
 
+  it("never calls pg_get_functiondef across an unbounded set of routines", () => {
+    // The seventh fault the Sandboxes replay found:
+    //
+    //     ERROR: "array_agg" is an aggregate function (SQLSTATE 42809)
+    //
+    // `pg_get_functiondef` raises on any pg_proc row that is not a plain
+    // function or procedure — an aggregate or a window function has no CREATE
+    // statement to reconstruct. So it is safe on a row you have NAMED, and a
+    // loaded gun over a whole schema, because what lives in `public` is not
+    // the same everywhere.
+    //
+    // Production has 191 routines in public and every one is prokind 'f',
+    // which is why 20260801100000 applied there without complaint. A database
+    // built from these files has an aggregate that production does not, and
+    // the scan died before performing the check it was written to perform.
+    // Seventh fault, same family as the other six: the files describe a schema
+    // the live database happens to satisfy.
+    //
+    // ── WHAT SEPARATES THE ONE BAD CALL FROM THE OTHER THIRTY-FIVE ───────
+    //
+    // Whether the query is bounded to a named function. Thirty-five of the
+    // thirty-six say `p.proname = '...'` or pass a `::regprocedure` literal,
+    // and every one of those is fine — you cannot name an aggregate by
+    // accident. The one that failed filtered the name with `<>`, which
+    // excludes a single row and leaves the rest of the schema in scope.
+    //
+    // That distinction is the whole rule, and it is why this test looks for
+    // equality rather than for the word `proname`: an inequality reads like a
+    // filter and bounds nothing.
+    //
+    // A `prokind` filter is deliberately NOT accepted as a fix. Postgres does
+    // not promise to evaluate AND terms left to right, so a planner is free to
+    // call pg_get_functiondef on the row the filter was meant to exclude. The
+    // fix is to read `p.prosrc`, which cannot raise for any prokind.
+    const unbounded: string[] = [];
+    for (const { file, sql } of ALL_MIGRATIONS) {
+      for (const hit of [...sql.matchAll(/pg_get_functiondef\s*\(/gi)]) {
+        // A regprocedure literal is self-bounding: the function is named in
+        // the call itself.
+        const call = sql.slice(hit.index!, hit.index! + 200);
+        if (/::\s*regprocedure/i.test(call)) continue;
+
+        // Otherwise the enclosing statement has to pin the name. Statement
+        // bounds: back to the previous `;` or block opener, forward to the
+        // next `;`.
+        const from = Math.max(
+          sql.lastIndexOf(";", hit.index!),
+          sql.lastIndexOf("BEGIN", hit.index!),
+          0,
+        );
+        const to = sql.indexOf(";", hit.index!);
+        const stmt = sql.slice(from, to === -1 ? sql.length : to);
+        if (/proname\s*(=|IN\b)/i.test(stmt)) continue;
+
+        const line = sql.slice(0, hit.index!).split("\n").length;
+        unbounded.push(
+          `${file}:${line} calls pg_get_functiondef over every routine in the schema — ` +
+            `it raises on the first aggregate or window function it meets`,
+        );
+      }
+    }
+    expect(unbounded).toEqual([]);
+  });
+
   it("every migration filename starts with a 14-digit timestamp", () => {
     // The version is parsed off the filename by the Supabase CLI and by the
     // three check scripts. A file that does not carry one is not ordered, not

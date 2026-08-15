@@ -203,10 +203,41 @@ BEGIN
   END IF;
 
   -- No routine may still hand-maintain the balance, or it double-counts.
+  --
+  -- ── WHY prosrc AND NOT pg_get_functiondef ──────────────────────────────
+  --
+  -- This read `pg_get_functiondef(p.oid)`, and that is the seventh fault the
+  -- Sandboxes replay found:
+  --
+  --     ERROR: "array_agg" is an aggregate function (SQLSTATE 42809)
+  --
+  -- `pg_get_functiondef` raises on any pg_proc row that is not a plain
+  -- function or procedure — an aggregate or a window function has no CREATE
+  -- statement to reconstruct. This is the only one of the 36 pg_get_functiondef
+  -- call sites in these migrations that scans an UNBOUNDED set of rows: every
+  -- other one names its function, by `proname =` or by `::regprocedure`. Here
+  -- the only filter on the name is `<>`, which excludes exactly one row and
+  -- leaves the rest of the schema in scope.
+  --
+  -- Production has 191 routines in `public` and every one is prokind 'f', so
+  -- the scan never met a row it could not describe and this migration applied
+  -- cleanly. A database built from these files has an aggregate in `public`
+  -- that production does not, and the count query dies before the check it
+  -- was written to perform. Seventh fault, same family as the other six:
+  -- the files describe a schema the live database happens to satisfy.
+  --
+  -- `p.prosrc` is the fix rather than a `prokind` filter, because a prokind
+  -- filter in the same WHERE clause does not actually prevent this. Postgres
+  -- does not promise to evaluate AND terms left to right, so the planner may
+  -- still call pg_get_functiondef on the row the filter was meant to exclude.
+  -- prosrc cannot raise for any prokind, needs no guard to be ordered
+  -- correctly, and is the function BODY — which is where
+  -- `credit_balance_cents = credit_balance_cents` was always being looked for.
+  -- The header that pg_get_functiondef adds never mattered to this pattern.
   SELECT count(*) INTO _n FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
    WHERE n.nspname = 'public'
      AND p.proname <> 'tg_credit_ledger_maintain_balance'
-     AND pg_get_functiondef(p.oid) ~* 'credit_balance_cents = credit_balance_cents';
+     AND p.prosrc ~* 'credit_balance_cents = credit_balance_cents';
   IF _n <> 0 THEN
     RAISE EXCEPTION '% routine(s) still increment the balance by hand', _n;
   END IF;
