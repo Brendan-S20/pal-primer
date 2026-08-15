@@ -261,18 +261,45 @@ describe.skipIf(!enabled)("DB backstop for finding #1 / #47 leaks", () => {
 
   // ── Leak 3: Technician could set DNA fines and mark samples billed ───────
   describe("tech vs DNA billing (leak 3)", () => {
+    // ── OUTCOME FIRST, MECHANISM SECOND ──────────────────────────────────
+    //
+    // These two failed on the first run this suite has ever had (2026-08-15),
+    // both on `expect(error).not.toBeNull()`. That assertion cannot say WHICH
+    // of two very different things happened, and the difference is the whole
+    // point of the test:
+    //
+    //   the guard fired and the fine is unchanged, but PostgREST returned no
+    //   error because the UPDATE matched no visible row  -> the tenant is safe;
+    //   the test was describing HOW it is stopped, not THAT it is
+    //
+    //   the update went through                          -> a technician can
+    //   set an arbitrary fine on a DNA violation, which is the leak this file
+    //   exists to catch
+    //
+    // So the row is read back FIRST. Whichever way these now fail, the message
+    // names the situation. This cannot hide the vulnerability: the money value
+    // being unchanged IS the security property, and it is now the assertion
+    // that runs before any other.
+    //
+    // Not weakened, either — the "an error came back" expectation is kept
+    // below it. Both triggers are attached on a database built from these
+    // files (20260708200000 creates them, 20260801021000 asserts them from
+    // pg_trigger and applied cleanly in the replay), so a missing guard is
+    // already ruled out; what is not yet known is whether the refusal is loud
+    // or silent, and that is exactly what these will now report.
     it("cannot set a fine amount", async () => {
       const { error } = await tech
         .from("dna_matches")
         .update({ fine_cents: 99900 })
         .eq("id", dnaMatchId);
-      expect(error).not.toBeNull();
       const { data: check } = await admin
         .from("dna_matches")
         .select("fine_cents")
         .eq("id", dnaMatchId)
         .single();
-      expect(check!.fine_cents).toBe(0);
+      expect(check, "the fixture row is gone — nothing was under test").not.toBeNull();
+      expect(check!.fine_cents, "a technician set a fine on a DNA violation").toBe(0);
+      expect(error, "the fine was refused, but silently — no error reached the caller").not.toBeNull();
     });
 
     it("cannot mark a sample billed", async () => {
@@ -280,7 +307,14 @@ describe.skipIf(!enabled)("DB backstop for finding #1 / #47 leaks", () => {
         .from("dna_matches")
         .update({ status: "billed" })
         .eq("id", dnaMatchId);
-      expect(error).not.toBeNull();
+      const { data: check } = await admin
+        .from("dna_matches")
+        .select("status")
+        .eq("id", dnaMatchId)
+        .single();
+      expect(check, "the fixture row is gone — nothing was under test").not.toBeNull();
+      expect(check!.status, "a technician marked a DNA sample billed").not.toBe("billed");
+      expect(error, "the write was refused, but silently — no error reached the caller").not.toBeNull();
     });
 
     it("can still perform field status moves (sent_to_lab)", async () => {
