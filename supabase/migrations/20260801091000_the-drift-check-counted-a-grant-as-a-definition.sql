@@ -35,6 +35,43 @@
 -- count, and no money, PII or access decision hangs off it. Recorded so it is a
 -- known trade-off rather than an oversight rediscovered later.
 
+-- ── THE TABLE, WHICH THIS FILE TALKED ABOUT AND NEVER CREATED ────────────
+--
+-- The note above describes `roadmap_votes` — its RLS posture, why these are
+-- definer functions — and then defines only the FUNCTIONS. The table itself is
+-- created by no migration anywhere in this repo. Like the functions it once
+-- concealed, it arrived directly in the live database.
+--
+-- Against production that is invisible: the table is there, so
+-- `roadmap_vote_counts` compiles. From an empty database it is the FOURTH fault
+-- the Sandboxes replay found, and the one that shows the pattern most clearly
+-- — a `language sql` body is parsed and validated at CREATE time, so the
+-- function cannot even be defined:
+--
+--     select feature, count(*)::bigint from public.roadmap_votes group by feature;
+--                                             ^
+--
+-- Added IF NOT EXISTS, transcribed from the live definition rather than
+-- invented: uuid primary key defaulting to gen_random_uuid(), feature and
+-- voter_id both NOT NULL text, created_at timestamptz NOT NULL default now(),
+-- and UNIQUE (feature, voter_id) — which is what makes cast_roadmap_vote's
+-- one-vote-per-voter upsert work at all.
+--
+-- RLS is enabled with NO policies, deliberately and exactly as production has
+-- it. That combination denies every direct read and write, which is precisely
+-- why the two SECURITY DEFINER functions below are the only way in. Leaving RLS
+-- off here would silently make a fresh database more permissive than the real
+-- one, which is worse than not describing the table at all.
+CREATE TABLE IF NOT EXISTS public.roadmap_votes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  feature text NOT NULL,
+  voter_id text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (feature, voter_id)
+);
+
+ALTER TABLE public.roadmap_votes ENABLE ROW LEVEL SECURITY;
+
 CREATE OR REPLACE FUNCTION public.cast_roadmap_vote(p_feature text, p_voter text)
 RETURNS void
 LANGUAGE plpgsql

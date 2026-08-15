@@ -204,11 +204,17 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
     // an invoice item; recurring ones become a subscription item. Both use an
     // idempotency key so a double-click can't double-charge.
     let itemId: string | null = null;
+    // The one-time charge is an INVOICE ITEM, not a subscription item, so it
+    // needs its own handle to undo. Without this the id was discarded and
+    // `itemId` stayed null, which meant the rollback below was skipped for the
+    // single most expensive thing in the catalog — and the customer was told
+    // "You have not been charged" while a $499 line sat on their next invoice.
+    let invoiceItemId: string | null = null;
     if (oneTime) {
       const { data: orgRow } = await (supabaseAdmin as any)
         .from("organizations").select("stripe_customer_id").eq("id", orgId).single();
       if (!orgRow?.stripe_customer_id) throw new Error("No billing customer on file yet.");
-      await stripe.invoiceItems.create(
+      const invoiceItem = await stripe.invoiceItems.create(
         {
           customer: orgRow.stripe_customer_id,
           pricing: { price: await ensureStoredPrice() },
@@ -216,6 +222,7 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
         },
         { idempotencyKey: `addon-buy-${orgId}-${addon.id}-${idemGen}` },
       );
+      invoiceItemId = invoiceItem.id;
     } else {
       // The new item must match the subscription's billing interval — Stripe
       // forbids mixing month and year items on one subscription.
@@ -275,14 +282,42 @@ export const subscribePlatformAddon = createServerFn({ method: "POST" })
     );
     if (recordErr) {
       // Never bill without a record: undo the Stripe side, then surface it.
+      //
+      // BOTH shapes have to be undone. This used to handle only `itemId`, the
+      // subscription item, so a one-time purchase fell through it entirely —
+      // and then told the customer they had not been charged, which was the
+      // opposite of true.
+      let undone = true;
       if (itemId) {
         try {
           await stripe.subscriptionItems.del(itemId, { proration_behavior: "create_prorations" });
         } catch (e) {
+          undone = false;
           console.error("addon record failed AND stripe rollback failed", recordErr.message, e);
         }
       }
-      throw new Error("Couldn't record the add-on. You have not been charged; try again.");
+      if (invoiceItemId) {
+        try {
+          // A pending invoice item is deletable right up until the invoice
+          // that would carry it is finalized.
+          await stripe.invoiceItems.del(invoiceItemId);
+        } catch (e) {
+          undone = false;
+          console.error(
+            `addon record failed AND the one-time invoice item ${invoiceItemId} could not be removed — ` +
+              `org ${orgId} will be billed for ${addon.slug ?? addon.id} with no record of owning it`,
+            recordErr.message,
+            e,
+          );
+        }
+      }
+      // Only promise what happened. If the undo failed, the charge is real and
+      // saying otherwise sends the customer away from a bill they will get.
+      throw new Error(
+        undone
+          ? "Couldn't record the add-on. You have not been charged; try again."
+          : "Couldn't record the add-on, and the pending charge could not be cancelled automatically. Contact support before retrying.",
+      );
     }
     await setFeatureFlag(orgId, addon.feature_flag, true);
     return { ok: true };
