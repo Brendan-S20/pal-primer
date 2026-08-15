@@ -136,6 +136,46 @@ describe("the planner that does the splitting", () => {
     expect(sql).toMatch(/check "Runs routes" and time off/);
   });
 
+  it("resolves a start point through a chain rather than reading staff directly", () => {
+    // A technician with no start address was routed from NULL, and the solver
+    // does not fail on that — it coalesces every candidate to a flat 5.0 km,
+    // so the first stop is whichever row came back first and the route can
+    // begin in the middle and cross itself getting out. Two of the three demo
+    // technicians are in exactly that state, which is also what a new account
+    // looks like before anybody fills in the team page.
+    const chain = read(
+      "supabase/migrations/20260815180000_a-technician-with-no-start-address-started-from-nowhere.sql",
+    );
+    expect(chain).toMatch(/CREATE OR REPLACE FUNCTION public\.staff_start_point/);
+    for (const tier of ["'staff'", "'business'", "'disposal'", "'route'", "'none'"]) {
+      expect(chain, `the ${tier} tier is missing from the chain`).toContain(tier);
+    }
+    // The order is the whole point: a personal address beats the depot, which
+    // beats a dump site, which beats guessing from the work.
+    const order = ["'staff'", "'business'", "'disposal'", "'route'"].map((t) => chain.indexOf(t));
+    expect(order, "the fallback tiers are out of order").toEqual([...order].sort((a, b) => a - b));
+
+    // And plan_route must actually USE it. Splicing into pg_get_functiondef
+    // means the check has to be that the old read is gone, not that a new
+    // line was added to a file.
+    expect(chain).toMatch(/strpos\(_after, 'start_latitude'\) > 0 THEN/);
+    expect(chain).toMatch(/plan_route still reads staff\.start_latitude directly/);
+  });
+
+  it("adds the columns tiers 2 and 3 need, and says they are not populated", () => {
+    const chain = read(
+      "supabase/migrations/20260815180000_a-technician-with-no-start-address-started-from-nowhere.sql",
+    );
+    expect(chain).toMatch(/ALTER TABLE public\.organizations[\s\S]*ADD COLUMN IF NOT EXISTS latitude/);
+    expect(chain).toMatch(
+      /ALTER TABLE public\.waste_disposal_facilities[\s\S]*ADD COLUMN IF NOT EXISTS latitude/,
+    );
+    // Honesty about reach: geocoding runs in TypeScript, so until the backfill
+    // ships, every technician without a personal address lands on tier 4. A
+    // migration that quietly added two dead columns would read as done.
+    expect(chain).toMatch(/NOTHING POPULATES THEM YET/);
+  });
+
   it("reuses the existing solver rather than replacing it", () => {
     // The single-vehicle solver was never the problem. Rewriting it would
     // have thrown away the time windows, the preference penalties and the
