@@ -2829,6 +2829,8 @@ export type Database = {
           grace_expires_at: string | null
           id: string
           invoice_grace_days: number
+          latitude: number | null
+          longitude: number | null
           invoice_net_days: number
           is_comped: boolean
           is_franchise_parent: boolean
@@ -2945,6 +2947,8 @@ export type Database = {
           grace_expires_at?: string | null
           id?: string
           invoice_grace_days?: number
+          latitude?: number | null
+          longitude?: number | null
           invoice_net_days?: number
           is_comped?: boolean
           is_franchise_parent?: boolean
@@ -3061,6 +3065,8 @@ export type Database = {
           grace_expires_at?: string | null
           id?: string
           invoice_grace_days?: number
+          latitude?: number | null
+          longitude?: number | null
           invoice_net_days?: number
           is_comped?: boolean
           is_franchise_parent?: boolean
@@ -5425,6 +5431,8 @@ export type Database = {
           address: string | null
           created_at: string
           id: string
+          latitude: number | null
+          longitude: number | null
           name: string
           notes: string | null
           organization_id: string
@@ -5435,6 +5443,8 @@ export type Database = {
           address?: string | null
           created_at?: string
           id?: string
+          latitude?: number | null
+          longitude?: number | null
           name: string
           notes?: string | null
           organization_id: string
@@ -5445,6 +5455,8 @@ export type Database = {
           address?: string | null
           created_at?: string
           id?: string
+          latitude?: number | null
+          longitude?: number | null
           name?: string
           notes?: string | null
           organization_id?: string

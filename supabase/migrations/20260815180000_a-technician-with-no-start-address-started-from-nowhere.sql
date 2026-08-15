@@ -55,17 +55,25 @@
 -- Six percent of the driving, for filling in nothing. Tiers 2 and 3 should do
 -- better still, and they are the ones that need data.
 --
--- ── TIERS 2 AND 3 NEED COORDINATES THAT DO NOT EXIST YET ──────────────────
+-- ── TIERS 2 AND 3 NEEDED COORDINATES THAT DID NOT EXIST ───────────────────
 --
 -- Neither `organizations` nor `waste_disposal_facilities` had latitude or
 -- longitude at all — both store a text address and nothing else. The columns
--- are added here, nullable, and NOTHING POPULATES THEM YET: geocoding runs in
--- TypeScript (src/lib/geocode.server.ts), not in SQL, so the backfill and the
--- on-save wiring are a separate change.
+-- are added here, nullable, and three things fill them, because geocoding runs
+-- in TypeScript (src/lib/geocode.server.ts) and not in SQL:
 --
--- Said plainly because it decides what the chain does today: until those are
--- filled, every technician without a personal start address lands on tier 4.
--- That is why tier 4 was built to be good rather than to be a last resort.
+--   updateOrgBranding   geocodes contact_address on save
+--   upsertFacility      geocodes address on save
+--   the nightly hook    backfills up to 25 of each per run, for the rows
+--                       already on file that nobody is going to re-save
+--
+-- All three CLEAR the coordinates when the address is cleared. Coordinates
+-- left pointing at a previous premises are worse than none: the planner has no
+-- way to doubt them, and every route would start from the old yard.
+--
+-- Until the backfill has run, a technician without a personal start address
+-- lands on tier 4. That is why tier 4 was built to be good rather than to be a
+-- last resort.
 
 ALTER TABLE public.organizations
   ADD COLUMN IF NOT EXISTS latitude double precision,

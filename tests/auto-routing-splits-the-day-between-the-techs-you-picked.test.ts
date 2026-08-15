@@ -162,7 +162,7 @@ describe("the planner that does the splitting", () => {
     expect(chain).toMatch(/plan_route still reads staff\.start_latitude directly/);
   });
 
-  it("adds the columns tiers 2 and 3 need, and says they are not populated", () => {
+  it("adds the columns tiers 2 and 3 need", () => {
     const chain = read(
       "supabase/migrations/20260815180000_a-technician-with-no-start-address-started-from-nowhere.sql",
     );
@@ -170,10 +170,35 @@ describe("the planner that does the splitting", () => {
     expect(chain).toMatch(
       /ALTER TABLE public\.waste_disposal_facilities[\s\S]*ADD COLUMN IF NOT EXISTS latitude/,
     );
-    // Honesty about reach: geocoding runs in TypeScript, so until the backfill
-    // ships, every technician without a personal address lands on tier 4. A
-    // migration that quietly added two dead columns would read as done.
-    expect(chain).toMatch(/NOTHING POPULATES THEM YET/);
+  });
+
+  it("and something actually fills them, on save and for the existing rows", () => {
+    // Two columns nobody writes to are two dead columns, and the chain tier
+    // above them is decoration. Geocoding runs in TypeScript, not SQL, so the
+    // wiring lives in three places and all three are pinned here.
+    const org = codeOnly(read("src/lib/org.functions.ts"));
+    expect(org).toMatch(/geocodeAddress\(\{ street: data\.contactAddress \}\)/);
+    expect(org).toMatch(/patch\.latitude = geo\?\.latitude \?\? null/);
+
+    const stations = codeOnly(read("src/lib/stations.functions.ts"));
+    expect(stations).toMatch(/geocodeAddress\(\{ street: data\.address \}\)/);
+    expect(stations).toMatch(/payload\.latitude = geo\?\.latitude \?\? null/);
+
+    // And the rows already on file, which no one is going to re-save.
+    const nightly = codeOnly(read("src/routes/api/public/hooks/nightly.ts"));
+    expect(nightly).toMatch(/routing_anchors:/);
+    expect(nightly).toMatch(/\.is\("latitude", null\)/);
+    expect(nightly).toMatch(/orgs_pending/);
+    expect(nightly).toMatch(/facilities_pending/);
+  });
+
+  it("clears the coordinates when the address is cleared", () => {
+    // Stale coordinates are worse than none: the planner cannot doubt them, so
+    // every route would keep starting from the previous premises.
+    const org = codeOnly(read("src/lib/org.functions.ts"));
+    const stations = codeOnly(read("src/lib/stations.functions.ts"));
+    expect(org).toMatch(/else \{\s*patch\.latitude = null;\s*patch\.longitude = null;/);
+    expect(stations).toMatch(/else \{\s*payload\.latitude = null;\s*payload\.longitude = null;/);
   });
 
   it("reuses the existing solver rather than replacing it", () => {
