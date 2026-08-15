@@ -107,3 +107,86 @@ A green test run is still not a substitute for opening the page at 360px.
 Prior art worth reading rather than rediscovering: `docs/mobile-ux-audit.md`
 (2026-07-23) audited the staff app against this standard and its findings are
 still the best map of where the weak points are.
+
+## Every migration replays into an empty database. All of them, in order.
+
+`supabase db reset` drops the local database and replays
+`supabase/migrations/` from nothing. Every file has to survive that with no
+tenant, no rows, no cron schedule and no year of production history in front of
+it. A migration is not finished when it applies to production; it is finished
+when it applies to a database that has never seen production.
+
+**Why this is stated as a rule rather than left to taste:** on 2026-08-15 this
+repo could not do it, and had not been able to for about a month. Ten
+consecutive replays turned up ten faults, and not one of them was visible to
+anything else we run. Nine were in different files; the tenth was the ninth
+again, because the first fix for it was wrong — a guard built on the premise
+that an empty `cron.job` identifies a fresh build, which one grep of this repo
+disproves, since two migrations schedule jobs of their own before that file
+runs. That round is the reason the rule below is phrased as "does the sequence
+being replayed establish the thing" rather than anything cleverer. `check-migrations` compares
+migration file names against the applied ledger. `check-baseline-objects` asks
+whether the objects those files create exist in the live database. Both compare
+the repo to a database that already exists — one grown incrementally, where
+every migration ran with its predecessors' *and* operations' state already in
+place — so both were green the entire time. Neither asks the only question a new
+environment cares about: can these files BUILD one. That is what the `database`
+job in `.github/workflows/sandboxes.yml` does, and it is the only check here
+that can see the class of fault where production holds state the repo's files
+never describe.
+
+### What a migration may assert, concretely
+
+- **Never assert operations state a migration cannot itself create.** A cron
+  job, a tenant, an organization with clients and an owner, rows of any kind —
+  a fresh build has none of it, and an assertion that needs it fails the replay
+  for a reason that has nothing to do with the change. `process-email-queue` is
+  scheduled by a human at a console; no file in this repo schedules it, so no
+  replay can ever satisfy it. `run-billing-cycles` IS scheduled, by an earlier
+  migration in the same sequence, so asserting it is fine. The distinction is
+  not "does it mention cron" — it is whether the sequence being replayed
+  establishes the thing.
+- **A number measured from the live database is a premise, not a product.** If
+  the value came from running a query on the day the file was written — 150
+  policies in `public`, 34 trigger functions, 93 unindexed foreign keys — it
+  describes a database, not this change, and it belongs in `RAISE WARNING`. It
+  should still print its number: the point of keeping it is that somebody reads
+  the log. An assertion about what the migration ESTABLISHES stays a
+  `RAISE EXCEPTION`, because a replay can prove that one from any starting
+  state — "no colliding policy pair remains", "no index is left INVALID",
+  "nothing returning `trigger` is reachable by anon". Security properties are
+  almost always of the second kind, and downgrading one is not a trade this
+  rule licenses.
+- **Say so, loudly, when a check could not run.** A probe that needs two
+  tenants has nothing to measure on a fresh build, and that is fine — what is
+  not fine is a log where "the experiment says the leak is closed" and "no
+  experiment was run" look the same. Record the skip and warn on it.
+- **Never call `pg_get_functiondef` over an unbounded set of routines.** It
+  raises on any `pg_proc` row that is not a plain function or procedure — an
+  aggregate or a window function has no `CREATE` statement to reconstruct —
+  and what lives in `public` is not the same on every database. Name the
+  function (`proname = '…'`, or a `::regprocedure` literal), or read `p.prosrc`,
+  which cannot raise for any `prokind` and is the function BODY, which is
+  usually what the scan was looking through anyway. A `prokind` filter is not
+  the fix: Postgres does not promise to evaluate AND terms left to right, so
+  the planner may call the function on the row the filter was meant to exclude.
+
+### Some of this is enforced, and some of it cannot be
+
+Two of the rules are checked by `tests/the-wiring-is-connected.test.ts`, which
+walks the migrations in filename order and names the offending file and line:
+a block that `RAISE EXCEPTION`s on a cron job must name a job an earlier
+migration schedules — collected after the check, so a file cannot vouch for
+itself with a `cron.schedule` written below its own assertion — and no call site
+may pass `pg_get_functiondef` a set it has not narrowed by name. Both are
+mutation-tested against the wrong versions that actually shipped, including the
+plausible-looking `prokind` fix.
+
+**Whether a measured number would have held on a fresh build is not mechanical
+and there is deliberately no test for it.** The class list is identical either
+way; only a replay knows. Nothing checks that a `RAISE WARNING` deserved to be
+one, and nothing stops the next `$pre$` block from pinning today's row count. So
+run the job. `supabase db reset` needs Docker and the Supabase CLI, takes a few
+minutes, and is worth it before merging anything that touches
+`supabase/migrations/` — a green `verify` says only that the repo agrees with a
+database that already exists.
