@@ -47,6 +47,20 @@
 -- some other way; none of these is. And nothing in `src/` names any of them —
 -- checked, including in `.rpc(...)` calls.
 
+-- ── THE THREE CHECKS BELOW DESCRIBE THE DATABASE OF 2026-08-12 ────────────
+--
+-- 34, 34 and "no orphans" were measured on the live database before this file
+-- was written. They are the migration's premises, not its product, and a
+-- database built from these files is entitled to differ: the trigger-function
+-- population is whatever 200-odd earlier migrations left, and whether
+-- `authenticated` still holds EXECUTE on all of them depends on which of the
+-- earlier revokes landed first.
+--
+-- So they warn, and still print their numbers — the measurement is the point.
+-- What stays an exception is in $post$: after this file runs, NOTHING that
+-- returns trigger may be reachable by anon or authenticated. That is what the
+-- migration does, it holds on any starting state, and it is the whole security
+-- claim. See 20260810120000 for the same split at length.
 do $pre$
 declare _n integer; _granted integer; _orphans text;
 begin
@@ -54,7 +68,7 @@ begin
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prorettype = 'pg_catalog.trigger'::regtype;
   if _n <> 34 then
-    raise exception 'expected 34 trigger functions in public, found % — re-read this migration', _n;
+    raise warning 'expected 34 trigger functions in public, found % — not the database this was written against', _n;
   end if;
 
   select count(*) into _granted
@@ -63,18 +77,18 @@ begin
    where n.nspname = 'public' and p.prorettype = 'pg_catalog.trigger'::regtype
      and has_function_privilege('authenticated', p.oid, 'EXECUTE');
   if _granted <> 34 then
-    raise exception 'expected all 34 executable by authenticated, found % — re-read this migration', _granted;
+    raise warning 'expected all 34 executable by authenticated, found % — not the database this was written against', _granted;
   end if;
 
   -- A trigger function attached to no trigger is one somebody may be calling
-  -- another way. There are none, and this fails rather than guessing if that
-  -- ever stops being true.
+  -- another way. There were none on the database this was written against, and
+  -- this says so loudly if that ever stops being true.
   select string_agg(p.proname, ', ') into _orphans
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.prorettype = 'pg_catalog.trigger'::regtype
      and not exists (select 1 from pg_trigger t where t.tgfoid = p.oid and not t.tgisinternal);
   if _orphans is not null then
-    raise exception 'trigger function(s) attached to no trigger: % — check what calls them first', _orphans;
+    raise warning 'trigger function(s) attached to no trigger: % — check what calls them before relying on the revoke', _orphans;
   end if;
 end $pre$;
 
@@ -134,6 +148,6 @@ begin
    where n.nspname = 'public' and p.prorettype = 'pg_catalog.trigger'::regtype
      and not t.tgisinternal;
   if _fired < 34 then
-    raise exception 'expected at least 34 live triggers after the revokes, found %', _fired;
+    raise warning 'expected at least 34 live triggers after the revokes, found %', _fired;
   end if;
 end $post$;
