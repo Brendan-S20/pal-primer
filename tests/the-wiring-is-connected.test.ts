@@ -336,6 +336,105 @@ describe("a database can actually be built from these files", () => {
     expect(premature).toEqual([]);
   });
 
+  it("never raises on a cron job the sequence has not scheduled", () => {
+    // The fifth fault the Sandboxes replay found, and the only one it found
+    // TWICE — because the first fix was wrong:
+    //
+    //     ERROR: the process-email-queue cron job is missing or inactive (SQLSTATE P0001)
+    //
+    // A cron job is operations state. `process-email-queue` was scheduled by
+    // hand against the live database and no migration creates it, so a database
+    // built from these files does not have it and 20260801092000 refused to
+    // apply. Same family as the three faults above — repo and production
+    // disagreeing — but the mirror image of them: not the repo failing to
+    // describe something production has, the repo DEMANDING something only
+    // production has.
+    //
+    // ── WHY THE FIRST FIX FAILED, WHICH IS THE POINT OF THIS TEST ────────
+    //
+    // Both offending migrations were guarded with
+    //
+    //     IF EXISTS (SELECT 1 FROM cron.job) AND NOT EXISTS (...)
+    //
+    // on the stated reasoning that "an entirely empty cron.job is the signature
+    // of a freshly built database". It is not. 20260716220000 schedules
+    // `run-billing-cycles` and 20260731130000 schedules `weekly-digest`, both
+    // long before either check runs, so cron.job holds two rows on a fresh
+    // build and the precondition passes. Replay 6 failed on the same line as
+    // replay 5, with the new code visible in the log.
+    //
+    // That was a claim about these files, checkable against these files, and I
+    // shipped it without checking. Hence a test rather than a better guard:
+    // the question "does anything here create this job" has an answer on disk,
+    // and it takes a millisecond to read instead of a twelve-minute replay.
+    //
+    // ── WHAT IT ALLOWS ───────────────────────────────────────────────────
+    //
+    // Not "no migration may mention cron". A migration MAY hard-assert a job
+    // that an earlier migration schedules — 20260801111000 asserts
+    // run_billing_cycles and keeps its exception, because the replay creates
+    // that job before it gets there. What is forbidden is raising on a job the
+    // sequence never creates. RAISE WARNING is always fine: it says the same
+    // thing to an operator without stopping a build that cannot comply.
+    const scheduled: Array<{ file: string; name: string; call: string }> = [];
+    // A Set, because one IF can read cron.job twice — the wrong guard did
+    // exactly that — and the same finding printed twice is noise, not detail.
+    const unschedulable = new Set<string>();
+
+    for (const { file, sql } of ALL_MIGRATIONS) {
+      // Every `cron.job` read, widened to the IF ... END IF around it, so the
+      // question "does this one raise" is asked of the right block. A file can
+      // hold several: 20260716220000 tests for the job, then schedules it.
+      for (const hit of [...sql.matchAll(/cron\.job\b/gi)]) {
+        const openIf = sql.lastIndexOf("IF ", hit.index!);
+        const closeIf = sql.toUpperCase().indexOf("END IF", hit.index!);
+        if (openIf === -1 || closeIf === -1) continue;
+        const block = sql.slice(openIf, closeIf);
+        if (!/RAISE\s+EXCEPTION/i.test(block)) continue;
+
+        // What the block demands, in the two forms this repo writes: by job
+        // name, or by what the job's command calls.
+        const byName = /jobname\s*=\s*'([^']+)'/i.exec(block)?.[1];
+        const byCommand = /command\s+I?LIKE\s*'%([^%']+)%'/i.exec(block)?.[1];
+        const satisfied = scheduled.some(
+          (s) =>
+            (byName !== undefined && s.name === byName) ||
+            (byCommand !== undefined && s.call.toLowerCase().includes(byCommand.toLowerCase())),
+        );
+        if (!satisfied) {
+          unschedulable.add(
+            `${file} raises unless a cron job ${
+              byName ? `named '${byName}'` : byCommand ? `running '${byCommand}'` : "(unparsed)"
+            } exists, and no earlier migration schedules one`,
+          );
+        }
+      }
+
+      // Collected AFTER the checks above, so a file cannot satisfy its own
+      // assertion with a schedule written below it — the same positional point
+      // the grant-order scan had to learn, where collecting first turned 2 real
+      // findings into 129 false ones.
+      for (const m of sql.matchAll(/cron\.schedule\s*\(\s*'([^']+)'/gi)) {
+        scheduled.push({
+          file,
+          name: m[1],
+          // 2000 characters is past the end of the longest schedule call here
+          // (the weekly digest's http_post body, ~700); the slice only has to
+          // reach the command argument.
+          call: sql.slice(m.index!, m.index! + 2000),
+        });
+      }
+    }
+
+    // The scan is a `.filter` over parsed text, and would report a clean sweep
+    // if the parse found nothing at all. Both halves are pinned.
+    expect(
+      scheduled.map((s) => s.name).sort(),
+      "no cron.schedule found — the scan is reading nothing",
+    ).toEqual(["run-billing-cycles", "weekly-digest"]);
+    expect([...unschedulable]).toEqual([]);
+  });
+
   it("every migration filename starts with a 14-digit timestamp", () => {
     // The version is parsed off the filename by the Supabase CLI and by the
     // three check scripts. A file that does not carry one is not ordered, not
