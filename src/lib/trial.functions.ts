@@ -29,7 +29,7 @@ export const getTrialState = createServerFn({ method: "GET" })
 
     const { data } = await supabase
       .from("organizations")
-      .select("plan_status, billing_status, trial_ends_at, stripe_subscription_id")
+      .select("plan_status, billing_status, trial_ends_at, stripe_subscription_id, created_at")
       .eq("id", orgId)
       .maybeSingle();
     if (!data) return null;
@@ -39,12 +39,14 @@ export const getTrialState = createServerFn({ method: "GET" })
       billing_status: string | null;
       trial_ends_at: string | null;
       stripe_subscription_id: string | null;
+      created_at: string | null;
     };
     const state = trialStateFor({
       planStatus: org.plan_status,
       billingStatus: org.billing_status,
       trialEndsAt: org.trial_ends_at,
       hasSubscription: !!org.stripe_subscription_id,
+      createdAt: org.created_at,
     });
 
     const { hasPermission } = await import("@/lib/permissions");

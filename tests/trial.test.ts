@@ -5,6 +5,7 @@ import {
   TRIAL_COPY,
   TRIAL_DAYS,
   TRIAL_ENFORCEMENT,
+  TRIAL_ENFORCEMENT_FROM,
   aiAvailableFor,
   aiUnavailableReason,
   trialStateFor,
@@ -142,12 +143,35 @@ describe("a plan that ended stops being paid", () => {
     expect(aiUnavailableReason(s)).toMatch(/active plan/i);
   });
 
-  it("still leaves a cancelled account working", () => {
-    // Same reasoning as an expired trial: with no way to pay yet, cutting
-    // someone off is an outage rather than a paywall.
-    expect(trialStateFor({ planStatus: "canceled", trialEndsAt: null }, NOW).restricted).toBe(
-      TRIAL_ENFORCEMENT,
+  it("leaves a cancelled account working if it predates enforcement", () => {
+    // UPDATED 2026-08-16. This read `.toBe(TRIAL_ENFORCEMENT)`, which was a
+    // tautology dressed as an assertion: it passed for either value of the
+    // switch and so pinned nothing at all. Now it pins the actual promise —
+    // an account made under the old rules keeps working when it is cancelled.
+    const grandfathered = trialStateFor(
+      { planStatus: "canceled", trialEndsAt: null, createdAt: "2026-01-01T00:00:00Z" },
+      NOW,
     );
+    expect(grandfathered.restricted).toBe(false);
+  });
+
+  it("but restricts a cancelled account created after it", () => {
+    const recent = trialStateFor(
+      { planStatus: "canceled", trialEndsAt: null, createdAt: "2026-09-01T00:00:00Z" },
+      NOW,
+    );
+    expect(recent.restricted).toBe(true);
+  });
+
+  it("suspends regardless of when the account was created", () => {
+    // A suspension is a decision somebody already made — fraud, non-payment —
+    // and grandfathering must not undo it. This is the one restriction that
+    // does not consult the cutoff.
+    const old = trialStateFor(
+      { planStatus: "active", billingStatus: "suspended", trialEndsAt: null, createdAt: "2020-01-01T00:00:00Z" },
+      NOW,
+    );
+    expect(old.restricted).toBe(true);
   });
 });
 
@@ -176,14 +200,68 @@ describe("the countdown rounds up, never down", () => {
   });
 });
 
-describe("expiry does not lock anyone out yet", () => {
-  it("leaves an expired trial unrestricted while enforcement is off", () => {
-    // Stripe is not authorized, so there is no way to convert. A paywall whose
-    // only exit is a payment nobody can make is an outage, not a paywall.
-    expect(TRIAL_ENFORCEMENT).toBe(false);
-    const s = trialStateFor({ planStatus: "trialing", trialEndsAt: "2026-07-01T00:00:00Z" }, NOW);
+describe("expiry locks out new accounts, and only new accounts", () => {
+  // ── THE POLICY CHANGED ON 2026-08-16, BY OWNER DECISION ─────────────────
+  //
+  // This block used to assert `TRIAL_ENFORCEMENT).toBe(false)` and that an
+  // expired trial restricted nothing. That was correct while there was no way
+  // to pay: a paywall whose only exit is a payment nobody can make is an
+  // outage. Stripe is live now, so the condition the switch was waiting for
+  // has been met.
+  //
+  // It was flipped while the blast radius was zero — three organizations, all
+  // demo, none subscribed, none expired, none trialing — and grandfathered, so
+  // anyone who signed up under the old promise keeps it. Both halves are
+  // pinned below, because "enforcement is on" and "enforcement reaches the
+  // right accounts" are different claims and only one of them is a one-liner.
+  it("restricts an expired trial for an account created after the cutoff", () => {
+    expect(TRIAL_ENFORCEMENT).toBe(true);
+    const s = trialStateFor(
+      {
+        planStatus: "trialing",
+        trialEndsAt: "2026-07-01T00:00:00Z",
+        createdAt: `${TRIAL_ENFORCEMENT_FROM}T00:00:00Z`,
+      },
+      NOW,
+    );
+    expect(s.phase).toBe("expired");
+    expect(s.restricted).toBe(true);
+  });
+
+  it("leaves an account created the day before alone, forever", () => {
+    // One day either side of the cutoff, so the boundary itself is pinned
+    // rather than a comfortable distance from it.
+    const s = trialStateFor(
+      { planStatus: "trialing", trialEndsAt: "2026-07-01T00:00:00Z", createdAt: "2026-08-15T23:59:59Z" },
+      NOW,
+    );
     expect(s.phase).toBe("expired");
     expect(s.restricted).toBe(false);
+  });
+
+  it("fails OPEN when the caller did not say when the account was made", () => {
+    // Deliberate direction: a forgotten field lets somebody in rather than
+    // locking them out of an account they may be paying for. The risk this
+    // takes on — a call site quietly disabling enforcement — is why the next
+    // test exists.
+    const s = trialStateFor({ planStatus: "trialing", trialEndsAt: "2026-07-01T00:00:00Z" }, NOW);
+    expect(s.restricted).toBe(false);
+  });
+
+  it("every caller passes createdAt, since the type will not ask", () => {
+    // createdAt is optional, so omitting it compiles and silently switches
+    // enforcement off for that path. There are only two callers; both are
+    // checked here by reading them, because there is no type-level way to
+    // require a field that older tests are allowed to omit.
+    const root = new URL("..", import.meta.url).pathname;
+    for (const f of ["src/lib/ai-access.server.ts", "src/lib/trial.functions.ts"]) {
+      const src = readFileSync(join(root, f), "utf8");
+      const call = src.slice(src.indexOf("trialStateFor({"));
+      expect(call.slice(0, 400), `${f} calls trialStateFor without createdAt`).toMatch(
+        /createdAt:/,
+      );
+      expect(src, `${f} does not select created_at`).toMatch(/created_at/);
+    }
   });
 
   it("tells an expired org nothing was deleted", () => {

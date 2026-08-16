@@ -16,18 +16,26 @@
 // audience filter all existed. Like the weekly digest and the franchise rollup
 // before it, the machinery was built and nothing ever set it in motion.
 //
-// ── WHY DAY 15 DOES NOT LOCK ANYONE OUT ────────────────────────────────────
+// ── WHY DAY 15 DID NOT LOCK ANYONE OUT, UNTIL 2026-08-16 ───────────────────
 //
-// Owner decision, and the reason matters more than the choice: Stripe is not
-// authorized yet, so there is no way to convert. A paywall whose only exit is
-// a payment nobody can make is not a paywall, it is an outage — it would brick
-// every existing account fourteen days from deploy, including the owner's own.
+// Kept in the past tense on purpose. This was the reasoning while
+// TRIAL_ENFORCEMENT was false, and it is why the switch existed at all:
 //
-// So an expired trial is a STATE and a message, not a gate. `TRIAL_ENFORCEMENT`
-// below is the single switch that turns it into one, and it flips when Stripe
-// goes live. Deliberately one constant rather than scattered conditionals:
-// enforcement that has to be assembled from six places is enforcement nobody
-// can reason about before turning it on.
+//   Owner decision, and the reason matters more than the choice: Stripe is not
+//   authorized yet, so there is no way to convert. A paywall whose only exit
+//   is a payment nobody can make is not a paywall, it is an outage — it would
+//   brick every existing account fourteen days from deploy, including the
+//   owner's own.
+//
+//   So an expired trial is a STATE and a message, not a gate.
+//
+// That condition has since been met. The single-constant design is the part
+// that survives unchanged, and it earned itself: enforcement that has to be
+// assembled from six places is enforcement nobody can reason about before
+// turning it on — and turning it on was one line plus a date.
+//
+// What day 15 does NOW: it restricts, for organizations created on or after
+// TRIAL_ENFORCEMENT_FROM. Anyone who signed up under the old promise keeps it.
 
 /** Mirrors TRIAL_DAYS in the marketing site's src/lib/site.ts.
  *
@@ -39,10 +47,51 @@ export const TRIAL_DAYS = 14;
 /**
  * Whether an expired trial actually restricts anything.
  *
- * FALSE until Stripe is authorized (BUILD-2 / IMP-6). See the header: with no
- * payment route, enforcement is an outage rather than a paywall.
+ * TRUE since 2026-08-16. The condition this constant was written to wait for —
+ * "FALSE until Stripe is authorized (BUILD-2 / IMP-6)" — has been met: the live
+ * catalog is armed, checkout works, and a tenant whose trial ends now has a way
+ * to pay. The paragraph above about a paywall with no exit still describes why
+ * it was false; it no longer describes today.
+ *
+ * Turned on while the blast radius was ZERO, which was deliberate and is worth
+ * recording: on the day it flipped there were three organizations, all of them
+ * demo, none with a subscription, none expired and none trialing. Every day it
+ * stayed off was a day a fourteen-day trial did not actually end, and the cost
+ * of flipping it only ever goes up.
  */
-export const TRIAL_ENFORCEMENT = false;
+export const TRIAL_ENFORCEMENT = true;
+
+/**
+ * Organizations created BEFORE this date are never restricted by an expired
+ * trial, however long ago it expired.
+ *
+ * Owner call, 2026-08-16: enforce for new signups only. Nobody who signed up
+ * under "an expired trial is a message, not a gate" gets a different answer
+ * because we changed our minds afterwards — the account keeps working, exactly
+ * as it did the day they made it.
+ *
+ * The set is empty today, which is the point: it costs nothing now and it is
+ * the difference between an early customer keeping their account and losing it.
+ * An ISO date rather than a list of ids, because a list is a thing somebody has
+ * to maintain and a date is a thing that answers for itself.
+ */
+export const TRIAL_ENFORCEMENT_FROM = "2026-08-16";
+
+/**
+ * Does enforcement reach this organization?
+ *
+ * Fails OPEN when `createdAt` is absent, and that direction is chosen rather
+ * than defaulted: a caller that forgets the field should let somebody in, not
+ * lock them out of an account they are paying for. The risk of failing open —
+ * a call site quietly disabling enforcement — is covered by a test that
+ * asserts every trialStateFor caller passes createdAt, because that is a
+ * question the type system will not ask on an optional field.
+ */
+export function enforcementApplies(createdAt: string | null | undefined): boolean {
+  if (!TRIAL_ENFORCEMENT) return false;
+  if (!createdAt) return false;
+  return createdAt.slice(0, 10) >= TRIAL_ENFORCEMENT_FROM;
+}
 
 export const TRIAL_PHASES = ["none", "trialing", "expired", "lapsed", "paid"] as const;
 export type TrialPhase = (typeof TRIAL_PHASES)[number];
@@ -52,6 +101,10 @@ export type TrialInput = {
   billingStatus?: string | null | undefined;
   trialEndsAt: string | null | undefined;
   hasSubscription?: boolean | null;
+  /** organizations.created_at. Decides whether enforcement reaches this
+   *  account at all — see TRIAL_ENFORCEMENT_FROM. Optional so the many tests
+   *  that predate grandfathering still compile, and fail-open when missing. */
+  createdAt?: string | null;
 };
 
 export type TrialState = {
@@ -116,7 +169,8 @@ export function trialStateFor(org: TrialInput, now: Date = new Date()): TrialSta
       // regardless of the trial-enforcement switch. A cancellation waits for
       // the same switch as an expired trial: with no way to pay yet, cutting
       // someone off is an outage, not a paywall.
-      restricted: billing === "suspended" || plan === "suspended" || TRIAL_ENFORCEMENT,
+      restricted:
+        billing === "suspended" || plan === "suspended" || enforcementApplies(org.createdAt),
     };
   }
 
@@ -143,7 +197,7 @@ export function trialStateFor(org: TrialInput, now: Date = new Date()): TrialSta
       phase: "expired",
       daysRemaining: null,
       endsOn: org.trialEndsAt.slice(0, 10),
-      restricted: TRIAL_ENFORCEMENT,
+      restricted: enforcementApplies(org.createdAt),
     };
   }
 
