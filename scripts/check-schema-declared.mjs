@@ -50,21 +50,33 @@ function liveFromDatabase(dbUrl) {
     });
   } catch (e) {
     const detail = (e.stderr || e.message || "").toString().trim();
-    throw new Error(`Could not read pg_proc.\n${detail}\nNeeds the psql client and a SUPABASE_DB_URL.`);
+    throw new Error(
+      `Could not read pg_proc.\n${detail}\nNeeds the psql client and a SUPABASE_DB_URL.`,
+    );
   }
-  return out.split("\n").map((l) => l.trim()).filter(Boolean);
+  return out
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
 }
 
-function allMigrationSql() {
+/** One entry per migration, rather than every file concatenated.
+ *
+ *  The dynamic form below has to be judged per FILE: it asks whether one
+ *  migration both executes constructed DDL and then asserts this function
+ *  exists. Joined into a single string those two halves could come from
+ *  unrelated files a year apart and still satisfy it. */
+function migrationFiles() {
   return readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith(".sql"))
-    .map((f) => readFileSync(join(MIGRATIONS_DIR, f), "utf8"))
-    .join("\n");
+    .map((f) => ({ file: f, sql: readFileSync(join(MIGRATIONS_DIR, f), "utf8") }));
 }
 
 /** A GRANT or a comment mentioning the name is not a definition — the whole
  *  point is that email_queue_wake appeared in a migration's GRANT list while
- *  being defined nowhere. Only a CREATE FUNCTION counts.
+ *  being defined nowhere. Only a CREATE FUNCTION counts — spelled out here, or
+ *  constructed and executed, which `createsDynamically` below judges separately
+ *  and on stricter terms.
  *
  *  The first version of this said exactly that in the comment and then matched
  *  /FUNCTION\s+(public\.)?name\s*\(/ — which `GRANT EXECUTE ON FUNCTION
@@ -72,11 +84,46 @@ function allMigrationSql() {
  *  So the check shipped with the precise hole it was written to close, and two
  *  live functions (cast_roadmap_vote, roadmap_vote_counts) were passing through
  *  it while being defined in no migration at all. The CREATE is the part that
- *  makes an object exist in a rebuilt database; nothing else counts. */
-function isDeclared(sql, fn) {
+ *  makes an object exist in a rebuilt database; a mention of the name is not
+ *  one. */
+export function createsLiterally(sql, fn) {
   return new RegExp(`CREATE\\s+(OR\\s+REPLACE\\s+)?FUNCTION\\s+(public\\.)?${fn}\\s*\\(`, "i").test(
     sql,
   );
+}
+
+/** The CREATE is not always spelled out. `plan_visits` is spliced out of
+ *  `pg_get_functiondef('public.plan_route(...)')` — two clauses replaced — and
+ *  brought into existence by `EXECUTE _def;`, deliberately, so that the ~150
+ *  line solver is not copied by hand into a second implementation that agrees
+ *  today and diverges the first time anyone touches either. There is no literal
+ *  `CREATE FUNCTION public.plan_visits(` anywhere in the repo, and there is not
+ *  supposed to be.
+ *
+ *  So the check reported it as undeclared, which is the one thing it must not
+ *  do: this script's whole argument is that a false positive is worse than no
+ *  check, because a gate that cries wolf gets ignored. A rebuilt database DOES
+ *  get plan_visits — the migration creates it and then refuses to finish if it
+ *  did not, which is a stronger guarantee than a literal CREATE, since a CREATE
+ *  inside a branch that never fires would sail through the regex above.
+ *
+ *  Both halves are required, and the hole this script was written to close
+ *  stays closed. A GRANT or a DROP mentioning the name has no EXECUTE of
+ *  constructed DDL. And `IS NULL` is load-bearing: a migration REMOVING a
+ *  function guards with `IS NOT NULL`, so the drop direction cannot count as a
+ *  declaration. What is being matched is a migration saying "I fail unless this
+ *  function exists when I am done". */
+export function createsDynamically(sql, fn) {
+  const executesBuiltDdl = /\bEXECUTE\s+(_\w+\s*;|format\s*\()/i.test(sql);
+  const assertsItExists = new RegExp(
+    `to_regprocedure\\(\\s*'public\\.${fn}\\([^']*'\\s*\\)\\s*IS\\s+NULL`,
+    "i",
+  ).test(sql);
+  return executesBuiltDdl && assertsItExists;
+}
+
+export function isDeclared(files, fn) {
+  return files.some(({ sql }) => createsLiterally(sql, fn) || createsDynamically(sql, fn));
 }
 
 function main() {
@@ -101,9 +148,9 @@ function main() {
 
   const baseline = JSON.parse(readFileSync(BASELINE_PATH, "utf8"));
   const allowed = new Set(Object.keys(baseline.allowed));
-  const sql = allMigrationSql();
+  const files = migrationFiles();
 
-  const undeclared = live.filter((fn) => !allowed.has(fn) && !isDeclared(sql, fn));
+  const undeclared = live.filter((fn) => !allowed.has(fn) && !isDeclared(files, fn));
 
   // A baseline entry for a function that no longer exists is stale, and a stale
   // allow-list is how a real finding gets waved through later.
@@ -138,4 +185,7 @@ function main() {
   process.exit(1);
 }
 
-main();
+// Only when run as a command, so the test can import the predicates above.
+if (process.argv[1] && process.argv[1].endsWith("check-schema-declared.mjs")) {
+  main();
+}
