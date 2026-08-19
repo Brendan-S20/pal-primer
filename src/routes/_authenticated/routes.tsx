@@ -100,7 +100,10 @@ function FilterSelect({
   options: Array<{ value: string; label: string }>;
 }) {
   return (
-    <label className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2 py-1">
+    // MEASURED 2026-08-19: 26.0px. The `<label>` wraps the `<select>`, so the
+    // label's box IS the hit area and it is the one that has to reach the
+    // floor — sizing the select alone would leave the border it sits in short.
+    <label className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2 py-1 max-md:min-h-11">
       <span className="text-muted-foreground">{label}</span>
       <select
         value={value}
@@ -1009,7 +1012,11 @@ function RoutesPage() {
               <button
                 key={m}
                 onClick={() => setViewModePersist(m)}
-                className={`px-3 py-1.5 max-md:py-2.5 rounded ${viewMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                // MEASURED 2026-08-19: 36.0px. `max-md:py-2.5` was an attempt at
+                  // this and it fell four short — padding around a 16px line
+                  // cannot be reasoned to 44 without doing the arithmetic, and
+                  // nobody had. A minimum states the intent directly.
+                  className={`px-3 py-1.5 max-md:min-h-11 rounded ${viewMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 {m === "map" ? "Map" : "Board"}
               </button>
@@ -1020,7 +1027,7 @@ function RoutesPage() {
               <button
                 key={r}
                 onClick={() => setRangePersist(r)}
-                className={`px-3 py-1.5 max-md:py-2.5 rounded ${range === r ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                className={`px-3 py-1.5 max-md:min-h-11 rounded ${range === r ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 {r === "today" ? "Today" : r === "week" ? "Week" : "Month"}
               </button>
@@ -1474,7 +1481,10 @@ function RoutesPage() {
             ) : (
               <button
                 onClick={() => setShowLoadPersist(true)}
-                className="w-full rounded-lg border border-dashed px-3 py-1.5 text-left text-2xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                // MEASURED 2026-08-19: 29.0px — the shortest control on the
+                // board, because `text-2xs` shrank the line the padding was
+                // sized around.
+                className="w-full rounded-lg border border-dashed px-3 py-1.5 text-left text-2xs text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-11"
               >
                 Show tech load
               </button>

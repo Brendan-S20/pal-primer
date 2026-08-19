@@ -97,7 +97,12 @@ export function LaneStrip({
 
   if (techs.length === 0 && !unassigned) return null;
 
-  const cell = compact ? "h-6 text-3xs" : "h-8 text-2xs";
+  // MEASURED 2026-08-19: 32.0px, forty-nine of them on a week (seven
+  // technicians x seven days). Every cell is a button — it opens that
+  // technician's day — so the touch floor applies however chart-like the grid
+  // looks. Only below `md`: the strip is a density display on a desktop and
+  // taller cells there would cost the at-a-glance read it exists for.
+  const cell = compact ? "h-6 max-md:h-11 text-3xs" : "h-8 max-md:h-11 text-2xs";
 
   return (
     <div className="overflow-x-auto rounded-lg border bg-card">

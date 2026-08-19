@@ -347,18 +347,18 @@ Then, by surface — **these are still open**:
 
 | Surface | Controls |
 |---|---|
-| `/routes` week view | `Map`/`Board`/`Today`/`Week`/`Month` **36.0px**; three filter selects **26.0px**; **49 lane-count buttons at 32.0px** |
-| `/routes` day board | as above, plus `Show tech load` **29.0px** |
-| `/routes` auto-routing card | one control at **16.0px** — only reachable because the sweep opens the card |
+| ~~`/routes` week view~~ | ~~`Map`/`Board`/`Today`/`Week`/`Month` **36.0px**; three filter selects **26.0px**; **49 lane-count buttons at 32.0px**~~ **FIXED 2026-08-19** |
+| ~~`/routes` day board~~ | ~~as above, plus `Show tech load` **29.0px**~~ **FIXED 2026-08-19** |
+| ~~`/routes` auto-routing card~~ | ~~one control at **16.0px**~~ **NOT A BUG — see §6.8** |
 | ~~`/clients/:id`~~ | ~~`Review` **20.0px** ×2; `View all visits` / `Manage services` / `View properties` **16.0px**; `Office`/`Technician`/`Client` **24.0px**~~ **ALL FIXED 2026-08-19.** The three jump links and the note tabs took a minimum height. `Review` could not: it sits inside a sentence, where a min-height pushes the line apart — it uses `py-3 -my-3` instead, so the hit area grows and the prose renders unchanged. |
 | `/clients/new` | step dots 1–5 **28.0px**; two buttons at **16.0px** |
-| `/invoices` | row icon buttons **16.0px** ×9 |
-| `/platform/users` | a row icon button **16.0px**, ×51 |
+| ~~`/invoices`~~ | ~~row icon buttons **16.0px** ×9~~ **NOT A BUG — see §6.8** |
+| ~~`/platform/users`~~ | ~~a row icon button **16.0px**, ×51~~ **NOT A BUG — row-selection checkboxes, see §6.8** |
 | `/settings/users` | row buttons **16.0px** ×7; role `<select>` **40.0px** |
 | `/settings/scheduling` | weekday toggles Sun–Sat **26.0px**; traffic `<select>` **40.0px** |
 | `/settings/online-signup` | `Copy link` **16.0px**; one button **20.0px** |
 | `/my-day` | staff `<select>` **36.0px**; photo-kind `<select>` **40.0px**; one button **40.0px** |
-| `/zones` | **16.0px** ×2 |
+| ~~`/zones`~~ | ~~**16.0px** ×2~~ **NOT A BUG — see §6.8** |
 | `/notifications` | `All` and `Unread (2)` **32.0px** |
 | `/platform/tenants` | status `<select>` **36.0px** |
 
@@ -440,3 +440,53 @@ screen reader nothing.
 `/clients/new` now has **zero** findings at every width. The rule in
 `tests/viewports/rules.ts` was not touched, which was the point: the control
 changed to meet the rule rather than the rule bending to admit the control.
+
+
+### 6.8 Four of the twenty-two were never real, 2026-08-19
+
+The `/routes` cluster's last finding was the auto-routing panel's reassign
+checkbox at 16.0px. Before changing it, `ui/checkbox.tsx` turned out to already
+carry the fix — and a better one than the change about to be made:
+
+> "So an absolutely positioned `::before` extends the tappable area to 44x44
+> centred on the square, on touch widths only. It is out of flow, so nothing
+> moves: the row is the same height, the tick is the same size, and the only
+> change is where a thumb has to land."
+
+**`tests/viewports/rules.ts` promised to credit exactly that and never did.**
+Its comment has named "an out-of-flow pseudo-element — which is exactly the
+pattern `ui/checkbox.tsx` uses" since the rule was written, while the code only
+ever measured an ancestor `<label>`. It also tested `type === "checkbox"`,
+which never matches, because Radix renders a checkbox as
+`<button role="checkbox">` with no `type` at all.
+
+So the sweep was reporting a control that had been deliberately fixed, and the
+fix came within one commit of being replaced by something worse.
+
+The rule now measures a pseudo-element's height when it is out of flow, has
+content, and takes pointer events. **`pointer-events` is the load-bearing
+condition** — a decorative overlay is commonly a large absolute pseudo-element
+with `pointer-events: none`, and crediting one would make the rule a rubber
+stamp.
+
+Verified by measurement and by mutation, with the wrapping label removed so
+only the pseudo-element could supply the hit area:
+
+| | result |
+|---|---|
+| `::before` 44×44, `pointer-events: auto` | **passes** — and a synthetic click 14px above the visible square really does toggle the control |
+| `::before` shrunk to 24×24 | **fails** |
+| `::before` 44×44 but `pointer-events: none` | **fails** |
+
+Label credit was also extended to `role="checkbox"` / `role="radio"`, and that
+one needed checking rather than assuming: browsers do not forward a label click
+to a `<button>`, which is why the original rule scoped label credit by tag. But
+Radix keeps a hidden native input for form submission and the label activates
+*that* — clicking the second line of the reassign label's text toggles the
+control, measured.
+
+**Consequence: four of the original twenty-two findings were false positives**
+— the reassign checkbox, and the row-selection checkboxes on `/platform/users`
+(×51), `/invoices` (×9) and `/zones` (×2). They are struck through above rather
+than deleted, because "we fixed it" and "it was never broken" are different
+facts and the count should not quietly absorb the difference.

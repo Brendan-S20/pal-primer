@@ -270,9 +270,45 @@ export async function findControlsUnder44px(page: Page): Promise<string[]> {
       const type = (el as HTMLInputElement).type;
       let height = r.height;
       const tag = el.tagName.toLowerCase();
+      const role = el.getAttribute("role");
+
+      // ── THE PSEUDO-ELEMENT HIT AREA THIS FILE ALREADY PROMISED ──────────
+      //
+      // The comment above has named "an out-of-flow pseudo-element — which is
+      // exactly the pattern ui/checkbox.tsx uses" since this rule was written,
+      // and nothing here ever measured one. So the sweep reported the
+      // auto-routing panel's reassign checkbox at 16.0px, and the fix that had
+      // ALREADY been made for it — a `::before` extending the target to 44x44
+      // below `md`, out of flow so nothing moves — was invisible to the check
+      // that was supposed to credit it. It came within one commit of being
+      // replaced by something worse.
+      //
+      // Measured in Chromium before this was written, and not from the style
+      // alone: the pseudo-element computes to 44x44, `position: absolute`,
+      // `pointer-events: auto` — and a synthetic click FOURTEEN PIXELS ABOVE
+      // the visible square toggles the control. The hit area is real.
+      //
+      // `pointer-events` is the load-bearing condition. A decorative overlay —
+      // a focus ring, a gradient — is commonly a large absolute pseudo-element
+      // with `pointer-events: none`, and crediting one of those would turn
+      // this rule into a rubber stamp. So: out of flow, has content, and
+      // actually takes the tap.
+      for (const pseudo of ["::before", "::after"]) {
+        const ps = getComputedStyle(el, pseudo);
+        if (!ps || ps.content === "none" || ps.pointerEvents === "none") continue;
+        if (ps.position !== "absolute" && ps.position !== "fixed") continue;
+        const ph = Number.parseFloat(ps.height);
+        if (Number.isFinite(ph)) height = Math.max(height, ph);
+      }
+
       if (
         type === "checkbox" ||
         type === "radio" ||
+        // Radix renders a checkbox or radio as a `<button role="checkbox">`,
+        // with no `type` at all — so the two conditions above, written for
+        // native inputs, never matched the components this app actually uses.
+        role === "checkbox" ||
+        role === "radio" ||
         // Same argument, one step wider, and it took a signed-in page to find
         // it: the Routes filter bar is a bare 16px `<select>` inside a padded
         // `<label>`, and clicking the label is what opens the menu. Label
