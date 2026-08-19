@@ -175,19 +175,27 @@ describe("it did not get slow doing it", () => {
 describe("the three files the new rule found", () => {
   it("WeatherStrip is mounted, on the single-day view only", () => {
     const routes = readFileSync(join(root, "src/routes/_authenticated/routes.tsx"), "utf8");
-    expect(routes).toMatch(/import \{ WeatherStrip \} from "@\/components\/WeatherStrip";/);
+    // CHANGED 2026-08-19: the import grew a second member when the strip
+    // stopped being offered on every day. `hasPrecipitationRisk` is named
+    // here rather than left to a loose regex because a WeatherStrip imported
+    // alone is exactly what the removed always-on control looked like.
+    expect(routes).toMatch(
+      /import \{ WeatherStrip, hasPrecipitationRisk \} from "@\/components\/WeatherStrip";/,
+    );
     expect(routes).toMatch(/<WeatherStrip day=\{day\} \/>/);
     // The strip analyses one date. Offering it while the board shows a week
     // would be a control that silently acts on a day you are not looking at.
     expect(routes).toMatch(/range === "today" &&/);
   });
 
-  it("and is collapsed by default, like the tech-load panel beside it", () => {
-    const routes = readFileSync(join(root, "src/routes/_authenticated/routes.tsx"), "utf8");
-    expect(routes).toMatch(/routes\.showWeather/);
-    expect(routes).toMatch(/Show weather/);
-    expect(routes).toMatch(/Hide weather/);
-  });
+  // REPLACED 2026-08-19. This was "and is collapsed by default, like the
+  // tech-load panel beside it", asserting `routes.showWeather` — a persisted
+  // preference for a control that was always on screen. Owner QA asked for the
+  // opposite shape: no standing control at all, an icon only on a day the
+  // forecast says may rain or snow. There is nothing left to remember, so the
+  // persisted flag went with it. What replaced this assertion is not a
+  // narrower version of it — it is a different property, and it lives in
+  // tests/a-dry-day-should-not-advertise-the-weather.test.ts.
 
   it("LanguageToggle is gone, not left orphaned", () => {
     expect(existsSync(join(root, "src/components/LanguageToggle.tsx"))).toBe(false);

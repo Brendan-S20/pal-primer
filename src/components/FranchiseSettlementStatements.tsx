@@ -5,6 +5,7 @@ import { FileText } from "lucide-react";
 import {
   describeSettlement,
   settlementMoney,
+  settlementSignedMoney,
   type SettlementAudience,
   type SettlementRow,
 } from "@/lib/franchise-settlement";
@@ -46,6 +47,7 @@ export function FranchiseSettlementStatements({
   isLoading,
   error,
   onSetStatus,
+  onReopenAsDraft,
   isUpdating,
 }: {
   rows: SettlementStatementRow[];
@@ -55,6 +57,15 @@ export function FranchiseSettlementStatements({
   /** Parent only. Absent for the location, which reads statements and does not
    *  move them — issuing and marking paid are the franchise's acts. */
   onSetStatus?: (id: string, status: "issued" | "paid" | "void") => void;
+  /** Parent only, and separate from `onSetStatus` on purpose.
+   *
+   *  Reopening is not another status transition of the same kind: the other
+   *  three move a statement FORWARD along the settlement it describes, and this
+   *  one puts a finished statement back on the workbench. Keeping it its own
+   *  callback also keeps `onSetStatus`'s union as it was, so the surfaces that
+   *  offer only the forward moves — the per-location drawer — keep compiling
+   *  unchanged rather than gaining a control their own state does not handle. */
+  onReopenAsDraft?: (id: string) => void;
   isUpdating?: boolean;
 }) {
   const forLocation = audience === "location";
@@ -90,6 +101,30 @@ export function FranchiseSettlementStatements({
           {forLocation
             ? "HoundStack records these statements; it does not move the money. Settle with your franchise the way you normally do — the statement is the record of what was owed."
             : "HoundStack records these statements; it does not move the money. Pay or collect the net however you already settle with the location, then mark the statement paid here so both sides have the same record."}
+        </p>
+        {/* ── WHAT THE PERCENTAGE IS A PERCENTAGE OF ────────────────────────
+            Owner decision, 2026-08-19: the royalty stays on GROSS, and the
+            product says so.
+
+            `revenue_cents` is sum(payments.amount_cents) for the period. That
+            figure already excludes the card surcharge — correct, it was fee
+            recovery and was never revenue — but it is gross of Stripe's
+            processing fee and gross of HoundStack's 0.5% platform fee. So a
+            location keeps less than "collected revenue" and is billed a
+            percentage of the whole of it.
+
+            That is the arrangement, not a defect, and nothing about the
+            arithmetic changes. What was missing is that neither party could
+            read it anywhere: a franchisee reconciling a statement against what
+            landed in their bank account finds two deductions the statement
+            never mentions, and the first time they notice is an argument. Said
+            on both sides' copy, in the same words, because the two reconcile
+            the same document. */}
+        <p className="mt-2 text-xs text-muted-foreground">
+          The percentage applies to collected revenue before fees — Stripe&apos;s processing fee and
+          HoundStack&apos;s 0.5% platform fee come out of what{" "}
+          {forLocation ? "you receive" : "the location receives"}, and the royalty is calculated on
+          the amount collected, not on what is left after them.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -133,14 +168,45 @@ export function FranchiseSettlementStatements({
                       <span className="text-muted-foreground">{line.directionLabel}</span>
                     </div>
                     {/* The arithmetic behind the net, so neither side has to
-                        take the headline on trust. Adjustments only when there
-                        are some — a location that has never had a refund keeps
-                        the shorter sentence. */}
+                        take the headline on trust. Three things about this line
+                        were wrong, and all three were of the kind that leaves a
+                        plausible number on the screen:
+
+                        "Revenue" — the rollup on the same page uses that word
+                        for a figure NET of the month's refunds and calls the
+                        gross "Collected". This figure is the gross:
+                        sum(payments.amount_cents) for every payment that
+                        arrived, refunded ones included, with reversals carried
+                        separately as adjustments. Two screens a franchise owner
+                        reads together, one word, two meanings.
+
+                        The adjustment ran through `settlementMoney`, which
+                        takes an absolute value — right for the net, whose
+                        direction is carried by `direction`, and wrong here,
+                        where a negative is the franchise absorbing a reversal.
+                        A credit printed as a charge.
+
+                        And the collector split was never shown, so on a period
+                        the franchise collected part of, the net followed from
+                        none of the figures beside it:
+                        net = |collected_by_franchise − royalty − adjustments|.
+
+                        Each component appears only when it says something — a
+                        location that has never had a refund and collects its
+                        own money keeps the short sentence it already had. */}
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Revenue {settlementMoney(line.revenueCents)} · royalty {line.royaltyPercent}%
-                      = {settlementMoney(line.royaltyCents)}
+                      Collected revenue {settlementMoney(line.revenueCents)} · royalty{" "}
+                      {line.royaltyPercent}% = {settlementMoney(line.royaltyCents)}
+                      {line.collectedByFranchiseCents !== null &&
+                        line.collectedByFranchiseCents > 0 && (
+                          <>
+                            {" "}
+                            · of which the franchise collected{" "}
+                            {settlementMoney(line.collectedByFranchiseCents)}
+                          </>
+                        )}
                       {line.adjustmentsCents !== 0 && (
-                        <> · adjustments {settlementMoney(line.adjustmentsCents)}</>
+                        <> · adjustments {settlementSignedMoney(line.adjustmentsCents)}</>
                       )}
                     </p>
                   </div>
@@ -164,6 +230,52 @@ export function FranchiseSettlementStatements({
                     </div>
                   </div>
                 </div>
+
+                {/* ── REOPENING A VOIDED STATEMENT ──────────────────────────
+                    Owner decision, 2026-08-19: voiding and reopening are two
+                    deliberate acts.
+
+                    Void was a one-way door. The row keeps `status = 'void'`,
+                    the unique key (child, period_start, period_end) stays
+                    occupied, and the generator's `ON CONFLICT … DO UPDATE …
+                    WHERE status = 'draft'` refuses to write over it — so
+                    regenerating that period wrote nothing and returned 0,
+                    while the Generate toast told the owner in as many words to
+                    "void an issued statement to recalculate it". An
+                    instruction for something the software cannot do.
+
+                    Meanwhile the void trigger had already released the
+                    statement's adjustments back to `pending`, so they were
+                    sitting there waiting to be swept onto whatever period got
+                    generated next — a July chargeback landing on September's
+                    statement because July's was voided and could never be cut
+                    again.
+
+                    Reopening needs no migration: setRoyaltyInvoiceStatus has
+                    accepted and authorised 'draft' all along. It lands the row
+                    back in the one state the generator is allowed to rewrite,
+                    and — because a draft is a draft — the figures are visible
+                    and re-issuable rather than being recomputed silently on
+                    the way out. */}
+                {onReopenAsDraft && line.status === "void" && (
+                  <div className="mt-2 space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Voided. Reopening puts this period back in draft so it can be regenerated and
+                      issued again — the adjustments this statement had claimed were released when
+                      it was voided, and regenerating draws whichever of them are still outstanding
+                      back onto it.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="max-md:min-h-11"
+                      disabled={isUpdating}
+                      onClick={() => onReopenAsDraft(line.id)}
+                    >
+                      Reopen as draft
+                    </Button>
+                  </div>
+                )}
 
                 {onSetStatus && (line.status === "draft" || line.status === "issued") && (
                   <div className="mt-2 flex flex-wrap gap-2">

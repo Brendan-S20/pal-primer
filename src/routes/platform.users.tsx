@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   listPlatformUsers,
@@ -11,6 +11,8 @@ import {
   updatePlatformUserPhone,
   removePlatformUserMfa,
 } from "@/lib/platform-directory.functions";
+import { startImpersonation } from "@/lib/platform.functions";
+import { launchImpersonationTab } from "@/lib/impersonation-launch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,43 +33,93 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { humanizeRole } from "@/lib/humanize";
-import { Copy, KeyRound, Loader2, ShieldOff, Users } from "lucide-react";
+import {
+  ChevronLeft, ChevronRight, Copy, KeyRound, Loader2, ShieldOff, UserCog, Users,
+} from "lucide-react";
 import { humanizeEnum } from "@/lib/humanize";
 
 export const Route = createFileRoute("/platform/users")({
   component: UsersPage,
 });
 
+// One page of the directory. The server will not return more than 200 in a
+// single call; 50 is a screenful you can actually read and keeps each page's
+// email hydration small.
+const PAGE_SIZE = 50;
+
 function UsersPage() {
+  // `searchInput` is what is being typed; `search` is what has been asked for.
+  // They are separate because a committed search is a full-directory scan on
+  // the server, which is not something to do once per keystroke.
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [role, setRole] = useState<string>("all");
+  const [page, setPage] = useState(0);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // A different search or role is a different result set; page 9 of the old
+  // one is not a position in the new one.
+  useEffect(() => {
+    setPage(0);
+  }, [search, role]);
+
   const listFn = useServerFn(listPlatformUsers);
   const q = useQuery({
-    queryKey: ["platform", "users", role],
-    queryFn: () => listFn({ data: { limit: 150, ...(role !== "all" ? { role: role as any } : {}) } }),
+    queryKey: ["platform", "users", role, search, page],
+    queryFn: () =>
+      listFn({
+        data: {
+          limit: PAGE_SIZE,
+          offset: page * PAGE_SIZE,
+          // Searching is now the server's job over the whole directory, not a
+          // filter this page applies to the rows it was already given. That
+          // distinction is the entire fix: the old screen fetched 150 users
+          // and searched those, so user 151 could not be found by anybody.
+          ...(search ? { search } : {}),
+          ...(role !== "all" ? { role: role as any } : {}),
+        },
+      }),
+    // Paging without this blanks the table on every press.
+    placeholderData: keepPreviousData,
   });
 
   const rows = q.data?.rows ?? [];
-  const filtered = search.trim()
-    ? rows.filter((r) => {
-        const s = search.toLowerCase();
-        return (r.email ?? "").toLowerCase().includes(s) ||
-          r.organizations.some((o) => o.name.toLowerCase().includes(s));
-      })
-    : rows;
+  const total = q.data?.total ?? 0;
+  const limit = q.data?.limit ?? PAGE_SIZE;
+  // The server clamps the offset to the last page that exists, so a narrowing
+  // search cannot strand you on an empty page that reads as "no matches".
+  const offset = q.data?.offset ?? page * PAGE_SIZE;
+  const scan = q.data?.scan;
+  const currentPage = Math.floor(offset / limit);
+  const pageCount = Math.max(1, Math.ceil(total / limit));
 
-  // Multi-select for bulk password resets (Invoices-page pattern). Only rows
-  // with an email are selectable — sendPasswordReset requires one. The
-  // clearKey drops the selection when the search/role filter changes.
+  // Re-sync only against a FRESH answer. While `keepPreviousData` is holding
+  // the last page on screen, `q.data.offset` still describes the page you just
+  // left — acting on it here would push you straight back to it and the Next
+  // button would appear not to work.
+  useEffect(() => {
+    if (q.data && !q.isPlaceholderData && currentPage !== page) setPage(currentPage);
+  }, [q.data, q.isPlaceholderData, currentPage, page]);
+
+  const firstShown = total === 0 ? 0 : offset + 1;
+  const lastShown = Math.min(offset + rows.length, total);
+  const narrowed = !!search || role !== "all";
+
   const qc = useQueryClient();
   const { confirm, dialog: bulkDialog } = useConfirmDialog();
   const resetFn = useServerFn(sendPasswordReset);
   const selectableIds = useMemo(
-    () => filtered.filter((r) => !!r.email).map((r) => r.user_id),
-    [filtered],
+    () => rows.filter((r) => !!r.email).map((r) => r.user_id),
+    [rows],
   );
-  const sel = useRowSelection(selectableIds, `${search}|${role}`);
+  // Selection is per page: turning the page is as much a change of what is in
+  // front of you as changing the filter is.
+  const sel = useRowSelection(selectableIds, `${search}|${role}|${page}`);
 
   const bulkResetM = useMutation({
     mutationFn: async (ids: string[]) => {
@@ -107,40 +159,82 @@ function UsersPage() {
       <div>
         <h1 className="text-2xl font-semibold">Users</h1>
         <p className="text-sm text-muted-foreground">
-          Global directory across every tenant. Shows up to 150 users at a time. Click a row for
-          details and account actions.
+          Global directory across every tenant. Search runs over the whole directory, not the page
+          in front of you. Click a row for details and account actions.
         </p>
       </div>
 
       <Card>
-        <CardHeader className="flex flex-row flex-wrap items-center gap-3">
-          <CardTitle className="text-base">Directory</CardTitle>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search email or org…"
-              className="w-64"
-            />
-            <Select value={role} onValueChange={setRole}>
-              <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All roles</SelectItem>
-                <SelectItem value="owner">Owner</SelectItem>
-                <SelectItem value="office_manager">Office manager</SelectItem>
-                <SelectItem value="dispatcher">Dispatcher</SelectItem>
-                <SelectItem value="tech">Tech</SelectItem>
+        <CardHeader className="gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <CardTitle className="text-base">Directory</CardTitle>
+            <div className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto">
+              <Input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search email, user id or org…"
+                aria-label="Search the whole user directory"
+                className="w-full sm:w-64"
+              />
+              <Select value={role} onValueChange={setRole}>
+                <SelectTrigger className="w-full sm:w-44"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All roles</SelectItem>
+                  <SelectItem value="owner">Owner</SelectItem>
+                  <SelectItem value="office_manager">Office manager</SelectItem>
+                  <SelectItem value="dispatcher">Dispatcher</SelectItem>
+                  <SelectItem value="tech">Tech</SelectItem>
 
-              </SelectContent>
-            </Select>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+          {/* The count is stated on every render, not only when something is
+              cut off. "150 rows" and "the first 150 of 1,240 rows" looked
+              identical before, and one of them was a lie. */}
+          <p className="text-sm text-muted-foreground" data-testid="directory-range">
+            {q.isLoading
+              ? "Loading the directory…"
+              : total === 0
+                ? narrowed
+                  ? "No users match."
+                  : "No users in the directory yet."
+                : `Showing ${firstShown.toLocaleString()}–${lastShown.toLocaleString()} of ${total.toLocaleString()} ${narrowed ? "matching " : ""}user${total === 1 ? "" : "s"}.`}
+          </p>
         </CardHeader>
         <CardContent>
+          {/* A scan that ran short says so. Everything on this screen is a
+              count of something, and a count nobody can trust is worse than
+              no count. */}
+          {scan && (!scan.membershipsComplete || !scan.accountsComplete) ? (
+            <div
+              role="status"
+              className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-950"
+            >
+              <p className="font-medium">This directory is incomplete — the numbers below undercount.</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                {!scan.membershipsComplete ? (
+                  <li>
+                    Stopped after reading {scan.membershipRows.toLocaleString()} organization
+                    memberships. Users past that point are not counted or searched.
+                  </li>
+                ) : null}
+                {!scan.accountsComplete ? (
+                  <li>
+                    Read {scan.accounts.toLocaleString()} accounts but could not resolve an email
+                    for every user shown. Rows without one show a user id, and a search by email
+                    will not match them.
+                  </li>
+                ) : null}
+              </ul>
+            </div>
+          ) : null}
+
           {/* Bulk action bar */}
           {sel.count > 0 && (
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-accent/40 px-4 py-2 text-sm shadow-sm">
-              <span className="font-medium">{sel.count} selected</span>
-              <div className="flex gap-2">
+              <span className="font-medium">{sel.count} selected on this page</span>
+              <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
                   variant="outline"
@@ -174,7 +268,7 @@ function UsersPage() {
                     <Checkbox
                       checked={sel.allSelected}
                       onCheckedChange={sel.toggleAll}
-                      aria-label="Select all users with an email"
+                      aria-label="Select every user on this page that has an email"
                     />
                   </TableHead>
                   <TableHead>Email</TableHead>
@@ -184,7 +278,7 @@ function UsersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((u) => (
+                {rows.map((u) => (
                   <TableRow
                     key={u.user_id}
                     className="cursor-pointer"
@@ -228,17 +322,55 @@ function UsersPage() {
                 ))}
                 {q.isLoading ? (
                   <TableRow><TableCell colSpan={5}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
-                ) : filtered.length === 0 ? (
+                ) : rows.length === 0 ? (
                   <TableRow><TableCell colSpan={5} className="py-6">
                     <EmptyState
                       icon={<Users className="h-5 w-5" />}
-                      title="No users match"
-                      description="Try clearing the search or picking a different role filter."
+                      title={narrowed ? "No users match" : "No users yet"}
+                      description={
+                        narrowed
+                          ? "Every tenant was searched, so this is not a paging artefact. Try a different email, user id or organization name, or clear the role filter."
+                          : "Nobody holds a role in any organization yet."
+                      }
                     />
                   </TableCell></TableRow>
                 ) : null}
               </TableBody>
             </Table>
+          </div>
+
+          {/* ── THE PAGER ────────────────────────────────────────────────────
+              Labelled buttons, not bare arrows: `size="sm"` carries the 44px
+              touch floor from ui/button.tsx, and the row wraps rather than
+              pushing itself off a 360px screen. */}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              {total === 0
+                ? "Nothing to page through."
+                : `Page ${(currentPage + 1).toLocaleString()} of ${pageCount.toLocaleString()}`}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="min-w-28"
+                disabled={currentPage <= 0 || q.isFetching}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+              >
+                <ChevronLeft className="mr-1 h-4 w-4" />
+                Previous
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="min-w-28"
+                disabled={currentPage >= pageCount - 1 || q.isFetching}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Next
+                <ChevronRight className="ml-1 h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -257,9 +389,13 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
   const emailFn = useServerFn(updatePlatformUserEmail);
   const phoneFn = useServerFn(updatePlatformUserPhone);
   const mfaFn = useServerFn(removePlatformUserMfa);
+  const impersonateFn = useServerFn(startImpersonation);
 
   const [emailDraft, setEmailDraft] = useState("");
   const [phoneDraft, setPhoneDraft] = useState("");
+  // Which of the user's organizations to impersonate them inside. A user can
+  // hold roles in several, and startImpersonation mints a grant for ONE.
+  const [impersonateOrg, setImpersonateOrg] = useState("");
   // Set only when email sending isn't configured: the admin must relay it.
   const [resetLink, setResetLink] = useState<string | null>(null);
 
@@ -317,10 +453,40 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
     onError: (e: Error) => toast.error(e.message),
   });
 
+  /**
+   * ── WHY IMPERSONATION BELONGS HERE TOO ────────────────────────────────
+   *
+   * startImpersonation takes (organization_id, target_user_id) and had exactly
+   * one caller: the tenant detail page, which can only ever offer one tenant's
+   * users, from an unfiltered <select>. This directory is the only place in
+   * the console where a person can be found by email across every tenant, and
+   * it already holds both ids on every row — so the one action you actually
+   * want after finding someone was the one action you had to leave to perform.
+   *
+   * Nothing about the grant changes: the same server function, the same
+   * platform-admin check, the same 2-minute single-use token, the same
+   * tab-scoped session, the same audit rows.
+   */
+  const impersonate = useMutation({
+    mutationFn: (organizationId: string) =>
+      launchImpersonationTab(impersonateFn as never, {
+        organizationId,
+        targetUserId: userId!,
+      }),
+    onSuccess: (res, organizationId) => {
+      const org = d?.organizations.find((o) => o.id === organizationId);
+      toast.success(
+        `Impersonating ${res.targetEmail} in ${org?.name ?? "their organization"} — opened in a new tab`,
+      );
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const close = () => {
     setEmailDraft("");
     setPhoneDraft("");
     setResetLink(null);
+    setImpersonateOrg("");
     onClose();
   };
 
@@ -337,10 +503,23 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
           </div>
         ) : (
           <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            {/* Two columns of email address and timestamp do not fit a 360px
+                phone; they stack below `sm` instead of overflowing. */}
+            <div className="grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
               <div>
                 <div className="text-xs text-muted-foreground">Email</div>
                 <div className="break-all font-medium">{d.email ?? "-"}</div>
+                {/* email_confirmed_at has been fetched since this dialog was
+                    written and shown nowhere — and "Change email" confirms the
+                    new address immediately, so this is the only place the one
+                    email action's effect is visible. */}
+                {d.email ? (
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    {d.email_confirmed_at
+                      ? `Confirmed ${new Date(d.email_confirmed_at).toLocaleDateString()}`
+                      : "Not confirmed"}
+                  </div>
+                ) : null}
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Phone</div>
@@ -437,6 +616,50 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
                   {removeMfa.isPending ? "Removing…" : "Remove MFA"}
                 </Button>
               </div>
+
+              {d.organizations.length > 0 ? (
+                <div className="space-y-1.5">
+                  <Label className="text-xs" htmlFor="impersonate-org">
+                    Impersonate in
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    <select
+                      id="impersonate-org"
+                      className="h-11 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm sm:h-9"
+                      value={impersonateOrg || d.organizations[0].id}
+                      onChange={(e) => setImpersonateOrg(e.target.value)}
+                    >
+                      {d.organizations.map((o) => (
+                        <option key={`${o.id}-${o.role}`} value={o.id}>
+                          {o.name} ({humanizeRole(o.role)})
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={impersonate.isPending}
+                      onClick={async () => {
+                        const orgId = impersonateOrg || d.organizations[0].id;
+                        const org = d.organizations.find((o) => o.id === orgId);
+                        if (
+                          await confirm({
+                            title: `Impersonate ${d.email ?? "this user"} in ${org?.name ?? "their organization"}?`,
+                            description:
+                              `A new tab opens a read/write session AS ${d.email ?? "this user"} inside ${org?.name ?? "that organization"}, with their ${humanizeRole(org?.role).toLowerCase()} permissions. ` +
+                              "Your own platform-admin session in this tab is not affected, and everything you do in there is written to the audit trail under your name.",
+                            confirmLabel: "Impersonate",
+                          })
+                        )
+                          impersonate.mutate(orgId);
+                      }}
+                    >
+                      <UserCog className="mr-1 h-4 w-4" />
+                      {impersonate.isPending ? "Starting…" : "Impersonate"}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
 
               {resetLink ? (
                 <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-950">

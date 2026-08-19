@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -7,12 +7,14 @@ import {
   listTenantNotes, addTenantNote, deleteTenantNote,
   listTenantFeatureFlags, setTenantFeatureFlag,
   listTenantInvoices, listTenantAudit,
-  suspendTenant, reactivateTenant, grantGracePeriod, softDeleteTenant,
+  suspendTenant, reactivateTenant, grantGracePeriod, endGracePeriod, softDeleteTenant, restoreTenant,
+  diffAuditJson,
   type TenantDetail, type TenantNote, type TenantFlagRow, type TenantInvoiceRow, type TenantAuditRow,
 } from "@/lib/platform-tenant.functions";
 import { startImpersonation } from "@/lib/platform.functions";
 import { launchImpersonationTab } from "@/lib/impersonation-launch";
-import { humanizeRole } from "@/lib/humanize";
+import { humanizeAuditAction, humanizeRole } from "@/lib/humanize";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,8 +33,11 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { ArrowLeft, ExternalLink, MoreHorizontal, Trash2, UserCog } from "lucide-react";
+import { ArrowLeft, ExternalLink, FileDown, MoreHorizontal, Trash2, Undo2, UserCog } from "lucide-react";
 import { TenantStatusBadge } from "@/components/TenantStatusBadge";
 import { auditActorLabel } from "@/lib/platform-audit";
 
@@ -66,7 +71,16 @@ function TenantDetailPage() {
 
   return (
     <div className="space-y-6">
-      <TenantHeader t={t} onChange={() => qc.invalidateQueries({ queryKey: ["platform", "tenant", id] })} />
+      <TenantHeader
+        t={t}
+        onChange={() => {
+          qc.invalidateQueries({ queryKey: ["platform", "tenant", id] });
+          // Suspend / delete / restore all change which list this tenant is on;
+          // without this the tenants page serves a cached row that says
+          // otherwise until it happens to refetch.
+          qc.invalidateQueries({ queryKey: ["platform", "tenants"] });
+        }}
+      />
 
       <Tabs defaultValue="overview" className="w-full">
         {/* Wrapping is a desktop answer for seven tabs. Below `md` it fought
@@ -86,7 +100,7 @@ function TenantDetailPage() {
         <TabsContent value="users" className="pt-4"><UsersTab t={t} /></TabsContent>
         <TabsContent value="billing" className="pt-4"><BillingTab t={t} /></TabsContent>
         <TabsContent value="invoices" className="pt-4"><InvoicesTab orgId={id} /></TabsContent>
-        <TabsContent value="flags" className="pt-4"><FlagsTab orgId={id} /></TabsContent>
+        <TabsContent value="flags" className="pt-4"><FlagsTab orgId={id} tenantName={t.name} /></TabsContent>
         <TabsContent value="notes" className="pt-4"><NotesTab orgId={id} /></TabsContent>
         <TabsContent value="audit" className="pt-4"><AuditTab orgId={id} /></TabsContent>
       </Tabs>
@@ -98,7 +112,9 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
   const suspendFn = useServerFn(suspendTenant);
   const reactivateFn = useServerFn(reactivateTenant);
   const graceFn = useServerFn(grantGracePeriod);
+  const endGraceFn = useServerFn(endGracePeriod);
   const deleteFn = useServerFn(softDeleteTenant);
+  const restoreFn = useServerFn(restoreTenant);
   const impersonateFn = useServerFn(startImpersonation);
   const [reason, setReason] = useState("");
   const [confirmName, setConfirmName] = useState("");
@@ -112,7 +128,14 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
   });
   const reactivateM = useMutation({
     mutationFn: () => reactivateFn({ data: { organization_id: t.id } }),
-    onSuccess: () => { toast.success("Tenant reactivated"); onChange(); },
+    onSuccess: () => {
+      toast.success(
+        t.grace_expires_at
+          ? `${t.name} reactivated — their grace period was ended with it`
+          : `${t.name} reactivated`,
+      );
+      onChange();
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const graceM = useMutation({
@@ -120,9 +143,33 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
     onSuccess: () => { toast.success(`Grace period granted (${graceDays} days)`); onChange(); },
     onError: (e) => toast.error((e as Error).message),
   });
+  // Revoking the concession. The two outcomes are deliberately worded apart:
+  // ending a live window changes what the tenant can do right now, clearing a
+  // lapsed one only tidies the record, and reporting both as "grace ended"
+  // would be the silent no-op this action exists to avoid.
+  const endGraceM = useMutation({
+    mutationFn: () => endGraceFn({ data: { organization_id: t.id } }),
+    onSuccess: (res) => {
+      toast.success(
+        res.was_live
+          ? `Grace period ended for ${t.name} — they can no longer add clients beyond their plan`
+          : `Cleared the expired grace period on ${t.name} — it had already lapsed on ${fmtDate(res.ended_at)}, so nothing changed for them today`,
+      );
+      onChange();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
   const deleteM = useMutation({
     mutationFn: () => deleteFn({ data: { organization_id: t.id, confirm_name: confirmName } }),
-    onSuccess: () => { toast.success("Tenant deleted"); setConfirmName(""); setDeleteOpen(false); onChange(); },
+    onSuccess: () => { toast.success(`${t.name} deleted`); setConfirmName(""); setDeleteOpen(false); onChange(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  // The way back out of the one-way door. Soft-delete hid this tenant from the
+  // tenants list and disabled every other action on this page, so until now the
+  // only thing an admin could do here was read.
+  const restoreM = useMutation({
+    mutationFn: () => restoreFn({ data: { organization_id: t.id } }),
+    onSuccess: () => { toast.success(`${t.name} restored — it is back on the tenants list`); onChange(); },
     onError: (e) => toast.error((e as Error).message),
   });
   const [impersonateUser, setImpersonateUser] = useState<string>("");
@@ -139,17 +186,26 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
     onError: (e) => toast.error((e as Error).message),
   });
 
+  // Whether the window is still in force, which is the question
+  // `org_can_add_client` asks (`grace_expires_at > now()`). A lapsed one is
+  // inert to the gate and still shown, because it is still on the record and
+  // still needs a way off it.
+  const graceLive = !!t.grace_expires_at && new Date(t.grace_expires_at).getTime() > Date.now();
+
   return (
     <div className="flex flex-col gap-3">
       <Link to="/platform/tenants" className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4" /> Back to tenants
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold">{t.name}</h1>
+        <div className="min-w-0">
+          {/* An organization name plus two badges is more than 360px of one
+              line, and the name is user-supplied. Wrap, and let the name
+              itself break rather than setting the width of the header. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="break-words text-2xl font-semibold">{t.name}</h1>
             <TenantStatusBadge status={t.billing_status} />
-            {t.deleted_at && <Badge variant="destructive">Deleted</Badge>}
+            {t.deleted_at && <Badge variant="destructive">Deleted {fmtDate(t.deleted_at)}</Badge>}
           </div>
           <div className="mt-1 text-sm text-muted-foreground">
             {t.plan_name ?? "No plan"} · {t.active_client_count} clients · {t.users.length} users
@@ -158,8 +214,52 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
           {t.suspended_reason && (
             <div className="mt-1 text-sm text-destructive">Suspended: {t.suspended_reason}</div>
           )}
+          {/* Grace was only ever visible three tabs away on Overview, as a bare
+              date with no indication of whether it was still in force. It is
+              the one piece of tenant state that lets somebody past their plan
+              limit, so it says so here, next to the button that ends it. */}
+          {t.grace_expires_at && (
+            <div className="mt-1 text-sm text-muted-foreground">
+              {graceLive
+                ? `Grace period: can add clients past the plan limit until ${fmtDate(t.grace_expires_at)}`
+                : `Grace period expired ${fmtDate(t.grace_expires_at)}`}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
+          {/* A deleted tenant used to be a dead end: hidden from the tenants
+              list, and every control below disabled. Restore is the only
+              action that must be reachable in that state, so it comes first
+              and is the only one not gated on `!t.deleted_at`. */}
+          {t.deleted_at && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" disabled={restoreM.isPending}>
+                  <Undo2 className="mr-1 h-4 w-4" />
+                  {restoreM.isPending ? "Restoring…" : "Restore tenant"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Restore {t.name}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t.name} was deleted on {fmtDate(t.deleted_at)}. Restoring puts it back on the
+                    tenants list and gives its {t.users.length} user
+                    {t.users.length === 1 ? "" : "s"} their app access back, subject to whatever
+                    billing status it had before — it is currently{" "}
+                    <strong>{t.billing_status}</strong>. Nothing else about the organization
+                    changes.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction disabled={restoreM.isPending} onClick={() => restoreM.mutate()}>
+                    Restore
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
           <AlertDialog onOpenChange={(open) => { if (!open) setImpersonateUser(""); }}>
             <AlertDialogTrigger asChild>
               <Button variant="outline" size="sm" disabled={impersonateM.isPending || !!t.deleted_at}>
@@ -209,9 +309,36 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
             </AlertDialogContent>
           </AlertDialog>
           {(t.billing_status === "suspended" || t.billing_status === "canceled" || t.plan_status === "canceled") && (
-            <Button size="sm" onClick={() => reactivateM.mutate()} disabled={reactivateM.isPending || !!t.deleted_at}>
-              Reactivate
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" disabled={reactivateM.isPending || !!t.deleted_at}>
+                  {reactivateM.isPending ? "Reactivating…" : "Reactivate"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Reactivate {t.name}?</AlertDialogTitle>
+                  {/* This used to fire on one unguarded click, and it now
+                      revokes a grace period as well — a second consequence
+                      nobody would have inferred from the word "Reactivate". */}
+                  <AlertDialogDescription>
+                    {t.name}'s {t.users.length} user{t.users.length === 1 ? "" : "s"} get their app
+                    access back and the suspension reason is cleared. They go to{" "}
+                    <strong>{t.stripe_subscription_id ? "active" : "free"}</strong>, because they{" "}
+                    {t.stripe_subscription_id ? "have" : "have no"} Stripe subscription.
+                    {t.grace_expires_at
+                      ? ` Their grace period ${graceLive ? "ends now" : "date is cleared"} too — reactivating means the problem it was covering is resolved, so they go back to their plan's client limit rather than keeping an allowance until ${fmtDate(t.grace_expires_at)}.`
+                      : ""}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction disabled={reactivateM.isPending} onClick={() => reactivateM.mutate()}>
+                    Reactivate
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           )}
           {t.billing_status !== "active" && t.billing_status !== "free" && (
             <AlertDialog>
@@ -245,6 +372,47 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                   <AlertDialogAction disabled={graceM.isPending} onClick={() => graceM.mutate()}>
                     Grant grace
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+          {/* Shown on `grace_expires_at` being set at all, not on it being
+              live. An expired window is inert to the entitlement gate but is
+              still a date on the record and still raises a Grace badge, and a
+              control that vanishes at the moment the value goes stale leaves
+              an admin reading a concession they have no way to clear. */}
+          {t.grace_expires_at && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="sm" disabled={endGraceM.isPending || !!t.deleted_at}>
+                  {endGraceM.isPending ? "Ending…" : "End grace"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>End {t.name}'s grace period?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {graceLive ? (
+                      <>
+                        {t.name} can add clients past their plan limit until{" "}
+                        {fmtDate(t.grace_expires_at)}. Ending it stops that now — the next client
+                        they add is refused unless their plan allows it. Their plan, subscription
+                        and{t.suspended_at ? " suspension" : " billing"} are not changed.
+                      </>
+                    ) : (
+                      <>
+                        {t.name}'s grace period already expired on {fmtDate(t.grace_expires_at)}, so
+                        this changes nothing about what they can do today. It clears the leftover
+                        date so the console stops showing a concession that is no longer in force.
+                      </>
+                    )}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction disabled={endGraceM.isPending} onClick={() => endGraceM.mutate()}>
+                    {graceLive ? "End grace" : "Clear it"}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -439,12 +607,23 @@ function InvoicesTab({ orgId }: { orgId: string }) {
                 <TableCell className="text-right tabular-nums">{fmtCents(r.amount_paid_cents, r.currency)}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{fmtDate(r.issued_at)}</TableCell>
                 <TableCell>
-                  {r.hosted_invoice_url && (
-                    <a href={r.hosted_invoice_url} target="_blank" rel="noreferrer"
-                       className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-                      Stripe <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
+                  {/* invoice_pdf has been selected by listTenantInvoices since
+                      it was written and rendered nowhere — the one thing an
+                      admin is asked for when a tenant queries a charge. */}
+                  <div className="flex items-center gap-3 whitespace-nowrap">
+                    {r.hosted_invoice_url && (
+                      <a href={r.hosted_invoice_url} target="_blank" rel="noreferrer"
+                         className="inline-flex min-h-11 items-center gap-1 text-xs text-muted-foreground hover:text-foreground md:min-h-0">
+                        Stripe <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                    {r.invoice_pdf && (
+                      <a href={r.invoice_pdf} target="_blank" rel="noreferrer"
+                         className="inline-flex min-h-11 items-center gap-1 text-xs text-muted-foreground hover:text-foreground md:min-h-0">
+                        PDF <FileDown className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -455,7 +634,19 @@ function InvoicesTab({ orgId }: { orgId: string }) {
   );
 }
 
-function FlagsTab({ orgId }: { orgId: string }) {
+/**
+ * ── WHY THE TOGGLE NOW OPENS A DIALOG ──────────────────────────────────────
+ *
+ * `platform_org_feature_flags.justification` has existed since the table was
+ * created, `setTenantFeatureFlag` accepts it, and `listTenantFeatureFlags`
+ * returns it on every row. Nothing ever sent one and nothing ever showed one,
+ * so the column was NULL for every override and the record of why one tenant
+ * deviates from the platform default lived in whoever's memory.
+ *
+ * The old toggle also said nothing at all on success — a per-tenant capability
+ * change with no toast and no confirmation, one click away.
+ */
+function FlagsTab({ orgId, tenantName }: { orgId: string; tenantName: string }) {
   const qc = useQueryClient();
   const listFn = useServerFn(listTenantFeatureFlags);
   const setFn = useServerFn(setTenantFeatureFlag);
@@ -464,16 +655,41 @@ function FlagsTab({ orgId }: { orgId: string }) {
     queryFn: () => listFn({ data: { organization_id: orgId } }),
   });
   const setM = useMutation({
-    mutationFn: (input: { key: string; value: boolean | null; justification?: string | null }) =>
-      setFn({ data: { organization_id: orgId, ...input } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform", "tenant", orgId, "flags"] }),
+    mutationFn: (input: {
+      flag: TenantFlagRow;
+      value: boolean | null;
+      justification?: string | null;
+    }) =>
+      setFn({
+        data: {
+          organization_id: orgId,
+          key: input.flag.key,
+          value: input.value,
+          justification: input.justification ?? null,
+        },
+      }),
+    onSuccess: (_r, v) => {
+      toast.success(
+        v.value === null
+          ? `${v.flag.label} override cleared for ${tenantName} — back to the platform default (${v.flag.default_value ? "on" : "off"})`
+          : `${v.flag.label} is now ${v.value ? "on" : "off"} for ${tenantName}`,
+      );
+      setPending(null);
+      qc.invalidateQueries({ queryKey: ["platform", "tenant", orgId, "flags"] });
+    },
     onError: (e) => toast.error((e as Error).message),
   });
+
+  // The flag an admin has asked to override, and the value they asked for.
+  const [pending, setPending] = useState<{ flag: TenantFlagRow; value: boolean } | null>(null);
+  const [justification, setJustification] = useState("");
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
   const rows: TenantFlagRow[] = q.data?.rows ?? [];
 
   return (
     <Card><CardContent className="pt-6">
+      {confirmDialog}
       {q.isLoading ? (
         <div className="text-sm text-muted-foreground">Loading…</div>
       ) : rows.length === 0 ? (
@@ -482,19 +698,89 @@ function FlagsTab({ orgId }: { orgId: string }) {
         </div>
       ) : (
         <ul className="divide-y">
-          {rows.map((f) => <FlagRow key={f.key} f={f} onSet={(v) => setM.mutate({ key: f.key, value: v })} />)}
+          {rows.map((f) => (
+            <FlagRow
+              key={f.key}
+              f={f}
+              busy={setM.isPending}
+              onRequest={(v) => {
+                setJustification(f.justification ?? "");
+                setPending({ flag: f, value: v });
+              }}
+              onReset={async () => {
+                if (
+                  await confirm({
+                    title: `Clear the ${f.label} override for ${tenantName}?`,
+                    description: `${tenantName} goes back to the platform default for this flag, which is ${f.default_value ? "on" : "off"}. The feature is currently ${f.effective ? "on" : "off"} for them${f.justification ? `, because: "${f.justification}"` : ""}.`,
+                    confirmLabel: "Clear override",
+                  })
+                )
+                  setM.mutate({ flag: f, value: null });
+              }}
+            />
+          ))}
         </ul>
       )}
+
+      <Dialog open={!!pending} onOpenChange={(o) => { if (!o) setPending(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Turn {pending?.flag.label} {pending?.value ? "on" : "off"} for {tenantName}?
+            </DialogTitle>
+            <DialogDescription>
+              This overrides the platform default of{" "}
+              {pending?.flag.default_value ? "on" : "off"} for this one tenant, and takes effect
+              for everybody in {tenantName} immediately.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1">
+            <Label htmlFor="flag-justification">Why (optional, kept with the override)</Label>
+            <Textarea
+              id="flag-justification"
+              rows={3}
+              value={justification}
+              onChange={(e) => setJustification(e.target.value)}
+              placeholder="e.g. enterprise pilot, agreed with the owner on 12 Aug"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPending(null)} disabled={setM.isPending}>
+              Cancel
+            </Button>
+            <Button
+              disabled={setM.isPending}
+              onClick={() =>
+                pending &&
+                setM.mutate({
+                  flag: pending.flag,
+                  value: pending.value,
+                  justification: justification.trim() || null,
+                })
+              }
+            >
+              {setM.isPending ? "Saving…" : `Turn ${pending?.value ? "on" : "off"}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </CardContent></Card>
   );
 }
 
-function FlagRow({ f, onSet }: { f: TenantFlagRow; onSet: (value: boolean | null) => void }) {
+function FlagRow({
+  f, busy, onRequest, onReset,
+}: {
+  f: TenantFlagRow;
+  busy: boolean;
+  onRequest: (value: boolean) => void;
+  onReset: () => void;
+}) {
   const overridden = f.override_value !== null;
   return (
     <li className="flex items-center justify-between gap-4 py-3">
       <div className="min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">{f.label}</span>
           <code className="text-xs text-muted-foreground">{f.key}</code>
           {overridden && <Badge variant="secondary" className="text-3xs">override</Badge>}
@@ -503,11 +789,28 @@ function FlagRow({ f, onSet }: { f: TenantFlagRow; onSet: (value: boolean | null
         <div className="mt-1 text-xs text-muted-foreground">
           Default: {f.default_value ? "on" : "off"} · Effective: <span className="font-medium">{f.effective ? "on" : "off"}</span>
         </div>
+        {f.justification && (
+          <div className="mt-1 break-words text-xs italic text-muted-foreground">
+            Why: {f.justification}
+          </div>
+        )}
       </div>
-      <div className="flex items-center gap-2">
-        <Switch checked={f.effective} onCheckedChange={(v) => onSet(v)} />
+      <div className="flex shrink-0 items-center gap-1">
+        {/* A 20px switch is under the touch floor, so the 44px box goes around
+            it rather than into ui/switch.tsx — the ui/dialog.tsx pattern. */}
+        <label
+          htmlFor={`flag-${f.key}`}
+          className="flex min-h-11 min-w-11 cursor-pointer items-center justify-center"
+        >
+          <Switch
+            id={`flag-${f.key}`}
+            disabled={busy}
+            checked={f.effective}
+            onCheckedChange={(v) => onRequest(v)}
+          />
+        </label>
         {overridden && (
-          <Button variant="ghost" size="sm" onClick={() => onSet(null)}>Reset</Button>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={onReset}>Reset</Button>
         )}
       </div>
     </li>
@@ -526,23 +829,32 @@ function NotesTab({ orgId }: { orgId: string }) {
   const [body, setBody] = useState("");
   const [kind, setKind] = useState<"note" | "call" | "email" | "incident">("note");
 
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
+
   const addM = useMutation({
     mutationFn: () => addFn({ data: { organization_id: orgId, body, kind } }),
     onSuccess: () => {
+      toast.success("Note added");
       setBody("");
       qc.invalidateQueries({ queryKey: ["platform", "tenant", orgId, "notes"] });
     },
     onError: (e) => toast.error((e as Error).message),
   });
+  // Deleting a note is irreversible and used to happen on a single unguarded
+  // click of a bare trash icon, saying nothing either way.
   const delM = useMutation({
     mutationFn: (note_id: string) => delFn({ data: { note_id } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform", "tenant", orgId, "notes"] }),
+    onSuccess: () => {
+      toast.success("Note deleted");
+      qc.invalidateQueries({ queryKey: ["platform", "tenant", orgId, "notes"] });
+    },
     onError: (e) => toast.error((e as Error).message),
   });
 
   const rows: TenantNote[] = q.data?.rows ?? [];
   return (
     <div className="space-y-4">
+      {confirmDialog}
       <Card>
         <CardContent className="space-y-3 pt-6">
           <div className="flex items-center gap-2">
@@ -584,7 +896,23 @@ function NotesTab({ orgId }: { orgId: string }) {
                         {n.author_email ?? n.author_user_id?.slice(0, 8) ?? "system"} · {fmtDate(n.created_at)}
                       </span>
                     </div>
-                    <Button size="sm" variant="ghost" onClick={() => delM.mutate(n.id)}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label="Delete note"
+                      disabled={delM.isPending}
+                      onClick={async () => {
+                        if (
+                          await confirm({
+                            title: "Delete this support note?",
+                            description: `The ${n.kind} note from ${n.author_email ?? "system"} on ${fmtDate(n.created_at)} is removed for good — support notes are not versioned and there is no undo.`,
+                            destructive: true,
+                            confirmLabel: "Delete note",
+                          })
+                        )
+                          delM.mutate(n.id);
+                      }}
+                    >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
@@ -618,17 +946,140 @@ function AuditTab({ orgId }: { orgId: string }) {
             <li key={r.id} className="py-3 text-sm">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
-                  <Badge variant="outline">{r.action}</Badge>
+                  {/* humanizeAuditAction has existed since the H2 finding and
+                      had no caller: this log read `soft_delete_tenant`. */}
+                  <Badge variant="outline">{humanizeAuditAction(r.action)}</Badge>
                   <span className="break-words text-xs text-muted-foreground">
                     by {auditActorLabel(r)}
                   </span>
                 </div>
                 <span className="text-xs text-muted-foreground">{fmtDate(r.created_at)}</span>
               </div>
+              <AuditEvidence before={r.before_json} after={r.after_json} />
             </li>
           ))}
         </ul>
       )}
     </CardContent></Card>
+  );
+}
+
+/**
+ * ── THE EVIDENCE THE AUDIT TAB WAS DROPPING ────────────────────────────────
+ *
+ * `listTenantAudit` has selected `before_json` and `after_json` since it was
+ * written, and `TenantAuditRow` has carried them. The tab rendered the action
+ * name, the actor and the timestamp — so it could tell you a tenant was
+ * suspended and not what changed, which is the only question anybody opens an
+ * audit log to answer.
+ *
+ * Three things this is careful about, all of them things the data does:
+ *
+ *   Absent is not empty.  Most rows in production have no `before_json` at
+ *     all. "There was no before state" and "the before state was `{}`" are
+ *     different facts — one is a create, the other is a change from nothing to
+ *     something — and they get different headings, never the same empty list.
+ *   Unchanged keys are dropped.  `update_addon_status` files five keys and
+ *     moves one of them; the other four are noise that hides the answer. The
+ *     count is kept, so "nothing changed" can still be said out loud.
+ *   Values are arbitrary JSON.  `send_announcement_emails` files
+ *     `{ processed, summary: [ … ] }`. Nesting is walked to the leaves and
+ *     named by path, so a change three levels down is a line rather than two
+ *     unreadable blobs side by side.
+ *
+ * Everything here is rendered as TEXT. Audit rows carry user-supplied strings —
+ * organization names, suspension reasons, promo codes — and this is a screen
+ * platform admins read about tenants they do not control.
+ *
+ * At 360px: no table and no side-by-side columns. A change is a stacked block —
+ * path, then old value, arrow, new value — that wraps, and every value gets
+ * `break-all` because a Stripe id or a UUID has no space to break at and would
+ * otherwise set the width of the page.
+ */
+const AUDIT_ROWS_COLLAPSED = 6;
+
+function AuditEvidence({ before, after }: { before: unknown; after: unknown }) {
+  const diff = useMemo(() => diffAuditJson(before, after), [before, after]);
+  const [expanded, setExpanded] = useState(false);
+
+  if (diff.shape === "neither") {
+    return (
+      <p className="mt-1 text-xs italic text-muted-foreground">
+        No before/after detail was recorded for this action.
+      </p>
+    );
+  }
+  if (diff.rows.length === 0) {
+    // Reached only with `shape: "both"` — both sides recorded, nothing moved.
+    // Deliberately worded apart from the line above it.
+    return (
+      <p className="mt-1 text-xs italic text-muted-foreground">
+        {diff.unchanged === 0
+          ? "Before and after were both recorded, and both were empty."
+          : `No field changed — all ${diff.unchanged} recorded field${diff.unchanged === 1 ? "" : "s"} were identical.`}
+      </p>
+    );
+  }
+
+  const heading =
+    diff.shape === "after-only"
+      ? "Recorded — this action had no before state"
+      : diff.shape === "before-only"
+        ? "Recorded before state — no after state was filed"
+        : `${diff.rows.length} change${diff.rows.length === 1 ? "" : "s"}${diff.unchanged ? ` · ${diff.unchanged} field${diff.unchanged === 1 ? "" : "s"} unchanged` : ""}`;
+
+  const visible = expanded ? diff.rows : diff.rows.slice(0, AUDIT_ROWS_COLLAPSED);
+
+  return (
+    <div className="mt-2 min-w-0 rounded-md border bg-muted/30 px-3 py-2">
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground">{heading}</div>
+      <ul className="mt-1 min-w-0 divide-y divide-border/50">
+        {visible.map((row) => (
+          <li key={row.path} className="min-w-0 py-1.5">
+            <div className="break-all font-mono text-2xs text-muted-foreground">
+              {row.path || "(value)"}
+            </div>
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              {row.before !== null && (
+                <span className="break-all font-mono text-xs text-muted-foreground line-through">
+                  {row.before}
+                </span>
+              )}
+              {row.before !== null && row.after !== null && (
+                <>
+                  <span className="sr-only">changed to</span>
+                  <span aria-hidden="true" className="text-xs text-muted-foreground">
+                    →
+                  </span>
+                </>
+              )}
+              {row.after !== null ? (
+                <span className="break-all font-mono text-xs font-medium">{row.after}</span>
+              ) : (
+                <span className="text-xs italic text-muted-foreground">removed</span>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {diff.rows.length > AUDIT_ROWS_COLLAPSED && (
+        // A `min-h-11` box around the label rather than a bare text link: this
+        // is the control that reveals the rest of the evidence and it has to be
+        // hittable with a thumb.
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-1 min-h-11 px-2 text-xs text-muted-foreground"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? "Show fewer" : `Show all ${diff.rows.length} changes`}
+        </Button>
+      )}
+      {diff.truncated && (
+        <p className="mt-1 text-2xs italic text-muted-foreground">
+          This record is deeper or larger than the log shows — some nested values are not listed.
+        </p>
+      )}
+    </div>
   );
 }

@@ -25,16 +25,30 @@
  * A pill showing its value is doing two jobs: it is the control, and it is the
  * summary you would otherwise need the panel open to read.
  *
- * The preview result collapses the same way. The per-day table is gone from
- * the card — a dispatcher deciding whether to apply needs the headline, not
- * fourteen rows — and the things that were buried in that table's margins
- * (arrival-window violations, days that could not be planned) are toasts,
- * because those are the ones you must not miss.
+ * ── AND THEN THERE WAS ONE BUTTON ─────────────────────────────────────────
  *
- * Everything the previous panel could express, it still expresses. Preview is
- * still mandatory before Apply; refusals are still surfaced rather than
- * swallowed; the honest "New route" headline still refuses to invent a saving
- * for a day that had no route to begin with.
+ * QA, 2026-08-19: "Also remove the preview, let's just have apply." So the
+ * card no longer has a preview STEP, a result box, or an Apply that waits for
+ * one. You pick the days, the people and the level, and you press Apply.
+ *
+ * What the result box used to say is now said afterwards, by the toast, out of
+ * `r.forecast` — the same numbers, from the same read-only planner, measured
+ * by applyOptimize immediately before it writes. Nothing about the dry-run
+ * machinery changed; a UI step did.
+ *
+ * Everything the previous panel could express, it still expresses, and the
+ * three things it must never swallow still reach the screen:
+ *
+ *   * a stop that still misses its arrival window   → a warning toast
+ *   * a day the planner refused                     → a warning toast
+ *   * a day that had no route to compare against    → the honest "New route",
+ *     which still refuses to invent a saving for it
+ *
+ * The one warning that DID go is "N tech-days had no route to compare", which
+ * was a footnote to a per-day comparison the card no longer shows. Its whole
+ * job was to explain why a headline covered fewer days than it planned; with
+ * the headline reduced to one line, the all-or-nothing case it exists for is
+ * what that line now says outright.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -46,7 +60,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { applyOptimize, previewOptimize } from "@/lib/visits.functions";
+import { applyOptimize } from "@/lib/visits.functions";
 
 const LEVELS = [
   {
@@ -74,6 +88,29 @@ const mins = (n: number) => {
   return `${r < 0 ? "-" : ""}${h}h${m ? ` ${m}m` : ""}`;
 };
 
+/** What the result box used to say, in one line, after the fact.
+ *
+ *  `daysMeasured` counts only the days that HAD a route to compare against. A
+ *  day whose stops carried no sequence is not a slower route, it is no route,
+ *  and folding it into a saving would invent one — so when nothing was ordered
+ *  this says exactly that instead of quoting a number.
+ *
+ *  It reports a WORSE result too. That used to be advice ("leave it alone");
+ *  said after the write it is a fact, and it is still the fact a dispatcher
+ *  would rather have than not. */
+const drivingLine = (f: Forecast) => {
+  // Not "no violations": no measurement. The caller warns about it separately.
+  if (!f) return undefined;
+  if (f.daysMeasured === 0) {
+    return "New route — these days had no order to compare against.";
+  }
+  if (f.savedMin > 0.5) return `Saves about ${mins(f.savedMin)} of driving.`;
+  if (f.savedMin < -0.5) {
+    return `Adds about ${mins(-f.savedMin)} of driving — the order it replaced was quicker.`;
+  }
+  return "No meaningful change to driving time.";
+};
+
 /** "Aug 5" — the pill has ~90px, and the year is almost never the question. */
 const shortDay = (iso: string) => {
   if (!iso) return "—";
@@ -83,6 +120,9 @@ const shortDay = (iso: string) => {
 };
 
 type Section = "dates" | "techs" | "level" | null;
+
+/** applyOptimize's measurement, or null when it could not be taken. */
+type Forecast = Awaited<ReturnType<typeof applyOptimize>>["forecast"];
 
 function Pill({
   icon: Icon,
@@ -95,11 +135,14 @@ function Pill({
   open: boolean;
   onClick: () => void;
 }) {
+  // 44px on touch and unchanged on a pointer — the same split ui/button.tsx
+  // makes, for the same reason. A pill is the primary control on this card and
+  // it was 24px tall.
   return (
     <button
       onClick={onClick}
       aria-expanded={open}
-      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${
+      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors max-md:min-h-11 max-md:px-3 ${
         open ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted"
       }`}
     >
@@ -124,7 +167,6 @@ export function AutoRoutingPanel({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
-  const previewFn = useServerFn(previewOptimize);
   const applyFn = useServerFn(applyOptimize);
 
   const techs = useMemo(() => staff.filter((s: any) => s.is_field_tech), [staff]);
@@ -144,27 +186,6 @@ export function AutoRoutingPanel({
     String(staff.find((s: any) => s.id === id)?.display_name ?? "Tech").split(" ")[0];
   const rangeValid = Boolean(from && to && to >= from);
 
-  const previewMut = useMutation({
-    mutationFn: () => previewFn({ data: { staffIds: chosen, from, to, level, reassign } }),
-    onSuccess: (r) => {
-      // Surfaced here rather than in a table nobody reads to the end of. A stop
-      // that will still miss its window is the one fact that should change your
-      // mind about pressing Apply.
-      const v = r.totals?.violations ?? 0;
-      if (v > 0) {
-        toast.warning(
-          `${v} stop${v === 1 ? "" : "s"} would still miss its arrival window.`,
-          { duration: 8000 },
-        );
-      }
-      const unordered = (r.totals?.daysPlanned ?? 0) - (r.totals?.daysMeasured ?? 0);
-      if (unordered > 0 && (r.totals?.daysMeasured ?? 0) > 0) {
-        toast.info(`${unordered} tech-day${unordered === 1 ? "" : "s"} had no route to compare.`);
-      }
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
   const applyMut = useMutation({
     mutationFn: () => applyFn({ data: { staffIds: chosen, from, to, level, reassign } }),
     onSuccess: (r) => {
@@ -175,29 +196,61 @@ export function AutoRoutingPanel({
       const share = (r.balance ?? [])
         .map((b) => `${nameOf(b.staffId)} ${b.stops}`)
         .join(" · ");
-      toast.success(
-        `Routed ${r.stops} stop${r.stops === 1 ? "" : "s"}` + (share ? ` — ${share}` : "."),
-      );
+      if (r.forecast && r.forecast.daysPlanned === 0) {
+        // The sentence the result box used to carry, and the one case where
+        // `r.stops` cannot be trusted: with nothing to plan, plan_day_across_staff
+        // returns each technician's CURRENT load rather than zero, so "Routed 20
+        // stops" is what a run that touched nothing would otherwise say. The
+        // measurement is the only thing that can tell the two apart.
+        toast.info("Nothing to route in that range.", {
+          // Names the checkbox without quoting its label verbatim: the label
+          // is matched by position in the-routing-panel-covered-the-thing-it-
+          // was-routing.test.ts with an indexOf, and a second copy of the
+          // exact string up here is found first and reads as the control
+          // having moved above the sections.
+          description:
+            "Either those techs have no scheduled stops, or every stop is already assigned and the “move work between techs” box is off.",
+          duration: 8000,
+        });
+      } else {
+        toast.success(
+          `Routed ${r.stops} stop${r.stops === 1 ? "" : "s"}` + (share ? ` — ${share}` : "."),
+          { description: drivingLine(r.forecast) },
+        );
+      }
+      // The one fact that used to be worth a preview: a stop that will still
+      // miss its window after the best order anybody can give it. It is a
+      // separate toast rather than a line in the one above because it is the
+      // only thing here a dispatcher may have to act on.
+      const v = r.forecast?.violations ?? 0;
+      if (v > 0) {
+        toast.warning(
+          v === 1
+            ? "1 stop still misses its arrival window."
+            : `${v} stops still miss their arrival windows.`,
+          { duration: 8000 },
+        );
+      }
+      // "The check did not run" and "the check found nothing" must not look
+      // the same. The route was still planned — the measurement is the only
+      // thing that failed — so this says so instead of pretending to a zero.
+      if (!r.forecast) {
+        toast.warning("Routed, but the arrival-window check could not run for this batch.", {
+          duration: 8000,
+        });
+      }
       // Refusals are surfaced, not swallowed. A dispatcher who is not told a
       // day was skipped will believe it was optimized.
       for (const s of r.skipped.slice(0, 3)) toast.warning(s.reason, { duration: 8000 });
       if (r.skipped.length > 3) {
         toast.warning(`${r.skipped.length - 3} more day(s) skipped.`, { duration: 8000 });
       }
-      previewMut.reset();
       qc.invalidateQueries({ queryKey: ["visits"] });
       onApplied();
       onClose();
     },
     onError: (e: Error) => toast.error(e.message),
   });
-
-  // Any change to the inputs invalidates the preview, and Apply is gated on a
-  // preview existing — so this is what stops somebody previewing Monday and
-  // applying it to Friday.
-  const dirty = () => {
-    previewMut.reset();
-  };
 
   // Escape closes the card. It floats above the board, so the usual instinct
   // for "get this out of my way" has to work.
@@ -211,9 +264,7 @@ export function AutoRoutingPanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [section, onClose]);
 
-  const p = previewMut.data;
-  const t = p?.totals;
-  const busy = previewMut.isPending || applyMut.isPending;
+  const busy = applyMut.isPending;
 
   const dateLabel = from === to ? shortDay(from) : `${shortDay(from)} – ${shortDay(to)}`;
   const techLabel =
@@ -236,7 +287,7 @@ export function AutoRoutingPanel({
         <button
           onClick={onClose}
           aria-label="Close auto-routing"
-          className="rounded p-1 text-muted-foreground hover:bg-muted"
+          className="flex items-center justify-center rounded p-1 text-muted-foreground hover:bg-muted max-md:min-h-11 max-md:min-w-11"
         >
           <X className="h-4 w-4" />
         </button>
@@ -278,7 +329,6 @@ export function AutoRoutingPanel({
                   // and the server rejects it. Carrying the end along keeps the
                   // common case (one day) working without a second click.
                   if (to < e.target.value) setTo(e.target.value);
-                  dirty();
                 }}
                 className="h-8 text-xs"
               />
@@ -288,10 +338,7 @@ export function AutoRoutingPanel({
                 value={to}
                 min={from || undefined}
                 aria-label="Last day"
-                onChange={(e) => {
-                  setTo(e.target.value);
-                  dirty();
-                }}
+                onChange={(e) => setTo(e.target.value)}
                 className="h-8 text-xs"
               />
             </div>
@@ -307,16 +354,15 @@ export function AutoRoutingPanel({
               {picked.size > 0 && (
                 <button
                   className="text-2xs text-muted-foreground underline-offset-2 hover:underline"
-                  onClick={() => {
-                    setPicked(new Set());
-                    dirty();
-                  }}
+                  onClick={() => setPicked(new Set())}
                 >
                   Clear
                 </button>
               )}
             </div>
-            <div className="flex max-h-32 flex-wrap gap-1 overflow-y-auto">
+            {/* Taller chips on touch would show one row inside max-h-32, so the
+                list gets more room there and keeps its own scroll. */}
+            <div className="flex max-h-32 flex-wrap gap-1 overflow-y-auto max-md:max-h-44">
               {techs.map((s: any) => {
                 const on = picked.has(s.id);
                 return (
@@ -328,9 +374,8 @@ export function AutoRoutingPanel({
                       if (on) next.delete(s.id);
                       else next.add(s.id);
                       setPicked(next);
-                      dirty();
                     }}
-                    className={`rounded-full border px-2 py-0.5 text-2xs ${on ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted"}`}
+                    className={`flex items-center rounded-full border px-2 py-0.5 text-2xs max-md:min-h-11 max-md:px-3 ${on ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted"}`}
                   >
                     {s.display_name}
                   </button>
@@ -350,10 +395,7 @@ export function AutoRoutingPanel({
             {LEVELS.map((l) => (
               <button
                 key={l.value}
-                onClick={() => {
-                  setLevel(l.value);
-                  dirty();
-                }}
+                onClick={() => setLevel(l.value)}
                 className={`flex w-full items-start gap-1.5 rounded p-1.5 text-left ${level === l.value ? "bg-muted" : "hover:bg-muted/60"}`}
               >
                 <Check
@@ -376,10 +418,7 @@ export function AutoRoutingPanel({
         <label className="flex items-start gap-2 pt-0.5 text-2xs">
           <Checkbox
             checked={reassign}
-            onCheckedChange={(v) => {
-              setReassign(v === true);
-              dirty();
-            }}
+            onCheckedChange={(v) => setReassign(v === true)}
             className="mt-0.5"
           />
           <span>
@@ -389,80 +428,31 @@ export function AutoRoutingPanel({
             </span>
           </span>
         </label>
-
-        {p && (
-          <div className="rounded-md border bg-muted/40 p-2 text-xs">
-            {p.days.length === 0 ? (
-              /* Two ways to get here, and until 20260815190000 only the first
-                 existed. The preview now reports what Apply would actually do,
-                 and Apply does nothing to a day whose stops are all assigned
-                 already unless it is allowed to move work between techs — so
-                 an empty preview on a full day is a correct answer, and the
-                 old sentence ("no scheduled stops") was flatly untrue for it. */
-              <span className="text-muted-foreground">
-                Nothing to route in that range. Either those techs have no scheduled stops, or
-                every stop is already assigned and “Also move work between techs” is off.
-              </span>
-            ) : (
-              <>
-                {/* The headline is the honest one. `daysMeasured` counts only
-                    days that HAD a route to compare against; a day whose stops
-                    carry no sequence is not a slower route, it is no route, and
-                    folding it in would invent a saving. */}
-                {t!.daysMeasured > 0 ? (
-                  t!.savedMin > 0.5 ? (
-                    <>
-                      Saves about <strong>{mins(t!.savedMin)}</strong> of driving.
-                    </>
-                  ) : t!.savedMin < -0.5 ? (
-                    <>
-                      Adds about <strong>{mins(-t!.savedMin)}</strong> of driving — the current
-                      order is already better. Leave it alone.
-                    </>
-                  ) : (
-                    <>No meaningful change to driving time. The current order is already good.</>
-                  )
-                ) : (
-                  <>
-                    <strong>New route.</strong> These days were not ordered yet, so there is
-                    nothing to compare against.
-                  </>
-                )}
-                <div className="mt-0.5 text-2xs text-muted-foreground">
-                  {t!.stops} stop{t!.stops === 1 ? "" : "s"} · {t!.daysPlanned} tech-day
-                  {t!.daysPlanned === 1 ? "" : "s"}
-                </div>
-              </>
-            )}
-          </div>
-        )}
       </div>
 
       <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
         <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>
           Cancel
         </Button>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => previewMut.mutate()}
-            disabled={!rangeValid || techs.length === 0 || busy}
-          >
-            {previewMut.isPending ? "Working…" : "Preview"}
-          </Button>
-          {/* Apply is unreachable until a preview exists. That is the safeguard
-              the old buttons lacked: nothing rearranges a day that somebody has
-              not first been shown. */}
-          <Button
-            size="sm"
-            onClick={() => applyMut.mutate()}
-            disabled={!p || applyMut.isPending || p.days.length === 0}
-            title={!p ? "Preview first" : undefined}
-          >
-            {applyMut.isPending ? "Applying…" : "Apply"}
-          </Button>
-        </div>
+        {/* One button. The guard that used to live on Apply — "a preview
+            exists" — was really a guard on the INPUTS, so that is what it is
+            now: a range that runs forwards, and somebody to route. Both are
+            visible in the pills above, which is where a disabled Apply sends
+            you anyway. */}
+        <Button
+          size="sm"
+          onClick={() => applyMut.mutate()}
+          disabled={!rangeValid || techs.length === 0 || busy}
+          title={
+            techs.length === 0
+              ? "Nobody runs routes yet"
+              : !rangeValid
+                ? "The last day is before the first"
+                : undefined
+          }
+        >
+          {applyMut.isPending ? "Applying…" : "Apply"}
+        </Button>
       </div>
     </div>
   );

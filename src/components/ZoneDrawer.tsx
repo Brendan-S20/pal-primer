@@ -9,7 +9,15 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { X } from "lucide-react";
-import { createZone, updateZone, geocodePostal } from "@/lib/zones.functions";
+import {
+  createZone,
+  updateZone,
+  geocodePostal,
+  splitZipInput,
+  parseUsZips,
+  normalizeUsZip,
+  rejectedZipMessage,
+} from "@/lib/zones.functions";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { SectionLabel } from "@/components/client-detail/primitives";
 import { ZoneCoverageMap, type CoverageValue } from "@/components/ZoneCoverageMap";
@@ -24,67 +32,121 @@ import { useCommercialAccounts } from "@/components/CommercialOnly";
 const reassignedToastMsg = (verb: string, n: number | undefined) =>
   n && n > 0 ? `${verb}. ${n} ${n === 1 ? "property" : "properties"} re-assigned.` : verb;
 
+// ZIP entry assumes the United States (owner QA, 2026-08-19: "When entering a
+// zip code for zones, it should automatically assume it's a United States zip
+// code"). The normalization rules and the reasoning behind each of them live
+// with the server-side validator in @/lib/zones.functions — one definition, so
+// the chip you see and the row that is written cannot disagree. What is
+// specific to this component is only how a refusal is SHOWN:
+//
+//   - refused tokens stay in the input box rather than vanishing, so a paste
+//     of twenty ZIPs with two bad ones leaves those two sitting there to be
+//     corrected, next to a message naming them. Silently dropping them is
+//     worse than accepting them: the owner reads twenty chips as twenty ZIPs.
+//   - chips already on the zone that are not normalized US ZIPs (rows written
+//     before this rule existed) are drawn as destructive and named. They are
+//     not rewritten on open — that would edit the zone behind the owner's
+//     back — and they block saving, because the server refuses them too and a
+//     red toast at the end of a long form is a worse place to learn it.
 function ZipChips({
   value,
   onChange,
   placeholder,
+  describedBy,
 }: {
   value: string[];
   onChange: (v: string[]) => void;
   placeholder?: string;
+  describedBy?: string;
 }) {
   const [buf, setBuf] = useState("");
+  const [rejected, setRejected] = useState<string[]>([]);
 
   const commit = (raw: string) => {
-    const parts = raw
-      .split(/[\s,]+/)
-      .map((p) => p.trim().replace(/[^0-9A-Za-z-]/g, ""))
-      .filter(Boolean);
-    if (!parts.length) return;
-    const next = Array.from(new Set([...value, ...parts]));
-    onChange(next);
-    setBuf("");
+    const { zips, rejected: bad } = parseUsZips(splitZipInput(raw));
+    setRejected(bad);
+    if (zips.length) onChange(Array.from(new Set([...value, ...zips])));
+    // Whatever could not be read goes back in the box; everything else clears.
+    setBuf(bad.join(" "));
   };
 
+  // Legacy chips: anything that is not already its own normalized form.
+  const stale = value.filter((z) => normalizeUsZip(z) !== z);
+
   return (
-    <div className="flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-md border bg-background p-2">
-      {value.map((z) => (
-        <Badge key={z} variant="secondary" className="gap-1 pr-1">
-          {z}
-          <button
-            type="button"
-            className="rounded-full p-0.5 hover:bg-muted-foreground/20"
-            onClick={() => onChange(value.filter((x) => x !== z))}
-            aria-label={`Remove ${z}`}
-          >
-            <X className="h-3 w-3" />
-          </button>
-        </Badge>
-      ))}
-      <input
-        value={buf}
-        onChange={(e) => setBuf(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === "," || e.key === " " || e.key === "Tab") {
-            if (buf.trim()) {
-              e.preventDefault();
-              commit(buf);
+    <div className="space-y-1">
+      <div className="flex min-h-[44px] flex-wrap items-center gap-1.5 rounded-md border bg-background p-2">
+        {value.map((z) => {
+          const bad = normalizeUsZip(z) !== z;
+          return (
+            <Badge
+              key={z}
+              variant={bad ? "destructive" : "secondary"}
+              className="gap-1 pr-1"
+              title={bad ? "Not a US 5-digit ZIP — this matches no address" : undefined}
+            >
+              {z}
+              <button
+                type="button"
+                className="rounded-full p-0.5 hover:bg-muted-foreground/20"
+                onClick={() => onChange(value.filter((x) => x !== z))}
+                aria-label={`Remove ${z}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          );
+        })}
+        <input
+          value={buf}
+          inputMode="numeric"
+          autoComplete="postal-code"
+          aria-label="Add a US 5-digit ZIP code"
+          aria-describedby={describedBy}
+          aria-invalid={rejected.length > 0 || undefined}
+          onChange={(e) => {
+            setBuf(e.target.value);
+            if (rejected.length) setRejected([]);
+          }}
+          onKeyDown={(e) => {
+            // Tab is deliberately NOT in this list. It used to be, and with a
+            // commit that could now refuse its input that becomes a keyboard
+            // trap: type "787", press Tab, the commit refuses it, the default
+            // is prevented and focus never leaves the field. Tab still commits
+            // — onBlur does it — it just also moves on.
+            if (e.key === "Enter" || e.key === "," || e.key === " ") {
+              if (buf.trim()) {
+                e.preventDefault();
+                commit(buf);
+              }
+            } else if (e.key === "Backspace" && !buf && value.length) {
+              onChange(value.slice(0, -1));
             }
-          } else if (e.key === "Backspace" && !buf && value.length) {
-            onChange(value.slice(0, -1));
-          }
-        }}
-        onBlur={() => buf.trim() && commit(buf)}
-        onPaste={(e) => {
-          const text = e.clipboardData.getData("text");
-          if (/[\s,]/.test(text)) {
-            e.preventDefault();
-            commit(text);
-          }
-        }}
-        className="min-w-[100px] flex-1 bg-transparent text-sm outline-none"
-        placeholder={value.length ? "" : (placeholder ?? "78701, 78702…")}
-      />
+          }}
+          onBlur={() => buf.trim() && commit(buf)}
+          onPaste={(e) => {
+            const text = e.clipboardData.getData("text");
+            if (/[\s,;]/.test(text)) {
+              e.preventDefault();
+              commit(text);
+            }
+          }}
+          className="min-h-[44px] min-w-[100px] flex-1 bg-transparent text-sm outline-none"
+          placeholder={value.length ? "" : (placeholder ?? "78701, 78702…")}
+        />
+      </div>
+      {rejected.length > 0 && (
+        <p className="text-xs text-destructive" role="alert">
+          {rejectedZipMessage(rejected)}
+        </p>
+      )}
+      {stale.length > 0 && (
+        <p className="text-xs text-destructive">
+          {stale.length === 1 ? "This ZIP was" : "These ZIPs were"} saved before ZIPs were checked
+          and {stale.length === 1 ? "matches" : "match"} no address: {stale.join(", ")}. Remove{" "}
+          {stale.length === 1 ? "it" : "them"} to save.
+        </p>
+      )}
     </div>
   );
 }
@@ -265,7 +327,12 @@ export function ZoneDrawer({
       : coverage.centerLat != null &&
         coverage.centerLng != null &&
         (coverage.mode === "radius" ? !!coverage.radiusMeters : !!coverage.driveTimeMinutes);
-  const canSave = nameOk && coverageOk;
+  // A zone whose ZIPs cannot match anything is not savable — the server
+  // refuses the same list, so failing here names the chip instead of the
+  // request. Only chips carried in from an older row can be in this state;
+  // nothing typed into the field gets here.
+  const zipsOk = zips.every((z) => normalizeUsZip(z) === z);
+  const canSave = nameOk && coverageOk && zipsOk;
 
   const saveMut = useMutation({
     mutationFn: () => {
@@ -387,11 +454,13 @@ export function ZoneDrawer({
         </div>
 
         <div className="space-y-2">
-          <Label>ZIP codes served</Label>
-          <ZipChips value={zips} onChange={handleZips} />
-          <p className="text-xs text-muted-foreground">
-            Type ZIPs and press Enter, comma, or space. Paste a list to bulk add. An address in a
-            listed ZIP always beats another zone's radius.
+          <Label>ZIP codes served (US)</Label>
+          <ZipChips value={zips} onChange={handleZips} describedBy="zone-zips-help" />
+          <p id="zone-zips-help" className="text-xs text-muted-foreground">
+            US 5-digit ZIPs only. Type one and press Enter, comma, or space, or paste a list to bulk
+            add. A ZIP+4 keeps its first five digits, and four digits are read as a ZIP whose
+            leading zero was lost (1810 becomes 01810). An address in a listed ZIP always beats
+            another zone's radius.
           </p>
         </div>
 

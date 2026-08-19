@@ -214,8 +214,48 @@ describe("the location can read the statements that bill it", () => {
     const page = codeOnly(read("src/routes/_authenticated/settings.franchise.tsx"));
     expect(page).toMatch(/getMyFranchiseSettlements/);
     expect(page).toMatch(/audience="location"/);
-    // Only when they ARE a location. A parent has no statements billed to it.
-    expect(page).toMatch(/m\?\.isChild \? <MyStatements \/> : null/);
+
+    // CHANGED 2026-08-19. This asserted `m?.isChild ? <MyStatements /> : null`,
+    // which turned out to PIN a bug rather than prevent one.
+    //
+    // unlink_franchise_child clears parent_organization_id and preserves every
+    // statement and adjustment already raised — it says so in as many words,
+    // because unlinking is not a way to erase what was owed. But `isChild`
+    // goes false at that moment, so the location lost sight of its own unpaid
+    // statements while the franchise kept theirs. Two parties reconciling the
+    // same document, one of whom could still read it.
+    //
+    // The gate is now "is, or was, a location".
+    expect(page).toMatch(/const showLedgers = !!m && \(m\.isChild \|\| m\.hasFranchiseHistory\)/);
+    expect(page).toMatch(/showLedgers \? <MyStatements \/> : null/);
+    expect(page, "the old isChild-only gate is what hid a live debt").not.toMatch(
+      /m\?\.isChild \? <MyStatements \/> : null/,
+    );
+  });
+
+  it("still shows a parent nothing, and an outsider nothing", () => {
+    // The property the old assertion was really protecting, and the one the
+    // widened gate must not have cost: statements are billed TO a location, so
+    // a franchise parent has none of its own and a solo operator must not meet
+    // an empty "Settlement statements" card on their settings page.
+    //
+    // Both fall out of how hasFranchiseHistory is computed rather than from
+    // the JSX, which is why this reads the server function: it counts rows
+    // matching `child_organization_id = orgId`, so a pure parent — which is
+    // nobody's child — can never set it. Asserted here because widening that
+    // filter to either side of the relationship is the plausible wrong edit,
+    // and it would silently mount the panel on every parent's page.
+    const fnSrc = codeOnly(read("src/lib/franchise-membership.functions.ts"));
+    const block = fnSrc.slice(
+      fnSrc.indexOf("let hasFranchiseHistory"),
+      fnSrc.indexOf("return {", fnSrc.indexOf("let hasFranchiseHistory")),
+    );
+    expect(block).not.toBe("");
+    // Only asked of an org that is not a child now — otherwise isChild covers it.
+    expect(block).toMatch(/if \(!me\?\.parent_organization_id\)/);
+    // And only ever about rows billed to this org.
+    expect((block.match(/\.eq\("child_organization_id", orgId\)/g) ?? []).length).toBe(2);
+    expect(block).not.toMatch(/parent_organization_id", orgId/);
   });
 
   it("gives the location no way to move a statement's status", () => {

@@ -178,6 +178,13 @@ function LeadForm() {
                     <input placeholder="(555) 123-4567" value={form.phone} onChange={set("phone")} className={inputCls} />
                   </label>
                 )}
+                {/* Plain input on purpose — same reason as signup.$slug.tsx:
+                    the lead form is public and address.functions.ts requires a
+                    staff session. An unauthenticated proxy to a paid
+                    autocomplete API, on a page whose whole job is to be linked
+                    from adverts, is an abuse vector with somebody else's card
+                    behind it. Also note the field takes "78701" as readily as
+                    a street — half the leads that arrive here are a ZIP. */}
                 {fields.location && (
                   <label className="block text-sm">
                     <span className="mb-1 block font-medium">Service address or ZIP</span>

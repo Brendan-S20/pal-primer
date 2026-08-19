@@ -73,22 +73,31 @@ describe("one control open at a time", () => {
 });
 
 describe("the safeguards survived the redesign", () => {
-  it("Apply is still unreachable until a preview exists", () => {
-    expect(panel).toMatch(/disabled=\{!p \|\| applyMut\.isPending/);
+  it("Apply is gated on the inputs it needs, now that there is no preview", () => {
+    // CHANGED 2026-08-19, when the preview STEP was removed. `!p` meant "a
+    // preview has been run and is still current" — a gate that only existed
+    // because a second press did. What Apply can still be unreachable for is
+    // the thing it could never work without: a bad range, or nobody selected.
+    expect(panel).toMatch(/disabled=\{!rangeValid \|\| techs\.length === 0 \|\| busy\}/);
+    expect(panel).not.toMatch(/previewMut/);
   });
 
-  it("changing any input still invalidates the preview", () => {
-    // Otherwise you preview Monday, switch the date to Friday, and Apply runs
-    // against a plan nobody was shown.
-    expect(panel).toMatch(/const dirty = \(\) => \{\s*\n\s*previewMut\.reset\(\);/);
-    const dirtyCalls = panel.match(/dirty\(\);/g) ?? [];
-    // dates x2, techs toggle, techs clear, level, reassign.
-    expect(dirtyCalls.length).toBeGreaterThanOrEqual(6);
-  });
+  // REMOVED 2026-08-19 with the preview step: "changing any input still
+  // invalidates the preview". It guarded a stored plan going stale — preview
+  // Monday, switch the date to Friday, Apply runs the plan nobody was shown.
+  // There is no stored plan now; Apply reads `from`, `to`, `chosen`, `level`
+  // and `reassign` at the moment it is pressed, so the fault is
+  // unrepresentable rather than prevented. Re-asserting `dirty()` here would
+  // only pin the removed machinery back into place.
 
   it("still refuses to invent a saving for a day that had no route", () => {
-    expect(panel).toMatch(/New route/);
-    expect(panel).toMatch(/the current\s+order is already better/);
+    // Same property, moved: the sentence is now the success toast's
+    // description, composed by drivingLine(). A day whose stops carried no
+    // sequence is not a slower route, it is no route.
+    expect(panel).toMatch(/if \(f\.daysMeasured === 0\) \{/);
+    expect(panel).toMatch(/New route — these days had no order to compare against\./);
+    // And it still reports a WORSE result rather than rounding it out of view.
+    expect(panel).toMatch(/the order it replaced was quicker/);
   });
 
   it("still surfaces skipped days rather than swallowing them", () => {
@@ -114,12 +123,21 @@ describe("preview detail moved out of the card", () => {
   });
 
   it("but the fact that would change your mind is a toast", () => {
-    expect(panel).toMatch(/would still miss its arrival window/);
-    expect(panel).toMatch(/had no route to compare/);
+    // CHANGED 2026-08-19: present tense, because by the time this is said the
+    // write has already happened — "would still miss" described a plan being
+    // offered, and there is no offer any more.
+    expect(panel).toMatch(/1 stop still misses its arrival window\./);
+    expect(panel).toMatch(/stops still miss their arrival windows\./);
+    // "had no route to compare" has gone deliberately: it was a footnote to a
+    // per-day comparison the card no longer shows, and the "New route" line
+    // above carries the part of it a dispatcher acts on.
   });
 
-  it("the headline and stop count remain in the card", () => {
-    expect(panel).toMatch(/Saves about <strong>\{mins\(t!\.savedMin\)\}<\/strong>/);
-    expect(panel).toMatch(/\{t!\.stops\} stop/);
+  it("the headline and stop count moved to the toast, and both are still said", () => {
+    // The card has no result box left to hold them. Losing one of the two
+    // would be the regression — the count alone cannot tell a dispatcher
+    // whether the reorder was worth anything.
+    expect(panel).toMatch(/description: drivingLine\(r\.forecast\)/);
+    expect(panel).toMatch(/`Routed \$\{r\.stops\} stop\$\{r\.stops === 1 \? "" : "s"\}`/);
   });
 });

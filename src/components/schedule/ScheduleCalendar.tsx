@@ -19,9 +19,42 @@
 // `buildTechGroups` the map uses. A chip and that visit's pin are therefore
 // always the same colour, and "who is doing this route" is answerable by
 // glancing between the two panes rather than by reading either.
+//
+// ── WHAT THE WEEK LOOKS LIKE NOW, AND WHY ─────────────────────────────────
+//
+// "When going to the week view, it should somewhat look how Jobber is laid
+// out, utilizing the icons assigned per names. I also feel I am still not
+// receiving the fullness to the windows that Jobber provides."
+//
+// Three separate complaints, and they had three separate causes:
+//
+//   WHO. The technician was an 8px dot. On a column of twenty chips that is
+//   twenty specks, and the name behind the colour lived in a hover card, which
+//   is a gesture a phone cannot make. It is now an initialled badge —
+//   `TechAvatar` — in the same colour, so the badge answers "who" on its own
+//   and the colour still answers "same route as that one".
+//
+//   FULLNESS. A day cell was `min-h-[7rem]` and showed four chips before
+//   collapsing into "+3 more". A week with twenty visits a day therefore
+//   displayed 28 of 140 and left most of the card empty. The week's columns
+//   are now a fixed height and scroll INSIDE themselves, so a column shows as
+//   many visits as it has room for, every column is the same height whatever
+//   its volume, and the page does not grow — which is the same rule that keeps
+//   the month's cells uniform, applied to a range that has the room to use it.
+//
+//   WIDTH. Seven columns inside the 3fr half of the map split come to about
+//   74px each on a 1024px laptop, which is a client name of three characters.
+//   The week grid keeps a floor on its own width and scrolls sideways INSIDE
+//   its container when it cannot have it — never the page body, which is the
+//   first rule in CLAUDE.md.
+//
+// The month is deliberately untouched by all of this. Its cells are small
+// because thirty of them have to fit; there is no fullness to be had there,
+// and a scrolling month cell would be a 34px-wide scroll container.
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { TechAvatar } from "@/components/schedule/TechAvatar";
 
 export type CalendarVisit = {
   id: string;
@@ -30,10 +63,54 @@ export type CalendarVisit = {
   sequence: number | null;
   assigned_staff_id: string | null;
   clients?: { display_name?: string | null } | null;
-  properties?: { street?: string | null; city?: string | null } | null;
+  properties?: {
+    street?: string | null;
+    city?: string | null;
+    earliest_service_time?: string | null;
+    latest_service_time?: string | null;
+  } | null;
   staff?: { display_name?: string | null } | null;
   zones?: { name?: string | null } | null;
+  subscriptions?: {
+    earliest_time?: string | null;
+    latest_time?: string | null;
+    /** The nearest thing this product has to Jobber's "service name" — see
+     *  serviceLabel() below for why it is a cadence and not a name. */
+    account_type?: string | null;
+    frequency?: string | null;
+  } | null;
   eta_start?: string | null;
+};
+
+/** What kind of work this visit is.
+ *
+ *  Owner QA, 2026-08-19, asked for the week view to read like Jobber's, whose
+ *  chip carries the SERVICE on its second line. HoundStack has no service name
+ *  to carry: there is no services table and no per-visit service column,
+ *  because the product sells one service — waste removal — at a cadence. The
+ *  nearest true value is the subscription's cadence and account type, which is
+ *  what this builds. Inventing a "Pet waste removal" string for every chip
+ *  would put the same seven words on every row of the board and say nothing.
+ *
+ *  Where it goes is decided by whether it VARIES. Cadence is a property of the
+ *  customer, not of the day, so on a week where nearly every account is weekly
+ *  it is noise in a 96px column — it lives in the hover card. The one case that
+ *  does vary, and that a dispatcher plans around, is a ONE-TIME job sitting in
+ *  a week of recurring ones: that earns the chip's second line. */
+const FREQUENCY_LABEL: Record<string, string> = {
+  weekly: "Weekly",
+  biweekly: "Bi-weekly",
+  twice_weekly: "Twice weekly",
+  monthly: "Monthly",
+  one_time: "One-time",
+};
+
+const serviceLabel = (v: CalendarVisit) => {
+  const freq = v.subscriptions?.frequency;
+  if (!freq) return null;
+  const cadence = FREQUENCY_LABEL[freq] ?? freq;
+  const kind = v.subscriptions?.account_type;
+  return kind ? `${cadence} ${kind}` : cadence;
 };
 
 /** How many chips a day shows before collapsing into "+N more".
@@ -41,7 +118,12 @@ export type CalendarVisit = {
  *  A busy month is ~600 visits; rendering all of them produces a page that
  *  scrolls for minutes and a day cell whose height depends on its own volume,
  *  so the grid stops being a grid. Four is what fits a month cell without the
- *  row growing. */
+ *  row growing.
+ *
+ *  It is also what a WEEK shows on a phone, where the seven columns have
+ *  reflowed into seven stacked rows and "all of it" would be a hundred and
+ *  forty chips between Monday and Sunday. Above `md` the week ignores this
+ *  entirely: the column scrolls, so there is nothing to collapse. */
 const CHIPS_PER_DAY = 4;
 
 function iso(d: Date) {
@@ -102,12 +184,38 @@ function prettyStatus(status: string) {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
+/** Minutes past midnight this visit is expected to start, or null if nothing
+ *  in the row says.
+ *
+ *  Precedence matches the board's own: a computed ETA if the route was
+ *  optimized, otherwise the subscription's window, otherwise the property's.
+ *  Null is not "midnight" — it is the whole point of the Anytime group below,
+ *  and sorting it as 0 would put every un-timed visit at the top of the day. */
+function startMinutes(v: CalendarVisit): number | null {
+  if (v.eta_start) {
+    const d = new Date(v.eta_start);
+    if (!Number.isNaN(d.getTime())) return d.getHours() * 60 + d.getMinutes();
+  }
+  const raw = v.subscriptions?.earliest_time ?? v.properties?.earliest_service_time ?? null;
+  const m = raw ? /^(\d{1,2}):(\d{2})/.exec(raw) : null;
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+/** "9:15a" — short enough to sit in front of a street name in a 96px column. */
+function clock(mins: number) {
+  const h24 = Math.floor(mins / 60) % 24;
+  const h = h24 % 12 || 12;
+  return `${h}:${String(mins % 60).padStart(2, "0")}${h24 < 12 ? "a" : "p"}`;
+}
+
 function VisitChip({
   visit,
   color,
   onOpen,
   hovered,
   onHover,
+  hiddenOnPhone = false,
 }: {
   visit: CalendarVisit;
   color: string | undefined;
@@ -115,11 +223,28 @@ function VisitChip({
   /** The MAP is pointing at this one. */
   hovered?: boolean;
   onHover?: (id: string | null) => void;
+  /** Past the phone's cut-off in a week column that has not been expanded.
+   *  Rendered either way, because at `md` the column scrolls and there is no
+   *  cut-off to be past. */
+  hiddenOnPhone?: boolean;
 }) {
   const name = visit.clients?.display_name ?? "Unnamed customer";
   const who = visit.staff?.display_name ?? null;
   const street = visit.properties?.street ?? null;
   const city = visit.properties?.city ?? null;
+  const mins = startMinutes(visit);
+  // One line under the name, in the order a dispatcher reads it: when, then
+  // where. Both are optional and either alone is worth a line; neither leaves
+  // the chip a single line tall, which is what a day with no routing looks
+  // like before it is optimized.
+  const service = serviceLabel(visit);
+  // "One-time" only. See serviceLabel(): the cadence is constant per customer,
+  // so putting it on every chip would cost a 96px column its street name to
+  // repeat what the client list already says.
+  const oneTime = visit.subscriptions?.frequency === "one_time" ? "One-time" : null;
+  const second = [mins == null ? null : clock(mins), oneTime, street]
+    .filter(Boolean)
+    .join(" · ");
   const dayLabel = new Date(`${visit.scheduled_on}T00:00:00`).toLocaleDateString(undefined, {
     weekday: "long",
     month: "short",
@@ -138,20 +263,26 @@ function VisitChip({
           onMouseLeave={() => onHover?.(null)}
           onFocus={() => onHover?.(visit.id)}
           onBlur={() => onHover?.(null)}
-          className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-2xs transition hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary ${
-            hovered ? "bg-primary/15 ring-1 ring-primary/50" : ""
-          }`}
+          // `max-md:min-h-11` is the repo's 44px idiom (see ui/button.tsx): a
+          // chip is dense at a pointer's width and a real target at a thumb's.
+          className={`w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-2xs transition hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary max-md:min-h-11 ${
+            hiddenOnPhone ? "hidden md:flex" : "flex"
+          } ${hovered ? "bg-primary/15 ring-1 ring-primary/50" : ""}`}
         >
-          <span
-            aria-hidden
-            className="h-2 w-2 shrink-0 rounded-full"
-            // Unassigned has no tech and therefore no tech colour. A hollow
-            // marker rather than a grey dot: grey is a colour, and on a board
-            // where colour means "whose route", a grey dot reads as a tenth
-            // technician.
-            style={color ? { background: color } : { boxShadow: "inset 0 0 0 1px currentColor" }}
-          />
-          <span className={`truncate ${statusTone(visit.status)}`}>{name}</span>
+          {/* Was an 8px dot. Unassigned still has no tech and therefore no tech
+              colour — an outlined badge rather than a grey one, because grey is
+              a colour and on a board where colour means "whose route" a grey
+              badge reads as a tenth technician. */}
+          <TechAvatar name={who} color={color} />
+          {/* The wrapper is the flex item, and it is the one that has to be
+              allowed to shrink: `truncate` on the lines inside it does nothing
+              until something above them has a narrow box to be narrow in. */}
+          <span className="min-w-0 flex-1">
+            <span className={`block truncate ${statusTone(visit.status)}`}>{name}</span>
+            {second && (
+              <span className="block truncate text-3xs text-muted-foreground">{second}</span>
+            )}
+          </span>
         </button>
       </HoverCardTrigger>
       <HoverCardContent className="w-72 text-xs" side="top" align="start">
@@ -170,6 +301,12 @@ function VisitChip({
             <>
               <dt className="text-muted-foreground">Where</dt>
               <dd>{[street, city].filter(Boolean).join(", ")}</dd>
+            </>
+          )}
+          {service && (
+            <>
+              <dt className="text-muted-foreground">Service</dt>
+              <dd>{service}</dd>
             </>
           )}
           {visit.zones?.name && (
@@ -219,8 +356,17 @@ export function ScheduleCalendar({
     if (!byDay.has(v.scheduled_on)) byDay.set(v.scheduled_on, []);
     byDay.get(v.scheduled_on)!.push(v);
   }
+  // Timed work first, in clock order, then everything with no time on it in
+  // route order. Sorting by `sequence` alone — which is what this did — put an
+  // 8am stop below an un-routed visit whose sequence happened to be lower, and
+  // a column of chips that is not in time order cannot be read down.
   for (const list of byDay.values()) {
-    list.sort((a, b) => (a.sequence ?? 9999) - (b.sequence ?? 9999));
+    list.sort((a, b) => {
+      const am = startMinutes(a);
+      const bm = startMinutes(b);
+      if (am !== bm) return (am ?? 1e6) - (bm ?? 1e6);
+      return (a.sequence ?? 9999) - (b.sequence ?? 9999);
+    });
   }
 
   const isWeekend = (d: string) => {
@@ -266,6 +412,27 @@ export function ScheduleCalendar({
       ? "grid-cols-1 md:grid-cols-5"
       : "grid-cols-1 md:grid-cols-7";
 
+  // A floor on the week grid's width, and the container that pays for it.
+  //
+  // Seven columns of the map split at 1024px are 74px each; five are 104px. A
+  // column narrower than about 96px cannot hold a badge and a name, and the
+  // answer is NOT to let the page get wider — that is the rule this repo
+  // enforces in a browser. So the grid keeps its floor and the container
+  // scrolls, which is the same trade `ui/table.tsx` makes. Below `md` there is
+  // one column and no floor to enforce, hence the `md:` on both halves.
+  //
+  // 42rem is seven times 96px, and it is that rather than anything rounder so
+  // that a 768px tablet — where the map is stacked and the calendar has the
+  // whole width — clears it with room and gets no scrollbar at all. The scroll
+  // is for the case that actually needs it: the map docked beside the calendar
+  // from `lg` up.
+  //
+  // The negative margin is for the 1px ring on today's column: without it the
+  // ring on Monday sits exactly on the scroll container's edge and is clipped,
+  // which reads as a missing border rather than as a highlight.
+  const weekScroll = isMonth ? "" : "md:-mx-0.5 md:overflow-x-auto md:px-0.5 md:pb-1";
+  const weekFloor = isMonth ? "" : cols === 5 ? "md:min-w-[30rem]" : "md:min-w-[42rem]";
+
   return (
     <div className="rounded-lg border bg-card p-2 sm:p-4">
       {/* Only a month gets a column header. A week is one column below `md`,
@@ -276,104 +443,150 @@ export function ScheduleCalendar({
           aria-hidden
         >
           {(hideWeekends ? WEEKDAY_LABELS.slice(0, 5) : WEEKDAY_LABELS).map((label) => (
-            <span key={label} className="truncate text-center text-3xs uppercase text-muted-foreground">
+            <span
+              key={label}
+              className="truncate text-center text-3xs uppercase text-muted-foreground"
+            >
               {label}
             </span>
           ))}
         </div>
       )}
-      <div className={`grid gap-1.5 sm:gap-2 ${gridCls}`}>
-        {Array.from({ length: monthBlanks }).map((_, i) => (
-          <div key={`blank-${i}`} />
-        ))}
-        {visibleDays.map((d) => {
-          const list = byDay.get(d) ?? [];
-          const dt = new Date(`${d}T00:00:00`);
-          const isOpen = expanded.has(d);
-          const shown = isOpen ? list : list.slice(0, CHIPS_PER_DAY);
-          const unassigned = list.filter((v) => !v.assigned_staff_id).length;
-          return (
-            <div
-              key={d}
-              className={`flex flex-col rounded-md border p-1.5 text-xs md:min-h-[7rem] ${
-                isMonth ? "min-h-[3.5rem]" : ""
-              } ${d === todayIso ? "ring-1 ring-primary" : ""} ${
-                d === day ? "bg-muted/40" : ""
-              }`}
-            >
-              {/* The date is the control that opens the day. The chips are their
-                  own controls, so the whole cell is deliberately NOT a button —
-                  nesting one inside another is invalid and swallows the chip's
-                  own click. */}
-              <button
-                onClick={() => onPickDay(d)}
-                className={`mb-1 flex rounded px-1 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary md:min-h-0 md:flex-none md:flex-row md:items-baseline md:gap-1.5 ${
-                  isMonth
-                    ? "min-h-[2.75rem] flex-1 flex-col items-center justify-center gap-0"
-                    : "min-h-[2.75rem] items-center gap-1.5"
+      <div className={weekScroll}>
+        <div className={`grid gap-1.5 sm:gap-2 ${gridCls} ${weekFloor}`}>
+          {Array.from({ length: monthBlanks }).map((_, i) => (
+            <div key={`blank-${i}`} />
+          ))}
+          {visibleDays.map((d) => {
+            const list = byDay.get(d) ?? [];
+            const dt = new Date(`${d}T00:00:00`);
+            const isOpen = expanded.has(d);
+            // The month collapses in JS, because its cells are hidden below
+            // `md` anyway and a hidden chip there costs a render for nothing.
+            // The week collapses in CSS: the same chips are on the page at
+            // every width, and only the phone's copy of the column is cut off,
+            // because at `md` the column scrolls and nothing is cut off at all.
+            const rendered = isMonth && !isOpen ? list.slice(0, CHIPS_PER_DAY) : list;
+            const phoneCut = isOpen ? list.length : CHIPS_PER_DAY;
+            const unassigned = list.filter((v) => !v.assigned_staff_id).length;
+            // Where the timed work stops and "sometime today" begins. Only
+            // drawn when the day has both, because a heading over all of it or
+            // none of it says nothing.
+            const firstUntimed = list.findIndex((v) => startMinutes(v) == null);
+            const showAnytime = !isMonth && firstUntimed > 0;
+            const isToday = d === todayIso;
+            return (
+              <div
+                key={d}
+                className={`flex flex-col rounded-md border p-1.5 text-xs ${
+                  isMonth ? "min-h-[3.5rem] md:min-h-[7rem]" : "md:h-[30rem] xl:h-[36rem]"
+                } ${isToday ? "border-primary ring-1 ring-primary" : ""} ${
+                  d === day ? "bg-muted/40" : ""
                 }`}
-                title={`Open ${dt.toLocaleDateString()} on the board`}
               >
-                {/* A month's weekday lives in the column header above; repeating
-                    it in all thirty cells is what made them too wide to fit. */}
-                {!isMonth && (
-                  <span className="text-3xs uppercase text-muted-foreground">
-                    {dt.toLocaleDateString(undefined, { weekday: "short" })}
-                  </span>
-                )}
-                <span className="font-medium">{dt.getDate()}</span>
-                {list.length > 0 && (
-                  <span
-                    className={`text-3xs text-muted-foreground ${isMonth ? "md:ml-auto" : "ml-auto"}`}
-                  >
-                    {list.length}
-                  </span>
-                )}
-              </button>
-
-              <div className={`flex-col gap-0.5 ${isMonth ? "hidden md:flex" : "flex"}`}>
-                {shown.map((v) => (
-                  <VisitChip
-                    key={v.id}
-                    visit={v}
-                    color={v.assigned_staff_id ? techColors.get(v.assigned_staff_id) : undefined}
-                    onOpen={onOpenVisit}
-                    hovered={hoveredVisitId === v.id}
-                    onHover={onHoverVisit}
-                  />
-                ))}
-              </div>
-
-              {list.length > CHIPS_PER_DAY && (
+                {/* The date is the control that opens the day. The chips are their
+                    own controls, so the whole cell is deliberately NOT a button —
+                    nesting one inside another is invalid and swallows the chip's
+                    own click. */}
                 <button
-                  onClick={() =>
-                    setExpanded((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(d)) next.delete(d);
-                      else next.add(d);
-                      return next;
-                    })
-                  }
-                  className={`mt-0.5 px-1 text-left text-3xs text-muted-foreground hover:text-foreground ${
-                    isMonth ? "hidden md:block" : ""
+                  onClick={() => onPickDay(d)}
+                  className={`mb-1 flex w-full rounded px-1 text-left transition hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary ${
+                    isToday ? "bg-primary/10 text-primary" : ""
+                  } ${
+                    isMonth
+                      ? "min-h-[2.75rem] flex-1 flex-col items-center justify-center gap-0 md:min-h-0 md:flex-none md:flex-row md:items-baseline md:gap-1.5"
+                      : "min-h-[2.75rem] items-center gap-1.5 md:min-h-0 md:flex-col md:items-start md:gap-0 md:border-b md:pb-1"
                   }`}
+                  title={`Open ${dt.toLocaleDateString()} on the board`}
                 >
-                  {isOpen ? "Show less" : `+${list.length - CHIPS_PER_DAY} more`}
+                  <span className="flex items-baseline gap-1.5">
+                    {/* A month's weekday lives in the column header above; repeating
+                        it in all thirty cells is what made them too wide to fit. */}
+                    {!isMonth && (
+                      <span className="text-3xs uppercase text-muted-foreground">
+                        {dt.toLocaleDateString(undefined, { weekday: "short" })}
+                      </span>
+                    )}
+                    <span className="font-medium">{dt.getDate()}</span>
+                  </span>
+                  {list.length > 0 && (
+                    <span
+                      className={`shrink-0 text-3xs text-muted-foreground ${
+                        isMonth ? "md:ml-auto" : "ml-auto md:ml-0"
+                      }`}
+                    >
+                      {isMonth
+                        ? list.length
+                        : `${list.length} visit${list.length === 1 ? "" : "s"}`}
+                    </span>
+                  )}
                 </button>
-              )}
 
-              {unassigned > 0 && (
-                <span
-                  className={`mt-auto px-1 pt-1 text-3xs text-amber-700 ${
-                    isMonth ? "hidden md:block" : ""
+                {/* The week's column is the scroller. `md:min-h-0` is what lets
+                    it be one: a flex child's minimum is its content, so without
+                    it the column grows to fit twenty chips and takes the page
+                    with it, and `overflow-y-auto` never has anything to do. */}
+                <div
+                  className={`flex-col gap-0.5 ${isMonth ? "hidden md:flex" : "flex"} ${
+                    isMonth ? "" : "md:min-h-0 md:flex-1 md:overflow-y-auto"
                   }`}
                 >
-                  {unassigned} unassigned
-                </span>
-              )}
-            </div>
-          );
-        })}
+                  {rendered.map((v, i) => (
+                    <Fragment key={v.id}>
+                      {showAnytime && i === firstUntimed && (
+                        <span
+                          className={`mt-1 px-1 text-3xs uppercase text-muted-foreground ${
+                            i >= phoneCut ? "hidden md:block" : "block"
+                          }`}
+                        >
+                          Anytime
+                        </span>
+                      )}
+                      <VisitChip
+                        visit={v}
+                        color={
+                          v.assigned_staff_id ? techColors.get(v.assigned_staff_id) : undefined
+                        }
+                        onOpen={onOpenVisit}
+                        hovered={hoveredVisitId === v.id}
+                        onHover={onHoverVisit}
+                        hiddenOnPhone={!isMonth && i >= phoneCut}
+                      />
+                    </Fragment>
+                  ))}
+                </div>
+
+                {list.length > CHIPS_PER_DAY && (
+                  <button
+                    onClick={() =>
+                      setExpanded((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(d)) next.delete(d);
+                        else next.add(d);
+                        return next;
+                      })
+                    }
+                    className={`mt-0.5 px-1 text-left text-3xs text-muted-foreground hover:text-foreground max-md:min-h-11 ${
+                      isMonth ? "hidden md:block" : "md:hidden"
+                    }`}
+                  >
+                    {isOpen ? "Show less" : `+${list.length - CHIPS_PER_DAY} more`}
+                  </button>
+                )}
+
+                {unassigned > 0 && (
+                  <span
+                    className={`mt-auto px-1 pt-1 text-3xs text-amber-700 ${
+                      isMonth ? "hidden md:block" : ""
+                    }`}
+                  >
+                    {unassigned} unassigned
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
       {/* This used to read "Hover a visit for who and where". Hover does not
           exist on a touchscreen, so on the device where this board is most
@@ -381,8 +594,9 @@ export function ScheduleCalendar({
           the hover card it pointed at is a shortcut, not the only way in.
           Tapping a chip opens the visit, which is where all of it lives. */}
       <p className="mt-3 text-2xs text-muted-foreground">
-        Colours match the map — each technician keeps the same colour in both. Open a visit for who
-        and where, or the date for that day&apos;s board.
+        Colours match the map — each technician keeps the same colour in both, and the badge on a
+        visit is their initials. Open a visit for who and where, or the date for that day&apos;s
+        board.
         {isMonth && (
           <span className="md:hidden">
             {" "}

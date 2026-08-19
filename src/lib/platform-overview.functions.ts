@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { fetchPlatformSaasMetrics } from "@/lib/platform-metrics.server";
+import { z } from "zod";
 
 async function assertPlatformAdmin(supabase: any, userId: string) {
   const { data, error } = await supabase.rpc("is_platform_admin", { _user_id: userId });
@@ -120,21 +121,37 @@ export type PlatformTenantRow = {
   created_at: string;
   suspended_at: string | null;
   grace_expires_at: string | null;
+  deleted_at: string | null;
 };
+
+/**
+ * `include_deleted` exists because soft-delete was a one-way door.
+ *
+ * softDeleteTenant writes `organizations.deleted_at`; this list filtered the
+ * row out and did not even return the column, so a tenant deleted by mistake
+ * left the console entirely — no filter, no badge, and the detail page only
+ * reachable by pasting a uuid somebody had kept. restoreTenant now undoes the
+ * delete, and this is how an admin gets back to the row to press it.
+ *
+ * Deleted tenants stay OUT by default: the list is the working view of who is
+ * live, and every count and bulk action on the page is about live tenants.
+ */
+const listTenantsSchema = z.object({ include_deleted: z.boolean().optional() });
 
 export const listPlatformTenants = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<{ rows: PlatformTenantRow[] }> => {
+  .inputValidator((d) => listTenantsSchema.parse(d ?? {}))
+  .handler(async ({ data, context }): Promise<{ rows: PlatformTenantRow[] }> => {
     await assertPlatformAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: orgs, error } = await supabaseAdmin
+    let orgsQ = supabaseAdmin
       .from("organizations")
       .select(
         "id, name, billing_status, active_client_count, stripe_customer_id, stripe_subscription_id, plan_id, created_at, suspended_at, grace_expires_at, deleted_at",
-      )
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false });
+      );
+    if (!data.include_deleted) orgsQ = orgsQ.is("deleted_at", null);
+    const { data: orgs, error } = await orgsQ.order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
 
     const planIds = Array.from(new Set((orgs ?? []).map((o) => o.plan_id).filter(Boolean))) as string[];
@@ -179,6 +196,7 @@ export const listPlatformTenants = createServerFn({ method: "GET" })
         created_at: o.created_at,
         suspended_at: o.suspended_at ?? null,
         grace_expires_at: o.grace_expires_at ?? null,
+        deleted_at: o.deleted_at ?? null,
       };
     });
     return { rows };

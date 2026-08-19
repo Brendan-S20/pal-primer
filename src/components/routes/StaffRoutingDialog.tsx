@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import {
   addTimeOff,
   listTimeOff,
@@ -83,6 +84,12 @@ export function StaffRoutingDialog({
   const [reason, setReason] = useState("");
   const [start, setStart] = useState(staff?.start_address ?? "");
   const [end, setEnd] = useState(staff?.end_address ?? "");
+  // Coordinates that arrived with a matched address, so save() can use them
+  // instead of re-geocoding the string. Dropped on any hand edit: a pin for
+  // the address that was in the box a moment ago is worse than no pin, since
+  // the optimizer has no way to doubt it.
+  const [startPin, setStartPin] = useState<{ lat: number; lng: number } | null>(null);
+  const [endPin, setEndPin] = useState<{ lat: number; lng: number } | null>(null);
   const [savingAddr, setSavingAddr] = useState(false);
 
   const timeOffQ = useQuery({
@@ -148,8 +155,9 @@ export function StaffRoutingDialog({
       // burns a Nominatim call and, worse, can move a pin the dispatcher
       // placed deliberately.
       const [sGeo, eGeo] = await Promise.all([
-        start.trim() && start !== staff.start_address ? geocode(start) : Promise.resolve(null),
-        end.trim() && end !== staff.end_address ? geocode(end) : Promise.resolve(null),
+        startPin ??
+          (start.trim() && start !== staff.start_address ? geocode(start) : Promise.resolve(null)),
+        endPin ?? (end.trim() && end !== staff.end_address ? geocode(end) : Promise.resolve(null)),
       ]);
       await addrFn({
         data: {
@@ -281,9 +289,25 @@ export function StaffRoutingDialog({
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Starts from</Label>
-              <Input
+              {/* Same control as Settings → Users, and for the same reason:
+                  this is the second entry point for the same two fields, and
+                  a smart one there with a dumb one here is how the two drift
+                  apart. Not a customer address, but in the same town as the
+                  customers, so the workspace bias suits it. */}
+              <AddressAutocomplete
                 value={start}
-                onChange={(e) => setStart(e.target.value)}
+                onChangeText={(t) => {
+                  setStart(t);
+                  setStartPin(null);
+                }}
+                onResolved={(r) => {
+                  setStart(r.address.formatted);
+                  setStartPin(
+                    r.address.latitude != null && r.address.longitude != null
+                      ? { lat: r.address.latitude, lng: r.address.longitude }
+                      : null,
+                  );
+                }}
                 placeholder="Home, shop, or depot"
               />
               {staff.start_latitude != null && start === staff.start_address && (
@@ -295,9 +319,20 @@ export function StaffRoutingDialog({
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Ends at</Label>
-              <Input
+              <AddressAutocomplete
                 value={end}
-                onChange={(e) => setEnd(e.target.value)}
+                onChangeText={(t) => {
+                  setEnd(t);
+                  setEndPin(null);
+                }}
+                onResolved={(r) => {
+                  setEnd(r.address.formatted);
+                  setEndPin(
+                    r.address.latitude != null && r.address.longitude != null
+                      ? { lat: r.address.latitude, lng: r.address.longitude }
+                      : null,
+                  );
+                }}
                 placeholder="Dump, home, or shop"
               />
               {staff.end_latitude != null && end === staff.end_address && (

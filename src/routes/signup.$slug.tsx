@@ -279,6 +279,20 @@ function SignupPage() {
                     onChange={(e) => setFormField({ ...form, phone: e.target.value })}
                   />
                 </div>
+                {/* DELIBERATELY a plain input, not AddressAutocomplete.
+                    This route is public — the person filling it in has no
+                    Supabase session — and all three address server functions
+                    sit behind `requireSupabaseAuth` (address.functions.ts), so
+                    the control would render here and fail on every keystroke.
+                    The fix is not to drop the middleware: `autocompleteAddress`
+                    proxies a metered Google API and its rate limit is keyed on
+                    `context.userId`, so an anonymous version of it is an open
+                    door to somebody else's bill. A safe public path needs its
+                    own server function, gated on the tenant slug in the URL,
+                    rate-limited per IP + slug rather than per user, and biased
+                    from the tenant's zones rather than from resolveCaller.
+                    That is a piece of work, not a wiring change, and nobody
+                    should start it before a provider is chosen. */}
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label htmlFor="street">Street address *</Label>
                   <Input

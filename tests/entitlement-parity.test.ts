@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -303,26 +303,133 @@ function parseFunctionBodies(source: string): Record<string, string> {
 
 const franchiseGateBodies = parseFunctionBodies(franchiseGateSql);
 
-/** The PARENT side: capabilities the pricing page sells at Enterprise. */
-const PARENT_SIDE_FRANCHISE_RPCS = [
+// ── WHY THIS SECTION NO LONGER READS ONE FILE ────────────────────────────────
+//
+// It used to parse 20260731230000 alone and assert its six functions were
+// "exactly the six — no more, no fewer". That is a list, and a list only knows
+// about the functions that were on it. Four parent-side RPCs
+// (set_location_payment_routing, set_chargeback_responsibility,
+// generate_franchise_settlements, mark_franchise_parent) were missed by that
+// migration and this test agreed with it for three weeks, because the thing it
+// compared the six against was the six.
+//
+// The tell was already on the screen: the READ franchise_payment_routing was
+// gated and both WRITES that change routing were not. Nobody chooses that.
+//
+// So the SCOPE is now derived from the migrations rather than typed here. A new
+// franchise RPC added tomorrow with an owner check and no plan check joins the
+// list on its own and fails this file until it is gated or explicitly excused.
+// The pinned names below are still pinned — but as a floor the derivation must
+// reach, not as the definition of what to check.
+
+/** Every function's LATEST definition across every migration, keyed by name.
+ *
+ *  CREATE OR REPLACE means the last file to define a routine is the one in
+ *  force; checking an earlier copy is how a regression walks past a green test.
+ *  Handles both `AS $$` and `AS $function$`, which this repo uses
+ *  interchangeably, and stops at the matching close so a second function in the
+ *  same file is not read as part of the first. */
+function latestFunctionDefinitions(): Record<string, { file: string; body: string }> {
+  const out: Record<string, { file: string; body: string }> = {};
+  const dir = join(__dirname, "..", "supabase", "migrations");
+  for (const file of readdirSync(dir)
+    .filter((f) => f.endsWith(".sql"))
+    .sort()) {
+    // Comments stripped: this asks what a routine DOES, and the headers in
+    // these files quote SQL at length.
+    const code = readFileSync(join(dir, file), "utf8").replace(/--[^\n]*/g, "");
+    const re = /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.([a-z0-9_]+)\s*\(/gi;
+    for (const m of code.matchAll(re)) {
+      const tail = code.slice(m.index!);
+      const open = /\bAS\s+\$(\w*)\$/.exec(tail);
+      if (!open) continue;
+      const tag = `$${open[1]}$`;
+      const close = tail.indexOf(tag, open.index! + open[0].length);
+      if (close === -1) continue;
+      out[m[1].toLowerCase()] = { file, body: tail.slice(0, close) };
+    }
+  }
+  if (Object.keys(out).length === 0) {
+    throw new Error("Parsed no function definitions out of supabase/migrations");
+  }
+  return out;
+}
+
+const LATEST_DEFINITIONS = latestFunctionDefinitions();
+
+/** Parent-side franchise RPCs that are deliberately NOT plan-gated, each with
+ *  the reason. An entry here is a decision on the record; an absence is a gap. */
+const FRANCHISE_RPCS_DELIBERATELY_UNGATED: Record<string, string> = {
+  redeem_franchise_link_code:
+    "the CHILD side. A franchisee is a location somebody else recruited and is most likely on Launch — requiring Enterprise to ACCEPT an invitation would mean linking only works if every location independently buys the most expensive plan.",
+  unlink_franchise_child:
+    "leaving. A paywall may withhold a capability but must not lock an organization inside a relationship: a franchise whose plan lapses must still be able to release its locations. src/lib/franchise-membership.functions.ts makes the same argument for removeFranchiseLocation having no requireEntitlement.",
+};
+
+/**
+ * The PARENT side, derived: a routine that decides something about a franchise
+ * relationship and admits its caller on the strength of being an OWNER.
+ *
+ * Each clause earns its place. `'owner'::public.app_role` is what separates a
+ * franchise capability from a platform-admin diagnostic (`franchise_signals`,
+ * which checks is_platform_admin and has no tenant to bill) and from the
+ * primitives (`has_permission`). `RETURNS trigger` drops the two statement
+ * triggers, which are not callable RPCs at all. The word test drops routines
+ * that mention no franchise concept.
+ */
+function parentSideFranchiseRpcs(): string[] {
+  return Object.entries(LATEST_DEFINITIONS)
+    .filter(([name, { body }]) => {
+      if (name in FRANCHISE_RPCS_DELIBERATELY_UNGATED) return false;
+      if (/RETURNS\s+trigger/i.test(body)) return false;
+      if (!/franchise|royalty|parent_organization_id/i.test(body)) return false;
+      return body.includes("'owner'::public.app_role");
+    })
+    .map(([name]) => name)
+    .sort();
+}
+
+/** The ten, pinned. Not the definition of the scope — see the note above — but
+ *  a floor: if the derivation ever returns fewer than these, it has stopped
+ *  looking rather than found the schema clean. */
+const PARENT_SIDE_FRANCHISE_RPCS = parentSideFranchiseRpcs();
+
+const PINNED_PARENT_SIDE_FRANCHISE_RPCS = [
   "franchise_rollup",
   "franchise_children",
   "franchise_payment_routing",
   "create_franchise_link_code",
   "set_child_royalty_percent",
   "provision_franchise_location",
+  // Added 2026-08-19: gated by 20260819140000. Until then every one of these
+  // was SECURITY DEFINER, granted to `authenticated`, owner-checked and free of
+  // any plan check — so a lapsed franchise could still redirect where a
+  // location's customer money lands, move chargeback liability, cut settlement
+  // statements and re-mark itself a parent.
+  "set_location_payment_routing",
+  "set_chargeback_responsibility",
+  "generate_franchise_settlements",
+  "mark_franchise_parent",
 ];
 
 describe("franchise_structure is gated in SQL, not only in TypeScript (BUILD-1)", () => {
-  it("gates exactly the six parent-side RPCs — no more, no fewer", () => {
-    expect(Object.keys(franchiseGateBodies).sort()).toEqual([...PARENT_SIDE_FRANCHISE_RPCS].sort());
+  it("finds the parent-side RPCs by what they do, not by a list", () => {
+    // Both halves pinned, the way the cron scan in the-wiring-is-connected is.
+    // A derivation that quietly matched nothing would make every assertion
+    // below vacuously green, which is exactly how the six-function version of
+    // this file agreed with the migration that missed four.
+    expect(
+      PARENT_SIDE_FRANCHISE_RPCS,
+      "the scan found no parent-side franchise RPCs at all — it is reading nothing",
+    ).not.toEqual([]);
+    expect(PARENT_SIDE_FRANCHISE_RPCS).toEqual([...PINNED_PARENT_SIDE_FRANCHISE_RPCS].sort());
   });
 
   it("puts a franchise_structure check in every one of them", () => {
     const missing = PARENT_SIDE_FRANCHISE_RPCS.filter(
       (fn) =>
         !/public\.has_plan_entitlement\(\s*\w+\s*,\s*'franchise_structure'\s*\)/.test(
-          franchiseGateBodies[fn] ?? "",
+          LATEST_DEFINITIONS[fn]?.body ?? "",
         ),
     );
     expect(
@@ -331,11 +438,28 @@ describe("franchise_structure is gated in SQL, not only in TypeScript (BUILD-1)"
     ).toEqual([]);
   });
 
+  it("names a reason for every one it does NOT gate", () => {
+    // The exclusions are the part of a derived scope that can rot into a
+    // dumping ground. Each one has to still exist and still be a franchise RPC,
+    // or it is a name somebody added to make a failure go away.
+    for (const [fn, why] of Object.entries(FRANCHISE_RPCS_DELIBERATELY_UNGATED)) {
+      expect(
+        LATEST_DEFINITIONS[fn],
+        `${fn} is excused from the plan gate and no longer exists`,
+      ).toBeTruthy();
+      expect(why.length, `${fn} is excused with no reason given`).toBeGreaterThan(40);
+      expect(
+        LATEST_DEFINITIONS[fn].body,
+        `${fn} is excused from a gate it would never have been in scope for`,
+      ).toContain("'owner'::public.app_role");
+    }
+  });
+
   it("checks the ROLE first and the plan second", () => {
     // "You are not the owner of this franchise" must not be leaked past by an
     // upgrade prompt — that would tell a stranger which plan a franchise is on.
     for (const fn of PARENT_SIDE_FRANCHISE_RPCS) {
-      const body = franchiseGateBodies[fn];
+      const body = LATEST_DEFINITIONS[fn].body;
       const role = body.indexOf("public.has_role(");
       const plan = body.indexOf("public.has_plan_entitlement(");
       expect(role, `${fn} lost its role check`).toBeGreaterThan(-1);
@@ -357,7 +481,7 @@ describe("franchise_structure is gated in SQL, not only in TypeScript (BUILD-1)"
       `${TIER_NAMES[needed as PlanTier]} and above. This organization is on %.`;
     for (const fn of PARENT_SIDE_FRANCHISE_RPCS) {
       expect(
-        franchiseGateBodies[fn],
+        LATEST_DEFINITIONS[fn].body,
         `${fn}'s refusal has drifted from upgradeMessage()`,
       ).toContain(sqlText);
     }
@@ -378,7 +502,7 @@ describe("franchise_structure is gated in SQL, not only in TypeScript (BUILD-1)"
       ).toBe(initcap);
     }
     for (const fn of PARENT_SIDE_FRANCHISE_RPCS) {
-      expect(franchiseGateBodies[fn]).toContain("initcap(public.plan_tier_for_org(");
+      expect(LATEST_DEFINITIONS[fn].body).toContain("initcap(public.plan_tier_for_org(");
     }
   });
 

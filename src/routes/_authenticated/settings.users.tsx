@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { toast } from "sonner";
 import { useMyRole } from "@/hooks/useMyRole";
 import { humanizeRole } from "@/lib/humanize";
@@ -345,6 +346,13 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
   const routingFn = useServerFn(setStaffRouting);
   const [start, setStart] = useState(staff.start_address ?? "");
   const [end, setEnd] = useState(staff.end_address ?? "");
+  // A pin that came back with a matched address. Held so save() can skip the
+  // Nominatim round trip below and store the provider's own coordinates,
+  // which are the point of matching in the first place. Cleared the moment
+  // the text is edited by hand — coordinates for the address that used to be
+  // in the box would send the optimizer to the wrong start.
+  const [startPin, setStartPin] = useState<{ lat: number; lng: number } | null>(null);
+  const [endPin, setEndPin] = useState<{ lat: number; lng: number } | null>(null);
   const [saving, setSaving] = useState(false);
 
   const routingMut = useMutation({
@@ -362,8 +370,9 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
     setSaving(true);
     try {
       const [sGeo, eGeo] = await Promise.all([
-        start.trim() && start !== staff.start_address ? geocode(start) : Promise.resolve(null),
-        end.trim() && end !== staff.end_address ? geocode(end) : Promise.resolve(null),
+        startPin ??
+          (start.trim() && start !== staff.start_address ? geocode(start) : Promise.resolve(null)),
+        endPin ?? (end.trim() && end !== staff.end_address ? geocode(end) : Promise.resolve(null)),
       ]);
       await saveFn({
         data: {
@@ -391,9 +400,25 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
         <Label className="text-xs flex items-center gap-1">
           <MapPin className="h-3 w-3" /> Route start (home, shop, or depot)
         </Label>
-        <Input
+        {/* A route endpoint is a home, shop or depot, not a customer address —
+            but it is in the same town as the customers, so the workspace bias
+            the proxy applies is exactly right for it. Stored as one line, so
+            a match writes the provider's formatted address rather than the
+            split fields a property gets. */}
+        <AddressAutocomplete
           value={start}
-          onChange={(e) => setStart(e.target.value)}
+          onChangeText={(t) => {
+            setStart(t);
+            setStartPin(null);
+          }}
+          onResolved={(r) => {
+            setStart(r.address.formatted);
+            setStartPin(
+              r.address.latitude != null && r.address.longitude != null
+                ? { lat: r.address.latitude, lng: r.address.longitude }
+                : null,
+            );
+          }}
           placeholder="123 Main St, Austin, TX 78701"
           disabled={!canEdit}
         />
@@ -407,9 +432,20 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
         <Label className="text-xs flex items-center gap-1">
           <MapPin className="h-3 w-3" /> Route end (dump, home, shop)
         </Label>
-        <Input
+        <AddressAutocomplete
           value={end}
-          onChange={(e) => setEnd(e.target.value)}
+          onChangeText={(t) => {
+            setEnd(t);
+            setEndPin(null);
+          }}
+          onResolved={(r) => {
+            setEnd(r.address.formatted);
+            setEndPin(
+              r.address.latitude != null && r.address.longitude != null
+                ? { lat: r.address.latitude, lng: r.address.longitude }
+                : null,
+            );
+          }}
           placeholder="Landfill or home address"
           disabled={!canEdit}
         />
