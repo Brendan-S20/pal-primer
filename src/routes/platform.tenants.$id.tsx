@@ -167,9 +167,12 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
         <ArrowLeft className="h-4 w-4" /> Back to tenants
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold">{t.name}</h1>
+        <div className="min-w-0">
+          {/* An organization name plus two badges is more than 360px of one
+              line, and the name is user-supplied. Wrap, and let the name
+              itself break rather than setting the width of the header. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="break-words text-2xl font-semibold">{t.name}</h1>
             <TenantStatusBadge status={t.billing_status} />
             {t.deleted_at && <Badge variant="destructive">Deleted {fmtDate(t.deleted_at)}</Badge>}
           </div>
