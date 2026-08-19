@@ -159,6 +159,61 @@ export const deleteAnnouncement = createServerFn({ method: "POST" })
   });
 
 // ─────────── Global user directory ───────────
+//
+// ── WHAT THE DATA LAYER ACTUALLY PERMITS ──────────────────────────────────
+//
+// There is no email anywhere in `public`. `user_roles` holds (user_id,
+// organization_id, role) and nothing else; there is no profiles table, no
+// members view, no copy of `auth.users` we are allowed to join to. The only
+// way this app can turn a user id into an email address is the auth admin
+// API, and that API offers exactly two shapes:
+//
+//   getUserById(id)                  one account, one HTTP round trip
+//   listUsers({ page, perPage })     a page of accounts, no filter argument
+//
+// `PageParams` in @supabase/auth-js is `{ page?, perPage? }`. There is no
+// `filter`, no `email=eq.…`, no ordering. So "search the directory by email
+// in the database" is not reachable from here at all, and anything that
+// claims to is filtering a set it has already fetched.
+//
+// That is exactly what the previous version did, and why a person past the
+// cap could not be found: it read `user_roles`, sliced the first `limit` user
+// ids, spent one `getUserById` per id, and THEN applied `search` to the rows
+// it happened to have. `organization_id` and `role` filtered before the slice
+// so they could reach the whole directory; `search` could only ever narrow
+// the first 150 rows, and user 151 did not exist as far as the console was
+// concerned.
+//
+// ── SO THE CAP MOVED OFF THE POPULATION AND ONTO THE PAGE ─────────────────
+//
+// The directory is now assembled in full before anything is narrowed:
+//
+//   1. every `user_roles` row matching the org/role filters, read in chunks
+//      of 1000 with `.range()` (the old `.limit(2000)` was a silent cap of
+//      its own — 2000 role rows, no message, no way to know you had hit it);
+//   2. every auth account, read with `listUsers` a page at a time, so email
+//      costs one round trip per THOUSAND users instead of one per user. For
+//      any directory bigger than a page this is cheaper than the old code was
+//      for a single screenful, which is what makes the full scan affordable;
+//   3. search and sort over that whole set, and only then slice one page.
+//
+// Search runs before the slice and over the complete population, so it can
+// reach anybody in the directory. Paging walks whatever the search left.
+//
+// ── WHAT IT DOES NOT COVER, AND SAYS SO ───────────────────────────────────
+//
+// Both scans have ceilings, because an unbounded loop against a paginated API
+// is its own outage. When a ceiling is hit the answer is incomplete, and the
+// response says which scan ran short and how far it got — `scan` is returned
+// on every call and the screen renders it. A capped result that looks like a
+// complete one is the fault this whole change is about; it would be a poor
+// trade to close it at the top and reopen it at the bottom.
+//
+// The population is still "users with an organization membership", unchanged.
+// Accounts with no `user_roles` row at all — abandoned signups, platform
+// admins — were invisible here before and still are. That is a different hole
+// with a different answer (it changes what the page MEANS, not how much of it
+// you can see) and it is not this change.
 
 export type PlatformUserRow = {
   user_id: string;
@@ -168,82 +223,292 @@ export type PlatformUserRow = {
   organizations: Array<{ id: string; name: string; role: string }>;
 };
 
+/** How much of the directory each scan actually managed to read. */
+export type DirectoryScan = {
+  /** `user_roles` rows read. */
+  membershipRows: number;
+  /** False when the membership scan hit its ceiling — rows exist that we did not read. */
+  membershipsComplete: boolean;
+  /** Auth accounts read (whole-directory scan plus any per-user fallbacks). */
+  accounts: number;
+  /** False when we could not resolve an email for every member of the directory. */
+  accountsComplete: boolean;
+};
+
+export type PlatformUsersPage = {
+  rows: PlatformUserRow[];
+  /** Users matching the current filters and search across the WHOLE directory, not this page. */
+  total: number;
+  /** The offset actually used — clamped, so it is never past the end of `total`. */
+  offset: number;
+  limit: number;
+  scan: DirectoryScan;
+};
+
+// PostgREST's own default ceiling is 1000 rows per request; asking for more in
+// one call just gets silently trimmed, which is the thing we are here to stop.
+const MEMBERSHIP_CHUNK = 1000;
+const MAX_MEMBERSHIP_ROWS = 100_000;
+// GoTrue's admin list endpoint tops out at 1000 per page in a default install.
+const ACCOUNT_PAGE_SIZE = 1000;
+const MAX_ACCOUNT_PAGES = 50;
+// Above this many members we keep paging the account list; below it, one
+// getUserById per unresolved member is the cheaper of the two.
+const MAX_DIRECT_LOOKUPS = 2000;
+const LOOKUP_CONCURRENCY = 20;
+
+type MembershipRow = { user_id: string; role: string; organization_id: string | null };
+
+/**
+ * Every `user_roles` row matching the org/role filters, in chunks, in a stable
+ * order. `.range()` needs a total order or two chunks can overlap and drop a
+ * row between them, so it orders by (user_id, id) — `id` is the primary key,
+ * which makes the order total whatever else collides.
+ */
+async function loadMemberships(
+  supabaseAdmin: any,
+  filters: { organization_id?: string; role?: string },
+): Promise<{ rows: MembershipRow[]; complete: boolean }> {
+  const rows: MembershipRow[] = [];
+  for (let from = 0; from < MAX_MEMBERSHIP_ROWS; from += MEMBERSHIP_CHUNK) {
+    let q = supabaseAdmin
+      .from("user_roles")
+      .select("id, user_id, role, organization_id")
+      .order("user_id", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + MEMBERSHIP_CHUNK - 1);
+    if (filters.organization_id) q = q.eq("organization_id", filters.organization_id);
+    if (filters.role) q = q.eq("role", filters.role);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    const batch = (data ?? []) as MembershipRow[];
+    rows.push(...batch);
+    if (batch.length < MEMBERSHIP_CHUNK) return { rows, complete: true };
+  }
+  return { rows, complete: false };
+}
+
+/** Organization names for the ids we actually have, in `.in()`-sized batches. */
+async function loadOrgNames(supabaseAdmin: any, orgIds: string[]): Promise<Map<string, string>> {
+  const names = new Map<string, string>();
+  for (let i = 0; i < orgIds.length; i += 200) {
+    const slice = orgIds.slice(i, i + 200);
+    if (!slice.length) break;
+    const { data, error } = await supabaseAdmin
+      .from("organizations")
+      .select("id, name")
+      .in("id", slice);
+    if (error) throw new Error(error.message);
+    for (const o of (data ?? []) as Array<{ id: string; name: string }>) names.set(o.id, o.name);
+  }
+  return names;
+}
+
+export type AccountInfo = {
+  email: string | null;
+  last_sign_in_at: string | null;
+  created_at: string | null;
+};
+
+const accountInfo = (u: any): AccountInfo => ({
+  email: u.email ?? null,
+  last_sign_in_at: u.last_sign_in_at ?? null,
+  created_at: u.created_at ?? null,
+});
+
+/**
+ * Emails, sign-in and creation times for every member of the directory.
+ *
+ * Strategy is decided by one probe page rather than guessed. If the whole auth
+ * user table fits in a page we already have everything after one round trip.
+ * If it does not, a directory small enough to look up member by member is
+ * cheaper that way than paging past accounts we have no interest in; a bigger
+ * one keeps paging. `complete` is false only if we finish still missing an
+ * email for somebody the caller is going to be shown.
+ *
+ * Exported because that last sentence is the whole no-silent-caps promise, and
+ * a promise about a loop with two ceilings in it should be exercised rather
+ * than described.
+ */
+export async function loadAccounts(
+  supabaseAdmin: any,
+  memberIds: string[],
+): Promise<{ byId: Map<string, AccountInfo>; accounts: number; complete: boolean }> {
+  const byId = new Map<string, AccountInfo>();
+  let scannedPages = 0;
+  let exhausted = false;
+
+  const readPage = async (page: number) => {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
+      page,
+      perPage: ACCOUNT_PAGE_SIZE,
+    });
+    if (error) throw new Error(error.message);
+    const users = (data?.users ?? []) as any[];
+    for (const u of users) byId.set(u.id, accountInfo(u));
+    scannedPages += 1;
+    return users.length;
+  };
+
+  const firstPage = await readPage(1);
+  exhausted = firstPage < ACCOUNT_PAGE_SIZE;
+
+  const stillMissing = () => memberIds.filter((id) => !byId.has(id));
+
+  if (!exhausted && memberIds.length > MAX_DIRECT_LOOKUPS) {
+    while (!exhausted && scannedPages < MAX_ACCOUNT_PAGES) {
+      const n = await readPage(scannedPages + 1);
+      exhausted = n < ACCOUNT_PAGE_SIZE;
+    }
+  }
+
+  let missing = stillMissing();
+  if (missing.length && missing.length <= MAX_DIRECT_LOOKUPS) {
+    for (let i = 0; i < missing.length; i += LOOKUP_CONCURRENCY) {
+      await Promise.all(
+        missing.slice(i, i + LOOKUP_CONCURRENCY).map(async (uid) => {
+          try {
+            const { data: u } = await supabaseAdmin.auth.admin.getUserById(uid);
+            if (u?.user) byId.set(uid, accountInfo(u.user));
+          } catch {
+            /* one unreadable account must not blank the page; it shows as an id
+               and `complete` goes false below, which the screen reports. */
+          }
+        }),
+      );
+    }
+    missing = stillMissing();
+  }
+
+  return { byId, accounts: byId.size, complete: missing.length === 0 };
+}
+
+/** Case-insensitive match on email, user id, or any organization name. */
+export function matchesDirectorySearch(row: PlatformUserRow, search: string): boolean {
+  const s = search.toLowerCase().trim();
+  if (!s) return true;
+  return (
+    (row.email ?? "").toLowerCase().includes(s) ||
+    row.user_id.toLowerCase().includes(s) ||
+    row.organizations.some((o) => o.name.toLowerCase().includes(s))
+  );
+}
+
+/** Alphabetical by email, ids last, user id as the tiebreak. */
+function compareDirectoryRows(a: PlatformUserRow, b: PlatformUserRow): number {
+  const ae = a.email?.toLowerCase() ?? "";
+  const be = b.email?.toLowerCase() ?? "";
+  if (ae !== be) {
+    if (!ae) return 1;
+    if (!be) return -1;
+    return ae < be ? -1 : 1;
+  }
+  return a.user_id < b.user_id ? -1 : a.user_id > b.user_id ? 1 : 0;
+}
+
+/**
+ * Narrow, order, then take one page — in that order, which is the whole point.
+ *
+ * Exported and pure so the ordering can be tested for what it is: searching a
+ * directory of four hundred for the four-hundredth person has to find them,
+ * and it only does if the filter runs over the whole set and the slice runs
+ * last. Doing it the other way round type-checks, reads fine, and is the bug.
+ *
+ * The offset is clamped to the last page that exists, so narrowing a search
+ * while on page nine lands on the last page of the new result rather than on
+ * an empty one that looks like "no matches".
+ */
+export function selectDirectoryPage(
+  all: PlatformUserRow[],
+  opts: { search?: string | null; offset: number; limit: number },
+): { rows: PlatformUserRow[]; total: number; offset: number } {
+  const search = opts.search?.trim() ?? "";
+  const matched = search ? all.filter((r) => matchesDirectorySearch(r, search)) : all.slice();
+  matched.sort(compareDirectoryRows);
+
+  const limit = Math.max(1, opts.limit);
+  const total = matched.length;
+  const lastPageStart = total === 0 ? 0 : Math.floor((total - 1) / limit) * limit;
+  const offset = Math.min(Math.max(0, opts.offset), lastPageStart);
+
+  return { rows: matched.slice(offset, offset + limit), total, offset };
+}
+
 const listUsersSchema = z.object({
   search: z.string().max(200).optional(),
   role: z.enum(["owner", "office_manager", "dispatcher", "tech"]).optional(),
   organization_id: z.string().uuid().optional(),
-  limit: z.number().int().min(1).max(200).default(100),
+  limit: z.number().int().min(1).max(200).default(50),
+  offset: z.number().int().min(0).default(0),
 });
 
 export const listPlatformUsers = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => listUsersSchema.parse(d ?? {}))
-  .handler(async ({ data, context }) => {
+  .handler(async ({ data, context }): Promise<PlatformUsersPage> => {
     await assertAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    // Pull user_roles as our source of truth for org membership.
-    let rolesQ = supabaseAdmin
-      .from("user_roles")
-      .select("user_id, role, organization_id")
-      .limit(2000);
-    if (data.organization_id) rolesQ = rolesQ.eq("organization_id", data.organization_id);
-    if (data.role) rolesQ = rolesQ.eq("role", data.role);
-    const { data: roles, error: rErr } = await rolesQ;
-    if (rErr) throw new Error(rErr.message);
+    // org/role filter in the query, so they narrow the population itself.
+    const memberships = await loadMemberships(supabaseAdmin, {
+      organization_id: data.organization_id,
+      role: data.role,
+    });
 
-    const userIds = Array.from(new Set((roles ?? []).map((r) => r.user_id)));
-    const orgIds = Array.from(new Set((roles ?? []).map((r) => r.organization_id).filter(Boolean))) as string[];
-    const { data: orgs } = orgIds.length
-      ? await supabaseAdmin.from("organizations").select("id, name").in("id", orgIds)
-      : { data: [] as { id: string; name: string }[] };
-    const orgName = new Map((orgs ?? []).map((o) => [o.id, o.name] as const));
+    const memberIds = Array.from(new Set(memberships.rows.map((r) => r.user_id)));
+    const orgIds = Array.from(
+      new Set(memberships.rows.map((r) => r.organization_id).filter(Boolean)),
+    ) as string[];
 
-    // Batch-fetch emails. Auth admin has no bulk-by-id, so cap parallelism.
-    const emailInfo = new Map<string, { email: string | null; last_sign_in_at: string | null; created_at: string | null }>();
-    const capped = userIds.slice(0, data.limit);
-    await Promise.all(
-      capped.map(async (uid) => {
-        try {
-          const { data: u } = await supabaseAdmin.auth.admin.getUserById(uid);
-          if (u?.user) {
-            emailInfo.set(uid, {
-              email: u.user.email ?? null,
-              last_sign_in_at: u.user.last_sign_in_at ?? null,
-              created_at: u.user.created_at ?? null,
-            });
-          }
-        } catch { /* ignore */ }
-      }),
-    );
+    const [orgName, accounts] = await Promise.all([
+      loadOrgNames(supabaseAdmin, orgIds),
+      memberIds.length
+        ? loadAccounts(supabaseAdmin, memberIds)
+        : Promise.resolve({ byId: new Map<string, AccountInfo>(), accounts: 0, complete: true }),
+    ]);
 
-    const rows: PlatformUserRow[] = capped.map((uid) => {
-      const info = emailInfo.get(uid);
+    const orgsByUser = new Map<string, PlatformUserRow["organizations"]>();
+    for (const r of memberships.rows) {
+      const list = orgsByUser.get(r.user_id) ?? [];
+      if (r.organization_id) {
+        list.push({
+          id: r.organization_id,
+          name: orgName.get(r.organization_id) ?? "-",
+          role: r.role,
+        });
+      }
+      orgsByUser.set(r.user_id, list);
+    }
+
+    const all: PlatformUserRow[] = memberIds.map((uid) => {
+      const info = accounts.byId.get(uid);
       return {
         user_id: uid,
         email: info?.email ?? null,
         last_sign_in_at: info?.last_sign_in_at ?? null,
         created_at: info?.created_at ?? null,
-        organizations: (roles ?? [])
-          .filter((r) => r.user_id === uid && r.organization_id)
-          .map((r) => ({
-            id: r.organization_id as string,
-            name: orgName.get(r.organization_id as string) ?? "-",
-            role: r.role,
-          })),
+        organizations: orgsByUser.get(uid) ?? [],
       };
     });
 
-    const search = data.search?.toLowerCase().trim();
-    const filtered = search
-      ? rows.filter((r) =>
-          (r.email ?? "").toLowerCase().includes(search) ||
-          r.user_id.toLowerCase().includes(search) ||
-          r.organizations.some((o) => o.name.toLowerCase().includes(search)),
-        )
-      : rows;
+    const page = selectDirectoryPage(all, {
+      search: data.search,
+      offset: data.offset,
+      limit: data.limit,
+    });
 
-    return { rows: filtered, total: userIds.length };
+    return {
+      rows: page.rows,
+      total: page.total,
+      offset: page.offset,
+      limit: data.limit,
+      scan: {
+        membershipRows: memberships.rows.length,
+        membershipsComplete: memberships.complete,
+        accounts: accounts.accounts,
+        accountsComplete: accounts.complete,
+      },
+    };
   });
 
 // ─────────── User detail + auth admin actions ───────────
