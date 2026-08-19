@@ -144,13 +144,17 @@ function OnlineSignupSettings() {
                       it. */}
                   <code className="break-all rounded bg-muted px-2 py-1 text-xs">{publicUrl}</code>
                   <button
-                    className="text-xs text-primary underline"
+                    // MEASURED 2026-08-19: 16.0px. Inline-flex plus a minimum, not padding,
+                    // so the surrounding line keeps its rhythm.
+                    className="inline-flex items-center text-xs text-primary underline max-md:min-h-11"
                     onClick={() => copy(publicUrl, "Link")}
                   >
                     Copy link
                   </button>
                   <a
-                    className="text-xs text-primary underline"
+                    // MEASURED 2026-08-19: 16.0px. Inline-flex plus a minimum, not padding,
+                    // so the surrounding line keeps its rhythm.
+                    className="inline-flex items-center text-xs text-primary underline max-md:min-h-11"
                     href={publicUrl}
                     target="_blank"
                     rel="noreferrer"

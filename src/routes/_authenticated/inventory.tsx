@@ -205,7 +205,7 @@ function InventoryPage() {
               page — the third table here is narrow enough that its scroller
               never engages, and it carries the class anyway so all three
               behave the same when a column is added. */}
-          <div className="overflow-x-auto rounded-lg border bg-card">
+          <div className="relative overflow-x-auto rounded-lg border bg-card">
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
                 <tr>
@@ -285,7 +285,7 @@ function InventoryPage() {
               page — the third table here is narrow enough that its scroller
               never engages, and it carries the class anyway so all three
               behave the same when a column is added. */}
-          <div className="overflow-x-auto rounded-lg border bg-card">
+          <div className="relative overflow-x-auto rounded-lg border bg-card">
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
                 <tr>
@@ -320,7 +320,7 @@ function InventoryPage() {
               page — the third table here is narrow enough that its scroller
               never engages, and it carries the class anyway so all three
               behave the same when a column is added. */}
-          <div className="overflow-x-auto rounded-lg border bg-card">
+          <div className="relative overflow-x-auto rounded-lg border bg-card">
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
                 <tr>

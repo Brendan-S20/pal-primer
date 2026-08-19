@@ -247,7 +247,7 @@ The audit above was read, not measured. On 2026-08-19 the real-browser sweep was
 extended past the login screen (`tests/viewports/every-signed-in-page-at-every-width.spec.ts`),
 so these are computed geometry at 360 / 768 / 1280 / 1920, not a reading of the JSX.
 
-**22 surface/width combinations fail.** Two things about that number before the list:
+**22 surface/width combinations failed. All are now cleared — 18 fixed, 4 false positives — and the sweep is a blocking gate.** Two things about that number before the list:
 
 - **It confirms §1.1 rather than replacing it.** The header controls this document
   predicted at "~32px total, below the 44px floor" measure **32.0px**, and the ⌘K
@@ -258,8 +258,8 @@ so these are computed geometry at 360 / 768 / 1280 / 1920, not a reading of the 
   `/settings/online-signup` — the exact fault CLAUDE.md added that rule for — is
   handled correctly at all four widths.
 
-The sweep runs `continue-on-error` in `sandboxes.yml` until this list is worked
-down. That is a deliberate, temporary state and the workflow says so.
+The sweep ran `continue-on-error` in `sandboxes.yml` for exactly one day. The
+list below is worked down to zero and the step is now a hard gate.
 
 ### 6.1 The page itself scrolls sideways
 
@@ -490,3 +490,58 @@ control, measured.
 (×51), `/invoices` (×9) and `/zones` (×2). They are struck through above rather
 than deleted, because "we fixed it" and "it was never broken" are different
 facts and the count should not quietly absorb the difference.
+
+
+### 6.9 Cleared to zero, 2026-08-19
+
+The last four, and one method note worth more than any of them.
+
+| | was | fix |
+|---|---|---|
+| the settings tab rail | **28.0px x21**, on *every* settings page | the highest-count finding in the sweep; height only, the rail already scrolled |
+| `/settings/users` role select | 40.0px | four short |
+| `/settings/scheduling` weekday pills | **26.0px x7** | a pill is round, so the minimum goes on both axes or Sunday becomes an oval |
+| `/settings/online-signup` switch | 20.0px | `ui/switch.tsx` had no hit area at all, unlike `ui/checkbox.tsx`; it now borrows the same `::before` |
+| `/platform/tenants` status filter | 36.0px | `sm:py-1` shrank it above the phone breakpoint, and the phone value was never large enough either |
+| `/notifications` All / Unread | 32.0px x2 | |
+| audit diff overflow | **465px in 360px** | the wrapper had `min-w-0` and the SPAN did not |
+
+**`break-words` does not do what the audit-diff fix needed.** It is
+`overflow-wrap: break-word`, which breaks a long word once the box is already
+narrower than it — it does **not** reduce the element's min-content width. So a
+flex item carrying `break-words` still refuses to shrink below the longest
+unbroken token, and 325px of
+`platform.operations.oncall@houndstack.com` set the width of the page. The box
+has to be allowed to get narrow at *every* level, not just the outermost.
+
+### 6.10 The `sr-only` span that scrolled `/clients` 663px
+
+Worth its own entry because nothing about it looks like a layout bug.
+
+`/clients` at 768px measured **1431px** of horizontal scroll. The table was
+already inside `<div className="overflow-x-auto">` — exactly what CLAUDE.md
+prescribes, and `wide-things-that-set-the-width-of-the-page.test.ts` was green.
+The wrapper measured 464px with `overflow-x: auto`, correctly clipping. Every
+ancestor fitted.
+
+The cause was one element: `<span class="sr-only">Actions</span>` — the screen
+reader label on the Actions column header, 1x1px, at x=1430. Tailwind's
+`sr-only` is `position: absolute`, and **overflow clipping does not apply to an
+absolutely-positioned descendant whose containing block is outside the
+scroller**. The wrapper was `position: static`, so it was not that containing
+block, and the span escaped.
+
+`ui/table.tsx` wraps its table in `relative w-full overflow-auto`. Twenty-two
+hand-rolled wrappers copied the `overflow-x-auto` and not the `relative`. All
+twenty-two now have it, and
+`tests/a-screen-reader-label-that-dragged-the-page-sideways.test.ts` keeps them
+that way — the browser found this once because that page happened to have an
+`sr-only` in a table, and the other twenty-one were one tooltip or one badge
+away from the same fault.
+
+**Method note, which cost a cycle to learn:** a clipped element still reports a
+wide `getBoundingClientRect()`. A scan that ranks by rect will confidently name
+something inside a scroll container that cannot possibly affect the page. Skip
+anything with a clipping ancestor, and then look for what is left — which for
+this fault meant looking specifically at absolutely-positioned elements,
+because those are the ones that escape.

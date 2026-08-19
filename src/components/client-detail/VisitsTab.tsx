@@ -514,7 +514,7 @@ function VisitTable({
   selection?: TableSelection;
 }) {
   return (
-    <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
+    <div className="relative overflow-x-auto rounded-lg border bg-card shadow-sm">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -747,7 +747,7 @@ function VisitCalendar({ visits, onOpen }: { visits: any[]; onOpen: (v: any) => 
         <span className="ml-1 text-sm font-medium">{monthLabel}</span>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
+      <div className="relative overflow-x-auto rounded-lg border bg-card shadow-sm">
         <table role="grid" className="w-full min-w-[560px] table-fixed text-sm">
           <thead>
             <tr className="border-b">

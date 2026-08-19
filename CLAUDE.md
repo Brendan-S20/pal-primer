@@ -100,21 +100,22 @@ Four things about it are worth knowing before you trust or extend it:
   awkward on purpose — a 46-character client name, a 78-character signup URL,
   seven technicians — because a fixture that is tidier than reality measures
   nothing. Run it with `npm run test:viewports:auth`.
-  **It is RED by design while its findings are worked down — 22 surface/width
-  combinations when it landed, 9 as of 2026-08-19 — four of which turned out to be false positives in the rule itself, not fixes.** They are real, they are
-  listed with measured numbers in `docs/mobile-ux-audit.md` §6, and until they
-  clear the `sandboxes.yml` step runs `continue-on-error`. Flip it to blocking
-  the day it goes green — a permanently red gate teaches the same lesson as an
-  absent one. Keep the number here honest: a count that drifts is worse than no
-  count, because it reads as a measurement.
+  It landed on 2026-08-19 with **22 failing surface/width combinations** and
+  reached **zero the same day**, so the `sandboxes.yml` step is a hard gate
+  rather than `continue-on-error`. Eighteen were real; **four were false
+  positives in the rule itself** and are worth knowing about before you trust a
+  finding — see `docs/mobile-ux-audit.md` §6.8.
 
-  Two things the first six fixes taught, worth having before you pick up the
-  rest. **A list of off-side controls is a list of SYMPTOMS** — find the
-  outermost element wider than the viewport, the one whose parent still fits,
-  and fix that; everything under it is downstream, and on `/clients/:id` the
-  obvious culprit was a real fault that was not the cause. **And measure right
+  Three things those fixes taught, which will save you a cycle each. **A list
+  of off-side controls is a list of SYMPTOMS** — find the outermost element
+  wider than the viewport, the one whose parent still fits; on `/clients/:id`
+  the obvious culprit was a real fault that was not the cause. **Measure right
   edges, not widths** — `/clients/new` and `/my-day` overflowed with no element
-  wider than the screen at all.
+  wider than the screen at all. **And a clipped element still reports a wide
+  rect**, so a scan that ranks by `getBoundingClientRect()` will point at
+  something inside a scroll container that cannot affect the page; on
+  `/clients` the real cause was a 1x1 `sr-only` span escaping a `position:
+  static` scroller.
 - **Signed out is not a blank page here — it is `/auth`.** So the blank-page
   guard below is not enough for the authenticated half: `/auth` renders
   perfectly and clears every size threshold. Each surface therefore proves

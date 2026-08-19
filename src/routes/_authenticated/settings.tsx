@@ -91,7 +91,12 @@ function SettingsLayout() {
                 <Link
                   key={tab.to}
                   to={tab.to}
-                  className={`rounded-md px-3 py-1 text-sm transition-colors ${
+                  // MEASURED 2026-08-19: 28.0px, twenty-one of them, on EVERY settings
+                  // page — the single highest-count finding in the sweep. The rail
+                  // already scrolls sideways in its own container, so the fix is
+                  // height only; `inline-flex items-center` keeps the label
+                  // centred once the box is taller than the text.
+                  className={`inline-flex items-center rounded-md px-3 py-1 text-sm transition-colors max-md:min-h-11 ${
                     active
                       ? "bg-primary/10 text-primary font-medium"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"

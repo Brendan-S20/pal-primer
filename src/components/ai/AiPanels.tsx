@@ -209,7 +209,7 @@ export function ChurnPanel() {
           rests on — was cut off with no scrollbar and no way to reach it.
           `overflow-x-auto` still establishes the rounding clip, and lets the
           table scroll inside its own box rather than the page. */}
-      <div className="overflow-x-auto rounded-lg border bg-card">
+      <div className="relative overflow-x-auto rounded-lg border bg-card">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
             <tr>
@@ -361,7 +361,7 @@ export function DispatchPanel() {
           rests on — was cut off with no scrollbar and no way to reach it.
           `overflow-x-auto` still establishes the rounding clip, and lets the
           table scroll inside its own box rather than the page. */}
-      <div className="overflow-x-auto rounded-lg border bg-card">
+      <div className="relative overflow-x-auto rounded-lg border bg-card">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
             <tr>
@@ -469,7 +469,7 @@ export function PricingPanel() {
           rests on — was cut off with no scrollbar and no way to reach it.
           `overflow-x-auto` still establishes the rounding clip, and lets the
           table scroll inside its own box rather than the page. */}
-      <div className="overflow-x-auto rounded-lg border bg-card">
+      <div className="relative overflow-x-auto rounded-lg border bg-card">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
             <tr>

@@ -145,26 +145,20 @@ jobs:
       - name: Sweep 360 / 768 / 1280 / 1920 — public routes
         run: npm run test:viewports:public
 
-      # ── WHY THE SIGNED-IN HALF IS NOT A GATE *YET* ────────────────────────
+      # ── THIS WAS NOT A GATE FOR ONE DAY ──────────────────────────────────
       #
-      # It was added on 2026-08-19 and found 22 surface/width combinations that
-      # break — five pages that scroll sideways at 360px, controls off the edge
-      # with no scroller to reach them, and a long tail under the 44px floor
-      # including the app shell's own search box on every tenant page. Those are
-      # real and they are listed in docs/mobile-ux-audit.md.
+      # Added 2026-08-19 with 22 failing surface/width combinations, and run
+      # `continue-on-error` so that a check which could only be red did not
+      # teach people to ignore it. All 22 are now cleared — 18 were real and
+      # fixed, 4 were false positives in tests/viewports/rules.ts, which could
+      # not see a hit area supplied by an out-of-flow pseudo-element.
       #
-      # Making it blocking today would paint this job red until every one is
-      # fixed, and ci.yml already says what that does: "a hard gate that cannot
-      # start is not a lenient gate — it is an absent one, and it is absent
-      # while reporting failure, which is the shape that trains people to
-      # ignore it." A gate that is red for a fortnight teaches the same lesson.
-      #
-      # So it runs and reports, and the findings get worked down in batches.
-      # FLIP THIS TO BLOCKING — delete the continue-on-error — the day it goes
-      # green. It is not meant to live here.
-      - name: Sweep 360 / 768 / 1280 / 1920 — signed-in routes (reporting only)
+      # So it is a gate, as the note it replaces said it should become. The
+      # signed-in half is where every surface a customer's staff uses all day
+      # actually lives; the public half only covers the marketing and auth
+      # pages.
+      - name: Sweep 360 / 768 / 1280 / 1920 — signed-in routes
         run: npm run test:viewports:auth
-        continue-on-error: true
 
       # Screenshots and traces exist only for failures — on a green run this
       # uploads nothing, which is the point.

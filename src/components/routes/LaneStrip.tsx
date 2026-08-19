@@ -105,7 +105,7 @@ export function LaneStrip({
   const cell = compact ? "h-6 max-md:h-11 text-3xs" : "h-8 max-md:h-11 text-2xs";
 
   return (
-    <div className="overflow-x-auto rounded-lg border bg-card">
+    <div className="relative overflow-x-auto rounded-lg border bg-card">
       <table className="w-full border-collapse text-xs">
         <thead>
           <tr className="border-b">

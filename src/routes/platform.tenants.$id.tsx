@@ -889,10 +889,20 @@ function NotesTab({ orgId }: { orgId: string }) {
                         email address, which pushes the Delete button off the
                         right of a phone — the control is not merely cramped, it
                         is unreachable. `break-words` then lets the address
-                        itself break once the box is narrower than it. */}
+                        itself break once the box is narrower than it.
+
+                        MEASURED 2026-08-19: the wrapper had `min-w-0` and the
+                        SPAN did not, and the span is itself a flex item — so it
+                        kept its own min-content width, 325px of
+                        platform.operations.oncall@houndstack.com, and scrolled
+                        the page to 465px in a 360px viewport. `break-words` is
+                        `overflow-wrap: break-word`, which does NOT reduce
+                        min-content size; it only breaks a word once the box is
+                        already narrow. So the box has to be allowed to get
+                        narrow first, at every level, not just the outermost. */}
                     <div className="flex min-w-0 items-center gap-2">
                       <Badge variant="outline">{n.kind}</Badge>
-                      <span className="break-words text-xs text-muted-foreground">
+                      <span className="min-w-0 break-words text-xs text-muted-foreground">
                         {n.author_email ?? n.author_user_id?.slice(0, 8) ?? "system"} · {fmtDate(n.created_at)}
                       </span>
                     </div>
@@ -949,7 +959,7 @@ function AuditTab({ orgId }: { orgId: string }) {
                   {/* humanizeAuditAction has existed since the H2 finding and
                       had no caller: this log read `soft_delete_tenant`. */}
                   <Badge variant="outline">{humanizeAuditAction(r.action)}</Badge>
-                  <span className="break-words text-xs text-muted-foreground">
+                  <span className="min-w-0 break-words text-xs text-muted-foreground">
                     by {auditActorLabel(r)}
                   </span>
                 </div>
