@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -7,7 +7,8 @@ import {
   listTenantNotes, addTenantNote, deleteTenantNote,
   listTenantFeatureFlags, setTenantFeatureFlag,
   listTenantInvoices, listTenantAudit,
-  suspendTenant, reactivateTenant, grantGracePeriod, softDeleteTenant, restoreTenant,
+  suspendTenant, reactivateTenant, grantGracePeriod, endGracePeriod, softDeleteTenant, restoreTenant,
+  diffAuditJson,
   type TenantDetail, type TenantNote, type TenantFlagRow, type TenantInvoiceRow, type TenantAuditRow,
 } from "@/lib/platform-tenant.functions";
 import { startImpersonation } from "@/lib/platform.functions";
@@ -111,6 +112,7 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
   const suspendFn = useServerFn(suspendTenant);
   const reactivateFn = useServerFn(reactivateTenant);
   const graceFn = useServerFn(grantGracePeriod);
+  const endGraceFn = useServerFn(endGracePeriod);
   const deleteFn = useServerFn(softDeleteTenant);
   const restoreFn = useServerFn(restoreTenant);
   const impersonateFn = useServerFn(startImpersonation);
@@ -126,12 +128,35 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
   });
   const reactivateM = useMutation({
     mutationFn: () => reactivateFn({ data: { organization_id: t.id } }),
-    onSuccess: () => { toast.success("Tenant reactivated"); onChange(); },
+    onSuccess: () => {
+      toast.success(
+        t.grace_expires_at
+          ? `${t.name} reactivated — their grace period was ended with it`
+          : `${t.name} reactivated`,
+      );
+      onChange();
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const graceM = useMutation({
     mutationFn: () => graceFn({ data: { organization_id: t.id, days: parseInt(graceDays, 10) } }),
     onSuccess: () => { toast.success(`Grace period granted (${graceDays} days)`); onChange(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  // Revoking the concession. The two outcomes are deliberately worded apart:
+  // ending a live window changes what the tenant can do right now, clearing a
+  // lapsed one only tidies the record, and reporting both as "grace ended"
+  // would be the silent no-op this action exists to avoid.
+  const endGraceM = useMutation({
+    mutationFn: () => endGraceFn({ data: { organization_id: t.id } }),
+    onSuccess: (res) => {
+      toast.success(
+        res.was_live
+          ? `Grace period ended for ${t.name} — they can no longer add clients beyond their plan`
+          : `Cleared the expired grace period on ${t.name} — it had already lapsed on ${fmtDate(res.ended_at)}, so nothing changed for them today`,
+      );
+      onChange();
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const deleteM = useMutation({
@@ -161,6 +186,12 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
     onError: (e) => toast.error((e as Error).message),
   });
 
+  // Whether the window is still in force, which is the question
+  // `org_can_add_client` asks (`grace_expires_at > now()`). A lapsed one is
+  // inert to the gate and still shown, because it is still on the record and
+  // still needs a way off it.
+  const graceLive = !!t.grace_expires_at && new Date(t.grace_expires_at).getTime() > Date.now();
+
   return (
     <div className="flex flex-col gap-3">
       <Link to="/platform/tenants" className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
@@ -182,6 +213,17 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
           </div>
           {t.suspended_reason && (
             <div className="mt-1 text-sm text-destructive">Suspended: {t.suspended_reason}</div>
+          )}
+          {/* Grace was only ever visible three tabs away on Overview, as a bare
+              date with no indication of whether it was still in force. It is
+              the one piece of tenant state that lets somebody past their plan
+              limit, so it says so here, next to the button that ends it. */}
+          {t.grace_expires_at && (
+            <div className="mt-1 text-sm text-muted-foreground">
+              {graceLive
+                ? `Grace period: can add clients past the plan limit until ${fmtDate(t.grace_expires_at)}`
+                : `Grace period expired ${fmtDate(t.grace_expires_at)}`}
+            </div>
           )}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -267,9 +309,36 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
             </AlertDialogContent>
           </AlertDialog>
           {(t.billing_status === "suspended" || t.billing_status === "canceled" || t.plan_status === "canceled") && (
-            <Button size="sm" onClick={() => reactivateM.mutate()} disabled={reactivateM.isPending || !!t.deleted_at}>
-              Reactivate
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" disabled={reactivateM.isPending || !!t.deleted_at}>
+                  {reactivateM.isPending ? "Reactivating…" : "Reactivate"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Reactivate {t.name}?</AlertDialogTitle>
+                  {/* This used to fire on one unguarded click, and it now
+                      revokes a grace period as well — a second consequence
+                      nobody would have inferred from the word "Reactivate". */}
+                  <AlertDialogDescription>
+                    {t.name}'s {t.users.length} user{t.users.length === 1 ? "" : "s"} get their app
+                    access back and the suspension reason is cleared. They go to{" "}
+                    <strong>{t.stripe_subscription_id ? "active" : "free"}</strong>, because they{" "}
+                    {t.stripe_subscription_id ? "have" : "have no"} Stripe subscription.
+                    {t.grace_expires_at
+                      ? ` Their grace period ${graceLive ? "ends now" : "date is cleared"} too — reactivating means the problem it was covering is resolved, so they go back to their plan's client limit rather than keeping an allowance until ${fmtDate(t.grace_expires_at)}.`
+                      : ""}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction disabled={reactivateM.isPending} onClick={() => reactivateM.mutate()}>
+                    Reactivate
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           )}
           {t.billing_status !== "active" && t.billing_status !== "free" && (
             <AlertDialog>
@@ -303,6 +372,47 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                   <AlertDialogAction disabled={graceM.isPending} onClick={() => graceM.mutate()}>
                     Grant grace
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+          {/* Shown on `grace_expires_at` being set at all, not on it being
+              live. An expired window is inert to the entitlement gate but is
+              still a date on the record and still raises a Grace badge, and a
+              control that vanishes at the moment the value goes stale leaves
+              an admin reading a concession they have no way to clear. */}
+          {t.grace_expires_at && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="sm" disabled={endGraceM.isPending || !!t.deleted_at}>
+                  {endGraceM.isPending ? "Ending…" : "End grace"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>End {t.name}'s grace period?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {graceLive ? (
+                      <>
+                        {t.name} can add clients past their plan limit until{" "}
+                        {fmtDate(t.grace_expires_at)}. Ending it stops that now — the next client
+                        they add is refused unless their plan allows it. Their plan, subscription
+                        and{t.suspended_at ? " suspension" : " billing"} are not changed.
+                      </>
+                    ) : (
+                      <>
+                        {t.name}'s grace period already expired on {fmtDate(t.grace_expires_at)}, so
+                        this changes nothing about what they can do today. It clears the leftover
+                        date so the console stops showing a concession that is no longer in force.
+                      </>
+                    )}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction disabled={endGraceM.isPending} onClick={() => endGraceM.mutate()}>
+                    {graceLive ? "End grace" : "Clear it"}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -845,10 +955,131 @@ function AuditTab({ orgId }: { orgId: string }) {
                 </div>
                 <span className="text-xs text-muted-foreground">{fmtDate(r.created_at)}</span>
               </div>
+              <AuditEvidence before={r.before_json} after={r.after_json} />
             </li>
           ))}
         </ul>
       )}
     </CardContent></Card>
+  );
+}
+
+/**
+ * ── THE EVIDENCE THE AUDIT TAB WAS DROPPING ────────────────────────────────
+ *
+ * `listTenantAudit` has selected `before_json` and `after_json` since it was
+ * written, and `TenantAuditRow` has carried them. The tab rendered the action
+ * name, the actor and the timestamp — so it could tell you a tenant was
+ * suspended and not what changed, which is the only question anybody opens an
+ * audit log to answer.
+ *
+ * Three things this is careful about, all of them things the data does:
+ *
+ *   Absent is not empty.  Most rows in production have no `before_json` at
+ *     all. "There was no before state" and "the before state was `{}`" are
+ *     different facts — one is a create, the other is a change from nothing to
+ *     something — and they get different headings, never the same empty list.
+ *   Unchanged keys are dropped.  `update_addon_status` files five keys and
+ *     moves one of them; the other four are noise that hides the answer. The
+ *     count is kept, so "nothing changed" can still be said out loud.
+ *   Values are arbitrary JSON.  `send_announcement_emails` files
+ *     `{ processed, summary: [ … ] }`. Nesting is walked to the leaves and
+ *     named by path, so a change three levels down is a line rather than two
+ *     unreadable blobs side by side.
+ *
+ * Everything here is rendered as TEXT. Audit rows carry user-supplied strings —
+ * organization names, suspension reasons, promo codes — and this is a screen
+ * platform admins read about tenants they do not control.
+ *
+ * At 360px: no table and no side-by-side columns. A change is a stacked block —
+ * path, then old value, arrow, new value — that wraps, and every value gets
+ * `break-all` because a Stripe id or a UUID has no space to break at and would
+ * otherwise set the width of the page.
+ */
+const AUDIT_ROWS_COLLAPSED = 6;
+
+function AuditEvidence({ before, after }: { before: unknown; after: unknown }) {
+  const diff = useMemo(() => diffAuditJson(before, after), [before, after]);
+  const [expanded, setExpanded] = useState(false);
+
+  if (diff.shape === "neither") {
+    return (
+      <p className="mt-1 text-xs italic text-muted-foreground">
+        No before/after detail was recorded for this action.
+      </p>
+    );
+  }
+  if (diff.rows.length === 0) {
+    // Reached only with `shape: "both"` — both sides recorded, nothing moved.
+    // Deliberately worded apart from the line above it.
+    return (
+      <p className="mt-1 text-xs italic text-muted-foreground">
+        {diff.unchanged === 0
+          ? "Before and after were both recorded, and both were empty."
+          : `No field changed — all ${diff.unchanged} recorded field${diff.unchanged === 1 ? "" : "s"} were identical.`}
+      </p>
+    );
+  }
+
+  const heading =
+    diff.shape === "after-only"
+      ? "Recorded — this action had no before state"
+      : diff.shape === "before-only"
+        ? "Recorded before state — no after state was filed"
+        : `${diff.rows.length} change${diff.rows.length === 1 ? "" : "s"}${diff.unchanged ? ` · ${diff.unchanged} field${diff.unchanged === 1 ? "" : "s"} unchanged` : ""}`;
+
+  const visible = expanded ? diff.rows : diff.rows.slice(0, AUDIT_ROWS_COLLAPSED);
+
+  return (
+    <div className="mt-2 min-w-0 rounded-md border bg-muted/30 px-3 py-2">
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground">{heading}</div>
+      <ul className="mt-1 min-w-0 divide-y divide-border/50">
+        {visible.map((row) => (
+          <li key={row.path} className="min-w-0 py-1.5">
+            <div className="break-all font-mono text-2xs text-muted-foreground">
+              {row.path || "(value)"}
+            </div>
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              {row.before !== null && (
+                <span className="break-all font-mono text-xs text-muted-foreground line-through">
+                  {row.before}
+                </span>
+              )}
+              {row.before !== null && row.after !== null && (
+                <>
+                  <span className="sr-only">changed to</span>
+                  <span aria-hidden="true" className="text-xs text-muted-foreground">
+                    →
+                  </span>
+                </>
+              )}
+              {row.after !== null ? (
+                <span className="break-all font-mono text-xs font-medium">{row.after}</span>
+              ) : (
+                <span className="text-xs italic text-muted-foreground">removed</span>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {diff.rows.length > AUDIT_ROWS_COLLAPSED && (
+        // A `min-h-11` box around the label rather than a bare text link: this
+        // is the control that reveals the rest of the evidence and it has to be
+        // hittable with a thumb.
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-1 min-h-11 px-2 text-xs text-muted-foreground"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? "Show fewer" : `Show all ${diff.rows.length} changes`}
+        </Button>
+      )}
+      {diff.truncated && (
+        <p className="mt-1 text-2xs italic text-muted-foreground">
+          This record is deeper or larger than the log shows — some nested values are not listed.
+        </p>
+      )}
+    </div>
   );
 }

@@ -9,10 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  FRANCHISE_CODE_MIN_LENGTH,
   getMyFranchiseMembership,
   getMyFranchiseAdjustments,
   getMyFranchiseSettlements,
   joinFranchise,
+  normalizeFranchiseCode,
 } from "@/lib/franchise-membership.functions";
 import { FranchiseAdjustmentTrail } from "@/components/FranchiseAdjustmentTrail";
 import { FranchiseSettlementStatements } from "@/components/FranchiseSettlementStatements";
@@ -47,7 +49,7 @@ function FranchiseSettings() {
   const q = useQuery({ queryKey: ["franchise", "membership"], queryFn: () => getFn() });
 
   const join = useMutation({
-    mutationFn: () => joinFn({ data: { code: code.trim() } }),
+    mutationFn: () => joinFn({ data: { code } }),
     onSuccess: () => {
       toast.success("Joined the franchise");
       setCode("");
@@ -58,6 +60,13 @@ function FranchiseSettings() {
   });
 
   const m = q.data;
+
+  // Currently a location, OR was one: `hasFranchiseHistory` is the server's
+  // answer to "is there anything on record from a link that has ended", asked
+  // only for organizations that are not children now. An organization that has
+  // never been in a franchise mounts neither panel, so a solo operator does not
+  // meet an empty "Settlement statements" card on their settings page.
+  const showLedgers = !!m && (m.isChild || m.hasFranchiseHistory);
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -107,13 +116,35 @@ function FranchiseSettings() {
         </Card>
       ) : null}
 
+      {/* ── A LINK THAT HAS ENDED ──────────────────────────────────────────
+          Removal clears parent_organization_id and preserves every statement
+          and adjustment already raised — that is stated in
+          unlink_franchise_child in as many words, because unlinking is not a
+          way to erase what was owed. Both ledgers below used to be mounted
+          behind `isChild`, so the moment a franchise removed a location the
+          location lost sight of its own unpaid statements, while the franchise
+          kept theirs. The two parties reconcile the same document; only one of
+          them could still read it. */}
+      {showLedgers && !m?.isChild ? (
+        <Card>
+          <CardContent className="p-4 text-sm">
+            <p className="font-medium">This organization is no longer part of a franchise.</p>
+            <p className="mt-1 text-muted-foreground">
+              The statements and adjustments below are from a franchise link that has ended. They
+              are kept exactly as they were — anything still unpaid is still owed, in whichever
+              direction it was owed.
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
+
       {/* The statements themselves. Until now the location could read its
           royalty RATE and the deduction trail, but never the document that
           bills it — RLS on franchise_royalty_invoices admits the parent's
           office and nobody else, and no server function existed for this side.
           "Issue" moved a status column on the parent's screen and delivered
           nothing to anyone. */}
-      {m?.isChild ? <MyStatements /> : null}
+      {showLedgers ? <MyStatements /> : null}
 
       {/* The deduction trail is the other half of "you can see what you owe".
           A royalty percentage explains the royalty line; it explains nothing
@@ -121,7 +152,7 @@ function FranchiseSettings() {
           the dispute was won — quietly given back on a later one. This is the
           franchisee's own copy of that trail, so querying a deduction does not
           require asking the party that raised it. */}
-      {m?.isChild ? <MyAdjustments /> : null}
+      {showLedgers ? <MyAdjustments /> : null}
 
       {q.isLoading || m?.isChild ? null : m?.isParent ? (
         <Card>
@@ -150,7 +181,12 @@ function FranchiseSettings() {
               <Input
                 id="franchise-code"
                 value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                // Normalized as it is typed rather than on submit: a code
+                // dictated over the phone gets written down with spaces in it,
+                // and the SQL matches on upper(trim(...)), which trims the ends
+                // only. Stripping here means the field shows the value that
+                // will actually be looked up.
+                onChange={(e) => setCode(normalizeFranchiseCode(e.target.value))}
                 placeholder="e.g. 7K2ZQ9M4XB"
                 className="font-mono tracking-widest"
                 autoComplete="off"
@@ -158,7 +194,11 @@ function FranchiseSettings() {
             </div>
             <Button
               onClick={() => join.mutate()}
-              disabled={join.isPending || code.trim().length < 6}
+              // Eight, not six: no shorter code can exist —
+              // franchise_link_codes.code is CHECK'd BETWEEN 8 AND 24. Enabling
+              // at six sent a half-typed code to a routine whose only possible
+              // answer is "ask the franchise owner for a new one".
+              disabled={join.isPending || code.length < FRANCHISE_CODE_MIN_LENGTH}
             >
               {join.isPending ? "Joining…" : "Join franchise"}
             </Button>

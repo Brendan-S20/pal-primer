@@ -273,19 +273,51 @@ describe("the four that were wired instead of deleted", () => {
   });
 });
 
-describe("the orphan the cleanup created is recorded, not hidden", () => {
-  it("unlink_franchise_child is in the baseline with its own reason", () => {
-    // Deleting unlinkFranchiseLocation left its RPC with no caller, and the
-    // detector caught it on the next run — which is the detector working.
-    const reason = baseline.uncalled_rpcs.unlink_franchise_child;
-    expect(reason).toBeTruthy();
-    expect(reason).toMatch(/screen was never built/);
-    expect(reason).toMatch(/only way to perform the operation/);
+describe("the orphan the cleanup created was recorded, and then cleared the way it said to", () => {
+  // ── RESOLVED 2026-08-19 ────────────────────────────────────────────────
+  //
+  // This described unlink_franchise_child sitting in the baseline: deleting
+  // unlinkFranchiseLocation left its RPC with no caller, the detector caught
+  // it, and the entry recorded WHY it was staying rather than hiding it. The
+  // reason ended with an instruction, and that instruction is the reason this
+  // block is now inverted rather than deleted:
+  //
+  //   "Clear this by building the screen deliberately, with the consequences
+  //    stated, not by re-adding a bare wrapper."
+  //
+  // Owner QA on 2026-08-19 named linking/unlinking as broken, which it was —
+  // detaching a location could not be done from inside the product at all.
+  // The screen was built, so the entry is gone. What is asserted now is that
+  // it went the way the reason required, because "deleted the baseline line"
+  // and "built the screen" leave the dead-machinery check looking identical.
+
+  it("is no longer in the baseline, because it is no longer uncalled", () => {
+    expect(baseline.uncalled_rpcs).not.toHaveProperty("unlink_franchise_child");
   });
 
-  it("is not filed as a known gap, because it is a decision", () => {
-    // 'KNOWN GAP' is the check's marker for unfinished work and gets counted
-    // separately on every run. This is a deliberate exception, not a to-do.
-    expect(baseline.uncalled_rpcs.unlink_franchise_child).not.toMatch(/^KNOWN GAP/);
+  it("was cleared by a real caller, not by deleting the line", () => {
+    // The failure mode this exists for: someone silences the detector by
+    // removing the entry and leaves the RPC exactly as unreachable as it was.
+    const fn = read("src/lib/franchise-membership.functions.ts");
+    expect(fn).toMatch(/\.rpc\("unlink_franchise_child"/);
+  });
+
+  it("and not by a bare wrapper, which the reason explicitly refused", () => {
+    // A wrapper on the SERVICE-ROLE client would run the RPC with its
+    // authorization checks bypassed — the RPC decides who may unlink by
+    // reading auth.uid(), so it has to be the caller's client for that to mean
+    // anything. This is the difference between building the capability and
+    // exposing it.
+    const fn = read("src/lib/franchise-membership.functions.ts");
+    const call = fn.slice(0, fn.indexOf('.rpc("unlink_franchise_child"'));
+    const lastLine = call.slice(call.lastIndexOf("\n"));
+    expect(lastLine + '.rpc("unlink_franchise_child"').toMatch(/context\.supabase/);
+    expect(lastLine).not.toMatch(/supabaseAdmin/);
+  });
+
+  it("and it is reachable from a screen", () => {
+    // The whole point of the reason: the SQL half existed for three weeks
+    // with no way for anybody to press it.
+    expect(read("src/components/FranchiseLocationDrawer.tsx")).toMatch(/unlink/i);
   });
 });

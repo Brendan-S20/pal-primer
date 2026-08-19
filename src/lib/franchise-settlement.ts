@@ -49,6 +49,10 @@ export type SettlementRow = {
   royalty_cents?: number | string | null;
   amount_cents?: number | string | null;
   adjustments_applied_cents?: number | string | null;
+  /** How the period's revenue split by WHO ACTUALLY HELD IT. Absent when the
+   *  caller's query did not select them — see `collectedByFranchiseCents`. */
+  revenue_collected_by_parent_cents?: number | string | null;
+  revenue_collected_by_location_cents?: number | string | null;
   direction: string | null;
   net_due_cents: number | string | null;
   status: string | null;
@@ -65,6 +69,19 @@ export type SettlementLine = {
   royaltyCents: number;
   adjustmentsCents: number;
   netDueCents: number;
+  /** Of `revenueCents`, how much the FRANCHISE's own Stripe account received.
+   *
+   *  `null` — not zero — when the query did not select the column, because the
+   *  two mean opposite things: zero is "the location collected all of it" and
+   *  is worth printing, while null is "this surface cannot say" and must not be
+   *  printed as if it could.
+   *
+   *  Without it the statement's own arithmetic does not close on a mixed
+   *  period. `net_due = |collected_by_franchise − royalty − adjustments|`, and
+   *  the line printed revenue, royalty and adjustments but never
+   *  `collected_by_franchise` — so a period where the franchise collected half
+   *  showed a net that followed from none of the numbers beside it. */
+  collectedByFranchiseCents: number | null;
   direction: SettlementDirection;
   /** "The franchise owes you", "You owe the franchise", … */
   directionLabel: string;
@@ -142,10 +159,18 @@ export function settlementStatusLabel(status: string | null | undefined): string
 }
 
 /**
- * A draft is not a bill. `generate_franchise_settlements` rewrites drafts
- * freely — a rate change or a late adjustment moves the figures underneath —
- * and only stops once the statement leaves draft. Showing a location a number
- * that is still moving invites them to reconcile against it and be wrong.
+ * A draft is not a bill. `generate_franchise_settlements` rewrites drafts —
+ * a late adjustment moves the figures underneath — and only stops once the
+ * statement leaves draft. Showing a location a number that is still moving
+ * invites them to reconcile against it and be wrong.
+ *
+ * One exception, and it is not this module's to fix: the ROYALTY PERCENTAGE
+ * does not move. The generator reads the rate from the existing statement for
+ * the period before it reads the location's configured rate, and that lookup is
+ * not conditioned on the statement being past draft — while the ON CONFLICT
+ * guard already makes issued statements untouchable on its own. So the freeze
+ * can only ever bite a draft, which is the one row it should not. Reported
+ * 2026-08-19 rather than fixed here; the fix is one predicate in SQL.
  *
  * So issuing is what DELIVERS a statement, and this is the predicate that says
  * so. A voided statement stays visible: there is no `issued_at` column, so a
@@ -177,6 +202,10 @@ export function describeSettlement(
     royaltyCents: num(row.royalty_cents ?? row.amount_cents),
     adjustmentsCents: num(row.adjustments_applied_cents),
     netDueCents: num(row.net_due_cents),
+    collectedByFranchiseCents:
+      row.revenue_collected_by_parent_cents == null
+        ? null
+        : num(row.revenue_collected_by_parent_cents),
     direction,
     directionLabel: settlementDirectionLabel(direction, audience),
     flow: settlementFlow(direction, audience),
@@ -192,4 +221,30 @@ export function settlementMoney(cents: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+/**
+ * "-$50.00" from cents, for a figure whose SIGN is part of what it says.
+ *
+ * `settlementMoney` takes an absolute value on purpose: `net_due_cents` is
+ * always positive and its direction is carried by `direction`, so printing it
+ * unsigned and letting `flow` add the arrow is right. `adjustments_applied_cents`
+ * is not that kind of number. It is
+ *
+ *     loc_owes − fran_owes
+ *
+ * an input to `balance = collected_by_franchise − royalty − adjustments`, and
+ * it goes NEGATIVE whenever the franchise is the one absorbing a reversal —
+ * which is every refund on a location-collected charge at a location set to
+ * `chargeback_responsibility = 'franchise'`, the whole point of that setting,
+ * and every won-dispute repayment, whose shares are stored negated.
+ *
+ * Run through `settlementMoney` those came out as "adjustments $50.00" — a
+ * credit printed as a charge, on the line whose job is to let both sides check
+ * the arithmetic behind the net. Nothing else on the statement disagreed
+ * loudly enough to notice: the net itself was right, so the only symptom was a
+ * statement that did not add up.
+ */
+export function settlementSignedMoney(cents: number): string {
+  return `${cents < 0 ? "-" : ""}${settlementMoney(cents)}`;
 }

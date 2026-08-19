@@ -5,6 +5,7 @@ import { FileText } from "lucide-react";
 import {
   describeSettlement,
   settlementMoney,
+  settlementSignedMoney,
   type SettlementAudience,
   type SettlementRow,
 } from "@/lib/franchise-settlement";
@@ -133,14 +134,45 @@ export function FranchiseSettlementStatements({
                       <span className="text-muted-foreground">{line.directionLabel}</span>
                     </div>
                     {/* The arithmetic behind the net, so neither side has to
-                        take the headline on trust. Adjustments only when there
-                        are some — a location that has never had a refund keeps
-                        the shorter sentence. */}
+                        take the headline on trust. Three things about this line
+                        were wrong, and all three were of the kind that leaves a
+                        plausible number on the screen:
+
+                        "Revenue" — the rollup on the same page uses that word
+                        for a figure NET of the month's refunds and calls the
+                        gross "Collected". This figure is the gross:
+                        sum(payments.amount_cents) for every payment that
+                        arrived, refunded ones included, with reversals carried
+                        separately as adjustments. Two screens a franchise owner
+                        reads together, one word, two meanings.
+
+                        The adjustment ran through `settlementMoney`, which
+                        takes an absolute value — right for the net, whose
+                        direction is carried by `direction`, and wrong here,
+                        where a negative is the franchise absorbing a reversal.
+                        A credit printed as a charge.
+
+                        And the collector split was never shown, so on a period
+                        the franchise collected part of, the net followed from
+                        none of the figures beside it:
+                        net = |collected_by_franchise − royalty − adjustments|.
+
+                        Each component appears only when it says something — a
+                        location that has never had a refund and collects its
+                        own money keeps the short sentence it already had. */}
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Revenue {settlementMoney(line.revenueCents)} · royalty {line.royaltyPercent}%
-                      = {settlementMoney(line.royaltyCents)}
+                      Collected revenue {settlementMoney(line.revenueCents)} · royalty{" "}
+                      {line.royaltyPercent}% = {settlementMoney(line.royaltyCents)}
+                      {line.collectedByFranchiseCents !== null &&
+                        line.collectedByFranchiseCents > 0 && (
+                          <>
+                            {" "}
+                            · of which the franchise collected{" "}
+                            {settlementMoney(line.collectedByFranchiseCents)}
+                          </>
+                        )}
                       {line.adjustmentsCents !== 0 && (
-                        <> · adjustments {settlementMoney(line.adjustmentsCents)}</>
+                        <> · adjustments {settlementSignedMoney(line.adjustmentsCents)}</>
                       )}
                     </p>
                   </div>

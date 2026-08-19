@@ -23,6 +23,143 @@ async function audit(
   } catch { /* ignore */ }
 }
 
+// ── Audit evidence: what actually changed ────────────────────────────
+//
+// `before_json` and `after_json` have been written by every action on this
+// page since the table existed, are selected by `listTenantAudit`, and were
+// rendered by nothing: the Audit tab said a tenant was suspended and never
+// what changed. These are the read-side helpers for that, kept pure and
+// exported from here so they can be tested without a browser.
+//
+// Two things about the LIVE data shaped them (checked 2026-08-19):
+//
+//   Most rows have no before.  `before_json IS NULL` on every impersonation
+//     event, every promo capture and every coupon creation — 141 of the 154
+//     rows in production. "There was no before state" is not the same fact as
+//     "the before state was empty", and a diff that renders both as an empty
+//     list has thrown away the only thing that distinguishes a create from a
+//     no-op. `shape` carries that distinction.
+//   A value is not necessarily a scalar.  `send_announcement_emails` files
+//     `{ processed, summary: [ … ] }`, so this walks to the leaves and names
+//     them by path rather than looping over top-level keys.
+
+/** One leaf that differs between the two sides.
+ *
+ *  `null` on a side means the path is not PRESENT there — rendered as added or
+ *  removed. It never means the JSON value `null`, which is a value a leaf can
+ *  legitimately hold and which formats as the string "null". */
+export type AuditDiffRow = { path: string; before: string | null; after: string | null };
+
+export type AuditDiff = {
+  /** Which sides were recorded at all. `after-only` had no before to compare
+   *  against; `both` with no rows had one, and nothing moved. */
+  shape: "both" | "after-only" | "before-only" | "neither";
+  rows: AuditDiffRow[];
+  /** Leaves present and equal on both sides — noise on screen, but the COUNT
+   *  is what separates "nothing changed" from "nothing was recorded". */
+  unchanged: number;
+  /** The walk hit its depth or size ceiling, so `rows` is not the whole story. */
+  truncated: boolean;
+};
+
+const DIFF_MAX_DEPTH = 6;
+const DIFF_MAX_LEAVES = 400;
+const DIFF_MAX_VALUE_CHARS = 300;
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** A leaf as one line of text. Strings are shown raw — these are reasons,
+ *  emails and ids that people read — and everything else goes through
+ *  JSON.stringify, so `null`, `true`, `{}` and `[]` all say what they are. */
+function formatLeaf(v: unknown): string {
+  const s = typeof v === "string" ? v : JSON.stringify(v) ?? "undefined";
+  return s.length > DIFF_MAX_VALUE_CHARS ? `${s.slice(0, DIFF_MAX_VALUE_CHARS)}…` : s;
+}
+
+/** Path → leaf for arbitrary JSON. Objects and arrays are walked; a NESTED
+ *  empty object or array is itself a leaf, because "this key became {}" is a
+ *  change worth seeing. Keys are sorted so two rows written in different key
+ *  orders still line up — jsonb does not preserve insertion order.
+ *
+ *  The one asymmetry: an empty object at the ROOT contributes no leaf at all.
+ *  `{}` as a whole record is "recorded, and empty", which `shape` and the row
+ *  count already say; giving it a nameless leaf would make every field of the
+ *  other side read as a change against `{}` and add a phantom row of its own. */
+function flattenJson(root: unknown): { leaves: Map<string, unknown>; truncated: boolean } {
+  const leaves = new Map<string, unknown>();
+  let truncated = false;
+  const walk = (v: unknown, path: string, depth: number) => {
+    if (leaves.size >= DIFF_MAX_LEAVES) { truncated = true; return; }
+    if (depth < DIFF_MAX_DEPTH) {
+      if (Array.isArray(v)) {
+        if (v.length === 0) { if (depth > 0) leaves.set(path, v); return; }
+        v.forEach((item, i) => walk(item, `${path}[${i}]`, depth + 1));
+        return;
+      }
+      if (isPlainObject(v)) {
+        const keys = Object.keys(v).sort();
+        if (keys.length === 0) { if (depth > 0) leaves.set(path, v); return; }
+        for (const k of keys) walk(v[k], path ? `${path}.${k}` : k, depth + 1);
+        return;
+      }
+    } else if (Array.isArray(v) || isPlainObject(v)) {
+      truncated = true;
+    }
+    leaves.set(path, v);
+  };
+  walk(root, "", 0);
+  return { leaves, truncated };
+}
+
+/** Undefined maps to null so a key that is present-and-undefined compares
+ *  equal to one that is present-and-null, which is how Postgres will have
+ *  stored it either way. */
+const sameLeaf = (a: unknown, b: unknown) => JSON.stringify([a]) === JSON.stringify([b]);
+
+export function diffAuditJson(before: unknown, after: unknown): AuditDiff {
+  const hasBefore = before !== null && before !== undefined;
+  const hasAfter = after !== null && after !== undefined;
+  if (!hasBefore && !hasAfter) {
+    return { shape: "neither", rows: [], unchanged: 0, truncated: false };
+  }
+
+  const b = hasBefore ? flattenJson(before) : null;
+  const a = hasAfter ? flattenJson(after) : null;
+  const truncated = Boolean(b?.truncated || a?.truncated);
+
+  if (!b) {
+    return {
+      shape: "after-only",
+      rows: [...a!.leaves].map(([path, v]) => ({ path, before: null, after: formatLeaf(v) })),
+      unchanged: 0,
+      truncated,
+    };
+  }
+  if (!a) {
+    return {
+      shape: "before-only",
+      rows: [...b.leaves].map(([path, v]) => ({ path, before: formatLeaf(v), after: null })),
+      unchanged: 0,
+      truncated,
+    };
+  }
+
+  const rows: AuditDiffRow[] = [];
+  let unchanged = 0;
+  for (const [path, av] of a.leaves) {
+    if (!b.leaves.has(path)) { rows.push({ path, before: null, after: formatLeaf(av) }); continue; }
+    const bv = b.leaves.get(path);
+    if (sameLeaf(bv, av)) { unchanged += 1; continue; }
+    rows.push({ path, before: formatLeaf(bv), after: formatLeaf(av) });
+  }
+  for (const [path, bv] of b.leaves) {
+    if (a.leaves.has(path)) continue;
+    rows.push({ path, before: formatLeaf(bv), after: null });
+  }
+  return { shape: "both", rows, unchanged, truncated };
+}
+
 export type TenantUserRow = {
   user_id: string;
   email: string | null;
@@ -356,7 +493,7 @@ export const reactivateTenant = createServerFn({ method: "POST" })
     await assertPlatformAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: before } = await supabaseAdmin.from("organizations")
-      .select("billing_status, plan_status, suspended_at, suspended_reason, stripe_subscription_id")
+      .select("billing_status, plan_status, suspended_at, suspended_reason, grace_expires_at, stripe_subscription_id")
       .eq("id", data.organization_id).maybeSingle();
     // If there's an active subscription, restore to "active"; otherwise "free".
     // plan_status must be written too — it (not billing_status) is what the
@@ -367,6 +504,14 @@ export const reactivateTenant = createServerFn({ method: "POST" })
       plan_status: nextStatus as any,
       suspended_at: null,
       suspended_reason: null,
+      // Owner decision, 2026-08-19: "Clear grace on reactivate, and add End
+      // grace." Reactivating says the problem that earned the concession is
+      // resolved, so the concession ends with it. Without this line the column
+      // survives — and `org_can_add_client` honours `grace_expires_at > now()`
+      // in its own branch, regardless of plan_status — so a reactivated tenant
+      // kept a client-limit allowance nobody re-granted, silently, until the
+      // date some admin picked weeks earlier happened to pass.
+      grace_expires_at: null,
     };
     const { error } = await supabaseAdmin.from("organizations").update(patch).eq("id", data.organization_id);
     if (error) throw new Error(error.message);
@@ -400,6 +545,69 @@ export const grantGracePeriod = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     await audit(supabaseAdmin, context.userId, data.organization_id, "grant_grace_period", before, patch);
     return { ok: true, grace_expires_at: expires };
+  });
+
+/**
+ * The other half of the same owner decision: a grace period could be SHORTENED
+ * by re-granting one (minimum 1 day) and could not be REVOKED at all. Nothing
+ * in this repo ever wrote `grace_expires_at` back to NULL, so a concession
+ * granted by mistake — wrong tenant, wrong duration — ran to its date.
+ *
+ * What it writes, and what it deliberately does not:
+ *
+ *   grace_expires_at   NULL. This is the whole action; it is the only column
+ *                      `org_can_add_client` reads for grace.
+ *   billing_status     only when it currently reads "grace", which is a state
+ *                      nothing but `grantGracePeriod` produces. Leaving it
+ *                      would show a Grace badge for a grace period that no
+ *                      longer exists. It resolves to "suspended" if the tenant
+ *                      is suspended, otherwise to their own `plan_status` —
+ *                      the truth about their entitlement, which is what the
+ *                      grant was covering over.
+ *   plan_status        never. Ending a concession must not change what the
+ *                      tenant is entitled to underneath it, in either
+ *                      direction. That is what Reactivate is for.
+ *
+ * An already-EXPIRED grace window is still endable. It is inert to the gate
+ * (`> now()`), but it still reads as a live concession on the Overview tab and
+ * still leaves the Grace badge up, and hiding the control would leave an admin
+ * looking at a date they cannot clear. The result says which case it was, so
+ * "it is ended" and "it had already lapsed" do not read the same.
+ */
+export const endGracePeriod = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => idSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    await assertPlatformAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: before } = await supabaseAdmin.from("organizations")
+      .select("name, billing_status, plan_status, grace_expires_at, suspended_at")
+      .eq("id", data.organization_id).maybeSingle();
+    if (!before) throw new Error("Tenant not found");
+    // Never a silent no-op: with nothing to end there is no audit row to write
+    // and nothing to say, and a cheerful toast would claim otherwise.
+    if (!before.grace_expires_at) throw new Error("This tenant has no grace period to end");
+
+    const wasLive = new Date(before.grace_expires_at).getTime() > Date.now();
+    // "grace" is a billing_status nothing but grantGracePeriod produces, so it
+    // is the only one this resolves; anything else is written back unchanged.
+    const nextBillingStatus =
+      before.billing_status === "grace"
+        ? (before.suspended_at ? "suspended" : before.plan_status)
+        : before.billing_status;
+    const patch = {
+      grace_expires_at: null,
+      billing_status: nextBillingStatus as any,
+    };
+    const { error } = await supabaseAdmin.from("organizations").update(patch).eq("id", data.organization_id);
+    if (error) throw new Error(error.message);
+    await audit(supabaseAdmin, context.userId, data.organization_id, "end_grace_period", {
+      billing_status: before.billing_status,
+      plan_status: before.plan_status,
+      grace_expires_at: before.grace_expires_at,
+      suspended_at: before.suspended_at,
+    }, patch);
+    return { ok: true, name: before.name as string, was_live: wasLive, ended_at: before.grace_expires_at as string };
   });
 
 const deleteSchema = z.object({

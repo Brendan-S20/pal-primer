@@ -118,6 +118,141 @@ export const getFranchiseRollup = createServerFn({ method: "GET" })
     return { rows, parentOrgId: orgId };
   });
 
+export type TrendLine = { id: string; name: string };
+export type TrendWeek = { key: string; start: Date; end: Date };
+
+/**
+ * The lines the franchise revenue chart plots — the franchise's OWN operation
+ * first, then its locations.
+ *
+ * `franchise_children()` returns children only, correctly: it is the membership
+ * helper. This chart used that list directly while every other figure on the
+ * same page comes from `franchise_rollup()`, which includes the parent's own
+ * row on purpose — "so a rollup reads as the whole franchise rather than
+ * 'everyone but me'". So the headline "Net revenue MTD" counted the parent's
+ * trucks and the trend line under it did not, with nothing on the screen to say
+ * which of the two was the franchise.
+ *
+ * Measured live on 2026-08-19 against the one franchise in the database: over
+ * the eight weeks the chart covers, the parent took $3,728.00 of the
+ * franchise's $10,402.00 — more than either location — and none of it was
+ * plotted. The chart showed 64% of the money and was labelled as if it showed
+ * all of it.
+ *
+ * Parent first, matching franchise_rollup's ordering, so the legend and the
+ * table below it read in the same order.
+ */
+export function franchiseTrendLines(
+  parentOrgId: string,
+  parentName: string | null | undefined,
+  children: TrendLine[],
+): TrendLine[] {
+  return [{ id: parentOrgId, name: parentName || "This organization" }, ...children];
+}
+
+/** The last 8 Monday-to-Sunday weeks ending with the week `now` falls in.
+ *
+ *  Boundaries are UTC, which does NOT match the rest of this page —
+ *  franchise_rollup cuts its month in the parent org's timezone, and
+ *  cpa-reports files every day with orgLocalDay. For an org west of UTC a
+ *  Monday boundary here is Sunday evening locally, so a payment taken Sunday
+ *  night lands in the following week's bar. Reported 2026-08-19; left as it was
+ *  because moving it changes plotted history and is a bigger change than the
+ *  two faults this pass is fixing. */
+export function franchiseTrendWeeks(now: Date): TrendWeek[] {
+  const weeks: TrendWeek[] = [];
+  const today = new Date(now.getTime());
+  today.setUTCHours(0, 0, 0, 0);
+  const dow = today.getUTCDay(); // 0=Sun
+  const mondayOffset = (dow + 6) % 7;
+  const thisMonday = new Date(today);
+  thisMonday.setUTCDate(today.getUTCDate() - mondayOffset);
+  for (let i = 7; i >= 0; i--) {
+    const start = new Date(thisMonday);
+    start.setUTCDate(thisMonday.getUTCDate() - i * 7);
+    const end = new Date(start);
+    end.setUTCDate(start.getUTCDate() + 7);
+    weeks.push({ key: start.toISOString().slice(5, 10), start, end });
+  }
+  return weeks;
+}
+
+export type TrendPayment = {
+  organization_id: string;
+  amount_cents: number | string | null;
+  status: string | null;
+  created_at: string;
+};
+export type TrendReversal = {
+  organization_id: string;
+  kind: string;
+  detected_at: string;
+  detail: { amount_cents?: number | string | null; revenue_cents?: number | string | null } | null;
+};
+
+/**
+ * What a reversal takes off REVENUE — which is not always what moved.
+ *
+ * A reversal carries two figures. `amount_cents` is what MOVED: base plus card
+ * surcharge, what the customer got back, what reconciles against Stripe.
+ * `revenue_cents` is what comes off INCOME: base only, because the surcharge
+ * was fee recovery and was never revenue. `loadOrgReversals` prefers
+ * `revenue_cents`, and `franchise_rollup` was corrected to prefer it on
+ * 2026-08-04. This chart was the third copy of the expression and kept reading
+ * `amount_cents`.
+ *
+ * Both then subtract their figure from a gross built the same way, out of
+ * `payments.amount_cents`, which is base only. So for a pass-through location
+ * with $10,000 collected in a week and one $100 invoice charged as $103 and
+ * refunded, the table read $9,900.00 and the line directly above it plotted
+ * $9,897.00 — same money, same week, one screen, $3.00 apart. That is exactly
+ * the shape migration 20260804080000 was written to kill, reintroduced by
+ * fixing two of the three call sites.
+ *
+ * The fallback is not decoration: every reversal filed before the split has no
+ * `revenue_cents`, and `amount_cents` is exactly right for those — they predate
+ * pass-through, so the two figures were equal.
+ */
+export function reversalRevenueCents(detail: TrendReversal["detail"]): number {
+  return Number(detail?.revenue_cents ?? detail?.amount_cents ?? 0);
+}
+
+/** Week buckets for the chart: `[{ week: "MM-DD", [orgId]: dollars, ... }]`. */
+export function franchiseTrendSeries(
+  lines: TrendLine[],
+  weeks: TrendWeek[],
+  pays: TrendPayment[],
+  reversals: TrendReversal[],
+): Array<Record<string, string | number>> {
+  const bucket: Record<string, Record<string, number>> = {};
+  for (const w of weeks) bucket[w.key] = {};
+  const weekFor = (iso: string) => {
+    const t = new Date(iso).getTime();
+    return weeks.find((x) => t >= x.start.getTime() && t < x.end.getTime());
+  };
+  for (const p of pays) {
+    if (!paymentWasReceived(p.status as string)) continue;
+    const w = weekFor(p.created_at);
+    if (!w) continue;
+    bucket[w.key][p.organization_id] =
+      (bucket[w.key][p.organization_id] ?? 0) + Number(p.amount_cents ?? 0);
+  }
+  for (const r of reversals) {
+    const w = weekFor(r.detected_at);
+    if (!w) continue;
+    const cents = reversalRevenueCents(r.detail);
+    // A won dispute is a recovery, so it adds back rather than deducting.
+    // Counting it as a loss would move the line the wrong way twice.
+    const delta = reducesIncome(r.kind) ? -cents : cents;
+    bucket[w.key][r.organization_id] = (bucket[w.key][r.organization_id] ?? 0) + delta;
+  }
+  return weeks.map((w) => {
+    const row: Record<string, string | number> = { week: w.key };
+    for (const k of lines) row[k.id] = (bucket[w.key][k.id] ?? 0) / 100;
+    return row;
+  });
+}
+
 export const getFranchiseTrend = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -126,42 +261,34 @@ export const getFranchiseTrend = createServerFn({ method: "GET" })
     const { data: children } = await (context.supabase as any).rpc("franchise_children", {
       _parent_org: orgId,
     });
-    const kids = (children ?? []) as Array<{ id: string; name: string }>;
+    const kids = (children ?? []) as TrendLine[];
     if (kids.length === 0) return { weeks: [] as any[], locations: [] as any[] };
 
-    // Last 8 weeks (Mon-Sun)
-    const weeks: { key: string; start: Date; end: Date }[] = [];
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
-    const dow = today.getUTCDay(); // 0=Sun
-    const mondayOffset = (dow + 6) % 7;
-    const thisMonday = new Date(today);
-    thisMonday.setUTCDate(today.getUTCDate() - mondayOffset);
-    for (let i = 7; i >= 0; i--) {
-      const start = new Date(thisMonday);
-      start.setUTCDate(thisMonday.getUTCDate() - i * 7);
-      const end = new Date(start);
-      end.setUTCDate(start.getUTCDate() + 7);
-      weeks.push({ key: start.toISOString().slice(5, 10), start, end });
-    }
+    const { data: ownOrg } = await context.supabase
+      .from("organizations")
+      .select("name")
+      .eq("id", orgId)
+      .maybeSingle();
+    const lines = franchiseTrendLines(orgId, ownOrg?.name as string | undefined, kids);
 
+    const weeks = franchiseTrendWeeks(new Date());
     const earliest = weeks[0].start.toISOString();
     const latest = weeks[weeks.length - 1].end.toISOString();
 
     // BUILD-6: this hit the SAME RLS wall — payments belong to the children, and
     // the parent is not a member of them, so the caller's client returned an
     // empty set and the chart was blank even once the location list was fixed.
-    // Service-role is safe here precisely because `kids` came from
-    // franchise_children(), which authorized the caller against the parent
-    // first; the query can only ever touch organizations already proven to be
-    // this parent's.
+    // Service-role is safe here precisely because `lines` is the caller's own
+    // organization plus what franchise_children() returned, and that routine
+    // authorized the caller against the parent first; the query can only ever
+    // touch organizations already proven to be this parent's or the parent.
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: pays } = await (supabaseAdmin as any)
       .from("payments")
       .select("organization_id, amount_cents, status, created_at")
       .in(
         "organization_id",
-        kids.map((k) => k.id),
+        lines.map((k) => k.id),
       )
       // IMP-10: money that ARRIVED. Filtering on 'succeeded' would make a
       // refund rewrite an earlier week of the trend line, so the chart would
@@ -177,48 +304,25 @@ export const getFranchiseTrend = createServerFn({ method: "GET" })
     // cannot be reconciled is worse than either being wrong alone.
     //
     // Read from review_items, the same source as everywhere else. Same
-    // service-role justification as the payments query above: `kids` came from
-    // franchise_children(), which authorized the caller against the parent
-    // first, so this can only touch organizations already proven to be theirs.
+    // service-role justification as the payments query above.
     const { data: reversals } = await (supabaseAdmin as any)
       .from("review_items")
       .select("organization_id, kind, detected_at, detail")
       .in(
         "organization_id",
-        kids.map((k) => k.id),
+        lines.map((k) => k.id),
       )
       .in("kind", [...REVERSAL_KINDS])
       .gte("detected_at", earliest)
       .lt("detected_at", latest);
 
-    // Build week buckets: [{ week: "MM-DD", [orgId]: cents, ... }]
-    const bucket: Record<string, Record<string, number>> = {};
-    for (const w of weeks) bucket[w.key] = {};
-    for (const p of pays ?? []) {
-      if (!paymentWasReceived(p.status as string)) continue;
-      const t = new Date(p.created_at as string).getTime();
-      const w = weeks.find((x) => t >= x.start.getTime() && t < x.end.getTime());
-      if (!w) continue;
-      const oid = p.organization_id as string;
-      bucket[w.key][oid] = (bucket[w.key][oid] ?? 0) + Number(p.amount_cents ?? 0);
-    }
-    for (const r of reversals ?? []) {
-      const t = new Date(r.detected_at as string).getTime();
-      const w = weeks.find((x) => t >= x.start.getTime() && t < x.end.getTime());
-      if (!w) continue;
-      const oid = r.organization_id as string;
-      const cents = Number(r.detail?.amount_cents ?? 0);
-      // A won dispute is a recovery, so it adds back rather than deducting.
-      // Counting it as a loss would move the line the wrong way twice.
-      const delta = reducesIncome(r.kind as string) ? -cents : cents;
-      bucket[w.key][oid] = (bucket[w.key][oid] ?? 0) + delta;
-    }
-    const series = weeks.map((w) => {
-      const row: Record<string, any> = { week: w.key };
-      for (const k of kids) row[k.id] = (bucket[w.key][k.id] ?? 0) / 100;
-      return row;
-    });
-    return { weeks: series, locations: kids };
+    const series = franchiseTrendSeries(
+      lines,
+      weeks,
+      (pays ?? []) as TrendPayment[],
+      (reversals ?? []) as TrendReversal[],
+    );
+    return { weeks: series, locations: lines };
   });
 
 export const markSelfAsFranchiseParent = createServerFn({ method: "POST" })
@@ -360,8 +464,15 @@ export const listRoyaltyInvoices = createServerFn({ method: "GET" })
       // one owing the location $900 both rendered as "Royalty $100", on the
       // screen that has the Issue and Mark paid buttons on it. The CPA report
       // pack has selected both all along.
+      //
+      // `revenue_collected_by_parent_cents` for the same reason one step on:
+      // the net is |collected_by_franchise − royalty − adjustments|, so on a
+      // period the franchise collected part of, a reader given only revenue,
+      // royalty and adjustments cannot arrive at the net from them. The
+      // generator has written the split since 2026-07-30 and no screen has ever
+      // shown it.
       .select(
-        "id, child_organization_id, period_start, period_end, revenue_cents, royalty_percent, amount_cents, royalty_cents, adjustments_applied_cents, direction, net_due_cents, status, created_at, organizations!franchise_royalty_invoices_child_organization_id_fkey(name)",
+        "id, child_organization_id, period_start, period_end, revenue_cents, royalty_percent, amount_cents, royalty_cents, adjustments_applied_cents, revenue_collected_by_parent_cents, revenue_collected_by_location_cents, direction, net_due_cents, status, created_at, organizations!franchise_royalty_invoices_child_organization_id_fkey(name)",
       )
       .eq("parent_organization_id", orgId)
       .order("period_start", { ascending: false })
@@ -526,4 +637,3 @@ export const revokeFranchiseLinkCode = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true as const, alreadyClosed: !updated };
   });
-
