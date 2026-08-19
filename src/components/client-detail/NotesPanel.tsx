@@ -111,7 +111,9 @@ export function NotesPanel({
               role="tab"
               aria-selected={tab === a.key}
               onClick={() => setTab(a.key)}
-              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+              // 24.0px measured. A segmented control is a control, not prose,
+              // so it takes the height directly.
+              className={`inline-flex min-h-11 items-center rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 tab === a.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
               }`}
             >

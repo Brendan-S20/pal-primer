@@ -626,8 +626,8 @@ function MyDay() {
           )}
 
           {isOfficeRole && fieldStaff.length > 0 && (
-            <div className="flex items-center gap-2 text-xs">
-              <label htmlFor="my-day-staff" className="text-muted-foreground">
+            <div className="flex min-w-0 items-center gap-2 text-xs">
+              <label htmlFor="my-day-staff" className="shrink-0 text-muted-foreground">
                 Viewing:
               </label>
               <select
@@ -640,7 +640,15 @@ function MyDay() {
                     replace: true,
                   } as any);
                 }}
-                className="h-9 rounded-md border bg-background px-2 text-sm"
+                // MEASURED 2026-08-19: 332px wide, right edge at 407px in a
+                // 360px viewport, and 36px tall. A `<select>` with no width
+                // sizes itself to its LONGEST OPTION — here a technician's
+                // full name plus their role — so this grew with the team and
+                // nothing in the class list ever said how wide it would be.
+                // `min-w-0 max-w-full` lets it take the space it is given and
+                // clip the label; the open list is unaffected and still shows
+                // every name in full.
+                className="h-9 min-w-0 max-w-full rounded-md border bg-background px-2 text-sm max-md:min-h-11"
               >
                 <option value="">
                   {data?.staff && !previewing ? "My day" : "(Select technician)"}
@@ -1268,7 +1276,7 @@ function VisitCard({
               href={mapsUrl(p)}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex min-h-10 items-center gap-1 rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-accent active:bg-accent"
+              className="inline-flex min-h-10 items-center gap-1 rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-accent active:bg-accent max-md:min-h-11"
             >
               <Navigation className="h-4 w-4" /> Navigate
             </a>
@@ -1276,7 +1284,7 @@ function VisitCard({
           {visit.clients?.primary_phone && (
             <a
               href={`tel:${visit.clients.primary_phone}`}
-              className="inline-flex min-h-10 items-center rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-accent active:bg-accent"
+              className="inline-flex min-h-10 items-center rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-accent active:bg-accent max-md:min-h-11"
             >
               📞 Call
             </a>
@@ -1284,7 +1292,7 @@ function VisitCard({
           {finalStatus && (
             <button
               onClick={() => setCollapsed((c) => !c)}
-              className="grid h-10 w-10 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+              className="grid h-10 w-10 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground max-md:h-11 max-md:w-11"
               aria-label={collapsed ? "Expand" : "Collapse"}
             >
               {collapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
@@ -1323,7 +1331,9 @@ function VisitCard({
             <select
               value={photoKind}
               onChange={(e) => setPhotoKind(e.target.value as any)}
-              className="h-10 rounded-md border bg-background px-3 text-sm"
+              // MEASURED 2026-08-19: 40px, four short of the floor, on the
+              // screen a technician uses outdoors with gloves on.
+              className="h-10 rounded-md border bg-background px-3 text-sm max-md:min-h-11"
               aria-label="Photo type"
             >
               <option value="before">Before</option>
@@ -1334,7 +1344,7 @@ function VisitCard({
               type="button"
               variant="outline"
               size="default"
-              className="h-10"
+              className="h-10 max-md:min-h-11"
               disabled={uploading}
               onClick={async () => {
                 // Prefer native Capacitor camera when inside the app shell.

@@ -1,0 +1,300 @@
+/**
+ * One tenant, chosen to be awkward.
+ *
+ * ── WHY THE VALUES LOOK LIKE THIS ─────────────────────────────────────────
+ *
+ * A fixture is a chance the production database does not give you: the data is
+ * picked. `docs/mobile-ux-audit.md` says where this app breaks — long names in
+ * flex rows, a `w-80` popover on a 360px phone, a nine-tab strip, a signup URL
+ * with nowhere to wrap — so the rows below carry exactly those shapes:
+ *
+ *   * a 46-character business name and client names with hyphenated surnames,
+ *     because "Text truncates instead of widening its row" is only testable
+ *     against text that would widen the row;
+ *   * a 78-character signup URL and a Stripe id, because CLAUDE.md names "a
+ *     value with no space in it — an address, a link, an id" as the fault the
+ *     static tests cannot see and a browser can;
+ *   * seven techs and thirty-odd visits, because "dense grids reflow, they do
+ *     not shrink" is a statement about a grid with something in it;
+ *   * an audit trail whose before/after JSON is wide, because the tenant
+ *     diff view added today renders it as `<pre>`.
+ *
+ * None of it is anybody's real data and none of it needs to be: the sweep
+ * measures boxes.
+ */
+
+export const ORG_ID = "aaaaaaaa-0000-4000-8000-00000000a001";
+export const TENANT_B_ID = "aaaaaaaa-0000-4000-8000-00000000a002";
+export const CLIENT_ID = "bbbbbbbb-0000-4000-8000-00000000b001";
+export const PROPERTY_ID = "cccccccc-0000-4000-8000-00000000c001";
+
+/** Long on purpose. 46 characters, no obvious break point past "Waste". */
+export const ORG_NAME = "Whitfield-Ramirez Yard & Waste Services LLC";
+
+/** The value CLAUDE.md uses as its example of a fault only a browser sees. */
+export const SIGNUP_URL =
+  "https://app.houndstack.com/signup/whitfield-ramirez-yard-and-waste-services-llc";
+
+const iso = (d: Date) => d.toISOString();
+const day = (offset: number) => {
+  const d = new Date();
+  d.setHours(12, 0, 0, 0);
+  d.setDate(d.getDate() + offset);
+  return d.toISOString().slice(0, 10);
+};
+
+export const TODAY = day(0);
+
+export const ORGANIZATION = {
+  id: ORG_ID,
+  name: ORG_NAME,
+  portal_slug: "whitfield-ramirez-yard-and-waste-services",
+  timezone: "America/Chicago",
+  active_client_count: 214,
+  billing_tier: "pro",
+  plan_status: "active",
+  billing_status: "active",
+  current_period_end: iso(new Date(Date.now() + 12 * 864e5)),
+  stripe_customer_id: "cus_QxT7HkPmZ3vLd8RaFn2Wq0",
+  stripe_subscription_id: "sub_1QxT7HkPmZ3vLd8RaFn2Wq0Bs",
+  role: "owner",
+};
+
+export const STAFF = [
+  { id: "dddddddd-0000-4000-8000-00000000d001", display_name: "Alejandro Villanueva-Castro", role: "tech" },
+  { id: "dddddddd-0000-4000-8000-00000000d002", display_name: "Samantha Okonkwo", role: "tech" },
+  { id: "dddddddd-0000-4000-8000-00000000d003", display_name: "Bartholomew Fitzgerald III", role: "tech" },
+  { id: "dddddddd-0000-4000-8000-00000000d004", display_name: "Wen Zhang", role: "tech" },
+  { id: "dddddddd-0000-4000-8000-00000000d005", display_name: "Priyanka Balasubramanian", role: "tech" },
+  { id: "dddddddd-0000-4000-8000-00000000d006", display_name: "Kai Ortiz", role: "dispatcher" },
+  { id: "dddddddd-0000-4000-8000-00000000d007", display_name: "Marguerite Delacroix-Bennett", role: "tech" },
+].map((s, i) => ({
+  ...s,
+  active: true,
+  is_field_tech: s.role === "tech",
+  routing_available: true,
+  start_latitude: 41.88 + i * 0.01,
+  start_longitude: -87.63 - i * 0.01,
+  start_address: `${1200 + i * 37} West Fullerton Parkway, Chicago, IL 60614`,
+  end_latitude: null,
+  end_longitude: null,
+  end_address: null,
+}));
+
+const CLIENT_NAMES = [
+  "Anastasia Vandermolen-Whitaker",
+  "Chesterfield Property Management Group",
+  "Bo Ng",
+  "Rosalind Featherstonehaugh",
+  "Northbrook Homeowners Association #4471",
+  "Jean-Baptiste Moreau-Lachapelle",
+  "Tim Cox",
+  "Kimberly-Anne Rutherford-Sinclair",
+  "Devonshire Estates Commercial Grounds",
+  "Yusuf Abdulrahman-Osei",
+  "Meredith Ashworth",
+  "Constantine Papadopoulos-Andreou",
+];
+
+export const CLIENTS = CLIENT_NAMES.map((name, i) => ({
+  id: i === 0 ? CLIENT_ID : `bbbbbbbb-0000-4000-8000-00000000b0${String(i + 1).padStart(2, "0")}`,
+  display_name: name,
+  account_type: i % 4 === 1 ? "commercial" : "residential",
+  primary_email: `${name.toLowerCase().replace(/[^a-z]+/g, ".")}@longishmailprovider.example.com`,
+  primary_phone: `+1 (312) 555-${String(1000 + i * 7).slice(0, 4)}`,
+  active: i !== 6,
+  created_at: iso(new Date(Date.now() - (i + 1) * 9 * 864e5)),
+  credit_balance_cents: i % 5 === 0 ? 4250 : 0,
+  churn_score: i % 3 === 0 ? 0.72 : 0.11,
+  comms_paused: i === 3,
+  dog_count: (i % 3) + 1,
+  active_subscription_count: i % 4 === 3 ? 0 : 1,
+  frequencies: i % 4 === 3 ? [] : [["weekly", "twice_weekly", "bi_weekly", "monthly"][i % 4]],
+  outstanding_cents: i % 3 === 0 ? 18_500 + i * 325 : 0,
+}));
+
+export const PROPERTIES = CLIENTS.map((c, i) => ({
+  id: i === 0 ? PROPERTY_ID : `cccccccc-0000-4000-8000-00000000c0${String(i + 1).padStart(2, "0")}`,
+  client_id: c.id,
+  street: `${4400 + i * 13} North Ravenswood Manor Terrace Apartment ${i + 2}B`,
+  city: "Chicago",
+  region: "IL",
+  postal_code: `606${String(10 + i).slice(0, 2)}`,
+  latitude: 41.9 + i * 0.006,
+  longitude: -87.68 + i * 0.005,
+  earliest_service_time: "08:00",
+  latest_service_time: "17:00",
+  service_duration_min: 15,
+  archived_at: null,
+}));
+
+const STATUSES = ["scheduled", "completed", "in_progress", "skipped", "scheduled", "completed"];
+
+/** Visits for `from`..`to` inclusive, spread over the techs. */
+export function visitsBetween(from: string, to: string) {
+  const out: Array<Record<string, unknown>> = [];
+  const start = new Date(`${from}T12:00:00Z`);
+  const end = new Date(`${to}T12:00:00Z`);
+  let n = 0;
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const on = d.toISOString().slice(0, 10);
+    const perDay = 8;
+    for (let i = 0; i < perDay; i++, n++) {
+      const client = CLIENTS[n % CLIENTS.length];
+      const property = PROPERTIES[n % PROPERTIES.length];
+      // Every fourth stop is unassigned: the board draws an "Unassigned" lane
+      // for those, which is a column that only exists when the data has one.
+      const tech = i % 4 === 3 ? null : STAFF[n % 5];
+      out.push({
+        id: `eeeeeeee-0000-4000-8000-${String(100000000000 + n).slice(0, 12)}`,
+        scheduled_on: on,
+        status: STATUSES[n % STATUSES.length],
+        sequence: i + 1,
+        assigned_staff_id: tech?.id ?? null,
+        zone_id: null,
+        property_id: property.id,
+        client_id: client.id,
+        subscription_id: `ffffffff-0000-4000-8000-${String(200000000000 + n).slice(0, 12)}`,
+        eta_start: `${String(8 + (i % 8)).padStart(2, "0")}:15:00`,
+        eta_end: `${String(8 + (i % 8)).padStart(2, "0")}:45:00`,
+        travel_km: 3.4 + (n % 7),
+        travel_min: 9 + (n % 13),
+        window_violated: n % 11 === 0,
+        weather_flagged: n % 9 === 0,
+        weather_note: n % 9 === 0 ? "Thunderstorms forecast between 13:00 and 16:00 — heavy rain" : null,
+        clients: { display_name: client.display_name },
+        properties: {
+          street: property.street,
+          city: property.city,
+          postal_code: property.postal_code,
+          latitude: property.latitude,
+          longitude: property.longitude,
+          earliest_service_time: property.earliest_service_time,
+          latest_service_time: property.latest_service_time,
+          service_duration_min: property.service_duration_min,
+        },
+        zones: { name: "Ravenswood Manor / Lincoln Square North", postal_prefix: "606" },
+        staff: tech ? { display_name: tech.display_name } : null,
+        subscriptions: {
+          price_cents: 2200 + (n % 5) * 150,
+          account_type: client.account_type,
+          frequency: "weekly",
+          preferred_time_of_day: "morning",
+          earliest_time: "08:00",
+          latest_time: "12:00",
+        },
+      });
+    }
+  }
+  return out;
+}
+
+export const INVOICES = CLIENTS.slice(0, 8).map((c, i) => ({
+  id: `99999999-0000-4000-8000-00000000e0${String(i + 1).padStart(2, "0")}`,
+  status: i % 3 === 0 ? "open" : i % 3 === 1 ? "paid" : "void",
+  total_cents: 8_800 + i * 1_275,
+  credit_applied_cents: i === 2 ? 2_000 : 0,
+  amount_paid_cents: i % 3 === 1 ? 8_800 + i * 1_275 : 0,
+  due_on: day(-3 + i),
+  issued_at: iso(new Date(Date.now() - (i + 4) * 864e5)),
+  client_id: c.id,
+  clients: { display_name: c.display_name },
+  number: `INV-2026-${String(1041 + i)}`,
+}));
+
+/** The platform console's tenant list. Two rows in every lifecycle state the
+ *  console draws a badge for, so nothing in that column is untested. */
+export const PLATFORM_TENANTS = [
+  { name: ORG_NAME, billing_status: "active", suspended_at: null, deleted_at: null, grace_expires_at: null },
+  { name: "Pawsitive Scoops of Greater Metropolitan Phoenix", billing_status: "past_due", suspended_at: null, deleted_at: null, grace_expires_at: iso(new Date(Date.now() + 3 * 864e5)) },
+  { name: "K9 Kleanup", billing_status: "trialing", suspended_at: null, deleted_at: null, grace_expires_at: null },
+  { name: "Doody Calls Franchising Incorporated (Southeast)", billing_status: "canceled", suspended_at: iso(new Date(Date.now() - 8 * 864e5)), deleted_at: null, grace_expires_at: null },
+  { name: "Turdminator", billing_status: "active", suspended_at: null, deleted_at: null, grace_expires_at: null },
+  { name: "Scoopy Doo Waste Removal & Sanitation Cooperative", billing_status: "active", suspended_at: null, deleted_at: null, grace_expires_at: null },
+].map((t, i) => ({
+  id: i === 0 ? ORG_ID : `aaaaaaaa-0000-4000-8000-00000000a0${String(i + 1).padStart(2, "0")}`,
+  name: t.name,
+  billing_status: t.billing_status,
+  plan_slug: ["pro", "starter", "trial", "pro", "starter", "enterprise"][i],
+  plan_name: ["Pro", "Starter", "Trial", "Pro", "Starter", "Enterprise (annual, invoiced)"][i],
+  active_client_count: 214 - i * 31,
+  users_count: 7 - i,
+  last_activity_at: iso(new Date(Date.now() - i * 2 * 864e5)),
+  stripe_customer_id: `cus_QxT7HkPmZ3vLd8RaFn2W${i}`,
+  stripe_subscription_id: `sub_1QxT7HkPmZ3vLd8RaFn2Wq0B${i}`,
+  created_at: iso(new Date(Date.now() - (90 + i * 40) * 864e5)),
+  suspended_at: t.suspended_at,
+  grace_expires_at: t.grace_expires_at,
+  deleted_at: t.deleted_at,
+}));
+
+/** 173 accounts. The pager shipped today exists because the directory stopped
+ *  at 150 — a page that only ever holds one page cannot show that it was fixed. */
+export const PLATFORM_USER_TOTAL = 173;
+
+export function platformUsers(offset: number, limit: number) {
+  const rows = [];
+  for (let i = offset; i < Math.min(offset + limit, PLATFORM_USER_TOTAL); i++) {
+    rows.push({
+      user_id: `77777777-0000-4000-8000-${String(300000000000 + i).slice(0, 12)}`,
+      email: `dispatcher.${i}.longmailboxname@whitfield-ramirez-yard-services.example.com`,
+      last_sign_in_at: iso(new Date(Date.now() - (i % 30) * 864e5)),
+      created_at: iso(new Date(Date.now() - (i + 30) * 864e5)),
+      organizations: [
+        { id: ORG_ID, name: ORG_NAME, role: i % 5 === 0 ? "owner" : "office_manager" },
+        ...(i % 7 === 0
+          ? [{ id: TENANT_B_ID, name: "Pawsitive Scoops of Greater Metropolitan Phoenix", role: "tech" }]
+          : []),
+      ],
+    });
+  }
+  return rows;
+}
+
+/** The audit trail the tenant diff view added today renders. before/after JSON
+ *  is deliberately wide — that view prints it, and a wide `<pre>` is the
+ *  classic way a page learns to scroll sideways. */
+export const TENANT_AUDIT = [
+  {
+    action: "billing_status_change",
+    before_json: { billing_status: "trialing", plan_id: "1f0c2f5e-3b7a-4d21-9e88-6c5a4b3d2e10", grace_expires_at: null },
+    after_json: { billing_status: "active", plan_id: "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d", grace_expires_at: null },
+  },
+  {
+    action: "plan_change",
+    before_json: { plan_slug: "starter", price_cents: 4900, included_seats: 3, stripe_price_id: "price_1QxT7HkPmZ3vLd8RaFn2Wq0Bs" },
+    after_json: { plan_slug: "pro", price_cents: 14900, included_seats: 10, stripe_price_id: "price_1QxT7HkPmZ3vLd8RaFn2Wq0Ct" },
+  },
+  {
+    action: "grace_granted",
+    before_json: { grace_expires_at: null },
+    after_json: { grace_expires_at: iso(new Date(Date.now() + 5 * 864e5)) },
+  },
+  {
+    action: "tenant_suspended",
+    before_json: { suspended_at: null, suspended_reason: null },
+    after_json: { suspended_at: iso(new Date(Date.now() - 8 * 864e5)), suspended_reason: "Payment failed four consecutive times and the grace period elapsed" },
+  },
+].map((r, i) => ({
+  id: `88888888-0000-4000-8000-${String(400000000000 + i).slice(0, 12)}`,
+  actor_user_id: "77777777-0000-4000-8000-300000000000",
+  actor_email: "platform.operations.oncall@houndstack.example.com",
+  action: r.action,
+  before_json: r.before_json,
+  after_json: r.after_json,
+  created_at: iso(new Date(Date.now() - (i + 1) * 3 * 864e5)),
+}));
+
+export const PLATFORM_PLANS = [
+  { slug: "starter", name: "Starter", price_cents: 4_900, annual_price_cents: 49_000, included_seats: 3, price_per_seat_cents: 900, interval: "month", is_active: true, sort_order: 1 },
+  { slug: "pro", name: "Pro", price_cents: 14_900, annual_price_cents: 149_000, included_seats: 10, price_per_seat_cents: 700, interval: "month", is_active: true, sort_order: 2 },
+  { slug: "enterprise", name: "Enterprise (annual, invoiced)", price_cents: 0, annual_price_cents: 720_000, included_seats: 50, price_per_seat_cents: 0, interval: "year", is_active: false, sort_order: 3 },
+].map((p, i) => ({
+  id: `66666666-0000-4000-8000-00000000f0${String(i + 1).padStart(2, "0")}`,
+  description: "Everything in the tier below, plus route optimisation, the client portal and unlimited SMS reminders.",
+  stripe_product_id: `prod_QxT7HkPmZ3vLd8Ra${i}`,
+  stripe_price_id: `price_1QxT7HkPmZ3vLd8RaFn2Wq0B${i}`,
+  stripe_annual_price_id: `price_1QxT7HkPmZ3vLd8RaFn2Wq0C${i}`,
+  entitlements: { routes: true, portal: true, franchise: i === 2 },
+  ...p,
+}));

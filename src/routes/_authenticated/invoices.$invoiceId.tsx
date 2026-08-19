@@ -349,7 +349,7 @@ function InvoiceDetail() {
       {payments.length > 0 && (
         <div>
           <SectionLabel className="mb-2">Payments</SectionLabel>
-          <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
+          <div className="relative overflow-x-auto rounded-xl border bg-card shadow-sm">
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>

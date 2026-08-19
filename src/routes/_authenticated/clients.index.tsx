@@ -432,7 +432,7 @@ function ClientsList() {
           </div>
 
           {/* Desktop: table */}
-          <div className="hidden overflow-x-auto rounded-lg border bg-card sm:block">
+          <div className="relative hidden overflow-x-auto rounded-lg border bg-card sm:block">
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
                 <tr>

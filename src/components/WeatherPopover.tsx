@@ -173,7 +173,12 @@ export function WeatherPopover() {
         <button
           type="button"
           aria-label="Weather forecast"
-          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          // 32.0px measured at 360px: `p-2` around a 16px glyph. The third
+          // header control to be sized by its padding, after the Help link and
+          // the bell — both of which are now a 16px glyph centred in a 44px
+          // box. This matches them exactly, so the header reads the same and
+          // only the part a thumb can miss changed.
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <CloudSun className="h-4 w-4" />
         </button>

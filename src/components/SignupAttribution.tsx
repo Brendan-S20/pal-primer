@@ -88,7 +88,7 @@ export function SignupAttribution() {
             organizations so far signed up directly.
           </p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-xs uppercase text-muted-foreground">

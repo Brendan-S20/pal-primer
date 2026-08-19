@@ -113,7 +113,7 @@ function ReferBusinessPage() {
             No referrals yet. Share your link to get started.
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-lg border">
+          <div className="relative overflow-x-auto rounded-lg border">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
                 <tr>

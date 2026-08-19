@@ -285,7 +285,11 @@ function Dashboard() {
       </div>
 
       <div className="grid gap-4 max-md:order-1 lg:grid-cols-3">
-        <div className="rounded-lg border bg-card p-4 max-md:order-2 lg:col-span-2">
+        {/* MEASURED 2026-08-19: 487px in a 360px viewport. Same fault as
+            SummaryTab's columns — a grid item's `min-width` is `auto`, so it
+            will not shrink below its content, and the map card's content does
+            not fit a phone. `min-w-0` lets it. */}
+        <div className="min-w-0 rounded-lg border bg-card p-4 max-md:order-2 lg:col-span-2">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold">Today's map</h2>
             <div className="flex items-center gap-3">
@@ -332,7 +336,7 @@ function Dashboard() {
           </p>
         </div>
 
-        <div className="space-y-4 max-md:order-1">
+        <div className="min-w-0 space-y-4 max-md:order-1">
           <div className="rounded-lg border bg-card p-4">
             <h2 className="mb-3 text-sm font-semibold">Techs today</h2>
             {groups.length === 0 ? (

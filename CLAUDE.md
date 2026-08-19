@@ -87,14 +87,41 @@ geometry: no horizontal page scroll, no control off the side, no control under
 long-value fault above. Run it with `npm run test:viewports`; it needs a dev
 server, which the Playwright config starts for you.
 
-Three things about it are worth knowing before you trust or extend it:
+Four things about it are worth knowing before you trust or extend it:
 
 - **It does not replace the static tests.** Those name a file and a line, which
   a screenshot cannot, and they run in seconds with no server. The browser
   catches what a parser cannot see; the parser says where to go and fix it.
-- **It only covers PUBLIC routes.** Everything behind `/_authenticated` needs a
-  session, so the surfaces `docs/mobile-ux-audit.md` is actually about are not
-  in it yet.
+- **It now covers signed-in routes too, on a stubbed backend.**
+  `every-signed-in-page-at-every-width.spec.ts` sweeps twenty authenticated
+  surfaces on a session minted into `localStorage`, with every request answered
+  by a fixture and a network fence that turns back anything not on localhost.
+  No credential, nothing reaches production, and the dataset is chosen to be
+  awkward on purpose — a 46-character client name, a 78-character signup URL,
+  seven technicians — because a fixture that is tidier than reality measures
+  nothing. Run it with `npm run test:viewports:auth`.
+  It landed on 2026-08-19 with **22 failing surface/width combinations** and
+  reached **zero the same day**, so the `sandboxes.yml` step is a hard gate
+  rather than `continue-on-error`. Eighteen were real; **four were false
+  positives in the rule itself** and are worth knowing about before you trust a
+  finding — see `docs/mobile-ux-audit.md` §6.8.
+
+  Three things those fixes taught, which will save you a cycle each. **A list
+  of off-side controls is a list of SYMPTOMS** — find the outermost element
+  wider than the viewport, the one whose parent still fits; on `/clients/:id`
+  the obvious culprit was a real fault that was not the cause. **Measure right
+  edges, not widths** — `/clients/new` and `/my-day` overflowed with no element
+  wider than the screen at all. **And a clipped element still reports a wide
+  rect**, so a scan that ranks by `getBoundingClientRect()` will point at
+  something inside a scroll container that cannot affect the page; on
+  `/clients` the real cause was a 1x1 `sr-only` span escaping a `position:
+  static` scroller.
+- **Signed out is not a blank page here — it is `/auth`.** So the blank-page
+  guard below is not enough for the authenticated half: `/auth` renders
+  perfectly and clears every size threshold. Each surface therefore proves
+  itself twice, with a locator only that page draws and a fixture string only
+  its data contains. A sweep that measures the login screen twenty times is
+  green and worthless.
 - **Assertions of the form "nothing is wrong" all pass on a blank page**, so
   `settle()` refuses to measure a route that did not render. That guard is
   there because the sweep spent several runs green against a Vite error page

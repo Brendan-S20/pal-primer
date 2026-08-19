@@ -537,7 +537,7 @@ function WinBackTab() {
           </p>
         ) : (
           // Six columns clipped, not scrolled — see AiPanels for the same fix.
-          <div className="overflow-x-auto rounded-md border">
+          <div className="relative overflow-x-auto rounded-md border">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                 <tr>

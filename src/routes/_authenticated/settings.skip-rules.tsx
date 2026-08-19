@@ -45,7 +45,7 @@ function SkipRulesPage() {
         </p>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border bg-card">
+      <div className="relative overflow-x-auto rounded-lg border bg-card">
         <table className="w-full text-sm">
           <thead className="border-b bg-muted/40 text-left">
             <tr>

@@ -275,11 +275,25 @@ function AppShell() {
               isMyDay ? myDayHeaderHidden : ""
             }`}
           >
-            <SidebarTrigger />
+            {/* 28px (`h-7 w-7` from ui/sidebar.tsx) until 2026-08-19, when the
+                browser sweep measured it. platform.tsx had already passed this
+                exact override; the tenant shell — the one on every page a
+                customer's staff actually use — had not. Same className rather
+                than a new spelling, so the two shells cannot drift again.
+                min-h/min-w rather than h/w: ui/input.tsx's note applies, a
+                minimum wins over a height whatever order the utilities land
+                in, and `size="icon"` sets one. */}
+            <SidebarTrigger className="min-h-11 min-w-11" />
             <button
               type="button"
               onClick={openPalette}
-              className="flex min-w-0 flex-1 items-center gap-2 rounded-md border bg-background/60 px-3 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
+              // 34.0px measured at 360px, from `py-1.5` around a 20px line —
+              // the widest control in the header and, on a phone, the one most
+              // likely to be aimed at with a thumb. `min-h-11` rather than more
+              // padding: padding carrying the size is exactly what put the Help
+              // link and the bell under the floor before them, and a minimum
+              // survives a later text-size change.
+              className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md border bg-background/60 px-3 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
             >
               <Search className="h-4 w-4 shrink-0" />
               <span className="truncate">Search or jump to…</span>

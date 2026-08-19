@@ -223,7 +223,8 @@ function SchedulingSettings() {
             <select
               defaultValue={settings.traffic_profile ?? "normal"}
               onChange={(e) => mut.mutate({ traffic_profile: e.target.value })}
-              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              // MEASURED 2026-08-19: 40.0px, four short.
+              className="h-10 w-full rounded-md border bg-background px-3 text-sm max-md:min-h-11"
             >
               <option value="light">Light (faster)</option>
               <option value="normal">Normal</option>

@@ -285,7 +285,7 @@ function ReportView({ data, onDownload }: { data: ReportResult; onDownload: () =
         {data.rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing in this period.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">

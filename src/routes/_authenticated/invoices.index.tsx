@@ -840,7 +840,7 @@ function InvoicesPage() {
               />
             ))}
           </div>
-          <div className="overflow-x-auto rounded-xl border bg-card shadow-sm max-md:hidden">
+          <div className="relative overflow-x-auto rounded-xl border bg-card shadow-sm max-md:hidden">
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>

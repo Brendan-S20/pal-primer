@@ -7,7 +7,7 @@ import { onboardClient, getInternalQuote } from "@/lib/clients.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { RadioGroup, RadioGroupSegment } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { BoundarySketch, formatArea, type PolygonGeoJSON } from "@/components/BoundarySketch";
@@ -296,18 +296,29 @@ function NewClientWizard() {
         <h1 className="mt-2 text-2xl font-semibold">New client</h1>
       </div>
 
-      {/* Stepper */}
-      <div className="flex items-center gap-2 text-sm">
+      {/* Stepper.
+          MEASURED 2026-08-19: five numbered chips, their labels and four
+          chevrons come to 565px, so at 360px steps 3, 4 and 5 hung off the
+          side of the screen and the page scrolled sideways. At 768px step 5
+          still did.
+          This is the case CLAUDE.md names outright — "wide content … wide
+          toolbars — scrolls inside its own `overflow-x: auto` container. The
+          page body does not." A stepper is a toolbar: it has a natural width,
+          it is read left to right, and squeezing it is worse than scrolling
+          it. `shrink-0` on each chip so they scroll at full size rather than
+          being compressed into each other, and the dots take the touch floor
+          because a completed step is a button you can go back to. */}
+      <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 text-sm">
         {STEPS.map((label, i) => {
           const state = i < step ? "done" : i === step ? "current" : "todo";
           return (
-            <div key={label} className="flex items-center gap-2">
+            <div key={label} className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
                 onClick={() => i < step && setStep(i)}
                 disabled={i > step}
                 className={
-                  "flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium " +
+                  "flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium max-md:h-11 max-md:w-11 " +
                   (state === "done"
                     ? "bg-primary text-primary-foreground"
                     : state === "current"
@@ -333,20 +344,23 @@ function NewClientWizard() {
         {step === 0 && (
           <div className="space-y-5">
             <div className="space-y-2">
-              <Label>Account type</Label>
+              {/* MEASURED 2026-08-19: as two radio dots these were 16.0px, the
+                  last finding on this page. A radio cannot be grown to 44px —
+                  the border is on the element, so height and padding both
+                  enlarge the visible circle. Two mutually exclusive options
+                  with short labels are a segmented control anyway, and a
+                  segment is 44px without argument.
+                  Still a Radix radiogroup underneath, so the arrow keys, the
+                  single tab stop and the ARIA all survive the change. */}
+              <Label id="account-type-label">Account type</Label>
               <RadioGroup
+                aria-labelledby="account-type-label"
                 value={accountType}
                 onValueChange={(v) => setAccountType(v as typeof accountType)}
-                className="flex gap-6"
+                className="flex gap-2"
               >
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="residential" id="t-res" />
-                  <Label htmlFor="t-res" className="font-normal">Residential</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="commercial" id="t-com" />
-                  <Label htmlFor="t-com" className="font-normal">Commercial / HOA</Label>
-                </div>
+                <RadioGroupSegment value="residential">Residential</RadioGroupSegment>
+                <RadioGroupSegment value="commercial">Commercial / HOA</RadioGroupSegment>
               </RadioGroup>
             </div>
             <div className="space-y-2">

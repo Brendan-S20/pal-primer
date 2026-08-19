@@ -14,6 +14,8 @@
     "test": "vitest run",
     "test:db": "tests/run-db-tests.sh",
     "test:viewports": "playwright test",
+    "test:viewports:public": "playwright test every-public-page",
+    "test:viewports:auth": "playwright test every-signed-in-page",
     "check:migrations": "node scripts/check-migrations.mjs",
     "check:baseline-objects": "node scripts/check-baseline-objects.mjs",
     "check:app-origin": "node scripts/check-app-origin.mjs",

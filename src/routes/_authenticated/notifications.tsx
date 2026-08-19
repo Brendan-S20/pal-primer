@@ -60,14 +60,15 @@ function NotificationsPage() {
             <button
               type="button"
               onClick={() => setFilter("all")}
-              className={`px-3 py-1.5 ${filter === "all" ? "bg-muted font-medium" : ""}`}
+              // MEASURED 2026-08-19: 32.0px, both halves of the filter pair.
+              className={`px-3 py-1.5 max-md:min-h-11 ${filter === "all" ? "bg-muted font-medium" : ""}`}
             >
               All
             </button>
             <button
               type="button"
               onClick={() => setFilter("unread")}
-              className={`border-l px-3 py-1.5 ${filter === "unread" ? "bg-muted font-medium" : ""}`}
+              className={`border-l px-3 py-1.5 max-md:min-h-11 ${filter === "unread" ? "bg-muted font-medium" : ""}`}
             >
               Unread {unread > 0 && <span className="ml-1 text-xs text-muted-foreground">({unread})</span>}
             </button>

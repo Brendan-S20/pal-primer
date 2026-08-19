@@ -142,8 +142,23 @@ jobs:
       # Supabase values it needs to boot — see the `webServer.env` block in
       # playwright.config.ts, and the note there on why they must NOT be put in
       # a `.env` instead.
-      - name: Sweep 360 / 768 / 1280 / 1920
-        run: npm run test:viewports
+      - name: Sweep 360 / 768 / 1280 / 1920 — public routes
+        run: npm run test:viewports:public
+
+      # ── THIS WAS NOT A GATE FOR ONE DAY ──────────────────────────────────
+      #
+      # Added 2026-08-19 with 22 failing surface/width combinations, and run
+      # `continue-on-error` so that a check which could only be red did not
+      # teach people to ignore it. All 22 are now cleared — 18 were real and
+      # fixed, 4 were false positives in tests/viewports/rules.ts, which could
+      # not see a hit area supplied by an out-of-flow pseudo-element.
+      #
+      # So it is a gate, as the note it replaces said it should become. The
+      # signed-in half is where every surface a customer's staff uses all day
+      # actually lives; the public half only covers the marketing and auth
+      # pages.
+      - name: Sweep 360 / 768 / 1280 / 1920 — signed-in routes
+        run: npm run test:viewports:auth
 
       # Screenshots and traces exist only for failures — on a green run this
       # uploads nothing, which is the point.
