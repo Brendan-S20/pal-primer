@@ -70,22 +70,188 @@ function parseSqlMatrix(source: string): Array<[string, string]> {
   return pairs;
 }
 
-/** The slug → tier CASE arms in plan_tier_for_org. */
-function parseSqlSlugMap(source: string): Record<string, string> {
-  const start = source.indexOf("CREATE OR REPLACE FUNCTION public.plan_tier_for_org");
-  if (start === -1) throw new Error("plan_tier_for_org is not defined in the expected migration");
-  const body = source.slice(start, source.indexOf("$$;", start));
+// ── WHERE THE SLUG → TIER MAP LIVES NOW ─────────────────────────────────────
+//
+// It used to live in a CASE inside plan_tier_for_org, in eleven WHEN arms with
+// `ELSE 'launch'`, and this file parsed those arms. That is why the section
+// below no longer reads them: 20260819160000 moved the answer onto the plan
+// row (platform_plans.entitlement_tier, NOT NULL, no default) and the function
+// now reads the column. A plan says what it unlocks; nothing infers it from the
+// slug any more.
+//
+// So the SQL side of the comparison is the migration's BACKFILL — the one place
+// that still states, per slug, which tier it is — and the assertions below hold
+// three things to each other: that backfill, SLUG_TO_TIER in TypeScript, and
+// every slug any migration ever inserted into the catalog. The last of those is
+// derived rather than typed here, for the same reason the franchise section at
+// the foot of this file derives its scope: a list only knows about the things
+// somebody put on it.
+
+/** The migration that introduced the column, found by what it does rather than
+ *  by name. */
+function migrationAddingTierColumn(): { file: string; sql: string } {
+  const dir = join(__dirname, "..", "supabase", "migrations");
+  const hits = readdirSync(dir)
+    .filter((f) => f.endsWith(".sql"))
+    .sort()
+    .map((file) => ({ file, sql: readFileSync(join(dir, file), "utf8") }))
+    .filter((m) => /ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+entitlement_tier/i.test(m.sql));
+  if (hits.length === 0) {
+    throw new Error(
+      "No migration adds platform_plans.entitlement_tier — the column a plan declares its tier in is gone",
+    );
+  }
+  return hits[hits.length - 1];
+}
+
+const tierColumnMigration = migrationAddingTierColumn();
+
+/** The slug → tier arms of that migration's backfill.
+ *
+ *  Strict about the shape it will read: an `ELSE` in this CASE is refused
+ *  rather than parsed, because `ELSE 'launch'` is the precise bug being fixed
+ *  one layer down — it would write the floor tier onto a row nobody classified
+ *  and make it indistinguishable from a decision. */
+function parseBackfillTierMap(source: string): Record<string, string> {
+  const at = source.search(/SET\s+entitlement_tier\s*=\s*CASE\s+slug/i);
+  if (at === -1) {
+    throw new Error(
+      "The entitlement_tier backfill is no longer a `SET entitlement_tier = CASE slug` — this parser refuses to guess",
+    );
+  }
+  const end = source.indexOf("END", at);
+  if (end === -1) throw new Error("The entitlement_tier backfill CASE has no END");
+  const body = source.slice(at, end);
+  if (/\bELSE\b/i.test(body)) {
+    throw new Error(
+      "The entitlement_tier backfill has an ELSE arm. A slug it does not name must be left NULL so " +
+        "the migration stops and names it; defaulting it to a tier is the silent under-entitlement " +
+        "this whole change removes.",
+    );
+  }
   const out: Record<string, string> = {};
-  for (const m of body.matchAll(/WHEN\s+'([a-z_]+)'\s+THEN\s+'([a-z_]+)'/g)) out[m[1]] = m[2];
-  if (Object.keys(out).length === 0)
-    throw new Error("Parsed no slug arms out of plan_tier_for_org");
+  for (const m of body.matchAll(/WHEN\s+'([a-z0-9_-]+)'\s+THEN\s+'([a-z_]+)'/gi)) out[m[1]] = m[2];
+  if (Object.keys(out).length === 0) throw new Error("Parsed no slug arms out of the backfill");
+  return out;
+}
+
+/** The tiers the table's CHECK constraint will accept. */
+function parseTierCheckConstraint(source: string): string[] {
+  const m = /CHECK\s*\(\s*entitlement_tier\s+IN\s*\(([^)]*)\)/i.exec(source);
+  if (!m) throw new Error("platform_plans has no CHECK constraint on entitlement_tier");
+  const tiers = [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]);
+  if (tiers.length === 0) throw new Error("Parsed no tiers out of the entitlement_tier CHECK");
+  return tiers;
+}
+
+/** Top-level `(...)` groups in a VALUES list, quotes respected. */
+function valueTuples(region: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let quoted = false;
+  let start = 0;
+  for (let i = 0; i < region.length; i++) {
+    const c = region[i];
+    if (quoted) {
+      if (c === "'") quoted = false;
+      continue;
+    }
+    if (c === "'") quoted = true;
+    else if (c === "(") {
+      if (depth === 0) start = i + 1;
+      depth++;
+    } else if (c === ")") {
+      depth--;
+      if (depth === 0) out.push(region.slice(start, i));
+    }
+  }
+  return out;
+}
+
+/** Split one tuple on its top-level commas, quotes and nesting respected. */
+function tupleFields(tuple: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let quoted = false;
+  let start = 0;
+  for (let i = 0; i < tuple.length; i++) {
+    const c = tuple[i];
+    if (quoted) {
+      if (c === "'") quoted = false;
+      continue;
+    }
+    if (c === "'") quoted = true;
+    else if (c === "(") depth++;
+    else if (c === ")") depth--;
+    else if (c === "," && depth === 0) {
+      out.push(tuple.slice(start, i));
+      start = i + 1;
+    }
+  }
+  out.push(tuple.slice(start));
+  return out;
+}
+
+/**
+ * Every plan slug any migration has ever inserted into the catalog.
+ *
+ * DERIVED, not listed. The version of this file that shipped with BUILD-1
+ * compared eleven hand-typed slugs against eleven hand-typed slugs and called
+ * it "covers the live catalog" — it could only ever agree with itself. This
+ * reads the INSERTs, so a plan seeded by a migration tomorrow is in scope
+ * tomorrow.
+ *
+ * It cannot see a plan created through the platform console, which is the one
+ * this whole change is about; that plan is covered instead by the NOT NULL
+ * column and by planTierDeclarationProblem, both of which refuse the case this
+ * parser could never have caught.
+ */
+function parseCatalogSlugs(): Array<{ slug: string; file: string }> {
+  const dir = join(__dirname, "..", "supabase", "migrations");
+  const out: Array<{ slug: string; file: string }> = [];
+  for (const file of readdirSync(dir)
+    .filter((f) => f.endsWith(".sql"))
+    .sort()) {
+    const code = readFileSync(join(dir, file), "utf8").replace(/--[^\n]*/g, "");
+    for (const m of code.matchAll(
+      /INSERT\s+INTO\s+public\.platform_plans\s*\(([^)]*)\)\s*VALUES/gi,
+    )) {
+      const cols = m[1].split(",").map((c) => c.trim().toLowerCase());
+      const idx = cols.indexOf("slug");
+      if (idx === -1) throw new Error(`${file}: INSERT INTO platform_plans names no slug column`);
+      const rest = code.slice(m.index! + m[0].length);
+      const conflict = rest.search(/\bON\s+CONFLICT\b/i);
+      const semi = rest.indexOf(";");
+      const ends = [conflict, semi].filter((n) => n >= 0);
+      const region = rest.slice(0, ends.length ? Math.min(...ends) : rest.length);
+      for (const tuple of valueTuples(region)) {
+        const field = tupleFields(tuple)[idx]?.trim() ?? "";
+        const q = /^'([^']*)'/.exec(field);
+        if (!q) {
+          throw new Error(`${file}: could not read a slug literal out of ${field || "(empty)"}`);
+        }
+        out.push({ slug: q[1], file });
+      }
+    }
+  }
+  if (out.length === 0) {
+    throw new Error(
+      "Parsed no plan slugs out of supabase/migrations — this scan is reading nothing",
+    );
+  }
   return out;
 }
 
 const sqlPairs = parseSqlMatrix(sql);
 const sqlGrants = (tier: string, entitlement: string) =>
   sqlPairs.some(([t, e]) => t === tier && e === entitlement);
-const sqlSlugMap = parseSqlSlugMap(sql);
+// LAZY, both of them. These parsers are strict — they throw rather than guess —
+// and a throw in the module body makes vitest report "no tests", which reads as
+// a pass. Resolved inside the `it` that needs them, the same discipline
+// tests/the-lockdown-that-only-held-for-the-functions-that-existed-that-day
+// applies to its file reads.
+const backfillTierMap = () => parseBackfillTierMap(tierColumnMigration.sql);
+const catalogSlugs = () => parseCatalogSlugs();
 
 describe("TS ↔ SQL entitlement parity (BUILD-1)", () => {
   it("grants exactly the same entitlements on both sides, for every tier", () => {
@@ -116,41 +282,166 @@ describe("TS ↔ SQL entitlement parity (BUILD-1)", () => {
   });
 
   it("maps every plan slug to the same tier on both sides", () => {
+    // TypeScript's SLUG_TO_TIER against the migration that wrote the column.
+    // Both directions: a slug in one and not the other is drift whichever side
+    // it is missing from.
     const mismatches: string[] = [];
+    const backfill = backfillTierMap();
     for (const slug of KNOWN_PLAN_SLUGS) {
       const ts = planTierFromSlug(slug);
-      const db = sqlSlugMap[slug];
-      if (ts !== db) mismatches.push(`${slug}: TypeScript → ${ts}, SQL → ${db ?? "(absent)"}`);
+      const db = backfill[slug];
+      if (ts !== db) mismatches.push(`${slug}: TypeScript → ${ts}, backfill → ${db ?? "(absent)"}`);
+    }
+    for (const slug of Object.keys(backfill)) {
+      if (!KNOWN_PLAN_SLUGS.includes(slug)) {
+        mismatches.push(`${slug}: backfill → ${backfill[slug]}, TypeScript → (absent)`);
+      }
     }
     expect(
       mismatches,
-      `plan_tier_for_org has drifted from SLUG_TO_TIER:\n  ${mismatches.join("\n  ")}`,
+      `platform_plans.entitlement_tier (${tierColumnMigration.file}) has drifted from SLUG_TO_TIER:\n  ${mismatches.join("\n  ")}\n\nThe column is what the database serves and SLUG_TO_TIER is what the app serves. Update them together.`,
     ).toEqual([]);
   });
 
-  it("covers every plan slug in the live catalog", () => {
-    // Verified against the live platform_plans table on 2026-07-29. A slug
-    // added to the catalog without being mapped here silently resolves to the
-    // floor tier, which would quietly withhold features from whoever bought it.
-    const LIVE_CATALOG_SLUGS = [
-      "free",
-      "puppy",
-      "launch",
-      "fetch",
-      "growth",
-      "scoop",
-      "scale",
-      "enterprise",
-      "haul",
-      "pack",
-      "kennel",
-    ];
-    const unmapped = LIVE_CATALOG_SLUGS.filter((s) => !KNOWN_PLAN_SLUGS.includes(s));
+  it("covers every plan slug any migration ever put in the catalog", () => {
+    // DERIVED from the INSERTs — see parseCatalogSlugs. The previous version of
+    // this test compared eleven slugs typed here against eleven slugs typed in
+    // entitlements.ts and reported that the catalog was covered, which it could
+    // not have known.
+    const catalog = catalogSlugs();
+    const backfill = backfillTierMap();
+    const seen = [...new Set(catalog.map((c) => c.slug))].sort();
     expect(
-      unmapped,
-      `Plan slugs in the catalog with no tier mapping: ${unmapped.join(", ")}`,
+      seen.length,
+      "the catalog scan found no plan slugs at all — it is reading nothing",
+    ).toBeGreaterThan(3);
+
+    const unmapped = catalog.filter((c) => !KNOWN_PLAN_SLUGS.includes(c.slug));
+    expect(
+      unmapped.map((c) => `${c.slug} (seeded by ${c.file})`),
+      "Plan slugs seeded by a migration with no tier in SLUG_TO_TIER — every organization on one of these is served the floor tier",
     ).toEqual([]);
-    for (const slug of LIVE_CATALOG_SLUGS) expect(sqlSlugMap[slug]).toBeTruthy();
+
+    const unbackfilled = catalog.filter((c) => !backfill[c.slug]);
+    expect(
+      unbackfilled.map((c) => `${c.slug} (seeded by ${c.file})`),
+      `Plan slugs seeded by a migration that ${tierColumnMigration.file} does not classify — the backfill leaves their entitlement_tier NULL and the migration stops`,
+    ).toEqual([]);
+  });
+});
+
+// ── the plan says what it unlocks, and only one place decides it ────────────
+//
+// The defect: SLUG_TO_TIER and plan_tier_for_org were two independent lists of
+// the same eleven literals, both falling through to the floor. Plan creation
+// then shipped, so a platform admin could mint a $999 plan whose slug was in
+// neither — and every customer on it would be served Launch, with no error, no
+// warning and (because this file compared a hardcoded list against a hardcoded
+// list) no failing test.
+describe("the tier is on the plan row, not in a function body (BUILD-1)", () => {
+  it("stores it in a column that cannot be left blank", () => {
+    // Line comments stripped: this migration argues at length about why there
+    // is no default, and a raw search finds the argument as readily as a
+    // `DEFAULT` that was actually written.
+    const m = tierColumnMigration.sql
+      .split("\n")
+      .filter((l) => !l.trim().startsWith("--"))
+      .join("\n");
+    // NOT NULL and no DEFAULT is the whole enforcement: an INSERT that does not
+    // say what the plan unlocks fails at the table. A DEFAULT would restore the
+    // silent floor, one layer further down and harder to see.
+    expect(
+      /ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+entitlement_tier\s+text\s*;/i.test(m),
+      `${tierColumnMigration.file}: entitlement_tier is not added as a bare text column`,
+    ).toBe(true);
+    expect(
+      /ALTER\s+COLUMN\s+entitlement_tier\s+SET\s+NOT\s+NULL/i.test(m),
+      `${tierColumnMigration.file}: entitlement_tier is nullable, so a plan can be created saying nothing about what it unlocks`,
+    ).toBe(true);
+    expect(
+      /(?:ADD|ALTER)\s+COLUMN[^;]*entitlement_tier[^;]*\bDEFAULT\b/i.test(m),
+      `${tierColumnMigration.file}: entitlement_tier has a DEFAULT. A plan that does not declare its tier would silently take that one — which is the fault this migration exists to remove.`,
+    ).toBe(false);
+  });
+
+  it("accepts exactly the tiers the app knows about", () => {
+    expect(parseTierCheckConstraint(tierColumnMigration.sql).sort()).toEqual(
+      [...PLAN_TIERS].sort(),
+    );
+  });
+
+  it("stops rather than guessing when a plan is not classified", () => {
+    // The backfill has no ELSE (parseBackfillTierMap refuses one outright), so
+    // an unnamed slug is left NULL — and something has to notice, by name.
+    //
+    // ONE block has to do all three things. An earlier version of this
+    // assertion asked whether the file contained a RAISE EXCEPTION and
+    // contained `entitlement_tier IS NULL` anywhere, and stayed green when the
+    // guard was deleted outright: the backfill's own WHERE clause supplied one
+    // half and an unrelated block the other.
+    const blocks = [
+      ...tierColumnMigration.sql
+        .split("\n")
+        .filter((l) => !l.trim().startsWith("--"))
+        .join("\n")
+        .matchAll(/DO \$\$([\s\S]*?)\$\$;/g),
+    ].map((m) => m[1]);
+    const guard = blocks.filter(
+      (b) =>
+        /public\.platform_plans/i.test(b) &&
+        /entitlement_tier\s+IS\s+NULL/i.test(b) &&
+        /RAISE\s+EXCEPTION/i.test(b),
+    );
+    expect(
+      guard.length,
+      `${tierColumnMigration.file}: no block raises on a plan row left with no entitlement_tier. An unclassified plan would reach SET NOT NULL as a bare constraint violation naming no slug — or, worse, be quietly filled in with the floor.`,
+    ).toBeGreaterThan(0);
+    // And it has to name the offending slugs, or the person reading the failed
+    // deploy has nothing to act on.
+    expect(guard.some((b) => /slug/i.test(b))).toBe(true);
+  });
+
+  it("reads the column in the LATEST plan_tier_for_org, with no slug arms left", () => {
+    // LATEST_DEFINITIONS is built at the foot of this file; referenced from
+    // inside the test body so it is initialised by the time this runs. Reading
+    // the newest definition rather than one named migration is the point: the
+    // old CASE is still in 20260729130000 and always will be, and a test
+    // pointed at that file would keep passing after the column was ripped out.
+    const fn = LATEST_DEFINITIONS["plan_tier_for_org"];
+    expect(fn, "public.plan_tier_for_org is not defined by any migration").toBeTruthy();
+    expect(
+      fn.body,
+      `${fn.file}: plan_tier_for_org does not read platform_plans.entitlement_tier — the plan is not being asked what it unlocks`,
+    ).toContain("entitlement_tier");
+    const slugArms = [...fn.body.matchAll(/WHEN\s+'[a-z0-9_-]+'\s+THEN\s+'[a-z_]+'/gi)].map(
+      (x) => x[0],
+    );
+    expect(
+      slugArms,
+      `${fn.file}: plan_tier_for_org still decides the tier from the slug. That map now lives on the row; two copies of it is the drift this file exists to catch.`,
+    ).toEqual([]);
+    expect(
+      /\bp\.slug\b/.test(fn.body),
+      `${fn.file}: plan_tier_for_org still reads the plan slug`,
+    ).toBe(false);
+  });
+
+  it("keeps its EXECUTE grant off PUBLIC and anon", () => {
+    // A fresh CREATE takes a default EXECUTE grant to PUBLIC, and anon is a
+    // member of PUBLIC. Live ACL on 2026-08-19 is service_role only.
+    const m = tierColumnMigration.sql;
+    expect(
+      /REVOKE\s+ALL\s+ON\s+FUNCTION\s+public\.plan_tier_for_org\([^)]*\)\s*FROM\s+PUBLIC,\s*anon/i.test(
+        m,
+      ),
+      `${tierColumnMigration.file}: plan_tier_for_org is replaced without revoking PUBLIC and anon`,
+    ).toBe(true);
+    expect(
+      /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+public\.plan_tier_for_org\([^)]*\)\s*TO\s+service_role/i.test(
+        m,
+      ),
+      `${tierColumnMigration.file}: plan_tier_for_org is revoked and never granted back to service_role`,
+    ).toBe(true);
   });
 });
 

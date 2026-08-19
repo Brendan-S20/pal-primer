@@ -6,7 +6,8 @@
 // lives here, in the same funnel each feature file already uses for its
 // permission check, and the UI's locked state is a courtesy on top of it.
 //
-// Reads platform_plans.slug through organizations.plan_id. Deliberately NOT
+// Reads the plan's own declared tier through organizations.plan_id, falling
+// back to the slug map. Deliberately NOT
 // through billing-state.server.ts: that module answers a richer question
 // (required plan vs assigned plan, grace windows, seat math) and pulls Stripe
 // shapes with it. What a customer is ENTITLED to is the plan they are assigned,
@@ -17,6 +18,8 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   DEFAULT_TIER,
+  PLAN_TIERS,
+  PLAN_TIER_COLUMN,
   PLAN_UPGRADE_REQUIRED,
   hasEntitlement,
   planTierFromSlug,
@@ -59,15 +62,37 @@ export async function planTierForOrg(orgId: string): Promise<PlanTier> {
     // IMP-7: this was a hand-written structural cast because the generated
     // types predated several migrations. They are current now, so the real
     // client types carry it.
+    // ── WHY `platform_plans(*)` AND NOT `platform_plans(entitlement_tier)` ──
+    //
+    // The tier now lives in a column, so a plan minted after this build shipped
+    // resolves correctly without anyone editing SLUG_TO_TIER and deploying.
+    // Naming the column in the select would be the obvious way to read it, and
+    // it would be a deployment-order landmine: PostgREST 400s an embedded
+    // select that names a column the schema does not have, the catch below
+    // turns that into DEFAULT_TIER, and EVERY organisation silently drops to
+    // the floor for as long as the app is ahead of its migration. Enterprise
+    // tenants would lose franchise management on deploy and get it back when
+    // somebody ran the migration, with nothing linking the two events.
+    //
+    // `*` returns whatever columns exist, so this build is correct whichever
+    // order the two land in, and the fallback below is the map this file used
+    // before rather than a silent floor.
     const { data, error } = await supabaseAdmin
       .from("organizations")
-      .select("plan_id, platform_plans(slug)")
+      .select("plan_id, platform_plans(*)")
       .eq("id", orgId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    const slug = (data as { platform_plans?: { slug?: unknown } | null } | null)?.platform_plans
-      ?.slug;
-    tier = planTierFromSlug(typeof slug === "string" ? slug : null);
+    const plan = (data as { platform_plans?: Record<string, unknown> | null } | null)
+      ?.platform_plans;
+    const declared = plan?.[PLAN_TIER_COLUMN];
+    tier =
+      typeof declared === "string" && (PLAN_TIERS as readonly string[]).includes(declared)
+        ? (declared as PlanTier)
+        : // No column yet, or a value outside the CHECK: fall back to the slug
+          // map, which reports an unmapped slug loudly rather than resolving
+          // the floor in silence.
+          planTierFromSlug(typeof plan?.slug === "string" ? plan.slug : null);
   } catch {
     // A lookup failure resolves to the floor, not the ceiling. The failure mode
     // that matters is handing out Enterprise features because a query hiccuped;

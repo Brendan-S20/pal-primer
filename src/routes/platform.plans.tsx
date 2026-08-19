@@ -19,6 +19,14 @@ import {
   planSlugProblem,
   PLATFORM_CATALOG_CURRENCY,
 } from "@/lib/platform-plan-catalog";
+import {
+  planTierDeclarationProblem,
+  PLAN_ENTITLEMENTS,
+  PLAN_TIERS,
+  TIER_NAMES,
+  ENTITLEMENT_LABELS,
+  type PlanTier,
+} from "@/lib/entitlements";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -124,6 +132,9 @@ type NewPlanForm = {
   slug: string;
   description: string;
   isEnterprise: boolean;
+  /** What the plan UNLOCKS. Not derived from the slug and not defaulted on the
+   *  way to the database — see planTierDeclarationProblem. */
+  entitlementTier: PlanTier;
   price: string; // MONTHLY base dollars
   annualPrice: string; // ANNUAL base dollars ($/year)
   includedSeats: string;
@@ -139,6 +150,7 @@ const BLANK_NEW_PLAN: NewPlanForm = {
   slug: "",
   description: "",
   isEnterprise: false,
+  entitlementTier: "launch",
   price: "",
   annualPrice: "",
   includedSeats: "",
@@ -270,6 +282,7 @@ function PlansPage() {
       description: string | null;
       currency: string;
       isEnterprise: boolean;
+      entitlementTier: PlanTier;
       priceCents: number | null;
       annualPriceCents: number | null;
       includedSeats: number | null;
@@ -320,6 +333,13 @@ function PlansPage() {
   const newSlugProblem = newPlan.name.trim() === "" && newPlan.slug.trim() === ""
     ? null
     : planSlugProblem(newSlug, existingSlugs);
+  // Same rule as the server's, evaluated as the form is filled in. Blank while
+  // the dialog is still empty, so it does not shout at somebody who has typed
+  // nothing yet.
+  const newTierProblem =
+    newPlan.name.trim() === "" && newPlan.slug.trim() === ""
+      ? null
+      : planTierDeclarationProblem(newSlug, newPlan.entitlementTier);
 
   function submitCreate() {
     if (!newPlan.name.trim()) {
@@ -352,12 +372,20 @@ function PlansPage() {
       toast.error(shapeProblem);
       return;
     }
+    // Same function the server refuses with, so the dialog says what the server
+    // would say rather than round-tripping to find out.
+    const tierProblem = planTierDeclarationProblem(newSlug, newPlan.entitlementTier);
+    if (tierProblem) {
+      toast.error(tierProblem, { duration: 12000 });
+      return;
+    }
     create.mutate({
       name: newPlan.name.trim(),
       slug: newSlug,
       description: newPlan.description.trim() === "" ? null : newPlan.description.trim(),
       currency: PLATFORM_CATALOG_CURRENCY,
       isEnterprise: newPlan.isEnterprise,
+      entitlementTier: newPlan.entitlementTier,
       priceCents,
       annualPriceCents,
       includedSeats,
@@ -696,6 +724,37 @@ function PlansPage() {
                 onCheckedChange={(v) => setNewPlan({ ...newPlan, isEnterprise: v })}
               />
             </div>
+            <div>
+              <Label htmlFor="new-plan-tier">Unlocks</Label>
+              <select
+                id="new-plan-tier"
+                value={newPlan.entitlementTier}
+                onChange={(e) =>
+                  setNewPlan({ ...newPlan, entitlementTier: e.target.value as PlanTier })
+                }
+                className="mt-1 block w-full rounded-md border bg-background px-3 py-2 text-sm max-md:min-h-11"
+              >
+                {PLAN_TIERS.map((t) => (
+                  <option key={t} value={t}>
+                    {TIER_NAMES[t]}
+                  </option>
+                ))}
+              </select>
+              {/* Read out of PLAN_ENTITLEMENTS rather than written here, so this
+                  cannot describe a matrix the app stopped honoring. */}
+              <p className="mt-1 text-xs text-muted-foreground">
+                {PLAN_ENTITLEMENTS[newPlan.entitlementTier].length === 0
+                  ? "The core platform, and nothing gated on top of it."
+                  : `Adds ${PLAN_ENTITLEMENTS[newPlan.entitlementTier]
+                      .map((e) => ENTITLEMENT_LABELS[e].toLowerCase())
+                      .join(", ")}.`}{" "}
+                Separate from “priced by contract” above, which is about how the plan is billed, not
+                about what it includes.
+              </p>
+              {newTierProblem ? (
+                <p className="mt-1 text-xs font-medium text-destructive">{newTierProblem}</p>
+              ) : null}
+            </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <Label htmlFor="new-plan-price">Base price ($/month)</Label>
@@ -797,26 +856,29 @@ function PlansPage() {
             <p className="text-xs text-muted-foreground">
               Leaving both AI fields blank means AI use on this plan is metered and never billed.
             </p>
-            {/* Two things the person cannot see from the form, and both of them
-                bite later. Currency: platform MRR sums every plan's cents with
-                no conversion. Entitlements: SLUG_TO_TIER in
-                src/lib/entitlements.ts is a hand-written map, and a slug that
-                is not in it resolves to the floor tier. */}
+            {/* Currency is the one thing left that the form cannot show: platform
+                MRR sums every plan's cents with no conversion. Entitlements used
+                to be on this list — a slug missing from SLUG_TO_TIER resolved to
+                the floor and this paragraph asked the reader to remember. It is
+                a field now, and the server refuses a plan whose declaration the
+                app cannot serve. */}
             <p className="rounded-md border px-3 py-2 text-xs text-muted-foreground">
               Priced in {PLATFORM_CATALOG_CURRENCY.toUpperCase()} — the catalog is single-currency
               because platform MRR adds every plan together without converting. The plan is created{" "}
               <strong>off sale</strong>: nothing sees it and no tenant moves onto it until you use
-              “Offer again”. Feature entitlements fall back to the Launch tier until this slug is
-              added to <span className="font-mono">SLUG_TO_TIER</span> in{" "}
-              <span className="font-mono break-all">src/lib/entitlements.ts</span> and to
-              <span className="font-mono"> plan_tier_for_org</span> in SQL.
+              “Offer again”. What it unlocks is stored on the plan row (
+              <span className="font-mono break-all">platform_plans.entitlement_tier</span>) and read
+              from there by <span className="font-mono">plan_tier_for_org</span>.
             </p>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setCreating(false)} disabled={create.isPending}>
               Cancel
             </Button>
-            <Button onClick={submitCreate} disabled={create.isPending || !!newSlugProblem}>
+            <Button
+              onClick={submitCreate}
+              disabled={create.isPending || !!newSlugProblem || !!newTierProblem}
+            >
               {create.isPending ? "Creating…" : "Create plan"}
             </Button>
           </DialogFooter>

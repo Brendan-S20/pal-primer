@@ -4,6 +4,7 @@ import { z } from "zod";
 import { fetchPlatformSaasMetrics } from "@/lib/platform-metrics.server";
 import { collectedNetCents } from "@/lib/platform-metrics";
 import { resolveSupabaseUrl } from "@/lib/supabase-url";
+import { planTierDeclarationProblem } from "@/lib/entitlements";
 
 
 async function assertPlatformAdmin(supabase: any, userId: string) {
@@ -635,6 +636,12 @@ const createPlatformPlanSchema = z.object({
   description: z.string().max(1000).nullable().optional(),
   currency: z.string().trim().min(3).max(3).optional(),
   isEnterprise: z.boolean().optional(),
+  // What the plan UNLOCKS, as opposed to what it costs. Required, and not
+  // defaulted anywhere on the way to the column: a plan that does not say
+  // resolves to the cheapest tier for everyone who buys it, silently. Checked
+  // by planTierDeclarationProblem below, then written to
+  // platform_plans.entitlement_tier, which is NOT NULL with no default.
+  entitlementTier: z.string().trim().min(1, "Choose what this plan unlocks"),
   // MONTHLY base. Never annual dollars — same contract as updatePlatformPlan.
   priceCents: z.number().int().min(0, "Price must be >= 0").nullable().optional(),
   annualPriceCents: z.number().int().min(0, "Price must be >= 0").nullable().optional(),
@@ -835,6 +842,13 @@ export const createPlatformPlan = createServerFn({ method: "POST" })
     });
     if (shapeProblem) throw new Error(shapeProblem);
 
+    // The plan's own declaration of what it unlocks has to be one the running
+    // app can actually serve — see planTierDeclarationProblem. Refusing here is
+    // the whole point: an unrecognised slug used to sail through and hand every
+    // one of that plan's customers the floor tier.
+    const tierProblem = planTierDeclarationProblem(slug, data.entitlementTier);
+    if (tierProblem) throw new Error(tierProblem);
+
     const sortOrder =
       data.sortOrder ??
       Math.max(0, ...(existing ?? []).map((p: { sort_order: number }) => p.sort_order ?? 0)) + 10;
@@ -848,6 +862,7 @@ export const createPlatformPlan = createServerFn({ method: "POST" })
         currency,
         interval,
         is_enterprise: isEnterprise,
+        entitlement_tier: data.entitlementTier,
         price_cents: priceCents,
         annual_price_cents: annualPriceCents,
         included_seats: includedSeats,
@@ -883,7 +898,13 @@ export const createPlatformPlan = createServerFn({ method: "POST" })
         organization_id: null,
         action: "create_plan",
         before_json: null,
-        after_json: { id: inserted.id, slug, name: data.name, is_active: false },
+        after_json: {
+          id: inserted.id,
+          slug,
+          name: data.name,
+          is_active: false,
+          entitlement_tier: data.entitlementTier,
+        },
       });
     } catch { /* audit best-effort */ }
 
