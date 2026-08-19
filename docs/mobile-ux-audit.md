@@ -303,12 +303,27 @@ Not merely cramped — unreachable.
 
 ### 6.3 Under the 44px touch floor at 360px
 
-Highest leverage first, because it is on every page:
+~~Highest leverage first, because it is on every page:~~
 
-- **App shell, every tenant page** — `Search or jump to…` **34.0px**; header icon
-  button **32.0px**. (§1.1 predicted both.)
+- ~~**App shell, every tenant page** — `Search or jump to…` **34.0px**; header
+  icon button **32.0px**. (§1.1 predicted both.)~~ **FIXED 2026-08-19.** Three
+  controls, not two: the search button (34.0px, `py-1.5` around a 20px line),
+  the weather trigger (32.0px, `p-2` around a 16px glyph) and the sidebar
+  trigger (28.0px, `h-7 w-7` from `ui/sidebar.tsx`). All now 44px, with the
+  glyphs untouched so the header looks the same.
 
-Then, by surface:
+  The sidebar trigger is worth recording: **`src/routes/platform.tsx` already
+  passed `min-h-11 min-w-11`, and the tenant shell did not** — so the fix
+  existed in this repo, on the console only we log into, and had never been
+  carried across to the shell every customer's staff use all day. The failure
+  mode was not "nobody knew", it was "one of two places drifted", which is why
+  `tests/the-header-on-every-page-was-under-the-touch-floor.test.ts` pins both
+  call sites in identical words.
+
+  Sweep went **22 → 21** failing combinations: one surface/width had no other
+  fault.
+
+Then, by surface — **these are still open**:
 
 | Surface | Controls |
 |---|---|
