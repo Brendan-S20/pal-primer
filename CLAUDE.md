@@ -92,9 +92,25 @@ Three things about it are worth knowing before you trust or extend it:
 - **It does not replace the static tests.** Those name a file and a line, which
   a screenshot cannot, and they run in seconds with no server. The browser
   catches what a parser cannot see; the parser says where to go and fix it.
-- **It only covers PUBLIC routes.** Everything behind `/_authenticated` needs a
-  session, so the surfaces `docs/mobile-ux-audit.md` is actually about are not
-  in it yet.
+- **It now covers signed-in routes too, on a stubbed backend.**
+  `every-signed-in-page-at-every-width.spec.ts` sweeps twenty authenticated
+  surfaces on a session minted into `localStorage`, with every request answered
+  by a fixture and a network fence that turns back anything not on localhost.
+  No credential, nothing reaches production, and the dataset is chosen to be
+  awkward on purpose — a 46-character client name, a 78-character signup URL,
+  seven technicians — because a fixture that is tidier than reality measures
+  nothing. Run it with `npm run test:viewports:auth`.
+  **It is currently RED by design: 22 surface/width combinations fail.** They
+  are real, they are listed in `docs/mobile-ux-audit.md`, and until they are
+  worked down the `sandboxes.yml` step runs `continue-on-error`. Flip it to
+  blocking the day it goes green — a permanently red gate teaches the same
+  lesson as an absent one.
+- **Signed out is not a blank page here — it is `/auth`.** So the blank-page
+  guard below is not enough for the authenticated half: `/auth` renders
+  perfectly and clears every size threshold. Each surface therefore proves
+  itself twice, with a locator only that page draws and a fixture string only
+  its data contains. A sweep that measures the login screen twenty times is
+  green and worthless.
 - **Assertions of the form "nothing is wrong" all pass on a blank page**, so
   `settle()` refuses to measure a route that did not render. That guard is
   there because the sweep spent several runs green against a Vite error page

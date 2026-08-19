@@ -238,3 +238,125 @@ registration in `route.tsx`. Money actions (add-on billing) stay **online-only**
    scoping (My Day, Waste log, Neighbors, DNA sample logging, Settings) the intended ceiling?
 5. **Offline money:** Should add-on charges queue offline like visit actions (risk: double-billing
    on flaky sync), or stay online-only with a clear "no connection" state?
+
+---
+
+## 6. Measured, 2026-08-19 — what a browser found behind the login
+
+The audit above was read, not measured. On 2026-08-19 the real-browser sweep was
+extended past the login screen (`tests/viewports/every-signed-in-page-at-every-width.spec.ts`),
+so these are computed geometry at 360 / 768 / 1280 / 1920, not a reading of the JSX.
+
+**22 surface/width combinations fail.** Two things about that number before the list:
+
+- **It confirms §1.1 rather than replacing it.** The header controls this document
+  predicted at "~32px total, below the 44px floor" measure **32.0px**, and the ⌘K
+  search field measures **34.0px**. The reading was right; it just could not say
+  how far off, or that those two appear on *every tenant page* and are therefore
+  the highest-leverage fix in the list.
+- **Nothing tripped the silent-clipping rule.** The 78-character signup URL on
+  `/settings/online-signup` — the exact fault CLAUDE.md added that rule for — is
+  handled correctly at all four widths.
+
+The sweep runs `continue-on-error` in `sandboxes.yml` until this list is worked
+down. That is a deliberate, temporary state and the workflow says so.
+
+### 6.1 The page itself scrolls sideways
+
+The rule stated first in the working agreement, and the most user-visible break.
+
+| Route | Viewport | Content width |
+|---|---|---|
+| `/clients/:id` | 360 | **585px** |
+| `/clients/new` | 360 | **565px** |
+| `/dashboard` | 360 | **503px** |
+| `/platform/tenants/:id` (audit diff) | 360 | **465px** |
+| `/my-day` | 360 | **407px** |
+| `/clients` | 768 **and** 1280 | **1431px** |
+| `/invoices` | 768 | **1054px** |
+| `/clients/:id` | 768 | **849px** |
+| `/clients/new` | 768 | **829px** |
+
+`/clients` at 1280 is worth singling out: this is not a phone problem. It is the
+tablet-and-split-screen band the agreement calls out as "every tablet and every
+split-screen window", and it is broken on a laptop.
+
+### 6.2 Controls off the side, with no scroller to reach them
+
+Not merely cramped — unreachable.
+
+- **`/clients/:id` @360** — `Edit Client` (x 358–474), an icon button (482–522),
+  `Review` (388–438), `Office` (363–418), `Technician` (422–505), `Client`
+  (509–564), the note `<textarea>` (37–564), `Add note` (486–564), `Message`
+  (485–564).
+  **Root cause is visible in the DOM:** `div.flex items-center gap-2` is laid out
+  **485px wide inside a 286px parent** — the header action row cannot shrink.
+  That is precisely the fault `tests/a-flex-row-as-wide-as-its-longest-word.test.ts`
+  describes, on a row the parser does not reach.
+- **`/clients/:id` @768** — icon button (746–786), `Client` (773–828),
+  `<textarea>` (301–828), `Add note` (750–828), `Message` (749–828).
+- **`/dashboard` @360** — `Show map` (324–387), `Open routes →` (399–486),
+  `All →` (458–486).
+- **`/clients/new` @360** — wizard steps `4` (387–415) and `5` (499–527); @768 step
+  `5` (763–791).
+- **`/my-day` @360** — the staff-preview `<select>` (75–407).
+
+### 6.3 Under the 44px touch floor at 360px
+
+Highest leverage first, because it is on every page:
+
+- **App shell, every tenant page** — `Search or jump to…` **34.0px**; header icon
+  button **32.0px**. (§1.1 predicted both.)
+
+Then, by surface:
+
+| Surface | Controls |
+|---|---|
+| `/routes` week view | `Map`/`Board`/`Today`/`Week`/`Month` **36.0px**; three filter selects **26.0px**; **49 lane-count buttons at 32.0px** |
+| `/routes` day board | as above, plus `Show tech load` **29.0px** |
+| `/routes` auto-routing card | one control at **16.0px** — only reachable because the sweep opens the card |
+| `/clients/:id` | `Review` **20.0px** ×2; `View all visits` / `Manage services` / `View properties` **16.0px**; `Office`/`Technician`/`Client` **24.0px** |
+| `/clients/new` | step dots 1–5 **28.0px**; two buttons at **16.0px** |
+| `/invoices` | row icon buttons **16.0px** ×9 |
+| `/platform/users` | a row icon button **16.0px**, ×51 |
+| `/settings/users` | row buttons **16.0px** ×7; role `<select>` **40.0px** |
+| `/settings/scheduling` | weekday toggles Sun–Sat **26.0px**; traffic `<select>` **40.0px** |
+| `/settings/online-signup` | `Copy link` **16.0px**; one button **20.0px** |
+| `/my-day` | staff `<select>` **36.0px**; photo-kind `<select>` **40.0px**; one button **40.0px** |
+| `/zones` | **16.0px** ×2 |
+| `/notifications` | `All` and `Unread (2)` **32.0px** |
+| `/platform/tenants` | status `<select>` **36.0px** |
+
+### 6.4 What passes clean at all four widths
+
+`/platform/overview`, `/platform/plans`, `/platform/tenants/:id` (overview tab),
+and everything at 1920 except `/clients`.
+
+### 6.5 Three exemptions were added to the shared rules
+
+Each removed false positives only; the public sweep is green either way.
+
+- **`sr-only` is exempt from the clipping rule** — a 1×1 box is a screen-reader
+  label, not clipped text. Written as `clientWidth ≤ 1 && clientHeight ≤ 1`
+  rather than a class match, so it cannot be defeated by renaming the utility.
+  Without it, every page reported "Toggle Sidebar is cut off by 102px".
+- **Controls inside a horizontal scroller are exempt from the off-screen rule**,
+  provided the scroller's own edge is on the page. CLAUDE.md prescribes that
+  pattern; without the exemption all 50 rows of the platform directory were
+  findings.
+- **A label's height counts for `select`/`input`/`textarea`**, taking the max of
+  the two, because label activation is browser behaviour. The Routes filter bar
+  is a bare 16px `<select>` inside a padded `<label>`: reported height moved
+  16 → 26px. Still a finding — just an honest one.
+
+### 6.6 One thing the sweep found that is not a layout bug
+
+`src/integrations/supabase/client.ts` passes
+`storageKey: impersonating ? '…' : undefined`. An explicit `undefined` overwrites
+supabase-js's derived default in the options spread, so the session is stored
+under the literal key `"undefined"` and every read is
+`localStorage.getItem(undefined)`. Measured while building the session fixture,
+not inferred. It works today because it is wrong consistently — but it means the
+impersonation switch changes the storage key out from under a live session, and
+any future code reading the documented `sb-<ref>-auth-token` key finds nothing.
+Not fixed here; it is app source and this was a test-only change.

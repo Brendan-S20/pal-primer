@@ -142,8 +142,29 @@ jobs:
       # Supabase values it needs to boot — see the `webServer.env` block in
       # playwright.config.ts, and the note there on why they must NOT be put in
       # a `.env` instead.
-      - name: Sweep 360 / 768 / 1280 / 1920
-        run: npm run test:viewports
+      - name: Sweep 360 / 768 / 1280 / 1920 — public routes
+        run: npm run test:viewports:public
+
+      # ── WHY THE SIGNED-IN HALF IS NOT A GATE *YET* ────────────────────────
+      #
+      # It was added on 2026-08-19 and found 22 surface/width combinations that
+      # break — five pages that scroll sideways at 360px, controls off the edge
+      # with no scroller to reach them, and a long tail under the 44px floor
+      # including the app shell's own search box on every tenant page. Those are
+      # real and they are listed in docs/mobile-ux-audit.md.
+      #
+      # Making it blocking today would paint this job red until every one is
+      # fixed, and ci.yml already says what that does: "a hard gate that cannot
+      # start is not a lenient gate — it is an absent one, and it is absent
+      # while reporting failure, which is the shape that trains people to
+      # ignore it." A gate that is red for a fortnight teaches the same lesson.
+      #
+      # So it runs and reports, and the findings get worked down in batches.
+      # FLIP THIS TO BLOCKING — delete the continue-on-error — the day it goes
+      # green. It is not meant to live here.
+      - name: Sweep 360 / 768 / 1280 / 1920 — signed-in routes (reporting only)
+        run: npm run test:viewports:auth
+        continue-on-error: true
 
       # Screenshots and traces exist only for failures — on a green run this
       # uploads nothing, which is the point.
