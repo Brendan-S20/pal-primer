@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
-import { listZones, deleteZone } from "@/lib/zones.functions";
+import { listZones, deleteZone, normalizeUsZip } from "@/lib/zones.functions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -265,6 +265,10 @@ function ZoneCard({
   };
 
   const zipList: string[] = zone.zip_codes ?? [];
+  // Only the ones shown — a value hidden behind "+N more" cannot be pointed at,
+  // and claiming it here would send somebody looking for a chip that is not on
+  // screen. Opening the zone still surfaces the rest.
+  const deadZips = zipList.slice(0, 12).filter((z) => normalizeUsZip(z) !== z);
   const hasGeo = zoneHasGeo(zone as OverviewZone);
   const summary = coverageSummary(zone);
 
@@ -307,10 +311,27 @@ function ZoneCard({
               {summary}
             </Badge>
           </div>
+          {/* A chip that cannot match anything must not look like one that can.
+              Zone matching is exact string equality against
+              `properties.postal_code`, so a stored value that is not a US
+              5-digit ZIP covers nothing — and the live database has one: a
+              zone whose ZIP list is the single word "Michigan", matching zero
+              properties. The drawer refuses these on save now, but a list you
+              never open is a list that never tells you, and this card is where
+              somebody looks to find out what a zone covers. */}
           {zipList.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1">
               {zipList.slice(0, 12).map((z) => (
-                <Badge key={z} variant="secondary" className="text-xs">
+                <Badge
+                  key={z}
+                  variant={normalizeUsZip(z) === z ? "secondary" : "destructive"}
+                  className="text-xs"
+                  title={
+                    normalizeUsZip(z) === z
+                      ? undefined
+                      : `"${z}" is not a US 5-digit ZIP, so it matches no address. Edit the zone to correct it.`
+                  }
+                >
                   {z}
                 </Badge>
               ))}
@@ -320,6 +341,17 @@ function ZoneCard({
                 </Badge>
               )}
             </div>
+          )}
+          {deadZips.length > 0 && (
+            // Named, not counted: "1 invalid ZIP" sends you hunting through
+            // twelve chips for it, and the whole point of the colour above is
+            // that you should not have to.
+            <p className="mt-2 text-xs text-destructive">
+              {deadZips.length === 1
+                ? `${deadZips[0]} is not a US 5-digit ZIP and matches no address.`
+                : `${deadZips.join(", ")} are not US 5-digit ZIPs and match no addresses.`}{" "}
+              Edit the zone to correct {deadZips.length === 1 ? "it" : "them"}.
+            </p>
           )}
           {zipList.length === 0 && !zone.postal_prefix && !hasGeo && (
             <p className="mt-2 text-xs text-amber-600">

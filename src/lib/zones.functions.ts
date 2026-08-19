@@ -23,12 +23,123 @@ async function redetectBestEffort(supabase: any, orgId: string, actorUserId?: st
   }
 }
 
+// ── ZONE ZIPs ARE US 5-DIGIT ZIPs ─────────────────────────────────────────
+//
+// Owner QA, 2026-08-19: "When entering a zip code for zones, it should
+// automatically assume it's a United States zip code."
+//
+// The one fact everything below follows from: a zone matches a property by
+// EXACT STRING EQUALITY on the property's postal code — `z.zip_codes.includes(
+// pc)` in src/lib/zone-match.ts, and `_zip = ANY(z.zip_codes)` in the
+// public_quote RPC. Nothing normalizes either side at match time. So a chip
+// that is not character-for-character the 5-digit string a property carries is
+// a zone that covers nothing, and covers nothing SILENTLY: no error, no empty
+// state, just a dispatcher wondering why an address in the zone was never
+// assigned to it. The old rule here — strip anything outside [0-9A-Za-z-] and
+// keep whatever is left — accepted "787", "ABC", "M5V" and "78701-1234" as
+// equal citizens of that set.
+//
+// Four decisions, and why:
+//
+//  1. ZIP+4 ("78701-1234") keeps its 5-digit base and drops the +4. The +4
+//     identifies a delivery segment, not an area, and no property row in this
+//     product stores one — so the full ZIP+4 string is a chip that can never
+//     equal any postal_code we hold, while "78701" is exactly the thing the
+//     person meant to serve. Nine straight digits ("787011234") is the same
+//     value with the hyphen dropped and is read the same way. We do NOT try
+//     this on an 8-digit run: 5+4 is the only unambiguous reading of nine.
+//
+//  2. Four digits are padded with one leading zero ("1810" -> "01810").
+//     This is the one real US quirk: ZIPs in MA/RI/NH/ME/VT/CT/NJ/PR start
+//     with 0, and every spreadsheet that treats a ZIP column as a number eats
+//     it. A 4-digit token is NEVER a valid US ZIP, so padding overrides no
+//     valid input; and the corruption it repairs is systematic (numeric
+//     coercion strips leading zeros — it never drops a trailing digit),
+//     whereas the competing reading, "a typo that lost one of five digits",
+//     is not systematic and would give no basis for guessing WHICH digit.
+//     The tie-breaker is that the guess is visible and reversible: the chip
+//     renders "01810", so an owner who meant something else sees it and can
+//     remove it. Rejecting instead would be defensible but makes an owner in
+//     Massachusetts retype a pasted list by hand.
+//
+//  3. Anything still not five digits — "787", "ABC", a Canadian "M5V 3A8" —
+//     is REFUSED and named. Not accepted (that is the bug), and not silently
+//     dropped either: a paste of twenty ZIPs where two are bad has to say
+//     which two, or the owner saves a zone believing it covers twenty areas.
+//     Note that letters are never stripped out of a token to salvage the
+//     digits around them; "M5V" is reported as "M5V", not turned into "5".
+//
+//  4. Shape only, not existence. We do not carry a ZIP registry, so "00000"
+//     passes. The fault being fixed is chips that CANNOT match, not chips
+//     that match nothing today.
+//
+// Deliberately NOT built: any notion of a country. The owner asked for the
+// opposite of international support. If a Canadian operator ever appears, the
+// place to start is a per-org country on the organization, not a selector on
+// this field — but do not build it before there is one.
+
+/** Split typed or pasted input into candidate tokens. */
+export function splitZipInput(raw: string): string[] {
+  return raw
+    .split(/[\s,;]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+/**
+ * One token -> a US 5-digit ZIP, or null when it is not one.
+ * Wrapping punctuation (CSV quotes, parens) is stripped; letters are not.
+ */
+export function normalizeUsZip(token: string): string | null {
+  const t = String(token)
+    .trim()
+    .replace(/^[^0-9A-Za-z]+/, "")
+    .replace(/[^0-9A-Za-z]+$/, "");
+  if (!t) return null;
+  // ZIP+4, hyphenated (a 4-digit base here is a zero-eaten ZIP+4) or as the
+  // nine digits it is without one.
+  const hyphenated = /^(\d{4,5})-(\d{4})$/.exec(t);
+  const nineDigits = /^(\d{5})\d{4}$/.exec(t);
+  const base = hyphenated ? hyphenated[1] : nineDigits ? nineDigits[1] : t;
+  const padded = /^\d{4}$/.test(base) ? `0${base}` : base;
+  return /^\d{5}$/.test(padded) ? padded : null;
+}
+
+/**
+ * Normalize a list of tokens, keeping the ones that could not be read so the
+ * caller can SAY SO. Order is preserved and duplicates collapse.
+ */
+export function parseUsZips(tokens: string[]): { zips: string[]; rejected: string[] } {
+  const zips: string[] = [];
+  const rejected: string[] = [];
+  for (const token of tokens) {
+    const zip = normalizeUsZip(token);
+    if (zip) {
+      if (!zips.includes(zip)) zips.push(zip);
+    } else {
+      const shown = String(token).trim();
+      if (shown && !rejected.includes(shown)) rejected.push(shown);
+    }
+  }
+  return { zips, rejected };
+}
+
+/** The message shown for refused tokens, shared by the drawer and the server. */
+export function rejectedZipMessage(rejected: string[]): string {
+  const list = rejected.map((r) => `"${r}"`).join(", ");
+  return `${rejected.length === 1 ? "That is not a US ZIP code" : "Those are not US ZIP codes"}: ${list}. Zone ZIPs are 5 digits, e.g. 78701.`;
+}
+
+// Client-side validation is an affordance, not a guarantee: a server function
+// is an HTTP endpoint and takes whatever is posted to it. The same rules run
+// here, and a bad value is REJECTED rather than dropped — dropping it would
+// write a zone that is not the zone the caller asked for and say nothing.
+// (See zoneWriteSchema.zipCodes for where this surfaces as a validation
+// error; this stays as defence in depth for any direct handler use.)
 function normalizeZips(input: string[] | undefined): string[] {
-  if (!input) return [];
-  const cleaned = input
-    .map((z) => String(z).trim().replace(/[^0-9A-Za-z-]/g, ""))
-    .filter((z) => z.length > 0);
-  return Array.from(new Set(cleaned));
+  const { zips, rejected } = parseUsZips(input ?? []);
+  if (rejected.length) throw new Error(rejectedZipMessage(rejected));
+  return zips;
 }
 
 export const listZones = createServerFn({ method: "GET" })
@@ -62,9 +173,22 @@ const zoneNameSchema = z
   .max(120)
   .regex(/[A-Za-z]/, "Zone name must include letters, not just numbers");
 
+// ZIPs are validated where every write goes through, so create and update
+// answer identically and the caller gets a field-shaped error instead of a
+// thrown string.
+export const zipCodesSchema = z
+  .array(z.string())
+  .optional()
+  .superRefine((v, ctx) => {
+    const { rejected } = parseUsZips(v ?? []);
+    if (rejected.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: rejectedZipMessage(rejected) });
+    }
+  });
+
 const zoneWriteSchema = z.object({
   name: zoneNameSchema,
-  zipCodes: z.array(z.string()).optional(),
+  zipCodes: zipCodesSchema,
   postalPrefix: z.string().max(20).optional().nullable(),
   accountType: z.enum(["residential", "commercial"]).optional().nullable(),
   priceNote: z.string().max(200).optional().nullable(),
