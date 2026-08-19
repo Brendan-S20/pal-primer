@@ -226,7 +226,16 @@ export function ClientHeader({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* MEASURED 2026-08-19: this row was laid out 485px wide inside a 286px
+            parent at 360px, which is what made the whole page 585px and pushed
+            nine controls off the side. Five buttons in a row that cannot wrap
+            and cannot shrink; the outer row already wraps, so the overflow was
+            entirely inside this one.
+            `flex-wrap` rather than hiding anything below md: Call and Navigate
+            are the two most useful things on this page from a driveway, so
+            collapsing them into the More menu would take the phone's best
+            actions away in the name of fitting the phone. */}
+        <div className="flex flex-wrap items-center gap-2">
           {client.primary_phone && (
             <a href={`tel:${client.primary_phone}`}>
               <Button variant="outline" size="sm">
@@ -266,7 +275,13 @@ export function ClientHeader({
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-10 w-10 p-0" aria-label="More actions">
+              <Button
+                variant="outline"
+                size="sm"
+                // 40px, four short of the floor. The glyph is unchanged.
+                className="h-11 w-11 p-0"
+                aria-label="More actions"
+              >
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>

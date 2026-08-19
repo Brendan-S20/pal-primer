@@ -267,14 +267,14 @@ The rule stated first in the working agreement, and the most user-visible break.
 
 | Route | Viewport | Content width |
 |---|---|---|
-| `/clients/:id` | 360 | **585px** |
+| ~~`/clients/:id`~~ | ~~360~~ | ~~**585px**~~ **FIXED — now 360px** |
 | `/clients/new` | 360 | **565px** |
-| `/dashboard` | 360 | **503px** |
+| ~~`/dashboard`~~ | ~~360~~ | ~~**503px**~~ **FIXED — now 360px** |
 | `/platform/tenants/:id` (audit diff) | 360 | **465px** |
 | `/my-day` | 360 | **407px** |
 | `/clients` | 768 **and** 1280 | **1431px** |
 | `/invoices` | 768 | **1054px** |
-| `/clients/:id` | 768 | **849px** |
+| ~~`/clients/:id`~~ | ~~768~~ | ~~**849px**~~ **FIXED — now 768px** |
 | `/clients/new` | 768 | **829px** |
 
 `/clients` at 1280 is worth singling out: this is not a phone problem. It is the
@@ -284,6 +284,26 @@ split-screen window", and it is broken on a laptop.
 ### 6.2 Controls off the side, with no scroller to reach them
 
 Not merely cramped — unreachable.
+
+> **`/clients/:id` and `/dashboard` are FIXED, 2026-08-19 — and the cause was
+> not where this list pointed.** A grid item's `min-width` computes to `auto`,
+> so a column is never laid out narrower than its content. Both columns of
+> SummaryTab's `grid gap-6 lg:grid-cols-[3fr_2fr]` measured **569px** inside a
+> 360px viewport; `/dashboard`'s map row carried the identical fault. `min-w-0`
+> on the four columns fixed all of it, with the desktop layouts untouched.
+>
+> **Everything below for those two routes was a symptom.** The header's
+> five-button action row genuinely could not wrap and was genuinely fixed —
+> and the page stayed 585px afterwards, because that row was overflowing a
+> container that was already too wide. The textarea "at x=37..564", the note
+> tabs and Add note were never faults of their own: they are `w-full` children
+> of a card filling an over-wide column, reported at the width they were given.
+>
+> For the next reader working this list: **find the outermost element wider
+> than the viewport — the one whose parent still fits — and fix that.**
+> Everything under it is downstream. `tests/a-flex-row-as-wide-as-its-longest-word.test.ts`
+> is deliberately silent on grids, so this class had no static coverage at all;
+> `tests/a-grid-column-as-wide-as-its-widest-child.test.ts` now pins it.
 
 - **`/clients/:id` @360** — `Edit Client` (x 358–474), an icon button (482–522),
   `Review` (388–438), `Office` (363–418), `Technician` (422–505), `Client`
@@ -330,7 +350,7 @@ Then, by surface — **these are still open**:
 | `/routes` week view | `Map`/`Board`/`Today`/`Week`/`Month` **36.0px**; three filter selects **26.0px**; **49 lane-count buttons at 32.0px** |
 | `/routes` day board | as above, plus `Show tech load` **29.0px** |
 | `/routes` auto-routing card | one control at **16.0px** — only reachable because the sweep opens the card |
-| `/clients/:id` | `Review` **20.0px** ×2; `View all visits` / `Manage services` / `View properties` **16.0px**; `Office`/`Technician`/`Client` **24.0px** |
+| ~~`/clients/:id`~~ | ~~`Review` **20.0px** ×2; `View all visits` / `Manage services` / `View properties` **16.0px**; `Office`/`Technician`/`Client` **24.0px**~~ **ALL FIXED 2026-08-19.** The three jump links and the note tabs took a minimum height. `Review` could not: it sits inside a sentence, where a min-height pushes the line apart — it uses `py-3 -my-3` instead, so the hit area grows and the prose renders unchanged. |
 | `/clients/new` | step dots 1–5 **28.0px**; two buttons at **16.0px** |
 | `/invoices` | row icon buttons **16.0px** ×9 |
 | `/platform/users` | a row icon button **16.0px**, ×51 |

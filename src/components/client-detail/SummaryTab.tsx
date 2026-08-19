@@ -175,8 +175,14 @@ export function SummaryTab({
 
   return (
     <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
-      {/* LEFT: operational */}
-      <div className="space-y-6">
+      {/* MEASURED 2026-08-19: both of these columns were laid out 569px wide in
+          a 360px viewport, which is what made the page 585px and pushed seven
+          controls off the side. A grid item's `min-width` is `auto`, so a
+          column will not shrink below its content's min-content width — the
+          same fault CLAUDE.md describes for flex items, on a grid, where the
+          repo's static parser deliberately does not look ("Deliberately silent
+          on … grids"). `min-w-0` is what lets them shrink. */}
+      <div className="min-w-0 space-y-6">
         {alerts.length > 0 && (
           <section className="rounded-lg border p-4">
             <h2 className="flex items-center gap-1.5 text-sm font-medium">
@@ -196,7 +202,14 @@ export function SummaryTab({
                       <button
                         type="button"
                         onClick={() => onGoToTab(a.tab!)}
-                        className="ml-1.5 text-primary underline underline-offset-2 hover:no-underline"
+                        // 20.0px measured, and the awkward one: this link
+                        // sits INSIDE a sentence, so a min-height would push
+                        // the line apart and make the prose look broken. The
+                        // padding grows the hit area and the negative margin
+                        // takes the growth back out of the layout, so the
+                        // sentence renders exactly as before and a thumb still
+                        // gets 44px.
+                        className="ml-1.5 inline-block py-3 -my-3 text-primary underline underline-offset-2 hover:no-underline"
                       >
                         Review
                       </button>
@@ -246,7 +259,10 @@ export function SummaryTab({
           <button
             type="button"
             onClick={() => onGoToTab("visits")}
-            className="mt-2 text-xs text-primary hover:underline"
+            // 16.0px measured: a bare text button is only as tall as its
+            // text. `inline-flex` + a minimum gives it a real hit area without
+            // changing where the words sit.
+            className="mt-2 inline-flex min-h-11 items-center text-xs text-primary hover:underline"
           >
             View all visits
           </button>
@@ -275,7 +291,10 @@ export function SummaryTab({
           <button
             type="button"
             onClick={() => onGoToTab("services")}
-            className="mt-2 text-xs text-primary hover:underline"
+            // 16.0px measured: a bare text button is only as tall as its
+            // text. `inline-flex` + a minimum gives it a real hit area without
+            // changing where the words sit.
+            className="mt-2 inline-flex min-h-11 items-center text-xs text-primary hover:underline"
           >
             Manage services
           </button>
@@ -303,7 +322,10 @@ export function SummaryTab({
           <button
             type="button"
             onClick={() => onGoToTab("properties")}
-            className="mt-2 text-xs text-primary hover:underline"
+            // 16.0px measured: a bare text button is only as tall as its
+            // text. `inline-flex` + a minimum gives it a real hit area without
+            // changing where the words sit.
+            className="mt-2 inline-flex min-h-11 items-center text-xs text-primary hover:underline"
           >
             View properties
           </button>
@@ -311,7 +333,7 @@ export function SummaryTab({
       </div>
 
       {/* RIGHT: secondary */}
-      <div className="space-y-6">
+      <div className="min-w-0 space-y-6">
         <NotesPanel clientId={clientId} />
         <CommunicationCard client={client} onGoToTab={onGoToTab} />
       </div>
