@@ -64,7 +64,10 @@ const codeOnly = (src: string) =>
     .filter((l) => {
       const t = l.trim();
       return !(
-        t.startsWith("//") || t.startsWith("*") || t.startsWith("/*") || t.startsWith("{/*")
+        t.startsWith("//") ||
+        t.startsWith("*") ||
+        t.startsWith("/*") ||
+        t.startsWith("{/*")
       );
     })
     .join("\n");
@@ -233,8 +236,11 @@ describe("End grace is reachable, and says what it will do", () => {
    *  so scope to the occurrence that carries the control rather than to the
    *  first one, which would silently test the wrong block. */
   const block = (() => {
-    for (let open = code.indexOf("{t.grace_expires_at && ("); open !== -1;
-         open = code.indexOf("{t.grace_expires_at && (", open + 1)) {
+    for (
+      let open = code.indexOf("{t.grace_expires_at && (");
+      open !== -1;
+      open = code.indexOf("{t.grace_expires_at && (", open + 1)
+    ) {
       const close = code.indexOf("</AlertDialog>", open);
       if (close === -1) continue;
       const slice = code.slice(open, close);

@@ -156,8 +156,7 @@ export const joinFranchise = createServerFn({ method: "POST" })
           .string()
           .transform(normalizeFranchiseCode)
           .refine(
-            (c) =>
-              c.length >= FRANCHISE_CODE_MIN_LENGTH && c.length <= FRANCHISE_CODE_MAX_LENGTH,
+            (c) => c.length >= FRANCHISE_CODE_MIN_LENGTH && c.length <= FRANCHISE_CODE_MAX_LENGTH,
             {
               message:
                 "That doesn't look like an invitation code. They are 8 to 24 letters and numbers — check you have the whole thing.",
@@ -357,11 +356,7 @@ export const removeFranchiseLocation = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { orgId } = await requirePermission(
-      context.supabase,
-      context.userId,
-      "manage_franchise",
-    );
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_franchise");
 
     // Service-role, and pinned to the relationship: a parent is not a member of
     // its locations, so no tenant-scoped client can read this row at all. The
@@ -380,9 +375,7 @@ export const removeFranchiseLocation = createServerFn({ method: "POST" })
 
     const name = String(child.name ?? "");
     if (name.trim() !== data.confirmName.trim()) {
-      throw new Error(
-        `Type the location's name exactly — "${name}" — to confirm removing it.`,
-      );
+      throw new Error(`Type the location's name exactly — "${name}" — to confirm removing it.`);
     }
 
     const { error: rpcError } = await (context.supabase as any).rpc("unlink_franchise_child", {

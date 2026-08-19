@@ -188,7 +188,17 @@ function RemoveLocation({ row, onDone }: { row: FranchiseRow; onDone: () => void
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
 
-  const rollup = useQuery({ queryKey: ["franchise", "rollup"], queryFn: () => rollupFn() });
+  // staleTime Infinity so this observer never triggers a fetch of its own: the
+  // table that opened this drawer was drawn from this very cache entry, so the
+  // answer is already there, and re-requesting it on every drawer open would be
+  // the "second set of numbers" this component was built to avoid. The queryFn
+  // is the fallback for the case the cache is somehow cold, not the normal
+  // path.
+  const rollup = useQuery({
+    queryKey: ["franchise", "rollup"],
+    queryFn: () => rollupFn(),
+    staleTime: Infinity,
+  });
   const parentOrgId = rollup.data?.parentOrgId ?? null;
   const isLocation = !!parentOrgId && parentOrgId !== row.organization_id;
 
@@ -251,8 +261,8 @@ function RemoveLocation({ row, onDone }: { row: FranchiseRow; onDone: () => void
               Remove {row.organization_name} from this franchise?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This ends the franchise link between your organization and{" "}
-              {row.organization_name}. It cannot be undone from this screen.
+              This ends the franchise link between your organization and {row.organization_name}. It
+              cannot be undone from this screen.
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -261,7 +271,9 @@ function RemoveLocation({ row, onDone }: { row: FranchiseRow; onDone: () => void
               never done this has no way to know which of these are true, and
               the two that surprise people — the history is KEPT, and the
               location is not told — are the two worth reading. */}
-          <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+          {/* break-words: a location name is user-supplied and can be one long
+              unbroken token, which would otherwise set the width of the dialog. */}
+          <ul className="list-disc space-y-1 break-words pl-5 text-sm text-muted-foreground">
             <li>
               {row.organization_name} stops rolling up here. Its {row.active_clients} active client
               {row.active_clients === 1 ? "" : "s"}, its visits, its revenue and its open balances
@@ -290,7 +302,7 @@ function RemoveLocation({ row, onDone }: { row: FranchiseRow; onDone: () => void
           </ul>
 
           <div className="space-y-1">
-            <Label htmlFor="confirm-location-name" className="text-xs">
+            <Label htmlFor="confirm-location-name" className="block break-words text-xs">
               Type <span className="font-medium text-foreground">{row.organization_name}</span> to
               confirm
             </Label>

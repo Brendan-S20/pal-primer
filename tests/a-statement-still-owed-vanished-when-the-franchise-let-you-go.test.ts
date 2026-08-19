@@ -106,10 +106,9 @@ describe("what removal actually destroys, in SQL", () => {
   it("does not touch the statements or the adjustments", () => {
     // The premise of everything below. If this ever stops being true the fix on
     // the UI side is wrong rather than incomplete.
-    expect(
-      unlinkSql,
-      "removal must not delete or rewrite settlement statements",
-    ).not.toMatch(/franchise_royalty_invoices/);
+    expect(unlinkSql, "removal must not delete or rewrite settlement statements").not.toMatch(
+      /franchise_royalty_invoices/,
+    );
     expect(unlinkSql, "removal must not delete or rewrite adjustments").not.toMatch(
       /franchise_adjustments/,
     );

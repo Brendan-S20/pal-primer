@@ -17,7 +17,7 @@
 // 154 rows in production across seven actions. Three facts shaped the design,
 // and each of them breaks a diff that was designed against imagined data:
 //
-//   MOST ROWS HAVE NO BEFORE. 141 of 154 — every impersonation start, enter
+//   MOST ROWS HAVE NO BEFORE. 140 of 154 — every impersonation start, enter
 //     and stop, every promo capture, the one coupon creation — carry
 //     `before_json IS NULL`. Rendering that as an empty object means every
 //     field reads as "added", and a create becomes indistinguishable from a
@@ -55,7 +55,10 @@ const codeOnly = (src: string) =>
     .filter((l) => {
       const t = l.trim();
       return !(
-        t.startsWith("//") || t.startsWith("*") || t.startsWith("/*") || t.startsWith("{/*")
+        t.startsWith("//") ||
+        t.startsWith("*") ||
+        t.startsWith("/*") ||
+        t.startsWith("{/*")
       );
     })
     .join("\n");
@@ -143,7 +146,10 @@ describe("what changed, not both blobs", () => {
     // `suspended_reason: null` is a value the reactivate patch writes on
     // purpose; a missing key is the audit writer not recording the column.
     // Rendering both as "—" would make the two indistinguishable on screen.
-    const cleared = diffAuditJson({ suspended_reason: "card declined" }, { suspended_reason: null });
+    const cleared = diffAuditJson(
+      { suspended_reason: "card declined" },
+      { suspended_reason: null },
+    );
     expect(cleared.rows).toEqual([
       { path: "suspended_reason", before: "card declined", after: "null" },
     ]);
@@ -151,7 +157,7 @@ describe("what changed, not both blobs", () => {
     expect(dropped.rows[0].after).toBeNull();
   });
 
-  it("does not confuse the number 1 with the string \"1\", or true with \"true\"", () => {
+  it('does not confuse the number 1 with the string "1", or true with "true"', () => {
     expect(shown(diffAuditJson({ v: 1 }, { v: "1" }))).toEqual({ v: "1 → 1" });
     // The values print the same, but the diff still reports them as a change
     // — a silently-equal comparison here would hide a type change in billing
@@ -174,8 +180,20 @@ describe("values are arbitrary JSON, not a flat object of scalars", () => {
   it("walks into arrays and names the element by index", () => {
     // The `send_announcement_emails` shape: `{ processed, summary: [ … ] }`.
     const d = diffAuditJson(
-      { processed: 2, summary: [{ id: "a", sent: 4 }, { id: "b", sent: 0 }] },
-      { processed: 2, summary: [{ id: "a", sent: 4 }, { id: "b", sent: 7 }] },
+      {
+        processed: 2,
+        summary: [
+          { id: "a", sent: 4 },
+          { id: "b", sent: 0 },
+        ],
+      },
+      {
+        processed: 2,
+        summary: [
+          { id: "a", sent: 4 },
+          { id: "b", sent: 7 },
+        ],
+      },
     );
     expect(shown(d)).toEqual({ "summary[1].sent": "0 → 7" });
   });

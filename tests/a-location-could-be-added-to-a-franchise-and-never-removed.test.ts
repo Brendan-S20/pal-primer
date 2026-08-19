@@ -243,10 +243,9 @@ describe("nothing about who may do this got wider", () => {
     expect(unlinkSql, "unlink_franchise_child not found in the migrations").not.toBe("");
     expect(unlinkSql).toContain("_caller_org = _parent");
     expect(unlinkSql).toContain("public.is_platform_admin(auth.uid())");
-    expect(
-      unlinkSql,
-      "the live definition must not admit the CHILD's own owner",
-    ).not.toContain("_caller_org = _child_org_id");
+    expect(unlinkSql, "the live definition must not admit the CHILD's own owner").not.toContain(
+      "_caller_org = _child_org_id",
+    );
   });
 
   it("does not paywall the exit, on either side of the boundary", () => {

@@ -109,9 +109,7 @@ describe("the bounds come from the CHECK constraint, not from a guess", () => {
     // create_franchise_link_code builds its code from generate_series(1, N).
     // If that ever moves outside the bounds above, every code minted after the
     // change is refused by the form before it is ever looked up.
-    const gen = allMigrations().match(
-      /INTO _code\s*\n\s*FROM generate_series\(1,\s*(\d+)\)/,
-    );
+    const gen = allMigrations().match(/INTO _code\s*\n\s*FROM generate_series\(1,\s*(\d+)\)/);
     expect(gen, "could not find the code generator's length").not.toBeNull();
     const minted = Number(gen![1]);
     expect(minted).toBeGreaterThanOrEqual(FRANCHISE_CODE_MIN_LENGTH);
@@ -172,9 +170,7 @@ describe("a code written down the way people write codes down", () => {
   it("is what the field applies as it is typed", () => {
     // Normalized on change rather than on submit, so the box shows the value
     // that will actually be looked up.
-    expect(codeOnly(settingsPage)).toContain(
-      "setCode(normalizeFranchiseCode(e.target.value))",
-    );
+    expect(codeOnly(settingsPage)).toContain("setCode(normalizeFranchiseCode(e.target.value))");
     expect(codeOnly(settingsPage), "the old uppercase-only handler is gone").not.toContain(
       "setCode(e.target.value.toUpperCase())",
     );

@@ -34,7 +34,7 @@ async function audit(
 // Two things about the LIVE data shaped them (checked 2026-08-19):
 //
 //   Most rows have no before.  `before_json IS NULL` on every impersonation
-//     event, every promo capture and every coupon creation — 141 of the 154
+//     event, every promo capture and every coupon creation — 140 of the 154
 //     rows in production. "There was no before state" is not the same fact as
 //     "the before state was empty", and a diff that renders both as an empty
 //     list has thrown away the only thing that distinguishes a create from a
