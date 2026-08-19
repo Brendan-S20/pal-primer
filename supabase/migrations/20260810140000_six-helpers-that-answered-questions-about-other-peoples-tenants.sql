@@ -138,13 +138,37 @@ begin
   select id into _clientA from public.clients where organization_id = _orgA limit 1;
   select id into _clientB from public.clients where organization_id = _orgB limit 1;
 
+  -- ── THE PROBE NEEDS TWO TENANTS, AND A FRESH DATABASE HAS NONE ─────────
+  --
+  -- This block runs a real experiment: call the six helpers as a real owner of
+  -- one organization, about a client belonging to a DIFFERENT organization,
+  -- and record what they answer. That is far better evidence than reading the
+  -- function bodies, and it is the reason this migration can claim the leak
+  -- was closed rather than hoping.
+  --
+  -- It also cannot run on a database built from these files. `organizations`,
+  -- `clients`, `staff` and `user_roles` are all empty there — no migration
+  -- seeds a tenant, and seed_demo_org is invoked by hand — so the probe finds
+  -- nothing to probe, and this raised. Ninth fault the Sandboxes replay found,
+  -- and the same shape as the eighth: evidence gathered from the live database
+  -- treated as a precondition for applying the file.
+  --
+  -- The table is created either way, and carries a marker saying which
+  -- happened, because $post$ reads from it. Skipping is recorded rather than
+  -- silent: a warning in the log is the difference between "the experiment
+  -- says the leak is closed" and "no experiment was run", and those must never
+  -- look alike.
+  create temporary table _xt_before(k text primary key, v text) on commit drop;
+
   if _uidA is null or _orgB is null or _clientA is null or _clientB is null then
-    raise exception 'the probe needs two orgs with clients and an owner — A=% B=% uid=%',
+    insert into _xt_before values ('probe', 'skipped');
+    raise warning 'the cross-tenant probe needs two orgs with clients and an owner — A=% B=% uid=% — no tenants in this database, so the helpers are changed but not exercised',
       _orgA, _orgB, _uidA;
+    return;
   end if;
 
-  create temporary table _xt_before(k text primary key, v text) on commit drop;
-  insert into _xt_before values ('orgA', _orgA::text), ('orgB', _orgB::text),
+  insert into _xt_before values ('probe', 'ran'),
+                                ('orgA', _orgA::text), ('orgB', _orgB::text),
                                 ('uidA', _uidA::text), ('clientA', _clientA::text),
                                 ('clientB', _clientB::text);
 
@@ -308,6 +332,19 @@ begin
   end loop;
   if _bad <> '' then
     raise exception 'the replace dropped the authenticated grant on:%', _bad;
+  end if;
+
+  -- Parts 1 and 2 above are schema properties — who holds EXECUTE, and on
+  -- what — so they are asserted on every database including a fresh one, and
+  -- they are the checks that actually close the vulnerability.
+  --
+  -- Parts 3, 4 and 5 are the experiment, and they need the two tenants $pre$
+  -- looked for. Where it found none there is nothing to call the helpers
+  -- about, and asserting on the result of a call never made is worse than not
+  -- asserting: it would pass.
+  if (select v from _xt_before where k = 'probe') = 'skipped' then
+    raise warning 'cross-tenant behaviour not exercised: no tenants in this database. The revokes above are still asserted.';
+    return;
   end if;
 
   perform set_config('request.jwt.claims',

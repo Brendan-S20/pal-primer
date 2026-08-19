@@ -170,18 +170,30 @@ BEGIN
 
   -- The nightly job must still point at it, or none of this runs.
   --
-  -- Guarded on schedules existing at all, for the reason set out at length in
-  -- 20260801092000: a cron job is operations state that no migration in this
-  -- repo creates, so a database built from these files has none and this would
-  -- refuse to apply. An empty `cron.job` is the signature of a fresh build,
-  -- where no billing run exists to protect. Wherever schedules do exist the
-  -- assertion is unchanged.
+  -- ── THIS ONE KEEPS ITS TEETH, UNLIKE ITS SIBLING ───────────────────────
   --
-  -- These are the only two cron assertions in the 286 files that raise, so this
-  -- pair is the whole class rather than the next one in a queue.
-  IF EXISTS (SELECT 1 FROM cron.job)
-     AND NOT EXISTS (SELECT 1 FROM cron.job
-                      WHERE active AND command ILIKE '%run_billing_cycles%') THEN
+  -- 20260801092000 carries a check of the same shape that had to be downgraded
+  -- to a warning, and for a moment this file wore the same wrong guard —
+  -- `IF EXISTS (SELECT 1 FROM cron.job) AND NOT EXISTS (...)`, on the false
+  -- premise that an empty cron.job identifies a fresh build. See that file for
+  -- why the premise is false.
+  --
+  -- The two checks are not the same case, and lumping them together is what
+  -- produced one wrong fix for both. The difference is whether a migration
+  -- creates the thing being asserted:
+  --
+  --   process-email-queue   scheduled by operations. No migration creates it,
+  --                         so no replay can satisfy it.   -> warning
+  --   run-billing-cycles    scheduled by 20260716220000, which runs earlier in
+  --                         this same sequence, with the command
+  --                         `SELECT public.run_billing_cycles();`. A replay
+  --                         creates it before reaching here.  -> assertion
+  --
+  -- So this stays an exception, unconditionally. It is a genuine claim about
+  -- the sequence — rewrite this function without rescheduling the job and the
+  -- fix silently stops running — and a replay from empty can prove it.
+  IF NOT EXISTS (SELECT 1 FROM cron.job
+                  WHERE active AND command ILIKE '%run_billing_cycles%') THEN
     RAISE EXCEPTION 'no active cron job calls run_billing_cycles';
   END IF;
 END $$;

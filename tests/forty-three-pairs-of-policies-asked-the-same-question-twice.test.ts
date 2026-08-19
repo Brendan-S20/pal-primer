@@ -307,9 +307,20 @@ describe("the migration that did it proves itself rather than asserting", () => 
     expect(sql).toMatch(/reachable only through a write policy/);
     // The comparison that catches a dropped disjunct or a typo in a merge.
     expect(sql).toMatch(/reachability changed for someone/);
-    // Guards against both halves passing on nothing.
-    expect(sql).toMatch(/it is passing on an empty set/);
-    expect(sql).toMatch(/the comparison is vacuous/);
+    // Guards against both halves passing on nothing. These were exceptions
+    // until the Sandboxes replay reached this file: a database built from the
+    // migrations has no rows in user_roles or platform_admins, so it has one
+    // caller and the sample really is too small — which is what the guards say,
+    // and refusing to apply is not. They are warnings now, and the wording
+    // pinned here is the wording they carry.
+    //
+    // What the downgrade did NOT touch is the assertion each guard protects.
+    // `reachability changed for someone` above is still an exception, and it
+    // cannot report a false pass on an empty database: with no rows there is
+    // nothing that can differ.
+    expect(sql).toMatch(/too few callers in this database to mean anything/);
+    expect(sql).toMatch(/too few callers in this database for the comparison to mean anything/);
+    expect(sql).toMatch(/raise exception 'reachability changed for someone/);
   });
 
   it("keeps the two tables that must not get an (insert) policy without one", () => {

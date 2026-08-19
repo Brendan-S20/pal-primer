@@ -1,6 +1,6 @@
 # HoundStack — Master Work Brief
 
-> **Brief version: v1.22** · Released 2026-08-14 · Supersedes: v1.21k, v1.21j, v1.21i, v1.21h, v1.21g, v1.21f, v1.21e, v1.21d, v1.21c, v1.21b, v1.21, v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
+> **Brief version: v1.23** · Released 2026-08-15 · Supersedes: v1.22, v1.21k, v1.21j, v1.21i, v1.21h, v1.21g, v1.21f, v1.21e, v1.21d, v1.21c, v1.21b, v1.21, v1.20, v1.19, v1.18, v1.17, v1.16, v1.15, v1.14, v1.13, v1.12, v1.11, v1.10, v1.9, v1.8, v1.7, v1.6, v1.5, v1.4, v1.3, v1.2, v1.1, v1.0
 > **Canonical location:** this file, `Brendan-S20/pal-primer` → `docs/MASTER_BRIEF.md`.
 > It covers BOTH repos — `pal-primer` (the app) and `HoundStack` (the marketing
 > site) — and the marketing repo carries a pointer to it rather than a second
@@ -19,6 +19,244 @@ engineering guardrails, definition of done) are unchanged and still authoritativ
 > sits above v1.21f/g (2026-08-03) for historical reasons. Find an entry by its
 > version number, not its position. The two v1.21e duplicates were corrected on
 > 2026-08-03; see the renumbering notes in place.
+
+### v1.23 — 2026-08-15
+
+**Two themes: a day's work is now divided between the technicians who are
+supposed to share it, and the migrations build a database from nothing.**
+Neither was true this morning.
+
+**Auto-routing gave the whole day to one technician, and nothing was broken —
+the step was missing.** Owner report: *"I am attempting to utilize the functions
+with 3 techs; it doesn't split the route, it assigns it all to one."* Every
+planner in the database takes ONE `_staff_id` and selects the whole
+organisation's day, and `applyOptimize` looped the selected technicians calling
+it once each. Three calls, each claiming every visit: with reassign on the LAST
+technician kept the day, with it off the FIRST took it and the other two found
+nothing. Both are "all on one", and re-running never helped because the second
+run did the same thing. `preview_optimize` is the only entry point that ever
+accepted `_staff_ids uuid[]`, and it loops them the same way — so even the
+preview showed each of the three the whole day.
+
+`plan_day_across_staff` is that missing step, as one function that takes the
+whole selected set. It sweeps the visits into compact clusters by bearing around
+the day's centroid, rotated to start at the widest angular gap so the cut falls
+in empty space rather than through a neighbourhood; sizes the arcs by each
+technician's share of `daily_capacity_minutes` rather than 1/k, counting work
+already on somebody's calendar against their share; matches clusters to
+technicians by start location; and then hands each share to `plan_route`
+unchanged. The single-vehicle solver was never the problem — it just needed a
+third of the stops.
+
+**Even means equal working time, service plus drive — owner call, and it is why
+there is a rebalance step at all.** The sweep cannot deliver it alone, because
+drive time is unknown until a cluster has been sequenced. So the busiest
+technician hands its most transferable visit to the quietest, both are
+re-sequenced, and the move is kept only if the spread actually fell. A move that
+does not help is undone, so it cannot wander. Also owner call: reassign is the
+dispatcher's choice about disturbing assignments AMONG the selected technicians,
+and both are offered rather than one being assumed — a visit belonging to
+somebody who was not selected is never touched, reassign on or off.
+
+**Verified against the live demo organisation, because a structural test cannot
+prove a planner works.** Demo Pet Waste Co had `techs_used = 1` on every single
+day, which is the reported bug sitting in the data. Re-planning 2026-08-18
+across 3 techs: 7 / 7 / 6 stops, every route sequenced 1..n with no gaps, 0
+time-window breaches, 221 / 243 / 249 minutes. An unassigned-only run on
+2026-08-19 correctly did nothing — it left the day alone and reported the
+current load rather than erroring. The toast now names the split, because
+*"Re-ordered 20 stops"* was equally true before and after this fix and so could
+not tell a dispatcher whether the work had been divided.
+
+**A technician with no start address started from nowhere.** `plan_route` opened
+by reading the technician's own coordinates, and `staff.start_latitude` is
+nullable — two of the three demo technicians have none, which is also what a new
+account looks like before anybody fills in the team page. A NULL start does not
+fail, which is the problem: `COALESCE(haversine_km(...), 5.0)` scores EVERY
+candidate at the same flat 5.0 km, so the first stop is whichever row came back
+first, and a route that begins in the middle of a territory crosses itself
+getting out. The day still looked planned; it was planned from nowhere.
+
+Owner call on the chain: *"if there's no starting address, then it defaults to
+the business location, then nearest dump location, then based on what's best."*
+So: the technician's own start address, then `organizations.latitude/longitude`,
+then the nearest active waste-disposal facility, then the edge of their own day
+— and `'none'` if not even a geocoded visit exists, which leaves the old
+behaviour alone rather than inventing a location. "Based on what's best" is a
+real request with a hard answer, because the best start for an open route is a
+search and this runs inside a request, so tier 4 takes the stop FURTHEST from
+the centre of the day's work: a heuristic, stated as one, and a good one,
+because a tour starting at the periphery sweeps the territory once where a tour
+starting in the middle doubles back. Measured on the demo organisation, 3
+technicians, 20 stops: total driving **440.1 → 413.8 minutes (−6%)**, spread
+unchanged within noise. Six percent of the driving for filling in nothing.
+
+`plan_route` was changed by splicing into `pg_get_functiondef` output rather
+than restating it — the body is ~150 lines of solver this migration has no
+business rewriting, and a copy would drift. It cannot be replaced wholesale in
+any case without repeating the parameter defaults; Postgres refuses with
+*"cannot remove parameter defaults from existing function"*, which is a good
+error and is how this was caught.
+
+**The two middle tiers had an address and nothing a planner can measure.**
+Neither `organizations` nor `waste_disposal_facilities` had coordinates at all —
+both stored a text address — so the columns were added with the chain and the
+migration header said plainly that nothing populated them: geocoding runs in
+TypeScript, not SQL. Tiers 2 and 3 were structure with no data behind them, and
+a column nobody fills is a dead column. Three writers now: `updateOrgBranding`
+geocodes `contact_address` on save, `upsertFacility` geocodes `address` on save,
+and the nightly hook backfills up to 25 of each per run for the rows already on
+file that nobody is going to re-save. The bound is deliberate — it is a backfill
+with a finite end, and an unbounded nightly loop over every tenant against a
+third-party geocoder is how a nightly job becomes an incident. It reports
+`orgs_pending` and `facilities_pending` even at zero, because "nothing left to
+geocode" and "the geocoder returned nothing all night" look identical from the
+outside and only one of them is fine. All three CLEAR the coordinates when the
+address is cleared: stale ones are worse than none, because the planner cannot
+doubt them and every route would go on starting from the previous premises. The
+migration header's own "NOTHING POPULATES THEM YET" is corrected in place rather
+than left behind — a file that describes a gap that has since been closed is a
+file that will be believed about something else later.
+
+**The migrations replay from an empty database. Ten distinct faults stood
+between the repo and that sentence.** `supabase db reset` drops the local
+database and replays `supabase/migrations/` from nothing, which is a stronger
+claim than anything in `ci.yml`: that only ever compares the repo against a
+database built incrementally over a year plus 82 baselined files. If a migration
+only ever worked because of the state that preceded it, this is where it fails —
+and it failed ten times, on ten consecutive replays.
+
+The first faults were the repo failing to DESCRIBE something production has: two
+migrations sharing one version (v1.22), a grant filed a day before the function
+it grants on (#96), a table created by no migration (#98). From the fifth on
+they are a different and more interesting kind — **a migration asserting a fact
+a migration cannot establish.** Five of those were closed today:
+
+1. **A cron guard that did not work, and one grep would have said so.** #99
+   guarded two cron assertions on `IF EXISTS (SELECT 1 FROM cron.job)`, reasoning
+   that an entirely empty `cron.job` is the signature of a fresh build. It is
+   not: this repo schedules `run-billing-cycles` and `weekly-digest` itself, so
+   the precondition passes and the assertion fires exactly as before — replay 6
+   failed on the same line as replay 5, with the new code in the log. The two
+   checks were never the same case. `process-email-queue` is scheduled by
+   operations and no replay can satisfy it, so it warns; `run-billing-cycles` is
+   scheduled by an earlier migration in this same sequence, so its assertion is
+   kept and made unconditional again. This was a claim about these files,
+   answerable from these files, shipped without checking — so
+   `tests/the-wiring-is-connected` now walks the migrations in order and requires
+   any block that RAISE EXCEPTIONs on a cron job to name a job an earlier
+   migration schedules, collected after the check so a file cannot vouch for
+   itself with a schedule written below the assertion.
+2. **A schema scan that raised on the first aggregate it met** —
+   `ERROR: "array_agg" is an aggregate function`. `pg_get_functiondef` raises on
+   any `pg_proc` row that is not a plain function or procedure, which makes it
+   safe on a row you have NAMED and a loaded gun over a whole schema. 35 of the
+   36 call sites in these migrations name their function; one filtered the name
+   with `<>`, which excludes a single row and leaves the rest of the schema in
+   scope. Production holds 191 routines in `public`, every one of them
+   `prokind = 'f'`, so the scan never met a row it could not describe; a fresh
+   build has an aggregate production does not. Fixed by reading `prosrc` and not
+   by adding a `prokind` filter — Postgres does not promise to evaluate AND terms
+   left to right, so a planner is free to call `pg_get_functiondef` on the row
+   the filter was meant to exclude.
+3. **A before/after proof cannot take its "before" from a database it never
+   saw.** The policy-collision rewrite measures the live database in `$pre$` and
+   `$post$` — the right instrument for changing production and the wrong one for
+   a replay from empty.
+4. **The cross-tenant probe needed two tenants, and a fresh database has none.**
+   It calls the six helpers as a real owner of one organization about a client
+   belonging to a different one, which is much better evidence than reading the
+   function bodies — and impossible on a database where no migration seeds a
+   tenant.
+5. **Twelve more count pins across four files**, classified in one pass rather
+   than one CI round each.
+
+**The rule those three settled, stated once:** a number MEASURED from the live
+database on the day the file was written is a premise, not a product — it
+warns, and still prints its number. An assertion about what the migration
+ESTABLISHES holds on any starting state, so it stays an exception and a replay
+can prove it. Every security property in the affected files stayed an exception
+under that rule: no colliding policy pair remains, no reachability count moved
+for any caller, nothing returning `trigger` is reachable by anon or
+authenticated, no index is left INVALID. Two of the downgraded guards were not
+merely mismatched but unsatisfiable — they need ~10 callers and a database built
+from the migrations has none, so 300 becomes 32 and 1000 becomes 152. Skipping
+is recorded rather than silent: the cross-tenant probe now writes a `'probe'`
+marker on both paths and warns when it reads `'skipped'`, because "the
+experiment says the leak is closed" and "no experiment was run" must never look
+alike in a log. `20260801140000`'s 200/600/250/500 were deliberately left as
+exceptions — it creates its own organization and inserts its own 250 events, so
+a replay runs it exactly as production did. Checked before assuming.
+
+**The honest part: eleven of those sites could not be individually replayed**,
+so if any of those numbers WOULD have held on a fresh build, a real assertion
+has been traded for a warning. One of the twelve then earned its keep on the
+next run — `WARNING: expected all 34 executable by authenticated, found 33`. 33,
+not 34. As an exception that would have failed the replay; as a warning it
+prints its number exactly as intended, which is the answer to the risk flagged
+when twelve of them were downgraded at once.
+
+**The three database tests ran, after never having run, and found four things.**
+34 real tests, no self-skip, and the reason the sandbox was worth building: a
+suite nobody had ever seen the output of. Two failures were `portal-email`,
+aimed at a provider the code no longer uses — the file sets `LOVABLE_API_KEY`
+and intercepts `api.lovable.dev`, while the OTP path moved to Resend at some
+point and nothing noticed, because a test that has never run cannot observe that
+the thing it tests was rewritten underneath it. Retargeted at
+`POST https://api.resend.com/emails` with a Bearer `RESEND_API_KEY`, `to` as an
+array, and the provider id read from `id`.
+
+**The other two were worse for the test file than for the product: four tests
+read like a proof of a cross-role protection and none of them reached it.**
+`tg_dna_matches_guard_billing` RAISES; it does not quietly revert. So no error
+means the trigger never fired, and it never fired because the UPDATE matched no
+row — the only UPDATE policy on `dna_matches` is office-only, so a technician
+cannot touch the row and PostgREST changes nothing and returns success. The
+tenant is safe, by RLS rather than by the guard, which is defence in depth
+working. The two forbidden-write tests now assert the outcome — the money value
+and the status unchanged — plus a new one proving the technician cannot even
+READ the row, which is the non-vacuity check for the other two. The worst of the
+four asserted only that no error came back, which a no-op satisfies, so it was
+green from the day it was written while exercising nothing; the capability it
+named was removed on purpose by `20260801021000`, and `20260801023000` gave
+techs back the legitimate half as an RPC. It now calls
+`log_dna_sample_from_field` and checks the sample lands derived rather than
+dictated. That is not an engineering decision about the product — the migration
+decided it, in writing, and this test had simply never run since.
+
+**A retry that cannot mask the thing it is testing.** `db reset` replays the
+migrations and then restarts the stack, and the restart races the API gateway
+coming back: the CLI's health poll gets a 502. Seen on two of three consecutive
+runs, ALWAYS after the last migration had applied — so the part this job exists
+to test had already passed each time and the job reported failure anyway. The
+retry path is reachable only when the log carries the 5xx from the restart; a
+genuine migration fault exits immediately. Verified rather than assumed, by
+stubbing `supabase` and driving all four paths (clean, 502 twice then success,
+real fault → no retry, 502 three times → give up). `set -o pipefail` is there
+deliberately: without it `supabase db reset | tee` reports tee's status and the
+`if` takes the success branch on every failure — the same trap that had a commit
+reported as verified earlier in this work, when `npm test | tail -3` exited 0 on
+a failing suite.
+
+**And the working agreement that came out of it.** `CLAUDE.md` gains a section
+on migration-replay discipline — what a migration may assert, when a number is a
+premise rather than a product, and why `supabase db reset` is the only check
+that sees these faults at all. Ten replays produced one rule each; the section
+is that rule set, so the eleventh fault does not have to be found the same way.
+
+**White label was priced below what it gives away.** Owner decision: *"I don't
+feel like that's enough to lose my branding."* `white-label-portal` and
+`white-label-emails` were $19/mo each; they are now one `white-label` add-on at
+**$99/mo**. $19 was 24% of the cheapest plan and 4% of the most expensive for
+the one capability that removes HoundStack from every email a tenant's clients
+receive and every portal page they visit — and those clients are homeowners,
+exactly the population that hears about a pet-waste CRM from an operator already
+using one. The $19 was selling the referral surface. One add-on rather than two
+repriced ones, because they need the same conversation about the tenant's domain
+and the same DNS records, so selling them apart implied a choice operations does
+not offer. Nobody is grandfathered: `org_platform_addons` holds six rows and all
+six are Demo Pet Waste Co, which has no Stripe customer — no real customer has
+ever bought an add-on, and this was the last moment that was true.
 
 ### v1.22 — 2026-08-14
 
@@ -2633,6 +2871,14 @@ soon)"** — `white-label-portal` and `white-label-emails`, $19/mo each, both
 `coming_soon` and `is_active = false`. So nothing is falsely promised, and
 nothing is sellable either until Stripe lands.
 
+**Superseded on 2026-08-15 (v1.23):** those two are now one `white-label` add-on
+at **$99/mo**, live on the platform account with `lookup_key
+addon_white_label`, the two old prices archived and the two old catalog rows
+`disabled` rather than deleted — `subscribePlatformAddon` refuses any status
+other than `active`, so that is a server-side gate rather than a UI hide, and
+deleting them would orphan the demo org's rows against a foreign key. The
+paragraph above stands as the survey; the price in it does not.
+
 *True white label is owner-blocked, not engineering-blocked.* "White-label
 emails" means sending from the tenant's own domain, which needs the Resend
 account and per-tenant SPF/DKIM verification. "White-label portal" means a
@@ -2906,7 +3152,7 @@ it back (BUG-19 holds), rollup returns 2 named rows where the TypeScript returne
 | BUILD-2 | 🟢 Fixed | 🔴 | **Done.** Usage metering, soft caps, overage and the 80% alert. `ai_usage_events` (one row per invocation, org-local month, tokens + our estimated cost) → `ai_usage_periods` (RECOUNTED, never incremented — the BUG-81 pattern applied before it could happen). `ai_usage_state()` is the one definition of where an org stands, called by both the request path and Settings. All three doors metered, including the two unattended ones. Ceiling at 3× allowance, owner-adjustable, floored at 1×. Overage bills as one invoice item per closed month, claimed before Stripe is called and idempotency-keyed. 57 tests, 34 mutations, four of which passed first time and are written up in the v1.16 changelog. Allowances are provisional and live in `platform_plans` | v1.16 |
 | BUILD-3 | ⏳ Waiting | 🟠 | Managed texting — Q-8 = per-tenant subaccount + own brand. In the 10DLC compliance queue; nothing to accelerate | v1.1 |
 | BUILD-4 | 🟢 Fixed | 🟠 | Managed AI — BYO deleted, inference runs on the platform key, and the product no longer asks for a key. The metering gap this row named is closed: BUILD-2 shipped in v1.16 | v1.3 |
-| BUILD-5 | 🟠 Part-built | 🟠 | White label — the surveyable half is done and it turned up a live customer-facing bug: **every reply to an invoice or reminder went to a no-reply address nobody reads**, with no bounce, so the customer believed they had been in touch. Reply-to now carries the tenant's office email end to end. True white label (own sending domain, own portal domain) needs the Resend account and per-tenant DNS — owner-blocked like Stripe. Both add-ons are `coming_soon` and unsellable until then | v1.5 |
+| BUILD-5 | 🟠 Part-built | 🟠 | White label — the surveyable half is done and it turned up a live customer-facing bug: **every reply to an invoice or reminder went to a no-reply address nobody reads**, with no bounce, so the customer believed they had been in touch. Reply-to now carries the tenant's office email end to end. True white label (own sending domain, own portal domain) needs the Resend account and per-tenant DNS — owner-blocked like Stripe. **The two add-ons became one `white-label` at $99/mo on 2026-08-15** (v1.23); the old rows are `disabled`, not deleted | v1.5, repriced v1.23 |
 | BUILD-6 | 🟠 Part-built | 🟠 | Enterprise tier — **phases 1–4 shipped**: consent-based linking, repaired rollup, both sides' UI, the money side, and now **a franchise can open a location from the product** — name it, name the staff, they get invites and sign themselves in. That was the flow the owner described, the SQL for it had existed unused since 2026-07-30, and it was the last piece the product could not do. Platform-side franchise sales signals now render too. **v1.12 attacked the money paths and found six defects** (BUG-70 through BUG-75) — three ways a non-owner could take or rewrite money, a tech reading the ledger and the invite codes, a repayment silently dropped, and three functions live in no migration. All fixed and re-probed; all latent, because no franchise exists yet. What held up under attack: the three routing setters correctly require the parent's owner, every `set_config('app.allow_protected_org_write')` call is transaction-local, `tg_orgs_protect_platform_columns` covers all franchise columns, and a child owner cannot cut its royalty, self-unlink or seize payments (proven live — royalty stayed 8.00). **v1.13 closed the settlement-math pass** (BUG-76 through BUG-79): four more defects, three claims dismissed on evidence, and one of my own fixes caught wrong by the probe of the fix. Remaining: multi-org membership, drill-down, and royalty *delivery* | v1.6 |
 | BUILD-7 | 🟠 Part-built | 🟡 | Trial lifecycle built — and the finding was that **no organization had ever had a trial**, because `bootstrap_organization` never started one and nothing in the tenant app gated on billing status at all. New signups get the 14 days the site promises; expiry is a state and a banner, NOT a lock, because Stripe cannot take a payment yet. AI is paid-only (owner decision). Enforcement is one constant, flipped when Stripe lands. **v1.6:** an adversarial review found three ways a non-paying org still reached `paid` and kept the AI keys — see BUG-29. The state machine now reads both status columns and has a `lapsed` phase, because telling someone who cancelled a paid plan that their free trial ended reads as a product that lost track of what they bought | v1.6 |
 | BUILD-8 | 🟢 Fixed | 🟡 | AI Business Advisor **built out** (owner reversed the retire instruction). On-demand, 7/30/90-day windows, evidence shown beside the advice. See below | v1.3 |
@@ -3209,6 +3455,17 @@ against was not present. Going forward the check is a hard gate on `main` and
 advisory on pull requests, and it fails rather than skipping when
 `SUPABASE_DB_URL` is missing — a check that silently passes without checking is
 the exact failure mode it exists to remove.
+
+**Amended v1.23, and the amendment is the whole point of the Sandboxes job.**
+That result is still true and still narrow. IMP-2 asks whether the names in
+`supabase/migrations/` match the applied ledger, and `check-baseline-objects`
+asks whether the objects those files create exist live. Both compare the repo to
+a database that already exists. Neither asks the third question — *can these
+files BUILD one* — and the answer, until 2026-08-15, was no: ten faults, each of
+them invisible to both checks because both were reading a database grown
+incrementally over a year. `supabase db reset` is the only check that sees the
+class where production holds state the repo's files never describe. See the
+migration-replay section of `CLAUDE.md` for the rules that came out of it.
 
 ---
 

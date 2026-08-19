@@ -867,29 +867,72 @@ export const applyOptimize = createServerFn({ method: "POST" })
       days.push(iso);
     }
 
+    // ── ONE CALL PER DAY, NOT PER TECH PER DAY ──────────────────────────
+    //
+    // This loop used to be `for (staffId) for (day) optimize_route_v3(...)`,
+    // and that is the whole of the bug an owner reported on 2026-08-15:
+    // "I am attempting to utilize the functions with 3 techs; it doesn't split
+    // the route, it assigns it all to one."
+    //
+    // optimize_route_v3 takes ONE `_staff_id` and its candidate set is the
+    // whole organisation's day:
+    //
+    //   AND (_reassign OR v.assigned_staff_id IS NULL
+    //                  OR v.assigned_staff_id = _staff_id)
+    //
+    // so calling it once per technician does not divide anything. Each call
+    // claims every visit. With reassign on, the LAST technician in this loop
+    // ended up with all of them; with it off, the FIRST took the lot and the
+    // rest found nothing. Either way one person got the day, and re-running
+    // never helped — which is exactly what was reported.
+    //
+    // plan_day_across_staff takes the whole selected set at once and does the
+    // step that never existed: partition the day between them, then sequence
+    // each technician's own share with the same solver as before. See
+    // 20260815170000 for the algorithm and why each part of it is there.
     let stops = 0;
     const skipped: Array<{ staffId: string; day: string; reason: string }> = [];
-    for (const staffId of data.staffIds) {
-      for (const day of days) {
-        const { data: n, error } = await (supabase as any).rpc("optimize_route_v3", {
-          _org_id: orgId,
-          _staff_id: staffId,
-          _day: day,
-          _reassign: data.reassign,
-          _level: data.level,
-        } as any);
-        if (error) {
-          // One tech being away, or no longer a field tech, must not abandon
-          // the other twenty days. Collected and reported, not swallowed —
-          // silently skipping is how a dispatcher ends up believing a day was
-          // optimized when it was refused.
-          skipped.push({ staffId, day, reason: error.message });
-          continue;
-        }
-        stops += (n as number) ?? 0;
+    const perStaff = new Map<string, { stops: number; totalMin: number }>();
+
+    for (const day of days) {
+      const { data: rows, error } = await (supabase as any).rpc("plan_day_across_staff", {
+        _org_id: orgId,
+        _staff_ids: data.staffIds,
+        _day: day,
+        _reassign: data.reassign,
+        _level: data.level,
+      } as any);
+      if (error) {
+        // A day that could not be planned must not abandon the other twenty.
+        // Collected and reported, not swallowed — silently skipping is how a
+        // dispatcher ends up believing a day was optimized when it was
+        // refused. staffId is empty because the refusal is now about the DAY,
+        // not about one person: the planner considers the whole team at once.
+        skipped.push({ staffId: "", day, reason: `${day}: ${error.message}` });
+        continue;
+      }
+      for (const r of (rows ?? []) as Array<{
+        staff_id: string;
+        stops: number;
+        total_min: number;
+      }>) {
+        stops += r.stops ?? 0;
+        const prev = perStaff.get(r.staff_id) ?? { stops: 0, totalMin: 0 };
+        perStaff.set(r.staff_id, {
+          stops: prev.stops + (r.stops ?? 0),
+          totalMin: prev.totalMin + Number(r.total_min ?? 0),
+        });
       }
     }
-    return { stops, skipped };
+
+    // The split itself, so the screen can show that the work was actually
+    // divided. Without this the dispatcher has to go and count rows to find
+    // out whether the thing they just pressed did anything.
+    const balance = [...perStaff.entries()]
+      .map(([staffId, v]) => ({ staffId, stops: v.stops, totalMin: Math.round(v.totalMin) }))
+      .sort((a, b) => b.totalMin - a.totalMin);
+
+    return { stops, skipped, balance };
   });
 
 // assignRoute / optimizeRoute / optimizeWeek / reoptimizeAll were removed here.

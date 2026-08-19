@@ -203,6 +203,25 @@ export const upsertFacility = createServerFn({ method: "POST" })
       active: data.active ?? true,
       updated_at: new Date().toISOString(),
     };
+
+    // Coordinates, because the route planner needs them and an address does
+    // not help it. staff_start_point falls back to the nearest disposal site
+    // when a technician has no start address of their own and the business
+    // has no location on file — see 20260815180000 — and "nearest" is not a
+    // question a text address can answer.
+    //
+    // Cleared when the address is, rather than left pointing at wherever the
+    // site used to be: stale coordinates are worse than none, because the
+    // planner trusts them.
+    if (data.address) {
+      const { geocodeAddress } = await import("@/lib/geocode.server");
+      const geo = await geocodeAddress({ street: data.address });
+      payload.latitude = geo?.latitude ?? null;
+      payload.longitude = geo?.longitude ?? null;
+    } else {
+      payload.latitude = null;
+      payload.longitude = null;
+    }
     if (data.id) {
       const { error } = await context.supabase.from("waste_disposal_facilities").update(payload).eq("id", data.id);
       if (error) throw new Error(error.message);

@@ -57,31 +57,48 @@ BEGIN
     RAISE EXCEPTION 'the real email queue functions are not all present';
   END IF;
 
-  -- ── ASSERTED ONLY WHERE SCHEDULES EXIST ────────────────────────────────
+  -- ── A FACT NO MIGRATION CAN ESTABLISH, SO NOT AN ASSERTION ─────────────
   --
-  -- This checks the RUNNING ENVIRONMENT, not the schema. A cron job is created
-  -- by operations, not by any migration in this repo, so a database built from
-  -- these files has none — and this assertion, which exists to prove the drop
-  -- above did not break outbound email, instead made the sequence unreplayable:
+  -- This checks the RUNNING ENVIRONMENT, not the schema. `process-email-queue`
+  -- is scheduled by operations; no migration in this repo creates it. So a
+  -- database built from these files does not have it, and this check — which
+  -- exists to prove the drop above did not break outbound email — instead made
+  -- the sequence unreplayable:
   --
   --     ERROR: the process-email-queue cron job is missing or inactive (SQLSTATE P0001)
   --
-  -- That is the fifth fault the Sandboxes replay found and the first of a
+  -- That was the fifth fault the Sandboxes replay found and the first of a
   -- different kind. The previous four were the repo failing to describe
-  -- something production has. This one is a migration asserting a fact a
-  -- migration cannot establish.
+  -- something production has. This one is the mirror image: a migration
+  -- demanding operations state it cannot create.
   --
-  -- The guard is kept where it means something. `cron.job` being entirely
-  -- empty is the signature of a freshly built database, where there is no
-  -- email path running and therefore nothing for this to protect. Anywhere
-  -- schedules exist at all — production included — the assertion is exactly as
-  -- strict as before.
+  -- ── THE FIRST FIX WAS WRONG, AND WRONG IN A CHECKABLE WAY ──────────────
   --
-  -- Deliberately NOT downgraded to a warning: on the real database a missing
-  -- process-email-queue means outbound email has silently stopped, and that
-  -- should still refuse to proceed.
-  IF EXISTS (SELECT 1 FROM cron.job)
-     AND NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'process-email-queue' AND active) THEN
-    RAISE EXCEPTION 'the process-email-queue cron job is missing or inactive';
+  -- It read `IF EXISTS (SELECT 1 FROM cron.job) AND NOT EXISTS (...)`, on the
+  -- stated reasoning that "an entirely empty cron.job is the signature of a
+  -- freshly built database". That is false, and one grep would have said so.
+  -- Two migrations in this repo schedule jobs before this file runs:
+  --
+  --     20260701180832  CREATE EXTENSION pg_cron
+  --     20260716220000  cron.schedule('run-billing-cycles', ...)
+  --     20260731130000  cron.schedule('weekly-digest', ...)
+  --
+  -- so `cron.job` holds two rows by the time the sequence reaches this line.
+  -- The precondition passed, the assertion fired, and replay 6 failed in
+  -- exactly the same place as replay 5 — with the new code in the log.
+  --
+  -- ── WHY A WARNING IS THE HONEST ANSWER ─────────────────────────────────
+  --
+  -- The argument I rejected the first time is the correct one. This migration
+  -- is already recorded in production's ledger
+  -- (20260801152555, "the_second_half_of_the_lovable_email_scaffold"), and a
+  -- migration runs once. The only databases that will ever execute this block
+  -- again are fresh ones — where, by construction, no operations-scheduled job
+  -- exists. There is no future execution in which raising here is right.
+  --
+  -- Monitoring a live cron job is a job for monitoring. A migration is the
+  -- wrong instrument for it, and pretending otherwise cost two replay rounds.
+  IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'process-email-queue' AND active) THEN
+    RAISE WARNING 'no active process-email-queue cron job: outbound email will not be delivered until one is scheduled';
   END IF;
 END $$;

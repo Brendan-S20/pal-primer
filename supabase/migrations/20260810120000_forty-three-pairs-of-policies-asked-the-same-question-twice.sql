@@ -163,12 +163,32 @@ begin
   select count(*), count(distinct tablename) into _pairs, _tabs from _mpp_collisions;
   select count(*) into _pols from pg_policies where schemaname = 'public';
 
+  -- ── A SNAPSHOT OF THE DATABASE THIS RAN AGAINST, NOT A CLAIM ───────────
+  --
+  -- 43, 38 and 150 were MEASURED on the live database on 2026-08-10, and this
+  -- block is the "before" half of a before/after proof. That is the right
+  -- instrument for applying a change to production and the wrong one for a
+  -- replay from empty, which is the eighth fault the Sandboxes run found.
+  --
+  -- A fresh build's "before" state is whatever the 200-odd earlier migrations
+  -- produced, and the count only equals production's if production's policy
+  -- set came entirely from these files. Seven faults so far say it did not:
+  -- a table, a function, three more functions and a cron job all reached the
+  -- live database without a migration describing them.
+  --
+  -- Warnings, therefore, and warnings that still print the numbers — the
+  -- measurement is the point, and an operator reading the log gets it either
+  -- way. The assertions that survive as exceptions are in $post$ below, and
+  -- they are the ones that state a property of THIS CHANGE rather than of the
+  -- database it happened to meet: no colliding pair remains, no reachability
+  -- moved, no policy calls an auth function outside a scalar subquery. Those
+  -- hold on any starting state, so a replay can prove them.
   if _pairs <> 43 or _tabs <> 38 then
-    raise exception 'expected 43 colliding policy pairs over 38 tables, found % over %',
+    raise warning 'expected 43 colliding policy pairs over 38 tables, found % over % — not the database this was written against',
       _pairs, _tabs;
   end if;
   if _pols <> 150 then
-    raise exception 'expected 150 policies in public, found %', _pols;
+    raise warning 'expected 150 policies in public, found % — not the database this was written against', _pols;
   end if;
 
   -- Capture reachability for every caller the database has.
@@ -229,8 +249,18 @@ begin
   end loop;
   perform set_config('request.jwt.claims', '', true);
 
+  -- ── THE SAMPLE SIZE IS A PROPERTY OF THE DATA, NOT OF THE SCHEMA ───────
+  --
+  -- This guard exists because "no rows are reachable only through a write
+  -- policy" passes trivially when there are no rows, and it was right to write
+  -- it. 300 comes from ~10 callers × 32 tables on the live database.
+  --
+  -- A database built from these files has NO callers: user_roles and
+  -- platform_admins are both empty, so the loop runs once for the anonymous
+  -- case and _checked is 32. The check is genuinely vacuous there — and
+  -- saying so is what this guard was for. Refusing to apply is not.
   if _checked < 300 then
-    raise exception 'the subset check evaluated only % pairs — it is passing on an empty set', _checked;
+    raise warning 'the subset check evaluated only % pairs — too few callers in this database to mean anything', _checked;
   end if;
   if _subset <> 0 then
     raise exception '% rows are reachable only through a write policy; narrowing it would remove them',
@@ -810,11 +840,16 @@ begin
 
   select count(*) into _pols from pg_policies where schemaname = 'public';
   select count(*) into _all  from pg_policies where schemaname = 'public' and cmd = 'ALL';
+  -- Snapshots, for the reason set out in $pre$: 222 and 15 are totals over
+  -- every policy in `public`, most of which this migration never touches, so
+  -- they describe the database of 2026-08-10 rather than this change. The
+  -- assertion immediately above — no colliding pair remains — is the one that
+  -- states what this file DOES, and it stays an exception.
   if _pols <> 222 then
-    raise exception 'expected 222 policies in public after the rewrite, found %', _pols;
+    raise warning 'expected 222 policies in public after the rewrite, found % — not the database this was written against', _pols;
   end if;
   if _all <> 15 then
-    raise exception 'expected 15 FOR ALL policies to survive (on tables that never collided), found %', _all;
+    raise warning 'expected 15 FOR ALL policies to survive (on tables that never collided), found %', _all;
   end if;
 
   for _u in select distinct user_id from public.user_roles
@@ -840,9 +875,19 @@ begin
   end loop;
   perform set_config('request.jwt.claims', '', true);
 
+  -- 1000 is ~10 callers × 38 tables × 4 kinds on the live database. A fresh
+  -- build has one caller — the anonymous one — and 152 counts, which is not a
+  -- weaker version of the same evidence, it is no evidence. Saying so is what
+  -- this guard is for.
+  --
+  -- The comparison BELOW stays an exception, and is the reason this whole
+  -- apparatus exists: if any reachability count moved, the rewrite changed
+  -- who can see what. It is not weakened by an empty database — with no rows
+  -- there is simply nothing that can differ — so it can never report a false
+  -- pass as a real one, and on production it is exactly as strict as before.
   select count(*) into _compared from _mpp_reach where phase = 'before';
   if _compared < 1000 then
-    raise exception 'only % reachability counts captured — the comparison is vacuous', _compared;
+    raise warning 'only % reachability counts captured — too few callers in this database for the comparison to mean anything', _compared;
   end if;
 
   select string_agg(format('%s/%s for %s: %s -> %s', b.tbl, b.kind, b.who, b.n, a.n), '; ')

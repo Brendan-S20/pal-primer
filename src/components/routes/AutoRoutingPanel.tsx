@@ -137,6 +137,11 @@ export function AutoRoutingPanel({
   const [section, setSection] = useState<Section>(null);
 
   const chosen = picked.size ? [...picked] : techs.map((s: any) => s.id);
+
+  // First names only: the toast lists every technician in the run, and three
+  // full names is already wider than a phone.
+  const nameOf = (id: string) =>
+    String(staff.find((s: any) => s.id === id)?.display_name ?? "Tech").split(" ")[0];
   const rangeValid = Boolean(from && to && to >= from);
 
   const previewMut = useMutation({
@@ -163,7 +168,16 @@ export function AutoRoutingPanel({
   const applyMut = useMutation({
     mutationFn: () => applyFn({ data: { staffIds: chosen, from, to, level, reassign } }),
     onSuccess: (r) => {
-      toast.success(`Re-ordered ${r.stops} stop${r.stops === 1 ? "" : "s"}.`);
+      // The split is the point, so it is what the toast says. "Re-ordered 20
+      // stops" was true both before and after the fix for the bug where all
+      // twenty landed on one technician — it could not tell the dispatcher
+      // whether the work had actually been divided.
+      const share = (r.balance ?? [])
+        .map((b) => `${nameOf(b.staffId)} ${b.stops}`)
+        .join(" · ");
+      toast.success(
+        `Routed ${r.stops} stop${r.stops === 1 ? "" : "s"}` + (share ? ` — ${share}` : "."),
+      );
       // Refusals are surfaced, not swallowed. A dispatcher who is not told a
       // day was skipped will believe it was optimized.
       for (const s of r.skipped.slice(0, 3)) toast.warning(s.reason, { duration: 8000 });
@@ -379,8 +393,15 @@ export function AutoRoutingPanel({
         {p && (
           <div className="rounded-md border bg-muted/40 p-2 text-xs">
             {p.days.length === 0 ? (
+              /* Two ways to get here, and until 20260815190000 only the first
+                 existed. The preview now reports what Apply would actually do,
+                 and Apply does nothing to a day whose stops are all assigned
+                 already unless it is allowed to move work between techs — so
+                 an empty preview on a full day is a correct answer, and the
+                 old sentence ("no scheduled stops") was flatly untrue for it. */
               <span className="text-muted-foreground">
-                Nothing to route in that range — no scheduled stops for those techs on those days.
+                Nothing to route in that range. Either those techs have no scheduled stops, or
+                every stop is already assigned and “Also move work between techs” is off.
               </span>
             ) : (
               <>

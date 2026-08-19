@@ -318,11 +318,79 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           aiOverage = { error: (e as Error).message };
         }
 
+        // ── Coordinates for the two routing anchors ────────────────────────
+        //
+        // staff_start_point (20260815180000) falls back to the business
+        // location and then to the nearest disposal site when a technician has
+        // no start address of their own. Both tiers were dead on arrival:
+        // organizations and waste_disposal_facilities store a text address and
+        // nothing a planner can measure against.
+        //
+        // Saving either record geocodes it now, but that only helps records
+        // somebody happens to re-save. This catches the ones already on file.
+        //
+        // Bounded to 25 a night on purpose. It is a backfill with a finite end
+        // — every row either gets coordinates or has no address to geocode —
+        // and an unbounded loop over every tenant on a third-party geocoder is
+        // how a nightly job turns into an incident.
+        let anchors: Record<string, unknown>;
+        try {
+          const { geocodeAddress } = await import("@/lib/geocode.server");
+          let orgsFixed = 0;
+          let facilitiesFixed = 0;
+
+          const { data: needOrg } = await supabaseAdmin
+            .from("organizations")
+            .select("id, contact_address")
+            .not("contact_address", "is", null)
+            .is("latitude", null)
+            .limit(25);
+          for (const o of needOrg ?? []) {
+            const geo = await geocodeAddress({ street: (o as any).contact_address });
+            if (!geo) continue;
+            await supabaseAdmin
+              .from("organizations")
+              .update({ latitude: geo.latitude, longitude: geo.longitude })
+              .eq("id", (o as any).id);
+            orgsFixed++;
+          }
+
+          const { data: needFac } = await supabaseAdmin
+            .from("waste_disposal_facilities")
+            .select("id, address")
+            .not("address", "is", null)
+            .is("latitude", null)
+            .limit(25);
+          for (const f of needFac ?? []) {
+            const geo = await geocodeAddress({ street: (f as any).address });
+            if (!geo) continue;
+            await supabaseAdmin
+              .from("waste_disposal_facilities")
+              .update({ latitude: geo.latitude, longitude: geo.longitude })
+              .eq("id", (f as any).id);
+            facilitiesFixed++;
+          }
+
+          // Both counts reported even at zero. "Nothing left to geocode" and
+          // "the geocoder returned nothing all night" look identical from the
+          // outside otherwise, and only one of them is fine.
+          anchors = {
+            orgs_geocoded: orgsFixed,
+            orgs_pending: (needOrg?.length ?? 0) - orgsFixed,
+            facilities_geocoded: facilitiesFixed,
+            facilities_pending: (needFac?.length ?? 0) - facilitiesFixed,
+          };
+        } catch (e) {
+          console.error("[nightly] routing anchor geocoding failed", e);
+          anchors = { error: (e as Error).message };
+        }
+
         return json({
           ok: true,
           ran_at: new Date().toISOString(),
           orgs: summary,
           ai_overage: aiOverage,
+          routing_anchors: anchors,
         });
       },
     },

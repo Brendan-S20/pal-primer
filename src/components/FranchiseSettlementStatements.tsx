@@ -71,6 +71,26 @@ export function FranchiseSettlementStatements({
             ? "Each period your franchise has settled with you, and which way the money goes. Periods still being worked out are not shown until your franchise issues them."
             : "Each period settled with a location. The net is what changes hands — it is not the royalty, because whoever collected the revenue is already holding part of it."}
         </p>
+        {/* ── WHERE THE MONEY ACTUALLY MOVES ────────────────────────────────
+            Owner decision, 2026-08-16: settlement is a statement, and the
+            payment happens outside HoundStack.
+
+            Saying so here is the whole of that decision's UI. "Issue to
+            location" followed by "Mark paid" reads like a billing flow, and
+            everywhere else in this product a flow shaped like that DOES take
+            the money — customer invoices, autopay, add-on subscriptions. A
+            franchise owner has no reason to assume this one is different, and
+            the consequence of assuming wrongly is that nobody sends the money
+            and both sides think it is handled.
+
+            Split by audience because the sentence is about what each side
+            should DO, and they do different things: the franchise pays or
+            collects, the location watches for it. */}
+        <p className="mt-2 text-xs text-muted-foreground">
+          {forLocation
+            ? "HoundStack records these statements; it does not move the money. Settle with your franchise the way you normally do — the statement is the record of what was owed."
+            : "HoundStack records these statements; it does not move the money. Pay or collect the net however you already settle with the location, then mark the statement paid here so both sides have the same record."}
+        </p>
       </CardHeader>
       <CardContent className="space-y-4">
         {error && <p className="text-sm text-destructive">{error}</p>}

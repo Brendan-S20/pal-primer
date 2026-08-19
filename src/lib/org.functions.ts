@@ -258,7 +258,26 @@ export const updateOrgBranding = createServerFn({ method: "POST" })
     if (data.logoUrl !== undefined) patch.logo_url = data.logoUrl;
     if (data.contactPhone !== undefined) patch.contact_phone = data.contactPhone;
     if (data.contactEmail !== undefined) patch.contact_email = data.contactEmail;
-    if (data.contactAddress !== undefined) patch.contact_address = data.contactAddress;
+    if (data.contactAddress !== undefined) {
+      patch.contact_address = data.contactAddress;
+      // Geocoded here because the route planner cannot use an address. When a
+      // technician has no start address of their own, staff_start_point falls
+      // back to the business location — see 20260815180000 — and that tier is
+      // dead weight unless somebody turns this string into a point.
+      //
+      // Cleared when the address is cleared. Coordinates left pointing at a
+      // previous premises are worse than none: the planner has no way to doubt
+      // them, and every route would start from the old yard.
+      if (data.contactAddress) {
+        const { geocodeAddress } = await import("@/lib/geocode.server");
+        const geo = await geocodeAddress({ street: data.contactAddress });
+        patch.latitude = geo?.latitude ?? null;
+        patch.longitude = geo?.longitude ?? null;
+      } else {
+        patch.latitude = null;
+        patch.longitude = null;
+      }
+    }
     if (data.portalRescheduleCutoffHours !== undefined)
       patch.portal_reschedule_cutoff_hours = data.portalRescheduleCutoffHours;
     if (data.portalAllowSelfReschedule !== undefined)

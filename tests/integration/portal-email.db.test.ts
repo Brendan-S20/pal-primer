@@ -1,13 +1,34 @@
 /**
  * Proves the portal OTP EMAIL path actually attempts a real provider send and
  * records it — stronger evidence than "a row was queued". We intercept the
- * outgoing HTTP request to the Lovable email API and assert:
+ * outgoing HTTP request to Resend and assert:
  *   1. issuePortalOtp POSTs to the provider with the auth header + OTP payload.
  *   2. On provider success → email_send_log row status='sent' with the
  *      provider_message_id (the value you cross-reference in the dashboard).
  *   3. On provider failure → it throws (never silent) AND logs status='failed'.
  *
  * Local stack only; skipped without TEST_SUPABASE_* env.
+ *
+ * ── THIS FILE WAS AIMED AT A PROVIDER THE CODE NO LONGER USES ─────────────
+ *
+ * It ran for the first time on 2026-08-15, when the Sandboxes replay finally
+ * built a database for it, and two of its three tests failed with
+ *
+ *     Error: Email isn't configured for this company. Ask us to read you the code.
+ *
+ * which portal-auth.server.ts raises when RESEND_API_KEY is unset. The file
+ * was setting LOVABLE_API_KEY and intercepting api.lovable.dev — the OTP email
+ * path has since moved to Resend, and nothing noticed, because a test that has
+ * never run cannot observe that the thing it tests was rewritten underneath it.
+ *
+ * That is the same fault as every other one this replay found, one layer up:
+ * evidence nobody had checked in a while, trusted because it was written down.
+ *
+ * Retargeted at what the code does now — POST https://api.resend.com/emails,
+ * Bearer RESEND_API_KEY, `to` as an array, provider id read from `id` in the
+ * response body. The THIRD test needed no change: the current code still
+ * throws "We couldn't email your code right now" and still writes a 'failed'
+ * row, which is what it always asserted.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -20,7 +41,7 @@ const enabled = Boolean(URL && SERVICE);
 if (enabled) {
   process.env.SUPABASE_URL = URL;
   process.env.SUPABASE_SERVICE_ROLE_KEY = SERVICE;
-  process.env.LOVABLE_API_KEY = "test-lovable-key";
+  process.env.RESEND_API_KEY = "test-resend-key";
 }
 
 const runId = Math.random().toString(36).slice(2, 8);
@@ -74,7 +95,7 @@ describe.skipIf(!enabled)("portal OTP email is attempted + logged (finding #4)",
   function mockProvider(response: { ok: boolean; body: any }) {
     globalThis.fetch = (async (input: any, init: any) => {
       const u = typeof input === "string" ? input : input?.url ?? "";
-      if (String(u).includes("api.lovable.dev")) {
+      if (String(u).includes("api.resend.com")) {
         captured = { url: String(u), init };
         return new Response(JSON.stringify(response.body), {
           status: response.ok ? 200 : 502,
@@ -86,7 +107,7 @@ describe.skipIf(!enabled)("portal OTP email is attempted + logged (finding #4)",
   }
 
   it("POSTs the code to the provider and logs a 'sent' row with the provider id", async () => {
-    mockProvider({ ok: true, body: { success: true, message_id: "prov_msg_123" } });
+    mockProvider({ ok: true, body: { id: "prov_msg_123" } });
     const { issuePortalOtp } = await import("@/lib/portal-auth.server");
 
     const res = await issuePortalOtp(token, "email");
@@ -95,11 +116,12 @@ describe.skipIf(!enabled)("portal OTP email is attempted + logged (finding #4)",
 
     // The real outgoing provider request happened, with auth + our payload.
     expect(captured).not.toBeNull();
-    expect(captured!.url).toContain("/v1/messaging/email/send");
+    expect(captured!.url).toContain("/emails");
     const headers = new Headers(captured!.init.headers);
-    expect(headers.get("authorization")).toBe("Bearer test-lovable-key");
+    expect(headers.get("authorization")).toBe("Bearer test-resend-key");
     const sentBody = JSON.parse(captured!.init.body);
-    expect(sentBody.to).toBe(email);
+    // Resend takes an ARRAY of recipients; the Lovable API took a string.
+    expect(sentBody.to).toEqual([email]);
     expect(sentBody.subject).toMatch(/verification code/i);
     expect(sentBody.html).toMatch(/\d/); // contains the code
 
@@ -117,7 +139,7 @@ describe.skipIf(!enabled)("portal OTP email is attempted + logged (finding #4)",
   });
 
   it("throws AND logs 'failed' when the provider rejects (never silent)", async () => {
-    mockProvider({ ok: false, body: { success: false, status: "domain_unverified" } });
+    mockProvider({ ok: false, body: { message: "domain_unverified" } });
     const { issuePortalOtp } = await import("@/lib/portal-auth.server");
 
     await expect(issuePortalOtp(token2, "email")).rejects.toThrow(/couldn't email/i);

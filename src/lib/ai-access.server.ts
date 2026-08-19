@@ -82,6 +82,7 @@ export async function checkAiAccess(orgId: string): Promise<AiAccess> {
     billingStatus: data.billing_status,
     trialEndsAt: data.trial_ends_at,
     hasSubscription: !!data.stripe_subscription_id,
+    createdAt: data.created_at,
   });
   const allowed = aiAvailableFor(state);
   const reason = aiUnavailableReason(state);
