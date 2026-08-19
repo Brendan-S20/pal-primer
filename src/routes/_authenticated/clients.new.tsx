@@ -11,6 +11,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { BoundarySketch, formatArea, type PolygonGeoJSON } from "@/components/BoundarySketch";
+import { AddressAutocomplete, type ResolvedAddress } from "@/components/AddressAutocomplete";
 import { Check, ChevronRight, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
@@ -109,6 +110,36 @@ function NewClientWizard() {
   // instead of silently rendering a zoomed-out world map (finding #13).
   const [geoStatus, setGeoStatus] = useState<"idle" | "loading" | "ok" | "notfound" | "error">("idle");
   const boundaryAreaSqm = useMemo(() => (boundary ? polyAreaSqm(boundary) : null), [boundary]);
+
+  // Address entry, same contract as PropertyDrawer: a matched address fills
+  // every field at once and brings its own coordinates, and any hand edit
+  // afterwards throws those coordinates away.
+  //
+  // Throwing them away matters more here than it looks. The Yard step's
+  // geocode effect is guarded by `if (geo) return;`, so a pin left over from
+  // the address the user has just corrected would be the pin they draw a
+  // boundary on — for the wrong house, with no way to tell from the map.
+  function applyResolvedAddress(r: ResolvedAddress) {
+    setStreet(r.address.street);
+    setCity(r.address.city);
+    if (r.address.region) setRegion(r.address.region);
+    setPostalCode(r.address.postalCode);
+    if (r.address.latitude != null && r.address.longitude != null) {
+      // A provider match is a better pin than the Yard step's Nominatim
+      // lookup, and it saves the round trip: the effect there is a fallback
+      // for hand-typed addresses now.
+      setGeo({ lat: r.address.latitude, lng: r.address.longitude });
+      setGeoStatus("ok");
+    } else {
+      setGeo(null);
+      setGeoStatus("idle");
+    }
+  }
+  function setAddressField(set: (v: string) => void, v: string) {
+    set(v);
+    setGeo(null);
+    setGeoStatus("idle");
+  }
 
   // Best-effort geocode when entering the Yard step
   useEffect(() => {
@@ -352,12 +383,18 @@ function NewClientWizard() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="sm:col-span-2 space-y-2">
                 <Label htmlFor="st">Street address</Label>
-                <Input
+                {/* Autocomplete when a provider is configured, a plain text
+                    input when none is — which is the state today. Nothing
+                    about the required-field validation below changes either
+                    way: it reads `street`, which this writes on every
+                    keystroke exactly as the bare <Input> did. */}
+                <AddressAutocomplete
                   id="st"
                   required
                   value={street}
-                  onChange={(e) => setStreet(e.target.value)}
-                  aria-invalid={attempted && !street ? true : undefined}
+                  onChangeText={(t) => setAddressField(setStreet, t)}
+                  onResolved={applyResolvedAddress}
+                  ariaInvalid={attempted && !street ? true : undefined}
                   className={attempted && !street ? "border-destructive focus-visible:ring-destructive" : undefined}
                 />
                 {attempted && !street && <p className="text-xs text-destructive">Street address is required.</p>}
@@ -368,7 +405,7 @@ function NewClientWizard() {
                   id="ci"
                   required
                   value={city}
-                  onChange={(e) => setCity(e.target.value)}
+                  onChange={(e) => setAddressField(setCity, e.target.value)}
                   aria-invalid={attempted && !city ? true : undefined}
                   className={attempted && !city ? "border-destructive focus-visible:ring-destructive" : undefined}
                 />
@@ -381,7 +418,7 @@ function NewClientWizard() {
                     id="rg"
                     required
                     value={region}
-                    onChange={(e) => setRegion(e.target.value)}
+                    onChange={(e) => setAddressField(setRegion, e.target.value)}
                     aria-invalid={attempted && !region ? true : undefined}
                     className={attempted && !region ? "border-destructive focus-visible:ring-destructive" : undefined}
                   />
@@ -393,7 +430,7 @@ function NewClientWizard() {
                     id="pc"
                     required
                     value={postalCode}
-                    onChange={(e) => setPostalCode(e.target.value)}
+                    onChange={(e) => setAddressField(setPostalCode, e.target.value)}
                     aria-invalid={attempted && !postalCode ? true : undefined}
                     className={attempted && !postalCode ? "border-destructive focus-visible:ring-destructive" : undefined}
                   />

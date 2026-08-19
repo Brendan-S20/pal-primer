@@ -18,6 +18,7 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import {
   MapPin,
   UserPlus,
@@ -334,9 +335,15 @@ function NeighborsPage() {
           <CardContent className="space-y-3">
             <div>
               <Label>Address</Label>
-              <Input
+              {/* The single best-biased field in the app: a canvassing door is
+                  by definition on a street the workspace already services, and
+                  the proxy biases suggestions to the average of the org's
+                  geocoded properties. Stored as one line (`address_line`), so
+                  a match writes the formatted address. */}
+              <AddressAutocomplete
                 value={address}
-                onChange={(e) => setAddress(e.target.value)}
+                onChangeText={setAddress}
+                onResolved={(r) => setAddress(r.address.formatted)}
                 placeholder="123 Elm St, Springfield"
               />
             </div>

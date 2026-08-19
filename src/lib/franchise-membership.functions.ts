@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
+import { hasPermission } from "@/lib/permissions";
 import type { AdjustmentLedgerRow } from "@/lib/franchise-adjustments";
 import type { SettlementRow } from "@/lib/franchise-settlement";
 
@@ -26,14 +27,49 @@ import type { SettlementRow } from "@/lib/franchise-settlement";
 // Leaving, by contrast, is NOT the child's to do — see the note at the bottom
 // of this file.
 //
-// Owner-only on both sides, enforced in SQL as well as here — joining a
-// franchise changes who can see this organization's numbers, which is not a
-// decision an office manager should make alone.
+// JOINING is owner-only on both sides, enforced in SQL as well as here —
+// joining a franchise changes who can see this organization's numbers, which is
+// not a decision an office manager should make alone.
+//
+// That sentence used to be here and was not true of "here". `joinFranchise`
+// gated on `manage_settings`, which office_manager holds; the SQL underneath it
+// requires `owner`. An office manager therefore got a Join-a-franchise form
+// that looked like every other form on the page, typed a real invitation code
+// into it, and was told "Only the owner can join a franchise." — after the
+// code had been sent to the database. The permission the app checked and the
+// permission the database enforces were two different permissions, which is the
+// same fault this area has produced repeatedly in the other direction.
+//
+// `manage_franchise` is the owner-only permission (ROLE_PERMISSIONS gives it to
+// owner and to nobody else, and tests/franchise-reads-are-not-for-everyone
+// pins that), so it is what "owner-only" is spelled as in this codebase rather
+// than a bare role comparison.
+//
+// ── WHY THE READ IS NOT NARROWED WITH IT ───────────────────────────────────
+//
+// `getMyFranchiseMembership` stays on `manage_settings` deliberately. It is not
+// the act the SQL restricts — it is the page's read, and the page shows an
+// office manager three things they are entitled to: the royalty rate this
+// location is billed at, its settlement statements and its adjustment trail.
+// The latter two are gated on `view_financials`, which office_manager holds, and
+// they are MOUNTED on the answer to this call. Narrowing this read to the owner
+// would take those panels away from a role the product deliberately shows them
+// to — and would not even hide the join form, because the page falls through to
+// the form when the membership query returns nothing.
+//
+// So the read answers the question the page actually needs: `canJoin`, computed
+// from the caller's own role on the server. Hiding a control the caller cannot
+// use is not the authorization — `joinFranchise` and the SQL are, in that order
+// — it is what stops the product offering somebody an action it will refuse.
 
 export const getMyFranchiseMembership = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { orgId, role } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_settings",
+    );
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // Service-role on purpose: the whole point is reading the PARENT's name,
@@ -99,6 +135,15 @@ export const getMyFranchiseMembership = createServerFn({ method: "GET" })
       /** Not a member now, but was: there are settlements or adjustments on
        *  record from a franchise link that has ended. */
       hasFranchiseHistory,
+      /** Whether THIS caller may redeem an invitation code.
+       *
+       *  Computed from the caller's own role rather than sent up as a role for
+       *  the client to reason about: the page needs one boolean and giving it
+       *  the role instead would invite a second, differently-worded copy of
+       *  this rule in JSX. `joinFranchise` re-checks it, and
+       *  `redeem_franchise_link_code` re-checks it again in SQL — this flag is
+       *  presentation only. */
+      canJoin: hasPermission(role, "manage_franchise"),
       // The child can SEE what they owe. The parent sets it (BUG-19 protects the
       // column), but a franchisee being unable to see their own royalty rate in
       // a product that bills them for it would be indefensible.
@@ -166,9 +211,12 @@ export const joinFranchise = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    // Ungated by plan — see the file header. Still owner-only, and the SQL
-    // re-checks that independently rather than trusting this layer.
-    await requirePermission(context.supabase, context.userId, "manage_settings");
+    // Ungated by plan — see the file header. Owner-only, which is what
+    // `manage_franchise` means in ROLE_PERMISSIONS, and what
+    // `redeem_franchise_link_code` requires in SQL. It used to say
+    // `manage_settings` here, which office_manager holds, so this layer
+    // admitted a caller the database was always going to refuse.
+    await requirePermission(context.supabase, context.userId, "manage_franchise");
 
     // Runs on the CALLER's client so auth.uid() inside the SECURITY DEFINER
     // function is the real person consenting. Using the service-role client
@@ -267,8 +315,23 @@ export const getMyFranchiseSettlements = createServerFn({ method: "GET" })
 
     const { data, error } = await (supabaseAdmin as any)
       .from("franchise_royalty_invoices")
+      // `revenue_collected_by_parent_cents` is not decoration on this side
+      // either. The net is
+      //
+      //     net_due = |collected_by_franchise − royalty − adjustments|
+      //
+      // so on a period the franchise collected part of, a reader given only
+      // revenue, royalty and adjustments cannot arrive at the net from them.
+      // The parent's query (listRoyaltyInvoices) has selected it since
+      // 2026-08-19 and this one did not, which meant the two parties were
+      // reconciling the same document from different numbers — the exact thing
+      // one shared component and one vocabulary exist to prevent.
+      //
+      // The component degrades honestly when the column is absent (null, not a
+      // false zero), which is why this was invisible rather than wrong: the
+      // location's copy simply never showed the split.
       .select(
-        "id, period_start, period_end, revenue_cents, royalty_percent, royalty_cents, amount_cents, adjustments_applied_cents, direction, net_due_cents, status",
+        "id, period_start, period_end, revenue_cents, royalty_percent, royalty_cents, amount_cents, adjustments_applied_cents, revenue_collected_by_parent_cents, direction, net_due_cents, status",
       )
       .eq("child_organization_id", orgId)
       .neq("status", "draft")

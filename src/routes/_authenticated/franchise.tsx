@@ -565,8 +565,16 @@ function RoyaltyBilling() {
       // 0" as a success is how an owner walks away believing it did.
       const n = Number(r.generated ?? 0);
       if (n === 0) {
+        // The old sentence ended "Void an issued statement to recalculate it",
+        // which was an instruction for something impossible: voiding leaves the
+        // row at `status = 'void'`, still holding the unique key for that
+        // period, and the upsert only writes over a DRAFT — so the owner who
+        // followed the advice got zero again, with the statement's adjustments
+        // now loose and heading for whatever period was generated next. Reopen
+        // as draft is the act that actually recovers a period, and it is now a
+        // button on the statement itself.
         toast.info(
-          `Nothing generated for ${r.periodStart} → ${r.periodEnd}. Statements for that period are already issued, or there are no locations. Void an issued statement to recalculate it.`,
+          `Nothing generated for ${r.periodStart} → ${r.periodEnd}. Statements for that period have already left draft, or there are no locations. Reopen one as a draft to recalculate it.`,
         );
       } else {
         toast.success(
@@ -611,6 +619,31 @@ function RoyaltyBilling() {
           <div className="mb-2 text-xs font-medium uppercase text-muted-foreground">
             Royalty rate per location
           </div>
+          {/* ── WHAT THE PERCENTAGE IS A PERCENTAGE OF ──────────────────────
+              Owner decision, 2026-08-19: the royalty stays on GROSS, and the
+              product says so.
+
+              The royalty is round(collected × pct / 100) over
+              payments.amount_cents. That base excludes the card surcharge —
+              right, it was fee recovery and never revenue — and includes
+              Stripe's processing fee and HoundStack's 0.5% platform fee, both
+              of which come out of the location's side. So a location billed
+              7% of collected revenue pays 7% of a number larger than the one
+              that reached its bank.
+
+              No arithmetic changes. What changes is that the person choosing
+              the percentage is told what it multiplies, at the moment they
+              choose it, rather than discovering it from a franchisee's
+              reconciliation months later. "% of collected revenue" is kept
+              verbatim: it is the same phrase the settlement statement and the
+              rollup use, and a fourth wording for one figure is how the last
+              round of this went wrong. */}
+          <p className="mb-3 text-xs text-muted-foreground">
+            The percentage applies to collected revenue before fees. Stripe&apos;s processing fee
+            and HoundStack&apos;s 0.5% platform fee are deducted from what the location receives and
+            are not taken off the royalty base, so a location keeps less than the figure the royalty
+            is calculated on. The card surcharge is already excluded — it was never revenue.
+          </p>
           <div className="space-y-2">
             {children.map((c) => (
               // The name gets its own line below sm: a location name, a number
@@ -662,6 +695,7 @@ function RoyaltyBilling() {
         error={invoices.error ? (invoices.error as Error).message : null}
         isUpdating={setStatus.isPending}
         onSetStatus={(invoiceId, status) => setStatus.mutate({ invoiceId, status })}
+        onReopenAsDraft={(invoiceId) => setStatus.mutate({ invoiceId, status: "draft" })}
       />
     </>
   );

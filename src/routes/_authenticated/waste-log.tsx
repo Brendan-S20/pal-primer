@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { HelpTip } from "@/components/HelpTip";
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { Camera, Plus, X } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/waste-log")({
@@ -270,11 +271,24 @@ function WasteLogPage() {
               placeholder="Transfer Station"
             />
           </div>
+          {/* min-w-40 and flex-1, so the field and the dropdown it hangs over
+              stay inside a 360px viewport instead of setting the row's width.
+              Judgement call on this one field: a transfer station is not a
+              customer address, and the provider is restricted to
+              street_address/premise/subpremise (google-places.server.ts), so
+              typing "Northside Transfer Station" by name will match nothing —
+              a street address for it will. That is not a reason to leave the
+              field plain: `saveFacility` geocodes whatever string is here and
+              the route planner uses the result as a fallback end point, so a
+              matched address is worth more here than on most fields, and a
+              name typed by hand still saves exactly as it does today. The
+              workspace bias is right too — the dump is near the routes. */}
           <div className="flex-1 min-w-40">
             <Label>Address</Label>
-            <Input
+            <AddressAutocomplete
               value={newFacility.address}
-              onChange={(e) => setNewFacility({ ...newFacility, address: e.target.value })}
+              onChangeText={(t) => setNewFacility({ ...newFacility, address: t })}
+              onResolved={(r) => setNewFacility({ ...newFacility, address: r.address.formatted })}
             />
           </div>
           <Button type="submit" disabled={facMut.isPending}>

@@ -28,6 +28,7 @@ import {
 } from "@/lib/org.functions";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { US_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/route-window";
@@ -448,17 +449,28 @@ function BrandingCard() {
           </div>
           <div>
             <Label className="text-xs">Business address</Label>
-            <Input
+            {/* Autocomplete over ONE free-text line, which is a deliberate
+                pair of decisions.
+                  Autocomplete, because the claim in the note below that
+                nothing geocodes this stopped being true: org.functions.ts
+                geocodes it on save, and staff_start_point falls back to the
+                business location when a technician has no start address of
+                their own (migration 20260815180000). A matched address is a
+                pin the planner can trust; a hand-typed one is whatever
+                Nominatim makes of it.
+                  Still one line, because a PO box is a legitimate value here
+                and the provider only matches street_address/premise — that
+                tenant types their box number and saves it exactly as today.
+                Splitting into street/city/state would lock them out for a
+                field that is mostly printed in an email footer. */}
+            <AddressAutocomplete
               className="mt-1"
               value={contactAddress}
-              onChange={(e) => setContactAddress(e.target.value)}
+              onChangeText={setContactAddress}
+              onResolved={(r) => setContactAddress(r.address.formatted.slice(0, 300))}
               placeholder="123 Main St, Springfield, IL 62704"
               maxLength={300}
             />
-            {/* One free-text line, not street/city/state: nothing routes to
-                this or geocodes it, it is printed in the footer of customer
-                emails. Split fields would imply otherwise, and would not fit
-                the tenants trading from a PO box. */}
             <p className="mt-1 text-xs text-muted-foreground">
               {contactAddress.trim()
                 ? "Shown in the footer of emails to your customers."

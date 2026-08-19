@@ -154,6 +154,23 @@ function FranchiseSettings() {
           require asking the party that raised it. */}
       {showLedgers ? <MyAdjustments /> : null}
 
+      {/* ── THE JOIN FORM IS OWNER-ONLY, AND NOW LOOKS IT ──────────────────
+          `redeem_franchise_link_code` requires `owner` in SQL. This page gated
+          on `manage_settings`, which office_manager holds, so an office manager
+          got the form below in full working order — label, code field, enabled
+          button — and the only way to discover it was not for them was to type
+          a real invitation code into it and be told "Only the owner can join a
+          franchise."
+
+          `canJoin` is the server's answer about THIS caller. It is not the
+          authorization — joinFranchise re-checks it and the SQL re-checks it
+          again — it is the difference between a product that says no and a
+          product that never offered.
+
+          Non-owners are told the capability exists and who has it, rather than
+          being shown an empty page: a blank space where a colleague's screen
+          has a card is a support call, and "ask an owner" is the actual
+          answer. */}
       {q.isLoading || m?.isChild ? null : m?.isParent ? (
         <Card>
           <CardContent className="p-6 text-sm">
@@ -162,6 +179,17 @@ function FranchiseSettings() {
               Manage your locations and royalty rates from the Franchise page. A parent can&apos;t
               also be a location within another franchise.
             </p>
+          </CardContent>
+        </Card>
+      ) : !m?.canJoin ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Join a franchise</CardTitle>
+          </CardHeader>
+          <CardContent className="p-6 pt-0 text-sm text-muted-foreground">
+            Joining a franchise changes who can see this organization&apos;s totals and lets them
+            bill it a royalty, so only an owner can accept an invitation code. Ask an owner of this
+            organization to do it from this page.
           </CardContent>
         </Card>
       ) : (

@@ -593,3 +593,320 @@ export const getPlatformAudit = createServerFn({ method: "GET" })
 
     return { rows };
   });
+
+// ---------- Plan creation + Stripe mirroring (platform admin → Plans page) ----------
+//
+// ── WHAT WAS MISSING, AND WHAT THE SCREEN SAID ────────────────────────────
+//
+// `platform_plans` has had INSERT and DELETE policies for platform admins since
+// 20260810120000, and `updatePlatformPlan` for editing one. There was no way to
+// CREATE one — no server function, no form — while the Plans page said "Stripe
+// products/prices are mirrored from here once the platform Stripe key is set",
+// which was true of nothing: no path in this repo has ever created a Stripe
+// product or price for a plan. (`platform-addons.functions.ts` does it for
+// ADD-ONS, which is where the sentence presumably came from.)
+//
+// ── WHY THE ROW IS WRITTEN FIRST, AND WRITTEN OFF SALE ────────────────────
+//
+// Two systems have to agree and there is no transaction across them, so the
+// question is not "how do we avoid a half state" — it is "which half state is
+// survivable". They are not symmetric:
+//
+//   * A plan row with no Stripe price, ON SALE, is the bad one. It appears in
+//     `listPlatformPlans` (which does not filter on price ids) and is then
+//     rejected by `createPlanSubscription` (which does), so a tenant picks it
+//     and is told "That plan isn't available. Contact support."
+//   * A plan row with no Stripe price, OFF SALE, is inert. It is not in any
+//     picker, `assign_billing_tier_for_org` skips it (`is_active = true` is the
+//     first thing that predicate asks), and the console shows it as not
+//     mirrored with a button to try again.
+//   * Stripe objects with no plan row bill nobody — a price only charges
+//     through a subscription — and they are re-adopted by name on the retry
+//     rather than duplicated, because every price is minted with its
+//     `lookup_key`.
+//
+// So: insert inactive, mirror, write the ids back, and leave putting it on sale
+// to the existing "Offer again" action, which already states the blast radius.
+// Nothing here can move a tenant onto a plan or bill anybody.
+
+const createPlatformPlanSchema = z.object({
+  name: z.string().trim().min(1, "Name can't be empty").max(100),
+  slug: z.string().trim().min(1, "Slug can't be empty").max(60),
+  description: z.string().max(1000).nullable().optional(),
+  currency: z.string().trim().min(3).max(3).optional(),
+  isEnterprise: z.boolean().optional(),
+  // MONTHLY base. Never annual dollars — same contract as updatePlatformPlan.
+  priceCents: z.number().int().min(0, "Price must be >= 0").nullable().optional(),
+  annualPriceCents: z.number().int().min(0, "Price must be >= 0").nullable().optional(),
+  includedSeats: z.number().int().min(0).nullable().optional(),
+  pricePerSeatCents: z.number().int().min(0, "Price must be >= 0").nullable().optional(),
+  interval: z.enum(["month", "year"]).optional(),
+  sortOrder: z.number().int().optional(),
+  aiActionsIncluded: z.number().int().min(0).nullable().optional(),
+  aiOverageCentsPerAction: z.number().int().min(0).nullable().optional(),
+});
+
+export type PlanMirrorReport = {
+  mirrored: boolean;
+  /** Present when mirroring could not run or refused. Never thrown past the
+   *  plan row's own creation: the row exists, and saying "it failed" about a
+   *  thing that succeeded is its own bug. */
+  problem: string | null;
+  productId: string | null;
+  created: string[];
+  reused: string[];
+  skipped: Array<{ kind: string; reason: string }>;
+};
+
+/**
+ * Mirror one plan row into whichever Stripe account STRIPE_SECRET_KEY names,
+ * then write back the ids for the columns that are still EMPTY.
+ *
+ * Only empty columns. The add-on path learned this the hard way and says so:
+ * a write-back that overwrites is how a live price id gets replaced by a test
+ * one, and the symptom is a subscription created against the wrong account.
+ */
+async function mirrorPlanAndRecord(
+  supabaseAdmin: any,
+  planId: string,
+  actorUserId: string,
+): Promise<PlanMirrorReport> {
+  const empty: PlanMirrorReport = {
+    mirrored: false,
+    problem: null,
+    productId: null,
+    created: [],
+    reused: [],
+    skipped: [],
+  };
+
+  const secret = process.env.STRIPE_SECRET_KEY;
+  if (!secret) {
+    return {
+      ...empty,
+      problem:
+        "STRIPE_SECRET_KEY is not set on this deployment, so nothing was created in Stripe. The plan " +
+        "is saved and off sale; mirror it once the key is set.",
+    };
+  }
+
+  const { data: plan, error: planErr } = await supabaseAdmin
+    .from("platform_plans")
+    .select(
+      "id, name, slug, description, currency, is_enterprise, price_cents, annual_price_cents, " +
+        "included_seats, price_per_seat_cents, stripe_product_id, stripe_price_id, " +
+        "stripe_annual_price_id, stripe_seat_price_id, stripe_annual_seat_price_id",
+    )
+    .eq("id", planId)
+    .maybeSingle();
+  if (planErr) return { ...empty, problem: planErr.message };
+  if (!plan) return { ...empty, problem: "Plan not found." };
+
+  const { makeStripe } = await import("@/lib/stripe-client.server");
+  const { mirrorPlanToStripe, PlanMirrorRefusal } = await import(
+    "@/lib/platform-plan-stripe.server"
+  );
+
+  let outcome;
+  try {
+    outcome = await mirrorPlanToStripe(await makeStripe(secret), plan);
+  } catch (e: any) {
+    // A refusal is a sentence written for the person reading it; anything else
+    // is Stripe's own message, which is still better than "something failed".
+    const problem = e instanceof PlanMirrorRefusal ? e.message : (e?.message ?? String(e));
+    console.error(`plan mirror failed for ${plan.slug}`, problem);
+    return { ...empty, problem };
+  }
+
+  const patch: Record<string, unknown> = {};
+  if (outcome.productId && !plan.stripe_product_id) patch.stripe_product_id = outcome.productId;
+  for (const [column, priceId] of Object.entries(outcome.priceIdByColumn)) {
+    if (!(plan as Record<string, unknown>)[column]) patch[column] = priceId;
+  }
+
+  if (Object.keys(patch).length > 0) {
+    patch.updated_at = new Date().toISOString();
+    const { error } = await supabaseAdmin
+      .from("platform_plans")
+      .update(patch as any)
+      .eq("id", planId);
+    if (error) {
+      // The Stripe half stands and the database half did not. Say exactly that:
+      // the objects exist, they carry their lookup keys, and running this again
+      // adopts them by name instead of minting a second set.
+      console.error(`plan ${plan.slug}: stripe objects created but ids not saved`, error.message);
+      return {
+        ...empty,
+        productId: outcome.productId,
+        created: outcome.created,
+        reused: outcome.reused,
+        skipped: outcome.skipped,
+        problem:
+          `The Stripe product and prices for ${plan.slug} were created, but saving their ids failed ` +
+          `(${error.message}). Nothing is billing from them. Use “Mirror to Stripe” again — the ` +
+          `prices carry their lookup keys, so the retry adopts the same ones rather than making more.`,
+      };
+    }
+  }
+
+  try {
+    await supabaseAdmin.from("platform_admin_audit").insert({
+      actor_user_id: actorUserId,
+      organization_id: null,
+      action: "mirror_plan_to_stripe",
+      before_json: { id: planId, slug: plan.slug },
+      after_json: {
+        product_id: outcome.productId,
+        created: outcome.created,
+        reused: outcome.reused,
+        skipped: outcome.skipped,
+        ...patch,
+      },
+    });
+  } catch { /* audit best-effort */ }
+
+  return {
+    mirrored: outcome.created.length > 0 || outcome.reused.length > 0,
+    problem: null,
+    productId: outcome.productId,
+    created: outcome.created,
+    reused: outcome.reused,
+    skipped: outcome.skipped,
+  };
+}
+
+/**
+ * Is a platform Stripe key configured, and which account does it point at?
+ *
+ * The Plans page asks so it can say what will happen BEFORE the person fills in
+ * a form — "created off sale and not mirrored" is a fine outcome to choose and a
+ * poor one to discover. The mode matters as much as the presence: mirroring a
+ * plan into the sandbox while believing it went live is a catalog that looks
+ * complete and sells nothing.
+ */
+export const getPlatformStripeConfig = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertPlatformAdmin(context.supabase, context.userId);
+    const secret = process.env.STRIPE_SECRET_KEY ?? "";
+    // The same rule check-stripe-catalog.mjs uses: `sk_live_…` / `rk_live_…`.
+    const mode = !secret ? null : /^[a-z]k_live_/.test(secret) ? "live" : "test";
+    return { stripeConfigured: !!secret, mode };
+  });
+
+export const createPlatformPlan = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => createPlatformPlanSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    await assertPlatformAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { normalizePlanSlug, planShapeProblem, planSlugProblem, PLATFORM_CATALOG_CURRENCY } =
+      await import("@/lib/platform-plan-catalog");
+
+    const slug = normalizePlanSlug(data.slug);
+    const currency = (data.currency ?? PLATFORM_CATALOG_CURRENCY).toLowerCase();
+    const isEnterprise = data.isEnterprise ?? false;
+    const interval = data.interval ?? "month";
+    const priceCents = data.priceCents ?? null;
+    const annualPriceCents = data.annualPriceCents ?? null;
+    const includedSeats = data.includedSeats ?? null;
+    const pricePerSeatCents = data.pricePerSeatCents ?? null;
+
+    const { data: existing, error: existingErr } = await supabaseAdmin
+      .from("platform_plans")
+      .select("slug, sort_order");
+    if (existingErr) throw new Error(existingErr.message);
+
+    const slugProblem = planSlugProblem(
+      slug,
+      (existing ?? []).map((p: { slug: string }) => p.slug),
+    );
+    if (slugProblem) throw new Error(slugProblem);
+
+    const shapeProblem = planShapeProblem({
+      slug,
+      currency,
+      isEnterprise,
+      priceCents,
+      annualPriceCents,
+      includedSeats,
+      pricePerSeatCents,
+      interval,
+    });
+    if (shapeProblem) throw new Error(shapeProblem);
+
+    const sortOrder =
+      data.sortOrder ??
+      Math.max(0, ...(existing ?? []).map((p: { sort_order: number }) => p.sort_order ?? 0)) + 10;
+
+    const { data: inserted, error: insErr } = await supabaseAdmin
+      .from("platform_plans")
+      .insert({
+        name: data.name,
+        slug,
+        description: data.description ?? null,
+        currency,
+        interval,
+        is_enterprise: isEnterprise,
+        price_cents: priceCents,
+        annual_price_cents: annualPriceCents,
+        included_seats: includedSeats,
+        price_per_seat_cents: pricePerSeatCents,
+        ai_actions_included: data.aiActionsIncluded ?? null,
+        ai_overage_cents_per_action: data.aiOverageCentsPerAction ?? null,
+        // The per-employee catalog does not use client bands: every live plan
+        // carries 0/NULL and `assign_billing_tier_for_org` selects on
+        // `included_seats`, not on these. NOT NULL with no default, so it has
+        // to be written, and 0/NULL is the value that means "no band".
+        client_limit_min: 0,
+        client_limit_max: null,
+        sort_order: sortOrder,
+        // Always. See the section header: an unmirrored plan on sale is the one
+        // half-state that reaches a customer.
+        is_active: false,
+      } as any)
+      .select("id, slug, name")
+      .maybeSingle();
+    if (insErr) {
+      // A duplicate slug can still land here if another admin created the same
+      // one between the check above and this insert.
+      if ((insErr as any).code === "23505") {
+        throw new Error(`The slug “${slug}” is already used by another plan.`);
+      }
+      throw new Error(insErr.message);
+    }
+    if (!inserted) throw new Error("The plan could not be created.");
+
+    try {
+      await supabaseAdmin.from("platform_admin_audit").insert({
+        actor_user_id: context.userId,
+        organization_id: null,
+        action: "create_plan",
+        before_json: null,
+        after_json: { id: inserted.id, slug, name: data.name, is_active: false },
+      });
+    } catch { /* audit best-effort */ }
+
+    const mirror = await mirrorPlanAndRecord(supabaseAdmin, inserted.id, context.userId);
+    return { planId: inserted.id as string, slug, name: inserted.name as string, mirror };
+  });
+
+/**
+ * Mirror an existing plan that has no Stripe prices yet — the retry for every
+ * way the second half can fail, and the path for a plan drafted before the
+ * Stripe key was configured.
+ *
+ * Deliberately NOT an update: it fills empty columns and adopts prices by name.
+ * Re-pricing a plan that tenants are already subscribed to is a different
+ * decision with a different blast radius, and this is not it.
+ */
+export const mirrorPlatformPlan = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ planId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertPlatformAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const mirror = await mirrorPlanAndRecord(supabaseAdmin, data.planId, context.userId);
+    if (mirror.problem) throw new Error(mirror.problem);
+    return mirror;
+  });

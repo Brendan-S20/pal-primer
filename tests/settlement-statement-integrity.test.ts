@@ -80,13 +80,37 @@ describe("generate_franchise_settlements", () => {
     expect(body.match(/fa\.created_at\s*<\s*_to/g)?.length).toBe(2);
   });
 
-  it("settles a period at the rate it was FIRST settled at", () => {
-    // Reading franchise_royalty_percent live restated closed months every time
-    // the owner changed a location's rate. Issued statements were already safe;
-    // drafts are exactly what sits there between generating and issuing.
+  it("settles a period at the rate it was DELIVERED at, and lets a draft move", () => {
+    // CHANGED 2026-08-19, on an owner decision, and worth reading before
+    // changing back.
+    //
+    // The complaint this freeze was written for — recorded at the top of this
+    // file — is "changing a royalty rate restated CLOSED periods". A draft is
+    // not a closed period; it is the working figure between generating and
+    // issuing, and franchise-settlement.ts has always said the generator
+    // "rewrites drafts freely — a late adjustment moves the figures
+    // underneath". The rate was the one input that did not follow that rule.
+    //
+    // Worse, it was the ONLY half the freeze could reach. The upsert below is
+    // guarded by `WHERE status = 'draft'`, so a statement that has left draft
+    // is not rewritten at all and never needed protecting from a rate change;
+    // the frozen rate was read and thrown away with everything else on the row.
+    // What the freeze actually did was pin the one row the generator is allowed
+    // to move to whatever percentage was configured the night it was first cut
+    // — so an owner who set a rate on the 5th, pressed Generate and was told
+    // "Generated 2 royalty invoices" got two rewritten drafts at the old rate.
+    //
+    // So the lookup stays, and skips drafts. The protection that mattered is
+    // asserted by the next test and is unchanged.
     const kids = body.slice(body.indexOf("WITH kids"), body.indexOf("rev AS"));
     expect(kids).toMatch(/SELECT\s+fri\.royalty_percent/);
     expect(kids).toMatch(/fri\.period_start\s*=\s*_start/);
+    // The half that changed. Without it the freeze lands on drafts and only on
+    // drafts, which is precisely backwards.
+    expect(
+      kids,
+      "the frozen rate is read from a DRAFT statement, so a rate change cannot reach the one row the generator may rewrite",
+    ).toMatch(/fri\.status\s*<>\s*'draft'/);
     // The live column stays as the fallback for a period never settled before.
     expect(kids).toMatch(/o\.franchise_royalty_percent/);
   });
