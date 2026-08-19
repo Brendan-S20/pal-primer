@@ -268,14 +268,14 @@ The rule stated first in the working agreement, and the most user-visible break.
 | Route | Viewport | Content width |
 |---|---|---|
 | ~~`/clients/:id`~~ | ~~360~~ | ~~**585px**~~ **FIXED — now 360px** |
-| `/clients/new` | 360 | **565px** |
+| ~~`/clients/new`~~ | ~~360~~ | ~~**565px**~~ **FIXED — now 360px** |
 | ~~`/dashboard`~~ | ~~360~~ | ~~**503px**~~ **FIXED — now 360px** |
 | `/platform/tenants/:id` (audit diff) | 360 | **465px** |
-| `/my-day` | 360 | **407px** |
+| ~~`/my-day`~~ | ~~360~~ | ~~**407px**~~ **FIXED — now 360px, and the whole surface is clean** |
 | `/clients` | 768 **and** 1280 | **1431px** |
 | `/invoices` | 768 | **1054px** |
 | ~~`/clients/:id`~~ | ~~768~~ | ~~**849px**~~ **FIXED — now 768px** |
-| `/clients/new` | 768 | **829px** |
+| ~~`/clients/new`~~ | ~~768~~ | ~~**829px**~~ **FIXED — now 768px** |
 
 `/clients` at 1280 is worth singling out: this is not a phone problem. It is the
 tablet-and-split-screen band the agreement calls out as "every tablet and every
@@ -395,3 +395,36 @@ not inferred. It works today because it is wrong consistently — but it means t
 impersonation switch changes the storage key out from under a live session, and
 any future code reading the documented `sb-<ref>-auth-token` key finds nothing.
 Not fixed here; it is app source and this was a test-only change.
+
+
+### 6.7 The one finding the rule cannot express, 2026-08-19
+
+`/clients/new` still fails at 360px, and the only thing left on it is **two
+shadcn radio dots at 16.0px** — the residential/commercial account-type choice.
+
+They are `aspect-square h-4 w-4` from `ui/radio-group.tsx`, and that is what a
+radio button looks like. Growing the element grows the visible circle, because
+the border is on the element being measured; padding cannot help for the same
+reason. So the control cannot be made 44px without redesigning what a radio
+looks like across the whole app.
+
+**They are not unreachable.** Each has a real `<Label htmlFor>` beside it, so
+tapping the word "Residential" selects it — which is how anyone actually uses a
+radio. The sweep measures the control it can see and has no way to know that.
+
+Three ways out, none of them free, and this needs an owner call:
+
+1. **Teach the rule about labels** — exempt a control whose associated
+   `<label>` has a box of at least 44px, and give these rows `min-h-11` so that
+   is true. Correct in principle and the only option that makes the *behaviour*
+   better rather than the *number* better. It is also a change to a shared rule
+   in `tests/viewports/rules.ts`, which is exactly where a relaxation could
+   quietly excuse real faults later.
+2. **Replace the radios with segmented buttons** on this step. Two mutually
+   exclusive options with short labels are a segmented control anyway, and a
+   segmented control is 44px without argument.
+3. **Record it as a permanent known exception** and stop counting it.
+
+Deliberately not chosen unilaterally: option 1 relaxes a rule to clear a
+finding, which is the shape of change that should never be made by whoever is
+trying to clear the finding.

@@ -296,18 +296,29 @@ function NewClientWizard() {
         <h1 className="mt-2 text-2xl font-semibold">New client</h1>
       </div>
 
-      {/* Stepper */}
-      <div className="flex items-center gap-2 text-sm">
+      {/* Stepper.
+          MEASURED 2026-08-19: five numbered chips, their labels and four
+          chevrons come to 565px, so at 360px steps 3, 4 and 5 hung off the
+          side of the screen and the page scrolled sideways. At 768px step 5
+          still did.
+          This is the case CLAUDE.md names outright — "wide content … wide
+          toolbars — scrolls inside its own `overflow-x: auto` container. The
+          page body does not." A stepper is a toolbar: it has a natural width,
+          it is read left to right, and squeezing it is worse than scrolling
+          it. `shrink-0` on each chip so they scroll at full size rather than
+          being compressed into each other, and the dots take the touch floor
+          because a completed step is a button you can go back to. */}
+      <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 text-sm">
         {STEPS.map((label, i) => {
           const state = i < step ? "done" : i === step ? "current" : "todo";
           return (
-            <div key={label} className="flex items-center gap-2">
+            <div key={label} className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
                 onClick={() => i < step && setStep(i)}
                 disabled={i > step}
                 className={
-                  "flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium " +
+                  "flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium max-md:h-11 max-md:w-11 " +
                   (state === "done"
                     ? "bg-primary text-primary-foreground"
                     : state === "current"
