@@ -19,7 +19,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Pencil } from "lucide-react";
+import { Eye, EyeOff, Pencil } from "lucide-react";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 
 export const Route = createFileRoute("/platform/plans")({
@@ -114,6 +114,54 @@ function PlansPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  // ── WHY is_active NEEDS ITS OWN ACTION ──────────────────────────────────
+  //
+  // updatePlatformPlan takes `isActive` on its own. Its only caller was the
+  // edit dialog's Save, which sends the whole form and validates the whole
+  // form first — and one of those checks is `interval === "year" && no annual
+  // price → toast and return`. An annual plan whose annual_price_cents is NULL
+  // therefore cannot be saved at all, so its is_active could not be reached by
+  // anything in the product. Taking a plan off sale is also not an edit: it is
+  // the one plan action with a blast radius, and it belongs behind a
+  // confirmation that names the plan rather than behind a switch in a form
+  // that rewrites eight other columns on the way past.
+  const setActive = useMutation({
+    mutationFn: (v: { plan: Plan; isActive: boolean }) =>
+      updateFn({ data: { planId: v.plan.id, isActive: v.isActive } }),
+    onSuccess: (_r, v) => {
+      toast.success(
+        v.isActive
+          ? `${v.plan.name} is on sale again`
+          : `${v.plan.name} is no longer offered to new tenants`,
+      );
+      qc.invalidateQueries({ queryKey: ["platform", "plans"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const requestSetActive = async (p: Plan) => {
+    if (p.is_active) {
+      if (
+        await confirm({
+          title: `Stop offering ${p.name}?`,
+          description: `${p.name} (${formatBase(p)}) disappears from signup and from every tenant's plan picker. Tenants already on it stay on it and keep being billed — this only stops anybody new choosing it. You can put it back at any time.`,
+          destructive: true,
+          confirmLabel: "Stop offering it",
+        })
+      )
+        setActive.mutate({ plan: p, isActive: false });
+      return;
+    }
+    if (
+      await confirm({
+        title: `Offer ${p.name} again?`,
+        description: `${p.name} goes back into signup and into every tenant's plan picker at its current price of ${formatBase(p)}, ${formatSeats(p).toLowerCase()}. Check the price is what you want before putting it back on sale.`,
+        confirmLabel: "Offer it again",
+      })
+    )
+      setActive.mutate({ plan: p, isActive: true });
+  };
 
   const [editing, setEditing] = useState<Plan | null>(null);
   const [form, setForm] = useState<EditForm | null>(null);
@@ -261,7 +309,7 @@ function PlansPage() {
                   <TableHead>Additional employee</TableHead>
                   <TableHead>Customers</TableHead>
                   <TableHead>Stripe price</TableHead>
-                  <TableHead className="w-10"><span className="sr-only">Edit</span></TableHead>
+                  <TableHead className="text-right"><span className="sr-only">Actions</span></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -285,14 +333,28 @@ function PlansPage() {
                       {p.stripe_price_id ?? <span className="text-muted-foreground">-</span>}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`Edit ${p.name}`}
-                        onClick={() => openEdit(p)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1 whitespace-nowrap">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={setActive.isPending}
+                          onClick={() => requestSetActive(p)}
+                        >
+                          {p.is_active ? (
+                            <><EyeOff className="mr-1 h-4 w-4" /> Stop offering</>
+                          ) : (
+                            <><Eye className="mr-1 h-4 w-4" /> Offer again</>
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Edit ${p.name}`}
+                          onClick={() => openEdit(p)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

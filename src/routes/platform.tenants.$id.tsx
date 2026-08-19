@@ -7,12 +7,13 @@ import {
   listTenantNotes, addTenantNote, deleteTenantNote,
   listTenantFeatureFlags, setTenantFeatureFlag,
   listTenantInvoices, listTenantAudit,
-  suspendTenant, reactivateTenant, grantGracePeriod, softDeleteTenant,
+  suspendTenant, reactivateTenant, grantGracePeriod, softDeleteTenant, restoreTenant,
   type TenantDetail, type TenantNote, type TenantFlagRow, type TenantInvoiceRow, type TenantAuditRow,
 } from "@/lib/platform-tenant.functions";
 import { startImpersonation } from "@/lib/platform.functions";
 import { launchImpersonationTab } from "@/lib/impersonation-launch";
-import { humanizeRole } from "@/lib/humanize";
+import { humanizeAuditAction, humanizeRole } from "@/lib/humanize";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,8 +32,11 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { ArrowLeft, ExternalLink, MoreHorizontal, Trash2, UserCog } from "lucide-react";
+import { ArrowLeft, ExternalLink, FileDown, MoreHorizontal, Trash2, Undo2, UserCog } from "lucide-react";
 import { TenantStatusBadge } from "@/components/TenantStatusBadge";
 import { auditActorLabel } from "@/lib/platform-audit";
 
@@ -66,7 +70,16 @@ function TenantDetailPage() {
 
   return (
     <div className="space-y-6">
-      <TenantHeader t={t} onChange={() => qc.invalidateQueries({ queryKey: ["platform", "tenant", id] })} />
+      <TenantHeader
+        t={t}
+        onChange={() => {
+          qc.invalidateQueries({ queryKey: ["platform", "tenant", id] });
+          // Suspend / delete / restore all change which list this tenant is on;
+          // without this the tenants page serves a cached row that says
+          // otherwise until it happens to refetch.
+          qc.invalidateQueries({ queryKey: ["platform", "tenants"] });
+        }}
+      />
 
       <Tabs defaultValue="overview" className="w-full">
         {/* Wrapping is a desktop answer for seven tabs. Below `md` it fought
@@ -86,7 +99,7 @@ function TenantDetailPage() {
         <TabsContent value="users" className="pt-4"><UsersTab t={t} /></TabsContent>
         <TabsContent value="billing" className="pt-4"><BillingTab t={t} /></TabsContent>
         <TabsContent value="invoices" className="pt-4"><InvoicesTab orgId={id} /></TabsContent>
-        <TabsContent value="flags" className="pt-4"><FlagsTab orgId={id} /></TabsContent>
+        <TabsContent value="flags" className="pt-4"><FlagsTab orgId={id} tenantName={t.name} /></TabsContent>
         <TabsContent value="notes" className="pt-4"><NotesTab orgId={id} /></TabsContent>
         <TabsContent value="audit" className="pt-4"><AuditTab orgId={id} /></TabsContent>
       </Tabs>
@@ -99,6 +112,7 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
   const reactivateFn = useServerFn(reactivateTenant);
   const graceFn = useServerFn(grantGracePeriod);
   const deleteFn = useServerFn(softDeleteTenant);
+  const restoreFn = useServerFn(restoreTenant);
   const impersonateFn = useServerFn(startImpersonation);
   const [reason, setReason] = useState("");
   const [confirmName, setConfirmName] = useState("");
@@ -122,7 +136,15 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
   });
   const deleteM = useMutation({
     mutationFn: () => deleteFn({ data: { organization_id: t.id, confirm_name: confirmName } }),
-    onSuccess: () => { toast.success("Tenant deleted"); setConfirmName(""); setDeleteOpen(false); onChange(); },
+    onSuccess: () => { toast.success(`${t.name} deleted`); setConfirmName(""); setDeleteOpen(false); onChange(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  // The way back out of the one-way door. Soft-delete hid this tenant from the
+  // tenants list and disabled every other action on this page, so until now the
+  // only thing an admin could do here was read.
+  const restoreM = useMutation({
+    mutationFn: () => restoreFn({ data: { organization_id: t.id } }),
+    onSuccess: () => { toast.success(`${t.name} restored — it is back on the tenants list`); onChange(); },
     onError: (e) => toast.error((e as Error).message),
   });
   const [impersonateUser, setImpersonateUser] = useState<string>("");
@@ -149,7 +171,7 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-semibold">{t.name}</h1>
             <TenantStatusBadge status={t.billing_status} />
-            {t.deleted_at && <Badge variant="destructive">Deleted</Badge>}
+            {t.deleted_at && <Badge variant="destructive">Deleted {fmtDate(t.deleted_at)}</Badge>}
           </div>
           <div className="mt-1 text-sm text-muted-foreground">
             {t.plan_name ?? "No plan"} · {t.active_client_count} clients · {t.users.length} users
@@ -160,6 +182,39 @@ function TenantHeader({ t, onChange }: { t: TenantDetail; onChange: () => void }
           )}
         </div>
         <div className="flex flex-wrap gap-2">
+          {/* A deleted tenant used to be a dead end: hidden from the tenants
+              list, and every control below disabled. Restore is the only
+              action that must be reachable in that state, so it comes first
+              and is the only one not gated on `!t.deleted_at`. */}
+          {t.deleted_at && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" disabled={restoreM.isPending}>
+                  <Undo2 className="mr-1 h-4 w-4" />
+                  {restoreM.isPending ? "Restoring…" : "Restore tenant"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Restore {t.name}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t.name} was deleted on {fmtDate(t.deleted_at)}. Restoring puts it back on the
+                    tenants list and gives its {t.users.length} user
+                    {t.users.length === 1 ? "" : "s"} their app access back, subject to whatever
+                    billing status it had before — it is currently{" "}
+                    <strong>{t.billing_status}</strong>. Nothing else about the organization
+                    changes.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction disabled={restoreM.isPending} onClick={() => restoreM.mutate()}>
+                    Restore
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
           <AlertDialog onOpenChange={(open) => { if (!open) setImpersonateUser(""); }}>
             <AlertDialogTrigger asChild>
               <Button variant="outline" size="sm" disabled={impersonateM.isPending || !!t.deleted_at}>
@@ -439,12 +494,23 @@ function InvoicesTab({ orgId }: { orgId: string }) {
                 <TableCell className="text-right tabular-nums">{fmtCents(r.amount_paid_cents, r.currency)}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{fmtDate(r.issued_at)}</TableCell>
                 <TableCell>
-                  {r.hosted_invoice_url && (
-                    <a href={r.hosted_invoice_url} target="_blank" rel="noreferrer"
-                       className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-                      Stripe <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
+                  {/* invoice_pdf has been selected by listTenantInvoices since
+                      it was written and rendered nowhere — the one thing an
+                      admin is asked for when a tenant queries a charge. */}
+                  <div className="flex items-center gap-3 whitespace-nowrap">
+                    {r.hosted_invoice_url && (
+                      <a href={r.hosted_invoice_url} target="_blank" rel="noreferrer"
+                         className="inline-flex min-h-11 items-center gap-1 text-xs text-muted-foreground hover:text-foreground md:min-h-0">
+                        Stripe <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                    {r.invoice_pdf && (
+                      <a href={r.invoice_pdf} target="_blank" rel="noreferrer"
+                         className="inline-flex min-h-11 items-center gap-1 text-xs text-muted-foreground hover:text-foreground md:min-h-0">
+                        PDF <FileDown className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -455,7 +521,19 @@ function InvoicesTab({ orgId }: { orgId: string }) {
   );
 }
 
-function FlagsTab({ orgId }: { orgId: string }) {
+/**
+ * ── WHY THE TOGGLE NOW OPENS A DIALOG ──────────────────────────────────────
+ *
+ * `platform_org_feature_flags.justification` has existed since the table was
+ * created, `setTenantFeatureFlag` accepts it, and `listTenantFeatureFlags`
+ * returns it on every row. Nothing ever sent one and nothing ever showed one,
+ * so the column was NULL for every override and the record of why one tenant
+ * deviates from the platform default lived in whoever's memory.
+ *
+ * The old toggle also said nothing at all on success — a per-tenant capability
+ * change with no toast and no confirmation, one click away.
+ */
+function FlagsTab({ orgId, tenantName }: { orgId: string; tenantName: string }) {
   const qc = useQueryClient();
   const listFn = useServerFn(listTenantFeatureFlags);
   const setFn = useServerFn(setTenantFeatureFlag);
@@ -464,16 +542,41 @@ function FlagsTab({ orgId }: { orgId: string }) {
     queryFn: () => listFn({ data: { organization_id: orgId } }),
   });
   const setM = useMutation({
-    mutationFn: (input: { key: string; value: boolean | null; justification?: string | null }) =>
-      setFn({ data: { organization_id: orgId, ...input } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform", "tenant", orgId, "flags"] }),
+    mutationFn: (input: {
+      flag: TenantFlagRow;
+      value: boolean | null;
+      justification?: string | null;
+    }) =>
+      setFn({
+        data: {
+          organization_id: orgId,
+          key: input.flag.key,
+          value: input.value,
+          justification: input.justification ?? null,
+        },
+      }),
+    onSuccess: (_r, v) => {
+      toast.success(
+        v.value === null
+          ? `${v.flag.label} override cleared for ${tenantName} — back to the platform default (${v.flag.default_value ? "on" : "off"})`
+          : `${v.flag.label} is now ${v.value ? "on" : "off"} for ${tenantName}`,
+      );
+      setPending(null);
+      qc.invalidateQueries({ queryKey: ["platform", "tenant", orgId, "flags"] });
+    },
     onError: (e) => toast.error((e as Error).message),
   });
+
+  // The flag an admin has asked to override, and the value they asked for.
+  const [pending, setPending] = useState<{ flag: TenantFlagRow; value: boolean } | null>(null);
+  const [justification, setJustification] = useState("");
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
   const rows: TenantFlagRow[] = q.data?.rows ?? [];
 
   return (
     <Card><CardContent className="pt-6">
+      {confirmDialog}
       {q.isLoading ? (
         <div className="text-sm text-muted-foreground">Loading…</div>
       ) : rows.length === 0 ? (
@@ -482,19 +585,89 @@ function FlagsTab({ orgId }: { orgId: string }) {
         </div>
       ) : (
         <ul className="divide-y">
-          {rows.map((f) => <FlagRow key={f.key} f={f} onSet={(v) => setM.mutate({ key: f.key, value: v })} />)}
+          {rows.map((f) => (
+            <FlagRow
+              key={f.key}
+              f={f}
+              busy={setM.isPending}
+              onRequest={(v) => {
+                setJustification(f.justification ?? "");
+                setPending({ flag: f, value: v });
+              }}
+              onReset={async () => {
+                if (
+                  await confirm({
+                    title: `Clear the ${f.label} override for ${tenantName}?`,
+                    description: `${tenantName} goes back to the platform default for this flag, which is ${f.default_value ? "on" : "off"}. The feature is currently ${f.effective ? "on" : "off"} for them${f.justification ? `, because: "${f.justification}"` : ""}.`,
+                    confirmLabel: "Clear override",
+                  })
+                )
+                  setM.mutate({ flag: f, value: null });
+              }}
+            />
+          ))}
         </ul>
       )}
+
+      <Dialog open={!!pending} onOpenChange={(o) => { if (!o) setPending(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Turn {pending?.flag.label} {pending?.value ? "on" : "off"} for {tenantName}?
+            </DialogTitle>
+            <DialogDescription>
+              This overrides the platform default of{" "}
+              {pending?.flag.default_value ? "on" : "off"} for this one tenant, and takes effect
+              for everybody in {tenantName} immediately.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1">
+            <Label htmlFor="flag-justification">Why (optional, kept with the override)</Label>
+            <Textarea
+              id="flag-justification"
+              rows={3}
+              value={justification}
+              onChange={(e) => setJustification(e.target.value)}
+              placeholder="e.g. enterprise pilot, agreed with the owner on 12 Aug"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPending(null)} disabled={setM.isPending}>
+              Cancel
+            </Button>
+            <Button
+              disabled={setM.isPending}
+              onClick={() =>
+                pending &&
+                setM.mutate({
+                  flag: pending.flag,
+                  value: pending.value,
+                  justification: justification.trim() || null,
+                })
+              }
+            >
+              {setM.isPending ? "Saving…" : `Turn ${pending?.value ? "on" : "off"}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </CardContent></Card>
   );
 }
 
-function FlagRow({ f, onSet }: { f: TenantFlagRow; onSet: (value: boolean | null) => void }) {
+function FlagRow({
+  f, busy, onRequest, onReset,
+}: {
+  f: TenantFlagRow;
+  busy: boolean;
+  onRequest: (value: boolean) => void;
+  onReset: () => void;
+}) {
   const overridden = f.override_value !== null;
   return (
     <li className="flex items-center justify-between gap-4 py-3">
       <div className="min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">{f.label}</span>
           <code className="text-xs text-muted-foreground">{f.key}</code>
           {overridden && <Badge variant="secondary" className="text-3xs">override</Badge>}
@@ -503,11 +676,28 @@ function FlagRow({ f, onSet }: { f: TenantFlagRow; onSet: (value: boolean | null
         <div className="mt-1 text-xs text-muted-foreground">
           Default: {f.default_value ? "on" : "off"} · Effective: <span className="font-medium">{f.effective ? "on" : "off"}</span>
         </div>
+        {f.justification && (
+          <div className="mt-1 break-words text-xs italic text-muted-foreground">
+            Why: {f.justification}
+          </div>
+        )}
       </div>
-      <div className="flex items-center gap-2">
-        <Switch checked={f.effective} onCheckedChange={(v) => onSet(v)} />
+      <div className="flex shrink-0 items-center gap-1">
+        {/* A 20px switch is under the touch floor, so the 44px box goes around
+            it rather than into ui/switch.tsx — the ui/dialog.tsx pattern. */}
+        <label
+          htmlFor={`flag-${f.key}`}
+          className="flex min-h-11 min-w-11 cursor-pointer items-center justify-center"
+        >
+          <Switch
+            id={`flag-${f.key}`}
+            disabled={busy}
+            checked={f.effective}
+            onCheckedChange={(v) => onRequest(v)}
+          />
+        </label>
         {overridden && (
-          <Button variant="ghost" size="sm" onClick={() => onSet(null)}>Reset</Button>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={onReset}>Reset</Button>
         )}
       </div>
     </li>
@@ -526,23 +716,32 @@ function NotesTab({ orgId }: { orgId: string }) {
   const [body, setBody] = useState("");
   const [kind, setKind] = useState<"note" | "call" | "email" | "incident">("note");
 
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
+
   const addM = useMutation({
     mutationFn: () => addFn({ data: { organization_id: orgId, body, kind } }),
     onSuccess: () => {
+      toast.success("Note added");
       setBody("");
       qc.invalidateQueries({ queryKey: ["platform", "tenant", orgId, "notes"] });
     },
     onError: (e) => toast.error((e as Error).message),
   });
+  // Deleting a note is irreversible and used to happen on a single unguarded
+  // click of a bare trash icon, saying nothing either way.
   const delM = useMutation({
     mutationFn: (note_id: string) => delFn({ data: { note_id } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform", "tenant", orgId, "notes"] }),
+    onSuccess: () => {
+      toast.success("Note deleted");
+      qc.invalidateQueries({ queryKey: ["platform", "tenant", orgId, "notes"] });
+    },
     onError: (e) => toast.error((e as Error).message),
   });
 
   const rows: TenantNote[] = q.data?.rows ?? [];
   return (
     <div className="space-y-4">
+      {confirmDialog}
       <Card>
         <CardContent className="space-y-3 pt-6">
           <div className="flex items-center gap-2">
@@ -584,7 +783,23 @@ function NotesTab({ orgId }: { orgId: string }) {
                         {n.author_email ?? n.author_user_id?.slice(0, 8) ?? "system"} · {fmtDate(n.created_at)}
                       </span>
                     </div>
-                    <Button size="sm" variant="ghost" onClick={() => delM.mutate(n.id)}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label="Delete note"
+                      disabled={delM.isPending}
+                      onClick={async () => {
+                        if (
+                          await confirm({
+                            title: "Delete this support note?",
+                            description: `The ${n.kind} note from ${n.author_email ?? "system"} on ${fmtDate(n.created_at)} is removed for good — support notes are not versioned and there is no undo.`,
+                            destructive: true,
+                            confirmLabel: "Delete note",
+                          })
+                        )
+                          delM.mutate(n.id);
+                      }}
+                    >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
@@ -618,7 +833,9 @@ function AuditTab({ orgId }: { orgId: string }) {
             <li key={r.id} className="py-3 text-sm">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
-                  <Badge variant="outline">{r.action}</Badge>
+                  {/* humanizeAuditAction has existed since the H2 finding and
+                      had no caller: this log read `soft_delete_tenant`. */}
+                  <Badge variant="outline">{humanizeAuditAction(r.action)}</Badge>
                   <span className="break-words text-xs text-muted-foreground">
                     by {auditActorLabel(r)}
                   </span>

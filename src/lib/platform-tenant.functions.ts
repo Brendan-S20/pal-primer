@@ -424,3 +424,32 @@ export const softDeleteTenant = createServerFn({ method: "POST" })
     await audit(supabaseAdmin, context.userId, data.organization_id, "soft_delete_tenant", { deleted_at: org.deleted_at }, patch);
     return { ok: true };
   });
+
+/**
+ * The inverse of softDeleteTenant, and the reason it exists: soft-delete was a
+ * one-way door. It writes `deleted_at`, listPlatformTenants filters the row out
+ * of the console, and every action on the detail page is disabled once the
+ * column is set — so a platform admin who deleted the wrong tenant had no way
+ * back to that organization from inside the product at all.
+ *
+ * It restores exactly what soft-delete took away and nothing else: `deleted_at`
+ * back to NULL. Billing status, suspension, plan and grace are untouched,
+ * because soft-delete never touched them either — a tenant that was suspended
+ * when it was deleted comes back suspended.
+ */
+export const restoreTenant = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => idSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    await assertPlatformAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: org } = await supabaseAdmin.from("organizations")
+      .select("id, name, deleted_at").eq("id", data.organization_id).maybeSingle();
+    if (!org) throw new Error("Tenant not found");
+    if (!org.deleted_at) throw new Error("This tenant is not deleted");
+    const patch = { deleted_at: null };
+    const { error } = await supabaseAdmin.from("organizations").update(patch).eq("id", data.organization_id);
+    if (error) throw new Error(error.message);
+    await audit(supabaseAdmin, context.userId, data.organization_id, "restore_tenant", { deleted_at: org.deleted_at }, patch);
+    return { ok: true, name: org.name };
+  });

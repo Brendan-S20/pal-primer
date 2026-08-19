@@ -11,6 +11,8 @@ import {
   updatePlatformUserPhone,
   removePlatformUserMfa,
 } from "@/lib/platform-directory.functions";
+import { startImpersonation } from "@/lib/platform.functions";
+import { launchImpersonationTab } from "@/lib/impersonation-launch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,7 +33,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { humanizeRole } from "@/lib/humanize";
-import { Copy, KeyRound, Loader2, ShieldOff, Users } from "lucide-react";
+import { Copy, KeyRound, Loader2, ShieldOff, UserCog, Users } from "lucide-react";
 import { humanizeEnum } from "@/lib/humanize";
 
 export const Route = createFileRoute("/platform/users")({
@@ -257,9 +259,13 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
   const emailFn = useServerFn(updatePlatformUserEmail);
   const phoneFn = useServerFn(updatePlatformUserPhone);
   const mfaFn = useServerFn(removePlatformUserMfa);
+  const impersonateFn = useServerFn(startImpersonation);
 
   const [emailDraft, setEmailDraft] = useState("");
   const [phoneDraft, setPhoneDraft] = useState("");
+  // Which of the user's organizations to impersonate them inside. A user can
+  // hold roles in several, and startImpersonation mints a grant for ONE.
+  const [impersonateOrg, setImpersonateOrg] = useState("");
   // Set only when email sending isn't configured: the admin must relay it.
   const [resetLink, setResetLink] = useState<string | null>(null);
 
@@ -317,10 +323,40 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
     onError: (e: Error) => toast.error(e.message),
   });
 
+  /**
+   * ── WHY IMPERSONATION BELONGS HERE TOO ────────────────────────────────
+   *
+   * startImpersonation takes (organization_id, target_user_id) and had exactly
+   * one caller: the tenant detail page, which can only ever offer one tenant's
+   * users, from an unfiltered <select>. This directory is the only place in
+   * the console where a person can be found by email across every tenant, and
+   * it already holds both ids on every row — so the one action you actually
+   * want after finding someone was the one action you had to leave to perform.
+   *
+   * Nothing about the grant changes: the same server function, the same
+   * platform-admin check, the same 2-minute single-use token, the same
+   * tab-scoped session, the same audit rows.
+   */
+  const impersonate = useMutation({
+    mutationFn: (organizationId: string) =>
+      launchImpersonationTab(impersonateFn as never, {
+        organizationId,
+        targetUserId: userId!,
+      }),
+    onSuccess: (res, organizationId) => {
+      const org = d?.organizations.find((o) => o.id === organizationId);
+      toast.success(
+        `Impersonating ${res.targetEmail} in ${org?.name ?? "their organization"} — opened in a new tab`,
+      );
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const close = () => {
     setEmailDraft("");
     setPhoneDraft("");
     setResetLink(null);
+    setImpersonateOrg("");
     onClose();
   };
 
@@ -337,10 +373,23 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
           </div>
         ) : (
           <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            {/* Two columns of email address and timestamp do not fit a 360px
+                phone; they stack below `sm` instead of overflowing. */}
+            <div className="grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
               <div>
                 <div className="text-xs text-muted-foreground">Email</div>
                 <div className="break-all font-medium">{d.email ?? "-"}</div>
+                {/* email_confirmed_at has been fetched since this dialog was
+                    written and shown nowhere — and "Change email" confirms the
+                    new address immediately, so this is the only place the one
+                    email action's effect is visible. */}
+                {d.email ? (
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    {d.email_confirmed_at
+                      ? `Confirmed ${new Date(d.email_confirmed_at).toLocaleDateString()}`
+                      : "Not confirmed"}
+                  </div>
+                ) : null}
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Phone</div>
@@ -437,6 +486,50 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
                   {removeMfa.isPending ? "Removing…" : "Remove MFA"}
                 </Button>
               </div>
+
+              {d.organizations.length > 0 ? (
+                <div className="space-y-1.5">
+                  <Label className="text-xs" htmlFor="impersonate-org">
+                    Impersonate in
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    <select
+                      id="impersonate-org"
+                      className="h-11 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm sm:h-9"
+                      value={impersonateOrg || d.organizations[0].id}
+                      onChange={(e) => setImpersonateOrg(e.target.value)}
+                    >
+                      {d.organizations.map((o) => (
+                        <option key={`${o.id}-${o.role}`} value={o.id}>
+                          {o.name} ({humanizeRole(o.role)})
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={impersonate.isPending}
+                      onClick={async () => {
+                        const orgId = impersonateOrg || d.organizations[0].id;
+                        const org = d.organizations.find((o) => o.id === orgId);
+                        if (
+                          await confirm({
+                            title: `Impersonate ${d.email ?? "this user"} in ${org?.name ?? "their organization"}?`,
+                            description:
+                              `A new tab opens a read/write session AS ${d.email ?? "this user"} inside ${org?.name ?? "that organization"}, with their ${humanizeRole(org?.role).toLowerCase()} permissions. ` +
+                              "Your own platform-admin session in this tab is not affected, and everything you do in there is written to the audit trail under your name.",
+                            confirmLabel: "Impersonate",
+                          })
+                        )
+                          impersonate.mutate(orgId);
+                      }}
+                    >
+                      <UserCog className="mr-1 h-4 w-4" />
+                      {impersonate.isPending ? "Starting…" : "Impersonate"}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
 
               {resetLink ? (
                 <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-950">

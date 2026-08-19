@@ -43,21 +43,36 @@ function formatWhen(iso: string | null): string {
   return `${months}mo ago`;
 }
 
+/** Not a billing_status — `deleted_at` is orthogonal to it — so it is its own
+ *  entry in the same picker rather than another row of STATUS_LABEL. */
+const DELETED_FILTER = "deleted";
+
 function TenantsPage() {
   const fn = useServerFn(listPlatformTenants);
-  const q = useQuery({ queryKey: ["platform", "tenants"], queryFn: () => fn() });
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  // Soft-deleted tenants are the ONLY way back to a tenant that was deleted by
+  // mistake: the detail page's Restore button is behind this filter, and before
+  // it existed the row was gone from the console for good.
+  const showDeleted = statusFilter === DELETED_FILTER;
+  const q = useQuery({
+    queryKey: ["platform", "tenants", showDeleted ? "deleted" : "live"],
+    queryFn: () => fn({ data: { include_deleted: showDeleted } }),
+  });
 
   const rows: PlatformTenantRow[] = q.data?.rows ?? [];
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
     return rows.filter((r) => {
-      if (statusFilter !== "all" && r.billing_status !== statusFilter) return false;
+      // The deleted view is exclusive: `include_deleted` widens the query to
+      // both, and this narrows it back to the ones that are actually deleted.
+      if (showDeleted ? !r.deleted_at : !!r.deleted_at) return false;
+      if (!showDeleted && statusFilter !== "all" && r.billing_status !== statusFilter) return false;
       if (s && !r.name.toLowerCase().includes(s)) return false;
       return true;
     });
-  }, [rows, search, statusFilter]);
+  }, [rows, search, statusFilter, showDeleted]);
 
   // Multi-select for bulk suspend / unsuspend (Invoices-page pattern; the
   // per-tenant fns are platform-admin gated server-side). Selection clears on
@@ -72,8 +87,10 @@ function TenantsPage() {
     () => filtered.filter((r) => sel.isSelected(r.id)),
     [filtered, sel],
   );
-  const suspendable = selectedRows.filter((r) => r.billing_status !== "suspended");
-  const unsuspendable = selectedRows.filter((r) => r.billing_status === "suspended");
+  // A deleted tenant is not a suspend/unsuspend target — restoring it is the
+  // only thing to do with it, and that lives on the detail page.
+  const suspendable = selectedRows.filter((r) => !r.deleted_at && r.billing_status !== "suspended");
+  const unsuspendable = selectedRows.filter((r) => !r.deleted_at && r.billing_status === "suspended");
 
   // Bulk suspend needs the same required reason the tenant-detail dialog
   // collects (it lands on the tenant's suspension banner + audit log).
@@ -132,7 +149,11 @@ function TenantsPage() {
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-base">
-            {q.isLoading ? "Loading…" : `${filtered.length} tenants`}
+            {q.isLoading
+              ? "Loading…"
+              : showDeleted
+                ? `${filtered.length} deleted tenant${filtered.length === 1 ? "" : "s"} — open one to restore it`
+                : `${filtered.length} tenants`}
           </CardTitle>
           <div className="flex flex-col gap-2 sm:flex-row">
             <div className="relative">
@@ -155,6 +176,7 @@ function TenantsPage() {
                   {v}
                 </option>
               ))}
+              <option value={DELETED_FILTER}>Deleted (soft)</option>
             </select>
           </div>
         </CardHeader>
@@ -214,6 +236,9 @@ function TenantsPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <span className="truncate font-medium">{r.name}</span>
+                      {r.deleted_at && (
+                        <Badge variant="destructive" className="shrink-0">Deleted</Badge>
+                      )}
                       {!isValidOrgName(r.name) && (
                         <Badge variant="outline" className="shrink-0 text-amber-600">Review name</Badge>
                       )}
@@ -287,6 +312,7 @@ function TenantsPage() {
                         >
                           {r.name}
                         </Link>
+                        {r.deleted_at && <Badge variant="destructive">Deleted</Badge>}
                         {!isValidOrgName(r.name) && (
                           <Badge variant="outline" className="text-amber-600">Review name</Badge>
                         )}
