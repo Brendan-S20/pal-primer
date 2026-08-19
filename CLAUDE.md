@@ -87,7 +87,7 @@ geometry: no horizontal page scroll, no control off the side, no control under
 long-value fault above. Run it with `npm run test:viewports`; it needs a dev
 server, which the Playwright config starts for you.
 
-Three things about it are worth knowing before you trust or extend it:
+Four things about it are worth knowing before you trust or extend it:
 
 - **It does not replace the static tests.** Those name a file and a line, which
   a screenshot cannot, and they run in seconds with no server. The browser
@@ -100,11 +100,21 @@ Three things about it are worth knowing before you trust or extend it:
   awkward on purpose — a 46-character client name, a 78-character signup URL,
   seven technicians — because a fixture that is tidier than reality measures
   nothing. Run it with `npm run test:viewports:auth`.
-  **It is currently RED by design: 22 surface/width combinations fail.** They
-  are real, they are listed in `docs/mobile-ux-audit.md`, and until they are
-  worked down the `sandboxes.yml` step runs `continue-on-error`. Flip it to
-  blocking the day it goes green — a permanently red gate teaches the same
-  lesson as an absent one.
+  **It is RED by design while its findings are worked down — 22 surface/width
+  combinations when it landed, 16 as of 2026-08-19.** They are real, they are
+  listed with measured numbers in `docs/mobile-ux-audit.md` §6, and until they
+  clear the `sandboxes.yml` step runs `continue-on-error`. Flip it to blocking
+  the day it goes green — a permanently red gate teaches the same lesson as an
+  absent one. Keep the number here honest: a count that drifts is worse than no
+  count, because it reads as a measurement.
+
+  Two things the first six fixes taught, worth having before you pick up the
+  rest. **A list of off-side controls is a list of SYMPTOMS** — find the
+  outermost element wider than the viewport, the one whose parent still fits,
+  and fix that; everything under it is downstream, and on `/clients/:id` the
+  obvious culprit was a real fault that was not the cause. **And measure right
+  edges, not widths** — `/clients/new` and `/my-day` overflowed with no element
+  wider than the screen at all.
 - **Signed out is not a blank page here — it is `/auth`.** So the blank-page
   guard below is not enough for the authenticated half: `/auth` renders
   perfectly and clears every size threshold. Each surface therefore proves
