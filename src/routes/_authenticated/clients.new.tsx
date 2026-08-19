@@ -7,7 +7,7 @@ import { onboardClient, getInternalQuote } from "@/lib/clients.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { RadioGroup, RadioGroupSegment } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { BoundarySketch, formatArea, type PolygonGeoJSON } from "@/components/BoundarySketch";
@@ -344,20 +344,23 @@ function NewClientWizard() {
         {step === 0 && (
           <div className="space-y-5">
             <div className="space-y-2">
-              <Label>Account type</Label>
+              {/* MEASURED 2026-08-19: as two radio dots these were 16.0px, the
+                  last finding on this page. A radio cannot be grown to 44px —
+                  the border is on the element, so height and padding both
+                  enlarge the visible circle. Two mutually exclusive options
+                  with short labels are a segmented control anyway, and a
+                  segment is 44px without argument.
+                  Still a Radix radiogroup underneath, so the arrow keys, the
+                  single tab stop and the ARIA all survive the change. */}
+              <Label id="account-type-label">Account type</Label>
               <RadioGroup
+                aria-labelledby="account-type-label"
                 value={accountType}
                 onValueChange={(v) => setAccountType(v as typeof accountType)}
-                className="flex gap-6"
+                className="flex gap-2"
               >
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="residential" id="t-res" />
-                  <Label htmlFor="t-res" className="font-normal">Residential</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="commercial" id="t-com" />
-                  <Label htmlFor="t-com" className="font-normal">Commercial / HOA</Label>
-                </div>
+                <RadioGroupSegment value="residential">Residential</RadioGroupSegment>
+                <RadioGroupSegment value="commercial">Commercial / HOA</RadioGroupSegment>
               </RadioGroup>
             </div>
             <div className="space-y-2">

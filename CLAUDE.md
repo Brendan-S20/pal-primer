@@ -101,7 +101,7 @@ Four things about it are worth knowing before you trust or extend it:
   seven technicians — because a fixture that is tidier than reality measures
   nothing. Run it with `npm run test:viewports:auth`.
   **It is RED by design while its findings are worked down — 22 surface/width
-  combinations when it landed, 16 as of 2026-08-19.** They are real, they are
+  combinations when it landed, 15 as of 2026-08-19.** They are real, they are
   listed with measured numbers in `docs/mobile-ux-audit.md` §6, and until they
   clear the `sandboxes.yml` step runs `continue-on-error`. Flip it to blocking
   the day it goes green — a permanently red gate teaches the same lesson as an

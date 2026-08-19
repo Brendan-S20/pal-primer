@@ -397,7 +397,7 @@ any future code reading the documented `sb-<ref>-auth-token` key finds nothing.
 Not fixed here; it is app source and this was a test-only change.
 
 
-### 6.7 The one finding the rule cannot express, 2026-08-19
+### 6.7 The one finding the rule cannot express — RESOLVED 2026-08-19
 
 `/clients/new` still fails at 360px, and the only thing left on it is **two
 shadcn radio dots at 16.0px** — the residential/commercial account-type choice.
@@ -428,3 +428,15 @@ Three ways out, none of them free, and this needs an owner call:
 Deliberately not chosen unilaterally: option 1 relaxes a rule to clear a
 finding, which is the shape of change that should never be made by whoever is
 trying to clear the finding.
+
+**Owner chose option 2, and it is done.** `RadioGroupSegment` in
+`ui/radio-group.tsx` is built on the same Radix primitive rather than on plain
+buttons, so the group keeps its `role="radiogroup"`, each option keeps
+`role="radio"` with `aria-checked`, and the roving tabindex keeps the whole
+group behind one tab stop — all three measured in Chromium after the swap.
+Hand-rolling segmented `<button>`s would have looked identical and told a
+screen reader nothing.
+
+`/clients/new` now has **zero** findings at every width. The rule in
+`tests/viewports/rules.ts` was not touched, which was the point: the control
+changed to meet the rule rather than the rule bending to admit the control.
