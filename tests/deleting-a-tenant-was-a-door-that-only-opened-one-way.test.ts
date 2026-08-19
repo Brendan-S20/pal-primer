@@ -176,26 +176,36 @@ describe("a deleted tenant can be found again", () => {
 });
 
 describe("restore is reachable from the page it is needed on", () => {
-  const idx = detailRoute.indexOf("Restore tenant");
+  /** The restore control and its dialog: from the `{t.deleted_at && (` that
+   *  guards it to the `</AlertDialog>` that ends it. Scoped rather than a
+   *  window of characters, because the button immediately after it is the
+   *  Impersonate one and it legitimately carries `!!t.deleted_at`. */
+  const restoreBlock = (() => {
+    const code = codeOnly(detailRoute);
+    const open = code.indexOf("{t.deleted_at && (");
+    if (open === -1) return "";
+    const close = code.indexOf("</AlertDialog>", open);
+    return close === -1 ? "" : code.slice(open, close);
+  })();
 
   it("renders a restore control", () => {
-    expect(idx, "no Restore control on the tenant detail page").toBeGreaterThan(-1);
+    expect(detailRoute).toMatch(/Restore tenant/);
+    expect(restoreBlock, "no `{t.deleted_at && (` block on the page").not.toBe("");
+    expect(restoreBlock).toMatch(/restoreM\.mutate\(\)/);
   });
 
   it("is the one control NOT disabled by deleted_at", () => {
     // Every other action on this page carries `disabled={!!t.deleted_at}`.
-    // Copying that onto the restore button is the obvious mistake and would
-    // leave the door exactly as shut as it was.
-    const region = codeOnly(detailRoute).slice(Math.max(0, idx - 900), idx + 900);
-    expect(region).toMatch(/\{t\.deleted_at && \(/);
-    expect(region).not.toMatch(/disabled=\{!!t\.deleted_at\}/);
-    expect(region).toMatch(/restoreM\.mutate\(\)/);
+    // Copying that onto the restore button — on its own or or'd into the
+    // pending check — is the obvious mistake and would leave the door exactly
+    // as shut as it was.
+    expect(restoreBlock).not.toMatch(/disabled=\{[^}]*!!t\.deleted_at[^}]*\}/);
+    expect(restoreBlock).toMatch(/disabled=\{restoreM\.isPending\}/);
   });
 
   it("confirms with the tenant's own name, not a generic prompt", () => {
-    const region = detailRoute.slice(Math.max(0, idx - 900), idx + 1400);
-    expect(region).toMatch(/AlertDialogTitle>\s*Restore \{t\.name\}\?/);
-    expect(region).not.toMatch(/Are you sure/i);
+    expect(restoreBlock).toMatch(/AlertDialogTitle>\s*Restore \{t\.name\}\?/);
+    expect(restoreBlock).not.toMatch(/Are you sure/i);
   });
 
   it("says what happened, naming the tenant", () => {
