@@ -182,7 +182,13 @@ describe("the schedule page's heading follows the range it is showing", () => {
 
   it("no longer hardcodes the word Today", () => {
     expect(codeOnly(routes)).not.toMatch(/<h1[^>]*>Today<\/h1>/);
-    expect(routes).toMatch(/<h1 className="text-2xl font-semibold">\{heading\}<\/h1>/);
+    // CHANGED 2026-08-19: the `<h1>` now wraps a button that opens the date
+    // picker, so `{heading}` is no longer its only child and a single-line
+    // regex cannot see it. The property is unchanged — the heading text is
+    // still the computed `heading` and not a literal — so this reads the
+    // element's contents instead of its exact spelling.
+    const h1 = routes.slice(routes.indexOf('<h1 className="text-2xl font-semibold">'));
+    expect(h1.slice(0, h1.indexOf("</h1>"))).toMatch(/\{heading\}/);
   });
 
   it("derives it from the same window the page fetches and the calendar draws", () => {

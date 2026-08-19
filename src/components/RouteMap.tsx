@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { AlertTriangle, Loader2, LocateFixed } from "lucide-react";
 import { addBaseTiles, type TileVariant } from "@/lib/map-tiles";
 
 // Fix Leaflet default icon paths (they break under bundlers).
@@ -68,6 +69,151 @@ function statusEmoji(s?: string) {
   return "";
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * Wheel zoom, and why it is gated instead of simply switched on
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * QA asked for "scrolling to zoom in and out", and it should indeed be a basic
+ * function. The obvious fix — `scrollWheelZoom: true` — is the one thing we
+ * must not do here, and the reason is where this map lives: it is DOCKED BESIDE
+ * THE CALENDAR on /routes and inside the card on the dashboard. A person
+ * scrolling the schedule passes the pointer over the map constantly, and a map
+ * that grabs the wheel turns "read the rest of the week" into "the page froze
+ * and the map is now at street level in Kansas". On a laptop trackpad, where a
+ * scroll is two fingers and happens by the dozen, that is not an annoyance; it
+ * is a page you cannot read.
+ *
+ * So the wheel is handled by us, not by Leaflet's handler, under this rule:
+ *
+ *   UNAMBIGUOUS gestures always act on the map.
+ *     - ctrl/⌘ + wheel. It is also, usefully, exactly what a trackpad PINCH
+ *       emits: the browser reports a pinch as a wheel event with `ctrlKey`
+ *       set, so pinch-to-zoom on a MacBook works without anyone being told.
+ *     - two-finger pinch on a touchscreen (Leaflet's `touchZoom`, left on).
+ *       Two fingers on a map is never a request to scroll the page.
+ *
+ *   AMBIGUOUS gestures go to the page until the map is ARMED by clicking or
+ *   tapping it — after which a plain wheel zooms, which is the "basic
+ *   function" that was asked for, one click away and with no modifier to
+ *   remember. Pointing at a thing and then turning the wheel is the same
+ *   contract Google Maps and every embedded map on the web uses.
+ *     - a plain wheel with the map un-armed → the page scrolls, and we show a
+ *       hint saying which two things WOULD have zoomed. Silently doing nothing
+ *       is how a gate like this gets reported as a broken map.
+ *     - a one-finger drag on touch is the same problem wearing gloves, so
+ *       `dragging` starts disabled on mobile and the same tap arms it.
+ *
+ * The map disarms when a MOUSE pointer leaves it, so arming one map does not
+ * follow you up the page. A touch pointer "leaving" is not a thing you can
+ * observe, so touch stays armed until the component unmounts.
+ */
+
+/** What a wheel event over the map should do. Spelled out as words rather than
+ *  a boolean so the call site — and the test — read as the decision they are. */
+export type WheelOutcome = "zoom the map" | "let the page scroll";
+
+/** The whole gate, kept pure so it can be tested without a browser, a Leaflet
+ *  instance or a wheel. `metaKey` as well as `ctrlKey`: ⌘+scroll is the muscle
+ *  memory on macOS, and a Mac user who tries it and gets nothing concludes the
+ *  modifier idea does not work here. */
+export function wheelZoomIntent(
+  e: { ctrlKey?: boolean; metaKey?: boolean },
+  armed: boolean,
+): WheelOutcome {
+  if (e.ctrlKey || e.metaKey) return "zoom the map";
+  return armed ? "zoom the map" : "let the page scroll";
+}
+
+/** Pixels of accumulated wheel travel per zoom level. Leaflet's own default is
+ *  60 and it feels right; borrowing the number keeps the gated wheel feeling
+ *  like the handler it replaces. */
+export const WHEEL_PX_PER_ZOOM = 60;
+
+/** Wheel deltas in PIXELS, sign flipped so positive means "zoom in".
+ *
+ *  `deltaMode` is not a formality: Firefox on Windows reports lines (mode 1,
+ *  ~3 per notch) and some setups report pages (mode 2). Reading `deltaY` raw
+ *  gives a map that needs twenty notches per zoom level on one browser and
+ *  jumps four levels on another. */
+export function normalizeWheelDelta(e: { deltaY: number; deltaMode?: number }): number {
+  const mode = e.deltaMode ?? 0;
+  const px = mode === 1 ? e.deltaY * 16 : mode === 2 ? e.deltaY * 400 : e.deltaY;
+  return -px;
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * "Where am I", and what to say when the browser will not tell us
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * The Geolocation API fails in four ordinary ways and every one of them is
+ * invisible unless something says so out loud: the user denied it once weeks
+ * ago and the browser now refuses without prompting; the device has no fix; it
+ * timed out; or the page is not in a SECURE CONTEXT.
+ *
+ * That last one is the trap in local dev. `navigator.geolocation` is exposed
+ * only over https or on localhost — open the dev server from a phone on the LAN
+ * (http://192.168.x.x:5173) and the object is either missing entirely or every
+ * call fails with POSITION_UNAVAILABLE, which reads as "your phone is broken"
+ * rather than "this page is http". So the message says it.
+ *
+ * These two functions are pure and exported for exactly one reason: the denial
+ * path is the one that must never be silent, and a message you can assert on
+ * is a message that stays.
+ */
+
+/** W3C GeolocationPositionError codes. Named because `err.code === 1` at a call
+ *  site tells the next reader nothing, and the constants live on an instance we
+ *  do not have when we are only handed a plain object. */
+export const GEOLOCATION_PERMISSION_DENIED = 1;
+export const GEOLOCATION_POSITION_UNAVAILABLE = 2;
+export const GEOLOCATION_TIMEOUT = 3;
+
+/** What to show when there is no Geolocation API at all. */
+export function geolocationUnsupportedMessage(secureContext: boolean): string {
+  return secureContext
+    ? "This browser does not offer location. You can still pan and zoom the map by hand."
+    : "Location needs a secure connection. This page is on plain http, so the browser hides location entirely — open it over https (or on localhost) and press this again.";
+}
+
+/** What to show when a `getCurrentPosition` call comes back with an error.
+ *
+ *  Every branch returns a non-empty sentence, and every branch says what the
+ *  person can DO next. "Location unavailable" is a status; "allow location for
+ *  this site in your browser settings, then press it again" is a way out. */
+export function geolocationErrorMessage(
+  err: { code?: number; message?: string } | null | undefined,
+  opts: { secureContext?: boolean } = {},
+): string {
+  // Defaulting to "secure" so a caller that cannot tell (a test, a server
+  // render) never blames https for a plain denial.
+  const secure = opts.secureContext !== false;
+  const fallback = "Could not get your location. Try again in a moment.";
+  if (!err || typeof err.code !== "number") return fallback;
+  switch (err.code) {
+    case GEOLOCATION_PERMISSION_DENIED:
+      // Deliberately NOT conditioned on the secure context. A denial is a
+      // denial, and telling someone to switch to https when what happened is
+      // that they pressed "Block" sends them to fix the wrong thing.
+      return "Location permission is blocked for this site. Allow it in your browser's site settings, then press the button again.";
+    case GEOLOCATION_POSITION_UNAVAILABLE:
+      return secure
+        ? "Your device could not work out where it is. Move somewhere with a clearer view of the sky and try again."
+        : "Location needs a secure connection. Over plain http the browser reports your position as unavailable — open this page over https (or on localhost).";
+    case GEOLOCATION_TIMEOUT:
+      return "Locating timed out. Check that location services are switched on, then try again.";
+    default:
+      return fallback;
+  }
+}
+
+/** Whether the page is allowed to ask for location at all. Its own function so
+ *  the two messages above can be told which world they are in, and so a
+ *  non-browser caller does not throw on `window`. */
+export function inSecureContext(): boolean {
+  if (typeof window === "undefined") return true;
+  return window.isSecureContext !== false;
+}
+
 export function RouteMap({
   groups,
   height = 380,
@@ -115,6 +261,29 @@ export function RouteMap({
   const groupOfVisit = useRef<Map<string, string>>(new Map());
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
+  /** The "you are here" dot and its accuracy ring, in a layer of their OWN.
+   *  The visits layer above is `clearLayers()`ed on every data change, and a
+   *  location that vanishes the next time the schedule refetches is a location
+   *  the owner will press twice and then stop trusting. */
+  const meRef = useRef<L.LayerGroup | null>(null);
+  /** Has the user pointed at this map (click / tap / keyboard focus)? See the
+   *  long note above `wheelZoomIntent`. A ref, not state: it is read inside a
+   *  wheel handler bound once, and re-binding listeners per render to keep a
+   *  state value fresh is how a wheel gate ends up with two of them. */
+  const armedRef = useRef(false);
+  /** Accumulated wheel travel since the last zoom level was applied. */
+  const wheelAccRef = useRef(0);
+  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
+  /** Once the user has asked "where am I", stop the data effect from flinging
+   *  the viewport back to the whole route. Cleared when the visit set actually
+   *  changes (a different day), not when the same day merely refetches — being
+   *  yanked away from your own position a few seconds after asking for it is
+   *  exactly what the button was pressed to stop. */
+  const suppressFitRef = useRef(false);
+  const fittedKeyRef = useRef<string | null>(null);
 
   const points = useMemo(
     () =>
@@ -129,15 +298,181 @@ export function RouteMap({
     [groups],
   );
 
+  /** Identity of the plotted set, not of the array holding it. A refetch that
+   *  returns the same visits produces a new array every time. */
+  const pointsKey = useMemo(() => points.map(({ v }) => v.id).join(","), [points]);
+
+  const showHint = useCallback((text: string) => {
+    setHint(text);
+    if (hintTimer.current) clearTimeout(hintTimer.current);
+    // Long enough to read, short enough that it is gone before it becomes
+    // furniture. It is `pointer-events-none`, so it never blocks the map.
+    hintTimer.current = setTimeout(() => setHint(null), 2600);
+  }, []);
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = L.map(containerRef.current, {
       center: [39.5, -98.35],
       zoom: 4,
-      scrollWheelZoom: true,
+      // OFF as a Leaflet handler, re-implemented under a gate in the effect
+      // below. `true` here is the bug this component shipped with: the map is
+      // docked beside the calendar and ate every scroll that crossed it.
+      scrollWheelZoom: false,
+      // Two fingers on a map means zoom, on any surface, with no gate.
+      touchZoom: true,
     });
     mapRef.current = map;
     layerRef.current = L.layerGroup().addTo(map);
+    meRef.current = L.layerGroup().addTo(map);
+    // The touch twin of the plain wheel: a one-finger drag over a docked map
+    // is usually somebody trying to scroll the schedule underneath it. A tap
+    // arms it, the same tap that arms the wheel.
+    if (L.Browser.mobile) map.dragging.disable();
+  }, []);
+
+  // The wheel gate, plus the tap that opens it. Bound once against the
+  // container, with everything mutable behind refs.
+  useEffect(() => {
+    const map = mapRef.current;
+    const el = containerRef.current;
+    if (!map || !el) return;
+
+    const arm = () => {
+      if (armedRef.current) return;
+      armedRef.current = true;
+      if (L.Browser.mobile) map.dragging.enable();
+      setHint(null);
+    };
+    const disarm = (e: PointerEvent) => {
+      // Mouse only. A touch pointer "leaving" fires at the end of every tap,
+      // which would disarm the map the instant the tap that armed it ended.
+      if (e.pointerType !== "mouse") return;
+      armedRef.current = false;
+      wheelAccRef.current = 0;
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      if (wheelZoomIntent(e, armedRef.current) === "let the page scroll") {
+        // No preventDefault. The page scrolls, which is the whole point, and
+        // the hint says what would have zoomed instead of leaving the wheel
+        // looking broken.
+        showHint("Ctrl / ⌘ + scroll to zoom, or click the map first");
+        return;
+      }
+      // We preventDefault rather than leaving it to Leaflet: ctrl+wheel is the
+      // browser's own page-zoom shortcut, and a map that zooms while the whole
+      // UI also zooms is worse than one that does neither.
+      e.preventDefault();
+      const delta = normalizeWheelDelta(e);
+      // A reversal is a new gesture, not a continuation to be cancelled out.
+      if (delta > 0 !== wheelAccRef.current > 0) wheelAccRef.current = 0;
+      wheelAccRef.current += delta;
+      if (Math.abs(wheelAccRef.current) < WHEEL_PX_PER_ZOOM) return;
+      const step = wheelAccRef.current > 0 ? 1 : -1;
+      wheelAccRef.current = 0;
+      // Around the POINTER, not the centre: zooming a route map is "look
+      // closer at that stop", and centre-zoom walks the stop off the screen.
+      map.setZoomAround(map.mouseEventToContainerPoint(e), map.getZoom() + step);
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      // Passive: we are not cancelling the scroll, only explaining it. Two
+      // fingers is a pinch and Leaflet already has it.
+      if (armedRef.current || e.touches.length !== 1) return;
+      showHint("Tap the map to pan it — pinch to zoom");
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("touchmove", onTouchMove, { passive: true });
+    el.addEventListener("pointerdown", arm);
+    el.addEventListener("pointerleave", disarm);
+    // Keyboard reach: Leaflet gives the container a tabindex, so tabbing to
+    // the map and using the arrow keys should not need a mouse click first.
+    el.addEventListener("focus", arm);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("pointerdown", arm);
+      el.removeEventListener("pointerleave", disarm);
+      el.removeEventListener("focus", arm);
+    };
+  }, [showHint]);
+
+  /** Centre on the device's position and drop a "you are here" dot.
+   *
+   *  Called ONLY from the button's onClick. Nothing on this path runs on mount:
+   *  a map that fires the permission prompt as the page loads trains people to
+   *  press Block, and the block is remembered for the origin — one autoloaded
+   *  prompt costs the feature for good. */
+  const locate = useCallback(() => {
+    const map = mapRef.current;
+    const layer = meRef.current;
+    if (!map || !layer) return;
+    setGeoError(null);
+    const secure = inSecureContext();
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setGeoError(geolocationUnsupportedMessage(secure));
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        const { latitude, longitude, accuracy } = pos.coords;
+        layer.clearLayers();
+        // Deliberately unlike a visit pin. A stop is a 26px filled circle in a
+        // tech colour with a white ring and a NUMBER in it; this is a small
+        // dark dot with no label, a white collar, and a translucent accuracy
+        // ring no visit marker ever has. The colour is off the TECH_COLORS
+        // palette on purpose — if "you" were drawn in #2563eb it would read as
+        // the first tech's stop.
+        const dot = L.divIcon({
+          className: "route-you-are-here",
+          html:
+            `<div style="width:16px;height:16px;border-radius:9999px;background:#0f172a;` +
+            `border:3px solid #fff;box-shadow:0 0 0 3px rgba(15,23,42,.35),0 1px 4px rgba(0,0,0,.45);"></div>`,
+          iconSize: [16, 16],
+          iconAnchor: [8, 8],
+        });
+        if (Number.isFinite(accuracy) && accuracy > 0) {
+          L.circle([latitude, longitude], {
+            radius: accuracy,
+            color: "#0f172a",
+            weight: 1,
+            opacity: 0.5,
+            fillColor: "#0f172a",
+            fillOpacity: 0.08,
+            interactive: false,
+          }).addTo(layer);
+        }
+        L.marker([latitude, longitude], { icon: dot, zIndexOffset: 1000 })
+          .addTo(layer)
+          // Permanent, not on hover: hover does not exist on a phone, and an
+          // unlabelled dot on a map full of dots is a thing to be confused by.
+          .bindTooltip("You are here", {
+            permanent: true,
+            direction: "top",
+            offset: [0, -10],
+            className: "route-you-are-here-label",
+          });
+        suppressFitRef.current = true;
+        map.setView([latitude, longitude], Math.max(map.getZoom(), 15));
+      },
+      (err) => {
+        // Never silent. This callback existing at all is half the requirement;
+        // the other half is that it puts something on the screen.
+        setLocating(false);
+        setGeoError(geolocationErrorMessage(err, { secureContext: secure }));
+      },
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 },
+    );
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (hintTimer.current) clearTimeout(hintTimer.current);
+    };
   }, []);
 
   // Base tiles live in their own effect keyed on the style. Rebuilding the map
@@ -308,13 +643,20 @@ export function RouteMap({
       if (g.startLat != null && g.startLng != null) all.push([g.startLat, g.startLng]);
       if (g.endLat != null && g.endLng != null) all.push([g.endLat, g.endLng]);
     }
-    if (all.length > 0) {
+    // A genuinely different set of visits (a new day) earns a fresh fit even if
+    // the user located themselves on the previous one; a refetch of the same
+    // day does not.
+    if (fittedKeyRef.current !== pointsKey) {
+      fittedKeyRef.current = pointsKey;
+      suppressFitRef.current = false;
+    }
+    if (all.length > 0 && !suppressFitRef.current) {
       // Cap the zoom so a day with a single geocoded visit fits to
       // neighborhood level instead of snapping to one street (C8).
       map.fitBounds(L.latLngBounds(all), { padding: [30, 30], maxZoom: 14 });
     }
     // Rebuilt above, so anything the previous pass registered is stale.
-  }, [points, groups, onVisitClick, drawRoutes, onHoverVisit]);
+  }, [points, pointsKey, groups, onVisitClick, drawRoutes, onHoverVisit]);
 
   // Point at whichever visit another pane is hovering.
   //
@@ -364,15 +706,89 @@ export function RouteMap({
       mapRef.current?.remove();
       mapRef.current = null;
       layerRef.current = null;
+      meRef.current = null;
     };
   }, []);
 
   return (
     <div
-      ref={containerRef}
       style={{ height, width: "100%" }}
-      className="isolate rounded-lg border overflow-hidden z-0"
-    />
+      // `relative` so the controls below can sit over the map; `isolate` keeps
+      // Leaflet's own z-indexes (panes run 200–1000) inside this box and off
+      // the rest of the page, which is why the overlays can use z-[1100]
+      // without outranking a dialog.
+      //
+      // The two arbitrary-variant rules give Leaflet's own +/- buttons a 44px
+      // target below `md`. They are 30px out of the box, which is the same
+      // "aim at it" target CLAUDE.md called out on the tab bar, and they are
+      // the answer for anyone who does not want to scroll to zoom at all.
+      className={
+        "relative isolate rounded-lg border overflow-hidden z-0 " +
+        "max-md:[&_.leaflet-control-zoom_a]:h-11 max-md:[&_.leaflet-control-zoom_a]:w-11 " +
+        "max-md:[&_.leaflet-control-zoom_a]:leading-[2.75rem]"
+      }
+    >
+      <div ref={containerRef} className="absolute inset-0" />
+
+      {/* Always visible, never hover-revealed: on a phone there is no hover,
+          and "centre on me" is the one control a person standing in a driveway
+          actually needs. 44px box around a 16px glyph — the ui/dialog.tsx
+          pattern — at every width, because a control this small has nothing to
+          gain from being smaller on a laptop. */}
+      <div className="absolute right-2 top-2 z-[1100] flex max-w-[calc(100%-1rem)] flex-col items-end gap-1.5">
+        <button
+          type="button"
+          onClick={locate}
+          disabled={locating}
+          aria-label="Show my current location"
+          title="Show my current location"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border bg-background/95 text-foreground shadow-sm transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+        >
+          {locating ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <LocateFixed className="h-4 w-4" />
+          )}
+          <span className="sr-only">Show my current location</span>
+        </button>
+        {geoError && (
+          // `role="alert"` so a screen reader hears it, and a real box on the
+          // map so everyone else sees it. Silence was the failure mode being
+          // fixed: the old button-less map simply never said anything.
+          <div
+            role="alert"
+            className="flex max-w-[min(15rem,calc(100vw-5rem))] items-start gap-1.5 rounded-md border bg-background/95 px-2 py-1.5 text-xs leading-snug text-foreground shadow-sm"
+          >
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+            {/* min-w-0 so the message wraps inside the box instead of setting
+                its width — CLAUDE.md's flex-row rule. */}
+            <span className="min-w-0">{geoError}</span>
+            <button
+              type="button"
+              onClick={() => setGeoError(null)}
+              aria-label="Dismiss location message"
+              className="-my-1.5 -mr-1 flex h-11 w-11 shrink-0 items-center justify-center text-muted-foreground"
+            >
+              <span aria-hidden="true" className="text-sm leading-none">
+                ×
+              </span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {hint && (
+        // pointer-events-none: it appears while the user is mid-scroll, and a
+        // toast that swallows the next click is worse than no toast.
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none absolute inset-x-2 bottom-2 z-[1100] mx-auto w-fit max-w-[calc(100%-1rem)] rounded-full bg-foreground/85 px-3 py-1.5 text-center text-xs text-background shadow"
+        >
+          {hint}
+        </div>
+      )}
+    </div>
   );
 }
 

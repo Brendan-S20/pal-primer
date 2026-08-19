@@ -18,7 +18,8 @@ import {
 } from "@/lib/visits.functions";
 import { backfillPropertyGeocodes } from "@/lib/properties.functions";
 import { RouteMap, buildTechGroups, techColorMap } from "@/components/RouteMap";
-import { WeatherStrip } from "@/components/WeatherStrip";
+import { WeatherStrip, hasPrecipitationRisk } from "@/components/WeatherStrip";
+import { getWeatherForZones } from "@/lib/weather.functions";
 import { findRouteWarnings } from "@/lib/route-plausibility";
 import { BASE_STYLES, storedBaseStyle, storeBaseStyle, type TileVariant } from "@/lib/map-tiles";
 import { StatusChip } from "@/components/client-detail/primitives";
@@ -43,10 +44,12 @@ import {
   Users,
   CalendarOff,
   AlertTriangle,
+  ChevronDown,
+  CloudRain,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -224,27 +227,33 @@ function RoutesPage() {
     }
   };
 
-  /** Weather, same collapsed-by-default treatment and for the same reason.
+  /** Weather is not a panel you keep. It is a warning, or it is nothing.
    *
-   *  WeatherStrip was finished and never rendered — the only component in the
-   *  codebase nothing referenced. The header's forecast popover SHOWS you which
-   *  days are risky and gives you nothing to do about them; this is the other
-   *  half, and it takes exactly the `day` this page already has.
+   *  This used to be the same collapsed-by-default toggle the tech-load panel
+   *  beside it still has: a permanent full-width "Show weather" button, and a
+   *  remembered preference behind it. On the great majority of days that
+   *  button was a dashed rectangle offering to tell the owner it is not going
+   *  to rain — a permanent affordance for an occasional question, which is
+   *  the same complaint that got the strip collapsed in the first place, one
+   *  step further along.
    *
-   *  Its three server functions (analyzeDayWeather, rescheduleVisits,
-   *  undoReschedule) had one importer each — this component — so they read as
-   *  wired to the dead-machinery check while being reachable from nothing. */
-  const [showWeather, setShowWeather] = useState<boolean>(
-    () => typeof localStorage !== "undefined" && localStorage.getItem("routes.showWeather") === "1",
-  );
-  const setShowWeatherPersist = (v: boolean) => {
-    setShowWeather(v);
-    try {
-      localStorage.setItem("routes.showWeather", v ? "1" : "0");
-    } catch {
-      /* private mode */
-    }
-  };
+   *  "Remove the show weather and keep as an icon above, or only present when
+   *  it's supposed to rain or snow." So: an icon, and only on a day the
+   *  forecast says carries precipitation risk. Otherwise nothing renders at
+   *  all — no button, no dashed box, no reserved row.
+   *
+   *  Nothing is persisted, and there is nothing left to persist: the state
+   *  below is whether the strip is open right now, which lasts as long as you
+   *  are looking at that day. The localStorage key that backed the old toggle
+   *  is gone with it — a remembered "yes, show me weather" means nothing once
+   *  the affordance only exists on the days it matters. It sat under the same
+   *  `routes.` prefix as the settings above; anyone still carrying the old
+   *  value in their browser now carries a key nothing reads. */
+  const [weatherOpen, setWeatherOpen] = useState(false);
+
+  /** Whether the heading's calendar is open. Nothing to persist: it closes on
+   *  pick, like every other popover on this page. */
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
 
   const [routingDialogStaff, setRoutingDialogStaff] = useState<any>(null);
 
@@ -437,6 +446,57 @@ function RoutesPage() {
       }),
   });
   const { data: staffData } = useQuery({ queryKey: ["staff"], queryFn: () => listS() });
+
+  /** Is the selected day forecast to rain or snow?
+   *
+   *  This runs on load, so the function it calls matters more than usual.
+   *
+   *  `getWeatherForZones` READS: zones, visit counts, and a forecast cache
+   *  that it fills from Open-Meteo. It is the same call the header's forecast
+   *  popover makes.
+   *
+   *  `analyzeDayWeather` — the one WeatherStrip runs when you press "Check
+   *  weather" — WRITES. It sets `weather_flagged` and `weather_note` on the
+   *  day's visit rows. Deciding whether to draw a button is not a reason to
+   *  mark a dispatcher's visits, and a page that flagged visits merely by
+   *  being opened would be marking days nobody had looked at yet. It stays an
+   *  explicit action, taken from inside the strip, and is not reachable from
+   *  here.
+   *
+   *  Only for the single-day view: the strip acts on one date, so a week or a
+   *  month has no single day for this to be about. `enabled` keeps the query
+   *  from firing at all in those ranges.
+   *
+   *  A failure is silent on purpose. If the forecast cannot be fetched there
+   *  is no risk to report, and an error banner about the weather service on a
+   *  dispatch board is noise about a thing the reader cannot act on. */
+  const getWeatherFn = useServerFn(getWeatherForZones);
+  const weatherQ = useQuery({
+    queryKey: ["routes-weather-risk", day],
+    queryFn: () => getWeatherFn({ data: { fromDate: day, toDate: day } }),
+    enabled: range === "today",
+    staleTime: 10 * 60_000,
+    retry: false,
+  });
+
+  /** True only when a zone with a working forecast says this exact date brings
+   *  precipitation. `hasPrecipitationRisk` lives beside the strip and explains
+   *  why wind and freezing temperatures do not count. */
+  const dayHasPrecipitationRisk = useMemo(() => {
+    const zones = (weatherQ.data as { zones?: any[] } | undefined)?.zones ?? [];
+    return zones.some(
+      (z: any) =>
+        z.status === "ok" &&
+        (z.days ?? []).some((d: any) => d.date === day && hasPrecipitationRisk(d)),
+    );
+  }, [weatherQ.data, day]);
+
+  // Close the strip when the day underneath it changes. It was opened about a
+  // specific date's forecast; leaving it open would carry an answer about
+  // Tuesday onto Wednesday's board.
+  useEffect(() => {
+    setWeatherOpen(false);
+  }, [day, range]);
 
   const allStaff = staffData?.staff ?? [];
   const assignedIds = new Set(
@@ -825,8 +885,63 @@ function RoutesPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
+        {/* The title IS the date picker.
+            "I like clicking on the month and it opens the date picker instead
+            of it being separate." It was separate: a `<input type="date">`
+            wedged between the two arrows, which is a second control saying the
+            same thing the heading already says, in a different format, in a
+            widget whose look and keyboard behaviour the browser decides. The
+            heading is the thing on this page a dispatcher already looks at to
+            find out which day the board is showing — so it is the thing to
+            press to change it.
+
+            The chevron is not decoration. An `<h1>` that happens to be
+            clickable is a control nobody discovers; the chevron is the only
+            thing on screen that says this text does something.
+
+            `<button>` inside the `<h1>`, not the other way round: a heading is
+            flow content and is not allowed inside a button. The popover's
+            calendar renders in a portal, so nothing lands inside the heading
+            either. */}
         <div>
-          <h1 className="text-2xl font-semibold">{heading}</h1>
+          <h1 className="text-2xl font-semibold">
+            <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+              <PopoverTrigger asChild>
+                {/* No aria-label. The button's own text IS its name — "August
+                    2026" — and an aria-label would replace the one thing the
+                    reader needs with a description of the control. Radix puts
+                    aria-haspopup and aria-expanded on the trigger, which is
+                    where "and it opens something" belongs. */}
+                <button
+                  type="button"
+                  title="Pick a date"
+                  className="-mx-2 flex min-h-[2.75rem] items-center gap-1.5 rounded-md px-2 text-left hover:bg-muted md:min-h-0 md:py-1"
+                >
+                  {heading}
+                  <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  selected={new Date(`${day}T00:00:00`)}
+                  defaultMonth={new Date(`${day}T00:00:00`)}
+                  onSelect={(picked) => {
+                    if (!picked) return;
+                    setLocalColumns(null);
+                    setDay(toLocalISO(picked));
+                    setDatePickerOpen(false);
+                  }}
+                  autoFocus
+                  /* 44px cells on a phone, the calendar's own 32px from md up.
+                     Seven 44px columns plus the card's padding is 332px, which
+                     fits a 360px viewport with room for the popover's collision
+                     padding — the narrow end this has to survive. */
+                  className="[--cell-size:2.75rem] md:[--cell-size:2rem]"
+                />
+              </PopoverContent>
+            </Popover>
+          </h1>
           <p className="text-sm text-muted-foreground">
             Dispatch, route, map, and mark visits complete, all in one view.
           </p>
@@ -843,10 +958,15 @@ function RoutesPage() {
             </Button>
           )}
           {/* Step by whatever you are LOOKING at.
-              A date input alone made "show me next week" a calendar-popover
-              date-arithmetic exercise: you had to work out which Monday you
-              wanted. The arrows move by the active range — a day, a week, or a
-              calendar month — so the control matches the view it drives. */}
+              A date input alone made "show me next week" a date-arithmetic
+              exercise: you had to work out which Monday you wanted. The arrows
+              move by the active range — a day, a week, or a calendar month —
+              so the control matches the view it drives.
+
+              The date input that sat between them has gone to the heading,
+              which now opens the calendar. Jumping to an arbitrary date is a
+              rarer act than stepping to the next one and does not need to hold
+              150px of the toolbar to be available. */}
           <div className="inline-flex items-center gap-1">
             <Button
               variant="outline"
@@ -858,15 +978,6 @@ function RoutesPage() {
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Input
-              type="date"
-              value={day}
-              onChange={(e) => {
-                setLocalColumns(null);
-                setDay(e.target.value);
-              }}
-              className="w-[150px]"
-            />
             <Button
               variant="outline"
               size="icon"
@@ -1314,28 +1425,37 @@ function RoutesPage() {
                 before "is anybody overloaded". Only for the single-day view —
                 the strip analyses one date, and offering it while the board
                 shows a week or a month would be a control that silently acts on
-                a day you are not looking at. */}
-            {range === "today" &&
-              (showWeather ? (
-                <div className="space-y-1">
-                  <div className="flex justify-end">
-                    <button
-                      onClick={() => setShowWeatherPersist(false)}
-                      className="rounded px-2 py-0.5 text-2xs text-muted-foreground hover:bg-muted hover:text-foreground"
-                    >
-                      Hide weather
-                    </button>
-                  </div>
-                  <WeatherStrip day={day} />
+                a day you are not looking at.
+
+                And only on a day the forecast says will rain or snow. On a dry
+                day this whole branch renders nothing: no icon, no empty row,
+                nothing to scroll past. The icon IS the warning — its presence
+                is the information, before anything is clicked — which is why
+                it is drawn in the destructive colour and why there is no
+                greyed-out version of it for clear days.
+
+                44px box around a 16px glyph below md, per CLAUDE.md and the
+                pattern in ui/dialog.tsx; a pointer gets the tighter 36px box
+                from md up. The label says "Show weather" / "Hide weather"
+                because an icon-only control has to say what it is to a screen
+                reader, and `title` puts the same words under a mouse. */}
+            {range === "today" && dayHasPrecipitationRisk && (
+              <div className="space-y-1">
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setWeatherOpen((v) => !v)}
+                    aria-expanded={weatherOpen}
+                    aria-label={weatherOpen ? "Hide weather" : "Show weather"}
+                    title={weatherOpen ? "Hide weather" : "Show weather"}
+                    className="flex h-11 w-11 items-center justify-center rounded-md text-destructive hover:bg-muted md:h-9 md:w-9"
+                  >
+                    <CloudRain className="h-4 w-4" />
+                  </button>
                 </div>
-              ) : (
-                <button
-                  onClick={() => setShowWeatherPersist(true)}
-                  className="w-full rounded-lg border border-dashed px-3 py-1.5 text-left text-2xs text-muted-foreground hover:bg-muted hover:text-foreground"
-                >
-                  Show weather
-                </button>
-              ))}
+                {weatherOpen && <WeatherStrip day={day} />}
+              </div>
+            )}
             {showLoad ? (
               <div className="space-y-1">
                 <div className="flex justify-end">

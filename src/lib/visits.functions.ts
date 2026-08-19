@@ -38,7 +38,7 @@ export const listVisitsForDay = createServerFn({ method: "GET" })
     let q = supabase
       .from("visits")
       .select(
-        "id, scheduled_on, status, sequence, assigned_staff_id, zone_id, property_id, client_id, subscription_id, eta_start, eta_end, travel_km, travel_min, window_violated, weather_flagged, weather_note, clients(display_name), properties(street, city, postal_code, latitude, longitude, earliest_service_time, latest_service_time, service_duration_min), zones(name, postal_prefix), staff(display_name), subscriptions(price_cents, frequency, preferred_time_of_day, earliest_time, latest_time)",
+        "id, scheduled_on, status, sequence, assigned_staff_id, zone_id, property_id, client_id, subscription_id, eta_start, eta_end, travel_km, travel_min, window_violated, weather_flagged, weather_note, clients(display_name), properties(street, city, postal_code, latitude, longitude, earliest_service_time, latest_service_time, service_duration_min), zones(name, postal_prefix), staff(display_name), subscriptions(price_cents, account_type, frequency, preferred_time_of_day, earliest_time, latest_time)",
       )
       .eq("organization_id", orgId);
     q =
@@ -772,72 +772,78 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
     return { moved: (n as number) ?? 0 };
   });
 
-// ── Auto-routing: preview, then apply ─────────────────────────────────────
+// ── Auto-routing: one button, and a measurement taken on the way past ─────
 //
-// Both call the same SQL planner (`plan_route`), which is the whole point.
-// A preview backed by its own estimate drifts from what Apply does, and the
-// drift is invisible until somebody trusts the number.
+// There used to be two presses. Preview measured the day, showed a headline,
+// and only then did Apply light up. QA on 2026-08-19: "Also remove the
+// preview, let's just have apply." So the STEP is gone — the dispatcher picks
+// the days, the people and the level, and presses one button.
+//
+// THE READ-ONLY TWIN IS NOT GONE, and that distinction is the whole of this
+// section. `preview_optimize` runs `plan_day_across_staff_dryrun`, which is
+// `plan_day_across_staff` minus the UPDATE — the same planner, so the numbers
+// cannot drift from what Apply does. It is also the ONLY thing that can answer
+// "how many of these stops will still miss their arrival window", because the
+// writer returns stops and minutes per technician and no violation count at
+// all. Losing the step must not lose that fact, so applyOptimize measures with
+// it immediately before it writes.
+//
+// That is two planner runs per Apply — exactly what pressing Preview and then
+// Apply already cost. What changed is that the dispatcher no longer has to
+// spend a press to buy the warning.
 
 const LEVELS = ["fast", "balanced", "thorough"] as const;
 
-export const previewOptimize = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z
-      .object({
-        staffIds: z.array(z.string().uuid()).min(1).max(50),
-        from: z.string(),
-        to: z.string(),
-        level: z.enum(LEVELS).default("balanced"),
-        reassign: z.boolean().default(false),
-      })
-      .refine((v) => v.to >= v.from, {
-        message: "The end date is before the start date.",
-        path: ["to"],
-      })
-      .parse(d),
-  )
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const orgId = await resolveOrgId(supabase, userId);
-    const { data: rows, error } = await (supabase as any).rpc("preview_optimize", {
-      _org_id: orgId,
-      _staff_ids: data.staffIds,
-      _from: data.from,
-      _to: data.to,
-      _level: data.level,
-      _reassign: data.reassign,
-    } as any);
-    if (error) throw new Error(error.message);
+/** What the read-only twin says this run is about to do.
+ *
+ *  Deliberately not a server function any more: nothing outside this file
+ *  needs it, and an exported one nothing calls is a live RPC endpoint for
+ *  anyone who can post to it — the reason assignRoute and its three siblings
+ *  were deleted rather than left lying around below.
+ *
+ *  Taken BEFORE the write, because afterwards there is nothing left to plan:
+ *  the visits this run touches come back assigned and sequenced, so a second
+ *  dry run over the same days measures an empty set. */
+async function forecastPlan(
+  supabase: any,
+  orgId: string,
+  data: { staffIds: string[]; from: string; to: string; level: string; reassign: boolean },
+) {
+  const { data: rows, error } = await supabase.rpc("preview_optimize", {
+    _org_id: orgId,
+    _staff_ids: data.staffIds,
+    _from: data.from,
+    _to: data.to,
+    _level: data.level,
+    _reassign: data.reassign,
+  } as any);
+  if (error) throw new Error(error.message);
 
-    const days = (rows ?? []) as Array<{
-      staff_id: string;
-      day: string;
-      stops: number;
-      before_min: number;
-      after_min: number;
-      before_known: boolean;
-      violations: number;
-    }>;
+  const days = (rows ?? []) as Array<{
+    staff_id: string;
+    day: string;
+    stops: number;
+    before_min: number;
+    after_min: number;
+    before_known: boolean;
+    violations: number;
+  }>;
 
-    // Saving is summed ONLY over days that had a real route to compare
-    // against. A day whose stops carry no sequence is not a slower route, it
-    // is no route — counting it would inflate the headline with the entire
-    // cost of a day nobody had planned yet.
-    const measured = days.filter((d) => d.before_known);
-    const savedMin = measured.reduce((n, d) => n + (Number(d.before_min) - Number(d.after_min)), 0);
-    return {
-      days,
-      totals: {
-        stops: days.reduce((n, d) => n + Number(d.stops), 0),
-        daysPlanned: days.length,
-        daysMeasured: measured.length,
-        // Rounded once, at the end. Rounding per day and summing drifts.
-        savedMin: Math.round(savedMin * 10) / 10,
-        violations: days.reduce((n, d) => n + Number(d.violations), 0),
-      },
-    };
-  });
+  // Saving is summed ONLY over days that had a real route to compare
+  // against. A day whose stops carry no sequence is not a slower route, it
+  // is no route — counting it would inflate the headline with the entire
+  // cost of a day nobody had planned yet.
+  const measured = days.filter((d) => d.before_known);
+  const savedMin = measured.reduce((n, d) => n + (Number(d.before_min) - Number(d.after_min)), 0);
+  return {
+    stops: days.reduce((n, d) => n + Number(d.stops), 0),
+    daysPlanned: days.length,
+    daysMeasured: measured.length,
+    // Rounded once, at the end. Rounding per day and summing drifts.
+    savedMin: Math.round(savedMin * 10) / 10,
+    violations: days.reduce((n, d) => n + Number(d.violations), 0),
+  };
+}
 
 export const applyOptimize = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -865,6 +871,24 @@ export const applyOptimize = createServerFn({ method: "POST" })
       const iso = d.toISOString().slice(0, 10);
       if (iso > data.to) break;
       days.push(iso);
+    }
+
+    // ── THE MEASUREMENT, BEFORE THE WRITE ───────────────────────────────
+    //
+    // The two facts a dispatcher must not miss are a stop that will still
+    // break its arrival window and a day that was refused. The second comes
+    // back from the write loop below, in `skipped`. The first exists nowhere
+    // in what the writer returns, so it is read here from the read-only twin.
+    //
+    // A failed measurement must NEVER stop the write. The dispatcher asked
+    // for the day to be routed, not for a report — so this returns null and
+    // the panel says the check could not run. That is not the same sentence
+    // as "no stop misses its window", and the two must not look alike.
+    let forecast: Awaited<ReturnType<typeof forecastPlan>> | null = null;
+    try {
+      forecast = await forecastPlan(supabase, orgId, data);
+    } catch {
+      forecast = null;
     }
 
     // ── ONE CALL PER DAY, NOT PER TECH PER DAY ──────────────────────────
@@ -932,7 +956,10 @@ export const applyOptimize = createServerFn({ method: "POST" })
       .map(([staffId, v]) => ({ staffId, stops: v.stops, totalMin: Math.round(v.totalMin) }))
       .sort((a, b) => b.totalMin - a.totalMin);
 
-    return { stops, skipped, balance };
+    // `forecast` rides along with the three the screen already had. It is what
+    // the removed Preview step used to put on the card, and it is the only
+    // route by which a window violation now reaches anybody.
+    return { stops, skipped, balance, forecast };
   });
 
 // assignRoute / optimizeRoute / optimizeWeek / reoptimizeAll were removed here.
@@ -947,5 +974,12 @@ export const applyOptimize = createServerFn({ method: "POST" })
 // gone rather than baselined, because an unreferenced export is still a live
 // RPC endpoint for anyone who can post to it.
 //
-// Everything they did is in previewOptimize / applyOptimize, which preview
-// before they write and only reassign when explicitly asked.
+// Everything they did is in applyOptimize, which measures with the read-only
+// planner before it writes and only reassigns when explicitly asked.
+//
+// previewOptimize left the same way on 2026-08-19, when the preview STEP was
+// removed from the panel: with no caller it was an exported server function
+// and therefore a live endpoint, which is exactly the state the four above
+// were deleted for. `preview_optimize` the SQL FUNCTION stays, and stays
+// called — forecastPlan above is its caller — so the dry-run machinery that
+// makes Apply correct is untouched and nothing needed a baseline entry.

@@ -7,7 +7,68 @@ import { rescheduleVisits, undoReschedule } from "@/lib/weather.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { CloudRain, Loader2, Wind, Thermometer } from "lucide-react";
+import { CloudRain, Loader2, Wind } from "lucide-react";
+
+/** Does this forecast day carry PRECIPITATION risk — rain or snow — as
+ *  opposed to some other kind of risk?
+ *
+ *  Exported because the page that mounts the strip has to answer it before it
+ *  offers the strip at all, and the answer belongs next to the thing it
+ *  gates. `getWeatherForZones` (read-only) supplies the day; `analyzeDayWeather`
+ *  (which WRITES `weather_flagged` / `weather_note` onto visit rows) must not
+ *  be involved in deciding whether to draw a button, and is not.
+ *
+ *  ── WHY THIS READS `reasons` AND NOT THE NUMBERS ──────────────────────────
+ *
+ *  `assessRisk` in weather.functions.ts owns the thresholds — 0.2in, 70%,
+ *  25mph, weathercode >= 95, 23°F — and it already published its verdict as
+ *  `risky` plus a list of human reasons. Re-deriving "is it going to rain"
+ *  from `precip_in >= 0.2` here would copy those numbers into a second file,
+ *  where the next threshold change would silently stop agreeing with the
+ *  first. So `risky` stays the source of truth for "is this day a problem",
+ *  and the only judgement made here is which KIND of problem it is.
+ *
+ *  The reasons separate cleanly enough to make that judgement:
+ *
+ *      `0.31" rain`      precipitation
+ *      `80% chance`      precipitation (chance OF precipitation)
+ *      `thunderstorm`    precipitation
+ *      `wind 31 mph`     not precipitation
+ *      `hard freeze`     not precipitation — this is temperature, and
+ *                        "temperature isn't much of a worry" is exactly what
+ *                        the owner said when asking for this
+ *
+ *  So the test is subtractive: risky, and at least one reason that is not wind
+ *  and not a freeze. Subtractive on purpose — an unrecognised future reason
+ *  counts AS precipitation and shows the icon. A spurious icon on a windy day
+ *  is a small annoyance; a missing icon on a day it snows is the owner losing
+ *  the warning this whole change exists to deliver, so the failure mode points
+ *  that way deliberately.
+ *
+ *  ── SNOW ─────────────────────────────────────────────────────────────────
+ *
+ *  There is no snow reason to match, and its absence is not an oversight.
+ *  Open-Meteo's `precipitation_sum` is water equivalent and INCLUDES snowfall,
+ *  so snow arrives inside `0.31" rain` and `80% chance` already — mislabelled
+ *  in the wording, present in the number. Adding a separate snow trigger would
+ *  mean introducing a threshold (snow is roughly 10:1 by depth, so 0.2in of
+ *  water is a couple of inches of snow and light snow clears none of these
+ *  bars), and inventing a threshold for what a crew will go out in is not a
+ *  decision to make in passing while moving a button. If it turns out light
+ *  snow needs to flag, that is a change to `assessRisk`, made deliberately,
+ *  and this function inherits it for free. */
+export function hasPrecipitationRisk(day: {
+  risky: boolean;
+  reasons: string[];
+}): boolean {
+  if (!day.risky) return false;
+  return day.reasons.some((r) => !NON_PRECIPITATION_REASON.test(r.trim()));
+}
+
+/** The two reasons `assessRisk` can raise that are not about water falling out
+ *  of the sky. Anchored at the start so a reason merely CONTAINING the word —
+ *  a hypothetical "rain and wind" — is still read as precipitation. */
+const NON_PRECIPITATION_REASON = /^(wind\b|hard freeze$)/i;
 
 function nextDayISO(iso: string): string {
   const d = new Date(iso + "T00:00:00");
@@ -195,21 +256,21 @@ export function WeatherStrip({ day }: { day: string }) {
                     {z.precip_prob}%
                   </span>
                 )}
-                {/* Both of these were bare numbers: a wind icon followed by
-                    "23", and a temperature with a degree sign but no scale, in
-                    a product whose users are American and whose forecast was
-                    arriving in km/h and Celsius. An icon says what is being
-                    measured, not in what. */}
+                {/* Wind used to be a bare number — an icon followed by "23",
+                    in a product whose users are American and whose forecast
+                    was arriving in km/h. An icon says what is being measured,
+                    not in what, so the unit is spelled out beside it.
+
+                    The high temperature stood here too and no longer does.
+                    "Temperature isn't much of a worry" — the owner reads this
+                    strip to answer "can the crew work today", and on a route
+                    that is a question about rain, snow and wind. A number that
+                    changes nothing about the answer is a number competing with
+                    the ones that do, in a row that has to fit a phone. */}
                 {z.wind_max != null && (
                   <span className="inline-flex items-center gap-0.5">
                     <Wind className="h-3 w-3" />
                     {Math.round(z.wind_max)} mph
-                  </span>
-                )}
-                {z.temp_max != null && (
-                  <span className="inline-flex items-center gap-0.5">
-                    <Thermometer className="h-3 w-3" />
-                    {Math.round(z.temp_max)}°F
                   </span>
                 )}
                 <Badge variant="outline" className="ml-1">

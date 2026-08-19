@@ -11,6 +11,13 @@
 // from what Apply does, and the drift is invisible until somebody trusts the
 // number. Most of these assertions exist to keep that single-source property.
 //
+// UPDATED 2026-08-19. "Preview" is no longer a button — QA asked for one press,
+// not two, and the panel now has only Apply. Every SQL assertion below is
+// untouched by that, because the measuring caller did not go anywhere: it moved
+// inside applyOptimize, which runs `preview_optimize` immediately before it
+// writes and reports what it said. Two callers, one planner, one press. The
+// three assertions that named the removed UI say so where they stand.
+//
 // Probed live before this was written, acting as a real org owner via
 // request.jwt.claims so the authz path ran rather than being bypassed:
 //   * fast / balanced / thorough all returned 22.3 min over 6 stops
@@ -138,13 +145,23 @@ describe("it refuses to invent a saving", () => {
   });
 
   it("the UI says 'new route' rather than a number when nothing was ordered", () => {
+    // CHANGED 2026-08-19. The sentences moved: the preview STEP is gone, so
+    // this is no longer a result box the dispatcher reads before deciding, it
+    // is the description line on the toast Apply raises afterwards. The
+    // property is the same one and is the reason this `it` was written — the
+    // panel must not put a number on a day that had no route to compare
+    // against — so it is repointed rather than deleted.
     const ui = readFileSync(
       join(import.meta.dirname, "..", "src/components/routes/AutoRoutingPanel.tsx"),
       "utf8",
     );
     expect(ui).toMatch(/New route/);
-    // And it is willing to say the optimizer made things worse.
-    expect(ui).toMatch(/the current\s+order is already better/);
+    // The saving is fenced behind that same question, and this is the fence.
+    // Without it "Saves about 0 min" is what an unordered day would print.
+    expect(ui).toMatch(/if \(f\.daysMeasured === 0\)/);
+    // And it is still willing to say the optimizer made things worse — in the
+    // past tense now, because by the time anybody reads it, it has.
+    expect(ui).toMatch(/the order it replaced was quicker/);
   });
 });
 
@@ -183,11 +200,22 @@ describe("the guards still apply, and refusals are visible", () => {
     expect(ui).toMatch(/r\.skipped\.slice\(0, 3\)/);
   });
 
-  it("Apply is unreachable until a preview exists", () => {
+  it("Apply is guarded by its inputs, now that there is no preview to gate it", () => {
+    // CHANGED 2026-08-19 — QA: "Also remove the preview, let's just have
+    // apply." This used to read
+    //
+    //   expect(ui).toMatch(/disabled=\{!p \|\| applyMut\.isPending/);
+    //
+    // and there is no `p` any more. Deleting the assertion would have left the
+    // one button in this panel with nothing said about when it may be pressed,
+    // so it is repointed at what the gate actually protected against: a range
+    // that runs backwards, and a run with nobody in it. The planner rejects
+    // both, and a disabled button says so before the round trip.
     const ui = readFileSync(
       join(import.meta.dirname, "..", "src/components/routes/AutoRoutingPanel.tsx"),
       "utf8",
     );
-    expect(ui).toMatch(/disabled=\{!p \|\| applyMut\.isPending/);
+    expect(ui).toMatch(/disabled=\{!rangeValid \|\| techs\.length === 0 \|\| busy\}/);
+    expect(ui, "the preview gate is back").not.toMatch(/previewMut/);
   });
 });

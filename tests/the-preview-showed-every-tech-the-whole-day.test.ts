@@ -65,6 +65,18 @@
 //     inside the dryrun, through the preview.
 //
 // A green run here says the wiring is right. It does not say the planner is.
+//
+// ── UPDATE 2026-08-19: "PREVIEW" IS NO LONGER A BUTTON ────────────────────
+//
+// QA asked for one press instead of two, so the panel now has only Apply and
+// the preview STEP is gone from the UI. Nothing below changed, because nothing
+// below is about the UI: `preview_optimize` is still defined, still granted,
+// and still called — by applyOptimize, immediately before it writes, which is
+// where the arrival-window count the dispatcher gets warned about comes from.
+// The property this file exists for is if anything load-bearing now: the
+// measurement nobody presses a button for is still the read-only twin, and one
+// identifier's difference in the wrong direction would have Apply plan the day
+// twice for real. See tests/two-presses-to-route-a-day.test.ts for the caller.
 
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";

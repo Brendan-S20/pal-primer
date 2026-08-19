@@ -90,7 +90,14 @@ describe("applying auto-routing hands the whole team to one planner", () => {
     // per-technician breakdown is what tells a dispatcher the work was
     // actually divided.
     expect(apply).toMatch(/const balance =/);
-    expect(apply).toMatch(/return \{ stops, skipped, balance \}/);
+    // CHANGED 2026-08-19, when the preview STEP was removed from the panel.
+    // The return grew a fourth member, `forecast` — the read-only planner's
+    // measurement, taken by applyOptimize just before it writes, because it is
+    // the only thing that still knows how many stops will miss their arrival
+    // window. The three that were here are named individually rather than
+    // relaxed to a wildcard: this assertion exists to notice a member going
+    // MISSING, and /return \{ stops, .* \}/ would not have.
+    expect(apply).toMatch(/return \{ stops, skipped, balance, forecast \}/);
 
     const panel = codeOnly(read("src/components/routes/AutoRoutingPanel.tsx"));
     expect(panel).toMatch(/r\.balance/);
