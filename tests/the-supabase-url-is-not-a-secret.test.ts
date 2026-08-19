@@ -36,7 +36,13 @@ describe("the Supabase URL server code uses", () => {
     delete process.env.SUPABASE_URL;
     delete process.env.VITE_SUPABASE_URL;
     expect(resolveSupabaseUrl()).toBe(PUBLIC_SUPABASE_URL);
-    expect(resolveSupabaseUrl()).toMatch(/^https:\/\/\S+\.supabase\.co$/);
+    // An ORIGIN: https, a host, and nothing else. Not `\S+\.supabase\.co`,
+    // which this asserted until the custom domain was activated on 2026-08-19
+    // — that pinned the vendor's hostname, which is exactly the thing a custom
+    // domain exists to stop depending on. What actually matters here is the
+    // shape: a trailing slash or a path would make every call `//rest/v1/...`
+    // or `/path/rest/v1/...` and fail a long way from the cause.
+    expect(resolveSupabaseUrl()).toMatch(/^https:\/\/[^/\s]+$/);
   });
 
   it("treats an empty env var as absent rather than returning an empty URL", () => {

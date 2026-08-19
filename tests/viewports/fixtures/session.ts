@@ -1,5 +1,7 @@
 import type { BrowserContext } from "@playwright/test";
 
+import { PUBLIC_SUPABASE_URL } from "../../../src/lib/supabase-url";
+
 /**
  * A signed-in browser, with no account anywhere.
  *
@@ -57,9 +59,25 @@ import type { BrowserContext } from "@playwright/test";
  * sweep must not start failing on a fix.
  */
 
-/** Project ref from `src/integrations/supabase/client.ts`. */
+/** Project ref from `src/integrations/supabase/client.ts`. Still the ref and not
+ *  the custom domain, because the only thing it is used for below is the
+ *  DERIVED storage key `sb-<ref>-auth-token`, which supabase-js builds from the
+ *  hostname of whatever URL it was given. That key is a fallback the app does
+ *  not currently read at all — see the note above. */
 export const SUPABASE_PROJECT_REF = "vsxzrbxublqrcfnxfwcu";
-export const SUPABASE_ORIGIN = `https://${SUPABASE_PROJECT_REF}.supabase.co`;
+
+/** The origin the browser client actually talks to, imported rather than
+ *  spelled out.
+ *
+ *  It used to be `https://${SUPABASE_PROJECT_REF}.supabase.co`, written out
+ *  here as its own literal. When the custom domain was activated on 2026-08-19
+ *  that made this fixture a second, silent source of truth: `stub-backend.ts`
+ *  routes `${SUPABASE_ORIGIN}/**`, so the moment the app started calling
+ *  api.houndstack.com every PostgREST request would have sailed past the stub
+ *  and into the network fence — twenty signed-in surfaces failing at once, for
+ *  a reason that has nothing to do with layout. Deriving it means the next URL
+ *  change cannot do that. */
+export const SUPABASE_ORIGIN = PUBLIC_SUPABASE_URL;
 
 export const SWEEP_USER_ID = "00000000-0000-4000-8000-000000000001";
 export const SWEEP_USER_EMAIL = "sweep.owner@houndstack-sweep.test";
