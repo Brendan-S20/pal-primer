@@ -33,6 +33,23 @@ function HealthPage() {
     tone?: "ok" | "warn" | "bad";
   }> = [
     {
+      // First, because it is the only card with a date attached. An expired
+      // trial already loses AI and already loses "add a customer" (the
+      // clients_enforce_plan_limit trigger), and no expiry email exists to warn
+      // the tenant -- so this card is currently the only thing standing between
+      // us and finding out from the customer.
+      label: "Trials expiring \u2264 14d",
+      value: String(h.trials_expiring_14d + h.trials_already_expired),
+      sub:
+        h.trials_already_expired > 0
+          ? `${h.trials_already_expired} already expired \u00b7 they cannot add customers or use AI`
+          : h.next_trial_expiry_at
+            ? `next: ${h.next_trial_expiry_org ?? "unnamed org"} on ${new Date(h.next_trial_expiry_at).toISOString().slice(0, 10)}`
+            : "none in the next 14 days",
+      icon: CalendarClock,
+      tone: h.trials_already_expired > 0 ? "bad" : h.trials_expiring_14d > 0 ? "warn" : "ok",
+    },
+    {
       label: "Open SaaS invoices",
       value: String(h.open_invoices_count),
       sub: money(h.open_invoices_total) + " outstanding",

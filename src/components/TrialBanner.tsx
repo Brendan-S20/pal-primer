@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Clock } from "lucide-react";
 import { getTrialState } from "@/lib/trial.functions";
-import { TRIAL_COPY } from "@/lib/trial";
+import { TRIAL_COPY, GROWTH_PAUSED_NOTE, growthPausedFor } from "@/lib/trial";
 
 // BUILD-7 — the trial, said out loud.
 //
@@ -47,6 +47,14 @@ export function TrialBanner() {
       <Clock className={`h-4 w-4 shrink-0 ${warn ? "text-amber-600" : "text-muted-foreground"}`} />
       <span className="font-medium">{copy.headline(data)}</span>
       <span className="text-muted-foreground">{copy.body}</span>
+      {/* The ratified definition, stated on the surface a paused tenant sees.
+          Derived from growthPausedFor rather than `restricted`, because the
+          database gate that does the pausing is not grandfathered and
+          `restricted` is — reading the latter would tell a grandfathered org
+          nothing is paused while their next customer is refused. */}
+      {growthPausedFor(data) ? (
+        <span className="w-full text-xs text-muted-foreground">{GROWTH_PAUSED_NOTE}</span>
+      ) : null}
       {data.canManageBilling ? (
         <Link to="/settings/billing" className="font-medium text-primary hover:underline">
           Set up billing

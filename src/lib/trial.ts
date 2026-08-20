@@ -58,12 +58,21 @@
 // promises "nothing is deleted either way", and MASTER_BRIEF §3114 makes the
 // same point about relationships you can enter and cannot exit.
 //
-// So this is NOT dead code and must not be deleted: it is the state machine for
-// a gate that has not been written, and the brief, the migration that introduced
-// it and its own commit all say enforcement was deferred pending Stripe rather
-// than declined. What is undecided is what the FAQ's "the account pauses"
-// should actually mean. That is an owner decision, and until it is made no
-// capability gate can be written correctly.
+// SETTLED 2026-08-20, and this is the part to read first. "The account pauses"
+// means GROWTH pauses: an expired trial cannot take on a NEW customer, keeps
+// everything it already has, and is not frozen in any other way. See
+// growthPausedFor below for the authoritative list, and note where the rule
+// actually lives — `org_can_add_client`, a database trigger that has been
+// enforcing exactly this since 20260701164146, before any of this file existed.
+//
+// The owner ratified that gate rather than extending it, and explicitly
+// declined a broader freeze until real usage and support load argue for one.
+//
+// So `restricted` stays unwired BY DECISION. It was built for the broader
+// freeze; there is no broader freeze. It also could not be used for the copy
+// even if we wanted to, because it is grandfathered by TRIAL_ENFORCEMENT_FROM
+// and the database gate is not — it would tell a grandfathered org that nothing
+// is paused while the database refuses their next customer.
 //
 // The grandfather clause is real but currently empty: enforcementApplies exempts
 // organizations created before TRIAL_ENFORCEMENT_FROM, and every such org today
@@ -273,7 +282,7 @@ export const TRIAL_COPY: Record<
     // being told "your free trial has ended" would reasonably conclude the
     // product has lost track of what they paid for.
     headline: () => "Your plan has ended",
-    body: "Your account still works and nothing has been deleted. AI features are switched off until a plan is active again.",
+    body: "Adding new customers and the AI features need an active plan. Everything you already have keeps running: your clients, jobs and routes, your invoices and history, and the customer portal. Nothing has been deleted.",
     tone: "warn",
   },
   trialing: {
@@ -281,15 +290,68 @@ export const TRIAL_COPY: Record<
       s.daysRemaining === 1
         ? "Last day of your free trial"
         : `${s.daysRemaining} days left in your free trial`,
-    body: "Everything is unlocked except the AI features, which need a paid plan. Nothing is charged automatically and no card is on file.",
+    // "Except the AI features" was the whole story while the trial is running,
+    // and stops being it the day it ends: adding a customer goes too. Said here
+    // so the change is not a surprise on day 15.
+    body: "Everything is unlocked except the AI features, which need a paid plan. When the trial ends you keep everything you have, but adding new customers will need a plan too. Nothing is charged automatically and no card is on file.",
     tone: "info",
   },
   expired: {
     headline: () => "Your free trial has ended",
-    body: "Your account still works and nothing has been deleted. Add a payment method when you're ready — we'll tell you before anything changes.",
+    // Corrected 2026-08-20. This used to end "we'll tell you before anything
+    // changes", which was false twice over: something had ALREADY changed by
+    // the time this banner appears -- org_can_add_client returns false the
+    // moment trial_ends_at passes, so new customers are refused by a database
+    // trigger -- and there is no trial-expiry email in the repo to have told
+    // them with. A banner that promises a warning it cannot send, about a
+    // change that already happened, is worse than one that simply says what is
+    // true now.
+    body: "Adding new customers and the AI features need an active plan. Everything you already have keeps running: your clients, jobs and routes, your invoices and history, and the customer portal. Nothing has been deleted.",
     tone: "warn",
   },
 };
+
+/**
+ * IS GROWTH PAUSED FOR THIS ORGANIZATION?
+ *
+ * The ratified meaning of "the account pauses" (owner decision, 2026-08-20):
+ * GROWTH is paused, not the account. Concretely, and this list is the whole of
+ * it —
+ *
+ *   paused:      taking on a NEW customer.
+ *   governed
+ *   separately:  AI, by aiAvailableFor and the plan's action allowance.
+ *   NOT paused:  existing clients, jobs and routes stay usable; billing and
+ *                history stay accessible; nothing existing is locked or hidden;
+ *                invoicing, card payments, the portal, the field app and every
+ *                read keep working.
+ *
+ * There is deliberately NO broader account freeze, and there is not to be one
+ * until real usage and support load say otherwise.
+ *
+ * This mirrors `org_can_add_client`, which is where the rule is actually
+ * enforced — a BEFORE INSERT trigger on public.clients, live since
+ * 20260701164146, whose predicate allows `trialing` only while
+ * `trial_ends_at > now()` and otherwise falls through to false. The mapping to
+ * phases is exact: `paid` and an unexpired `trialing` may grow; `expired` and
+ * `lapsed` may not.
+ *
+ * WHY THIS IS NOT `restricted`. `restricted` was designed for the broader
+ * freeze, is gated on TRIAL_ENFORCEMENT and grandfathered by
+ * TRIAL_ENFORCEMENT_FROM, and the database gate honours neither. Deriving copy
+ * from it would tell a grandfathered org that nothing is paused while the
+ * database refuses their next customer. So the copy reads THIS, which is what
+ * actually happens, and `restricted` stays unwired — now by decision rather
+ * than by oversight.
+ */
+export function growthPausedFor(state: TrialState): boolean {
+  return state.phase === "expired" || state.phase === "lapsed";
+}
+
+/** What a paused account can and cannot do, in one sentence, for the banner. */
+export const GROWTH_PAUSED_NOTE =
+  "Paused means new customers only. Everything you already have keeps running: " +
+  "your clients, jobs and routes, your invoices and history, and the customer portal.";
 
 /** Why AI is unavailable, in words a tenant can act on. Never "unavailable". */
 export function aiUnavailableReason(state: TrialState): string | null {
@@ -298,7 +360,7 @@ export function aiUnavailableReason(state: TrialState): string | null {
     return "AI features need a paid plan. They're the one thing the free trial doesn't include, because every request costs us real money to run.";
   }
   if (state.phase === "lapsed") {
-    return "AI features need an active plan. Yours has ended — everything else still works.";
+    return "AI features need an active plan. Yours has ended, so AI and adding new customers are paused — everything you already have still works.";
   }
   return "AI features need a paid plan.";
 }

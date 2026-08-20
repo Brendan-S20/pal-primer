@@ -2905,6 +2905,44 @@ somebody.
 
 **BUILD-7 detail — the trial nobody ever had.**
 
+**Settled 2026-08-20 — what "the account pauses" means.** The published FAQ has
+always promised that an expired trial "pauses" and that nothing is deleted, and
+nothing in the repo defined it. Investigating turned up the answer already
+shipped: `org_can_add_client`, a BEFORE INSERT trigger on `public.clients` live
+since 20260701164146, refuses a new customer the moment `trial_ends_at` passes.
+It ignores `TRIAL_ENFORCEMENT` and is not grandfathered by
+`TRIAL_ENFORCEMENT_FROM`, so it was never the switch anybody thought it was.
+
+Owner decision: **ratify that gate, do not extend it.** "Paused" means GROWTH is
+paused —
+
+- new customers cannot be added after trial expiry;
+- AI stays governed by the existing phase and allowance rules;
+- existing clients, jobs and routes remain usable;
+- existing billing and history remain accessible;
+- nothing existing is locked or hidden;
+- **no broader account freeze**, and none until real usage and support load argue
+  for one.
+
+`growthPausedFor` in `src/lib/trial.ts` is the authoritative statement of it and
+mirrors the SQL predicate; `tests/paused-means-growth-not-the-whole-account.test.ts`
+fails if the two drift, and pins the caller set so a new capability gate cannot
+arrive quietly.
+
+`TrialState.restricted` stays unwired BY DECISION rather than by oversight: it
+was built for the broader freeze that has now been declined, and it could not
+carry the copy anyway, because it is grandfathered where the database gate is
+not — it would tell a grandfathered org nothing is paused while their next
+customer is refused.
+
+Two customer-facing promises were broken by the gap and are fixed: the expired
+banner said "we'll tell you before anything changes" (something already had, and
+there is still no trial-expiry email — nine templates, none trial-related, and
+Stripe's `trial_will_end` cannot fire for an app-side trial with no
+subscription), and the trialing banner said AI was the only thing day 15 costs.
+**An expiry email remains unbuilt and is the one thing here with a date on it:**
+Scooper Troopers expires 2026-08-30 and is the first org the gate reaches.
+
 The ledger line was five words from v1.0 ("Trial → Growth + AI sandbox"), so
 the first job was finding out what existed. The answer: nothing.
 

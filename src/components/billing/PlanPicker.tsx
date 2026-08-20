@@ -77,7 +77,12 @@ export function PlanPicker({
         setTouched(true);
         setBillingInterval(value);
       }}
-      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+      // 44px on touch, unchanged density on desktop. This measured 32px tall,
+      // on the billing page, on a phone — the control that chooses whether the
+      // customer is billed monthly or yearly. Found the first time
+      // /settings/billing was put through the viewport sweep, which is the
+      // point: the page had never been measured at 360px.
+      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors max-md:flex max-md:min-h-11 max-md:flex-1 max-md:items-center max-md:justify-center ${
         billingInterval === value
           ? "bg-background text-foreground shadow-sm"
           : "text-muted-foreground hover:text-foreground"
@@ -90,11 +95,11 @@ export function PlanPicker({
   return (
     <div className="space-y-4">
       {anyAnnual && (
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 max-md:flex-col max-md:items-stretch max-md:gap-2">
           <div
             role="group"
             aria-label="Billing interval"
-            className="inline-flex items-center rounded-lg border bg-muted p-0.5"
+            className="inline-flex items-center rounded-lg border bg-muted p-0.5 max-md:flex max-md:w-full"
           >
             {toggleButton("month", "Monthly")}
             {toggleButton("year", "Annual")}

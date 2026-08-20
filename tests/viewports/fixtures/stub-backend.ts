@@ -95,19 +95,46 @@ const STUBS: Record<string, Stub> = {
     pendingEmail: null,
   },
   getMyOrgFeatures: { commercialAccounts: true, hasCommercialData: true },
-  getTrialState: null,
+  getTrialState: {
+    phase: "expired", daysRemaining: null, endsOn: "2026-08-30", restricted: true,
+    canManageBilling: true,
+  },
   getBillingBannerStatus: { planStatus: "active", role: "owner" },
   getBillingStatus: {
     orgId: fx.ORG_ID,
     orgName: fx.ORG_NAME,
-    planName: "Pro",
-    planSlug: "pro",
+    planName: "Growth",
+    planSlug: "growth",
     billingStatus: "active",
     isPaidTier: true,
     planStatus: "active",
     currentPeriodEnd: fx.ORGANIZATION.current_period_end,
     stripeCustomerId: fx.ORGANIZATION.stripe_customer_id,
     stripeSubscriptionId: fx.ORGANIZATION.stripe_subscription_id,
+  },
+  // /settings/billing. The plan cards and the checkout paragraph are where a
+  // buyer is told about the metered AI charge, so the fixture carries the real
+  // catalog shape — allowance and per-action rate — rather than a tidier one:
+  // a sweep that measured cards with no allowance line would be measuring a
+  // page the product does not ship. Enterprise keeps nulls on purpose, because
+  // "renders nothing rather than null" is the case most likely to regress.
+  listPlatformPlans: {
+    plans: [
+      { id: "plan-launch", name: "Launch", slug: "launch", description: "A solo operator or a small crew running one business.", price_cents: 7_900, annual_price_cents: 79_000, currency: "usd", interval: "month", features: {}, included_seats: 3, price_per_seat_cents: 1_000, ai_actions_included: 200, ai_overage_cents_per_action: 10, is_free: false, stripe_price_id: "price_launch", stripe_annual_price_id: "price_launch_yr", sort_order: 1 },
+      { id: "plan-growth", name: "Growth", slug: "growth", description: 'Past "just me and a couple techs", still one business.', price_cents: 19_900, annual_price_cents: 199_000, currency: "usd", interval: "month", features: {}, included_seats: 10, price_per_seat_cents: 1_000, ai_actions_included: 750, ai_overage_cents_per_action: 10, is_free: false, stripe_price_id: "price_growth", stripe_annual_price_id: "price_growth_yr", sort_order: 2 },
+      { id: "plan-scale", name: "Scale", slug: "scale", description: "A large operation spread across multiple cities or territories.", price_cents: 44_900, annual_price_cents: 449_000, currency: "usd", interval: "month", features: {}, included_seats: 30, price_per_seat_cents: 1_000, ai_actions_included: 2_500, ai_overage_cents_per_action: 10, is_free: false, stripe_price_id: "price_scale", stripe_annual_price_id: "price_scale_yr", sort_order: 3 },
+      { id: "plan-ent", name: "Enterprise", slug: "enterprise", description: "A franchise or multi-brand parent overseeing separate child businesses.", price_cents: null, annual_price_cents: null, currency: "usd", interval: "month", features: {}, included_seats: null, price_per_seat_cents: 1_000, ai_actions_included: null, ai_overage_cents_per_action: null, is_free: false, stripe_price_id: null, stripe_annual_price_id: null, sort_order: 4 },
+    ],
+  },
+  listSubscriptionItems: {
+    planInterval: "month",
+    cancelAtPeriodEnd: false,
+    currentPeriodEnd: fx.ORGANIZATION.current_period_end,
+    items: [
+      { kind: "base", label: "Growth (monthly)", quantity: 1, amountCents: 19_900 },
+      { kind: "seat", label: "Additional active employees", quantity: 4, amountCents: 4_000 },
+    ],
+    nextInvoiceCents: 23_900,
   },
   getReviewQueueCount: { openCount: 4 },
   getOnboardingStatus: { steps: [], completed: 0, total: 0, dismissed: true },
