@@ -210,6 +210,19 @@ export const SURFACES: Surface[] = [
     openedLabel: "a before/after diff row",
   },
   {
+    // Added 2026-08-20. This page was never swept, and it is the one screen
+    // where a customer decides to spend money: the plan cards and the paragraph
+    // above the card field are the only place the metered AI charge is
+    // disclosed before payment. `expectsData` is the allowance line rather than
+    // a price, because a card that renders the price and drops the allowance is
+    // exactly the regression worth catching.
+    id: "/settings/billing",
+    path: "/settings/billing",
+    proof: (p) => p.getByRole("heading", { name: "Manage subscription" }).first(),
+    proofLabel: 'the "Manage subscription" heading',
+    expectsData: "750 AI actions",
+  },
+  {
     // The pager shipped today, and it only exists past row 150.
     id: "/platform/users",
     path: "/platform/users",

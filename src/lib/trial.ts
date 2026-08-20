@@ -281,12 +281,23 @@ export const TRIAL_COPY: Record<
       s.daysRemaining === 1
         ? "Last day of your free trial"
         : `${s.daysRemaining} days left in your free trial`,
-    body: "Everything is unlocked except the AI features, which need a paid plan. Nothing is charged automatically and no card is on file.",
+    // "Except the AI features" was the whole story while the trial is running,
+    // and stops being it the day it ends: adding a customer goes too. Said here
+    // so the change is not a surprise on day 15.
+    body: "Everything is unlocked except the AI features, which need a paid plan. When the trial ends you keep everything you have, but adding new customers will need a plan too. Nothing is charged automatically and no card is on file.",
     tone: "info",
   },
   expired: {
     headline: () => "Your free trial has ended",
-    body: "Your account still works and nothing has been deleted. Add a payment method when you're ready — we'll tell you before anything changes.",
+    // Corrected 2026-08-20. This used to end "we'll tell you before anything
+    // changes", which was false twice over: something had ALREADY changed by
+    // the time this banner appears -- org_can_add_client returns false the
+    // moment trial_ends_at passes, so new customers are refused by a database
+    // trigger -- and there is no trial-expiry email in the repo to have told
+    // them with. A banner that promises a warning it cannot send, about a
+    // change that already happened, is worse than one that simply says what is
+    // true now.
+    body: "Your account still works and nothing has been deleted. Adding new customers and the AI features need an active plan — everything you already have keeps running.",
     tone: "warn",
   },
 };

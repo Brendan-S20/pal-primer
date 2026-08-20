@@ -517,7 +517,46 @@ export const getPlatformHealth = createServerFn({ method: "GET" })
     const ai_calls_24h = aiTotalRes.count ?? 0;
     const admin_actions_24h = recentAuditRes.count ?? 0;
 
+    // TRIALS ABOUT TO EXPIRE, and what that already costs them.
+    //
+    // This is on the health page because expiry is not the inert state the
+    // in-app banner implies. `org_can_add_client` returns false the moment
+    // `trial_ends_at` passes -- the `clients_enforce_plan_limit` trigger on
+    // public.clients has been live since 20260701164146 -- so an expired trial
+    // loses the ability to take on a new customer, and loses AI via
+    // aiAvailableFor. Neither depends on TRIAL_ENFORCEMENT, and the
+    // TRIAL_ENFORCEMENT_FROM grandfather clause does not reach the trigger.
+    //
+    // There is no trial-expiry email in this repo -- email-templates/registry.ts
+    // has nine templates and none is trial-related -- and the only trial
+    // notification, `trial_ending`, comes from Stripe's
+    // customer.subscription.trial_will_end, which cannot fire for an app-side
+    // trial with no Stripe subscription. So without this card the first real
+    // expiry is discovered by the customer, not by us.
+    const in14Days = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+    const expiringRes = await supabaseAdmin
+      .from("organizations")
+      .select("id, name, trial_ends_at")
+      .eq("plan_status", "trialing")
+      .is("deleted_at", null)
+      .not("trial_ends_at", "is", null)
+      .lte("trial_ends_at", in14Days)
+      .order("trial_ends_at", { ascending: true });
+    const expiring = (expiringRes.data ?? []) as Array<{
+      id: string;
+      name: string | null;
+      trial_ends_at: string | null;
+    }>;
+    const nowIso = new Date().toISOString();
+    const trials_expiring_14d = expiring.filter((o) => (o.trial_ends_at ?? "") > nowIso).length;
+    const trials_already_expired = expiring.filter((o) => (o.trial_ends_at ?? "") <= nowIso).length;
+    const next_trial_expiry = expiring.find((o) => (o.trial_ends_at ?? "") > nowIso) ?? null;
+
     return {
+      trials_expiring_14d,
+      trials_already_expired,
+      next_trial_expiry_at: next_trial_expiry?.trial_ends_at ?? null,
+      next_trial_expiry_org: next_trial_expiry?.name ?? null,
       open_invoices_count,
       open_invoices_total,
       overdue_invoices_count,

@@ -232,7 +232,10 @@ export const redeemGiftCard = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     // Crediting a client account is a billing action — same gate as
-    // addClientCredit. The RPC re-checks manage_client_billing in-database.
+    // addClientCredit. redeem_gift_card re-checks manage_client_billing
+    // in-database, and since 20260820140000 post_credit_entry does too; before
+    // that it checked membership only, so this comment was true of the function
+    // named and not of the one underneath it.
     const { orgId } = await requirePermission(
       context.supabase,
       context.userId,
