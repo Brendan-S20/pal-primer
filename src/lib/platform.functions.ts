@@ -527,16 +527,16 @@ export const getPlatformHealth = createServerFn({ method: "GET" })
     // aiAvailableFor. Neither depends on TRIAL_ENFORCEMENT, and the
     // TRIAL_ENFORCEMENT_FROM grandfather clause does not reach the trigger.
     //
-    // There is no trial-expiry email in this repo -- email-templates/registry.ts
-    // has nine templates and none is trial-related -- and the only trial
-    // notification, `trial_ending`, comes from Stripe's
-    // customer.subscription.trial_will_end, which cannot fire for an app-side
-    // trial with no Stripe subscription. So without this card the first real
-    // expiry is discovered by the customer, not by us.
+    // The trial-expiry email exists as of 2026-08-20 (trial-expiry-emails.server.ts,
+    // run by the nightly hook), but Stripe still cannot send it: `trial_ending`
+    // comes from customer.subscription.trial_will_end, which never fires for an
+    // app-side trial with no Stripe subscription. So the only thing standing
+    // between a silent sender and a customer discovering the expiry themselves
+    // is this card reporting whether the notice actually went out.
     const in14Days = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
     const expiringRes = await supabaseAdmin
       .from("organizations")
-      .select("id, name, trial_ends_at")
+      .select("id, name, trial_ends_at, contact_email")
       .eq("plan_status", "trialing")
       .is("deleted_at", null)
       .not("trial_ends_at", "is", null)
@@ -546,15 +546,89 @@ export const getPlatformHealth = createServerFn({ method: "GET" })
       id: string;
       name: string | null;
       trial_ends_at: string | null;
+      contact_email: string | null;
     }>;
+    // Did the notice actually go out? The card used to say a trial was
+    // expiring and nothing about whether we had told anyone, which is the half
+    // an operator can act on. Looked up per candidate rather than as a count,
+    // because "one expiring, notice sent" and "one expiring, notice never
+    // sent" are the two states worth telling apart.
+    // Imported rather than restated: a card that measures a different window or
+    // a different template name than the sender uses is reporting on a
+    // different question and will be confidently wrong.
+    const { TRIAL_NOTICE_DAYS_BEFORE, TRIAL_NOTICE_TEMPLATE } = await import(
+      "@/lib/trial-expiry-emails.server"
+    );
+    const expiringIds = expiring.map((o) => o.id);
+    let noticed = new Set<string>();
+    if (expiringIds.length) {
+      const { data: sent } = await supabaseAdmin
+        .from("email_send_log")
+        .select("recipient_email, created_at, template_name")
+        .eq("template_name", TRIAL_NOTICE_TEMPLATE)
+        // A row the sender marked `failed` is a send that never reached the
+        // queue. Counting it as notified would turn the one card that can see
+        // a broken sender green precisely when the sender is broken.
+        .neq("status", "failed")
+        .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+      // The log has no organization_id column, so match on the addresses those
+      // orgs would have been mailed at. Contact address first, owner login
+      // second — the same order the sender resolves in, because matching on a
+      // different rule than the sender used would report the wrong answer.
+      const addrs = new Map<string, string>();
+      for (const o of expiring) {
+        if (o.contact_email) addrs.set(String(o.contact_email).toLowerCase(), o.id);
+      }
+      const missing = expiring.filter((o) => !o.contact_email);
+      for (const o of missing) {
+        const { data: owner } = await supabaseAdmin
+          .from("user_roles")
+          .select("user_id")
+          .eq("organization_id", o.id)
+          .eq("role", "owner")
+          .limit(1)
+          .maybeSingle();
+        if (owner?.user_id) {
+          try {
+            const { data: u } = await supabaseAdmin.auth.admin.getUserById(owner.user_id);
+            if (u?.user?.email) addrs.set(String(u.user.email).toLowerCase(), o.id);
+          } catch {
+            /* unreadable owner: the org simply shows as un-noticed */
+          }
+        }
+      }
+      for (const row of (sent ?? []) as Array<{ recipient_email: string }>) {
+        const orgId = addrs.get(String(row.recipient_email).toLowerCase());
+        if (orgId) noticed.add(orgId);
+      }
+    }
+
     const nowIso = new Date().toISOString();
     const trials_expiring_14d = expiring.filter((o) => (o.trial_ends_at ?? "") > nowIso).length;
     const trials_already_expired = expiring.filter((o) => (o.trial_ends_at ?? "") <= nowIso).length;
+
+    // "Not notified" is only a fault for a trial the sender was DUE to mail.
+    // sendTrialExpiryNotices fires inside TRIAL_NOTICE_DAYS_BEFORE of the end
+    // date; a trial ten days out is correctly un-emailed and reporting it as a
+    // miss would put this card in the red for a week over nothing, which is
+    // how an operator learns to stop reading it. Already-expired trials stay
+    // in the due set on purpose: those the sender genuinely missed, and it can
+    // never catch up on them, so they are the one case worth a permanent red.
+    const noticeDueBy = new Date(
+      Date.now() + TRIAL_NOTICE_DAYS_BEFORE * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const due = expiring.filter((o) => (o.trial_ends_at ?? "") <= noticeDueBy);
     const next_trial_expiry = expiring.find((o) => (o.trial_ends_at ?? "") > nowIso) ?? null;
 
     return {
       trials_expiring_14d,
       trials_already_expired,
+      /** Expiring trials the sender is due to have mailed by now. */
+      trials_notice_due: due.length,
+      /** Of those due, how many have actually been emailed. */
+      trials_notified: due.filter((o) => noticed.has(o.id)).length,
+      /** Of those due, how many the sender has not mailed. This is the fault. */
+      trials_not_notified: due.filter((o) => !noticed.has(o.id)).length,
       next_trial_expiry_at: next_trial_expiry?.trial_ends_at ?? null,
       next_trial_expiry_org: next_trial_expiry?.name ?? null,
       open_invoices_count,
