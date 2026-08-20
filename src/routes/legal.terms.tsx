@@ -14,13 +14,20 @@ export const Route = createFileRoute("/legal/terms")({
 
 function TermsPage() {
   return (
-    <LegalShell title="Terms of Service" updated="July 14, 2026">
+    <LegalShell title="Terms of Service" updated="August 20, 2026">
       <section>
         <p>
           These terms govern your use of {APP_NAME}, the field-service platform for pet-care
           businesses available at app.houndstack.com. By creating an account or using the service
           you agree to them. If you are accepting on behalf of a business, you confirm you have
           authority to bind that business.
+        </p>
+        <p>
+          <strong>These terms do not give consent to receive text messages.</strong> Consent to be
+          texted by {APP_NAME} is separate and optional, is collected on its own by a box that
+          starts unticked, and is never a condition of creating an account, buying a plan or using
+          the service. Declining or withdrawing it changes nothing about your account. See the{" "}
+          <a href="/legal/sms">SMS Consent &amp; Messaging Policy</a>.
         </p>
       </section>
 

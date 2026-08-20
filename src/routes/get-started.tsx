@@ -44,13 +44,30 @@ export const Route = createFileRoute("/get-started")({
 // The exact consent language stored alongside the timestamp — carrier/TCPA
 // express-consent elements: who texts, what kind, frequency varies, rates
 // disclosure, STOP/HELP, and not-a-condition-of-purchase.
+//
+// It used to say "including login codes and service notifications", and both
+// halves of that were a problem. LOGIN CODES ARE NOT SENT TO BUSINESS USERS AT
+// ALL: org auth is email/password plus EMAIL otp, and the only SMS send path in
+// this repo is `sendSmsToClient`, which texts a tenant's own customers. So the
+// sentence promised messages that are never sent — and, worse, told the person
+// ticking it that agreeing to texts was how they would get into their account.
+// That is "messaging consent as a condition of using the service", which is the
+// exact ground Twilio rejected the toll-free verification on (error 30475).
+//
+// The optionality is now stated inside the consent record itself rather than
+// only in the surrounding UI, because the stored text is what a carrier reads
+// back months later, long after the page around it has changed.
 export const SMS_CONSENT_TEXT =
-  `I agree to receive text messages from ${APP_NAME} at the number provided, ` +
-  `including login codes and service notifications. Message frequency varies. ` +
-  `Message & data rates may apply. Reply STOP to opt out or HELP for help. ` +
-  `Consent is not a condition of purchase.`;
+  `I agree to receive text messages from ${APP_NAME} at the number provided about my ` +
+  `account and service notifications. Consent is optional and is not a condition of ` +
+  `purchase — you can create and use a ${APP_NAME} account without it. Message ` +
+  `frequency varies. Message & data rates may apply. Reply STOP to opt out or HELP for help.`;
 
-const STEPS = ["Your account", "Your business", "Texting"] as const;
+// Not "Texting". The last step creates the workspace; the texting opt-in is one
+// optional control inside it. Naming the step after the opt-in made messaging
+// look like a required stage of signing up — Twilio read the flow that way and
+// rejected the toll-free verification for it (30475).
+const STEPS = ["Your account", "Your business", "Finish"] as const;
 
 function GetStartedPage() {
   const navigate = useNavigate();
@@ -322,9 +339,10 @@ function GetStartedPage() {
               }}
             >
               <div>
-                <h1 className="text-lg font-semibold">Stay in the loop by text</h1>
+                <h1 className="text-lg font-semibold">Create your workspace</h1>
                 <p className="text-sm text-muted-foreground">
-                  Optional: used for login codes and important account notifications.
+                  You can add a mobile number for account notifications by text. This is
+                  entirely optional — skip it and your workspace is created just the same.
                 </p>
               </div>
               <div className="space-y-2">
@@ -341,7 +359,15 @@ function GetStartedPage() {
                 />
               </div>
               {/* TCPA/carrier express consent: unticked by default, full
-                  disclosure language, and we store exactly what was agreed to. */}
+                  disclosure language, and we store exactly what was agreed to.
+                  The line above the box says the quiet part out loud. A reviewer
+                  walking this flow has to be able to see, without reading the
+                  fine print, that declining changes nothing about the account
+                  they are about to create. */}
+              <p className="text-xs font-medium text-muted-foreground">
+                Optional — you do not have to agree to texts to create an account or use{" "}
+                {APP_NAME}.
+              </p>
               <label
                 className={`flex items-start gap-2 rounded-md border p-3 text-xs leading-relaxed ${phone.trim() ? "" : "opacity-50"}`}
               >

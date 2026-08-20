@@ -14,7 +14,7 @@ export const Route = createFileRoute("/legal/privacy")({
 
 function PrivacyPage() {
   return (
-    <LegalShell title="Privacy Policy" updated="July 14, 2026">
+    <LegalShell title="Privacy Policy" updated="August 20, 2026">
       <section>
         <p>
           {APP_NAME} ("we", "us") provides field-service software for pet-care businesses at
@@ -74,6 +74,12 @@ function PrivacyPage() {
           originator opt-in data and consent are not shared with any third parties, except with our
           SMS delivery provider solely to deliver the messages you asked for. See the{" "}
           <a href="/legal/sms">SMS Consent &amp; Messaging Policy</a> for details.
+        </p>
+        <p>
+          <strong>Accepting this policy does not give consent to receive text messages.</strong>{" "}
+          Messaging consent is separate and optional, is collected by its own affirmative action,
+          and is never a condition of creating an account or using {APP_NAME}. You can decline it,
+          or withdraw it at any time by replying STOP, without any effect on your account.
         </p>
       </section>
 

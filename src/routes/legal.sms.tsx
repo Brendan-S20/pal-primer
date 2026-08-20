@@ -21,7 +21,7 @@ export const Route = createFileRoute("/legal/sms")({
 
 function SmsPolicyPage() {
   return (
-    <LegalShell title="SMS Consent & Messaging Policy" updated="July 14, 2026">
+    <LegalShell title="SMS Consent & Messaging Policy" updated="August 20, 2026">
       <section>
         <h2>The short version</h2>
         <p>
@@ -32,13 +32,42 @@ function SmsPolicyPage() {
       </section>
 
       <section>
+        <h2>Consent is separate from every other agreement</h2>
+        <p>
+          Consent to receive text messages from {APP_NAME} is collected on its own, by its own
+          affirmative action, and is <strong>never</strong> given by accepting any other agreement.
+        </p>
+        <ul>
+          <li>
+            Accepting our <a href="/legal/terms">Terms of Service</a> does not give consent to
+            receive text messages.
+          </li>
+          <li>
+            Accepting our <a href="/legal/privacy">Privacy Policy</a> does not give consent to
+            receive text messages.
+          </li>
+          <li>
+            Creating an account, subscribing to a plan, paying an invoice or using any part of{" "}
+            {APP_NAME} does not give consent to receive text messages.
+          </li>
+        </ul>
+        <p>
+          The only way consent is given is by separately ticking an unticked box, or turning on a
+          switch that is off by default, whose words are shown in full at the moment of the choice
+          and stored with the timestamp. Declining, or withdrawing consent later, changes nothing
+          about your account, your plan, your price or your access to {APP_NAME}.
+        </p>
+      </section>
+
+      <section>
         <h2>What messages we send</h2>
         <p>{APP_NAME} sends two kinds of text messages, and both require prior consent:</p>
         <ul>
           <li>
             <strong>Account messages to business users.</strong> If you create a {APP_NAME} account
-            and provide a mobile number with consent, we may text you login codes and important
-            account or service notifications.
+            and choose to give us a mobile number, we may text you account and service
+            notifications. This is optional: {APP_NAME} accounts sign in with an email address and
+            password, so you never need to receive a text to create, access or use your account.
           </li>
           <li>
             <strong>Service messages to a business's customers.</strong> Pet-care businesses that
@@ -57,13 +86,16 @@ function SmsPolicyPage() {
       <section>
         <h2>How consent is collected</h2>
         <p>
-          Business users opt in during account creation by entering a mobile number and checking an
-          unticked-by-default consent box with this language:
+          Business users may opt in on the last step of account creation by entering a mobile number
+          and ticking a consent box that is unticked by default. Both the number and the box are
+          optional, and the account is created whether or not they are filled in. The box carries
+          this language:
         </p>
         <p className="rounded-md border bg-muted/40 p-3 text-sm">
-          "I agree to receive text messages from {APP_NAME} at the number provided, including login
-          codes and service notifications. Message frequency varies. Message &amp; data rates may
-          apply. Reply STOP to opt out or HELP for help. Consent is not a condition of purchase."
+          "I agree to receive text messages from {APP_NAME} at the number provided about my account
+          and service notifications. Consent is optional and is not a condition of purchase — you
+          can create and use a {APP_NAME} account without it. Message frequency varies. Message
+          &amp; data rates may apply. Reply STOP to opt out or HELP for help."
         </p>
         <p>
           We record when consent was given, the number it covers, and the exact language shown.
