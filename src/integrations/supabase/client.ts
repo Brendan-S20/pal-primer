@@ -2,7 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const SUPABASE_URL = "https://vsxzrbxublqrcfnxfwcu.supabase.co";
+const SUPABASE_URL = "https://api.houndstack.com";
 const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzeHpyYnh1YmxxcmNmbnhmd2N1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1OTY2NTcsImV4cCI6MjA5OTE3MjY1N30.5Ns35iCAqIFOTIHRKOCkdreUl9HUTmW1xvZn8X8S_G8";
 
 // Import the supabase client like this:

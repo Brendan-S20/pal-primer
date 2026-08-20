@@ -33,8 +33,17 @@
 // Do NOT add the service role key or any other credential to this file. Those
 // ARE secrets, they are runtime-only, and they must stay that way.
 
-/** Public project URL for `vsxzrbxublqrcfnxfwcu`, the production Supabase project. */
-export const PUBLIC_SUPABASE_URL = "https://vsxzrbxublqrcfnxfwcu.supabase.co";
+/** Public URL for `vsxzrbxublqrcfnxfwcu`, the production Supabase project.
+ *
+ *  The custom domain, activated 2026-08-19, not `vsxzrbxublqrcfnxfwcu.supabase.co`.
+ *  Both serve the same project and the `.supabase.co` host keeps working — Supabase
+ *  does not retire it — so this is a preference, not a cutover. It is the custom
+ *  domain because that is the one that survives a project migration.
+ *
+ *  Changing this string alone is not enough: `src/integrations/supabase/client.ts`
+ *  carries its own copy for the browser, and `tests/the-supabase-url-is-not-a-secret.test.ts`
+ *  asserts the two agree. */
+export const PUBLIC_SUPABASE_URL = "https://api.houndstack.com";
 
 /**
  * The URL server code should use to reach Supabase.

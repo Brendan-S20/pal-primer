@@ -51,8 +51,11 @@ import { SURFACES, type Surface } from "./fixtures/surfaces";
  *     npm run test:viewports           (both halves)
  *
  * No credentials. Nothing to seed. Nothing reaches the network — the fixture
- * intercepts `https://vsxzrbxublqrcfnxfwcu.supabase.co` before anything can
- * leave, which is deliberate: that project is production.
+ * intercepts the browser client's own origin (`PUBLIC_SUPABASE_URL`, today
+ * `https://api.houndstack.com`) before anything can leave, which is deliberate:
+ * that project is production. The origin is imported rather than written out,
+ * so activating the custom domain on 2026-08-19 could not leave the stub
+ * routing one host while the app called another.
  */
 
 /** Below `md`. Touch sizing is a phone rule; at 768 the `md:` styles are on. */
