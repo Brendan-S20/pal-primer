@@ -106,6 +106,27 @@ function SmsPolicyPage() {
       </section>
 
       <section>
+        <h2>Screenshots of the opt-in flow</h2>
+        <p>
+          The sign-up journey as a new customer sees it, captured in order and unedited. Published
+          here so the flow described above can be checked against the flow that actually runs.
+        </p>
+        <ul>
+          <li><a href="/sms-opt-in/1-account.png">Step 1 — your account</a> (no phone number requested)</li>
+          <li><a href="/sms-opt-in/2-business.png">Step 2 — your business</a> (no phone number requested)</li>
+          <li><a href="/sms-opt-in/3-finish-no-number.png">Step 3 — finish</a>, before any number is entered</li>
+          <li><a href="/sms-opt-in/4-opt-in-unticked.png">The opt-in, unticked</a> — the account can be created from here as it stands</li>
+          <li><a href="/sms-opt-in/5-opt-in-ticked.png">The opt-in, ticked</a> — consent given by this separate action alone</li>
+        </ul>
+        <p>And the same carve-out in each of the three agreements:</p>
+        <ul>
+          <li><a href="/sms-opt-in/6-sms-policy.png">This policy</a></li>
+          <li><a href="/sms-opt-in/7-terms.png">Terms of Service</a></li>
+          <li><a href="/sms-opt-in/8-privacy.png">Privacy Policy</a></li>
+        </ul>
+      </section>
+
+      <section>
         <h2>Message frequency and rates</h2>
         <p>
           Message frequency varies based on your account activity and service schedule. Message and
