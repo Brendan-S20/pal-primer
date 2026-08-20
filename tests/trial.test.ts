@@ -260,7 +260,15 @@ describe("expiry locks out new accounts, and only new accounts", () => {
       expect(call.slice(0, 400), `${f} calls trialStateFor without createdAt`).toMatch(
         /createdAt:/,
       );
-      expect(src, `${f} does not select created_at`).toMatch(/created_at/);
+      // Inside the .select(...) string, not anywhere in the file. The first
+      // version of this line matched the whole source, and `data.created_at`
+      // on the very next line satisfied it — so the test passed for months
+      // while ai-access.server.ts selected four columns and read a fifth that
+      // was therefore always undefined, silently switching enforcement off for
+      // that path. A guard answered by the thing it was guarding against.
+      const select = /\.select\(\s*"([^"]*)"/.exec(src);
+      expect(select, `${f} has no .select("…") to check`).not.toBeNull();
+      expect(select![1], `${f} does not select created_at`).toMatch(/\bcreated_at\b/);
     }
   });
 

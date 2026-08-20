@@ -81,7 +81,7 @@ export const listPlatformPlans = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await (supabaseAdmin as any)
       .from("platform_plans")
-      .select("id, name, slug, description, price_cents, annual_price_cents, currency, interval, features, included_seats, price_per_seat_cents, is_free, stripe_price_id, stripe_annual_price_id, sort_order")
+      .select("id, name, slug, description, price_cents, annual_price_cents, currency, interval, features, included_seats, price_per_seat_cents, ai_actions_included, ai_overage_cents_per_action, is_free, stripe_price_id, stripe_annual_price_id, sort_order")
       .eq("is_active", true)
       .eq("is_enterprise", false)
       .order("sort_order", { ascending: true });
@@ -127,7 +127,7 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
 
     const { data: planRows } = await (supabaseAdmin as any)
       .from("platform_plans")
-      .select("id, name, slug, stripe_price_id, stripe_seat_price_id, stripe_annual_price_id, stripe_annual_seat_price_id, price_cents, annual_price_cents, included_seats")
+      .select("id, name, slug, stripe_price_id, stripe_seat_price_id, stripe_annual_price_id, stripe_annual_seat_price_id, price_cents, annual_price_cents, included_seats, price_per_seat_cents, ai_actions_included, ai_overage_cents_per_action")
       .eq("is_active", true)
       .eq("is_enterprise", false)
       .not("stripe_price_id", "is", null)
@@ -140,6 +140,9 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       stripe_annual_seat_price_id: string | null;
       price_cents: number | null; annual_price_cents: number | null;
       included_seats: number;
+      price_per_seat_cents: number | null;
+      ai_actions_included: number | null;
+      ai_overage_cents_per_action: number | null;
     }>;
     const targetPlan = data.planId
       ? plans.find((p) => p.id === data.planId)
@@ -641,6 +644,15 @@ export const createPlanSubscription = createServerFn({ method: "POST" })
       clientSecret,
       publishableKey,
       planName: targetPlan.name,
+      // Returned so the payment form can name the metered charges at the point
+      // of purchase. There is no Stripe-hosted checkout page here — the card is
+      // taken inline through a Payment Element — so every word the buyer reads
+      // while deciding is ours, and the AI overage arrives later as a separate
+      // invoice item that nothing before payment would otherwise reveal.
+      includedSeats: targetPlan.included_seats,
+      aiActionsIncluded: targetPlan.ai_actions_included,
+      aiOverageCentsPerAction: targetPlan.ai_overage_cents_per_action,
+      seatOverageCents: targetPlan.price_per_seat_cents,
       subscriptionId: sub.id,
     };
   });

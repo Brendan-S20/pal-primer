@@ -64,7 +64,10 @@ export async function checkAiAccess(orgId: string): Promise<AiAccess> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data, error } = await (supabaseAdmin as any)
     .from("organizations")
-    .select("plan_status, billing_status, trial_ends_at, stripe_subscription_id")
+    // created_at is here for enforcementApplies, which fails OPEN without it.
+    // It was missing, so this call site had trial enforcement silently disabled
+    // while line 85 below passed `data.created_at` — undefined — into it.
+    .select("plan_status, billing_status, trial_ends_at, stripe_subscription_id, created_at")
     .eq("id", orgId)
     .maybeSingle();
 
