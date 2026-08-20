@@ -32,6 +32,34 @@ function SmsPolicyPage() {
       </section>
 
       <section>
+        <h2>Consent is separate from every other agreement</h2>
+        <p>
+          Consent to receive text messages from {APP_NAME} is collected on its own, by its own
+          affirmative action, and is <strong>never</strong> given by accepting any other agreement.
+        </p>
+        <ul>
+          <li>
+            Accepting our <a href="/legal/terms">Terms of Service</a> does not give consent to
+            receive text messages.
+          </li>
+          <li>
+            Accepting our <a href="/legal/privacy">Privacy Policy</a> does not give consent to
+            receive text messages.
+          </li>
+          <li>
+            Creating an account, subscribing to a plan, paying an invoice or using any part of{" "}
+            {APP_NAME} does not give consent to receive text messages.
+          </li>
+        </ul>
+        <p>
+          The only way consent is given is by separately ticking an unticked box, or turning on a
+          switch that is off by default, whose words are shown in full at the moment of the choice
+          and stored with the timestamp. Declining, or withdrawing consent later, changes nothing
+          about your account, your plan, your price or your access to {APP_NAME}.
+        </p>
+      </section>
+
+      <section>
         <h2>What messages we send</h2>
         <p>{APP_NAME} sends two kinds of text messages, and both require prior consent:</p>
         <ul>

@@ -37,6 +37,8 @@ import { join } from "node:path";
 const root = join(__dirname, "..");
 const getStarted = readFileSync(join(root, "src/routes/get-started.tsx"), "utf8");
 const legalSms = readFileSync(join(root, "src/routes/legal.sms.tsx"), "utf8");
+const legalTerms = readFileSync(join(root, "src/routes/legal.terms.tsx"), "utf8");
+const legalPrivacy = readFileSync(join(root, "src/routes/legal.privacy.tsx"), "utf8");
 
 /** The consent string as it exists at runtime, from the template literal. */
 function storedConsentText(): string {
@@ -104,5 +106,41 @@ describe("messaging consent cannot be a condition of service", () => {
   it("only records consent when the box was actually ticked", () => {
     // The opt-in must not ride along with account creation.
     expect(getStarted).toMatch(/if \(smsConsent && phone\.trim\(\)\)/);
+  });
+
+  // ── Twilio's SECOND rejection: "Consent for Messaging Cannot Be Part of
+  // Other Agreements" ────────────────────────────────────────────────────
+  //
+  // The first round fixed the signup flow. This one is about the paperwork
+  // around it: the Terms are accepted implicitly ("By creating an account or
+  // using the service you agree to them"), so unless each agreement says out
+  // loud that it does NOT carry messaging consent, a reviewer reads the
+  // blanket acceptance as the vehicle for it. Nothing in the app was
+  // collecting consent that way — but nothing said it wasn't, and the reviewer
+  // only has the documents.
+  it("says in the Terms that accepting them is not messaging consent", () => {
+    expect(legalTerms).toMatch(/do not give consent to receive text messages/i);
+    expect(legalTerms).toMatch(/legal\/sms/);
+  });
+
+  it("says the same in the Privacy Policy", () => {
+    expect(legalPrivacy).toMatch(/does not give consent to receive text messages/i);
+  });
+
+  it("names every other agreement on the SMS policy, so the carve-out is not vague", () => {
+    const s = legalSms;
+    expect(s).toMatch(/Consent is separate from every other agreement/i);
+    expect(s).toMatch(/legal\/terms/);
+    expect(s).toMatch(/legal\/privacy/);
+    // Creating an account / paying / using the service, spelled out.
+    expect(s).toMatch(/Creating an account[\s\S]{0,160}does not give consent/i);
+  });
+
+  it("promises withdrawal costs the customer nothing, in all three documents", () => {
+    // "Not a condition" has to hold going forward too, or consent is coerced
+    // by the cost of revoking it.
+    expect(legalSms).toMatch(/withdrawing consent later, changes nothing/i);
+    expect(legalTerms).toMatch(/withdrawing it changes nothing/i);
+    expect(legalPrivacy).toMatch(/without any effect on your account/i);
   });
 });
