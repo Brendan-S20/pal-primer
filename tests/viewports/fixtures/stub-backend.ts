@@ -348,7 +348,16 @@ const STUBS: Record<string, Stub> = {
       total: fx.PLATFORM_USER_TOTAL,
       offset,
       limit,
-      scan: { membershipRows: 214, membershipsComplete: true, accounts: fx.PLATFORM_USER_TOTAL, accountsComplete: true },
+      // `unattached` is deliberately four digits: the sentence it renders is the
+      // longest line on the card, and a fixture that left it null would measure
+      // the page without the thing that was just added to it.
+      scan: {
+        membershipRows: 214,
+        membershipsComplete: true,
+        accounts: fx.PLATFORM_USER_TOTAL,
+        accountsComplete: true,
+        unattached: 1284,
+      },
     };
   },
 
