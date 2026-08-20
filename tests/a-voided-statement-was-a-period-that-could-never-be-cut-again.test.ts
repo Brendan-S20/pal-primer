@@ -116,6 +116,35 @@ describe("a voided statement can be put back on the workbench", () => {
   });
 });
 
+describe("the drawer offers it too, not only the page behind it", () => {
+  // The control shipped on /franchise and was missing from the location
+  // drawer, which renders the same statements card. Nothing caught it because
+  // the card draws each control only when handed its callback, so a caller
+  // that forgets one loses the button silently rather than erroring — and the
+  // drawer is where somebody drilling into one location does this work.
+  it("passes onReopenAsDraft down to the statements card", () => {
+    const drawer = codeOnly(read("src/components/FranchiseLocationDrawer.tsx"));
+    expect(drawer).toMatch(/onReopenAsDraft\?: \(id: string\) => void/);
+    const card = drawer.slice(drawer.indexOf("<FranchiseSettlementStatements"));
+    expect(card.slice(0, 400)).toMatch(/onReopenAsDraft=\{onReopenAsDraft\}/);
+  });
+
+  it("is handed a callback that reopens to draft, from the page that owns the drawer", () => {
+    const page = codeOnly(read("src/routes/_authenticated/franchise.tsx"));
+    const site = page.slice(page.indexOf("<FranchiseLocationDrawer"));
+    expect(site.slice(0, 700)).toMatch(/onReopenAsDraft=\{\(invoiceId\) => drillStatus\.mutate\(\{ invoiceId, status: "draft" \}\)\}/);
+  });
+
+  it("keeps reopening off the ordinary status setter", () => {
+    // "draft" must not become a fourth value on onSetStatus. The card gates
+    // reopening on `line.status === "void"`; a status setter that accepted
+    // "draft" would let an issued or paid statement be reopened with no gate
+    // at all, which is the un-billing this feature is not.
+    const drawer = codeOnly(read("src/components/FranchiseLocationDrawer.tsx"));
+    expect(drawer).toMatch(/onSetStatus\?: \(id: string, status: "issued" \| "paid" \| "void"\) => void/);
+  });
+});
+
 describe("the parent's page wires it to the status the generator can rewrite", () => {
   it("reopens to draft, not to issued or paid", () => {
     expect(route).toMatch(/onReopenAsDraft=\{\(invoiceId\) =>[\s\S]{0,120}status: "draft"/);
