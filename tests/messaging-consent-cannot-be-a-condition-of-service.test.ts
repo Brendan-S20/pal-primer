@@ -31,7 +31,7 @@
 // rendered quote from the JSX and requires them to be identical, so the next
 // person to reword one is told about the other.
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = join(__dirname, "..");
@@ -142,5 +142,15 @@ describe("messaging consent cannot be a condition of service", () => {
     expect(legalSms).toMatch(/withdrawing consent later, changes nothing/i);
     expect(legalTerms).toMatch(/withdrawing it changes nothing/i);
     expect(legalPrivacy).toMatch(/without any effect on your account/i);
+  });
+
+  it("every opt-in screenshot the policy links actually exists", () => {
+    // These URLs are what goes in Twilio's `optInImageUrls`. A rename that 404s
+    // one of them breaks a live verification submission, silently, and the
+    // failure surfaces as a rejection weeks later rather than as a broken link.
+    const linked = [...legalSms.matchAll(/\/sms-opt-in\/[a-z0-9-]+\.png/g)].map((m) => m[0]);
+    expect(linked.length, "screenshots linked from /legal/sms").toBeGreaterThanOrEqual(8);
+    const missing = linked.filter((u) => !existsSync(join(root, "public", u)));
+    expect(missing, `linked but not in public/: ${missing.join(", ")}`).toEqual([]);
   });
 });
