@@ -87,7 +87,7 @@ export function renderTrialNoticeHtml(input: {
     <div style="padding:20px;line-height:1.55;font-size:15px">
       <p style="margin:0 0 14px">Hi ${escapeHtml(orgName)},</p>
       <p style="margin:0 0 14px">Your free trial ends on <strong>${escapeHtml(endsOn)}</strong>. Picking a plan before then keeps everything exactly as it is.</p>
-      <p style="margin:0 0 8px"><strong>If the trial ends without a plan, your account pauses &mdash; but only in one way.</strong></p>
+      <p style="margin:0 0 8px"><strong>If the trial ends without a plan, your account pauses, but only in one way.</strong></p>
       <p style="margin:0 0 14px">What stops: <strong>adding a new customer.</strong> That is the only thing.</p>
       <p style="margin:0 0 6px">What keeps running:</p>
       <ul style="margin:0 0 14px;padding-left:20px">
@@ -98,7 +98,7 @@ export function renderTrialNoticeHtml(input: {
       </ul>
       <p style="margin:0 0 18px">Nothing is deleted, at any point.</p>
       <p style="margin:0 0 18px"><a href="${billingUrl}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:11px 18px;border-radius:8px;font-weight:600">Choose a plan</a></p>
-      <p style="margin:0;font-size:13px;color:#475569">Plans start at $79 a month with your first 3 teammates included. If you have questions, reply to this email and a person will answer.</p>
+      <p style="margin:0;font-size:13px;color:#475569">Plans start at $79 a month with your first 3 teammates included. Questions? Email <a href="mailto:support@houndstack.com" style="color:#2563eb">support@houndstack.com</a> before your trial ends and we'll help you choose the right plan.</p>
     </div>
     <div style="padding:12px 20px;font-size:12px;color:#64748b;border-top:1px solid #e2e8f0">Sent by HoundStack &middot; You are receiving this because your workspace is in a free trial.</div>
   </div></body></html>`;
@@ -121,7 +121,7 @@ export function renderTrialNoticeText(input: {
     ``,
     `Hi ${input.orgName}, your free trial ends on ${input.endsOn}. Picking a plan before then keeps everything exactly as it is.`,
     ``,
-    `If the trial ends without a plan, your account pauses - but only in one way.`,
+    `If the trial ends without a plan, your account pauses, but only in one way.`,
     ``,
     `What stops: adding a new customer. That is the only thing.`,
     `What keeps running: every client, job and route you already have; scheduling, dispatch and the field app; invoicing, taking payment and your billing history; and your customer portal.`,
@@ -130,6 +130,8 @@ export function renderTrialNoticeText(input: {
     `Choose a plan: ${input.billingUrl}`,
     ``,
     `Plans start at $79 a month with your first 3 teammates included.`,
+    ``,
+    `Questions? Email support@houndstack.com before your trial ends and we'll help you choose the right plan.`,
   ].join("\n");
 }
 

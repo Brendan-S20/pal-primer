@@ -245,3 +245,32 @@ describe("the notice describes only what actually changes", () => {
     });
   }
 });
+
+// ── Two owner rules, 2026-08-20 ────────────────────────────────────────────
+//
+// 1. Do not promise that replying to a noreply address reaches a person.
+//    support@houndstack.com is already the published contact in Terms,
+//    Privacy and the SMS policy, so naming it adds no new obligation.
+// 2. No em dashes in customer-facing copy.
+describe("the notice obeys the customer-copy rules", () => {
+  const bodies = {
+    html: renderTrialNoticeHtml({ orgName: "Scooper Troopers", daysLeft: 3, endsOn: "2026-08-30", billingUrl: "https://app.houndstack.com/settings/billing" }),
+    text: renderTrialNoticeText({ orgName: "Scooper Troopers", daysLeft: 3, endsOn: "2026-08-30", billingUrl: "https://app.houndstack.com/settings/billing" }),
+  };
+
+  for (const [which, body] of Object.entries(bodies)) {
+    it(`${which} does not invite a reply to the noreply address`, () => {
+      expect(body, `${which} promises a reply reaches a person`).not.toMatch(
+        /reply to this email|replying to this email|just reply/i,
+      );
+    });
+
+    it(`${which} points at the published support address`, () => {
+      expect(body).toMatch(/support@houndstack\.com/);
+    });
+
+    it(`${which} contains no em dash`, () => {
+      expect(body, `${which} uses an em dash in customer-facing copy`).not.toMatch(/—|&mdash;/);
+    });
+  }
+});
