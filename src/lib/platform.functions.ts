@@ -566,6 +566,10 @@ export const getPlatformHealth = createServerFn({ method: "GET" })
         .from("email_send_log")
         .select("recipient_email, created_at, template_name")
         .eq("template_name", TRIAL_NOTICE_TEMPLATE)
+        // A row the sender marked `failed` is a send that never reached the
+        // queue. Counting it as notified would turn the one card that can see
+        // a broken sender green precisely when the sender is broken.
+        .neq("status", "failed")
         .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
       // The log has no organization_id column, so match on the addresses those
       // orgs would have been mailed at. Contact address first, owner login

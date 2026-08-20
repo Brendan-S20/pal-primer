@@ -162,3 +162,42 @@ describe("the platform health card", () => {
     );
   });
 });
+
+// ── A FAILED ENQUEUE MUST NOT LOOK LIKE A SENT EMAIL ──────────────────────
+//
+// The email_send_log row is written BEFORE enqueue_email is called, because
+// the message_id has to exist for the queue payload to reference. So a failed
+// enqueue leaves a row behind that is indistinguishable from a successful
+// send. Left alone, that row makes the next night's dedupe report
+// `already_sent` -- the notice is never retried, and the outcome records a
+// success -- while the health card counts the org as notified and stays green.
+// One unwritten filter turns the whole feature into a thing that reports
+// having done its job and never does it.
+describe("a send that never reached the queue", () => {
+  const sender = codeOnly(read("src/lib/trial-expiry-emails.server.ts"));
+  const health = codeOnly(read("src/lib/platform.functions.ts"));
+
+  it("marks its own log row failed instead of leaving it pending", () => {
+    expect(sender, "the pending row is written before the enqueue").toMatch(
+      /status:\s*["']pending["']/,
+    );
+    expect(sender, "a failed enqueue updates that row").toMatch(
+      /status:\s*["']failed["'][\s\S]{0,120}?error_message/,
+    );
+    expect(sender, "the update is keyed to this message").toMatch(
+      /\.update\(\{\s*status:\s*["']failed["'][\s\S]{0,200}?\.eq\(\s*["']message_id["']/,
+    );
+  });
+
+  it("does not let that row satisfy tomorrow's dedupe", () => {
+    expect(sender, "the dedupe excludes failed rows").toMatch(
+      /\.neq\(\s*["']status["']\s*,\s*["']failed["']\s*\)/,
+    );
+  });
+
+  it("does not let that row turn the health card green", () => {
+    expect(health, "the card excludes failed rows").toMatch(
+      /\.neq\(\s*["']status["']\s*,\s*["']failed["']\s*\)/,
+    );
+  });
+});

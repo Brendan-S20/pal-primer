@@ -234,11 +234,20 @@ export async function sendTrialExpiryNotices(): Promise<TrialNoticeResult> {
     const windowOpened = new Date(
       endsAt.getTime() - TRIAL_NOTICE_DAYS_BEFORE * 86_400_000,
     ).toISOString();
+    //
+    // `failed` rows are excluded, and that exclusion is load-bearing. The log
+    // row below is written BEFORE the enqueue, so a failed enqueue leaves a
+    // row behind; without this filter tomorrow night would find it, report
+    // `already_sent`, and never retry -- a permanent silent skip that reads in
+    // the outcome as a successful send. `pending` is correctly a match: it
+    // means the message did reach the queue, and redelivery is the queue's
+    // job, not this sender's.
     const { data: already } = await supabaseAdmin
       .from("email_send_log")
       .select("message_id")
       .eq("template_name", TRIAL_NOTICE_TEMPLATE)
       .eq("recipient_email", email)
+      .neq("status", "failed")
       .gte("created_at", windowOpened)
       .limit(1)
       .maybeSingle();
@@ -279,6 +288,13 @@ export async function sendTrialExpiryNotices(): Promise<TrialNoticeResult> {
     });
 
     if (enqErr) {
+      // The row above claims a send that did not happen. Mark it, so both the
+      // dedupe above and the /platform/health card can tell "queued" from
+      // "never got there" -- and so tomorrow night tries again.
+      await supabaseAdmin
+        .from("email_send_log")
+        .update({ status: "failed", error_message: enqErr.message })
+        .eq("message_id", messageId);
       outcomes.push({ ...base, status: "skipped", reason: "enqueue_failed" });
       continue;
     }
