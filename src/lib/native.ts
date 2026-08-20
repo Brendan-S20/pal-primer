@@ -31,11 +31,55 @@ export async function takePhotoNative(): Promise<Blob | null> {
   return await res.blob();
 }
 
-export async function getCurrentPositionNative(): Promise<GeolocationPosition | null> {
+/**
+ * A position fix on a native device, or the REASON there isn't one.
+ *
+ * This replaces an earlier `getCurrentPositionNative` that returned
+ * `GeolocationPosition | null` and had zero callers. Null could not be wired
+ * to anything useful: the caller has to tell "the tech declined" from "no sky"
+ * from "not native, use the browser", and all three arrived as null.
+ *
+ * Permission is CHECKED rather than inferred from a thrown error. The plugin
+ * rejects with a plain message on iOS, so matching text would be guessing at a
+ * string Apple can change; `checkPermissions()` reports the state directly.
+ *
+ * Returns null — and only null — when this is not a native build, which is the
+ * signal for the caller to take its existing browser path.
+ */
+export type NativePosition =
+  | { ok: true; latitude: number; longitude: number; accuracy: number }
+  | { ok: false; reason: 'denied' | 'unavailable' | 'timeout' };
+
+export async function getPositionNative(): Promise<NativePosition | null> {
   if (!isNative()) return null;
   const { Geolocation } = await import('@capacitor/geolocation');
-  const p = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 8000 });
-  return p as unknown as GeolocationPosition;
+
+  let status = await Geolocation.checkPermissions();
+  if (status.location === 'prompt' || status.location === 'prompt-with-rationale') {
+    // Only ask when the OS says asking is still possible. Calling
+    // requestPermissions() after a denial is a no-op that returns 'denied'
+    // again, and on iOS the system prompt never reappears — the way back is
+    // Settings, which is what the caller's message says.
+    status = await Geolocation.requestPermissions({ permissions: ['location'] });
+  }
+  if (status.location !== 'granted') return { ok: false, reason: 'denied' };
+
+  try {
+    const p = await Geolocation.getCurrentPosition({
+      enableHighAccuracy: true,
+      timeout: 10_000,
+      maximumAge: 30_000,
+    });
+    return {
+      ok: true,
+      latitude: p.coords.latitude,
+      longitude: p.coords.longitude,
+      accuracy: p.coords.accuracy,
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, reason: /time.?out/i.test(msg) ? 'timeout' : 'unavailable' };
+  }
 }
 
 export async function registerPushNotifications(onToken: (token: string) => void) {

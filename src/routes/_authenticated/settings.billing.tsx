@@ -33,6 +33,8 @@ import { Badge } from "@/components/ui/badge";
 import { StatusChip, MetaChip, SectionLabel } from "@/components/client-detail/primitives";
 import { formatDay } from "@/lib/format";
 import { stripeAppearance } from "@/lib/stripe-appearance";
+import { platform } from "@/lib/native";
+import { saasPurchaseAllowed, MANAGE_BILLING_ON_WEB } from "@/lib/app-store-billing";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 import { appUrl } from "@/lib/app-origin";
@@ -75,6 +77,10 @@ const STATUS_CHIP: Record<string, { status: string; label: string }> = {
 };
 
 function BillingPage() {
+  // Read once per render rather than memoised: Capacitor.getPlatform() is a
+  // synchronous string lookup, and a stale memo here would be a store-policy
+  // gate that silently stopped applying.
+  const canBuySaas = saasPurchaseAllowed(platform());
   const qc = useQueryClient();
   const { confirm, dialog } = useConfirmDialog();
   const statusFn = useServerFn(getBillingStatus);
@@ -259,12 +265,16 @@ function BillingPage() {
             )}
             {data.billingStatus === "trialing" && (
               <p className="mt-2 text-sm text-amber-700">
-                You're on a free trial. Pick a plan below before it ends to keep full access.
+                {canBuySaas
+                  ? "You're on a free trial. Pick a plan below before it ends to keep full access."
+                  : "You're on a free trial. Choose a plan on the web at app.houndstack.com before it ends to keep full access."}
               </p>
             )}
             {data.billingStatus === "past_due" && (
               <p className="mt-2 text-sm text-destructive">
-                Your last payment failed. Update your payment method below to keep your plan.
+                {canBuySaas
+                  ? "Your last payment failed. Update your payment method below to keep your plan."
+                  : "Your last payment failed. Update your payment method on the web at app.houndstack.com to keep your plan."}
               </p>
             )}
           </div>
@@ -285,7 +295,15 @@ function BillingPage() {
               " Switching is instant: upgrades charge the prorated difference today, downgrades credit your next invoice."}
           </p>
         </div>
-        {checkout ? (
+        {!canBuySaas ? (
+          // App Review: no way to buy or change a HoundStack plan inside the
+          // binary. See src/lib/app-store-billing.ts for which side of the
+          // line this sits on and why the tenant's own payment surfaces are
+          // deliberately untouched.
+          <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
+            {MANAGE_BILLING_ON_WEB}
+          </div>
+        ) : checkout ? (
           <EmbeddedPlanCheckout
             planId={checkout.planId}
             interval={checkout.interval}
@@ -311,9 +329,9 @@ function BillingPage() {
         )}
       </section>
 
-      {data.isPaidTier && <PaymentMethodsCard />}
+      {canBuySaas && data.isPaidTier && <PaymentMethodsCard />}
 
-      <PlatformAddonsSection planInterval={currentInterval} />
+      {canBuySaas && <PlatformAddonsSection planInterval={currentInterval} />}
 
       {data.isPaidTier && (
         <NextInvoice subInfo={subInfo as any} isLoading={subInfoLoading} />
