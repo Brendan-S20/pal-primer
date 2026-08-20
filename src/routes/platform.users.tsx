@@ -199,8 +199,24 @@ function UsersPage() {
                 ? narrowed
                   ? "No users match."
                   : "No users in the directory yet."
-                : `Showing ${firstShown.toLocaleString()}–${lastShown.toLocaleString()} of ${total.toLocaleString()} ${narrowed ? "matching " : ""}user${total === 1 ? "" : "s"}.`}
+                : `Showing ${firstShown.toLocaleString()}–${lastShown.toLocaleString()} of ${total.toLocaleString()} ${narrowed ? "matching " : ""}user${total === 1 ? "" : "s"} with an organization membership.`}
           </p>
+          {/* The population here is memberships, not accounts. Saying "12 users"
+              beside a database holding 22 of them reads as a census, and the ten
+              it leaves out are exactly the ones somebody would come here looking
+              for: an abandoned signup, or a platform admin, who holds zero
+              user_roles rows by design and is therefore invisible on this page.
+              Rendered only when the number is knowable — `unattached` is null
+              under a filter or a short scan, and null means "not answerable",
+              not none. */}
+          {scan && scan.unattached ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {scan.unattached.toLocaleString()} other account
+              {scan.unattached === 1 ? " holds" : "s hold"} no role in any organization —
+              abandoned signups and platform admins — so {scan.unattached === 1 ? "it is" : "they are"}{" "}
+              not listed here.
+            </p>
+          ) : null}
         </CardHeader>
         <CardContent>
           {/* A scan that ran short says so. Everything on this screen is a
@@ -329,7 +345,7 @@ function UsersPage() {
                       title={narrowed ? "No users match" : "No users yet"}
                       description={
                         narrowed
-                          ? "Every tenant was searched, so this is not a paging artefact. Try a different email, user id or organization name, or clear the role filter."
+                          ? "Every tenant was searched, so this is not a paging artefact. Note that this directory lists people who hold a role in an organization: an account with no membership — an abandoned signup, or a platform admin — will not appear however you search. Try a different email, user id or organization name, or clear the role filter."
                           : "Nobody holds a role in any organization yet."
                       }
                     />

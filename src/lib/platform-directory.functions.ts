@@ -233,7 +233,49 @@ export type DirectoryScan = {
   accounts: number;
   /** False when we could not resolve an email for every member of the directory. */
   accountsComplete: boolean;
+  /**
+   * Accounts that exist in `auth.users` and hold NO role in any organization —
+   * abandoned signups, and platform admins, who have zero `user_roles` rows by
+   * design. They are not rows on this page and never were; this is the count of
+   * what the page is not showing you.
+   *
+   * `null` means "not answerable from what this request read", NOT zero, and the
+   * screen must say nothing rather than say none. Three ways to get there: the
+   * account scan stopped early (above ACCOUNT_PAGE_SIZE accounts it only pages
+   * far enough to resolve the members it needs), the membership scan hit its
+   * ceiling so the member count itself is short, or an org/role filter is
+   * applied — under a filter `memberIds` is the FILTERED population, and
+   * subtracting it would report every member the filter excluded as unattached.
+   */
+  unattached: number | null;
 };
+
+/**
+ * How many accounts hold no membership — or `null` when this request did not
+ * read enough to know.
+ *
+ * Pulled out as a function because every one of the three null cases is a way
+ * to report a confidently wrong number, and a condition buried in a JSX-bound
+ * handler is a condition nobody tests. Returning 0 where the answer is unknown
+ * would be the same fault this file's header is about: a capped result wearing
+ * the face of a complete one.
+ */
+export function unattachedCount(input: {
+  /** The account scan reached the end of `auth.users`. */
+  exhausted: boolean;
+  /** The membership scan did not hit its ceiling. */
+  membershipsComplete: boolean;
+  /** An org or role filter is applied, so `members` is a SUBSET of all members
+   *  and subtracting it would report the excluded ones as unattached. */
+  filtered: boolean;
+  /** Accounts seen. */
+  accounts: number;
+  /** Distinct users holding at least one role. */
+  members: number;
+}): number | null {
+  if (!input.exhausted || !input.membershipsComplete || input.filtered) return null;
+  return Math.max(0, input.accounts - input.members);
+}
 
 export type PlatformUsersPage = {
   rows: PlatformUserRow[];
@@ -333,7 +375,16 @@ const accountInfo = (u: any): AccountInfo => ({
 export async function loadAccounts(
   supabaseAdmin: any,
   memberIds: string[],
-): Promise<{ byId: Map<string, AccountInfo>; accounts: number; complete: boolean }> {
+): Promise<{
+  byId: Map<string, AccountInfo>;
+  accounts: number;
+  complete: boolean;
+  /** True when the whole-directory scan reached the end of `auth.users`, so
+   *  `byId` holds EVERY account and not just the ones we went looking for.
+   *  Returned because "how many accounts exist" is only answerable then — see
+   *  `unattached` on DirectoryScan. */
+  exhausted: boolean;
+}> {
   const byId = new Map<string, AccountInfo>();
   let scannedPages = 0;
   let exhausted = false;
@@ -380,7 +431,7 @@ export async function loadAccounts(
     missing = stillMissing();
   }
 
-  return { byId, accounts: byId.size, complete: missing.length === 0 };
+  return { byId, accounts: byId.size, complete: missing.length === 0, exhausted };
 }
 
 /** Case-insensitive match on email, user id, or any organization name. */
@@ -464,7 +515,12 @@ export const listPlatformUsers = createServerFn({ method: "GET" })
       loadOrgNames(supabaseAdmin, orgIds),
       memberIds.length
         ? loadAccounts(supabaseAdmin, memberIds)
-        : Promise.resolve({ byId: new Map<string, AccountInfo>(), accounts: 0, complete: true }),
+        : Promise.resolve({
+            byId: new Map<string, AccountInfo>(),
+            accounts: 0,
+            complete: true,
+            exhausted: false,
+          }),
     ]);
 
     const orgsByUser = new Map<string, PlatformUserRow["organizations"]>();
@@ -507,6 +563,13 @@ export const listPlatformUsers = createServerFn({ method: "GET" })
         membershipsComplete: memberships.complete,
         accounts: accounts.accounts,
         accountsComplete: accounts.complete,
+        unattached: unattachedCount({
+          exhausted: accounts.exhausted,
+          membershipsComplete: memberships.complete,
+          filtered: Boolean(data.organization_id || data.role),
+          accounts: accounts.byId.size,
+          members: memberIds.length,
+        }),
       },
     };
   });

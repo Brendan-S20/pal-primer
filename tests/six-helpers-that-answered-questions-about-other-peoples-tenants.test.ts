@@ -141,9 +141,107 @@ function revokesFrom(file: string, fn: string, role: RegExp): boolean {
   return false;
 }
 
-/** Closed to the web at all — either role is enough to satisfy the rule. */
-const closedToTheWeb = (file: string, fn: string) =>
-  revokesFrom(file, fn, /\b(authenticated|public)\b/i);
+/**
+ * The argument TYPE list, normalised so a definition and a grant can be
+ * compared. `CREATE FUNCTION f(_org_id uuid, _day date)` and
+ * `GRANT ... ON FUNCTION public.f(uuid, date)` describe the same function and
+ * share not one character of their argument text.
+ *
+ * Splitting is depth-aware because a type may carry its own commas
+ * (`numeric(10,2)`); a parameter name is dropped only when the leading token is
+ * one, which in this repo means a leading underscore.
+ */
+export function argTypes(args: string): string {
+  const parts: string[] = [];
+  let depth = 0;
+  let cur = "";
+  for (const ch of args) {
+    if (ch === "(") depth += 1;
+    if (ch === ")") depth -= 1;
+    if (ch === "," && depth === 0) {
+      parts.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  if (cur.trim()) parts.push(cur);
+  return parts
+    .map((raw) => {
+      let t = raw.replace(/\bdefault\b[\s\S]*$/i, "").trim();
+      t = t.replace(/^(in|out|inout|variadic)\s+/i, "");
+      const tokens = t.split(/\s+/);
+      if (tokens.length > 1 && /^_/.test(tokens[0])) tokens.shift();
+      return tokens.join(" ").toLowerCase();
+    })
+    .filter(Boolean)
+    .join(",");
+}
+
+/** Every GRANT/REVOKE EXECUTE naming this exact overload, in replay order. */
+function grantEvents(file: string, fn: string, types: string): { grant: boolean; roles: string }[] {
+  const out: { grant: boolean; roles: string }[] = [];
+  for (const st of statements(stripLineComments(readMigration(file)))) {
+    const isGrant = /^grant\b/i.test(st);
+    if (!isGrant && !/^revoke\b/i.test(st)) continue;
+    const m = /\bon\s+function\s+public\.([a-z0-9_]+)\s*\(([^)]*)\)/i.exec(st);
+    if (!m || m[1].toLowerCase() !== fn) continue;
+    if (argTypes(m[2]) !== types) continue;
+    // Only the role list, so the verb's own object ("REVOKE EXECUTE") and the
+    // function name cannot be mistaken for a role.
+    const lower = st.toLowerCase();
+    const at = isGrant ? lower.lastIndexOf(" to ") : lower.lastIndexOf(" from ");
+    out.push({ grant: isGrant, roles: at === -1 ? "" : st.slice(at) });
+  }
+  return out;
+}
+
+/**
+ * Is this overload closed to the web at the END of the sequence — the defining
+ * file and every migration after it, applied in order?
+ *
+ * The previous version was `revokesFrom(file, fn, /authenticated|public/)`,
+ * which is exactly the collapse the docstring above forbids, and it cost a real
+ * finding. `20260815180000` writes
+ *
+ *     REVOKE ALL ON FUNCTION public.staff_start_point(uuid, uuid, date) FROM public, anon;
+ *     GRANT EXECUTE ON FUNCTION public.staff_start_point(uuid, uuid, date) TO authenticated, service_role;
+ *
+ * on consecutive lines. The `public` arm matched the first, the rule said
+ * "closed", and the second — the entire problem — was never read.
+ * `staff_start_point` is SECURITY DEFINER, takes `_org_id` and `_staff_id`, has
+ * no auth.uid() anywhere, and sat inside this file's own window shipping
+ * customer property coordinates and staff home addresses to any signed-in user
+ * of any tenant. This file reported six offenders with the seventh underneath it.
+ *
+ * MATCHING IS PER OVERLOAD, and that is not fussiness. The first rewrite of this
+ * keyed on the name, and `20260815190000` revokes a DIFFERENT overload —
+ * `(uuid, uuid, date, uuid[])` — from authenticated. That revoke silently
+ * cleared the three-argument one, and the rewrite passed against the unfixed
+ * tree exactly as the version it replaced had. Two different bugs, one shape:
+ * a rule that matched something adjacent to the thing it was asked about.
+ *
+ * TWO THINGS THIS IS NOT, both the reconstruction rejected in the header:
+ *
+ *   1. It does not enumerate the grant surface. It answers yes/no about a
+ *      handful of functions already narrowed to "definer, tenant-scoped
+ *      parameter, never asks auth.uid()".
+ *   2. It starts PESSIMISTIC — open until a statement closes it. That is the
+ *      header's fatal reason 2 turned into an assumption rather than a
+ *      reconstruction: a grant nobody wrote cannot be replayed, so this never
+ *      tries, and assumes the worst about what it cannot see.
+ *
+ * Reading later files is safe for the same reason: a later REVOKE and a later
+ * GRANT are both written statements, and both are seen here.
+ */
+const closedToTheWeb = (file: string, fn: string, args: string): boolean => {
+  const types = argTypes(args);
+  let closed = false;
+  for (const f of migrationFiles().filter((x) => x >= file)) {
+    for (const e of grantEvents(f, fn, types)) {
+      if (/\b(authenticated|public)\b/i.test(e.roles)) closed = !e.grant;
+    }
+  }
+  return closed;
+};
 
 describe("a function handed a tenant's id checks the caller, or is closed", () => {
   it("reads the window rather than passing on an empty one", () => {
@@ -159,7 +257,7 @@ describe("a function handed a tenant's id checks the caller, or is closed", () =
       .filter((d) => /security\s+definer/i.test(d.sql))
       .filter((d) => TENANT_SCOPED_PARAM.test(d.args))
       .filter((d) => !/auth\.uid\s*\(\s*\)/i.test(d.sql))
-      .filter((d) => !closedToTheWeb(d.file, d.name))
+      .filter((d) => !closedToTheWeb(d.file, d.name, d.args))
       .map((d) => `${d.name}(${d.args.replace(/\s+/g, " ").trim()})  in ${d.file}`);
 
     expect(
@@ -200,14 +298,16 @@ describe("the migration that closed them", () => {
 
   it("revokes the five that nothing in src/ calls by RPC", () => {
     const sql = code();
-    for (const fn of [
-      "is_staff_off",
-      "assert_runs_routes",
-      "assert_available_on",
-      "drive_minutes",
-      "route_segment_km",
-    ]) {
-      expect(closedToTheWeb(THIS_MIGRATION, fn), `${fn} is not revoked`).toBe(true);
+    // Signatures, not bare names: closedToTheWeb is per OVERLOAD, because a
+    // revoke of a different overload used to satisfy it for this one.
+    for (const [fn, args] of [
+      ["is_staff_off", "uuid, date"],
+      ["assert_runs_routes", "uuid"],
+      ["assert_available_on", "uuid, date"],
+      ["drive_minutes", "uuid, double precision, double precision, double precision, double precision"],
+      ["route_segment_km", "uuid[], double precision, double precision"],
+    ] as const) {
+      expect(closedToTheWeb(THIS_MIGRATION, fn, args), `${fn} is not revoked`).toBe(true);
     }
     // And does not revoke the two the app does call — that would take the
     // /my-day consent check and the commercial gate down with it.
