@@ -95,7 +95,10 @@ const STUBS: Record<string, Stub> = {
     pendingEmail: null,
   },
   getMyOrgFeatures: { commercialAccounts: true, hasCommercialData: true },
-  getTrialState: null,
+  getTrialState: {
+    phase: "expired", daysRemaining: null, endsOn: "2026-08-30", restricted: true,
+    canManageBilling: true,
+  },
   getBillingBannerStatus: { planStatus: "active", role: "owner" },
   getBillingStatus: {
     orgId: fx.ORG_ID,
