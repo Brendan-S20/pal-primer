@@ -1,10 +1,14 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { signOutAndClearDevice } from "@/lib/offline/read-cache";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { PublicShell } from "@/components/PublicShell";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ensureBootstrapped } from "@/lib/ensure-workspace";
+import { isValidOrgName } from "@/lib/dna-linkage";
 import { Building2 } from "lucide-react";
 import { APP_NAME } from "@/lib/scoop";
 
@@ -20,6 +24,25 @@ import { APP_NAME } from "@/lib/scoop";
 // between account creation and org bootstrap. It deliberately does NOT link to
 // /get-started, which starts by creating an account and would collide with the
 // session this user already holds.
+//
+// 2026-08-20: honest, but a dead end — the only action was "Sign out". Signup
+// is two calls (registerAccount, then bootstrapOrganization) with no
+// transaction around them, so a failure between the two leaves an account that
+// owns nothing and cannot retry: /get-started refuses a second registration
+// ("That email already has an account"), and nothing here finished the job.
+// Nine such accounts exist in production. One signed up on 2026-07-14, came
+// back 48 minutes later, and is still stranded — a real business that could not
+// reach the product it signed up for.
+//
+// The recovery below runs ensureBootstrapped, the same sequence /auth runs on
+// sign-in, which is what makes it safe to offer: bootstrap_organization takes a
+// per-user advisory lock and returns the existing org when user_roles already
+// has one, so it cannot mint a second workspace, and the invite is claimed
+// BEFORE any org is created. That order is the whole reason this calls the
+// shared helper rather than bootstrapOrganization directly — an invited account
+// that creates its own org can never accept the invitation afterwards (BUG-18),
+// and on this page, where an unfinished invite is one of the three ways to
+// arrive, getting that backwards would stand a new trap where the old one was.
 export const Route = createFileRoute("/no-workspace")({
   ssr: false,
   head: () => ({
@@ -29,8 +52,14 @@ export const Route = createFileRoute("/no-workspace")({
 });
 
 function NoWorkspacePage() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState<string | null>(null);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const [orgName, setOrgName] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const canSubmit = isValidOrgName(orgName) && displayName.trim().length > 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +79,29 @@ function NoWorkspacePage() {
       cancelled = true;
     };
   }, []);
+
+  const finishSetup = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const { data } = await supabase.auth.getUser();
+      if (!data.user) {
+        window.location.href = "/auth";
+        return;
+      }
+      // Returns false when an invitation was claimed instead — that account is
+      // now a member of someone else's workspace, so /dashboard is right for
+      // both outcomes and the route guard sends them on from there.
+      await ensureBootstrapped(data.user, {
+        orgName: orgName.trim(),
+        displayName: displayName.trim(),
+      });
+      navigate({ to: "/dashboard" });
+    } catch (err) {
+      setBusy(false);
+      setError(err instanceof Error ? err.message : "Couldn't finish setting up. Try again.");
+    }
+  };
 
   const signOut = async () => {
     await signOutAndClearDevice();
@@ -78,6 +130,56 @@ function NoWorkspacePage() {
           </Button>
         </div>
       </div>
+
+      {/* Platform admins have no organization by design, so offering to make
+          them one would be wrong — bootstrap_organization refuses it anyway. */}
+      {!isPlatformAdmin && (
+        <form
+          className="mt-4 rounded-lg border bg-card p-6 text-left"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (canSubmit && !busy) void finishSetup();
+          }}
+        >
+          <h2 className="text-base font-semibold">Finish setting up your workspace</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            If your signup didn&apos;t complete, pick up where it stopped — no new account and
+            no second charge. If you were invited to someone else&apos;s workspace instead,
+            this joins you to theirs.
+          </p>
+          <div className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="nw-org">Business name</Label>
+              <Input
+                id="nw-org"
+                required
+                value={orgName}
+                onChange={(e) => setOrgName(e.target.value)}
+                placeholder="Acme Pet Waste Removal"
+              />
+              {orgName.trim().length > 0 && !isValidOrgName(orgName) && (
+                <p className="text-xs text-destructive">
+                  Enter your real business name (not blank or a placeholder like "Test").
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="nw-name">Your name</Label>
+              <Input
+                id="nw-name"
+                required
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Jane Doe"
+              />
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <Button type="submit" className="w-full" disabled={!canSubmit || busy}>
+              {busy ? "Setting up..." : "Finish setup"}
+            </Button>
+          </div>
+        </form>
+      )}
     </PublicShell>
   );
 }
