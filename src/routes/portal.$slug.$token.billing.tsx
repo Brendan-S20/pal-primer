@@ -94,7 +94,7 @@ function PortalBilling() {
                   // reassurance a customer acts on — and then the invoice
                   // still reads open tomorrow and they call.
                   "Bank payments take a few business days to clear. We'll email you when it does, and the invoice below stays open until then."
-                : "Thanks — your invoice below is marked paid. A receipt is on its way to your email."}
+                : "Thanks. Your invoice below is marked paid. A receipt is on its way to your email."}
             </p>
           </div>
           <button

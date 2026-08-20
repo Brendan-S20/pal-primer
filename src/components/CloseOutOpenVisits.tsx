@@ -135,7 +135,7 @@ export function CloseOutOpenVisits() {
           </DialogTitle>
           <DialogDescription>
             You started <strong className="text-foreground">{where}</strong> at {startedLabel} on{" "}
-            {visit.scheduled_on} and it was never closed. We won't guess — tell us what happened.
+            {visit.scheduled_on} and it was never closed. We won't guess, so tell us what happened.
           </DialogDescription>
         </DialogHeader>
 
@@ -161,7 +161,7 @@ export function CloseOutOpenVisits() {
 
         <DialogFooter className="flex-col gap-2 sm:flex-col">
           <Button onClick={submitCompleted} disabled={m.isPending} className="w-full">
-            {m.isPending ? "Saving…" : "Yes — I completed it"}
+            {m.isPending ? "Saving…" : "Yes, I completed it"}
           </Button>
           <Button
             variant="outline"
@@ -169,7 +169,7 @@ export function CloseOutOpenVisits() {
             onClick={() => m.mutate({ completed: false })}
             className="w-full"
           >
-            No — it wasn't completed
+            No, it wasn't completed
           </Button>
           <Button
             variant="ghost"

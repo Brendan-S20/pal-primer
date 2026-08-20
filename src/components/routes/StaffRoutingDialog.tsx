@@ -128,7 +128,7 @@ export function StaffRoutingDialog({
       const n = impactQ.data?.total ?? 0;
       toast.success(
         n > 0
-          ? `Time off saved. ${n} visit${n === 1 ? "" : "s"} still assigned — use Cover to move them.`
+          ? `Time off saved. ${n} visit${n === 1 ? "" : "s"} still assigned. Use Cover to move them.`
           : "Time off saved.",
       );
       setFrom("");
@@ -263,7 +263,7 @@ export function StaffRoutingDialog({
                 .
                 {impactQ.data
                   ? impactQ.data.total > 0
-                    ? ` ${impactQ.data.total} visit${impactQ.data.total === 1 ? "" : "s"} already assigned across ${impactQ.data.days.length} day${impactQ.data.days.length === 1 ? "" : "s"} — saving this does not move them.`
+                    ? ` ${impactQ.data.total} visit${impactQ.data.total === 1 ? "" : "s"} already assigned across ${impactQ.data.days.length} day${impactQ.data.days.length === 1 ? "" : "s"}. Saving this does not move them.`
                     : " Nothing assigned on those days."
                   : ""}
               </p>

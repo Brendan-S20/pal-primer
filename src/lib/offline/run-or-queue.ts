@@ -140,7 +140,7 @@ export async function runOrQueue(o: RunOrQueueOptions): Promise<{ queued: boolea
     } catch (e) {
       // A server rejection is the tech's answer, not a network condition.
       if (!isTransportFailure(e)) throw e;
-      console.warn(`[offline] ${o.label} unreachable — queueing`, e);
+      console.warn(`[offline] ${o.label} unreachable, queueing`, e);
     }
   }
   await o.queue();

@@ -346,7 +346,7 @@ export const applyFrequencyChangeRequest = createServerFn({ method: "POST" })
           resolved_by: userId,
           resolution_note: changed
             ? `Frequency change applied: ${before.frequency} → ${data.frequency}`
-            : `Frequency change request closed — service already ${data.frequency}`,
+            : `Frequency change request closed, service already ${data.frequency}`,
         })
         .eq("id", data.ticketId)
         .eq("organization_id", orgId);

@@ -68,7 +68,7 @@ function LeadFormSettings() {
               upsell the old warning was clumsily reaching for. */}
           {!cfg.publicSignupEnabled && (
             <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
-              This form collects leads whether or not you take signups online — the two are
+              This form collects leads whether or not you take signups online. The two are
               independent. If you'd also like homeowners to price their yard and pay without
               calling, turn on{" "}
               <Link to="/settings/online-signup" className="text-primary underline">

@@ -59,7 +59,7 @@ const CREATE_ACTIONS = [
   },
   {
     title: "Go to leads",
-    description: "Review and convert prospects — leads arrive from the website form",
+    description: "Review and convert prospects (leads arrive from the website form)",
     url: "/leads",
     gate: "/leads",
     icon: Sparkles,
@@ -131,7 +131,7 @@ export function CreateSheet({
                   <span className="min-w-0">
                     <span className="block text-sm font-medium">One-off visit</span>
                     <span className="block truncate text-xs text-muted-foreground">
-                      A single visit on a chosen date — call-out, make-up, deep clean
+                      A single visit on a chosen date: call-out, make-up, deep clean
                     </span>
                   </span>
                 </button>

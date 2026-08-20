@@ -203,7 +203,7 @@ export function WeatherPopover() {
             </div>
           ) : zones.length === 0 ? (
             <p className="py-2 text-center text-sm text-muted-foreground">
-              No zones yet — add zones with coordinates to see forecasts.
+              No zones yet. Add zones with coordinates to see forecasts.
             </p>
           ) : (
             <>

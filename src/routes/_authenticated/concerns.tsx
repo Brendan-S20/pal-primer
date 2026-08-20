@@ -155,7 +155,7 @@ function ConcernsPage() {
     },
     onSuccess: (r) => {
       if (r.failed)
-        toast.error(`Resolved ${r.ok} of ${r.ok + r.failed} concerns — ${r.failed} failed`);
+        toast.error(`Resolved ${r.ok} of ${r.ok + r.failed} concerns, ${r.failed} failed`);
       else toast.success(`Resolved ${r.ok} concern${r.ok === 1 ? "" : "s"}`);
       sel.clear();
       qc.invalidateQueries({ queryKey: ["concerns"] });

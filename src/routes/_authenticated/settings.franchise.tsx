@@ -89,7 +89,7 @@ function FranchiseSettings() {
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
             <p className="text-muted-foreground">
-              Your franchise can see this location&apos;s totals — active clients, visits, revenue,
+              Your franchise can see this location&apos;s totals: active clients, visits, revenue,
               and outstanding balances. They cannot see individual client records.
             </p>
             <div className="rounded-md border bg-muted/40 p-3">
@@ -131,7 +131,7 @@ function FranchiseSettings() {
             <p className="font-medium">This organization is no longer part of a franchise.</p>
             <p className="mt-1 text-muted-foreground">
               The statements and adjustments below are from a franchise link that has ended. They
-              are kept exactly as they were — anything still unpaid is still owed, in whichever
+              are kept exactly as they were. Anything still unpaid is still owed, in whichever
               direction it was owed.
             </p>
           </CardContent>
@@ -199,7 +199,7 @@ function FranchiseSettings() {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Enter the invitation code your franchise gave you. Nothing changes until you do — they
+              Enter the invitation code your franchise gave you. Nothing changes until you do, and they
               can&apos;t link your business without this step.
             </p>
             <div>
@@ -232,7 +232,7 @@ function FranchiseSettings() {
             </Button>
             <p className="text-xs text-muted-foreground">
               Joining lets your franchise see this location&apos;s totals and bill you a royalty
-              percentage. Once joined, ending the connection is handled by your franchise — check
+              percentage. Once joined, ending the connection is handled by your franchise, so check
               your agreement before you accept.
             </p>
           </CardContent>

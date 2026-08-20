@@ -145,19 +145,19 @@ function InvoicingPage() {
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p>
-            <span className="font-medium text-foreground">Held (scheduled to send)</span> — a
+            <span className="font-medium text-foreground">Held (scheduled to send)</span>: a
             freshly auto-generated invoice waits out its grace period. On the Invoices page and in
             the invoice drawer it shows a{" "}
             <span className="font-medium text-foreground">Scheduled to send {"{date}"}</span> chip.
           </p>
           <p>
-            <span className="font-medium text-foreground">Send now</span> — open a held invoice and
+            <span className="font-medium text-foreground">Send now</span>: open a held invoice and
             use <span className="font-medium text-foreground">Send now</span> to email it right
             away, bypassing the remaining grace. It stamps the invoice as sent and takes it out of
             the nightly auto-send loop, so the client never gets it twice.
           </p>
           <p>
-            <span className="font-medium text-foreground">Sent</span> — once emailed (automatically
+            <span className="font-medium text-foreground">Sent</span>: once emailed (automatically
             at the end of grace, or via Send now), the invoice shows a{" "}
             <span className="font-medium text-foreground">Sent {"{date}"}</span> chip and starts its
             net-terms countdown to the due date.

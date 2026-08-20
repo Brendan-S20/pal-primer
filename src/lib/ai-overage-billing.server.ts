@@ -195,7 +195,7 @@ export async function billOrgAiOverage(row: PeriodRow): Promise<OverageOutcome> 
         // allowance it went past, because "AI overage $12.40" on its own is
         // the kind of line that generates a support ticket.
         description:
-          `AI usage — ${monthLabel}: ${overActions.toLocaleString()} action${overActions === 1 ? "" : "s"} ` +
+          `AI usage for ${monthLabel}: ${overActions.toLocaleString()} action${overActions === 1 ? "" : "s"} ` +
           `beyond the ${included.toLocaleString()} included`,
         metadata: {
           kind: "ai_overage",

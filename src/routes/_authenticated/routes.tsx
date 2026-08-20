@@ -686,7 +686,7 @@ function RoutesPage() {
       // "all moved".
       if (r.skipped > 0) {
         toast.warning(
-          `Moved ${r.moved}. Left ${r.skipped} alone — those clients already have a visit that day.`,
+          `Moved ${r.moved}. Left ${r.skipped} alone, because those clients already have a visit that day.`,
           { duration: 9000 },
         );
       } else {
@@ -1179,7 +1179,7 @@ function RoutesPage() {
                   )}
                 </div>
                 <div className="border-t px-3 py-2 text-2xs text-muted-foreground">
-                  Switching somebody off doesn&apos;t move their visits — use{" "}
+                  Switching somebody off doesn&apos;t move their visits, so use{" "}
                   <strong>Cover</strong> on their lane for that.
                 </div>
               </PopoverContent>
@@ -1557,7 +1557,7 @@ function RoutesPage() {
                       <button
                         onClick={() => setCoverFor({ id: s.id, name: s.display_name })}
                         className="rounded px-1.5 py-0.5 text-3xs text-muted-foreground hover:bg-muted hover:text-foreground"
-                        title={`${s.display_name} is out — move their work`}
+                        title={`${s.display_name} is out, move their work`}
                       >
                         Cover
                       </button>
@@ -1576,7 +1576,7 @@ function RoutesPage() {
                   notRoutable
                   notRoutableHint={
                     canManageCrew ? (
-                      <>Still holding work — drag it to a tech, or let them run routes.</>
+                      <>Still holding work. Drag it to a tech, or let them run routes.</>
                     ) : undefined
                   }
                   laneAction={
@@ -1670,7 +1670,7 @@ function RoutesPage() {
                   {st.routing_available ? "" : " (away)"}
                 </option>
               ))}
-              <option value="__unassign__">— Unassign —</option>
+              <option value="__unassign__">(Unassign)</option>
             </select>
             <label className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2 py-1">
               <span className="text-muted-foreground">Move to</span>
@@ -1961,7 +1961,7 @@ function Column({
             <div className="text-xs text-rose-700">
               {notRoutableHint ?? (
                 <>
-                  Still holding work — drag it to a tech, or turn on “Runs routes” for them in
+                  Still holding work. Drag it to a tech, or turn on “Runs routes” for them in
                   Settings → Team.
                 </>
               )}

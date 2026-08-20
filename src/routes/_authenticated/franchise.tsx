@@ -199,7 +199,7 @@ function FranchisePage() {
             <p>
               This page rolls up active clients, visits, revenue, and open balances from the
               locations in your franchise. Each location runs as its own organization with its own
-              users and client records — you see their totals, not their customers.
+              users and client records, so you see their totals, not their customers.
             </p>
             {/* BUILD-6: this used to say "any organization whose
                 parent_organization_id points at this one will roll up here",
@@ -209,7 +209,7 @@ function FranchisePage() {
                 already exists. */}
             <p>
               There are two ways to add one. If you&apos;re <strong>starting</strong> a location,
-              open it below — we create it, link it, and email the people who work there. If the
+              open it below. We create it, link it, and email the people who work there. If the
               location is an <strong>existing business</strong> already running on HoundStack, set
               this organization up as the franchise and send its owner an invitation code instead,
               so their clients and history come across with them.
@@ -643,7 +643,7 @@ function RoyaltyBilling() {
             The percentage applies to collected revenue before fees. Stripe&apos;s processing fee
             and HoundStack&apos;s 0.5% platform fee are deducted from what the location receives and
             are not taken off the royalty base, so a location keeps less than the figure the royalty
-            is calculated on. The card surcharge is already excluded — it was never revenue.
+            is calculated on. The card surcharge is already excluded, because it was never revenue.
           </p>
           <div className="space-y-2">
             {children.map((c) => (

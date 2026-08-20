@@ -319,7 +319,7 @@ function MyDay() {
       // Never folded into the success count: this is a photo whose bytes are
       // gone, and the tech is the only person who can retake it.
       toast.error(
-        `${res.dropped} queued photo${res.dropped === 1 ? "" : "s"} could not be recovered from this device — retake if the visit still needs one`,
+        `${res.dropped} queued photo${res.dropped === 1 ? "" : "s"} could not be recovered from this device. Retake if the visit still needs one`,
       );
       qc.invalidateQueries({ queryKey: ["my-day"] });
     }
@@ -328,7 +328,7 @@ function MyDay() {
       // blocking everything behind this; giving up unblocks the day, but the
       // work itself is gone and only the tech can redo it.
       toast.error(
-        `${res.deadLettered} queued action${res.deadLettered === 1 ? "" : "s"} the server kept refusing ${res.deadLettered === 1 ? "has" : "have"} been discarded so the rest could sync — check the visit and redo it if needed`,
+        `${res.deadLettered} queued action${res.deadLettered === 1 ? "" : "s"} the server kept refusing ${res.deadLettered === 1 ? "has" : "have"} been discarded so the rest could sync. Check the visit and redo it if needed`,
         { duration: 12_000 },
       );
       qc.invalidateQueries({ queryKey: ["my-day"] });
@@ -428,7 +428,7 @@ function MyDay() {
       <div className="space-y-3 py-10 text-center">
         <WifiOff className="mx-auto h-6 w-6 text-muted-foreground" />
         <p className="text-sm text-muted-foreground">
-          Couldn't load this day{online ? "" : " — you're offline"}, and no synced copy is saved on
+          Couldn't load this day{online ? "" : " (you're offline)"}, and no synced copy is saved on
           this device.
         </p>
         <Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -503,7 +503,7 @@ function MyDay() {
                     <WifiOff className="h-4 w-4 shrink-0" />
                   )}
                   <span className="font-medium">
-                    {online ? "Couldn't refresh" : "Offline"} — saved copy,{" "}
+                    {online ? "Couldn't refresh" : "Offline"}: saved copy,{" "}
                     {formatCacheAge(freshness.ageMs)}
                   </span>
                 </div>
@@ -516,7 +516,7 @@ function MyDay() {
                     minute: "2-digit",
                   })}
                   {freshness.beyondTrustHorizon
-                    ? " — this route may have changed. Confirm before driving it."
+                    ? " . This route may have changed. Confirm before driving it."
                     : ""}
                 </div>
               </div>
@@ -1655,7 +1655,7 @@ function VisitCard({
                     // with a raw network error on a real charge.
                     <p className="text-2xs font-medium text-amber-600 dark:text-amber-500">
                       You're offline. Unlike start, complete, skip and photos, an add-on charge is
-                      not queued — bill it when you have signal.
+                      not queued. Bill it when you have signal.
                     </p>
                   )}
                   <p className="text-2xs text-muted-foreground">
@@ -1728,7 +1728,7 @@ function DnaSamplePanel({
       <input
         className="h-9 w-full rounded-md border bg-background px-2 text-sm"
         maxLength={300}
-        placeholder={hasUnits ? "Where — e.g. by building C bins" : "Where — e.g. side yard"}
+        placeholder={hasUnits ? "Where, e.g. by building C bins" : "Where, e.g. side yard"}
         value={where}
         onChange={(e) => setWhere(e.target.value)}
       />
@@ -1737,7 +1737,7 @@ function DnaSamplePanel({
         // queued actions, and a live-looking button that fails with a raw
         // network error is worse than one that says why.
         <p className="text-2xs font-medium text-amber-600 dark:text-amber-500">
-          You're offline. A sample isn't queued like start, complete and photos — log it when you
+          You're offline. A sample isn't queued like start, complete and photos. Log it when you
           have signal.
         </p>
       )}
@@ -1745,7 +1745,7 @@ function DnaSamplePanel({
         {mut.isPending ? "Logging…" : "Log sample"}
       </Button>
       <p className="text-2xs text-muted-foreground">
-        Goes to the office unmatched and unpriced — they decide whose dog it was.
+        Goes to the office unmatched and unpriced. They decide whose dog it was.
       </p>
     </div>
   );

@@ -90,7 +90,7 @@ const num = (key: string, label: string): ReportColumn => ({ key, label, type: "
 export const REPORT_DEFS: Record<ReportId, ReportDef> = {
   income_cash: {
     id: "income_cash",
-    title: "Income — cash basis, by month",
+    title: "Income: cash basis, by month",
     purpose:
       "Gross customer payments received, refunds and chargebacks taken out, net income. This is the figure that ties to the bank and to the 1099-K.",
     basis: "cash",
@@ -101,11 +101,11 @@ export const REPORT_DEFS: Record<ReportId, ReportDef> = {
       money("netCents", "Net income"),
       num("paymentCount", "Payments"),
     ],
-    note: "Dated by when each payment settled, in the organization's own timezone. A payment that was later refunded still appears as gross income in the month it arrived — the refund is deducted in the month it happened, so a prior period is never restated. A dispute that is later WON is added back in the month the money returned, so this column is net of recoveries and can be negative in a month where more came back than went out.",
+    note: "Dated by when each payment settled, in the organization's own timezone. A payment that was later refunded still appears as gross income in the month it arrived. The refund is deducted in the month it happened, so a prior period is never restated. A dispute that is later WON is added back in the month the money returned, so this column is net of recoveries and can be negative in a month where more came back than went out.",
   },
   income_accrual: {
     id: "income_accrual",
-    title: "Income — accrual basis, by month",
+    title: "Income: accrual basis, by month",
     purpose:
       "Revenue billed in each month whether or not it was collected, with account credits shown separately. For a business filing accrual basis, or for anyone comparing billed against collected.",
     basis: "accrual",
@@ -129,7 +129,7 @@ export const REPORT_DEFS: Record<ReportId, ReportDef> = {
   },
   revenue_by_client: {
     id: "revenue_by_client",
-    title: "Income by customer — cash basis",
+    title: "Income by customer: cash basis",
     purpose:
       "What each customer actually paid during the period. Supports customer-level questions and any 1099 obligations running the other way.",
     basis: "cash",
@@ -156,7 +156,7 @@ export const REPORT_DEFS: Record<ReportId, ReportDef> = {
       money("d90PlusCents", "Over 90 days"),
       money("totalCents", "Total open"),
     ],
-    note: "Aged as at the period end date, not today — running this in March for last December gives December's position, which is the one the return needs.",
+    note: "Aged as at the period end date, not today. Running this in March for last December gives December's position, which is the one the return needs.",
   },
   reversals: {
     id: "reversals",
@@ -171,7 +171,7 @@ export const REPORT_DEFS: Record<ReportId, ReportDef> = {
       money("amountCents", "Amount"),
       text("statusLabel", "Outcome"),
     ],
-    note: "A won dispute appears as a recovery and is not deducted — the money came back. Only refunds and lost or open chargebacks reduce income.",
+    note: "A won dispute appears as a recovery and is not deducted, because the money came back. Only refunds and lost or open chargebacks reduce income.",
   },
   write_offs: {
     id: "write_offs",
@@ -279,7 +279,7 @@ export function reversalLabel(kind: string): { type: string; outcome: string } {
     case "payment_refunded":
       return { type: "Refund", outcome: "Refunded to customer" };
     case "payment_chargeback":
-      return { type: "Chargeback", outcome: "Disputed — funds withdrawn" };
+      return { type: "Chargeback", outcome: "Disputed, funds withdrawn" };
     case "payment_chargeback_won":
       return { type: "Chargeback won", outcome: "Recovered" };
     default:
@@ -477,7 +477,7 @@ export function stripe1099kGuidance(audience: RoutingAudience): Guidance {
       return {
         headline: "The franchise receives the 1099-K for every location's card volume.",
         points: [
-          "Stripe issues the 1099-K to whoever owns the account that took the charge. With the franchise collecting, that is the franchise — for the full gross amount across all locations, before royalties, refunds or fees.",
+          "Stripe issues the 1099-K to whoever owns the account that took the charge. With the franchise collecting, that is the franchise, for the full gross amount across all locations, before royalties, refunds or fees.",
           "The locations receive no 1099-K for that volume at all. Their income is the settlement the franchise pays them, which is what their own return should reflect.",
           "The franchise reports the gross and deducts what it passed on. The settlement statements are the support for that deduction, which is why they are kept per period and never rewritten once sent.",
           "Expect the 1099-K to be much larger than the franchise's own revenue. That is normal for this arrangement, and the reconciliation report is what explains the difference.",
@@ -497,7 +497,7 @@ export function stripe1099kGuidance(audience: RoutingAudience): Guidance {
       return {
         headline: "You receive a 1099-K from Stripe for your card volume.",
         points: [
-          "The 1099-K reports GROSS volume for the year — before refunds, before chargebacks, and before Stripe's processing fees.",
+          "The 1099-K reports GROSS volume for the year: before refunds, before chargebacks, and before Stripe's processing fees.",
           "Net income on your return will be lower than the 1099-K, and that is expected. The reconciliation report shows the difference line by line.",
           "Stripe's own fees are a deductible expense; they are taken out before payout, so they never appear as income in HoundStack.",
         ],

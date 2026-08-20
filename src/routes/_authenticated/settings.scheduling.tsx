@@ -116,7 +116,7 @@ function SchedulingSettings() {
           />
           <p className="mt-1 text-2xs text-muted-foreground">
             New visits are only scheduled on these days. A client&apos;s explicit preferred weekdays
-            still win — an agreed Saturday stays a Saturday.
+            still win, so an agreed Saturday stays a Saturday.
           </p>
         </div>
       </section>
@@ -125,7 +125,7 @@ function SchedulingSettings() {
         <h3 className="text-sm font-semibold">How far ahead the schedule is built</h3>
         <p className="mt-1 text-xs text-muted-foreground">
           Every night we fill the calendar out to this many days from today, from each client&apos;s
-          recurring plan. It rolls forward on its own — there is nothing to press.
+          recurring plan. It rolls forward on its own, and there is nothing to press.
         </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
@@ -151,7 +151,7 @@ function SchedulingSettings() {
               }}
             />
             <p className="mt-1 text-2xs text-muted-foreground">
-              90 is a good default — a quarter to plan and sell against. Longer suits annual
+              90 is a good default: a quarter to plan and sell against. Longer suits annual
               contracts; shorter means less to redo when prices or frequencies change.
             </p>
           </div>
@@ -160,7 +160,7 @@ function SchedulingSettings() {
             <p className="mt-0.5 text-sm tabular-nums">{horizonLabel}</p>
             <p className="mt-1 text-2xs text-muted-foreground">
               Clients whose plan has an end date stop on that date, and one-off visits never
-              repeat — changing this number does not change either.
+              repeat. Changing this number does not change either.
             </p>
           </div>
         </div>
@@ -175,8 +175,8 @@ function SchedulingSettings() {
             <span className="font-medium">Tell me when the schedule moves into a new week</span>
             <span className="block text-xs text-muted-foreground">
               A note in your notifications saying what date the calendar now runs to. Off by
-              default. It exists because a schedule that fills itself is invisible — working
-              perfectly looks identical to nothing happening — and this used to be confirmed by
+              default. It exists because a schedule that fills itself is invisible (working
+              perfectly looks identical to nothing happening) and this used to be confirmed by
               pressing a button. Sent once a week at most, never nightly.
             </span>
           </span>
@@ -242,7 +242,7 @@ function SchedulingSettings() {
             />
             <p className="mt-1 text-2xs text-muted-foreground">
               An assignment implying a longer drive than this is flagged as implausible on the
-              board. It is a warning, not a limit — nothing is blocked.
+              board. It is a warning, not a limit, and nothing is blocked.
             </p>
           </div>
         </div>

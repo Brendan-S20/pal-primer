@@ -1441,7 +1441,7 @@ function ServiceDrawer({
                 {propTotalUnits} unit{propTotalUnits === 1 ? "" : "s"}
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                Pulled from the property record — edit Total units on the property to change it.
+                Pulled from the property record. Edit Total units on the property to change it.
               </p>
             </div>
           ) : (

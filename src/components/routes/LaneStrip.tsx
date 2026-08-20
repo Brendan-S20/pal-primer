@@ -200,7 +200,7 @@ export function LaneStrip({
       </table>
       <div className="border-t px-3 py-1.5 text-2xs text-muted-foreground">
         Click any day to open its board. <span className="text-amber-700">Amber</span> is time
-        off — <strong>!3</strong> means three visits are still assigned to someone who is away.
+        off. <strong>!3</strong> means three visits are still assigned to someone who is away.
       </div>
     </div>
   );

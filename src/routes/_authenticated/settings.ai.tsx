@@ -51,8 +51,8 @@ function AiSettings() {
       <div>
         <h2 className="text-lg font-semibold">AI Tools</h2>
         <p className="text-sm text-muted-foreground">
-          The AI features — marketing content, review replies, churn scoring, AI dispatch, and zone
-          pricing — run on HoundStack&apos;s own models. There is no key to set up and no separate
+          The AI features (marketing content, review replies, churn scoring, AI dispatch, and zone
+          pricing) run on HoundStack&apos;s own models. There is no key to set up and no separate
           provider bill; your plan includes an AI allowance, and any usage beyond it appears on your
           HoundStack invoice.
         </p>
@@ -117,7 +117,7 @@ function AiSettings() {
                       : !q.data?.toolsAvailable
                         ? "Marketing content, review replies, churn scoring, AI dispatch, and zone pricing are unavailable. The receptionist and business advisor are unaffected."
                         : "The AI receptionist and the business advisor are unavailable. The AI tools are unaffected."}{" "}
-                    This is a HoundStack configuration issue, not something in your account — please
+                    This is a HoundStack configuration issue, not something in your account. Please
                     contact support.
                   </div>
                 </div>
@@ -233,7 +233,7 @@ function AiUsageMeter() {
       {!unlimited && rate != null && (
         <p className="text-xs text-muted-foreground">
           Actions past {d.actionsIncluded?.toLocaleString()} are ${(rate / 100).toFixed(2)} each and
-          appear on your next invoice as a single line for the month. One action is one AI request —
+          appear on your next invoice as a single line for the month. One action is one AI request:
           a receptionist conversation counts once however many replies it takes.
         </p>
       )}
@@ -279,7 +279,7 @@ function AiUsageMeter() {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            A safety stop, not a budget. Below the ceiling nothing is blocked — usage past your
+            A safety stop, not a budget. Below the ceiling nothing is blocked, and usage past your
             allowance is simply billed. Cannot be set below 1×, which would pause AI you have
             already paid for.
           </p>

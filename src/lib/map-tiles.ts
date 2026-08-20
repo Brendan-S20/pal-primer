@@ -25,7 +25,7 @@ export type TileVariant = "street" | "positron" | "voyager" | "satellite";
  *  absent: it is chosen by the SURFACE (yard sketching needs imagery), not by
  *  preference, and offering it as a route basemap makes stop pins unreadable. */
 export const BASE_STYLES: Array<{ value: TileVariant; label: string; hint: string }> = [
-  { value: "positron", label: "Light", hint: "Muted greys — pins and routes read loudest" },
+  { value: "positron", label: "Light", hint: "Muted greys, so pins and routes read loudest" },
   { value: "voyager", label: "Standard", hint: "Gentle colour, street names stay legible" },
   { value: "street", label: "Detailed", hint: "Full OpenStreetMap detail" },
 ];

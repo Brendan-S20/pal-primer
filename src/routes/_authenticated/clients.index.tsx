@@ -149,7 +149,7 @@ function ClientsList() {
       return { ok, failed: results.length - ok };
     },
     onSuccess: (r) => {
-      if (r.failed) toast.error(`Archived ${r.ok} of ${r.ok + r.failed} clients — ${r.failed} failed`);
+      if (r.failed) toast.error(`Archived ${r.ok} of ${r.ok + r.failed} clients, ${r.failed} failed`);
       else toast.success(`Archived ${r.ok} client${r.ok === 1 ? "" : "s"}`);
       sel.clear();
       qc.invalidateQueries({ queryKey: ["clients"] });
@@ -169,7 +169,7 @@ function ClientsList() {
     },
     onSuccess: (r) => {
       if (r.failed)
-        toast.error(`Resumed communications for ${r.ok} of ${r.ok + r.failed} clients — ${r.failed} failed`);
+        toast.error(`Resumed communications for ${r.ok} of ${r.ok + r.failed} clients, ${r.failed} failed`);
       else toast.success(`Resumed communications for ${r.ok} client${r.ok === 1 ? "" : "s"}`);
       sel.clear();
       qc.invalidateQueries({ queryKey: ["clients"] });

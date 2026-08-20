@@ -315,19 +315,19 @@ export const DISPUTE_COPY: Record<
   { label: string; tone: "danger" | "warn" | "ok"; whatItMeans: string }
 > = {
   inquiry: {
-    label: "Inquiry — no money taken",
+    label: "Inquiry, no money taken",
     tone: "warn",
     whatItMeans:
-      "The customer's bank has asked a question about this charge. Nothing has been withdrawn and your revenue is untouched. Answering it is how it stays that way — an unanswered inquiry is what turns into a chargeback. Answer it on the Payments page; you do not need to open Stripe.",
+      "The customer's bank has asked a question about this charge. Nothing has been withdrawn and your revenue is untouched. Answering it is how it stays that way, because an unanswered inquiry is what turns into a chargeback. Answer it on the Payments page; you do not need to open Stripe.",
   },
   inquiry_closed: {
-    label: "Inquiry closed — nothing was taken",
+    label: "Inquiry closed, nothing was taken",
     tone: "ok",
     whatItMeans:
       "The bank's question was dropped without becoming a chargeback. No money ever left the account and none is owed. Nothing to do.",
   },
   open: {
-    label: "Open — money withdrawn",
+    label: "Open, money withdrawn",
     tone: "warn",
     whatItMeans:
       "The bank has taken this money back while the customer's claim is reviewed. You have a limited window to submit evidence from the Payments page; after that the decision is made without it.",
@@ -336,10 +336,10 @@ export const DISPUTE_COPY: Record<
     label: "Lost",
     tone: "danger",
     whatItMeans:
-      "Decided in the customer's favour. The money left when the dispute opened and is not coming back — this sale is final as lost.",
+      "Decided in the customer's favour. The money left when the dispute opened and is not coming back. This sale is final as lost.",
   },
   won: {
-    label: "Won — money returned",
+    label: "Won, money returned",
     tone: "ok",
     whatItMeans:
       "Decided in your favour. The money has been returned and the deduction taken for it was reversed.",

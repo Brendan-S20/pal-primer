@@ -240,8 +240,8 @@ function RemoveLocation({ row, onDone }: { row: FranchiseRow; onDone: () => void
         <div className="min-w-0">
           <div className="text-sm font-medium">Remove from franchise</div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Ends this location&apos;s membership. Statements already issued stay on both sides —
-            removing a location is not a way to clear what was owed.
+            Ends this location&apos;s membership. Statements already issued stay on both sides.
+            Removing a location is not a way to clear what was owed.
           </p>
         </div>
         <Button
@@ -304,7 +304,7 @@ function RemoveLocation({ row, onDone }: { row: FranchiseRow; onDone: () => void
               yourself.
             </li>
             <li>
-              To link them again later you issue a new invitation code and their owner redeems it —
+              To link them again later you issue a new invitation code and their owner redeems it, so
               they have to agree a second time.
             </li>
           </ul>

@@ -601,7 +601,7 @@ async function buildAging(supabase: any, ctx: OrgContext, from: string, to: stri
     rows,
     totals,
     caveats: [
-      `Aged as at ${to}, from each invoice's due date. The "from" date on this screen does not affect an aging report — a receivables position is a point in time, not a range.`,
+      `Aged as at ${to}, from each invoice's due date. The "from" date on this screen does not affect an aging report, because a receivables position is a point in time, not a range.`,
     ],
   };
 }
@@ -836,7 +836,7 @@ async function build1099k(supabase: any, ctx: OrgContext, from: string, to: stri
             ? onBehalfGross > 0
               ? `${ctx.name} (your own Stripe account, including what you collected for your locations)`
               : `${ctx.name} (your own Stripe account)`
-            : `${orgNames.get(key) ?? "Another organization"} — collected on your behalf`,
+            : `${orgNames.get(key) ?? "Another organization"} (collected on your behalf)`,
         grossCents: b.gross,
         refundsCents: net,
         netCents: b.gross - net,
@@ -877,7 +877,7 @@ async function build1099k(supabase: any, ctx: OrgContext, from: string, to: stri
       ...guidance.points,
       ...(onBehalfGross > 0
         ? [
-            `Of the gross above, ${(onBehalfGross / 100).toFixed(2)} was collected in your Stripe account on behalf of your locations. It is on your 1099-K because the charge landed in your account, but it is not your income — what you passed on is supported by the settlement statements.`,
+            `Of the gross above, ${(onBehalfGross / 100).toFixed(2)} was collected in your Stripe account on behalf of your locations. It is on your 1099-K because the charge landed in your account, but it is not your income, and what you passed on is supported by the settlement statements.`,
             "Refunds and chargebacks against that location volume are recorded on the location's own books, so they are not deducted in the row above. Take those from the location's own reversals register when reconciling the 1099-K line by line.",
           ]
         : []),
@@ -970,7 +970,7 @@ async function buildFranchiseSettlements(ctx: OrgContext, from: string, to: stri
         ? "Royalty you collect is ordinary income. What you pass back to a location on a settlement is not your income and should not appear as such."
         : "Royalty is a deductible business expense. These statements are the support for that deduction.",
       "Settlements overlapping the period are included, so a period boundary that cuts through a settlement still shows the whole statement rather than a slice of it.",
-      'The period end shown is EXCLUSIVE — it is the first day of the next period, so a December statement reads "2026-01-01". A statement is counted in the year its period runs in, not the year its end date falls in.',
+      'The period end shown is EXCLUSIVE: it is the first day of the next period, so a December statement reads "2026-01-01". A statement is counted in the year its period runs in, not the year its end date falls in.',
     ],
   };
 }
@@ -1017,7 +1017,7 @@ async function buildReferralRewards(supabase: any, ctx: OrgContext, from: string
           : paidDay
             ? "Paid"
             : r.eligible_at
-              ? "Earned — awaiting payout"
+              ? "Earned, awaiting payout"
               : "Pending",
       } as ReportRow;
     });
@@ -1090,7 +1090,7 @@ export const getTaxReportIndex = createServerFn({ method: "GET" })
         })),
       gaps: [
         "Sales tax is not tracked. HoundStack does not hold a tax rate or a taxable flag on invoices, so no sales-tax return can be produced from this data.",
-        "Expenses are not tracked. These reports cover income and receivables only — payroll, fuel, disposal fees and Stripe's processing fees all come from elsewhere.",
+        "Expenses are not tracked. These reports cover income and receivables only. Payroll, fuel, disposal fees and Stripe's processing fees all come from elsewhere.",
         "Stripe processing fees are netted out before payout and never recorded here, so gross card volume in HoundStack will exceed what actually reached the bank.",
       ],
     };

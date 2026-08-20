@@ -91,6 +91,7 @@ function SmsPolicyPage() {
           optional, and the account is created whether or not they are filled in. The box carries
           this language:
         </p>
+        {/* em-dash-ok: quotes SMS_CONSENT_TEXT verbatim. See the note there. */}
         <p className="rounded-md border bg-muted/40 p-3 text-sm">
           "I agree to receive text messages from {APP_NAME} at the number provided about my account
           and service notifications. Consent is optional and is not a condition of purchase — you
@@ -112,11 +113,11 @@ function SmsPolicyPage() {
           here so the flow described above can be checked against the flow that actually runs.
         </p>
         <ul>
-          <li><a href="/sms-opt-in/1-account.png">Step 1 — your account</a> (no phone number requested)</li>
-          <li><a href="/sms-opt-in/2-business.png">Step 2 — your business</a> (no phone number requested)</li>
-          <li><a href="/sms-opt-in/3-finish-no-number.png">Step 3 — finish</a>, before any number is entered</li>
-          <li><a href="/sms-opt-in/4-opt-in-unticked.png">The opt-in, unticked</a> — the account can be created from here as it stands</li>
-          <li><a href="/sms-opt-in/5-opt-in-ticked.png">The opt-in, ticked</a> — consent given by this separate action alone</li>
+          <li><a href="/sms-opt-in/1-account.png">Step 1: your account</a> (no phone number requested)</li>
+          <li><a href="/sms-opt-in/2-business.png">Step 2: your business</a> (no phone number requested)</li>
+          <li><a href="/sms-opt-in/3-finish-no-number.png">Step 3: finish</a>, before any number is entered</li>
+          <li><a href="/sms-opt-in/4-opt-in-unticked.png">The opt-in, unticked</a>, and the account can be created from here as it stands</li>
+          <li><a href="/sms-opt-in/5-opt-in-ticked.png">The opt-in, ticked</a>, and consent is given by this separate action alone</li>
         </ul>
         <p>And the same carve-out in each of the three agreements:</p>
         <ul>

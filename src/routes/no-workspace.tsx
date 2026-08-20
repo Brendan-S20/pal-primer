@@ -116,7 +116,7 @@ function NoWorkspacePage() {
         <p className="mt-2 text-sm text-muted-foreground">
           {email ? <strong className="text-foreground">{email}</strong> : "This account"} is signed
           in but isn't a member of any {APP_NAME} workspace, so there's nothing to show. If you were
-          invited, open the invitation link again — it attaches your account to the workspace. If
+          invited, open the invitation link again. It attaches your account to the workspace. If
           you think this is a mistake, contact your workspace owner.
         </p>
         <div className="mt-5 flex flex-col gap-2">
@@ -143,7 +143,7 @@ function NoWorkspacePage() {
         >
           <h2 className="text-base font-semibold">Finish setting up your workspace</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            If your signup didn&apos;t complete, pick up where it stopped — no new account and
+            If your signup didn&apos;t complete, pick up where it stopped, with no new account and
             no second charge. If you were invited to someone else&apos;s workspace instead,
             this joins you to theirs.
           </p>

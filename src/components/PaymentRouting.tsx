@@ -109,7 +109,7 @@ export function PaymentRouting() {
         <>
           <p>
             From the next payment onward, this location&apos;s customers pay into{" "}
-            <strong>your</strong> Stripe account. You then settle with them each period — their
+            <strong>your</strong> Stripe account. You then settle with them each period: their
             revenue less royalty, less their share of any refunds.
           </p>
           <p>
@@ -174,7 +174,7 @@ export function PaymentRouting() {
                     : "Your franchise hasn't connected a Stripe account."}
                 </p>
                 <p className="mt-0.5 text-muted-foreground">
-                  Until it can, you can&apos;t collect on a location&apos;s behalf — a payment
+                  Until it can, you can&apos;t collect on a location&apos;s behalf. A payment
                   routed to an account that isn&apos;t ready fails rather than quietly landing in
                   theirs. Finish setup in Settings → Payments.
                 </p>
@@ -252,7 +252,7 @@ export function PaymentRouting() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="location">The location, in full</SelectItem>
-                        <SelectItem value="split">Split — you give back the royalty</SelectItem>
+                        <SelectItem value="split">Split: you give back the royalty</SelectItem>
                         <SelectItem value="franchise">The franchise, in full</SelectItem>
                       </SelectContent>
                     </Select>
@@ -275,7 +275,7 @@ export function PaymentRouting() {
               ))}
             </ul>
             <p className="mt-2 text-xs text-muted-foreground">
-              Changing who bears a reversal is never retroactive — every refund keeps the split that
+              Changing who bears a reversal is never retroactive. Every refund keeps the split that
               applied on the day it happened, so a statement you have already sent cannot change
               underneath you.
             </p>

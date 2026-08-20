@@ -57,6 +57,12 @@ export const Route = createFileRoute("/get-started")({
 // The optionality is now stated inside the consent record itself rather than
 // only in the surrounding UI, because the stored text is what a carrier reads
 // back months later, long after the page around it has changed.
+// em-dash-ok: the compliance artifact. This exact wording is stored per
+// consent as the auditable record, is what /legal/sms shows carriers in its
+// linked screenshots, and is pinned by two tests. Toll-free verification was
+// open when the em-dash sweep ran, so the page must not drift from the
+// evidence submitted. Change it deliberately, with the screenshots, or not at
+// all.
 export const SMS_CONSENT_TEXT =
   `I agree to receive text messages from ${APP_NAME} at the number provided about my ` +
   `account and service notifications. Consent is optional and is not a condition of ` +
@@ -342,7 +348,7 @@ function GetStartedPage() {
                 <h1 className="text-lg font-semibold">Create your workspace</h1>
                 <p className="text-sm text-muted-foreground">
                   You can add a mobile number for account notifications by text. This is
-                  entirely optional — skip it and your workspace is created just the same.
+                  entirely optional. Skip it and your workspace is created just the same.
                 </p>
               </div>
               <div className="space-y-2">
@@ -365,7 +371,7 @@ function GetStartedPage() {
                   fine print, that declining changes nothing about the account
                   they are about to create. */}
               <p className="text-xs font-medium text-muted-foreground">
-                Optional — you do not have to agree to texts to create an account or use{" "}
+                Optional. You do not have to agree to texts to create an account or use{" "}
                 {APP_NAME}.
               </p>
               <label

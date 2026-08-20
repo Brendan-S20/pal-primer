@@ -321,7 +321,7 @@ function ProfilePage() {
               {resetPassword.isPending ? "Sending…" : "Send password reset"}
             </Button>
             <span className="text-xs text-muted-foreground">
-              We email you a link rather than asking for a new password here — that way a screen
+              We email you a link rather than asking for a new password here, so that a screen
               somebody left unlocked cannot be used to change it.
             </span>
           </div>

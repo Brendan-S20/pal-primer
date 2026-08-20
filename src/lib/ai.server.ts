@@ -81,7 +81,7 @@ function requireConfig(label: string, config: AiConfig | null): AiConfig {
     // plan refusal throws its own reason in resolveOrgAiConfig.
     throw new AiGenerationError(
       label,
-      "AI is temporarily unavailable on HoundStack's side. Nothing is wrong with your account — please contact support if it persists.",
+      "AI is temporarily unavailable on HoundStack's side. Nothing is wrong with your account. Please contact support if it persists.",
     );
   }
   return config;
@@ -216,7 +216,7 @@ export async function generateStructured<T>(opts: {
       opts.meter,
     );
     if (data?.stop_reason === "max_tokens") {
-      console.error(`[ai] ${opts.label} hit max_tokens — output truncated`);
+      console.error(`[ai] ${opts.label} hit max_tokens, output truncated`);
       throw new AiGenerationError(
         opts.label,
         "The AI response was cut off before completing. Try a smaller batch.",
@@ -254,7 +254,7 @@ export async function generateStructured<T>(opts: {
     );
     const choice = data?.choices?.[0];
     if (choice?.finish_reason === "length") {
-      console.error(`[ai] ${opts.label} hit token limit — output truncated`);
+      console.error(`[ai] ${opts.label} hit token limit, output truncated`);
       throw new AiGenerationError(
         opts.label,
         "The AI response was cut off before completing. Try a smaller batch.",

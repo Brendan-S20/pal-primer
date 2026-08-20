@@ -319,7 +319,7 @@ export function usePortal(token: string, slug?: string) {
     onSuccess: (r: any) => {
       toast.success(
         r?.status === "requested"
-          ? "Change request sent — the office will review it."
+          ? "Change request sent. The office will review it."
           : "Plan updated",
       );
       invalidatePortal();
@@ -513,7 +513,7 @@ export function PortalDeadEnd({
   return (
     <PortalBrandedShell
       branding={branding}
-      footer="If this keeps happening, call or text us — we can sort it out in a minute."
+      footer="If this keeps happening, call or text us, and we can sort it out in a minute."
     >
       <h1 className="text-center text-lg font-semibold">{title}</h1>
       <div className="mt-2 text-center text-sm text-muted-foreground">{body}</div>

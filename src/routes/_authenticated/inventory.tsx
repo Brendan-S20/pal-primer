@@ -108,7 +108,7 @@ function InventoryPage() {
     },
     onSuccess: (r) => {
       if (r.failed)
-        toast.error(`Archived ${r.ok} of ${r.ok + r.failed} items — ${r.failed} failed`);
+        toast.error(`Archived ${r.ok} of ${r.ok + r.failed} items, ${r.failed} failed`);
       else toast.success(`Archived ${r.ok} item${r.ok === 1 ? "" : "s"}`);
       sel.clear();
       qc.invalidateQueries({ queryKey: ["inv-items"] });

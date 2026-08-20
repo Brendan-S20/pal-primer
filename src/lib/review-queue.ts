@@ -112,14 +112,14 @@ export const REVIEW_KIND_COPY: Record<
   billing_run_failed: {
     label: "This client could not be invoiced",
     whatItMeans:
-      "The nightly invoicing run reached this client and the invoice failed to generate. The run itself finished — one client's failure is caught so it cannot stop everyone else's — which means nothing else anywhere will tell you this happened. Work is still being recorded; it is only the bill that did not get made.",
+      "The nightly invoicing run reached this client and the invoice failed to generate. The run itself finished (one client's failure is caught so it cannot stop everyone else's) which means nothing else anywhere will tell you this happened. Work is still being recorded; it is only the bill that did not get made.",
     howToFix:
       "Open the client and check their billing setup and unbilled work. Invoicing them by hand clears the backlog; the run retries on its own each night, so if the cause is fixed it will simply succeed and this stops re-filing.",
   },
   ai_allowance_warning: {
     label: "AI usage is near this month's allowance",
     whatItMeans:
-      "You have used most of the AI actions included in your plan for this month. Nothing is paused and nothing is broken — this is here so the overage on the next invoice is not the first you hear of it.",
+      "You have used most of the AI actions included in your plan for this month. Nothing is paused and nothing is broken. This is here so the overage on the next invoice is not the first you hear of it.",
     howToFix:
       "Nothing, if the spend is expected. If it is not, the monthly ceiling and which tools may spend against it are in Settings → AI Tools.",
   },

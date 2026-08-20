@@ -101,7 +101,7 @@ function OnlineSignupSettings() {
                 </Label>
                 <p className="mt-1 text-sm text-muted-foreground">
                   When this is off, your signup link tells visitors you aren't taking online
-                  signups. Your lead form keeps working either way — that one is not affected by
+                  signups. Your lead form keeps working either way, and it is not affected by
                   this switch.
                 </p>
               </div>
@@ -128,7 +128,7 @@ function OnlineSignupSettings() {
             {cfg?.publicSignupEnabled && !effective ? (
               <div className="mt-3 rounded-md border border-amber-400/50 bg-amber-50 p-3 text-sm text-amber-900">
                 Online signup is on, but you have no web address yet, so there's no link to give
-                anyone. Set one below (or set your portal address in Settings → Preferences — signup
+                anyone. Set one below (or set your portal address in Settings → Preferences, and signup
                 will use that).
               </div>
             ) : null}
@@ -169,7 +169,7 @@ function OnlineSignupSettings() {
                     <>
                       {" "}
                       <span className="text-foreground">
-                        /signup/{cfg.signupSlug} works too — both addresses reach you.
+                        /signup/{cfg.signupSlug} works too, and both addresses reach you.
                       </span>
                     </>
                   ) : null}
@@ -220,7 +220,7 @@ function OnlineSignupSettings() {
                 two is less to explain to a customer. */}
             <p className="text-xs text-muted-foreground">
               Letters, numbers and hyphens only. Leave it empty to use your portal address
-              {cfg?.portalSlug ? ` (${cfg.portalSlug})` : ""} — signup accepts either.
+              {cfg?.portalSlug ? ` (${cfg.portalSlug})` : ""}. Signup accepts either.
             </p>
           </form>
         </>

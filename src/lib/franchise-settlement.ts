@@ -103,8 +103,8 @@ const DIRECTIONS: Record<SettlementDirection, Record<SettlementAudience, string>
     location: "You owe the franchise",
   },
   settled: {
-    franchise: "Settled — nothing to move",
-    location: "Settled — nothing to move",
+    franchise: "Settled, nothing to move",
+    location: "Settled, nothing to move",
   },
 };
 
@@ -148,7 +148,7 @@ export function settlementFlow(
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  draft: "Draft — not yet agreed",
+  draft: "Draft, not yet agreed",
   issued: "Issued",
   paid: "Paid",
   void: "Voided",

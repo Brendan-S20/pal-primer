@@ -273,7 +273,7 @@ function PromoSection() {
               <>
                 Redeeming takes {form.discountPercent || 0}% off one visit at the customer's own
                 plan price and adds that as account credit, once. A customer with no active plan is
-                told the code needs one — there is nothing to take a percentage of.
+                told the code needs one, because there is nothing to take a percentage of.
               </>
             ) : (
               <>
@@ -281,7 +281,7 @@ function PromoSection() {
                 their next invoice automatically.
               </>
             )}{" "}
-            "What it's for" is your own label — it does not change what the code does.
+            "What it's for" is your own label, and it does not change what the code does.
           </p>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -353,7 +353,7 @@ function PromoSection() {
                   </div>
                   {p.applies_to === "recurring" && (
                     <p className="mt-1 text-xs text-destructive">
-                      Recurring codes are refused at redemption — one redemption posts one credit,
+                      Recurring codes are refused at redemption. One redemption posts one credit,
                       which is not a discount repeated every cycle. Replace it with a one-off code.
                     </p>
                   )}
@@ -432,7 +432,7 @@ function GiftCardHistory({ card }: { card: any }) {
           ) : rows.length === 0 ? (
             <p className="text-2xs text-muted-foreground">
               No redemptions recorded
-              {card.status === "void" ? " — the balance was written off by the void." : "."}
+              {card.status === "void" ? ". The balance was written off by the void." : "."}
             </p>
           ) : (
             rows.map((r: any) => (

@@ -63,7 +63,7 @@ export function TextingConsentPanel({ client }: { client: any }) {
   if (!hasPhone) blockers.push("No phone number on file.");
   else if (stopped)
     blockers.push(
-      "They replied STOP. Only they can undo that — by texting START, or opting in from their portal.",
+      "They replied STOP. Only they can undo that, by texting START or opting in from their portal.",
     );
   else if (paused)
     blockers.push("Communications are paused for this client. Lift the hold to text them.");
@@ -103,11 +103,11 @@ export function TextingConsentPanel({ client }: { client: any }) {
           Consented {new Date(consentAt!).toLocaleDateString()} for{" "}
           {formatPhone(client.sms_consent_phone)}
           {client.sms_consent_source === "portal"
-            ? " — they opted in themselves from the client portal."
+            ? ". They opted in themselves from the client portal."
             : client.sms_consent_source === "staff"
-              ? " — recorded by your team."
+              ? ". Recorded by your team."
               : client.sms_consent_source
-                ? ` — source: ${client.sms_consent_source}`
+                ? `. Source: ${client.sms_consent_source}`
                 : ""}
         </p>
       ) : (
@@ -127,7 +127,7 @@ export function TextingConsentPanel({ client }: { client: any }) {
         <div className="mt-4 space-y-3 rounded-md border p-3">
           <div className="text-xs font-medium">Record consent you already have</div>
           <p className="text-2xs text-muted-foreground">
-            Only if this client has actually agreed — in person, on a signed service agreement,
+            Only if this client has actually agreed: in person, on a signed service agreement,
             or over the phone. This is stored as staff-recorded and is auditable. If you are not
             sure, send them their portal link and let them opt in themselves.
           </p>

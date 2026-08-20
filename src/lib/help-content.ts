@@ -120,7 +120,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: "Plan your first routes",
     section: "Business setup",
     body: [
-      "Routes turn scheduled visits into an ordered day for each tech. Week and month show the calendar beside the map, with each technician in their own colour in both — hover a visit for who is running it, where, and its status. Today shows a drag-and-drop board with a column per tech.",
+      "Routes turn scheduled visits into an ordered day for each tech. Week and month show the calendar beside the map, with each technician in their own colour in both. Hover a visit for who is running it, where, and its status. Today shows a drag-and-drop board with a column per tech.",
       "Only people set to run routes appear here. If someone is missing, turn on \"Runs routes\" for them in [Users & roles](/settings/users).",
     ],
     steps: [
@@ -254,7 +254,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       // IMP-9: this told customers two-way texting ran on "your own Twilio
       // account, connected in SMS settings". Both halves are retired — there is
       // no account to bring and no form to connect it in.
-      "HoundStack texts fall into two buckets. **Automated notifications** (visit reminders, on-my-way, completed, review asks) and portal login codes go out through the platform sender. **Two-way conversations** with clients run on a HoundStack-managed number provisioned for your organization — there is no Twilio account to connect and no carrier registration for you to file. Conversational texting is pending US carrier (10DLC) registration; [SMS settings](/settings/sms) shows its current state.",
+      "HoundStack texts fall into two buckets. **Automated notifications** (visit reminders, on-my-way, completed, review asks) and portal login codes go out through the platform sender. **Two-way conversations** with clients run on a HoundStack-managed number provisioned for your organization, and there is no Twilio account to connect and no carrier registration for you to file. Conversational texting is pending US carrier (10DLC) registration; [SMS settings](/settings/sms) shows its current state.",
       "Every text includes opt-out instructions, and a client who replies STOP is blocked from further texts automatically. Consent details live in the public [SMS policy](/legal/sms).",
       "Pick which automated texts go out in [SMS settings](/settings/sms); per-client opt-outs show on the client's page.",
     ],

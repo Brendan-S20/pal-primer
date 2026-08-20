@@ -65,7 +65,7 @@ export function FranchiseLinkCodes() {
     } catch {
       // Clipboard can be blocked; the code is on screen either way, so this is
       // a convenience failing, not the feature failing.
-      toast.info("Copy blocked by the browser — select the code manually.");
+      toast.info("Copy blocked by the browser. Select the code manually.");
     }
   };
 
@@ -86,7 +86,7 @@ export function FranchiseLinkCodes() {
               ends up with an empty duplicate of their business. */}
           <p className="mt-1 text-xs text-muted-foreground">
             For an operator who already runs their business on HoundStack: their clients, visits and
-            history come with them. Create a code and send it to their owner — they enter it in
+            history come with them. Create a code and send it to their owner, who enters it in
             their own account, so nothing is linked until they agree.
           </p>
         </div>
@@ -152,7 +152,7 @@ export function FranchiseLinkCodes() {
         )}
         {active.length > 1 && (
           <p className="text-xs text-muted-foreground">
-            {active.length} codes are currently valid. Each one links a single location — revoke any
+            {active.length} codes are currently valid. Each one links a single location. Revoke any
             you didn&apos;t mean to leave open.
           </p>
         )}

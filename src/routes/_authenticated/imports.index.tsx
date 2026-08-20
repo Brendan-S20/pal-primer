@@ -228,7 +228,7 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
         const effSource = detected ?? source;
         if (detected && detected !== source) {
           setSource(detected);
-          toast.success(`Recognized a ${SOURCE_LABELS[detected] ?? detected} export — fields auto-mapped.`);
+          toast.success(`Recognized a ${SOURCE_LABELS[detected] ?? detected} export, fields auto-mapped.`);
         }
         setMapping(autoMap(effSource, hs, entity));
       },

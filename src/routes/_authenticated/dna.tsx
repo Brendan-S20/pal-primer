@@ -443,7 +443,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
     onSuccess: (r, v) => {
       if (r.failed)
         toast.error(
-          `Updated ${r.ok} of ${r.ok + r.failed} samples to "${STATUS_LABEL[v.status]}" — ${r.failed} failed`,
+          `Updated ${r.ok} of ${r.ok + r.failed} samples to "${STATUS_LABEL[v.status]}", ${r.failed} failed`,
         );
       else toast.success(`Updated ${r.ok} sample${r.ok === 1 ? "" : "s"} to "${STATUS_LABEL[v.status]}"`);
       sel.clear();
@@ -460,7 +460,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
     },
     onSuccess: (r) => {
       if (r.failed)
-        toast.error(`Deleted ${r.ok} of ${r.ok + r.failed} samples — ${r.failed} failed`);
+        toast.error(`Deleted ${r.ok} of ${r.ok + r.failed} samples, ${r.failed} failed`);
       else toast.success(`Deleted ${r.ok} sample${r.ok === 1 ? "" : "s"}`);
       sel.clear();
       refetch();
@@ -642,7 +642,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
                 <Label>Notes</Label>
                 <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
                 <p className="mt-1 text-2xs text-muted-foreground">
-                  Provider references, statuses, and reports only — no raw genetic markers are stored.
+                  Provider references, statuses, and reports only. No raw genetic markers are stored.
                 </p>
               </div>
               <div className="md:col-span-4">

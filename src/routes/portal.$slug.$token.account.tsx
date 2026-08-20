@@ -130,7 +130,7 @@ function SelfServeSection({ token }: { token: string }) {
     onSuccess: (r: any) => {
       toast.success(
         r?.status === "requested"
-          ? "Change request sent — the office will review it."
+          ? "Change request sent. The office will review it."
           : "Service frequency updated.",
       );
       optsQ.refetch();

@@ -341,7 +341,7 @@ function ZoneTab() {
               than it is. */}
           <p className="text-xs text-muted-foreground mt-1">
             Booked service value of completed visits per zone, at list price. This is what the work
-            was worth, not what was collected — see Reports for money actually received.
+            was worth, not what was collected. See Reports for money actually received.
           </p>
         </div>
         <div className="ml-auto flex items-end gap-2">
@@ -400,7 +400,7 @@ function ChurnTab() {
         <CardTitle>Churn drivers</CardTitle>
         <p className="text-xs text-muted-foreground mt-1">
           Grouped by AI-scored churn reason. Revenue at risk = paid revenue from these clients in
-          the last 180 days, <span className="font-medium">before refunds</span> — this is an
+          the last 180 days, <span className="font-medium">before refunds</span>. This is an
           estimate for prioritising outreach, not a reported figure. Score churn from the{" "}
           <Link to="/clients" className="font-medium underline underline-offset-2">
             Clients
@@ -711,7 +711,7 @@ function DigestTab() {
             </p>
           ) : savedRecipient ? (
             <p className="text-xs text-muted-foreground">
-              Not sent yet — the first one goes out on the next Monday.
+              Not sent yet. The first one goes out on the next Monday.
             </p>
           ) : null}
 

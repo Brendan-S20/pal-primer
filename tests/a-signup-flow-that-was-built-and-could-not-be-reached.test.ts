@@ -255,7 +255,7 @@ describe("a signup that cannot be provisioned gives the money back", () => {
   it("and the customer is told which of those actually happened", () => {
     const page = read("src/routes/signup.success.tsx");
     expect(page).toMatch(/refunded your\s*\n?\s*card in full|refunded your card in full/);
-    expect(page).toMatch(/you will not be left paying for a service you don't have/);
+    expect(page).toMatch(/You will not be left paying for a service you don't have/);
     // The old page said "Payment received!" over a green tick even when
     // provisioning had failed.
     expect(page).toMatch(/We couldn't finish setting up your account/);

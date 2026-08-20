@@ -410,6 +410,7 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
       ...(await resolveOrgAiCall(staff.organization_id, "weekly_digest")),
       label: "Weekly digest",
       prompt:
+        // em-dash-ok: model prompt, not customer copy.
         `Write a concise weekly owner digest for a pet waste removal business. ` +
         `Use short section headings ("This week", "Money", "Growth", "Watch list") and plain prose bullet points. ` +
         `No emoji. End with 2-3 concrete recommended actions for the owner.\n\n` +
@@ -517,6 +518,7 @@ export const suggestDispatch = createServerFn({ method: "POST" })
         },
         required: ["notes", "suggestions"],
       },
+      // em-dash-ok: model prompt, not customer copy.
       prompt:
         `You are a dispatch assistant for a pet-waste-removal business. Suggest visit-to-tech assignments for ${data.day} that:\n` +
         `1) Prioritize high-value clients (higher price_cents) and at-risk clients (churn_score >= 60) for the most experienced techs (role manager/owner over tech).\n` +

@@ -248,7 +248,7 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
           />
           {stations.some((s) => s.latitude == null) && (
             <p className="mt-1 text-xs text-amber-600">
-              Stations without a map marker don't appear on the map — open them and drop a marker.
+              Stations without a map marker don't appear on the map. Open them and drop a marker.
             </p>
           )}
         </div>
@@ -387,7 +387,7 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
           <p className={`mt-1 text-xs ${markerMissing ? "text-destructive" : "text-muted-foreground"}`}>
             {draft.position
               ? "Drag the marker to fine-tune the station's spot."
-              : "Click the map to drop a marker where the station sits — that marker is the station's location (required)."}
+              : "Click the map to drop a marker where the station sits. That marker is the station's location (required)."}
           </p>
         </div>
         <div className="sm:col-span-6 flex items-center gap-2">

@@ -594,7 +594,7 @@ export function ScheduleCalendar({
           the hover card it pointed at is a shortcut, not the only way in.
           Tapping a chip opens the visit, which is where all of it lives. */}
       <p className="mt-3 text-2xs text-muted-foreground">
-        Colours match the map — each technician keeps the same colour in both, and the badge on a
+        Colours match the map: each technician keeps the same colour in both, and the badge on a
         visit is their initials. Open a visit for who and where, or the date for that day&apos;s
         board.
         {isMonth && (

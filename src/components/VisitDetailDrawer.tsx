@@ -344,7 +344,7 @@ export function VisitDetailDrawer({
                   // than render buttons that throw.
                   <p className="text-xs text-muted-foreground">
                     {role === "dispatcher"
-                      ? "Completing or canceling a visit is an office action — the assigned tech closes it out, or an owner or office manager does it from the client's Visits tab."
+                      ? "Completing or canceling a visit is an office action. The assigned tech closes it out, or an owner or office manager does it from the client's Visits tab."
                       : "You don't have permission to close out a visit."}
                   </p>
                 ) : (

@@ -107,6 +107,13 @@ jobs:
       - name: Dead machinery
         run: npm run check:dead-machinery
 
+      # Customer-facing copy only, and a HARD gate: the sweep that added it
+      # cleared every finding first, so a failure means new copy, not old debt.
+      # /platform/*, comments, tests, placeholder cells and anything carrying an
+      # `em-dash-ok:` reason are excluded by the script, not by this step.
+      - name: Em dashes in customer-facing copy
+        run: npm run check:em-dashes
+
       # Non-blocking: the repo carries pre-existing formatting drift that is not
       # this workflow's job to gate on. Kept visible so it doesn't grow unseen.
       - name: Lint

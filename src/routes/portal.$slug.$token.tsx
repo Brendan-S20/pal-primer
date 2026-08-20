@@ -97,7 +97,7 @@ function PortalShell() {
           <>
             <p>Portal links expire after a while to keep your account private.</p>
             <p className="mt-2">
-              Open the link in your most recent text or email — that one still works.
+              Open the link in your most recent text or email. That one still works.
             </p>
           </>
         }

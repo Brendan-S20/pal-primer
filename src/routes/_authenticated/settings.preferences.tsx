@@ -212,7 +212,7 @@ function TimeZoneCard() {
       <CardHeader>
         <CardTitle>Time zone</CardTitle>
         <CardDescription>
-          Your business's local time. This decides what counts as "today" everywhere — the schedule,
+          Your business's local time. This decides what counts as "today" everywhere: the schedule,
           your clients' portal, overdue and missed-visit detection, and arrival windows.
         </CardDescription>
       </CardHeader>
@@ -442,7 +442,7 @@ function BrandingCard() {
               </p>
             ) : (
               <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                Add one — invoices and reminders are sent from a no-reply address, so any customer
+                Add one. Invoices and reminders are sent from a no-reply address, so any customer
                 who hits Reply today is writing to nobody.
               </p>
             )}
@@ -474,7 +474,7 @@ function BrandingCard() {
             <p className="mt-1 text-xs text-muted-foreground">
               {contactAddress.trim()
                 ? "Shown in the footer of emails to your customers."
-                : "Optional, but it goes in the footer of your customer emails — a service company with an address on it reads as a real local business."}
+                : "Optional, but it goes in the footer of your customer emails, and a service company with an address on it reads as a real local business."}
             </p>
           </div>
           <div>
@@ -646,7 +646,7 @@ function CommercialAccountsCard() {
         {locked && (
           <p className="text-xs text-muted-foreground">
             This can&apos;t be switched off while you have commercial clients, properties or waste
-            stations on the books — their units, service records and any DNA fines live on the
+            stations on the books. Their units, service records and any DNA fines live on the
             screens it would hide. Move them to residential first if you no longer serve them.
           </p>
         )}
