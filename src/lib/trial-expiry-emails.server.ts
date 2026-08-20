@@ -26,6 +26,14 @@
 // running. That is what org_can_add_client actually enforces, and the email
 // must not imply a broader freeze the product does not perform.
 //
+// AI IS DELIBERATELY NOT LISTED AS SOMETHING THAT STOPS, and this is the one
+// line most likely to get "helpfully" added back. `aiAvailableFor` is
+// `phase === "paid"`, and an active trial is `phase === "trialing"` — so AI is
+// already off during the trial and expiry changes nothing about it. Naming it
+// would tell a trialing customer they are about to lose a feature they have
+// never had. Adding a new customer is the only thing that stops, which is why
+// the sentence above says so and the lead-in says "only in one way".
+
 // ── THE RECIPIENT, WHICH IS WHERE THIS NEARLY FAILED ──────────────────────
 //
 // The obvious implementation copies announcement-emails.server.ts, which
@@ -80,11 +88,7 @@ export function renderTrialNoticeHtml(input: {
       <p style="margin:0 0 14px">Hi ${escapeHtml(orgName)},</p>
       <p style="margin:0 0 14px">Your free trial ends on <strong>${escapeHtml(endsOn)}</strong>. Picking a plan before then keeps everything exactly as it is.</p>
       <p style="margin:0 0 8px"><strong>If the trial ends without a plan, your account pauses &mdash; but only in one way.</strong></p>
-      <p style="margin:0 0 6px">What stops:</p>
-      <ul style="margin:0 0 14px;padding-left:20px">
-        <li>Adding a new customer.</li>
-        <li>The AI features, which need an active plan.</li>
-      </ul>
+      <p style="margin:0 0 14px">What stops: <strong>adding a new customer.</strong> That is the only thing.</p>
       <p style="margin:0 0 6px">What keeps running:</p>
       <ul style="margin:0 0 14px;padding-left:20px">
         <li>Every client, job and route you already have.</li>
@@ -119,7 +123,7 @@ export function renderTrialNoticeText(input: {
     ``,
     `If the trial ends without a plan, your account pauses - but only in one way.`,
     ``,
-    `What stops: adding a new customer, and the AI features.`,
+    `What stops: adding a new customer. That is the only thing.`,
     `What keeps running: every client, job and route you already have; scheduling, dispatch and the field app; invoicing, taking payment and your billing history; and your customer portal.`,
     `Nothing is deleted, at any point.`,
     ``,

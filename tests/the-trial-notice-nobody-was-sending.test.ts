@@ -7,6 +7,7 @@ import {
   renderTrialNoticeHtml,
   renderTrialNoticeText,
 } from "@/lib/trial-expiry-emails.server";
+import { aiAvailableFor, trialStateFor } from "@/lib/trial";
 
 const ROOT = join(__dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -200,4 +201,47 @@ describe("a send that never reached the queue", () => {
       /\.neq\(\s*["']status["']\s*,\s*["']failed["']\s*\)/,
     );
   });
+});
+
+// ── The email must not name a loss that is not one ─────────────────────────
+//
+// `aiAvailableFor` is `phase === "paid"`; an active trial is `"trialing"`. AI
+// is therefore already off DURING the trial, so listing it under "what stops"
+// tells a customer they are losing something they never had. The first draft
+// of this email did exactly that, and contradicted its own "pauses in only one
+// way" lead-in by listing two things under it.
+describe("the notice describes only what actually changes", () => {
+  const rendered = [
+    renderTrialNoticeHtml({ orgName: "Scooper Troopers", daysLeft: 3, endsOn: "2026-08-30", billingUrl: "https://app.houndstack.com/settings/billing" }),
+    renderTrialNoticeText({ orgName: "Scooper Troopers", daysLeft: 3, endsOn: "2026-08-30", billingUrl: "https://app.houndstack.com/settings/billing" }),
+  ];
+
+  it("AI is off during the trial, so expiry is not when it stops", () => {
+    const s = trialStateFor({
+      planStatus: "trialing",
+      trialEndsAt: "2026-08-30T21:47:08Z",
+      hasSubscription: false,
+      createdAt: "2026-08-01T00:00:00Z",
+    });
+    expect(aiAvailableFor(s), "premise: AI is already unavailable mid-trial").toBe(false);
+  });
+
+  for (const [i, body] of rendered.entries()) {
+    const which = i === 0 ? "html" : "text";
+    it(`${which} does not claim AI stops at expiry`, () => {
+      expect(body, `${which} names AI as a thing that stops`).not.toMatch(/\bAI\b/);
+    });
+
+    it(`${which} names exactly one thing that stops`, () => {
+      const stops = /What stops:?([\s\S]{0,240}?)(What keeps running|Nothing is deleted)/.exec(body);
+      expect(stops, `${which} has no "What stops" section to check`).not.toBeNull();
+      expect(stops![1], `${which} lists more than adding a customer`).toMatch(/new customer/);
+      // Two ways to list a second item, and the text body can only use one of
+      // them -- without the conjunction check this assertion is vacuous there.
+      expect(stops![1].match(/<li>/g)?.length ?? 0, `${which} still uses a multi-item list`).toBe(0);
+      expect(stops![1], `${which} joins a second thing with a conjunction`).not.toMatch(
+        /\band\b|\balso\b|,\s*(plus|as well as)\b/i,
+      );
+    });
+  }
 });
