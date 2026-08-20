@@ -112,6 +112,53 @@ describe("the trial notice", () => {
     // A health card that says a trial is expiring and nothing about whether we
     // told anyone reports the half nobody can act on.
     expect(read("src/lib/platform.functions.ts")).toMatch(/trials_not_notified/);
-    expect(read("src/routes/platform.health.tsx")).toMatch(/not yet emailed/);
+    // The wording is free to change; what the tile must not lose is that it
+    // renders the un-emailed count at all, rather than only the expiry date.
+    expect(read("src/routes/platform.health.tsx")).toMatch(/h\.trials_not_notified/);
+  });
+});
+
+// ── THE HEALTH CARD MEASURES THE SENDER'S QUESTION, NOT AN ADJACENT ONE ────
+//
+// The first version of the card counted "not notified" across the whole
+// 14-day expiring window while the sender only fires inside three days. On
+// production that day it would have gone red immediately and stayed red for a
+// week, reporting Scooper Troopers -- ten days out, correctly un-emailed -- as
+// a missed send. A card that cries wolf for seven days is a card nobody reads
+// on the eighth, which is the day it would have mattered.
+describe("the platform health card", () => {
+  const src = codeOnly(read("src/lib/platform.functions.ts"));
+
+  it("scopes 'not notified' to trials the sender was due to mail", () => {
+    // The counts must come from the due set, never from every expiring trial.
+    expect(src, "a noticeDueBy cutoff is computed").toMatch(/noticeDueBy/);
+    expect(src, "trials_not_notified counts the due set").toMatch(
+      /trials_not_notified:\s*due\.filter/,
+    );
+    expect(src, "trials_notified counts the due set").toMatch(/trials_notified:\s*due\.filter/);
+    // The exact shape of the bug: counting over `expiring` instead of `due`.
+    expect(src, "the counts no longer span the whole 14-day window").not.toMatch(
+      /trials_not(_notified)?:\s*expiring\.filter/,
+    );
+  });
+
+  it("takes the window and the template name from the sender, not a copy", () => {
+    // Restating either one lets the card drift into answering a question the
+    // sender is not asking, and be confidently wrong while looking correct.
+    expect(src, "the notice window is imported").toMatch(/TRIAL_NOTICE_DAYS_BEFORE/);
+    expect(src, "the template name is imported").toMatch(/TRIAL_NOTICE_TEMPLATE/);
+    expect(src, "the template name is not written out a second time").not.toMatch(
+      /template_name["']?\s*,\s*["']trial_expiry_notice["']/,
+    );
+  });
+
+  it("only claims a notice was sent when one was", () => {
+    const tile = codeOnly(read("src/routes/platform.health.tsx"));
+    // "notice sent" must be conditional on a send having happened. A trial
+    // outside the window has had no notice and is not owed one; saying
+    // "notice sent" there is the same false reassurance in the other direction.
+    expect(tile, "'notice sent' is guarded by trials_notified").toMatch(
+      /trials_notified\s*>\s*0\s*\?\s*["'`]notice sent/,
+    );
   });
 });

@@ -45,11 +45,11 @@ function HealthPage() {
       // tenant. An un-notified expiry is the state this card exists to prevent.
       sub:
         h.trials_not_notified > 0
-          ? `${h.trials_not_notified} not yet emailed${h.trials_already_expired > 0 ? ` \u00b7 ${h.trials_already_expired} already expired` : ""}`
+          ? `${h.trials_not_notified} due a notice, not emailed${h.trials_already_expired > 0 ? ` \u00b7 ${h.trials_already_expired} already expired` : ""}`
           : h.trials_already_expired > 0
             ? `${h.trials_already_expired} already expired \u00b7 all emailed`
             : h.next_trial_expiry_at
-              ? `notice sent \u00b7 next: ${h.next_trial_expiry_org ?? "unnamed org"} on ${new Date(h.next_trial_expiry_at).toISOString().slice(0, 10)}`
+              ? `${h.trials_notified > 0 ? "notice sent" : "none due a notice yet"} \u00b7 next: ${h.next_trial_expiry_org ?? "unnamed org"} on ${new Date(h.next_trial_expiry_at).toISOString().slice(0, 10)}`
               : "none in the next 14 days",
       icon: CalendarClock,
       tone:
