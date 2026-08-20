@@ -126,7 +126,7 @@ function FranchisePage() {
     enabled: !!ctx.data?.isParent,
   });
   const drillStatus = useMutation({
-    mutationFn: (v: { invoiceId: string; status: "issued" | "paid" | "void" }) =>
+    mutationFn: (v: { invoiceId: string; status: "draft" | "issued" | "paid" | "void" }) =>
       statusFn({ data: v }),
     onSuccess: () => {
       toast.success("Updated");
@@ -511,6 +511,7 @@ function FranchisePage() {
         royaltyPercent={drillRoyaltyPercent}
         onOpenChange={(open) => !open && setDrillInto(null)}
         onSetStatus={(invoiceId, status) => drillStatus.mutate({ invoiceId, status })}
+        onReopenAsDraft={(invoiceId) => drillStatus.mutate({ invoiceId, status: "draft" })}
         isUpdating={drillStatus.isPending}
       />
     </div>

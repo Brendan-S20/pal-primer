@@ -56,6 +56,7 @@ export function FranchiseLocationDrawer({
   royaltyPercent,
   onOpenChange,
   onSetStatus,
+  onReopenAsDraft,
   isUpdating,
 }: {
   /** The location being looked at. Null closes the drawer. */
@@ -65,6 +66,12 @@ export function FranchiseLocationDrawer({
   royaltyPercent: number | null;
   onOpenChange: (open: boolean) => void;
   onSetStatus?: (id: string, status: "issued" | "paid" | "void") => void;
+  /** Reopening is deliberately a SEPARATE callback rather than a fourth value
+   *  on `onSetStatus`. `FranchiseSettlementStatements` offers the control only
+   *  when handed this prop AND only on a void row, and keeping the union at
+   *  three values is what stops a caller reopening an issued or paid statement
+   *  by passing "draft" to the ordinary status setter. */
+  onReopenAsDraft?: (id: string) => void;
   isUpdating?: boolean;
 }) {
   const mine = row ? statements.filter((s) => s.child_organization_id === row.organization_id) : [];
@@ -132,6 +139,7 @@ export function FranchiseLocationDrawer({
                 rows={mine}
                 audience="franchise"
                 onSetStatus={onSetStatus}
+                onReopenAsDraft={onReopenAsDraft}
                 isUpdating={isUpdating}
               />
 

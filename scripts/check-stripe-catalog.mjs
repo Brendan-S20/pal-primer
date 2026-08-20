@@ -25,10 +25,23 @@
 // coverage is the failure this codebase keeps finding:
 //
 //   * Enterprise — active, but a contact-us tier with no price ids.
-//   * All six add-ons — every one is `coming_soon` and inactive, so the add-on
-//     half of this check currently compares NOTHING. Three of them do carry
-//     Stripe ids whose amounts happen to match, but they are skipped as
-//     unsellable and the check would not notice if they drifted.
+//   * Any add-on left inactive — those are skipped as unsellable, and the run
+//     names each one it skipped.
+//
+// The add-on line above USED to read "every one is `coming_soon` and inactive,
+// so the add-on half of this check currently compares NOTHING". That stopped
+// being true on 2026-08-04, when
+// `20260804020000_the-add-ons-become-sellable-and-the-catalog-gate-covers-them.sql`
+// flipped them to `status='active', is_active=true` and repointed their Stripe
+// ids. Add-ons have been compared ever since — by the same `checkPrice` helper
+// as plans, including the `addon_<slug>` lookup key, in both directions. The
+// 2026-08-19 run on main reported "17 price(s) across 3 plan(s) and 5
+// add-on(s) … 17 of them checked for the lookup key the app resolves by".
+//
+// Leaving that sentence in place was its own version of the fault this comment
+// warns about. A tick that hides its coverage invites somebody to trust it too
+// far; a comment that UNDERSTATES coverage invites somebody to go and build
+// what is already there, which is exactly what it caused.
 //
 // The run prints both lists every time, pass or fail.
 //

@@ -136,7 +136,15 @@ describe("the tenant audit log reads as product copy", () => {
   it("and it turns this page's own action names into sentences", () => {
     expect(humanizeAuditAction("soft_delete_tenant")).toBe("Deleted tenant (soft)");
     expect(humanizeAuditAction("suspend_tenant")).toBe("Suspended tenant");
-    // restore_tenant is new and unmapped; the fallback still beats the enum.
-    expect(humanizeAuditAction("restore_tenant")).toBe("Restore tenant");
+    // This line used to read `.toBe("Restore tenant")`, with the comment
+    // "restore_tenant is new and unmapped; the fallback still beats the enum."
+    // True at the time, and it is the whole problem in miniature: the fallback
+    // is good enough that an unmapped action gets written down as expected
+    // behaviour instead of as a gap. It rendered in the present tense directly
+    // beneath "Suspended tenant". It now has a real label, along with the
+    // eighteen others that were in the same state — see
+    // tests/every-audit-action-has-a-label.test.ts, which fails when the next
+    // one is added.
+    expect(humanizeAuditAction("restore_tenant")).toBe("Restored tenant");
   });
 });
