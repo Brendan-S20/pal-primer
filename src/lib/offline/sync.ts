@@ -3,6 +3,7 @@
 // this module stays free of TanStack imports and remains easy to unit-test.
 
 import { supabase } from "@/integrations/supabase/client";
+import { isDefinitelyOffline } from "./connectivity";
 import { isTransportFailure, withDeadline } from "@/lib/offline/run-or-queue";
 import {
   deleteAction,
@@ -234,7 +235,7 @@ export async function syncQueue(callers: SyncCallers, userId: string): Promise<S
         // action's whole budget and DISCARD a tech's work for a network
         // problem. A transport failure or a timeout is not evidence that an
         // action will never succeed — it is evidence that we could not ask.
-        const online = typeof navigator === "undefined" || navigator.onLine;
+        const online = !isDefinitelyOffline();
         if (online && !isTransportFailure(e)) {
           const attempts = await recordAttempt(action.id);
           if (attempts >= MAX_ATTEMPTS) {

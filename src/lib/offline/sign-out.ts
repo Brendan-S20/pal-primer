@@ -28,6 +28,7 @@
 // still leave the device clean.
 
 import { countPending, clearQueueForUser } from "./queue";
+import { isDefinitelyOffline } from "./connectivity";
 import { syncQueue, type SyncCallers } from "./sync";
 import { signOutAndClearDevice } from "./read-cache";
 import { resolveOfflineUserId } from "./action-owner";
@@ -87,7 +88,7 @@ export async function flushThenClearAndSignOut(opts: {
   let lost = 0;
   let flushSkipped = true;
 
-  const online = typeof navigator === "undefined" || navigator.onLine;
+  const online = !isDefinitelyOffline();
   const pending = await countPending(userId);
   if (pending > 0 && opts.callers && online) {
     flushSkipped = false;

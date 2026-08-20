@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
+import { isNative, getPositionNative } from "@/lib/native";
 import "leaflet/dist/leaflet.css";
 import { AlertTriangle, Loader2, LocateFixed } from "lucide-react";
 import { addBaseTiles, type TileVariant } from "@/lib/map-tiles";
@@ -173,6 +174,28 @@ export function geolocationUnsupportedMessage(secureContext: boolean): string {
   return secureContext
     ? "This browser does not offer location. You can still pan and zoom the map by hand."
     : "Location needs a secure connection. This page is on plain http, so the browser hides location entirely. Open it over https (or on localhost) and press this again.";
+}
+
+/** What to show when a NATIVE fix fails.
+ *
+ *  Separate from the browser messages because every way out those offer is
+ *  wrong inside an app: there is no "site settings" on an iPhone, https is not
+ *  something the tech can change, and an iOS denial is cleared in Settings
+ *  rather than by pressing the button again — the system prompt does not come
+ *  back. Pure and exported for the same reason as its browser twin: the denial
+ *  path must never be silent, and a message you can assert on is one that
+ *  stays. */
+export function nativeGeolocationErrorMessage(
+  reason: "denied" | "unavailable" | "timeout",
+): string {
+  switch (reason) {
+    case "denied":
+      return "HoundStack does not have permission to use your location. Open Settings, find HoundStack, tap Location and choose While Using the App, then press the button again.";
+    case "timeout":
+      return "Locating timed out. Check that Location Services are switched on in Settings, then try again.";
+    default:
+      return "Your device could not work out where it is. Move somewhere with a clearer view of the sky and try again.";
+  }
 }
 
 /** What to show when a `getCurrentPosition` call comes back with an error.
@@ -411,6 +434,68 @@ export function RouteMap({
     if (!map || !layer) return;
     setGeoError(null);
     const secure = inSecureContext();
+
+    /** The same dot for both paths. Two copies of this drifted apart is how
+     *  "you are here" ends up looking like a stop on one platform. */
+    const drawMe = (latitude: number, longitude: number, accuracy: number) => {
+      layer.clearLayers();
+      // Deliberately unlike a visit pin. A stop is a 26px filled circle in a
+      // tech colour with a white ring and a NUMBER in it; this is a small
+      // dark dot with no label, a white collar, and a translucent accuracy
+      // ring no visit marker ever has. The colour is off the TECH_COLORS
+      // palette on purpose — if "you" were drawn in #2563eb it would read as
+      // the first tech's stop.
+      const dot = L.divIcon({
+        className: "route-you-are-here",
+        html:
+          `<div style="width:16px;height:16px;border-radius:9999px;background:#0f172a;` +
+          `border:3px solid #fff;box-shadow:0 0 0 3px rgba(15,23,42,.35),0 1px 4px rgba(0,0,0,.45);"></div>`,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+      });
+      if (Number.isFinite(accuracy) && accuracy > 0) {
+        L.circle([latitude, longitude], {
+          radius: accuracy,
+          color: "#0f172a",
+          weight: 1,
+          opacity: 0.5,
+          fillColor: "#0f172a",
+          fillOpacity: 0.08,
+          interactive: false,
+        }).addTo(layer);
+      }
+      L.marker([latitude, longitude], { icon: dot, zIndexOffset: 1000 })
+        .addTo(layer)
+        // Permanent, not on hover: hover does not exist on a phone, and an
+        // unlabelled dot on a map full of dots is a thing to be confused by.
+        .bindTooltip("You are here", {
+          permanent: true,
+          direction: "top",
+          offset: [0, -10],
+          className: "route-you-are-here-label",
+        });
+      suppressFitRef.current = true;
+      map.setView([latitude, longitude], Math.max(map.getZoom(), 15));
+    };
+
+    // NATIVE FIRST, and not as an optimisation. In a Capacitor bundle the
+    // origin is capacitor://localhost, so `inSecureContext()` and the
+    // `navigator.geolocation` probe below both answer a question about a
+    // browser that is not the one running. Worse, the browser path's advice —
+    // open it over https, allow it in site settings — is unfollowable on a
+    // phone. The plugin also asks iOS properly, which is the only way the
+    // system permission sheet ever appears.
+    if (isNative()) {
+      setLocating(true);
+      void getPositionNative().then((r) => {
+        setLocating(false);
+        if (!r) return;
+        if (r.ok) drawMe(r.latitude, r.longitude, r.accuracy);
+        else setGeoError(nativeGeolocationErrorMessage(r.reason));
+      });
+      return;
+    }
+
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setGeoError(geolocationUnsupportedMessage(secure));
       return;
@@ -420,44 +505,7 @@ export function RouteMap({
       (pos) => {
         setLocating(false);
         const { latitude, longitude, accuracy } = pos.coords;
-        layer.clearLayers();
-        // Deliberately unlike a visit pin. A stop is a 26px filled circle in a
-        // tech colour with a white ring and a NUMBER in it; this is a small
-        // dark dot with no label, a white collar, and a translucent accuracy
-        // ring no visit marker ever has. The colour is off the TECH_COLORS
-        // palette on purpose — if "you" were drawn in #2563eb it would read as
-        // the first tech's stop.
-        const dot = L.divIcon({
-          className: "route-you-are-here",
-          html:
-            `<div style="width:16px;height:16px;border-radius:9999px;background:#0f172a;` +
-            `border:3px solid #fff;box-shadow:0 0 0 3px rgba(15,23,42,.35),0 1px 4px rgba(0,0,0,.45);"></div>`,
-          iconSize: [16, 16],
-          iconAnchor: [8, 8],
-        });
-        if (Number.isFinite(accuracy) && accuracy > 0) {
-          L.circle([latitude, longitude], {
-            radius: accuracy,
-            color: "#0f172a",
-            weight: 1,
-            opacity: 0.5,
-            fillColor: "#0f172a",
-            fillOpacity: 0.08,
-            interactive: false,
-          }).addTo(layer);
-        }
-        L.marker([latitude, longitude], { icon: dot, zIndexOffset: 1000 })
-          .addTo(layer)
-          // Permanent, not on hover: hover does not exist on a phone, and an
-          // unlabelled dot on a map full of dots is a thing to be confused by.
-          .bindTooltip("You are here", {
-            permanent: true,
-            direction: "top",
-            offset: [0, -10],
-            className: "route-you-are-here-label",
-          });
-        suppressFitRef.current = true;
-        map.setView([latitude, longitude], Math.max(map.getZoom(), 15));
+        drawMe(latitude, longitude, accuracy);
       },
       (err) => {
         // Never silent. This callback existing at all is half the requirement;

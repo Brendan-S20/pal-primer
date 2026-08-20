@@ -13,6 +13,7 @@
 // eight lines and a fix to one of them would have left the other three.
 
 import { useCallback } from "react";
+import { isDefinitelyOffline } from "./connectivity";
 import { useServerFn } from "@tanstack/react-start";
 import { startVisit, completeVisit, skipVisit, recordVisitPhoto } from "@/lib/my-day.functions";
 import { enqueueAction, storePhoto } from "@/lib/offline/queue";
@@ -35,7 +36,7 @@ function isNavigatorOnline() {
   // FALSE is trustworthy — there is definitely no network, so skip the
   // request. TRUE is a guess, which is why runOrQueue puts a deadline on the
   // attempt rather than trusting this to be the whole answer.
-  return typeof navigator === "undefined" ? true : navigator.onLine;
+  return !isDefinitelyOffline();
 }
 
 /**

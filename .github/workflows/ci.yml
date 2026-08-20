@@ -114,6 +114,20 @@ jobs:
       - name: Em dashes in customer-facing copy
         run: npm run check:em-dashes
 
+      # WHAT ACTUALLY SHIPS INSIDE THE iOS/ANDROID BINARY.
+      #
+      # `build` above produces the HOSTED app; a Capacitor binary carries a
+      # different artifact built a different way (SPA prerender, absolute API
+      # origin, no server). Nothing in CI looked at it until now, so the class
+      # of fault where a store build points at a preview host — which this
+      # config was once hard-coded to do — was invisible to every check here.
+      #
+      # It builds the bundle rather than assuming one is lying around: every
+      # assertion in the script is of the form "this string is absent", and all
+      # of them pass on an empty directory.
+      - name: What ships inside the native binary
+        run: npm run build:native && npm run check:native-bundle
+
       # Non-blocking: the repo carries pre-existing formatting drift that is not
       # this workflow's job to gate on. Kept visible so it doesn't grow unseen.
       - name: Lint

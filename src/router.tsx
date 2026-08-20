@@ -1,4 +1,5 @@
 import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
+import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import { RouteError, RouteNotFound } from "./components/RouteError";
@@ -34,7 +35,7 @@ export const getRouter = () => {
           // again while offline, which puts the spinner right back. When the
           // device says it has no network, don't retry at all. Online, this is
           // React Query's own default of three attempts.
-          if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+          if (isDefinitelyOffline()) return false;
           return failureCount < 3;
         },
       },

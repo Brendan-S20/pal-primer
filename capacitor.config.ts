@@ -50,15 +50,26 @@ const config: CapacitorConfig = {
   plugins: {
     SplashScreen: {
       launchShowDuration: 1500,
-      backgroundColor: '#0F172A',
+      // Cream, matching the PWA manifest's background_color in vite.config.ts.
+      //
+      // This was #0F172A, a dark slate that appears nowhere else in the
+      // product: the installed web app opens on cream, the app itself is
+      // light-themed, and owner QA item 12 expects "HoundStack icon + cream
+      // splash". A native binary would have been the only surface that opened
+      // dark and then flipped to cream a second and a half later.
+      backgroundColor: '#fdfaf1',
       showSpinner: false,
     },
     StatusBar: {
-      // Launch-time style only — matches the dark splash. Once the WebView
-      // boots, src/lib/native.ts initStatusBar() re-asserts the style to match
-      // the rendered app theme (light app → dark icons).
-      style: 'DARK',
-      backgroundColor: '#0F172A',
+      // Launch-time style only. Once the WebView boots, src/lib/native.ts
+      // initStatusBar() re-asserts the style from the rendered app theme.
+      //
+      // 'LIGHT' means DARK ICONS on a light background (Capacitor names the
+      // style after the content, not the surface). That is correct for the
+      // cream splash below, and it is what the booted app asks for too, so
+      // there is no flash of white-on-cream at launch.
+      style: 'LIGHT',
+      backgroundColor: '#fdfaf1',
     },
     PushNotifications: {
       presentationOptions: ['badge', 'sound', 'alert'],

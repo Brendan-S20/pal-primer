@@ -71,6 +71,16 @@ export default defineConfig({
   ...(NATIVE_BUILD ? { nitro: false as const } : {}),
   vite: {
     ...(NATIVE_BUILD ? { build: { outDir: "dist-native" } } : {}),
+    // The SPA prerender boots a Vite PREVIEW server, and Vite's default host
+    // binds the IPv6 wildcard `::`. On a host without IPv6 that throws
+    // `EAFNOSUPPORT: address family not supported ::` and the whole native
+    // build dies AFTER a clean client bundle, so the failure reads like a
+    // build error rather than a networking one. Pinning the preview host to
+    // IPv4 loopback costs the hosted build nothing (it never prerenders) and
+    // makes `build:native` work on Linux CI and in containers as well as on a
+    // Mac. Not `localhost`: that resolves to ::1 first on many systems, which
+    // is the same trap wearing a friendlier name.
+    ...(NATIVE_BUILD ? { preview: { host: "127.0.0.1" } } : {}),
     // Native-only rather than defined-as-"" for both, so this whole config is
     // provably inert for the hosted build: with only vite.config.ts changed,
     // `npm run build` reproduces .output byte-for-byte apart from the two files
