@@ -152,12 +152,25 @@ export function PlanPicker({
                   {moneyExact(Math.round(p.annual_price_cents / 12))}/mo billed annually
                 </p>
               )}
+              {/* The AI allowance sits beside the employee allowance because it
+                  is the same kind of fact and the same kind of surprise: a
+                  metered charge that lands on a later invoice. It is also a real
+                  reason to buy up — 200 / 750 / 2,500 by tier — which this card
+                  was not saying. Null (Enterprise, negotiated) renders nothing.
+                  Note the plan `features` column is {} on every active plan, so
+                  this cannot be expressed as a feature bullet. */}
               <p className="mt-1 text-xs text-muted-foreground">
                 Includes {p.included_seats} employee{p.included_seats === 1 ? "" : "s"}
                 {p.price_per_seat_cents
                   ? isAnnualCard
                     ? ` · ${money(p.price_per_seat_cents * 10)}/yr per extra`
                     : ` · ${money(p.price_per_seat_cents)}/extra`
+                  : ""}
+                {p.ai_actions_included != null
+                  ? ` · ${p.ai_actions_included.toLocaleString()} AI actions`
+                  : ""}
+                {p.ai_actions_included != null && p.ai_overage_cents_per_action != null
+                  ? ` · ${money(p.ai_overage_cents_per_action)}/extra action`
                   : ""}
               </p>
               {p.description && <p className="mt-2 text-sm text-muted-foreground">{p.description}</p>}
@@ -235,6 +248,13 @@ export function EmbeddedPlanCheckout({
     clientSecret: string;
     publishableKey: string;
     planName: string;
+    // The metered charges, so the paragraph above the card can name them.
+    // Nullable throughout: Enterprise negotiates its allowance and carries
+    // null in the catalog, and a clause is dropped rather than guessed.
+    includedSeats: number | null;
+    aiActionsIncluded: number | null;
+    aiOverageCentsPerAction: number | null;
+    seatOverageCents: number | null;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -256,7 +276,15 @@ export function EmbeddedPlanCheckout({
         else onCancel();
         return;
       }
-      setSession({ clientSecret: r.clientSecret, publishableKey: r.publishableKey, planName: r.planName });
+      setSession({
+        clientSecret: r.clientSecret,
+        publishableKey: r.publishableKey,
+        planName: r.planName,
+        includedSeats: r.includedSeats ?? null,
+        aiActionsIncluded: r.aiActionsIncluded ?? null,
+        aiOverageCentsPerAction: r.aiOverageCentsPerAction ?? null,
+        seatOverageCents: r.seatOverageCents ?? null,
+      });
     },
     onError: (e: Error) => { setError(e.message); toast.error(e.message); },
   });
@@ -286,9 +314,37 @@ export function EmbeddedPlanCheckout({
       </button>
       <div className="rounded-lg border bg-card p-5">
         <h3 className="font-semibold">Subscribe to {session.planName}</h3>
+        {/* The metered charges are named HERE, at the card, and not only on the
+            pricing page. There is no Stripe-hosted checkout in this flow — the
+            card is taken inline through a Payment Element — so this paragraph is
+            the last thing a buyer reads before being charged, and it used to
+            mention neither the AI overage nor the per-employee one. Both arrive
+            on a later invoice, so nothing else in the flow would reveal them.
+            Each clause is suppressed when the plan does not carry that charge,
+            so Enterprise (negotiated allowances, null in the catalog) says
+            nothing rather than "null AI actions". */}
         <p className="mt-1 text-xs text-muted-foreground">
-          You'll be charged now and then {interval === "year" ? "yearly" : "monthly"}. Cancel
-          anytime in Settings → Plan &amp; billing. Payments are processed securely.
+          You'll be charged now and then {interval === "year" ? "yearly" : "monthly"}.
+          {session.aiActionsIncluded != null && session.aiOverageCentsPerAction != null ? (
+            <>
+              {" "}
+              This plan includes {session.aiActionsIncluded.toLocaleString()} AI actions a month;
+              actions past that are {money(session.aiOverageCentsPerAction)} each.
+            </>
+          ) : null}
+          {session.includedSeats != null && session.seatOverageCents ? (
+            <>
+              {" "}
+              {session.aiActionsIncluded != null ? "Employees past " : "This plan includes "}
+              {session.aiActionsIncluded != null
+                ? `the first ${session.includedSeats}`
+                : `${session.includedSeats} employees; each extra`}{" "}
+              {session.aiActionsIncluded != null ? "are" : "is"}{" "}
+              {money(session.seatOverageCents)} each a month.
+            </>
+          ) : null}{" "}
+          Both are billed on your next invoice. Cancel anytime in Settings → Plan &amp; billing.
+          Payments are processed securely.
         </p>
         <div className="mt-4">
           <Elements

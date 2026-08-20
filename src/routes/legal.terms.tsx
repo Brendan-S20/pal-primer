@@ -68,8 +68,15 @@ function TermsPage() {
         <h2>Payments and billing</h2>
         <ul>
           <li>
-            Subscriptions are billed through Stripe on the plan you choose. Plans are priced per
-            active staff seat; adding seats adjusts your bill.
+            Subscriptions are billed through Stripe on the plan you choose. Each plan is a flat
+            monthly or yearly price that includes an allowance of active employees; each active
+            employee beyond that allowance adjusts your bill at the published per-employee rate.
+          </li>
+          <li>
+            Each plan also includes a monthly allowance of AI actions. Usage beyond that allowance
+            is billed at the published per-action rate and appears as a single line on your next
+            invoice. Your current allowance, usage and rate are shown in the app under Settings →
+            AI Tools, where you can also set a ceiling that stops AI rather than billing past it.
           </li>
           <li>
             You can cancel at any time; paid access continues to the end of the billing period.

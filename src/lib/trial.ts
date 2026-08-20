@@ -34,8 +34,43 @@
 // assembled from six places is enforcement nobody can reason about before
 // turning it on — and turning it on was one line plus a date.
 //
-// What day 15 does NOW: it restricts, for organizations created on or after
-// TRIAL_ENFORCEMENT_FROM. Anyone who signed up under the old promise keeps it.
+// WHAT DAY 15 DOES NOW, STATED ACCURATELY (corrected 2026-08-20).
+//
+// It computes `restricted`. It does not restrict.
+//
+// `TRIAL_ENFORCEMENT` was flipped to true on 2026-08-16 under a commit message
+// saying trials enforce. They do not, because the half this constant was
+// designed to switch was never built: `restricted` is written in all five
+// branches below, serialized to the browser by trial.functions.ts, and read by
+// NOTHING. `git log -S'.restricted' -- src/` is empty for the life of the repo,
+// so it was never wired and then unwired — it has always been inert. Flipping
+// the constant back to false today would change no observable behaviour either.
+//
+// The one thing an expired trial really loses is AI, and that is `aiAvailableFor`
+// gating on `phase === "paid"` (below), which is independent of this constant
+// and works whether it is true or false.
+//
+// Deliberately still ungated, and each for a reason worth keeping: invoicing and
+// card payments (blocking those stops a business collecting the money it needs
+// to pay us), the customer portal (a HoundStack billing problem must not show up
+// as a broken business to the tenant's own customers), routing (the truck is
+// already out), and read access to data the tenant owns — the published FAQ
+// promises "nothing is deleted either way", and MASTER_BRIEF §3114 makes the
+// same point about relationships you can enter and cannot exit.
+//
+// So this is NOT dead code and must not be deleted: it is the state machine for
+// a gate that has not been written, and the brief, the migration that introduced
+// it and its own commit all say enforcement was deferred pending Stripe rather
+// than declined. What is undecided is what the FAQ's "the account pauses"
+// should actually mean. That is an owner decision, and until it is made no
+// capability gate can be written correctly.
+//
+// The grandfather clause is real but currently empty: enforcementApplies exempts
+// organizations created before TRIAL_ENFORCEMENT_FROM, and every such org today
+// is already `paid`. If a gate does land later, revisit that date — anyone who
+// signed up between 2026-08-16 and the gate shipping did so under "a message,
+// not a lock", which is exactly what the constant's own comment says must not
+// happen to them.
 
 /** Mirrors TRIAL_DAYS in the marketing site's src/lib/site.ts.
  *
