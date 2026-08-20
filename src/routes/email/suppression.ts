@@ -85,7 +85,7 @@ export const Route = createFileRoute("/email/suppression")({
         // and we refuse to touch the suppression list on unverified input.
         if (!signingSecret) {
           console.error(
-            "RESEND_WEBHOOK_SECRET is not configured — refusing to process Resend webhook. " +
+            "RESEND_WEBHOOK_SECRET is not configured, refusing to process Resend webhook. " +
               "Create the webhook endpoint in Resend and add the signing secret (whsec_...) as " +
               "RESEND_WEBHOOK_SECRET in Project Settings → Secrets.",
           );

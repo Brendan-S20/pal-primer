@@ -147,7 +147,7 @@ export function VisitsTab({
   );
 
   const afterBulk = (r: { ok: number; failed: number }, verb: string) => {
-    if (r.failed) toast.error(`${verb} ${r.ok} of ${r.ok + r.failed} visits — ${r.failed} failed`);
+    if (r.failed) toast.error(`${verb} ${r.ok} of ${r.ok + r.failed} visits, ${r.failed} failed`);
     else toast.success(`${verb} ${r.ok} visit${r.ok === 1 ? "" : "s"}`);
     sel.clear();
     setBulkAction(null);
@@ -205,7 +205,7 @@ export function VisitsTab({
         {activeHold.starts_on > today
           ? `Vacation hold ${formatDay(activeHold.starts_on)} to ${formatDay(activeHold.ends_on)}`
           : `On hold until ${formatDay(activeHold.ends_on)}`}
-        {" — no visits are scheduled or generated in that range."}
+        {". No visits are scheduled or generated in that range."}
         {activeHold.reason ? ` Reason: ${activeHold.reason}.` : ""}
       </span>
     </div>

@@ -102,11 +102,11 @@ const drivingLine = (f: Forecast) => {
   // Not "no violations": no measurement. The caller warns about it separately.
   if (!f) return undefined;
   if (f.daysMeasured === 0) {
-    return "New route — these days had no order to compare against.";
+    return "New route, so these days had no order to compare against.";
   }
   if (f.savedMin > 0.5) return `Saves about ${mins(f.savedMin)} of driving.`;
   if (f.savedMin < -0.5) {
-    return `Adds about ${mins(-f.savedMin)} of driving — the order it replaced was quicker.`;
+    return `Adds about ${mins(-f.savedMin)} of driving, and the order it replaced was quicker.`;
   }
   return "No meaningful change to driving time.";
 };
@@ -383,7 +383,7 @@ export function AutoRoutingPanel({
               })}
               {techs.length === 0 && (
                 <span className="text-2xs text-muted-foreground">
-                  Nobody runs routes yet — switch someone on under Crew.
+                  Nobody runs routes yet. Switch someone on under Crew.
                 </span>
               )}
             </div>

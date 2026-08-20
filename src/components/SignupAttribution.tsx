@@ -54,7 +54,7 @@ export function SignupAttribution() {
             {/* Conversions, not signups, are the point. A campaign with forty
                 signups and no conversions is one to stop funding, and a
                 signup count on its own cannot say that. */}
-            Counted by paying customers produced, not signups — a campaign that brings people who
+            Counted by paying customers produced, not signups. A campaign that brings people who
             never pay should sort below one that brings fewer who do.
           </p>
         </div>
@@ -84,7 +84,7 @@ export function SignupAttribution() {
             <code className="rounded bg-muted px-1 py-0.5 text-xs">
               ?utm_source=…&amp;utm_campaign=…
             </code>{" "}
-            to the links you publish and they will be attributed here — all {q.data.totalOrgs}{" "}
+            to the links you publish and they will be attributed here. All {q.data.totalOrgs}{" "}
             organizations so far signed up directly.
           </p>
         ) : (

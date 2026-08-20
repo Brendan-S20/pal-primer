@@ -119,7 +119,7 @@ describe("which way the money goes, said from the reader's side", () => {
   it("moves nothing when the period settled exactly", () => {
     expect(settlementFlow("settled", "franchise")).toBe("settled");
     expect(settlementFlow("settled", "location")).toBe("settled");
-    expect(settlementDirectionLabel("settled", "location")).toBe("Settled — nothing to move");
+    expect(settlementDirectionLabel("settled", "location")).toBe("Settled, nothing to move");
   });
 
   it("prints an unrecognised direction rather than guessing one", () => {
@@ -169,7 +169,7 @@ describe("issuing is what delivers a statement", () => {
   });
 
   it("labels a draft as unagreed rather than printing the raw column", () => {
-    expect(settlementStatusLabel("draft")).toBe("Draft — not yet agreed");
+    expect(settlementStatusLabel("draft")).toBe("Draft, not yet agreed");
     expect(settlementStatusLabel("void")).toBe("Voided");
   });
 });

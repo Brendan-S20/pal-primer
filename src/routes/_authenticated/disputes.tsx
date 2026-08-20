@@ -118,7 +118,7 @@ function DisputesPage() {
                 </Label>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Off by default, because the money has genuinely left your account. Turn it on
-                  to see revenue as though the open disputes hold — useful if you expect to win
+                  to see revenue as though the open disputes hold, useful if you expect to win
                   them, and easy to forget you did, so the figures say which way this is set.
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -204,7 +204,7 @@ function DisputesPage() {
                           <div className="mt-2 flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
                             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
                             <span>
-                              Evidence is submitted in Stripe, not here — HoundStack is told the
+                              Evidence is submitted in Stripe, not here. HoundStack is told the
                               outcome, it doesn&apos;t decide it. The window is short and closes
                               whether or not anyone replies.
                             </span>

@@ -92,7 +92,7 @@ export function ProvisionLocation() {
           </p>
           <p>
             It starts a 14-day free trial like any other new account. Its clients, visits and
-            payments are its own — you see its totals on this page, not its customers.
+            payments are its own. You see its totals on this page, not its customers.
           </p>
           <p>
             There is no way to remove a location from inside the product yet, so check the name and
@@ -152,7 +152,7 @@ export function ProvisionLocation() {
             </div>
           )}
           <p className="text-muted-foreground">
-            They set their own password when they sign up. Nothing else is needed from you — the
+            They set their own password when they sign up. Nothing else is needed from you. The
             location appears in the table above once they start working.
           </p>
           <Button variant="outline" size="sm" onClick={() => setDone(null)}>
@@ -172,7 +172,7 @@ export function ProvisionLocation() {
         </CardTitle>
         <p className="text-xs text-muted-foreground">
           For a location you&apos;re starting. We create the organization, link it to your
-          franchise, and email everyone you name — they sign themselves in and start working. If
+          franchise, and email everyone you name, and they sign themselves in and start working. If
           the location already runs on HoundStack, use an invitation code below instead so their
           existing clients and history come with them.
         </p>
@@ -186,7 +186,7 @@ export function ProvisionLocation() {
             id="loc-name"
             value={name}
             maxLength={120}
-            placeholder="Scoop Troop — North Austin"
+            placeholder="Scoop Troop North Austin"
             onChange={(e) => setName(e.target.value)}
           />
         </div>
@@ -239,7 +239,7 @@ export function ProvisionLocation() {
             </div>
           ))}
           <p className="text-xs text-muted-foreground">
-            The first person is the location&apos;s owner — they can invite the rest of the staff
+            The first person is the location&apos;s owner, and they can invite the rest of the staff
             themselves, so you only need to name whoever is there on day one.
           </p>
           {rows.length < MAX_LOCATION_MEMBERS && (

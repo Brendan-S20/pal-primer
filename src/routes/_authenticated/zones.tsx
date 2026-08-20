@@ -77,7 +77,7 @@ function ZonesPage() {
     },
     onSuccess: (r) => {
       if (r.failed)
-        toast.error(`Deleted ${r.ok} of ${r.ok + r.failed} zones — ${r.failed} failed`);
+        toast.error(`Deleted ${r.ok} of ${r.ok + r.failed} zones, ${r.failed} failed`);
       else toast.success(`Deleted ${r.ok} zone${r.ok === 1 ? "" : "s"}`);
       sel.clear();
       qc.invalidateQueries({ queryKey: ["zones"] });

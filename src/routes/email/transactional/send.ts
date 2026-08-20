@@ -119,7 +119,7 @@ export const Route = createFileRoute("/email/transactional/send")({
           .maybeSingle();
 
         if (suppressionError) {
-          console.error("Suppression check failed — refusing to send", {
+          console.error("Suppression check failed, refusing to send", {
             error: suppressionError,
             recipient_redacted: redactEmail(effectiveRecipient),
           });

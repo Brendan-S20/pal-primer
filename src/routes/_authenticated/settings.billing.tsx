@@ -279,7 +279,7 @@ function BillingPage() {
           </h2>
           <p className="text-sm text-muted-foreground">
             Unlimited customers, dogs, jobs, routes, and zones on every tier. You're billed per
-            employee, plus any AI actions past your plan's monthly allowance — both metered, both
+            employee, plus any AI actions past your plan's monthly allowance. Both are metered, and both are
             shown before they are charged.
             {data.isPaidTier &&
               " Switching is instant: upgrades charge the prorated difference today, downgrades credit your next invoice."}

@@ -82,7 +82,7 @@ function LeadsPage() {
     },
     onSuccess: (r) => {
       const verb = r.status === "archived" ? "Archived" : `Marked ${r.status}`;
-      if (r.failed) toast.error(`${verb}: ${r.ok} of ${r.ok + r.failed} leads — ${r.failed} failed`);
+      if (r.failed) toast.error(`${verb}: ${r.ok} of ${r.ok + r.failed} leads, ${r.failed} failed`);
       else toast.success(`${verb}: ${r.ok} lead${r.ok === 1 ? "" : "s"}`);
       sel.clear();
       qc.invalidateQueries({ queryKey: ["leads"] });

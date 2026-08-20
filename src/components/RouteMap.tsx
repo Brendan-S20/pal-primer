@@ -172,7 +172,7 @@ export const GEOLOCATION_TIMEOUT = 3;
 export function geolocationUnsupportedMessage(secureContext: boolean): string {
   return secureContext
     ? "This browser does not offer location. You can still pan and zoom the map by hand."
-    : "Location needs a secure connection. This page is on plain http, so the browser hides location entirely — open it over https (or on localhost) and press this again.";
+    : "Location needs a secure connection. This page is on plain http, so the browser hides location entirely. Open it over https (or on localhost) and press this again.";
 }
 
 /** What to show when a `getCurrentPosition` call comes back with an error.
@@ -198,7 +198,7 @@ export function geolocationErrorMessage(
     case GEOLOCATION_POSITION_UNAVAILABLE:
       return secure
         ? "Your device could not work out where it is. Move somewhere with a clearer view of the sky and try again."
-        : "Location needs a secure connection. Over plain http the browser reports your position as unavailable — open this page over https (or on localhost).";
+        : "Location needs a secure connection. Over plain http the browser reports your position as unavailable. Open this page over https (or on localhost).";
     case GEOLOCATION_TIMEOUT:
       return "Locating timed out. Check that location services are switched on, then try again.";
     default:
@@ -380,7 +380,7 @@ export function RouteMap({
       // Passive: we are not cancelling the scroll, only explaining it. Two
       // fingers is a pinch and Leaflet already has it.
       if (armedRef.current || e.touches.length !== 1) return;
-      showHint("Tap the map to pan it — pinch to zoom");
+      showHint("Tap the map to pan it, pinch to zoom");
     };
 
     el.addEventListener("wheel", onWheel, { passive: false });

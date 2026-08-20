@@ -174,12 +174,12 @@ export function reversalTrail(row: AdjustmentLedgerRow): string | null {
       row.repaid_settlement_period_end,
     );
     if (repaidPeriod && row.repaid_settlement_status && row.repaid_settlement_status !== "draft") {
-      return `${reversedPhrase} — the ${amount} was repaid on the ${repaidPeriod} statement.`;
+      return `${reversedPhrase}. The ${amount} was repaid on the ${repaidPeriod} statement.`;
     }
     if (repaidPeriod) {
-      return `${reversedPhrase} — the ${amount} repayment is on the draft ${repaidPeriod} statement.`;
+      return `${reversedPhrase}. The ${amount} repayment is on the draft ${repaidPeriod} statement.`;
     }
-    return `${reversedPhrase} — the ${amount} repayment carries into the next statement.`;
+    return `${reversedPhrase}. The ${amount} repayment carries into the next statement.`;
   }
 
   const wasBilled =

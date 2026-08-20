@@ -220,7 +220,7 @@ function PaymentsSettings() {
                 <div className="rounded-lg border border-destructive/40 p-4">
                   <div className="text-sm font-medium">Disconnect this Stripe account</div>
                   <p className="mt-1 text-2xs text-muted-foreground">
-                    Stops all card and bank payments immediately — invoices, autopay, and the client
+                    Stops all card and bank payments immediately: invoices, autopay, and the client
                     portal. Saved client cards belong to this Stripe account and will not work on a
                     different one.
                   </p>
@@ -362,7 +362,7 @@ function ProcessingFeeCard() {
               Card:{" "}
               {ex.card.suppressed
                 ? "no fee added"
-                : `client pays ${money(ex.card.totalCents)} — you recover ${money(ex.card.surchargeCents)}`}
+                : `client pays ${money(ex.card.totalCents)}, you recover ${money(ex.card.surchargeCents)}`}
               {ex.card.shortfallCents > 0 && (
                 <span> and still absorb {money(ex.card.shortfallCents)}</span>
               )}
@@ -371,12 +371,12 @@ function ProcessingFeeCard() {
               Bank:{" "}
               {ex.ach.suppressed
                 ? "no fee added"
-                : `client pays ${money(ex.ach.totalCents)} — you recover ${money(ex.ach.surchargeCents)}`}
+                : `client pays ${money(ex.ach.totalCents)}, you recover ${money(ex.ach.surchargeCents)}`}
             </li>
           </ul>
           <p className="mt-3 border-t pt-2 text-xs text-muted-foreground">
             These apply to automatic payments and saved cards. When a client pays from a link or the
-            portal and picks their own method at checkout, you absorb the fee — the amount is fixed
+            portal and picks their own method at checkout, you absorb the fee, because the amount is fixed
             before they choose.
           </p>
           {ex.card.shortfallCents > 0 && !ex.card.suppressed && (
@@ -403,7 +403,7 @@ function ProcessingFeeCard() {
         ) : (
           <>
             <p className="text-sm text-muted-foreground">
-              Visa and Mastercard require <strong>you</strong> — not HoundStack — to notify the card
+              Visa and Mastercard require <strong>you</strong> (not HoundStack) to notify the card
               networks and your payment processor at least 30 days before you start surcharging. We
               can't file that for you, because your business is the merchant of record on every
               client payment. Debit and prepaid cards are never surcharged.

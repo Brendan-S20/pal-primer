@@ -374,7 +374,7 @@ function InvoicesPage() {
   const paidM = useMutation({
     mutationFn: () => paidBulk({ data: { ids: selectedIds } }),
     onSuccess: (r) => {
-      if (r.failed) toast.error(`Marked ${r.ok} of ${r.ok + r.failed} paid — ${r.failed} skipped`);
+      if (r.failed) toast.error(`Marked ${r.ok} of ${r.ok + r.failed} paid, ${r.failed} skipped`);
       else toast.success(`Marked ${r.ok} paid`);
       sel.clear();
       refreshMoney();
@@ -395,7 +395,7 @@ function InvoicesPage() {
     },
     onSuccess: (r) => {
       if (r.failed)
-        toast.error(`Sent ${r.ok} of ${r.ok + r.failed} invoice emails — ${r.failed} failed`);
+        toast.error(`Sent ${r.ok} of ${r.ok + r.failed} invoice emails, ${r.failed} failed`);
       else toast.success(`Queued ${r.ok} invoice email${r.ok === 1 ? "" : "s"}`);
       sel.clear();
       qc.invalidateQueries({ queryKey: ["invoices"] });

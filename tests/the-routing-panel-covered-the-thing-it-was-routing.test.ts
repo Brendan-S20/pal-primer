@@ -95,7 +95,7 @@ describe("the safeguards survived the redesign", () => {
     // description, composed by drivingLine(). A day whose stops carried no
     // sequence is not a slower route, it is no route.
     expect(panel).toMatch(/if \(f\.daysMeasured === 0\) \{/);
-    expect(panel).toMatch(/New route — these days had no order to compare against\./);
+    expect(panel).toMatch(/New route, so these days had no order to compare against\./);
     // And it still reports a WORSE result rather than rounding it out of view.
     expect(panel).toMatch(/the order it replaced was quicker/);
   });

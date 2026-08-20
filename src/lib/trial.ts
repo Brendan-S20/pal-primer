@@ -360,7 +360,7 @@ export function aiUnavailableReason(state: TrialState): string | null {
     return "AI features need a paid plan. They're the one thing the free trial doesn't include, because every request costs us real money to run.";
   }
   if (state.phase === "lapsed") {
-    return "AI features need an active plan. Yours has ended, so AI and adding new customers are paused — everything you already have still works.";
+    return "AI features need an active plan. Yours has ended, so AI and adding new customers are paused. Everything you already have still works.";
   }
   return "AI features need a paid plan.";
 }

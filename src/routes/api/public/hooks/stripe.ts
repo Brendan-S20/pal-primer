@@ -251,7 +251,7 @@ async function provisionSignup(
         // refund that did not happen.
         console.error("provisionSignup refund failed", signupRequestId, refundErr);
         refundPatch.error_message =
-          `${(e as Error).message} — AND the automatic refund failed ` +
+          `${(e as Error).message}, AND the automatic refund failed ` +
           `(${(refundErr as Error).message}). This customer has been charged and has no account; ` +
           `refund payment intent ${paid.paymentIntentId} manually.`;
       }
@@ -260,7 +260,7 @@ async function provisionSignup(
       // a wiring bug in the caller rather than a payment that cannot be
       // refunded. Record it where the office will see it.
       refundPatch.error_message =
-        `${(e as Error).message} — no payment intent was passed to provisioning, ` +
+        `${(e as Error).message}, and no payment intent was passed to provisioning, ` +
         `so no refund could be issued automatically. Stripe reference ${paid.stripeRef}.`;
     }
 
@@ -900,7 +900,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                   title: "A refund did not go through",
                   body:
                     `A refund of $${(Number(refund?.amount ?? 0) / 100).toFixed(2)} ` +
-                    `${refund?.status === "failed" ? "failed" : "was canceled"} — the money has ` +
+                    `${refund?.status === "failed" ? "failed" : "was canceled"}. The money has ` +
                     `NOT returned to the customer. Your revenue figures have been corrected. ` +
                     `Contact them before they chase it.`,
                 });
@@ -932,7 +932,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                   ? // A stale bank account silently halts EVERY payout, not just
                     // this one, and the only place that was visible was Stripe.
                     `${amount} could not be paid out${payout?.failure_message ? `: ${payout.failure_message}` : ""}. ` +
-                    `Payouts stay stopped until the bank details are fixed — check Payments.`
+                    `Payouts stay stopped until the bank details are fixed. Check Payments.`
                   : `${amount} has been sent to your bank account.`,
               });
             } catch (e) {

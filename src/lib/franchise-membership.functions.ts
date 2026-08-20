@@ -204,7 +204,7 @@ export const joinFranchise = createServerFn({ method: "POST" })
             (c) => c.length >= FRANCHISE_CODE_MIN_LENGTH && c.length <= FRANCHISE_CODE_MAX_LENGTH,
             {
               message:
-                "That doesn't look like an invitation code. They are 8 to 24 letters and numbers — check you have the whole thing.",
+                "That doesn't look like an invitation code. They are 8 to 24 letters and numbers, so check you have the whole thing.",
             },
           ),
       })
@@ -438,7 +438,7 @@ export const removeFranchiseLocation = createServerFn({ method: "POST" })
 
     const name = String(child.name ?? "");
     if (name.trim() !== data.confirmName.trim()) {
-      throw new Error(`Type the location's name exactly — "${name}" — to confirm removing it.`);
+      throw new Error(`To confirm removing it, type the location's name exactly: "${name}".`);
     }
 
     const { error: rpcError } = await (context.supabase as any).rpc("unlink_franchise_child", {

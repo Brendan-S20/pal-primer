@@ -478,7 +478,7 @@ async function generateRoyaltiesForParent(
   });
   if (error) return `err: ${error.message}`;
   const n = Number(written ?? 0);
-  return n === 0 ? "0 (nothing to recalculate — no locations, or all issued)" : n;
+  return n === 0 ? "0 (nothing to recalculate: no locations, or all issued)" : n;
 }
 
 // Auto-send invoices whose grace window has ended (full auto billing).

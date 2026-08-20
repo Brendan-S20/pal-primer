@@ -117,7 +117,7 @@ export const Route = createFileRoute("/email/auth/webhook")({
           // Gracefully skip email types we don't render (e.g.
           // password_changed_notification). Returning success prevents
           // Supabase from blocking the underlying auth flow.
-          console.log("No template for email action type — skipping send", { emailType });
+          console.log("No template for email action type, skipping send", { emailType });
           return Response.json({ success: true, skipped: true });
         }
 

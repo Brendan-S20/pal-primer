@@ -133,6 +133,8 @@ export async function runAiReceptionist(input: AiReceptionistInput): Promise<AiR
 
   const isVoice = input.channel === "voice";
   const maxLen = isVoice ? MAX_REPLY_LEN_VOICE : MAX_REPLY_LEN_SMS;
+  // em-dash-ok: addressed to the model, not to a person. Rewording a prompt
+  // to satisfy a punctuation rule is editing behaviour to fix a typo.
   const channelRule = isVoice
     ? `- You are on a live PHONE CALL. Speak conversationally in 1-2 short sentences (under ${maxLen} characters). No emoji, no URLs, no markdown — everything you say is read aloud.`
     : `- Keep every SMS reply under ${maxLen} characters.`;

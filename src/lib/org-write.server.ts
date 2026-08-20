@@ -42,7 +42,7 @@ export async function updateOwnOrg(
     // check to get here, so if this fires, the two layers disagree and the
     // person reading it needs to know it is our problem, not theirs.
     throw new Error(
-      "That change wasn't saved — your account doesn't have write access to these settings. This is a bug on our side; please tell support what you were changing.",
+      "That change wasn't saved, because your account doesn't have write access to these settings. This is a bug on our side; please tell support what you were changing.",
     );
   }
 }

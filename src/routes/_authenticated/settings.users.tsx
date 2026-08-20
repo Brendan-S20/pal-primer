@@ -501,7 +501,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
             <span className="font-medium">Available right now</span>
             <span className="block text-xs text-muted-foreground">
               {staff.is_field_tech
-                ? "Untick while someone is on leave, sick or training. They stay on the board, greyed out, and auto-assign and Optimize skip them — but you can still schedule their work for a later day."
+                ? "Untick while someone is on leave, sick or training. They stay on the board, greyed out, and auto-assign and Optimize skip them, but you can still schedule their work for a later day."
                 : "Only applies to people who run routes."}
             </span>
           </span>

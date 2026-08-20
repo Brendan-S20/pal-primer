@@ -77,7 +77,7 @@ export function locationProblem(
   const members = filledMembers(rows);
   if (members.length === 0) return "Add at least the person who runs this location.";
   if (members.length > MAX_LOCATION_MEMBERS) {
-    return `That's more than ${MAX_LOCATION_MEMBERS} people. Name whoever is there on day one — the location's owner can invite the rest.`;
+    return `That's more than ${MAX_LOCATION_MEMBERS} people. Name whoever is there on day one. The location's owner can invite the rest.`;
   }
 
   const bad = members.find((m) => !EMAIL_RE.test(m.email));

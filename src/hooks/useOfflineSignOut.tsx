@@ -60,7 +60,7 @@ export function useOfflineSignOut() {
                 {remaining === 1 ? "it" : "they"} can only be redone by hand.
               </p>
               <p>
-                Stay signed in and reconnect if you can — the app will send{" "}
+                Stay signed in and reconnect if you can. The app will send{" "}
                 {remaining === 1 ? "it" : "them"} on its own once you have signal.
               </p>
             </>
@@ -76,12 +76,12 @@ export function useOfflineSignOut() {
       // gone, or an action the server refused five times — the tech is the only
       // person who can redo either, and they are about to walk away.
       toast.error(
-        `${outcome.lost} queued item${outcome.lost === 1 ? "" : "s"} could not be saved and ${outcome.lost === 1 ? "was" : "were"} discarded — check the visit and redo if needed`,
+        `${outcome.lost} queued item${outcome.lost === 1 ? "" : "s"} could not be saved and ${outcome.lost === 1 ? "was" : "were"} discarded, so check the visit and redo if needed`,
         { duration: 12_000 },
       );
     }
     if (!outcome.signedOut && !outcome.flushSkipped && outcome.synced === 0) {
-      toast.info("Still syncing — try again in a moment.");
+      toast.info("Still syncing. Try again in a moment.");
     }
     if (outcome.synced > 0) {
       toast.success(

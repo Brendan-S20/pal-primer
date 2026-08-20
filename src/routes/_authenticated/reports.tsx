@@ -275,7 +275,7 @@ function ReportsPage() {
         <CardHeader>
           <CardTitle>Top clients by money collected</CardTitle>
           <p className="text-xs text-muted-foreground">
-            Cash basis — what each customer actually paid in this range. Adds up to the Collected
+            Cash basis: what each customer actually paid in this range. Adds up to the Collected
             tile above, less anything paid without an invoice.
           </p>
         </CardHeader>

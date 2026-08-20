@@ -123,7 +123,7 @@ GRANT EXECUTE ON FUNCTION public.post_credit_entry(uuid, uuid, integer, text, uu
   TO authenticated, service_role;
 
 DO $post$
-DECLARE _src text;
+DECLARE _src text; _code text;
 BEGIN
   -- What this migration ESTABLISHES, provable from any starting state: the
   -- shipped body consults the permission matrix, not membership. Named
@@ -133,13 +133,28 @@ BEGIN
     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
    WHERE n.nspname = 'public' AND p.proname = 'post_credit_entry';
 
+  -- prosrc is the body INCLUDING its comments, and this assertion shipped
+  -- broken because of it: the body above carries the line "Was is_org_member",
+  -- written to explain the change, and `_src LIKE '%is_org_member%'` matched
+  -- the explanation rather than a call. Production never saw it -- the applied
+  -- statement had no such comment -- so the live database, `check-migrations`
+  -- and `check-baseline-objects` were all green while the repo could not
+  -- rebuild. The empty-database replay is the only thing that can see this,
+  -- which is precisely the case CLAUDE.md makes for that job.
+  --
+  -- So test the CODE, not the text. Same move as the codeOnly() helper the TS
+  -- tests use for exactly this class of false match. Stripping -- comments can
+  -- also mangle a `--` inside a string literal in the body; that is fine here,
+  -- because the result is only ever fed to the LIKE tests below.
+  _code := regexp_replace(_src, '--[^\n]*', '', 'g');
+
   IF _src IS NULL THEN
     RAISE EXCEPTION 'post_credit_entry is missing after this migration';
   END IF;
-  IF _src NOT LIKE '%manage_client_billing%' THEN
+  IF _code NOT LIKE '%manage_client_billing%' THEN
     RAISE EXCEPTION 'post_credit_entry does not check manage_client_billing';
   END IF;
-  IF _src LIKE '%is_org_member%' THEN
+  IF _code LIKE '%is_org_member%' THEN
     RAISE EXCEPTION 'post_credit_entry still gates on membership';
   END IF;
 

@@ -58,7 +58,7 @@ function ReviewPage() {
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           Records our automated checks could not resolve on their own. Nothing here is broken or
-          blocked — these are things only you can settle, so we flagged them instead of guessing.
+          blocked. These are things only you can settle, so we flagged them instead of guessing.
         </p>
       </div>
 
@@ -202,7 +202,7 @@ function ReviewCard({
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   rows={2}
-                  placeholder="e.g. Confirmed with the tech — the yard was serviced, the tablet clock was wrong."
+                  placeholder="e.g. Confirmed with the tech, the yard was serviced, the tablet clock was wrong."
                 />
                 <div className="flex flex-wrap gap-2">
                   <Button

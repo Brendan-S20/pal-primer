@@ -39,14 +39,14 @@ export function addonBillingTrail(charge: AddonChargeBillingRow): AddonBillingTr
   const invoiceId = charge.billed_invoice_id ?? null;
 
   if (charge.status === "voided") {
-    return { label: "Voided — never billed", invoiceId: null, warning: null };
+    return { label: "Voided, never billed", invoiceId: null, warning: null };
   }
 
   if (charge.status === "paid_from_credit") {
     // Prepaid clients are debited immediately, so there is no invoice line to
     // point at and saying "billed on invoice …" would be a lie.
     return {
-      label: "Paid from prepaid credit — not on an invoice",
+      label: "Paid from prepaid credit, not on an invoice",
       invoiceId: null,
       warning: null,
     };
@@ -80,5 +80,5 @@ export function addonBillingTrail(charge: AddonChargeBillingRow): AddonBillingTr
     };
   }
 
-  return { label: "Unbilled — lands on the next invoice", invoiceId: null, warning: null };
+  return { label: "Unbilled, lands on the next invoice", invoiceId: null, warning: null };
 }

@@ -83,7 +83,7 @@ function ZipChips({
               key={z}
               variant={bad ? "destructive" : "secondary"}
               className="gap-1 pr-1"
-              title={bad ? "Not a US 5-digit ZIP — this matches no address" : undefined}
+              title={bad ? "Not a US 5-digit ZIP, so this matches no address" : undefined}
             >
               {z}
               <button

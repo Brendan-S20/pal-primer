@@ -85,7 +85,7 @@ export async function lookupSignupCode(
     return {
       kind: "coupon",
       coupon,
-      description: `${couponDiscountLabel(coupon)} — applied at checkout`,
+      description: `${couponDiscountLabel(coupon)}, applied at checkout`,
     };
   }
 
@@ -107,6 +107,6 @@ export async function lookupSignupCode(
 
   return {
     kind: "invalid",
-    reason: "We don't recognize that code. Check for typos — or continue without it.",
+    reason: "We don't recognize that code. Check for typos, or continue without it.",
   };
 }

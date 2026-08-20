@@ -87,7 +87,7 @@ function SuccessPage() {
               <>
                 Something went wrong on our end after your payment went through. We've flagged it
                 and someone will contact you by email shortly to either finish setting you up or
-                return your money — you will not be left paying for a service you don't have.
+                return your money. You will not be left paying for a service you don't have.
               </>
             )
           ) : (
@@ -96,7 +96,7 @@ function SuccessPage() {
         </p>
         <p className="mt-8 text-xs text-muted-foreground">
           {failed
-            ? "You can close this tab — we have your details and we'll be in touch."
+            ? "You can close this tab. We have your details and we'll be in touch."
             : "You can close this tab. Check your inbox for next steps."}
         </p>
       </section>

@@ -82,7 +82,7 @@ const repayment = row({
 describe("the reversal trail", () => {
   it("names the statement a won chargeback was repaid on", () => {
     expect(reversalTrail(repaidDeduction)).toBe(
-      "Reversed 2026-07-14 — the $1,000.00 was repaid on the 2026-07-01 → 2026-07-31 statement.",
+      "Reversed 2026-07-14. The $1,000.00 was repaid on the 2026-07-01 → 2026-07-31 statement.",
     );
   });
 
@@ -96,7 +96,7 @@ describe("the reversal trail", () => {
           repaid_amount_cents: 100_000,
         }),
       ),
-    ).toBe("Reversed 2026-07-14 — the $1,000.00 repayment carries into the next statement.");
+    ).toBe("Reversed 2026-07-14. The $1,000.00 repayment carries into the next statement.");
   });
 
   it("does not claim a repayment when the deduction was simply cancelled", () => {
@@ -222,18 +222,18 @@ describe("where an add-on charge was billed", () => {
 
   it("does not claim an invoice for a charge taken from prepaid credit", () => {
     const t = addonBillingTrail({ status: "paid_from_credit", credit_ledger_id: "c1" });
-    expect(t.label).toBe("Paid from prepaid credit — not on an invoice");
+    expect(t.label).toBe("Paid from prepaid credit, not on an invoice");
     expect(t.invoiceId).toBeNull();
   });
 
   it("says an unbilled charge is still coming", () => {
     expect(addonBillingTrail({ status: "pending" }).label).toBe(
-      "Unbilled — lands on the next invoice",
+      "Unbilled, lands on the next invoice",
     );
   });
 
   it("says a voided charge was never billed", () => {
-    expect(addonBillingTrail({ status: "voided" }).label).toBe("Voided — never billed");
+    expect(addonBillingTrail({ status: "voided" }).label).toBe("Voided, never billed");
   });
 
   it("shortens an invoice id the way the payments list does", () => {

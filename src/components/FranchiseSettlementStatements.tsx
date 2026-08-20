@@ -80,7 +80,7 @@ export function FranchiseSettlementStatements({
         <p className="text-sm text-muted-foreground">
           {forLocation
             ? "Each period your franchise has settled with you, and which way the money goes. Periods still being worked out are not shown until your franchise issues them."
-            : "Each period settled with a location. The net is what changes hands — it is not the royalty, because whoever collected the revenue is already holding part of it."}
+            : "Each period settled with a location. The net is what changes hands. It is not the royalty, because whoever collected the revenue is already holding part of it."}
         </p>
         {/* ── WHERE THE MONEY ACTUALLY MOVES ────────────────────────────────
             Owner decision, 2026-08-16: settlement is a statement, and the
@@ -99,7 +99,7 @@ export function FranchiseSettlementStatements({
             collects, the location watches for it. */}
         <p className="mt-2 text-xs text-muted-foreground">
           {forLocation
-            ? "HoundStack records these statements; it does not move the money. Settle with your franchise the way you normally do — the statement is the record of what was owed."
+            ? "HoundStack records these statements; it does not move the money. Settle with your franchise the way you normally do. The statement is the record of what was owed."
             : "HoundStack records these statements; it does not move the money. Pay or collect the net however you already settle with the location, then mark the statement paid here so both sides have the same record."}
         </p>
         {/* ── WHAT THE PERCENTAGE IS A PERCENTAGE OF ────────────────────────
@@ -121,7 +121,7 @@ export function FranchiseSettlementStatements({
             on both sides' copy, in the same words, because the two reconcile
             the same document. */}
         <p className="mt-2 text-xs text-muted-foreground">
-          The percentage applies to collected revenue before fees — Stripe&apos;s processing fee and
+          The percentage applies to collected revenue before fees. Stripe&apos;s processing fee and
           HoundStack&apos;s 0.5% platform fee come out of what{" "}
           {forLocation ? "you receive" : "the location receives"}, and the royalty is calculated on
           the amount collected, not on what is left after them.
@@ -261,7 +261,7 @@ export function FranchiseSettlementStatements({
                   <div className="mt-2 space-y-2">
                     <p className="text-xs text-muted-foreground">
                       Voided. Reopening puts this period back in draft so it can be regenerated and
-                      issued again — the adjustments this statement had claimed were released when
+                      issued again. The adjustments this statement had claimed were released when
                       it was voided, and regenerating draws whichever of them are still outstanding
                       back onto it.
                     </p>

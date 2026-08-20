@@ -170,7 +170,7 @@ export const Route = createFileRoute("/email/queue/process")({
             !resendApiKey && "RESEND_API_KEY (runtime secret)",
             !supabaseServiceKey && "SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY (runtime secret)",
           ].filter(Boolean);
-          console.error(`email queue processor not configured — missing: ${missing.join(", ")}`);
+          console.error(`email queue processor not configured, missing: ${missing.join(", ")}`);
           return Response.json({ error: "Server configuration error", missing }, { status: 500 });
         }
 

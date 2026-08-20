@@ -325,7 +325,7 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
       // would be a service they never had.
       await supabase.from("subscriptions").delete().eq("id", sub.id);
       throw new Error(
-        `Nothing could be scheduled on ${data.scheduledOn}. It is a blackout day, outside your work days, or inside a hold on this client — the booking was not saved, so pick another date and try again.`,
+        `Nothing could be scheduled on ${data.scheduledOn}. It is a blackout day, outside your work days, or inside a hold on this client. The booking was not saved, so pick another date and try again.`,
       );
     }
 

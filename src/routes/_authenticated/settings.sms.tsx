@@ -35,7 +35,7 @@ function SmsSettings() {
         <p className="text-sm text-muted-foreground">
           Two-way texting with clients runs on a HoundStack-managed number, provisioned for your
           organization. There is no Twilio account to connect and no carrier registration for you to
-          file — we handle both.
+          file. We handle both.
         </p>
       </div>
 
@@ -68,7 +68,7 @@ function SmsSettings() {
               <div className="mt-1 text-xs text-muted-foreground">
                 Conversational texting requires US carrier (10DLC) registration, which is in
                 progress. It is a compliance queue paced by the registrar, not something that can be
-                accelerated. Your number will be provisioned and appear here once it clears — no
+                accelerated. Your number will be provisioned and appear here once it clears, with no
                 action needed from you.
               </div>
             </div>
