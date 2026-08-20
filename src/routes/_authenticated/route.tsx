@@ -174,11 +174,16 @@ function AppShell() {
   useEffect(() => {
     let cancelled = false;
     let removeDeepLinks: (() => void) | undefined;
+    let removeConnectivity: (() => void) | undefined;
     (async () => {
       try {
         const native = await import("@/lib/native");
         await native.initStatusBar();
         if (!native.isNative()) return;
+        // Before push: a resumed app that is actually offline should know it
+        // before anything tries to talk to the server. No-ops on web.
+        const conn = await import("@/lib/offline/connectivity");
+        removeConnectivity = await conn.initNativeConnectivity();
         removeDeepLinks = await native.initPushDeepLinks((path) => {
           if (!cancelled) router.history.push(path);
         });
@@ -203,6 +208,7 @@ function AppShell() {
     })();
     return () => {
       cancelled = true;
+      removeConnectivity?.();
       removeDeepLinks?.();
     };
   }, [router]);

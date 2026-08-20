@@ -70,7 +70,16 @@ describe("the sync loop gives up only on a reachable server", () => {
   it("does not count a failure that happened offline", () => {
     // The whole distinction. Without this, a tech working a dead zone burns
     // five attempts on their first completion and loses it.
-    expect(body).toMatch(/navigator\.onLine/);
+    //
+    // This asserted `navigator.onLine` by name until the iOS pass, and that
+    // was pinning the MECHANISM rather than the property. The mechanism moved:
+    // in a WKWebView `navigator.onLine` is not refreshed reliably while the
+    // app is suspended, so the check now composes it with the native interface
+    // state (src/lib/offline/connectivity.ts). What this test cares about is
+    // unchanged and is what it now says: the loop consults a
+    // definitely-offline signal, and only counts an attempt when it was not
+    // offline.
+    expect(body).toMatch(/isDefinitelyOffline\(\)/);
     expect(body).toMatch(/if \(online/);
   });
 
