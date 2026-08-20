@@ -385,11 +385,47 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           anchors = { error: (e as Error).message };
         }
 
+        // The trial-expiry notice. Outside the per-org loop for the same
+        // reason ai_overage is: it selects the handful of orgs inside the
+        // warning window directly, and a failure here must not be attributed
+        // to whichever org happened to be last.
+        //
+        // This is the ONLY thing that warns an app-side trial. Stripe's
+        // customer.subscription.trial_will_end cannot fire for these -- they
+        // have no Stripe subscription -- so if this step stops running, nobody
+        // is told anything and the expired banner's promise goes back to being
+        // false.
+        let trialNotices: Record<string, unknown>;
+        try {
+          const { sendTrialExpiryNotices } = await import("@/lib/trial-expiry-emails.server");
+          const r = await sendTrialExpiryNotices();
+          trialNotices = {
+            considered: r.considered,
+            enqueued: r.enqueued,
+            // Reasons, counted, so a run that skips the same org every night
+            // is visible as a broken run rather than a quiet one.
+            skipped_reasons: r.outcomes.reduce<Record<string, number>>((acc, o) => {
+              if (o.status === "skipped" && o.reason) acc[o.reason] = (acc[o.reason] ?? 0) + 1;
+              return acc;
+            }, {}),
+            // Where the address came from. "owner_auth_email" means the org
+            // never set a contact address, which is true of every trial today.
+            resolved_from: r.outcomes.reduce<Record<string, number>>((acc, o) => {
+              acc[o.resolvedFrom] = (acc[o.resolvedFrom] ?? 0) + 1;
+              return acc;
+            }, {}),
+          };
+        } catch (e) {
+          console.error("[nightly] trial expiry notices failed", e);
+          trialNotices = { error: (e as Error).message };
+        }
+
         return json({
           ok: true,
           ran_at: new Date().toISOString(),
           orgs: summary,
           ai_overage: aiOverage,
+          trial_notices: trialNotices,
           routing_anchors: anchors,
         });
       },
