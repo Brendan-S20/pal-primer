@@ -8,6 +8,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
+import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
 import { Toaster } from "sonner";
 
 import appCss from "../styles.css?url";
@@ -80,7 +81,27 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      {
+        name: "viewport",
+        // NATIVE ONLY — a full-screen WebView is the only surface here with a
+        // safe area to opt into.
+        //
+        // viewport-fit=cover is what makes env(safe-area-inset-*) resolve to
+        // anything other than 0 on iOS. Without it every safe-area rule in
+        // this codebase — the tab bar's pb-[env(safe-area-inset-bottom)], the
+        // sheets, my-day's header padding — is silently inert inside the
+        // native shell, and the class-list tests still pass because the class
+        // IS there. iOS QA 2026-08-20 measured the bottom tab bar ending 9.3pt
+        // from the screen edge on a device whose inset is 34pt.
+        //
+        // Gated because it does NOT belong to the hosted app: `cover` changes
+        // how a page lays out in an installed PWA, and the web product has not
+        // asked for that. When the PWA is developed this is the line to
+        // revisit — see src/lib/native-build.ts.
+        content: IS_NATIVE_BUNDLE
+          ? "width=device-width, initial-scale=1, viewport-fit=cover"
+          : "width=device-width, initial-scale=1",
+      },
       { title: "HoundStack - Field Service App" },
       {
         name: "description",
@@ -92,9 +113,21 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:type", content: "website" },
       { property: "og:title", content: "HoundStack - Field Service App" },
       { name: "twitter:title", content: "HoundStack - Field Service App" },
-      { name: "description", content: "HoundStack runs routes, recurring visits, per-dog billing, and the field app for pet waste removal companies." },
-      { property: "og:description", content: "HoundStack runs routes, recurring visits, per-dog billing, and the field app for pet waste removal companies." },
-      { name: "twitter:description", content: "HoundStack runs routes, recurring visits, per-dog billing, and the field app for pet waste removal companies." },
+      {
+        name: "description",
+        content:
+          "HoundStack runs routes, recurring visits, per-dog billing, and the field app for pet waste removal companies.",
+      },
+      {
+        property: "og:description",
+        content:
+          "HoundStack runs routes, recurring visits, per-dog billing, and the field app for pet waste removal companies.",
+      },
+      {
+        name: "twitter:description",
+        content:
+          "HoundStack runs routes, recurring visits, per-dog billing, and the field app for pet waste removal companies.",
+      },
       { property: "og:image", content: appUrl("/og-image.png") },
       { property: "og:image:width", content: "1200" },
       { property: "og:image:height", content: "630" },
@@ -135,6 +168,28 @@ function RootComponent() {
   // Register the guarded service worker on real hosts only (see src/pwa/register.ts).
   useEffect(() => {
     import("../pwa/register").then((m) => m.registerPwa());
+  }, []);
+
+  // Take the native splash down once the app has actually painted, rather than
+  // on the config's timer. On the root route so it covers every surface a cold
+  // launch can land on — /auth is the one the native shell actually opens.
+  //
+  // Two rAFs: the first is scheduled before the next paint, the second runs
+  // after it, so by the time this fires there is real UI underneath the splash.
+  // Hiding on mount alone would swap the splash for an unpainted frame, which
+  // is the white gap this exists to remove, just shorter.
+  useEffect(() => {
+    let cancelled = false;
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        import("../lib/native").then((m) => m.hideSplashScreen()).catch(() => {});
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+    };
   }, []);
 
   // Android hardware back button (native shell only — web no-op): pop in-app

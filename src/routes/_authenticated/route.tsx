@@ -7,15 +7,11 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { useEffect } from "react";
-import type { User } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
-import {
-  clearPersistedReadCaches,
-  ensureReadCachePersistence,
-  readLastUser,
-} from "@/lib/offline/read-cache";
+import { clearPersistedReadCaches, ensureReadCachePersistence } from "@/lib/offline/read-cache";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
-import { isOfflineAuthFailure } from "@/lib/offline/read-cache-policy";
+import { resolveIdentity } from "@/lib/offline/identity";
+import { isDefinitelyOffline } from "@/lib/offline/connectivity";
+import { IS_NATIVE_BUNDLE, nativeTopBarStyle } from "@/lib/native-build";
 import { getMyOrg } from "@/lib/org.functions";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
@@ -40,8 +36,13 @@ import { useBrandAccent } from "@/hooks/useBrandAccent";
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async ({ context }) => {
-    const online = typeof navigator === "undefined" || navigator.onLine !== false;
-    const identity = await resolveIdentity(online);
+    // NATIVE ONLY: not navigator.onLine — see lib/offline/connectivity.ts, a
+    // WKWebView resumed from a dead zone can still be claiming to be online.
+    // The hosted app keeps the property it has always read.
+    const online = IS_NATIVE_BUNDLE
+      ? !isDefinitelyOffline()
+      : typeof navigator === "undefined" || navigator.onLine !== false;
+    const identity = await resolveIdentity();
     if (!identity.ok) {
       // A REJECTED identity has to take the device copy with it.
       //
@@ -108,57 +109,6 @@ export const Route = createFileRoute("/_authenticated")({
   },
   component: AppShell,
 });
-
-/**
- * Who is signed in, tolerating a dead connection.
- *
- * supabase.auth.getUser() is a NETWORK call, so offline it fails and the old
- * code read that as "not signed in" and redirected to /auth — the app's entire
- * offline story died here, before any cache could be consulted. The fallbacks
- * only ever apply when the failure looks like a lost network (never a 4xx from
- * the auth server), and they grant nothing but a read of data already on this
- * device; every server call still needs a real token.
- */
-type IdentityResult =
-  | { ok: true; userId: string; user: User | null }
-  /** `rejected` distinguishes "the server said no" from "we could not ask".
-   *  Only the first should wipe the device — wiping on the second would delete
-   *  the tech's day every time they open the app in a dead zone, which is the
-   *  case this whole feature exists for. */
-  | { ok: false; rejected: boolean };
-
-async function resolveIdentity(online: boolean): Promise<IdentityResult> {
-  let authError: unknown = null;
-  try {
-    const { data, error } = await supabase.auth.getUser();
-    if (data?.user) return { ok: true, userId: data.user.id, user: data.user };
-    authError = error;
-  } catch (e) {
-    authError = e;
-  }
-  // Not a transport failure: the server answered, and the answer was no.
-  if (!isOfflineAuthFailure(authError, { online })) return { ok: false, rejected: true };
-
-  // Local read of the persisted session — no network, still authoritative
-  // about which account this device belongs to.
-  try {
-    const { data } = await supabase.auth.getSession();
-    if (data.session?.user) {
-      return { ok: true, userId: data.session.user.id, user: data.session.user };
-    }
-  } catch {
-    /* fall through to the pointer below */
-  }
-
-  // The access token expired overnight and cannot be refreshed without a
-  // network: exactly the 7am-in-a-dead-zone case this feature exists for.
-  // The pointer is written only on a verified sign-in and deleted on sign-out,
-  // so it can only name a user whose session is still on this device.
-  const lastUser = readLastUser();
-  return lastUser
-    ? { ok: true, userId: lastUser, user: null }
-    : { ok: false, rejected: false };
-}
 
 function openPalette() {
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }));
@@ -277,6 +227,10 @@ function AppShell() {
         <AppSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <header
+            // NATIVE ONLY — extends the bar under the status bar and pads its
+            // contents clear of it. `h-14` alone put the search box and the
+            // bell underneath the clock as soon as the page scrolled.
+            style={nativeTopBarStyle(3.5)}
             className={`sticky top-[var(--hs-banner-h,0px)] z-30 flex h-14 items-center gap-2 border-b bg-card/80 px-4 backdrop-blur ${
               isMyDay ? myDayHeaderHidden : ""
             }`}
@@ -356,9 +310,7 @@ function AppShell() {
               place. Wide, with a limit. Top padding tightens too — a page that
               starts an inch down the screen wastes the most valuable band on
               it. */}
-          <main
-            className={`min-w-0 flex-1 px-4 pt-4 sm:px-6 sm:pt-5 ${mainBottomPadding}`}
-          >
+          <main className={`min-w-0 flex-1 px-4 pt-4 sm:px-6 sm:pt-5 ${mainBottomPadding}`}>
             <div className="mx-auto w-full max-w-[1600px]">
               <Outlet />
             </div>

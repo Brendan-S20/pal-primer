@@ -24,6 +24,23 @@ const codeOnly = (src: string) =>
 
 const BILLING_PAGE = "src/routes/_authenticated/settings.billing.tsx";
 
+/** The JSX expression container enclosing `index`, found by balancing braces
+ *  backwards. Returns the source from that `{` onwards, which is the scope a
+ *  gate written on the conditional actually governs. */
+function enclosingContainer(src: string, index: number): string {
+  const before = src.slice(0, index);
+  let depth = 0;
+  for (let i = before.length - 1; i >= 0; i--) {
+    const c = before[i];
+    if (c === "}") depth++;
+    else if (c === "{") {
+      if (depth === 0) return before.slice(i);
+      depth--;
+    }
+  }
+  return "";
+}
+
 describe("the decision function", () => {
   it("refuses a HoundStack purchase on both store platforms", () => {
     expect(saasPurchaseAllowed("ios")).toBe(false);
@@ -80,12 +97,37 @@ describe("the billing page", () => {
         }
       }
       expect(open, `could not find the JSX container around ${surface}`).toBeGreaterThan(-1);
-      expect(
-        before.slice(open),
-        `${surface} is rendered without a canBuySaas gate`,
-      ).toMatch(/canBuySaas/);
+      expect(before.slice(open), `${surface} is rendered without a canBuySaas gate`).toMatch(
+        /canBuySaas/,
+      );
     });
   }
+
+  // iOS QA 2026-08-20 found this one on a device: the plan picker, the card
+  // form and the add-ons were all correctly gated, and "Manage subscription"
+  // — Cancel, and Resume — was rendered on `data.isPaidTier` alone, so a store
+  // build still offered a way to CHANGE a HoundStack subscription. Resume is
+  // the sharper edge: it restarts a paid plan from inside the binary.
+  //
+  // Anchored on the heading rather than on `cancelSub.mutate()`, because the
+  // buttons sit inside `onClick={...}` and the nearest enclosing container of a
+  // call site is that attribute, which no gate would ever govern. The heading
+  // sits directly in the <section>, whose container is the conditional.
+  it("renders Manage subscription (cancel/resume) only when a purchase is allowed", () => {
+    const at = src.indexOf("Manage subscription");
+    expect(at, "Manage subscription heading is gone — retarget this test").toBeGreaterThan(-1);
+    expect(
+      enclosingContainer(src, at),
+      "cancel/resume is rendered without a canBuySaas gate",
+    ).toMatch(/canBuySaas/);
+  });
+
+  it("still tells a store user their subscription is set to cancel", () => {
+    // Gating the controls must not hide the STATUS: read-only account state is
+    // exactly what app-store-billing.ts says to keep. The Current plan card
+    // carries it, outside the gate.
+    expect(src).toMatch(/Cancels at period end/);
+  });
 
   it("says where billing lives instead of just hiding it", () => {
     expect(src).toMatch(/MANAGE_BILLING_ON_WEB/);
@@ -111,9 +153,7 @@ describe("the tenant's own money is deliberately not gated", () => {
   for (const f of CUSTOMER_PAYMENT_SURFACES) {
     it(`${f.split("/").pop()} still mounts a Payment Element on every platform`, () => {
       const src = codeOnly(read(f));
-      expect(src, `${f} no longer takes payment — retarget this test`).toMatch(
-        /<PaymentElement/,
-      );
+      expect(src, `${f} no longer takes payment — retarget this test`).toMatch(/<PaymentElement/);
       expect(
         src,
         `${f} was gated by store policy; it takes payment for a real-world service and must not be`,

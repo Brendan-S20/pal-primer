@@ -20,7 +20,13 @@ import {
 } from "@/components/client-detail/primitives";
 import { formatDay } from "@/lib/format";
 import { stripeAppearance } from "@/lib/stripe-appearance";
-import { getClientCredit, getClientBillingSummary, addClientCredit } from "@/lib/invoices.functions";
+import { withDeadline, ActionTimeout } from "@/lib/offline/run-or-queue";
+import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
+import {
+  getClientCredit,
+  getClientBillingSummary,
+  addClientCredit,
+} from "@/lib/invoices.functions";
 import {
   listClientPaymentMethods,
   setDefaultPaymentMethod,
@@ -114,7 +120,10 @@ export function BillingTab({ clientId }: { clientId: string }) {
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
           Promo and gift codes are managed in{" "}
-          <Link to="/settings/promotions" className="underline underline-offset-2 hover:text-foreground">
+          <Link
+            to="/settings/promotions"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
             Settings, Promotions
           </Link>
           .
@@ -346,8 +355,8 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
         <div>
           <h2 className="text-sm font-medium">Payment methods</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Card details are stored with our payment processor, never on HoundStack. Autopay
-            charges the default card.
+            Card details are stored with our payment processor, never on HoundStack. Autopay charges
+            the default card.
           </p>
         </div>
         <Button size="sm" variant="outline" onClick={() => setAddOpen((v) => !v)}>
@@ -395,7 +404,9 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
                   <CreditCard className="h-4 w-4 text-muted-foreground" />
                   <span className="capitalize">{m.brand}</span>
                   <span className="font-mono">····{m.last4}</span>
-                  <span className={`text-xs ${expired ? "font-medium text-destructive" : "text-muted-foreground"}`}>
+                  <span
+                    className={`text-xs ${expired ? "font-medium text-destructive" : "text-muted-foreground"}`}
+                  >
                     {String(m.expMonth).padStart(2, "0")}/{String(m.expYear).slice(-2)}
                     {expired ? " expired" : ""}
                   </span>
@@ -440,13 +451,39 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
   );
 }
 
+/** Same budget as the invoice pay form's PAYMENT_INTENT_DEADLINE_MS: several
+ *  Stripe round trips on the connected account, but finite. */
+const SETUP_INTENT_DEADLINE_MS = 25_000;
+
 // Inline card save via the Stripe Payment Element on the connected account —
 // replaces the old hosted-Checkout redirect (mirrors the portal save-card flow).
 function StaffCardSetup({ clientId, onDone }: { clientId: string; onDone: () => void }) {
   const createFn = useServerFn(createSetupIntentForClient);
   const q = useQuery({
     queryKey: ["staff-setup-intent", clientId],
-    queryFn: () => createFn({ data: { clientId } }),
+    // Bounded for the same reason the invoice pay form is (see
+    // StaffInvoicePayForm): `isLoading` drives the only thing on screen, so a
+    // call that never settles leaves "Loading secure card form…" up for ever
+    // with no error and nothing to press. Minting a SetupIntent moves no money
+    // and the handler reuses the client's Stripe customer, so a retry is safe.
+    queryFn: async () => {
+      // NATIVE ONLY — the web build keeps the plain await it has always had.
+      if (!IS_NATIVE_BUNDLE) return createFn({ data: { clientId } });
+      try {
+        return await withDeadline(
+          createFn({ data: { clientId } }),
+          SETUP_INTENT_DEADLINE_MS,
+          "card form",
+        );
+      } catch (e) {
+        if (e instanceof ActionTimeout) {
+          throw new Error(
+            "The secure card form is taking longer than expected to load. Check your connection and try again.",
+          );
+        }
+        throw e;
+      }
+    },
     retry: false,
     staleTime: 5 * 60 * 1000,
   });
@@ -455,7 +492,8 @@ function StaffCardSetup({ clientId, onDone }: { clientId: string; onDone: () => 
     [q.data?.publishableKey, q.data?.stripeAccount],
   );
 
-  if (q.isLoading) return <p className="text-sm text-muted-foreground">Loading secure card form…</p>;
+  if (q.isLoading)
+    return <p className="text-sm text-muted-foreground">Loading secure card form…</p>;
   if (q.error) return <p className="text-sm text-destructive">{(q.error as Error).message}</p>;
   if (!q.data || !stripePromise) return null;
 

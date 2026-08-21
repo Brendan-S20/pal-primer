@@ -31,6 +31,7 @@ import { logDnaSampleFromField } from "@/lib/dna.functions";
 import { sendVisitStatusSms } from "@/lib/messages.functions";
 import { TECH_SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
 import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
+import { nativeTopBarStyle } from "@/lib/native-build";
 import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { syncQueue } from "@/lib/offline/sync";
 import {
@@ -449,7 +450,8 @@ function MyDay() {
           z-index, so a fixed top-0 here vanished under it. */}
       <div
         className="sticky top-[var(--hs-banner-h,0px)] z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60"
-        style={{ paddingTop: "env(safe-area-inset-top)" }}
+        // Sizes to its content, so no height override — see nativeTopBarStyle.
+        style={nativeTopBarStyle()}
       >
         <div className="space-y-3 px-4 py-3">
           {(!online || pending > 0) && (

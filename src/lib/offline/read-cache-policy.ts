@@ -102,6 +102,32 @@ export function readCacheStorageKey(userId: string): string {
  * the network is gone and Supabase can no longer tell us who is signed in. */
 export const LAST_USER_KEY = `${READ_CACHE_KEY_PREFIX}last-user`;
 
+/** Where the last verified sign-in on this device landed — /my-day for a tech,
+ *  /routes for a dispatcher, /dashboard for an owner.
+ *
+ *  Resolving that path costs two network calls (is_platform_admin, then the
+ *  user's role), so offline there is no way to compute it. Without a remembered
+ *  answer the only safe default is /dashboard, which is the WRONG screen for
+ *  the one role that most needs the app to work in a dead zone.
+ *
+ *  Shares READ_CACHE_KEY_PREFIX deliberately: a role hint is exactly the kind
+ *  of thing that must not outlive a sign-out on a shared crew tablet, and
+ *  `clearPersistedReadCaches` sweeps this prefix. A key of its own would
+ *  survive, which is the bug that prefix sweeping exists to prevent. */
+export const LAST_LANDING_KEY = `${READ_CACHE_KEY_PREFIX}last-landing`;
+
+/** Paths a remembered landing may name. A value read back from device storage
+ *  is untrusted input — it is the target of a `navigate()` — so it is matched
+ *  against the closed set the resolver can actually produce rather than used
+ *  as given. */
+export const LANDING_PATHS = ["/dashboard", "/my-day", "/routes", "/platform"] as const;
+
+export type LandingPath = (typeof LANDING_PATHS)[number];
+
+export function isLandingPath(v: unknown): v is LandingPath {
+  return typeof v === "string" && (LANDING_PATHS as readonly string[]).includes(v);
+}
+
 /**
  * Whether this session may persist reads at all.
  *

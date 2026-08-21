@@ -28,9 +28,14 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<!-- arm64, not armv7. The Capacitor template ships armv7, which declares
+	     that this app REQUIRES a 32-bit ARM CPU — a thing no device Apple still
+	     supports has, and the opposite of true here: the deployment target is
+	     iOS 15 and the only slice built is arm64. Left as-is it is a false
+	     statement in the binary's own metadata about what hardware it needs. -->
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>HoundStack uses the camera so your crew can photograph completed work, gate or yard conditions, and DNA sample collections, and attach them to the visit record.</string>

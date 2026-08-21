@@ -20,6 +20,8 @@ import { Button } from "@/components/ui/button";
 import { SectionLabel } from "@/components/client-detail/primitives";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { stripeAppearance } from "@/lib/stripe-appearance";
+import { withDeadline, ActionTimeout } from "@/lib/offline/run-or-queue";
+import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
 import {
   getInvoiceDetail,
   createInvoicePaymentIntent,
@@ -32,6 +34,11 @@ import {
 // Contracts for the credit/autopay server fns (owned by invoices.functions.ts).
 type ChargeAutopayResult = { appliedCreditCents: number; chargedCents: number; status: string };
 type ApplyCreditResult = { appliedCents: number; remainingDueCents: number; invoiceStatus: string };
+
+/** How long the secure card form may take to arrive before the staff member is
+ *  told something is wrong. Generous — it covers several Stripe round trips on
+ *  the org's connected account — but finite, which is the whole point. */
+const PAYMENT_INTENT_DEADLINE_MS = 25_000;
 
 function fmtCents(c: number | null | undefined, currency = "usd") {
   return new Intl.NumberFormat("en-US", {
@@ -124,8 +131,7 @@ export function StaffInvoicePayForm({
 
   // 1. Saved card — credits auto-apply first, then the card is charged.
   const chargeMut = useMutation({
-    mutationFn: async () =>
-      (await chargeAutopayFn({ data: { invoiceId } })) as ChargeAutopayResult,
+    mutationFn: async () => (await chargeAutopayFn({ data: { invoiceId } })) as ChargeAutopayResult,
     onSuccess: (r) => {
       const parts: string[] = [];
       if (r.appliedCreditCents > 0)
@@ -144,8 +150,7 @@ export function StaffInvoicePayForm({
 
   // 2. Account credit only.
   const creditMut = useMutation({
-    mutationFn: async () =>
-      (await applyCreditFn({ data: { invoiceId } })) as ApplyCreditResult,
+    mutationFn: async () => (await applyCreditFn({ data: { invoiceId } })) as ApplyCreditResult,
     onSuccess: (r) => {
       toast.success(
         r.remainingDueCents > 0
@@ -165,8 +170,38 @@ export function StaffInvoicePayForm({
     amountCents: number;
     currency: string;
   } | null>(null);
+  // Bounded, because an unbounded await here has no visible failure state at
+  // all: `isPending` drives the button's only label, so a call that never
+  // settles leaves "Preparing secure form…" on screen for ever, disabled, with
+  // no error, no timeout and no way forward. iOS QA 2026-08-20 sat on exactly
+  // that for 80+ seconds taking a $1,425 invoice — screenshots at 20s and 80s
+  // byte-identical — while the saved-card SetupIntent on the same client
+  // mounted fine, so Stripe.js and the connected account were both healthy.
+  //
+  // Retrying is safe, which is what makes a deadline the right shape here:
+  // createInvoicePaymentIntent REUSES `invoice.stripe_payment_intent_id` when
+  // one exists rather than minting a second, and no money moves until the
+  // customer confirms in the Element. withDeadline does not cancel the call it
+  // gave up on; a late reply just lands on an intent the next attempt adopts.
   const intentM = useMutation({
-    mutationFn: async () => intentFn({ data: { id: invoiceId } }),
+    mutationFn: async () => {
+      // NATIVE ONLY — the web build keeps the plain await it has always had.
+      if (!IS_NATIVE_BUNDLE) return intentFn({ data: { id: invoiceId } });
+      try {
+        return await withDeadline(
+          intentFn({ data: { id: invoiceId } }),
+          PAYMENT_INTENT_DEADLINE_MS,
+          "payment form",
+        );
+      } catch (e) {
+        if (e instanceof ActionTimeout) {
+          throw new Error(
+            "The secure card form is taking longer than expected to load. Check your connection and try again.",
+          );
+        }
+        throw e;
+      }
+    },
     onSuccess: (r) => setIntent(r),
     onError: (e: Error) => toast.error(e.message),
   });
@@ -267,14 +302,34 @@ export function StaffInvoicePayForm({
       <div className="rounded-lg border bg-card p-3">
         <SectionLabel>New card</SectionLabel>
         {!intent ? (
-          <Button
-            variant={hasSavedCard || creditCents > 0 ? "outline" : "default"}
-            className="mt-2 w-full"
-            disabled={intentM.isPending}
-            onClick={() => intentM.mutate()}
-          >
-            {intentM.isPending ? "Preparing secure form…" : "Enter card or bank details"}
-          </Button>
+          <>
+            <Button
+              variant={hasSavedCard || creditCents > 0 ? "outline" : "default"}
+              className="mt-2 w-full"
+              disabled={intentM.isPending}
+              onClick={() => intentM.mutate()}
+            >
+              {intentM.isPending
+                ? "Preparing secure form…"
+                : // NATIVE ONLY — web keeps the original single label.
+                  IS_NATIVE_BUNDLE && intentM.isError
+                  ? "Try again"
+                  : "Enter card or bank details"}
+            </Button>
+            {/* NATIVE ONLY — web keeps the toast alone.
+                Inline as well as the toast, because this panel opens the card
+                form on its own when there is no saved card and no credit: the
+                person looking at it never pressed anything, and a toast that
+                has already faded leaves them staring at a button whose label is
+                the only evidence anything went wrong. */}
+            {IS_NATIVE_BUNDLE && intentM.isError && (
+              <p className="mt-1.5 text-xs text-destructive">
+                {intentM.error instanceof Error
+                  ? intentM.error.message
+                  : "Couldn't open the secure card form."}
+              </p>
+            )}
+          </>
         ) : (
           <div className="mt-2">
             <Elements
@@ -365,7 +420,11 @@ function PayElementForm({
           {error}
         </div>
       )}
-      <Button type="submit" className="w-full" disabled={!stripe || !elements || !ready || submitting}>
+      <Button
+        type="submit"
+        className="w-full"
+        disabled={!stripe || !elements || !ready || submitting}
+      >
         {submitting ? "Processing…" : `Pay ${fmtCents(amountCents, currency)} by card or bank`}
       </Button>
     </form>

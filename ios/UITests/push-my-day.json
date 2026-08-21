@@ -1,0 +1,8 @@
+{
+  "aps": {
+    "alert": { "title": "Route update", "body": "Tap to open the deep-linked screen" },
+    "sound": "default",
+    "badge": 1
+  },
+  "url": "/my-day"
+}

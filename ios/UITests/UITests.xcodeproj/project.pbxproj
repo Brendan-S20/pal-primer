@@ -1,0 +1,236 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A1000000000000000000001 /* HoundStackUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000010 /* HoundStackUITests.swift */; };
+		A1000000000000000000002 /* AppDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000011 /* AppDriver.swift */; };
+		A1000000000000000000004 /* ScrollSweep.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000013 /* ScrollSweep.swift */; };
+		A1000000000000000000005 /* TourWalk.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000014 /* TourWalk.swift */; };
+		A1000000000000000000006 /* Geometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000015 /* Geometry.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A1000000000000000000010 /* HoundStackUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoundStackUITests.swift; sourceTree = "<group>"; };
+		A1000000000000000000011 /* AppDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDriver.swift; sourceTree = "<group>"; };
+		A1000000000000000000013 /* ScrollSweep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollSweep.swift; sourceTree = "<group>"; };
+		A1000000000000000000014 /* TourWalk.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TourWalk.swift; sourceTree = "<group>"; };
+		A1000000000000000000015 /* Geometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Geometry.swift; sourceTree = "<group>"; };
+		A1000000000000000000020 /* HoundStackUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HoundStackUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A1000000000000000000030 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A1000000000000000000040 = {
+			isa = PBXGroup;
+			children = (
+				A1000000000000000000041 /* HoundStackUITests */,
+				A1000000000000000000042 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A1000000000000000000041 /* HoundStackUITests */ = {
+			isa = PBXGroup;
+			children = (
+				A1000000000000000000010 /* HoundStackUITests.swift */,
+				A1000000000000000000011 /* AppDriver.swift */,
+				A1000000000000000000013 /* ScrollSweep.swift */,
+				A1000000000000000000014 /* TourWalk.swift */,
+				A1000000000000000000015 /* Geometry.swift */,
+			);
+			path = HoundStackUITests;
+			sourceTree = "<group>";
+		};
+		A1000000000000000000042 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A1000000000000000000020 /* HoundStackUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A1000000000000000000050 /* HoundStackUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1000000000000000000060 /* Build configuration list for PBXNativeTarget "HoundStackUITests" */;
+			buildPhases = (
+				A1000000000000000000031 /* Sources */,
+				A1000000000000000000030 /* Frameworks */,
+				A1000000000000000000032 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HoundStackUITests;
+			productName = HoundStackUITests;
+			productReference = A1000000000000000000020 /* HoundStackUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A1000000000000000000070 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					A1000000000000000000050 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+				};
+			};
+			buildConfigurationList = A1000000000000000000080 /* Build configuration list for PBXProject "UITests" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A1000000000000000000040;
+			productRefGroup = A1000000000000000000042 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A1000000000000000000050 /* HoundStackUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A1000000000000000000032 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A1000000000000000000031 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000000000000000000001 /* HoundStackUITests.swift in Sources */,
+				A1000000000000000000002 /* AppDriver.swift in Sources */,
+				A1000000000000000000004 /* ScrollSweep.swift in Sources */,
+				A1000000000000000000005 /* TourWalk.swift in Sources */,
+				A1000000000000000000006 /* Geometry.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A1000000000000000000090 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A1000000000000000000091 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A1000000000000000000092 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = consulting.thenorth.pal.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A1000000000000000000093 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = consulting.thenorth.pal.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A1000000000000000000060 /* Build configuration list for PBXNativeTarget "HoundStackUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1000000000000000000092 /* Debug */,
+				A1000000000000000000093 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A1000000000000000000080 /* Build configuration list for PBXProject "UITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1000000000000000000090 /* Debug */,
+				A1000000000000000000091 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A1000000000000000000070 /* Project object */;
+}

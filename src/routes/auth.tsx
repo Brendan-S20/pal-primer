@@ -10,6 +10,11 @@ import { Label } from "@/components/ui/label";
 import { CheckCircle2 } from "lucide-react";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/scoop";
 import { PublicShell } from "@/components/PublicShell";
+import { resolveIdentity } from "@/lib/offline/identity";
+import { isDefinitelyOffline } from "@/lib/offline/connectivity";
+import { withDeadline } from "@/lib/offline/run-or-queue";
+import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
+import { rememberLandingPath, readLandingPath } from "@/lib/offline/read-cache";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -21,10 +26,17 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
-// Where a given role should land immediately after sign-in.
-async function landingPathForUser(userId: string): Promise<string> {
-  // Platform admins always land in the platform console — never inside a tenant
-  // dashboard (impersonation uses a separate magic-link session for that).
+/** Two Supabase round trips. Bounded because this sits between "we know who
+ *  you are" and `navigate()` — an unbounded await here strands the user on the
+ *  sign-in form just as surely as failing to identify them would. Native only;
+ *  the web build awaits the lookup exactly as it always has. */
+const LANDING_DEADLINE_MS = 5_000;
+
+/** The two queries themselves, shared by both platforms so there is one
+ *  definition of which role lands where. */
+async function lookupLandingPath(userId: string): Promise<string> {
+  // Platform admins always land in the platform console — never inside a
+  // tenant dashboard (impersonation uses a separate magic-link session).
   const { data: isPlatform } = await supabase.rpc("is_platform_admin", { _user_id: userId });
   if (isPlatform) return "/platform";
 
@@ -36,9 +48,43 @@ async function landingPathForUser(userId: string): Promise<string> {
   const role = data?.role;
   if (role === "tech") return "/my-day";
   if (role === "dispatcher") return "/routes";
-  if (role === "owner" || role === "office_manager") return "/dashboard";
-  // No role yet (fresh signup) → dashboard triggers onboarding.
+  // owner, office_manager, or no role yet (fresh signup, where /dashboard
+  // triggers onboarding).
   return "/dashboard";
+}
+
+// Where a given role should land immediately after sign-in.
+//
+// WEB: exactly what it has always done — await the two queries and return.
+//
+// NATIVE ONLY, below: both lookups are network calls, so in a dead zone this
+// cannot be computed at all. It therefore remembers its answer and reads that
+// back when it cannot ask; falling back to a blanket /dashboard would send a
+// TECH — the one role whose whole job happens where the signal is worst — to a
+// page they do not use.
+//
+// TWO guards, not one, and the second is the one that was missing first time.
+// Checking `isDefinitelyOffline` means the known-offline case makes no request
+// at all. But a try/catch alone does not save the case where we THINK we are
+// online and are not: a Supabase call against a dead network does not reject
+// promptly, it hangs, and `catch` never runs. Instrumenting the built bundle
+// against a blocked API showed exactly that — resolveIdentity correctly
+// recovered the user from the device, and then this function never returned, so
+// `navigate()` was never reached and the sign-in form stayed up. Same shape as
+// the bug in lib/offline/action-owner.ts: code only ever reached when offline,
+// quietly depending on being online.
+async function landingPathForUser(userId: string): Promise<string> {
+  if (!IS_NATIVE_BUNDLE) return lookupLandingPath(userId);
+
+  const remembered = readLandingPath();
+  if (isDefinitelyOffline()) return remembered ?? "/dashboard";
+  try {
+    const path = await withDeadline(lookupLandingPath(userId), LANDING_DEADLINE_MS, "landing path");
+    rememberLandingPath(path);
+    return path;
+  } catch {
+    return remembered ?? "/dashboard";
+  }
 }
 
 function AuthPage() {
@@ -54,17 +100,60 @@ function AuthPage() {
   useEffect(() => {
     // If already signed in (incl. returning from an OAuth redirect), ensure
     // org bootstrap, then land — brand-new orgs go to the onboarding path.
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (!data.user) return;
+    //
+    // WEB: unchanged. `supabase.auth.getUser()` is a network call, and on the
+    // hosted app that is fine — you cannot reach app.houndstack.com without one.
+    if (!IS_NATIVE_BUNDLE) {
+      supabase.auth.getUser().then(async ({ data }) => {
+        if (!data.user) return;
+        let isNewOrg = false;
+        try {
+          isNewOrg = await ensureBootstrapped(data.user as any);
+        } catch (err) {
+          console.error("bootstrap on landing failed", err);
+        }
+        const to = isNewOrg ? "/onboarding" : await landingPathForUser(data.user.id);
+        navigate({ to });
+      });
+      return;
+    }
+
+    // NATIVE ONLY — THIS IS THE SCREEN A COLD LAUNCH LANDS ON. The app boots at
+    // `capacitor://localhost/`, and routes/index.tsx sends `/` here
+    // unconditionally, so this effect is the only thing that moves an
+    // already-signed-in user onward. The web path above, run inside the binary,
+    // meant a tech with no signal was parked on a sign-in form they could not
+    // submit, holding a valid session that was sitting on the device the whole
+    // time. iOS QA 2026-08-20 reproduced it with Wi-Fi off: kill, relaunch,
+    // sign-in wall.
+    //
+    // resolveIdentity answers from the device when the network cannot be
+    // reached, and is bounded so a hanging token refresh cannot park the app
+    // here either. A REJECTED identity still falls through to the form, which
+    // is correct: that is the auth server saying no, not a dead zone.
+    let cancelled = false;
+    void (async () => {
+      const identity = await resolveIdentity();
+      if (cancelled || !identity.ok) return;
+
+      // Bootstrap is a write and needs a live user object and a network; both
+      // are absent on the offline path, and skipping it is right there — an
+      // existing org has nothing to bootstrap.
       let isNewOrg = false;
-      try {
-        isNewOrg = await ensureBootstrapped(data.user as any);
-      } catch (err) {
-        console.error("bootstrap on landing failed", err);
+      if (identity.user && !isDefinitelyOffline()) {
+        try {
+          isNewOrg = await ensureBootstrapped(identity.user as any);
+        } catch (err) {
+          console.error("bootstrap on landing failed", err);
+        }
       }
-      const to = isNewOrg ? "/onboarding" : await landingPathForUser(data.user.id);
-      navigate({ to });
-    });
+      if (cancelled) return;
+      const to = isNewOrg ? "/onboarding" : await landingPathForUser(identity.userId);
+      if (!cancelled) navigate({ to });
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [navigate]);
 
   const handleSignIn = async (e: React.FormEvent) => {
@@ -181,140 +270,140 @@ function AuthPage() {
 
   return (
     <PublicShell tagline={APP_DESCRIPTION}>
-        <div className="rounded-xl border bg-card p-6 shadow-sm">
-          <h1 className="text-lg font-semibold">
-            {stage === "email" ? "Sign in or create your account" : "Welcome back"}
-          </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {stage === "email" ? "Enter your work email to continue." : email}
-          </p>
+      <div className="rounded-xl border bg-card p-6 shadow-sm">
+        <h1 className="text-lg font-semibold">
+          {stage === "email" ? "Sign in or create your account" : "Welcome back"}
+        </h1>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          {stage === "email" ? "Enter your work email to continue." : email}
+        </p>
 
-          {stage === "email" ? (
-            <form onSubmit={continueWithEmail} className="mt-4 space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="si-email">Work email</Label>
-                <Input
-                  id="si-email"
-                  type="email"
-                  required
-                  autoFocus
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@yourbusiness.com"
-                />
+        {stage === "email" ? (
+          <form onSubmit={continueWithEmail} className="mt-4 space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="si-email">Work email</Label>
+              <Input
+                id="si-email"
+                type="email"
+                required
+                autoFocus
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@yourbusiness.com"
+              />
+            </div>
+            <Button type="submit" disabled={loading || !emailValid} className="w-full">
+              {loading ? "Checking…" : "Continue"}
+            </Button>
+          </form>
+        ) : (
+          <form onSubmit={handleSignIn} className="mt-4 space-y-3">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="si-pw">Password</Label>
+                <button
+                  type="button"
+                  onClick={forgotPassword}
+                  disabled={loading}
+                  className="text-xs text-muted-foreground underline underline-offset-2 hover:text-primary"
+                >
+                  Forgot password?
+                </button>
               </div>
-              <Button type="submit" disabled={loading || !emailValid} className="w-full">
-                {loading ? "Checking…" : "Continue"}
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={handleSignIn} className="mt-4 space-y-3">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="si-pw">Password</Label>
-                  <button
-                    type="button"
-                    onClick={forgotPassword}
-                    disabled={loading}
-                    className="text-xs text-muted-foreground underline underline-offset-2 hover:text-primary"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
-                <Input
-                  id="si-pw"
-                  type="password"
-                  required
-                  autoFocus
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-              <Button type="submit" disabled={loading} className="w-full">
-                {loading ? "Signing in…" : "Sign in"}
-              </Button>
-              <button
-                type="button"
-                onClick={() => {
-                  setStage("email");
-                  setPassword("");
-                  setAlert(null);
-                }}
-                className="w-full text-center text-xs text-muted-foreground underline underline-offset-2 hover:text-primary"
-              >
-                Use a different email
-              </button>
-            </form>
-          )}
+              <Input
+                id="si-pw"
+                type="password"
+                required
+                autoFocus
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            <Button type="submit" disabled={loading} className="w-full">
+              {loading ? "Signing in…" : "Sign in"}
+            </Button>
+            <button
+              type="button"
+              onClick={() => {
+                setStage("email");
+                setPassword("");
+                setAlert(null);
+              }}
+              className="w-full text-center text-xs text-muted-foreground underline underline-offset-2 hover:text-primary"
+            >
+              Use a different email
+            </button>
+          </form>
+        )}
 
-          {/* OAuth lives under the email sign-in (re-review), with brand marks. */}
-          <div className="relative my-5">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center">
-              <span className="bg-card px-2 text-xs text-muted-foreground">or continue with</span>
-            </div>
+        {/* OAuth lives under the email sign-in (re-review), with brand marks. */}
+        <div className="relative my-5">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t" />
           </div>
-          <div className="space-y-2">
-            {/* Google disabled too for now (Brendan, 2026-07-14) — same teaser
+          <div className="relative flex justify-center">
+            <span className="bg-card px-2 text-xs text-muted-foreground">or continue with</span>
+          </div>
+        </div>
+        <div className="space-y-2">
+          {/* Google disabled too for now (Brendan, 2026-07-14) — same teaser
                 treatment as Apple/Facebook until the provider config is
                 settled. Re-wire onClick={() => oauthSignIn("google")} to
                 re-enable; the whole flow underneath stays built. */}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full justify-center gap-2"
+            disabled
+            title="Coming soon"
+          >
+            <GoogleIcon /> Google
+            <span className="text-3xs font-normal text-muted-foreground">soon</span>
+          </Button>
+          {/* Apple/Facebook aren't configured yet — shown disabled as a
+                teaser rather than wired to a broken flow (Brendan's call). */}
+          <div className="grid grid-cols-2 gap-2">
             <Button
               type="button"
               variant="outline"
-              className="w-full justify-center gap-2"
+              className="justify-center gap-2"
               disabled
               title="Coming soon"
             >
-              <GoogleIcon /> Google
+              <AppleIcon /> Apple
               <span className="text-3xs font-normal text-muted-foreground">soon</span>
             </Button>
-            {/* Apple/Facebook aren't configured yet — shown disabled as a
-                teaser rather than wired to a broken flow (Brendan's call). */}
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="justify-center gap-2"
-                disabled
-                title="Coming soon"
-              >
-                <AppleIcon /> Apple
-                <span className="text-3xs font-normal text-muted-foreground">soon</span>
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="justify-center gap-2"
-                disabled
-                title="Coming soon"
-              >
-                <FacebookIcon /> Facebook
-                <span className="text-3xs font-normal text-muted-foreground">soon</span>
-              </Button>
-            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-center gap-2"
+              disabled
+              title="Coming soon"
+            >
+              <FacebookIcon /> Facebook
+              <span className="text-3xs font-normal text-muted-foreground">soon</span>
+            </Button>
           </div>
         </div>
+      </div>
 
-        {alert && (
-          <div
-            role={alert.kind === "error" ? "alert" : "status"}
-            className={
-              alert.kind === "error"
-                ? "flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
-                : "flex items-start gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-400"
-            }
-          >
-            {alert.kind === "info" && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />}
-            <span>{alert.text}</span>
-          </div>
-        )}
+      {alert && (
+        <div
+          role={alert.kind === "error" ? "alert" : "status"}
+          className={
+            alert.kind === "error"
+              ? "flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
+              : "flex items-start gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-400"
+          }
+        >
+          {alert.kind === "info" && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />}
+          <span>{alert.text}</span>
+        </div>
+      )}
 
-        <p className="text-center text-xs text-muted-foreground">
-          New here? Entering your email above walks you straight into account setup.
-        </p>
+      <p className="text-center text-xs text-muted-foreground">
+        New here? Entering your email above walks you straight into account setup.
+      </p>
     </PublicShell>
   );
 }
