@@ -158,7 +158,7 @@ function UsersPage() {
                                 onClick={() => toggleExpand(u.staff_id)}
                                 // MEASURED 2026-08-19: 16.0px — a bare glyph with
                                 // no box at all, x7 rows.
-                                className="text-muted-foreground hover:text-foreground max-md:inline-flex max-md:min-h-11 max-md:min-w-11 max-md:items-center max-md:justify-center"
+                                className="text-muted-foreground hover:text-foreground max-md:inline-flex touch:min-h-11 touch:min-w-11 max-md:items-center max-md:justify-center"
                               >
                                 {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                               </button>
@@ -307,7 +307,7 @@ function InvitePanel() {
               value={role}
               onChange={(e) => setRole(e.target.value as any)}
               // MEASURED 2026-08-19: 40.0px, four short.
-              className="h-10 rounded-md border bg-background px-3 text-sm max-md:min-h-11"
+              className="h-10 rounded-md border bg-background px-3 text-sm touch:min-h-11"
             >
               {INVITE_ROLES.map((r) => (
                 <option key={r} value={r}>

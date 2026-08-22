@@ -772,8 +772,21 @@ export function RouteMap({
       // the answer for anyone who does not want to scroll to zoom at all.
       className={
         "relative isolate rounded-lg border overflow-hidden z-0 " +
-        "max-md:[&_.leaflet-control-zoom_a]:h-11 max-md:[&_.leaflet-control-zoom_a]:w-11 " +
-        "max-md:[&_.leaflet-control-zoom_a]:leading-[2.75rem]"
+        // `touch:`, not `max-md:`. Leaflet's zoom buttons are 30px out of the
+        // box, and the width-based escape stopped at 767px — so on an iPad,
+        // where the map is biggest and pinch-zoom competes with page scroll,
+        // the two controls that avoid scrolling to zoom at all were the
+        // smallest targets on the screen.
+        // `!` is load bearing, and it took a measurement to find out. Leaflet
+        // adds its own `leaflet-touch` class on a touch device and ships
+        // `.leaflet-touch .leaflet-bar a { width:30px; height:30px }` — the
+        // same specificity as the override below, so the tie went to whichever
+        // stylesheet came last, and it was not this one. The override was
+        // being beaten by the exact condition it exists to handle: it looked
+        // correct in the source, compiled correctly into the stylesheet, and
+        // measured 30.0px in the browser.
+        "touch:[&_.leaflet-control-zoom_a]:!h-11 touch:[&_.leaflet-control-zoom_a]:!w-11 " +
+        "touch:[&_.leaflet-control-zoom_a]:!leading-[2.75rem]"
       }
     >
       <div ref={containerRef} className="absolute inset-0" />

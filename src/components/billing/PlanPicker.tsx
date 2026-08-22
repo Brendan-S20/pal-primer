@@ -82,7 +82,7 @@ export function PlanPicker({
       // customer is billed monthly or yearly. Found the first time
       // /settings/billing was put through the viewport sweep, which is the
       // point: the page had never been measured at 360px.
-      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors max-md:flex max-md:min-h-11 max-md:flex-1 max-md:items-center max-md:justify-center ${
+      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors max-md:flex touch:min-h-11 max-md:flex-1 max-md:items-center max-md:justify-center ${
         billingInterval === value
           ? "bg-background text-foreground shadow-sm"
           : "text-muted-foreground hover:text-foreground"

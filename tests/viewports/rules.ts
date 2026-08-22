@@ -36,6 +36,54 @@ export const WIDTHS = [
 ] as const;
 
 /**
+ * The sizes Apple actually ships, in CSS pixels.
+ *
+ * ── WHY THESE AND NOT THE FOUR ABOVE ──────────────────────────────────────
+ *
+ * The four canonical widths are a good contract and a poor census. They test
+ * one phone width and one tablet width, and every real fault found on the
+ * device during the 2026-08 iOS pass was at a size not in that list: the app
+ * ships to a 402pt phone, and the iPad band the working agreement warns about
+ * ("usually fails between 640 and 1024") is represented there by a single
+ * point at 768.
+ *
+ * So this is the device list, chosen to bracket rather than to enumerate —
+ * each entry is a size where a layout can newly break, not merely a model
+ * Apple sells:
+ *
+ *   * 320 — the narrowest screen still running current iOS. CLAUDE.md calls
+ *     320-360 "a real phone, not an edge case"; only the top of that range
+ *     was ever measured.
+ *   * 390 / 402 — the two commonest modern iPhones. 402 is the simulator the
+ *     device tests run on, so a failure here is reproducible by hand.
+ *   * 430 — the largest phone. Catches the opposite fault from 320: a phone
+ *     layout that assumed it was cramped and looks empty when it is not.
+ *   * 744 / 820 — iPad mini and Air in PORTRAIT. Both land in the 640-1024
+ *     band, on either side of the `md` breakpoint at 768, which is exactly
+ *     where a layout with only phone and desktop branches comes apart.
+ *   * 1024 — iPad Pro portrait and iPad Air landscape. The `lg` boundary.
+ *   * 1366 — iPad Pro landscape: desktop-width, touch-input. Anything
+ *     hover-only is wrong here and nothing about the width says so.
+ *
+ * Heights are the real ones, because a short landscape viewport is its own
+ * failure mode — a bottom sheet sized for an 874pt portrait phone runs off a
+ * 430pt landscape one.
+ */
+export const APPLE_SIZES = [
+  { w: 320, h: 568, label: "320×568 · iPhone SE (1st gen)" },
+  { w: 375, h: 667, label: "375×667 · iPhone SE (2nd/3rd)" },
+  { w: 390, h: 844, label: "390×844 · iPhone 13/14/15" },
+  { w: 402, h: 874, label: "402×874 · iPhone 16 Pro" },
+  { w: 430, h: 932, label: "430×932 · iPhone Pro Max" },
+  { w: 744, h: 1133, label: "744×1133 · iPad mini portrait" },
+  { w: 820, h: 1180, label: "820×1180 · iPad Air portrait" },
+  { w: 1024, h: 1366, label: "1024×1366 · iPad Pro portrait" },
+  { w: 1180, h: 820, label: "1180×820 · iPad Air landscape" },
+  { w: 1366, h: 1024, label: "1366×1024 · iPad Pro landscape" },
+  { w: 844, h: 390, label: "844×390 · iPhone landscape" },
+] as const;
+
+/**
  * THE rule, stated first in the working agreement: "No horizontal page
  * scroll, ever." Wide content scrolls inside its own container; the body
  * does not.
@@ -261,6 +309,26 @@ export async function findControlsUnder44px(page: Page): Promise<string[]> {
     for (const el of controls) {
       const r = el.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) continue;
+
+      // ── ONE EXEMPTION, STATED RATHER THAN SILENT ────────────────────────
+      //
+      // Map markers. A route map draws one pin per stop, numbered, and on a
+      // dense day that is thirty pins inside a few hundred pixels. Growing
+      // each to 44px does not make them easier to hit — it makes them overlap,
+      // so the pin you land on is the wrong one and the map stops showing the
+      // shape of the route, which is the only reason it is on the dashboard.
+      // Apple's own MapKit annotations are ~30px for exactly this reason.
+      //
+      // Scoped to Leaflet's marker pane, so it exempts pins and nothing else:
+      // the zoom controls, the attribution links and every control drawn over
+      // the map are still measured. They are the ones a finger is actually
+      // aimed at, and one of them — Leaflet's own +/- at 30px — was a real
+      // finding this sweep caught and would have kept catching.
+      //
+      // Recorded here instead of quietly dropped, because a rule with an
+      // undocumented hole is a rule nobody can trust. If pins ever become the
+      // primary way to open a stop, this exemption is the thing to revisit.
+      if (el.closest(".leaflet-marker-pane, .leaflet-overlay-pane")) continue;
       const cs = getComputedStyle(el);
       if (cs.visibility === "hidden" || cs.display === "none") continue;
       // A checkbox or radio may be a small box with a larger hit area
@@ -324,8 +392,26 @@ export async function findControlsUnder44px(page: Page): Promise<string[]> {
         if (label) height = Math.max(height, label.getBoundingClientRect().height);
       }
       if (height < 44 - 0.5) {
+        // A CLASS FINGERPRINT, because the label is not enough to find it.
+        //
+        // The first pass of this audit printed tag + text, and half the
+        // findings could not be located: a chip labelled "Mon 17 · 8 visits"
+        // is composed at runtime, so grepping the source for the text the
+        // sweep printed returns nothing. Two of the fixes that followed went
+        // into the wrong component for exactly this reason and changed
+        // nothing while looking correct.
+        //
+        // Tailwind class lists ARE greppable, and the distinctive ones — the
+        // padding and type-size utilities that made the control small — are
+        // what a fix has to change anyway. Trimmed to the first few so the
+        // finding stays one readable line.
+        const cls = (el.getAttribute("class") ?? "")
+          .split(/\s+/)
+          .filter((c) => /^(p|px|py|h|min-h|text|gap|rounded)-/.test(c))
+          .slice(0, 6)
+          .join(" ");
         out.push(
-          `<${el.tagName.toLowerCase()}${type ? ` type=${type}` : ""}> "${(el.textContent ?? "").trim().slice(0, 32)}" is ${height.toFixed(1)}px tall`,
+          `<${el.tagName.toLowerCase()}${type ? ` type=${type}` : ""}> "${(el.textContent ?? "").trim().slice(0, 32)}" is ${height.toFixed(1)}px tall${cls ? ` [${cls}]` : ""}`,
         );
       }
     }

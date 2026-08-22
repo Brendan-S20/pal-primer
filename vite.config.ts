@@ -49,6 +49,24 @@ export default defineConfig({
       ? {
           spa: {
             enabled: true,
+            // The shell is prerendered by requesting this path with the
+            // TSS_SHELL header. It defaulted to "/", which is the one route in
+            // this app whose beforeLoad throws a redirect (routes/index.tsx
+            // sends everyone to /auth), so the shell's <head> was generated
+            // from a render that never produced a page: index.html shipped the
+            // root's generic title while the first screen is always /auth.
+            //
+            // WHAT THIS DOES NOT FIX, so nobody re-runs the investigation: the
+            // React #418 hydration error on every cold launch is NOT this.
+            // Changing the mask path leaves the prerendered <body> byte-for-byte
+            // identical — TSS_SHELL renders the shell only, so the outlet is an
+            // empty RESOLVED Suspense boundary (`<!--$--><!--/$-->`, not a
+            // pending `<!--$?-->`) whichever path is used, and the client then
+            // hydrates a real route into it. Measured, not assumed: removing
+            // <Toaster> did not change it either, and it reproduces in desktop
+            // Chromium against dist-native/client, so it is neither ours nor
+            // iOS-specific. See docs/ios-qa-results.md.
+            maskPath: "/auth",
             prerender: { enabled: true, outputPath: "/index.html" },
           },
         }
@@ -93,6 +111,21 @@ export default defineConfig({
       ? {
           define: {
             "import.meta.env.VITE_NATIVE_API_ORIGIN": JSON.stringify(NATIVE_API_ORIGIN),
+            // "This bundle is the one inside the app binary."
+            //
+            // A SEPARATE key from the origin above, deliberately. The origin
+            // answers "where do server functions go"; this answers "may I
+            // change how the product looks and behaves". Overloading one on the
+            // other would mean a future staging origin silently switching UI
+            // branches on, which is exactly the class of accident this flag
+            // exists to prevent.
+            //
+            // Native-only, like its neighbour, so the key is simply ABSENT from
+            // import.meta.env in the hosted build and every branch that reads
+            // src/lib/native-build.ts folds away. `main` deploys straight to
+            // app.houndstack.com, so an iOS fix that reaches `src/` is live on
+            // the web the moment it merges — see docs/ios-qa-results.md.
+            "import.meta.env.VITE_NATIVE_BUNDLE": JSON.stringify("1"),
           },
         }
       : {}),

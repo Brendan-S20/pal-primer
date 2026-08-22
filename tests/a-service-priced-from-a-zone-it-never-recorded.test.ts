@@ -159,6 +159,6 @@ describe("a row that drifted before the fix says so", () => {
 
   it("gives the chip's button a touch target", () => {
     const chip = src().slice(src().indexOf("zoneMismatch && ("));
-    expect(chip.slice(0, 1200)).toMatch(/max-md:min-h-11/);
+    expect(chip.slice(0, 1200)).toMatch(/touch:min-h-11/);
   });
 });

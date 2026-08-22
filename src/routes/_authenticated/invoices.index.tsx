@@ -41,6 +41,14 @@ import { useRowSelection } from "@/hooks/useRowSelection";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/invoices/")({
+  // `?new` opens the manual-invoice dialog on arrival, so the phone's ➕ sheet
+  // can offer "New invoice" as something that CREATES rather than as one more
+  // row that lands you on a list and leaves you to find the button. See the
+  // header of src/components/CreateSheet.tsx for why that distinction is
+  // enforced rather than left to taste.
+  validateSearch: (search: Record<string, unknown>): { new?: boolean } => ({
+    new: search.new === true || search.new === "true" || search.new === "1" ? true : undefined,
+  }),
   component: InvoicesPage,
 });
 
@@ -64,7 +72,8 @@ function NewInvoiceDialog() {
   const qc = useQueryClient();
   const clientsFn = useServerFn(listClients);
   const createFn = useServerFn(createManualInvoice);
-  const [open, setOpen] = useState(false);
+  const openedFromLink = Route.useSearch().new === true;
+  const [open, setOpen] = useState(openedFromLink);
   const [clientId, setClientId] = useState("");
   const [items, setItems] = useState<Array<{ description: string; amount: string }>>([
     { description: "", amount: "" },
@@ -100,8 +109,17 @@ function NewInvoiceDialog() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Drop `?new` as soon as the dialog is dismissed. Left in place, a reload or
+  // a Back into this entry would reopen a dialog the person just closed.
+  const setDialogOpen = (next: boolean) => {
+    setOpen(next);
+    if (!next && openedFromLink) {
+      void navigate({ to: "/invoices", search: {}, replace: true });
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={setDialogOpen}>
       <DialogTrigger asChild>
         <Button>
           <Plus className="mr-1 h-4 w-4" /> New invoice

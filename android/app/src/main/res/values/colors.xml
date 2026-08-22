@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  HoundStack's colours, not Capacitor's.
+
+  These three names are referenced by `styles.xml` and were resolving against
+  the @capacitor/android LIBRARY's defaults — Material indigo #3F51B5 with a
+  pink #FF4081 accent — because Android merges library resources when the app
+  does not define its own. Nothing failed to build and nothing looked broken;
+  the app was simply wearing the framework's palette in every place the theme
+  shows through, which on a splash-to-app transition is the first thing anyone
+  sees.
+
+  #fdfaf1 is the cream the iOS launch screen and the SplashScreen plugin config
+  already use, so the boot sequence is one colour rather than three.
+-->
+<resources>
+    <color name="colorPrimary">#fdfaf1</color>
+    <color name="colorPrimaryDark">#fdfaf1</color>
+    <color name="colorAccent">#0f172a</color>
+    <!-- The splash window's background on API 31+, where the system draws the
+         splash rather than the app. Without it the platform falls back to
+         `windowBackground`, which is white — a flash of white before a cream
+         splash, which is exactly the fault the iOS pass fixed on that side. -->
+    <color name="splashBackground">#fdfaf1</color>
+</resources>

@@ -11,7 +11,7 @@ import { join } from "node:path";
 import {
   saasPurchaseAllowed,
   customerPaymentAllowed,
-  MANAGE_BILLING_ON_WEB,
+  BILLING_MANAGED_OUTSIDE_APP,
 } from "@/lib/app-store-billing";
 
 const root = process.cwd();
@@ -23,6 +23,23 @@ const codeOnly = (src: string) =>
   src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 const BILLING_PAGE = "src/routes/_authenticated/settings.billing.tsx";
+
+/** The JSX expression container enclosing `index`, found by balancing braces
+ *  backwards. Returns the source from that `{` onwards, which is the scope a
+ *  gate written on the conditional actually governs. */
+function enclosingContainer(src: string, index: number): string {
+  const before = src.slice(0, index);
+  let depth = 0;
+  for (let i = before.length - 1; i >= 0; i--) {
+    const c = before[i];
+    if (c === "}") depth++;
+    else if (c === "{") {
+      if (depth === 0) return before.slice(i);
+      depth--;
+    }
+  }
+  return "";
+}
 
 describe("the decision function", () => {
   it("refuses a HoundStack purchase on both store platforms", () => {
@@ -80,23 +97,85 @@ describe("the billing page", () => {
         }
       }
       expect(open, `could not find the JSX container around ${surface}`).toBeGreaterThan(-1);
-      expect(
-        before.slice(open),
-        `${surface} is rendered without a canBuySaas gate`,
-      ).toMatch(/canBuySaas/);
+      expect(before.slice(open), `${surface} is rendered without a canBuySaas gate`).toMatch(
+        /canBuySaas/,
+      );
     });
   }
 
-  it("says where billing lives instead of just hiding it", () => {
-    expect(src).toMatch(/MANAGE_BILLING_ON_WEB/);
-    expect(MANAGE_BILLING_ON_WEB).toMatch(/app\.houndstack\.com/);
+  // iOS QA 2026-08-20 found this one on a device: the plan picker, the card
+  // form and the add-ons were all correctly gated, and "Manage subscription"
+  // — Cancel, and Resume — was rendered on `data.isPaidTier` alone, so a store
+  // build still offered a way to CHANGE a HoundStack subscription. Resume is
+  // the sharper edge: it restarts a paid plan from inside the binary.
+  //
+  // Anchored on the heading rather than on `cancelSub.mutate()`, because the
+  // buttons sit inside `onClick={...}` and the nearest enclosing container of a
+  // call site is that attribute, which no gate would ever govern. The heading
+  // sits directly in the <section>, whose container is the conditional.
+  it("renders Manage subscription (cancel/resume) only when a purchase is allowed", () => {
+    const at = src.indexOf("Manage subscription");
+    expect(at, "Manage subscription heading is gone — retarget this test").toBeGreaterThan(-1);
+    expect(
+      enclosingContainer(src, at),
+      "cancel/resume is rendered without a canBuySaas gate",
+    ).toMatch(/canBuySaas/);
   });
 
-  it("does not tell a store user to pick a plan below that is not rendered", () => {
-    // The trial and past-due nudges both pointed at controls the gate removes.
-    const nudges = src.match(/You're on a free trial[^"]*/g) ?? [];
-    expect(nudges.length, "trial nudge missing — retarget").toBeGreaterThan(0);
-    expect(src).toMatch(/canBuySaas\s*\?[\s\S]{0,400}?app\.houndstack\.com/);
+  it("still tells a store user their subscription is set to cancel", () => {
+    // Gating the controls must not hide the STATUS: read-only account state is
+    // exactly what app-store-billing.ts says to keep. The Current plan card
+    // carries it, outside the gate.
+    expect(src).toMatch(/Cancels at period end/);
+  });
+
+  it("says billing is elsewhere WITHOUT naming where", () => {
+    // This assertion is the inverse of the one it replaces, which required the
+    // string to contain `app.houndstack.com`.
+    //
+    // Naming the destination is the steer. Guideline 3.1.1 is not only about
+    // taking the payment inside the binary — a sentence telling somebody the
+    // domain to go to is a call to action with the button removed, and it was
+    // shipping in three places on this screen.
+    expect(src).toMatch(/BILLING_MANAGED_OUTSIDE_APP/);
+    expect(BILLING_MANAGED_OUTSIDE_APP).toMatch(/outside the mobile app/i);
+    expect(
+      BILLING_MANAGED_OUTSIDE_APP,
+      "the store-build billing copy names a destination",
+    ).not.toMatch(/houndstack\.com|https?:|www\.|on the web/i);
+  });
+
+  /** Words that turn a statement of fact into an instruction to buy. */
+  const PURCHASE_VERBS =
+    /\b(choose a plan|pick a plan|upgrade|subscribe|buy|purchase|update your payment method)\b/i;
+
+  it("uses no purchase language in the store build's billing copy", () => {
+    expect(BILLING_MANAGED_OUTSIDE_APP).not.toMatch(PURCHASE_VERBS);
+
+    // Every string on the NOT-canBuySaas side of a ternary on this screen.
+    // Parsed rather than eyeballed, because the whole failure mode is one
+    // branch of a pair being softened and the other being missed.
+    const nativeBranches = [
+      ...src.matchAll(/canBuySaas\s*\?[\s\S]{0,600}?:\s*(?:\/\/[^\n]*\n\s*)*"([^"]+)"/g),
+    ].map((m) => m[1]);
+    expect(
+      nativeBranches.length,
+      "found no canBuySaas ternaries — the parse has drifted and this test is vacuous",
+    ).toBeGreaterThanOrEqual(2);
+    for (const copy of nativeBranches) {
+      expect(copy, `store-build copy steers: "${copy}"`).not.toMatch(PURCHASE_VERBS);
+      expect(copy, `store-build copy names a destination: "${copy}"`).not.toMatch(
+        /houndstack\.com|https?:|on the web/i,
+      );
+    }
+  });
+
+  it("still shows the trial and past-due STATUS to a store user", () => {
+    // Softening the verbs must not delete the facts. Both states are read-only
+    // truths about an account somebody already has, and hiding them would be
+    // worse for the customer and no safer for review.
+    expect(src).toMatch(/free trial/);
+    expect(src).toMatch(/Your last payment failed/);
   });
 });
 
@@ -111,9 +190,7 @@ describe("the tenant's own money is deliberately not gated", () => {
   for (const f of CUSTOMER_PAYMENT_SURFACES) {
     it(`${f.split("/").pop()} still mounts a Payment Element on every platform`, () => {
       const src = codeOnly(read(f));
-      expect(src, `${f} no longer takes payment — retarget this test`).toMatch(
-        /<PaymentElement/,
-      );
+      expect(src, `${f} no longer takes payment — retarget this test`).toMatch(/<PaymentElement/);
       expect(
         src,
         `${f} was gated by store policy; it takes payment for a real-world service and must not be`,

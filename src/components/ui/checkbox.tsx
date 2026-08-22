@@ -13,7 +13,7 @@ const Checkbox = React.forwardRef<
     className={cn(
       // ── 16px box, 44px target ───────────────────────────────────────────
       //
-      // The other controls take `max-md:min-h-11` and simply get taller. A
+      // The other controls take `touch:min-h-11` and simply get taller. A
       // checkbox cannot: the 16px square IS the control, and a 44px one would
       // be a different component, not a bigger version of this one. The
       // working agreement anticipates exactly this — "a 16px glyph centred in
@@ -32,7 +32,7 @@ const Checkbox = React.forwardRef<
       // rows near 41px) that overlap is a sliver, and it is a far better
       // trade than a 16px target on a phone. Somewhere denser than that, it
       // would want checking by eye.
-      "grid place-content-center peer relative h-4 w-4 shrink-0 rounded-sm border border-primary shadow cursor-pointer max-md:before:absolute max-md:before:left-1/2 max-md:before:top-1/2 max-md:before:h-11 max-md:before:w-11 max-md:before:-translate-x-1/2 max-md:before:-translate-y-1/2 max-md:before:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
+      "grid place-content-center peer relative h-4 w-4 shrink-0 rounded-sm border border-primary shadow cursor-pointer touch:before:absolute touch:before:left-1/2 touch:before:top-1/2 touch:before:h-11 touch:before:w-11 touch:before:-translate-x-1/2 touch:before:-translate-y-1/2 touch:before:content-[''] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
       className,
     )}
     {...props}

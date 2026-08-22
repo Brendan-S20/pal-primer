@@ -3,7 +3,7 @@
 //
 // `ui/button.tsx` shipped `h-8` for `size="sm"` and `h-9 w-9` for
 // `size="icon"` — 32px and 36px against a stated minimum of 44 — and the fix
-// so far had been a hand-written `max-md:min-h-11` on six individual buttons.
+// so far had been a hand-written `touch:min-h-11` on six individual buttons.
 // There are roughly 375 call sites. Six of them is not a rule, it is a record
 // of where somebody happened to look.
 //
@@ -23,7 +23,7 @@
 // ── min-h, NOT h ──────────────────────────────────────────────────────────
 //
 // `min-height` beats `height` in the used-value calculation regardless of the
-// order the two utilities land in the stylesheet, so `h-8 max-md:min-h-11`
+// order the two utilities land in the stylesheet, so `h-8 touch:min-h-11`
 // resolves to 44px without depending on how Tailwind sorts its variants. That
 // is a correctness point rather than a style preference, and it is why the
 // assertions below insist on the `min-` form.
@@ -52,7 +52,7 @@ describe("every button clears 44px on touch", () => {
     for (const name of ["default:", "sm:", "lg:", "icon:"]) {
       const line = block.split("\n").find((l) => l.trim().startsWith(name));
       expect(line, `no ${name} size defined`).toBeTruthy();
-      expect(line!, `${name} has no touch floor`).toMatch(/max-md:min-h-11/);
+      expect(line!, `${name} has no touch floor`).toMatch(/touch:min-h-11/);
     }
   });
 
@@ -61,11 +61,11 @@ describe("every button clears 44px on touch", () => {
     const icon = sizes()
       .split("\n")
       .find((l) => l.trim().startsWith("icon:"));
-    expect(icon!).toMatch(/max-md:min-w-11/);
+    expect(icon!).toMatch(/touch:min-w-11/);
   });
 
   it("uses min-h rather than h, so the base height cannot win", () => {
-    // `h-8 max-md:h-11` depends on stylesheet order; `h-8 max-md:min-h-11`
+    // `h-8 touch:h-11` depends on stylesheet order; `h-8 touch:min-h-11`
     // does not. The whole variant block must use the min- form.
     const block = sizes();
     expect(block).not.toMatch(/max-md:h-\d/);
@@ -105,6 +105,6 @@ describe("the two house patterns stay distinct", () => {
   });
 
   it("keeps the tabs floor touch-scoped, which is the pattern button follows", () => {
-    expect(read("src/components/ui/tabs.tsx")).toMatch(/max-md:min-h-11/);
+    expect(read("src/components/ui/tabs.tsx")).toMatch(/touch:min-h-11/);
   });
 });

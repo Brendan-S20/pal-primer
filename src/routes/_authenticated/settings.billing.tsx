@@ -34,7 +34,7 @@ import { StatusChip, MetaChip, SectionLabel } from "@/components/client-detail/p
 import { formatDay } from "@/lib/format";
 import { stripeAppearance } from "@/lib/stripe-appearance";
 import { platform } from "@/lib/native";
-import { saasPurchaseAllowed, MANAGE_BILLING_ON_WEB } from "@/lib/app-store-billing";
+import { saasPurchaseAllowed, BILLING_MANAGED_OUTSIDE_APP } from "@/lib/app-store-billing";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 import { appUrl } from "@/lib/app-origin";
@@ -254,7 +254,8 @@ function BillingPage() {
                 : data.monthlyEstimateCents != null
                   ? `${formatUsd(data.monthlyEstimateCents)}/month`
                   : "No charge"}
-              {data.includedSeats != null && ` · Includes ${data.includedSeats} employee${data.includedSeats === 1 ? "" : "s"}`}
+              {data.includedSeats != null &&
+                ` · Includes ${data.includedSeats} employee${data.includedSeats === 1 ? "" : "s"}`}
             </p>
             {data.isPaidTier && periodEnd && (
               <p className="mt-1 text-sm text-muted-foreground">
@@ -267,14 +268,18 @@ function BillingPage() {
               <p className="mt-2 text-sm text-amber-700">
                 {canBuySaas
                   ? "You're on a free trial. Pick a plan below before it ends to keep full access."
-                  : "You're on a free trial. Choose a plan on the web at app.houndstack.com before it ends to keep full access."}
+                  : // Native: the STATUS stays, the steer goes. No domain, and
+                    // no verb that reads as a purchase instruction.
+                    "Your trial status is shown here. Plan changes are handled outside the mobile app."}
               </p>
             )}
             {data.billingStatus === "past_due" && (
               <p className="mt-2 text-sm text-destructive">
                 {canBuySaas
                   ? "Your last payment failed. Update your payment method below to keep your plan."
-                  : "Your last payment failed. Update your payment method on the web at app.houndstack.com to keep your plan."}
+                  : // The failure is a fact about the account and stays. Where
+                    // to fix it does not get named.
+                    "Your last payment failed. Payment method updates are handled outside the mobile app."}
               </p>
             )}
           </div>
@@ -284,14 +289,18 @@ function BillingPage() {
       {/* ── Plans ────────────────────────────────────────────────────────── */}
       <section className="space-y-3">
         <div>
+          {/* "Choose a plan" is an instruction to buy, and in a store build
+              there is nothing below it to choose from. A store build gets the
+              neutral heading whatever tier the account is on. */}
           <h2 className="text-lg font-semibold">
-            {data.isPaidTier ? "Plans" : "Choose a plan"}
+            {!canBuySaas || data.isPaidTier ? "Plans" : "Choose a plan"}
           </h2>
           <p className="text-sm text-muted-foreground">
             Unlimited customers, dogs, jobs, routes, and zones on every tier. You're billed per
-            employee, plus any AI actions past your plan's monthly allowance. Both are metered, and both are
-            shown before they are charged.
-            {data.isPaidTier &&
+            employee, plus any AI actions past your plan's monthly allowance. Both are metered, and
+            both are shown before they are charged.
+            {canBuySaas &&
+              data.isPaidTier &&
               " Switching is instant: upgrades charge the prorated difference today, downgrades credit your next invoice."}
           </p>
         </div>
@@ -301,7 +310,7 @@ function BillingPage() {
           // line this sits on and why the tenant's own payment surfaces are
           // deliberately untouched.
           <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
-            {MANAGE_BILLING_ON_WEB}
+            {BILLING_MANAGED_OUTSIDE_APP}
           </div>
         ) : checkout ? (
           <EmbeddedPlanCheckout
@@ -333,14 +342,18 @@ function BillingPage() {
 
       {canBuySaas && <PlatformAddonsSection planInterval={currentInterval} />}
 
-      {data.isPaidTier && (
-        <NextInvoice subInfo={subInfo as any} isLoading={subInfoLoading} />
-      )}
+      {data.isPaidTier && <NextInvoice subInfo={subInfo as any} isLoading={subInfoLoading} />}
 
       <InvoiceHistory />
 
       {/* ── Manage ───────────────────────────────────────────────────────── */}
-      {data.isPaidTier && (
+      {/* Behind the store gate with the rest of it. Cancel and Resume CHANGE a
+          HoundStack subscription from inside the binary, which is the thing
+          app-store-billing.ts draws the line at — Resume especially, since it
+          restarts a paid plan. Nothing is hidden by this: the Current plan card
+          above still shows the "Cancels at period end" badge and the date, and
+          read-only account status is exactly what that file says to keep. */}
+      {canBuySaas && data.isPaidTier && (
         <section className="rounded-xl border bg-card p-6 shadow-sm">
           <h2 className="text-lg font-semibold">Manage subscription</h2>
           {cancelPending ? (
@@ -528,7 +541,8 @@ function OrgCardSetup({ onDone, onCancel }: { onDone: () => void; onCancel: () =
     gcTime: 0,
   });
 
-  if (q.isLoading) return <p className="text-sm text-muted-foreground">Loading secure card form…</p>;
+  if (q.isLoading)
+    return <p className="text-sm text-muted-foreground">Loading secure card form…</p>;
   if (q.error) return <p className="text-sm text-destructive">{(q.error as Error).message}</p>;
   if (!q.data) return null;
 
@@ -811,9 +825,7 @@ function NextInvoice({
         : sum,
     0,
   );
-  const allSameInterval = items.every(
-    (i) => i.interval === planInterval && i.intervalCount === 1,
-  );
+  const allSameInterval = items.every((i) => i.interval === planInterval && i.intervalCount === 1);
   const totalLabel = planInterval === "year" ? "Yearly total" : "Monthly total";
   const totalSuffix = planInterval === "year" ? "/yr" : "/mo";
 
@@ -868,7 +880,10 @@ function NextInvoice({
             <p className="text-sm font-semibold">
               {allSameInterval ? totalLabel : `${totalLabel} (excludes other billing periods)`}
             </p>
-            <p className="text-sm font-semibold">{formatUsd(total)}{totalSuffix}</p>
+            <p className="text-sm font-semibold">
+              {formatUsd(total)}
+              {totalSuffix}
+            </p>
           </div>
         </>
       )}
@@ -911,7 +926,9 @@ function InvoiceHistory() {
           <tbody className="divide-y">
             {invoices.map((inv) => (
               <tr key={inv.stripe_invoice_id}>
-                <td className="py-2 font-medium">{inv.number ?? inv.stripe_invoice_id.slice(0, 12)}</td>
+                <td className="py-2 font-medium">
+                  {inv.number ?? inv.stripe_invoice_id.slice(0, 12)}
+                </td>
                 <td className="py-2 text-muted-foreground">
                   {formatBillingPeriod(inv.period_start, inv.period_end)}
                 </td>
@@ -933,10 +950,24 @@ function InvoiceHistory() {
                 </td>
                 <td className="py-2 text-right">
                   {inv.hosted_invoice_url && (
-                    <a href={inv.hosted_invoice_url} target="_blank" rel="noreferrer" className="text-primary underline">View</a>
+                    <a
+                      href={inv.hosted_invoice_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary underline"
+                    >
+                      View
+                    </a>
                   )}
                   {inv.invoice_pdf && (
-                    <a href={inv.invoice_pdf} target="_blank" rel="noreferrer" className="ml-3 text-primary underline">PDF</a>
+                    <a
+                      href={inv.invoice_pdf}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="ml-3 text-primary underline"
+                    >
+                      PDF
+                    </a>
                   )}
                 </td>
               </tr>

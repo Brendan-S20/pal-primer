@@ -42,7 +42,7 @@ const TabsTrigger = React.forwardRef<
       // target you aim at rather than one you hit. `shrink-0` keeps the
       // labels legible inside the scroller above rather than letting seven
       // tabs squeeze themselves into the width of one.
-      "max-md:min-h-11 max-md:shrink-0",
+      "touch:min-h-11 max-md:shrink-0",
       className,
     )}
     {...props}

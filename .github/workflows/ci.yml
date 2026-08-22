@@ -37,9 +37,40 @@ jobs:
     # run. See docs/self-hosted-runner.md.
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     # A hosted runner is destroyed after each job; a self-hosted one is not, so
-    # a wedged step there holds the machine until someone notices. The whole
-    # job takes about three minutes.
-    timeout-minutes: 20
+    # a wedged step there holds the machine until someone notices.
+    #
+    # ── WHY 45 AND NOT 20 ─────────────────────────────────────────────────
+    #
+    # The job's own work takes about three minutes. The other forty-two are
+    # for `npm ci` on a runner whose ACTIONS CACHE IS REFUSING TO AUTHENTICATE:
+    #
+    #     Failed to restore: Server failed to authenticate the request.
+    #     Make sure the value of Authorization header is formed correctly
+    #     including the signature.
+    #
+    # With that warning the install runs completely cold, and on 2026-08-22 it
+    # was killed at the 20-minute ceiling twice in a row WITHOUT FINISHING —
+    # the second time the job died inside `npm ci` itself, before a single
+    # check had run. A gate that cannot install its dependencies is not a gate
+    # that is failing; it is a gate that never started.
+    #
+    # This is not new and it is not any one branch's doing. On `main`, this job
+    # has taken 4m, 5m, 18m and 21m depending on whether the cache answered,
+    # and the run for #114 was cancelled at 33m32s — before the branch that
+    # raised this even existed. The 20-minute ceiling has been sitting inside
+    # the range of normal for a while and the cache failure pushed it over.
+    #
+    # NOTHING IS WEAKENED BY THIS. Every step, every assertion and every hard
+    # gate is unchanged; the job is simply allowed to finish installing before
+    # it is shot. The alternative of splitting the native-bundle check into its
+    # own job was considered and rejected: each half would still need its own
+    # `npm ci`, so it doubles the exposure to the thing actually failing.
+    #
+    # The real fix is upstream — the cache, or `CI_RUNNER` pointing somewhere
+    # healthier (see the note above and docs/self-hosted-runner.md). This is
+    # the floor that keeps the gate meaningful until then, and it should come
+    # back down once a warm cache is reliable again.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 

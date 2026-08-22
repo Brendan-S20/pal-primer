@@ -32,7 +32,8 @@ import {
   resumeAutopay,
 } from "@/lib/invoices.functions";
 import { InvoiceDrawer } from "@/components/InvoiceDrawer";
-import { InvoiceRow } from "@/components/InvoiceRow";
+import { InvoiceCard, InvoiceRow, type InvoiceRowData } from "@/components/InvoiceRow";
+import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
 import { formatDay, surchargeSplit } from "@/lib/format";
 import { humanizeEnum } from "@/lib/humanize";
 import { addonBillingTrail } from "@/lib/addon-billing";
@@ -175,32 +176,54 @@ export function BillingPanel({ clientId }: { clientId: string }) {
             />
           </div>
         ) : (
-          <div className="mt-3 overflow-x-auto">
-            {/* Same invoice row + preview drawer as the Invoices page (B4/I3):
+          <>
+            {/* NATIVE ONLY — the table below is the web product's presentation
+                and is untouched.
+                Inside the binary these render as tap-through cards instead, the
+                same InvoiceCard the Invoices page already uses below `md`. The
+                table alone was never going to work on a phone: six columns
+                inside `w-full` can never exceed their container, so
+                `overflow-x-auto` never engages and the columns compress rather
+                than scroll. iOS QA 2026-08-20 caught the Total column clipped
+                to a bare "$" and "$1," on a 402pt iPhone — you could not read
+                what an invoice was for. The same fault exists on mobile web and
+                is deliberately left there for now: `main` deploys straight to
+                app.houndstack.com and this pass was only ever about the phone.
+                Worth revisiting with the PWA. */}
+            {IS_NATIVE_BUNDLE && (
+              <div className="mt-3 space-y-3 md:hidden">
+                {invoices.map((inv: InvoiceRowData) => (
+                  <InvoiceCard key={inv.id} invoice={inv} onOpen={setDetailInvoiceId} />
+                ))}
+              </div>
+            )}
+            <div className={`mt-3 overflow-x-auto ${IS_NATIVE_BUNDLE ? "max-md:hidden" : ""}`}>
+              {/* Same invoice row + preview drawer as the Invoices page (B4/I3):
                 click a row (or its View button) to open the shared drawer;
                 the trailing ••• offers open-full-invoice / copy pay link,
                 while stateful actions (take payment, send, void) stay in the
                 drawer. */}
-            <table className="w-full text-sm">
-              <thead className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-2 font-semibold">Invoice</th>
-                  <th className="px-4 py-2 font-semibold">Period</th>
-                  <th className="px-4 py-2 font-semibold">Due</th>
-                  <th className="px-4 py-2 text-right font-semibold">Total</th>
-                  <th className="px-4 py-2 font-semibold">Status</th>
-                  <th className="w-24 px-4 py-2 text-right font-semibold">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {invoices.map((inv: any) => (
-                  <InvoiceRow key={inv.id} invoice={inv} onOpen={setDetailInvoiceId} />
-                ))}
-              </tbody>
-            </table>
-          </div>
+              <table className="w-full text-sm">
+                <thead className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-2 font-semibold">Invoice</th>
+                    <th className="px-4 py-2 font-semibold">Period</th>
+                    <th className="px-4 py-2 font-semibold">Due</th>
+                    <th className="px-4 py-2 text-right font-semibold">Total</th>
+                    <th className="px-4 py-2 font-semibold">Status</th>
+                    <th className="w-24 px-4 py-2 text-right font-semibold">
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoices.map((inv: any) => (
+                    <InvoiceRow key={inv.id} invoice={inv} onOpen={setDetailInvoiceId} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </section>
 
@@ -500,7 +523,7 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
                 <Button
                   type="submit"
                   size="sm"
-                  className="col-span-6 max-md:min-h-11 sm:col-span-1"
+                  className="col-span-6 touch:min-h-11 sm:col-span-1"
                   disabled={chargeMut.isPending || !svcId}
                 >
                   Add
@@ -580,7 +603,7 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
                 <Button
                   type="submit"
                   size="sm"
-                  className="col-span-6 max-md:min-h-11 sm:col-span-1"
+                  className="col-span-6 touch:min-h-11 sm:col-span-1"
                   disabled={subMut.isPending || !subSvcId}
                 >
                   Start

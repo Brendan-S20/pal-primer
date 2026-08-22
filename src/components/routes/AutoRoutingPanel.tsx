@@ -142,7 +142,7 @@ function Pill({
     <button
       onClick={onClick}
       aria-expanded={open}
-      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors max-md:min-h-11 max-md:px-3 ${
+      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors touch:min-h-11 max-md:px-3 ${
         open ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted"
       }`}
     >
@@ -287,7 +287,7 @@ export function AutoRoutingPanel({
         <button
           onClick={onClose}
           aria-label="Close auto-routing"
-          className="flex items-center justify-center rounded p-1 text-muted-foreground hover:bg-muted max-md:min-h-11 max-md:min-w-11"
+          className="flex items-center justify-center rounded p-1 text-muted-foreground hover:bg-muted touch:min-h-11 touch:min-w-11"
         >
           <X className="h-4 w-4" />
         </button>
@@ -375,7 +375,7 @@ export function AutoRoutingPanel({
                       else next.add(s.id);
                       setPicked(next);
                     }}
-                    className={`flex items-center rounded-full border px-2 py-0.5 text-2xs max-md:min-h-11 max-md:px-3 ${on ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted"}`}
+                    className={`flex items-center rounded-full border px-2 py-0.5 text-2xs touch:min-h-11 max-md:px-3 ${on ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted"}`}
                   >
                     {s.display_name}
                   </button>

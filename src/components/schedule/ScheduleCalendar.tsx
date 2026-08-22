@@ -263,9 +263,9 @@ function VisitChip({
           onMouseLeave={() => onHover?.(null)}
           onFocus={() => onHover?.(visit.id)}
           onBlur={() => onHover?.(null)}
-          // `max-md:min-h-11` is the repo's 44px idiom (see ui/button.tsx): a
+          // `touch:min-h-11` is the repo's 44px idiom (see ui/button.tsx): a
           // chip is dense at a pointer's width and a real target at a thumb's.
-          className={`w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-2xs transition hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary max-md:min-h-11 ${
+          className={`w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-2xs transition hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary touch:min-h-11 ${
             hiddenOnPhone ? "hidden md:flex" : "flex"
           } ${hovered ? "bg-primary/15 ring-1 ring-primary/50" : ""}`}
         >
@@ -494,8 +494,8 @@ export function ScheduleCalendar({
                     isToday ? "bg-primary/10 text-primary" : ""
                   } ${
                     isMonth
-                      ? "min-h-[2.75rem] flex-1 flex-col items-center justify-center gap-0 md:min-h-0 md:flex-none md:flex-row md:items-baseline md:gap-1.5"
-                      : "min-h-[2.75rem] items-center gap-1.5 md:min-h-0 md:flex-col md:items-start md:gap-0 md:border-b md:pb-1"
+                      ? "min-h-[2.75rem] flex-1 flex-col items-center justify-center gap-0 md:mouse:min-h-0 md:flex-none md:flex-row md:items-baseline md:gap-1.5"
+                      : "min-h-[2.75rem] items-center gap-1.5 md:mouse:min-h-0 md:flex-col md:items-start md:gap-0 md:border-b md:pb-1"
                   }`}
                   title={`Open ${dt.toLocaleDateString()} on the board`}
                 >
@@ -566,7 +566,7 @@ export function ScheduleCalendar({
                         return next;
                       })
                     }
-                    className={`mt-0.5 px-1 text-left text-3xs text-muted-foreground hover:text-foreground max-md:min-h-11 ${
+                    className={`mt-0.5 px-1 text-left text-3xs text-muted-foreground hover:text-foreground touch:min-h-11 ${
                       isMonth ? "hidden md:block" : "md:hidden"
                     }`}
                   >

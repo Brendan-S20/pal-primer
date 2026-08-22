@@ -232,9 +232,9 @@ describe("the column header says which day and how much of it", () => {
 describe("a chip is a target a thumb can hit", () => {
   it("uses the repo's 44px idiom on the chip and on the more control", () => {
     const src = calendar();
-    // `max-md:min-h-11` rather than a fixed height, for the reason ui/input.tsx
+    // `touch:min-h-11` rather than a fixed height, for the reason ui/input.tsx
     // gives: min-height wins over height whatever order the utilities land in.
-    expect((src.match(/max-md:min-h-11/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect((src.match(/touch:min-h-11/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 
   it("lets the client name shrink instead of widening the chip", () => {

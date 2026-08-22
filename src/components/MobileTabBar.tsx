@@ -102,7 +102,17 @@ export function MobileTabBar() {
   const viewingOtherDay = !!search.date && search.date !== todayISO();
 
   const moreButton = (
-    <button type="button" onClick={() => setMoreOpen(true)} className={tabClass(moreOpen)}>
+    // data-tour: the guided tour anchors to these. They were only ever on
+    // AppSidebar items, which are hidden below `md` — so on a phone every tour
+    // step fell back to a centred card over a dimmed screen and taught nobody
+    // where anything lives. "more" is also the fallback anchor for sections
+    // that have no tab of their own (Zones, Invoices, Settings).
+    <button
+      type="button"
+      data-tour="more"
+      onClick={() => setMoreOpen(true)}
+      className={tabClass(moreOpen)}
+    >
       <Menu className="h-5 w-5" />
       <span>More</span>
     </button>
@@ -117,7 +127,12 @@ export function MobileTabBar() {
         {isTech ? (
           <ul className="grid grid-cols-3">
             <li>
-              <Link to="/my-day" preload="render" className={tabClass(onMyDay && !viewingOtherDay)}>
+              <Link
+                to="/my-day"
+                data-tour="/my-day"
+                preload="render"
+                className={tabClass(onMyDay && !viewingOtherDay)}
+              >
                 <Sun className="h-5 w-5" />
                 <span>Today</span>
               </Link>
@@ -137,13 +152,23 @@ export function MobileTabBar() {
         ) : (
           <ul className="grid grid-cols-5">
             <li>
-              <Link to="/dashboard" preload="render" className={tabClass(isActive("/dashboard"))}>
+              <Link
+                to="/dashboard"
+                data-tour="/dashboard"
+                preload="render"
+                className={tabClass(isActive("/dashboard"))}
+              >
                 <LayoutDashboard className="h-5 w-5" />
                 <span>Home</span>
               </Link>
             </li>
             <li>
-              <Link to="/routes" preload="render" className={tabClass(isActive("/routes"))}>
+              <Link
+                to="/routes"
+                data-tour="/routes"
+                preload="render"
+                className={tabClass(isActive("/routes"))}
+              >
                 <CalendarDays className="h-5 w-5" />
                 <span>Schedule</span>
               </Link>
@@ -161,7 +186,12 @@ export function MobileTabBar() {
               </button>
             </li>
             <li>
-              <Link to="/clients" preload="render" className={tabClass(isActive("/clients"))}>
+              <Link
+                to="/clients"
+                data-tour="/clients"
+                preload="render"
+                className={tabClass(isActive("/clients"))}
+              >
                 <Users className="h-5 w-5" />
                 <span>Clients</span>
               </Link>

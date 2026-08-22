@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import {
   WIDTHS,
+  APPLE_SIZES,
   measurePageOverflow,
   findControlsOffTheSide,
   findSilentlyClippedText,
@@ -58,8 +59,36 @@ import { SURFACES, type Surface } from "./fixtures/surfaces";
  * routing one host while the app called another.
  */
 
-/** Below `md`. Touch sizing is a phone rule; at 768 the `md:` styles are on. */
+/** Below `md`, for the four canonical widths where the browser is a desktop
+ *  one and width is the only signal available. */
 const TOUCH_WIDTH = 360;
+
+/** Is this the Apple-device pass? Declared here because it decides two things
+ *  further down that have to agree: whether the browser reports a finger, and
+ *  whether the 44px rule runs. */
+const APPLE = process.env.APPLE_SIZES === "1";
+
+/**
+ * EMULATE TOUCH for the Apple pass, and only for it.
+ *
+ * Two things were unverifiable without this, and both were real faults:
+ *
+ *   * `touch:` compiles to `@media (pointer: coarse), (max-width: 767px)`.
+ *     A desktop Chromium reports a FINE pointer, so at 744-1366px neither
+ *     clause matched and every touch-sized control in the app measured at its
+ *     desktop size — the sweep would have happily confirmed a fix it was not
+ *     exercising.
+ *   * `hover:` and `group-hover:` compile inside `@media (hover:hover)`. With
+ *     a mouse those rules apply, so a control that is invisible on a real
+ *     iPad is visible to the sweep. That is precisely the fault that shipped:
+ *     the delete button on /notifications, unreachable on every iPad, passing
+ *     every width the sweep measured.
+ *
+ * `hasTouch` makes Chromium report `pointer: coarse` and `hover: none`, which
+ * is what an iPad is. Left OFF for the canonical four widths so the CI gate
+ * keeps measuring exactly what it always measured.
+ */
+test.use({ hasTouch: APPLE });
 
 /**
  * One line per DISTINCT fault, with how many elements have it.
@@ -146,7 +175,22 @@ async function openExtras(page: Page, surface: Surface, widthLabel: string) {
   }
 }
 
-for (const { w, h, label } of WIDTHS) {
+/**
+ * The four canonical widths by default; the Apple device list when asked.
+ *
+ * An env switch rather than a second spec file, because a copy of this
+ * harness would be a second definition of "signed in, stubbed, settled,
+ * measured" — and the whole reason `rules.ts` exists is that two copies of a
+ * rule drift the first time one is fixed. The rules, the fixtures and the
+ * proof-of-render guard are identical either way; only the list of sizes
+ * changes.
+ *
+ *     npm run test:viewports:auth    # 4 widths, the CI gate
+ *     npm run test:viewports:apple   # every iPhone and iPad size
+ */
+const SIZES = process.env.APPLE_SIZES === "1" ? APPLE_SIZES : WIDTHS;
+
+for (const { w, h, label } of SIZES) {
   test.describe(label, () => {
     for (const surface of SURFACES) {
       test(`${surface.id} is laid out inside ${w}px`, async ({ page, context }) => {
@@ -178,8 +222,12 @@ for (const { w, h, label } of WIDTHS) {
           findings.push(`CLIPPED SILENTLY: ${c}`);
         }
 
-        // 4 — touch targets, below md only.
-        if (w <= TOUCH_WIDTH) {
+        // 4 — touch targets. On the Apple pass EVERY size is a touch device,
+        // so the rule runs at all of them: an iPad Pro at 1366px is driven by
+        // the same finger as a 320px phone and Apple's 44pt floor does not
+        // care how big the screen is. On the canonical widths, width is the
+        // only signal there is, so it stays a below-`md` rule there.
+        if (APPLE || w <= TOUCH_WIDTH) {
           for (const c of await findControlsUnder44px(page)) {
             findings.push(`UNDER THE 44px FLOOR: ${c}`);
           }

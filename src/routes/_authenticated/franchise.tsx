@@ -441,7 +441,7 @@ function FranchisePage() {
                           hit target for a drawer they did not ask for. */}
                       <button
                         type="button"
-                        className="max-w-full truncate text-left underline-offset-4 hover:underline max-md:min-h-11"
+                        className="max-w-full truncate text-left underline-offset-4 hover:underline touch:min-h-11"
                         onClick={() => setDrillInto(r)}
                       >
                         {r.organization_name}
@@ -609,7 +609,7 @@ function RoyaltyBilling() {
           <CardTitle className="text-base">Royalty billing</CardTitle>
           <Button
             size="sm"
-            className="max-md:min-h-11 sm:w-auto"
+            className="touch:min-h-11 sm:w-auto"
             onClick={() => generate.mutate()}
             disabled={generate.isPending}
           >
@@ -661,7 +661,7 @@ function RoyaltyBilling() {
                     min={0}
                     max={100}
                     step={0.25}
-                    className="w-24 max-md:min-h-11"
+                    className="w-24 touch:min-h-11"
                     aria-label={`Royalty percentage for ${c.name}`}
                     defaultValue={Number(c.franchise_royalty_percent ?? 0)}
                     onBlur={(e) => {

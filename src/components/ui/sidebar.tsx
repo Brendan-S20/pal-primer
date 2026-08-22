@@ -510,8 +510,18 @@ const sidebarMenuButtonVariants = cva(
           "bg-background shadow-[0_0_0_1px_var(--sidebar-border)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_var(--sidebar-accent)]",
       },
       size: {
-        default: "h-8 text-sm",
-        sm: "h-7 text-xs",
+        // `touch:min-h-11` — the whole left navigation was a 32px target on
+        // every iPad. The sidebar is `hidden` below `md`, so nothing about
+        // this was ever visible to a phone-width sweep, and `max-md:` sizing
+        // could not have reached it either: the component does not exist at
+        // the widths that rule covers. It is the app's primary navigation and
+        // it was under the floor on every touch device that can see it.
+        //
+        // `min-h` rather than `h`, so the collapsed icon rail's
+        // `group-data-[collapsible=icon]:!size-8` keeps its square width while
+        // the row still takes a finger.
+        default: "h-8 text-sm touch:min-h-11",
+        sm: "h-7 text-xs touch:min-h-11",
         lg: "h-12 text-sm group-data-[collapsible=icon]:!p-0",
       },
     },

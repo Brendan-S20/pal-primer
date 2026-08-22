@@ -377,7 +377,10 @@ describe("the period title is the date picker", () => {
     const block = h1.slice(0, h1.indexOf("</h1>"));
     // 2.75rem is 44px, released at md where a pointer is doing the work.
     expect(block).toMatch(/min-h-\[2\.75rem\]/);
-    expect(block).toMatch(/md:min-h-0/);
+    // `md:mouse:min-h-0`, not `md:min-h-0`. The compact desktop row is wanted
+    // on a wide screen WITH A MOUSE; an iPad is wide and has a finger, and the
+    // bare `md:` cancel put this control back to 40px on every one of them.
+    expect(block).toMatch(/md:mouse:min-h-0/);
     // The calendar primitive draws 2rem cells — 32px, under the floor. The
     // documented knob is `--cell-size`, and it has to be overridden on the
     // Calendar element itself: the class is set on the component's own root,

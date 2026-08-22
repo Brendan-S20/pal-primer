@@ -613,13 +613,13 @@ function InvoicesTab({ orgId }: { orgId: string }) {
                   <div className="flex items-center gap-3 whitespace-nowrap">
                     {r.hosted_invoice_url && (
                       <a href={r.hosted_invoice_url} target="_blank" rel="noreferrer"
-                         className="inline-flex min-h-11 items-center gap-1 text-xs text-muted-foreground hover:text-foreground md:min-h-0">
+                         className="inline-flex min-h-11 items-center gap-1 text-xs text-muted-foreground hover:text-foreground md:mouse:min-h-0">
                         Stripe <ExternalLink className="h-3 w-3" />
                       </a>
                     )}
                     {r.invoice_pdf && (
                       <a href={r.invoice_pdf} target="_blank" rel="noreferrer"
-                         className="inline-flex min-h-11 items-center gap-1 text-xs text-muted-foreground hover:text-foreground md:min-h-0">
+                         className="inline-flex min-h-11 items-center gap-1 text-xs text-muted-foreground hover:text-foreground md:mouse:min-h-0">
                         PDF <FileDown className="h-3 w-3" />
                       </a>
                     )}

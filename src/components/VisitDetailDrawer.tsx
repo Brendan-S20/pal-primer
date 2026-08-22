@@ -351,7 +351,11 @@ export function VisitDetailDrawer({
                   <>
                     {canComplete && (
                       <div className="flex flex-wrap gap-2">
-                        <Button size="sm" onClick={() => completeMut.mutate()} disabled={completeMut.isPending}>
+                        {/* `size="sm"` is a 25px box. This is the field
+                            tech's primary action — the one thing they press
+                            in a driveway — and it was the smallest control in
+                            the drawer on every touch device. */}
+                        <Button size="sm" onClick={() => completeMut.mutate()} disabled={completeMut.isPending} className="touch:min-h-11">
                           <CheckCircle2 className="mr-1.5 h-4 w-4" />Complete
                         </Button>
                       </div>

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">HoundStack</string>
+    <string name="title_activity_main">HoundStack</string>
+    <string name="package_name">consulting.thenorth.pal</string>
+    <string name="custom_url_scheme">consulting.thenorth.pal</string>
+</resources>

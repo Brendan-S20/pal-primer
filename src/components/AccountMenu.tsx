@@ -32,7 +32,12 @@ export function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label="Your account"
-        className="rounded-full ring-offset-background transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        // The avatar is 32px and stays 32px — it is the thing you recognise,
+        // and growing it would change the header's look on every screen. The
+        // BUTTON around it takes the touch size instead, which is the pattern
+        // ui/dialog.tsx and ui/sheet.tsx already use: a small glyph centred in
+        // a target a thumb can hit. It was a 32px control on every iPad.
+        className="flex items-center justify-center rounded-full ring-offset-background transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 touch:min-h-11 touch:min-w-11"
       >
         <UserAvatar
           name={staff?.display_name}

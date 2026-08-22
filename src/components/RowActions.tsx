@@ -51,7 +51,7 @@ export function RowActions({
           type="button"
           variant="ghost"
           size="icon"
-          className="h-8 w-8 text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+          className="h-8 w-8 text-muted-foreground hover:text-foreground touch:h-11 touch:w-11"
           aria-label={view.label ?? "View"}
           title={view.label ?? "View"}
           onClick={(e) => {
@@ -67,7 +67,7 @@ export function RowActions({
           type="button"
           variant="ghost"
           size="icon"
-          className="h-8 w-8 text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+          className="h-8 w-8 text-muted-foreground hover:text-foreground touch:h-11 touch:w-11"
           aria-label={edit.label ?? "Edit"}
           title={edit.label ?? "Edit"}
           onClick={(e) => {
@@ -85,7 +85,7 @@ export function RowActions({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground max-md:h-11 max-md:w-11"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground touch:h-11 touch:w-11"
               aria-label="More actions"
               title="More actions"
               onClick={(e) => e.stopPropagation()}

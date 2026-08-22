@@ -1,3 +1,4 @@
+import { nativeTopBarStyle } from "@/lib/native-build";
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
@@ -193,7 +194,12 @@ function PlatformHeader() {
   };
 
   return (
-    <header className="sticky top-[var(--hs-banner-h,0px)] z-30 flex h-14 items-center gap-2 border-b bg-card/80 px-3 backdrop-blur sm:px-4">
+    <header
+      // NATIVE ONLY — same bar, same fault as the staff shell's. Not verified
+      // on a device: reaching /platform needs a platform-admin account.
+      style={nativeTopBarStyle(3.5)}
+      className="sticky top-[var(--hs-banner-h,0px)] z-30 flex h-14 items-center gap-2 border-b bg-card/80 px-3 backdrop-blur sm:px-4"
+    >
       <SidebarTrigger className="min-h-11 min-w-11" />
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <Shield className="h-4 w-4 shrink-0 text-primary sm:hidden" />

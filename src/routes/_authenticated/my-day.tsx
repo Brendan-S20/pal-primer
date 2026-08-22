@@ -31,6 +31,7 @@ import { logDnaSampleFromField } from "@/lib/dna.functions";
 import { sendVisitStatusSms } from "@/lib/messages.functions";
 import { TECH_SKIP_REASON_CODES, SKIP_REASON_LABELS } from "@/lib/skip-rules.functions";
 import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
+import { nativeTopBarStyle } from "@/lib/native-build";
 import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { syncQueue } from "@/lib/offline/sync";
 import {
@@ -449,7 +450,8 @@ function MyDay() {
           z-index, so a fixed top-0 here vanished under it. */}
       <div
         className="sticky top-[var(--hs-banner-h,0px)] z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60"
-        style={{ paddingTop: "env(safe-area-inset-top)" }}
+        // Sizes to its content, so no height override — see nativeTopBarStyle.
+        style={nativeTopBarStyle()}
       >
         <div className="space-y-3 px-4 py-3">
           {(!online || pending > 0) && (
@@ -560,7 +562,11 @@ function MyDay() {
                   // links and the mobile Today/Schedule tabs stay truthful.
                   applyDay(next);
                 }}
-                className="h-10 rounded-md border bg-background px-2 text-sm max-md:hidden"
+                // 40px, and visible on every iPad — `max-md:hidden` only
+                // hides it below 768px, where the 7-day strip takes over.
+                // A tablet gets this control and a finger, so it needs the
+                // height a finger needs.
+                className="h-10 rounded-md border bg-background px-2 text-sm max-md:hidden touch:h-11"
               />
             </div>
           </div>
@@ -648,7 +654,7 @@ function MyDay() {
                 // `min-w-0 max-w-full` lets it take the space it is given and
                 // clip the label; the open list is unaffected and still shows
                 // every name in full.
-                className="h-9 min-w-0 max-w-full rounded-md border bg-background px-2 text-sm max-md:min-h-11"
+                className="h-9 min-w-0 max-w-full rounded-md border bg-background px-2 text-sm touch:min-h-11"
               >
                 <option value="">
                   {data?.staff && !previewing ? "My day" : "(Select technician)"}
@@ -1276,7 +1282,7 @@ function VisitCard({
               href={mapsUrl(p)}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex min-h-10 items-center gap-1 rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-accent active:bg-accent max-md:min-h-11"
+              className="inline-flex min-h-10 items-center gap-1 rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-accent active:bg-accent touch:min-h-11"
             >
               <Navigation className="h-4 w-4" /> Navigate
             </a>
@@ -1284,7 +1290,7 @@ function VisitCard({
           {visit.clients?.primary_phone && (
             <a
               href={`tel:${visit.clients.primary_phone}`}
-              className="inline-flex min-h-10 items-center rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-accent active:bg-accent max-md:min-h-11"
+              className="inline-flex min-h-10 items-center rounded-md border bg-background px-3 py-2 text-sm font-medium hover:bg-accent active:bg-accent touch:min-h-11"
             >
               📞 Call
             </a>
@@ -1292,7 +1298,7 @@ function VisitCard({
           {finalStatus && (
             <button
               onClick={() => setCollapsed((c) => !c)}
-              className="grid h-10 w-10 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground max-md:h-11 max-md:w-11"
+              className="grid h-10 w-10 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground touch:h-11 touch:w-11"
               aria-label={collapsed ? "Expand" : "Collapse"}
             >
               {collapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
@@ -1333,7 +1339,7 @@ function VisitCard({
               onChange={(e) => setPhotoKind(e.target.value as any)}
               // MEASURED 2026-08-19: 40px, four short of the floor, on the
               // screen a technician uses outdoors with gloves on.
-              className="h-10 rounded-md border bg-background px-3 text-sm max-md:min-h-11"
+              className="h-10 rounded-md border bg-background px-3 text-sm touch:min-h-11"
               aria-label="Photo type"
             >
               <option value="before">Before</option>
@@ -1344,7 +1350,7 @@ function VisitCard({
               type="button"
               variant="outline"
               size="default"
-              className="h-10 max-md:min-h-11"
+              className="h-10 touch:min-h-11"
               disabled={uploading}
               onClick={async () => {
                 // Prefer native Capacitor camera when inside the app shell.
@@ -1592,7 +1598,7 @@ function VisitCard({
                     <input
                       type="number"
                       min="1"
-                      className="col-span-2 h-9 rounded-md border bg-background px-2 text-sm max-md:min-h-11 sm:col-span-1"
+                      className="col-span-2 h-9 rounded-md border bg-background px-2 text-sm touch:min-h-11 sm:col-span-1"
                       value={addonQty}
                       onChange={(e) => setAddonQty(e.target.value)}
                     />
@@ -1604,7 +1610,7 @@ function VisitCard({
                       <AlertDialogTrigger asChild>
                         <Button
                           size="sm"
-                          className="col-span-4 max-md:min-h-11 sm:col-span-1"
+                          className="col-span-4 touch:min-h-11 sm:col-span-1"
                           disabled={!addonSvcId || !svc || addonMut.isPending || !cardOnline}
                         >
                           {addonMut.isPending ? "…" : "Bill"}

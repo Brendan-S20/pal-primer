@@ -178,18 +178,18 @@ function Dashboard() {
         </div>
         {/* `size="sm"` is `h-8` — a 32px target, and on a phone these two are
             the only navigation in the header of the first screen the owner
-            sees. `max-md:min-h-11` wins over the variant's fixed `height`
+            sees. `touch:min-h-11` wins over the variant's fixed `height`
             because used height is max(min-height, height), so the button grows
             to 44px on touch without a second size variant and without moving a
             pixel above `md`. Same lever as `ui/tabs.tsx`. */}
         <div className="flex gap-2">
           <Link to="/routes">
-            <Button variant="outline" size="sm" className="max-md:min-h-11">
+            <Button variant="outline" size="sm" className="touch:min-h-11">
               Today's routes
             </Button>
           </Link>
           <Link to="/clients">
-            <Button variant="outline" size="sm" className="max-md:min-h-11">
+            <Button variant="outline" size="sm" className="touch:min-h-11">
               Clients
             </Button>
           </Link>
@@ -212,7 +212,7 @@ function Dashboard() {
             // the taller box, so nothing looks padded.
             const content = (
               <div
-                className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm max-md:min-h-11 ${
+                className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm touch:min-h-11 ${
                   a.tone === "danger"
                     ? "border-destructive/40 bg-destructive/5 text-destructive"
                     : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400"
@@ -302,7 +302,7 @@ function Dashboard() {
               <button
                 type="button"
                 onClick={() => setMapOpen((v) => !v)}
-                className="max-md:min-h-11 text-xs text-primary underline-offset-2 hover:underline md:hidden"
+                className="touch:min-h-11 text-xs text-primary underline-offset-2 hover:underline md:hidden"
                 aria-expanded={mapOpen}
               >
                 {mapOpen ? "Hide map" : "Show map"}

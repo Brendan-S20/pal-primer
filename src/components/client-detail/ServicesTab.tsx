@@ -438,7 +438,7 @@ export function ServicesTab({
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-6 px-2 text-xs max-md:min-h-11"
+                            className="h-6 px-2 text-xs touch:min-h-11"
                             disabled={syncZoneMut.isPending}
                             onClick={() => syncZoneMut.mutate({ sub: s, zoneId: propertyZoneId })}
                           >

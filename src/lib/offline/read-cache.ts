@@ -12,7 +12,9 @@ import { dehydrate, hydrate, type QueryClient } from "@tanstack/react-query";
 import { isImpersonationTab, supabase } from "@/integrations/supabase/client";
 import {
   isPersistableQueryKey,
+  isLandingPath,
   isRestorableEnvelope,
+  LAST_LANDING_KEY,
   LAST_USER_KEY,
   READ_CACHE_KEY_PREFIX,
   READ_CACHE_MAX_BYTES,
@@ -59,6 +61,31 @@ export function rememberLastUser(userId: string): void {
 export function readLastUser(): string | null {
   try {
     return storage()?.getItem(LAST_USER_KEY) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Where this device's last verified sign-in landed. Written whenever the
+ * landing path is successfully resolved, read only when it cannot be — see
+ * LAST_LANDING_KEY for why a tech's /my-day must not silently become
+ * /dashboard the first time they open the app without signal. */
+export function rememberLandingPath(path: string): void {
+  if (!isLandingPath(path)) return;
+  try {
+    storage()?.setItem(LAST_LANDING_KEY, path);
+  } catch {
+    /* quota or blocked storage — nothing here is worth failing a boot over */
+  }
+}
+
+export function readLandingPath(): string | null {
+  try {
+    const v = storage()?.getItem(LAST_LANDING_KEY);
+    // Validated on the way out, not just on the way in: this ends up in a
+    // navigate() call, and device storage is shared with anything else running
+    // on this origin.
+    return isLandingPath(v) ? v : null;
   } catch {
     return null;
   }
