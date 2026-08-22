@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+    </application>
+
+    <!-- Permissions.
+         The generated manifest ships with INTERNET and nothing else, and the
+         Capacitor plugin manifests are EMPTY — checked, they declare no
+         permissions of their own. So every capability this app uses has to be
+         declared here or it fails at runtime with no build error to warn you. -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- @capacitor/camera: completing a visit with a photo, and DNA samples. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Reading an existing photo. READ_MEDIA_IMAGES is the Android 13+ form;
+         READ_EXTERNAL_STORAGE is capped below it for older devices. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- @capacitor/geolocation: "locate me" on the route map. COARSE as well as
+         FINE because Android 12+ lets someone grant only the approximate one,
+         and a route map is still useful at that precision. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- @capacitor/push-notifications. Required from Android 13 (API 33), and
+         this app targets 36. Without it registration succeeds, delivery
+         succeeds, and nothing is ever shown — the failure mode is silence. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- The camera is not REQUIRED to use the product: an owner doing office
+         work never opens it. Declaring it optional keeps the app installable
+         on devices without one rather than having Play filter them out. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+</manifest>

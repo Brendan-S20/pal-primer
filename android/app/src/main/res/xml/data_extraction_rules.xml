@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Nothing leaves the device by backup.
+
+  The WebView's localStorage holds the Supabase session — an access token and a
+  refresh token for a live account. With the generated manifest's
+  `allowBackup="true"` that is copied into Google Drive and restored onto
+  whatever device signs in next, and on a debuggable build it is readable over
+  `adb backup` without unlocking anything.
+
+  This app has no local state worth preserving across a reinstall: the session
+  can be recreated by signing in, the offline read cache is a cache, and the
+  queue of pending field actions is deliberately short-lived. So there is
+  nothing to trade off — the backup is pure exposure.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>
