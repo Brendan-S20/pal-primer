@@ -2,17 +2,28 @@
 
 2026-08-22. `npx cap add android` on a repo that had shipped iOS.
 
-## What could not be checked, stated first
+## It builds — 2026-08-22
 
-**There is no JDK and no Android SDK on this machine.** No Android Studio, no
-bundled JBR, nothing under `~/Library/Android/sdk`, `/usr/libexec/java_home`
-finds nothing. So the project was GENERATED and READ; it was never built, never
-installed, and never run.
+**BUILD SUCCESSFUL in 6m 27s**, 368 tasks. `android/build-debug.sh` reproduces
+it; the toolchain notes are in its header.
 
-Everything below is either a static fact about the generated files or a claim
-about what will happen on a device. The second kind is marked, and none of it
-has been observed. `docs/ios-qa-results.md` is emphatic that "passed" and "not
-run" must not blur together, and this is a whole platform in the second column.
+The first pass of this document was written with no JDK and no Android SDK on
+the machine, and said so at length. Both are installed now, entirely under
+`$HOME` with no sudo:
+
+- **JDK 21** via `brew install openjdk@21` — the FORMULA, deliberately. The
+  cask writes to `/Library/Java/JavaVirtualMachines` and wants an admin
+  password; the formula installs under `/opt/homebrew` and does not. AGP 8.13
+  needs 17 as a floor and is happiest on 21.
+- **SDK** — command-line tools unzipped to `~/Library/Android/sdk`, then
+  `platform-tools`, `platforms;android-36`, `build-tools;36.0.0`.
+
+The APK is 11MB and carries all 375 files of the web bundle, including the
+chunk that sets `viewport-fit=cover` at runtime — so the safe-area opt-in
+reaches Android as well.
+
+**What still has not been observed:** the app has never RUN. Not on a device,
+not on an emulator. Everything below about behaviour is still a claim.
 
 ## The good news first
 
@@ -40,9 +51,25 @@ binary's contents cannot drift into version control.
 
 ### The manifest declares one permission and the app needs five
 
-`cap add` generates a manifest with `INTERNET` and nothing else. The Capacitor
-plugin manifests in `node_modules` are **empty** — a bare `<manifest>` element,
-checked rather than assumed — so nothing merges permissions in for you.
+`cap add` generates a manifest with `INTERNET` and nothing else.
+
+**A correction to the first version of this document.** It said every Capacitor
+plugin manifest is empty, so nothing merges permissions in. That was an
+overclaim: three were checked and the conclusion was drawn about all nine. The
+build settled it — the APK's merged manifest contains `VIBRATE`,
+`ACCESS_NETWORK_STATE`, `WAKE_LOCK` and `c2dm.RECEIVE`, none of which were
+declared by hand. Two plugin manifests DO declare a permission
+(`@capacitor/haptics` → VIBRATE, `@capacitor/network` → ACCESS_NETWORK_STATE),
+and firebase-messaging contributes the other two transitively.
+
+What is true, and is what matters: the three plugins whose features would fail
+declare **nothing**.
+
+| plugin | its own manifest declares |
+|---|---|
+| @capacitor/camera | *nothing* |
+| @capacitor/geolocation | *nothing* |
+| @capacitor/push-notifications | *nothing* |
 
 Nine plugins are installed. Three need a permission. None had one.
 
@@ -94,8 +121,7 @@ is set too, because from API 31 the system draws the splash and ignores the
 `tests/an-android-app-that-could-not-use-the-camera.test.ts` walks the
 installed plugins, and every one that needs a permission must have it declared.
 Mutation-tested against the manifest `cap add` actually produced: 6 failures,
-each naming the plugin, the permission, and the fact that the plugin's own
-manifest is empty so nothing will merge it in.
+each naming the plugin and the permission.
 
 It also pins `allowBackup="false"` and the presence of an app-level
 `colors.xml`. It `skipIf`s when `android/` is absent, so a checkout without the
@@ -103,7 +129,7 @@ platform is not failed for not having it.
 
 ## Not done — and the honest list
 
-**Unverifiable without a toolchain:**
+**Unverifiable without a running device:**
 
 - **Edge-to-edge.** `targetSdkVersion` is 36, and Android enforces edge-to-edge
   from API 35. The WebView will draw under the system bars, which is the exact
@@ -113,8 +139,6 @@ platform is not failed for not having it.
   the header and tab bar land correctly, is **unknown**. It is the first thing
   to check on a device, and the geometry harness in `ios/UITests/Geometry.swift`
   is the shape of the check to copy.
-- Whether it compiles at all. The manifest and resource XML are well-formed
-  (parsed), which is not the same as linking.
 
 **Needs credentials or assets:**
 

@@ -3,10 +3,15 @@
 // ── WHY THIS EXISTS ───────────────────────────────────────────────────────
 //
 // `npx cap add android` was run on 2026-08-22. The manifest it generates
-// declares exactly one permission — INTERNET — and every Capacitor plugin
-// manifest in `node_modules` is EMPTY. Checked, not assumed: they contain a
-// bare `<manifest>` element and nothing else. Nothing merges the permissions
-// in for you.
+// declares exactly one permission — INTERNET.
+//
+// Some plugins DO ship permissions of their own: @capacitor/haptics declares
+// VIBRATE and @capacitor/network declares ACCESS_NETWORK_STATE, and both merge
+// in without help. (An earlier version of this comment said all nine plugin
+// manifests were empty. Three had been checked. The built APK disproved it.)
+//
+// The three below declare NOTHING, which is the whole problem: the plugins
+// whose features fail loudest are the ones that bring no permission with them.
 //
 // So an app that ships nine plugins, three of which need a permission, gets a
 // manifest that grants none of them. And the failure mode is the worst kind:
