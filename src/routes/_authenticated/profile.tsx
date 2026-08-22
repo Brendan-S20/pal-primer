@@ -282,7 +282,7 @@ function ProfilePage() {
           <CardTitle className="text-base">Top bar</CardTitle>
           <CardDescription>
             Which optional controls appear beside the search box. Turning one off only
-            hides the shortcut — the Knowledge Center is still in the More menu and the
+            hides the shortcut. The Knowledge Center is still in the More menu and the
             command palette, and the weather is still on the dashboard.
           </CardDescription>
         </CardHeader>
