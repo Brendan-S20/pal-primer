@@ -269,12 +269,12 @@ describe("the form fits a phone", () => {
   });
 
   it("gives the raw select a thumb-sized target", () => {
-    // Input and Button carry `max-md:min-h-11` themselves; a bare <select>
+    // Input and Button carry `touch:min-h-11` themselves; a bare <select>
     // does not, and px-3 py-2 lands around 38px.
     const dialog = plansRouteCode.slice(
       plansRouteCode.indexOf('id="new-plan-interval"'),
       plansRouteCode.indexOf('id="new-plan-sort"'),
     );
-    expect(dialog).toMatch(/max-md:min-h-11/);
+    expect(dialog).toMatch(/touch:min-h-11/);
   });
 });

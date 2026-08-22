@@ -318,7 +318,7 @@ function NewClientWizard() {
                 onClick={() => i < step && setStep(i)}
                 disabled={i > step}
                 className={
-                  "flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium max-md:h-11 max-md:w-11 " +
+                  "flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium touch:h-11 touch:w-11 " +
                   (state === "done"
                     ? "bg-primary text-primary-foreground"
                     : state === "current"

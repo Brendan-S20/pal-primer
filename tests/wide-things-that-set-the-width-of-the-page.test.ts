@@ -169,7 +169,7 @@ describe("a tab bar scrolls on a phone instead of wrapping into pills", () => {
   it("gives the triggers a 44px target on touch and stops them squeezing", () => {
     const src = tabs();
     // 2.75rem. `py-1` around a 20px line box is 28px.
-    expect(src).toMatch(/max-md:min-h-11/);
+    expect(src).toMatch(/touch:min-h-11/);
     expect(src).toMatch(/max-md:shrink-0/);
   });
 
@@ -209,13 +209,13 @@ describe("the last three controls under the 44px floor", () => {
   //
   // `min-h`, not `h`, throughout. `min-height` beats `height` in CSS's
   // used-value calculation no matter which order the utilities land in, so a
-  // caller passing its own `h-8` still gets a 44px target. With `max-md:h-11`
+  // caller passing its own `h-8` still gets a 44px target. With `touch:h-11`
   // the result depends on class order, which is not a thing to leave to the
   // order somebody happened to type.
 
   it("gives a text input a 44px target on touch and leaves the laptop alone", () => {
     const src = codeOnly(read("src/components/ui/input.tsx"));
-    expect(src).toMatch(/max-md:min-h-11/);
+    expect(src).toMatch(/touch:min-h-11/);
     // 36px above the breakpoint, exactly as before.
     expect(src).toMatch(/flex h-9 w-full rounded-md/);
   });
@@ -226,9 +226,9 @@ describe("the last three controls under the 44px floor", () => {
     // in a driveway is the failure this floor exists to prevent.
     const src = codeOnly(read("src/components/ui/select.tsx"));
     const trigger = src.slice(src.indexOf("SelectTrigger"), src.indexOf("SelectScrollUpButton"));
-    expect(trigger).toMatch(/max-md:min-h-11/);
+    expect(trigger).toMatch(/touch:min-h-11/);
     const item = src.slice(src.indexOf("const SelectItem"), src.indexOf("SelectItem.displayName"));
-    expect(item).toMatch(/max-md:min-h-11/);
+    expect(item).toMatch(/touch:min-h-11/);
   });
 
   it("expands the checkbox's hit area without expanding the checkbox", () => {
@@ -236,25 +236,30 @@ describe("the last three controls under the 44px floor", () => {
     // different component, not a bigger version of this one, so the 44px box
     // is an out-of-flow pseudo-element and the 16px square is untouched.
     const src = codeOnly(read("src/components/ui/checkbox.tsx"));
-    expect(src).toMatch(/max-md:before:h-11/);
-    expect(src).toMatch(/max-md:before:w-11/);
+    expect(src).toMatch(/touch:before:h-11/);
+    expect(src).toMatch(/touch:before:w-11/);
     // Absolute + centred, or it is a 44px block shoving the row open.
-    expect(src).toMatch(/max-md:before:absolute/);
-    expect(src).toMatch(/max-md:before:-translate-x-1\/2/);
-    expect(src).toMatch(/max-md:before:-translate-y-1\/2/);
+    expect(src).toMatch(/touch:before:absolute/);
+    expect(src).toMatch(/touch:before:-translate-x-1\/2/);
+    expect(src).toMatch(/touch:before:-translate-y-1\/2/);
     // Tailwind emits no pseudo-element at all without `content`, so this one
     // missing class would make the whole thing a silent no-op that still
     // matches every assertion above.
-    expect(src).toMatch(/max-md:before:content-\[''\]/);
+    expect(src).toMatch(/touch:before:content-\[''\]/);
     // The pseudo positions against the box, so the box has to establish one.
     expect(src).toMatch(/\brelative\b/);
     // And the square itself is still 16px.
     expect(src).toMatch(/\bh-4 w-4 shrink-0 rounded-sm\b/);
   });
 
-  it("keeps all four of them behind max-md:", () => {
-    // A control that got taller on a laptop would be a regression dressed as
-    // a fix — the same check tabs.tsx already carries.
+  it("keeps all four of them behind the touch variant", () => {
+    // A control that got taller on a laptop-with-a-mouse would be a regression
+    // dressed as a fix — the same check tabs.tsx already carries.
+    //
+    // The scope used to be `max-md:`. It is now `touch:` (a coarse pointer OR
+    // a narrow viewport, defined in src/styles.css), which is a superset: the
+    // laptop this guards is still excluded, and iPads — touch devices at
+    // 744-1366px, which `max-md:` silently left out — are no longer.
     for (const f of [
       "src/components/ui/input.tsx",
       "src/components/ui/select.tsx",
@@ -262,7 +267,7 @@ describe("the last three controls under the 44px floor", () => {
       "src/components/ui/button.tsx",
     ]) {
       const src = codeOnly(read(f));
-      expect(src, `${f} has an unscoped min-h-11`).not.toMatch(/(?<!max-md:)\bmin-h-11\b/);
+      expect(src, `${f} has an unscoped min-h-11`).not.toMatch(/(?<!touch:)\bmin-h-11\b/);
     }
   });
 });

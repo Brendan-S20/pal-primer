@@ -313,7 +313,7 @@ describe("the screen asks for a page and says which one it got", () => {
     const pager = usersCode.slice(usersCode.indexOf("Page ${(currentPage + 1)"));
     expect(pager).toMatch(/>\s*Previous\s*</);
     expect(pager).toMatch(/>\s*Next\s*</);
-    // `size="sm"` carries the max-md:min-h-11 touch floor from ui/button.tsx;
+    // `size="sm"` carries the touch:min-h-11 touch floor from ui/button.tsx;
     // `size="icon"` around a chevron alone would be a 36px target with no label.
     expect(pager).not.toMatch(/size="icon"/);
     expect(pager).toMatch(/disabled=\{currentPage <= 0/);

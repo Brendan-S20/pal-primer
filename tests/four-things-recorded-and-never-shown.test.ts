@@ -168,7 +168,7 @@ describe("the timeline shows it", () => {
   });
 
   it("gives the disclosure a touch target", () => {
-    expect(src).toMatch(/max-md:min-h-11/);
+    expect(src).toMatch(/touch:min-h-11/);
   });
 });
 
@@ -215,13 +215,13 @@ describe("the row actions are hittable on a phone", () => {
   const src = read("src/components/RowActions.tsx");
 
   it("gives all three buttons a 44px touch box", () => {
-    const sized = src.match(/max-md:h-11 max-md:w-11/g) ?? [];
+    const sized = src.match(/touch:h-11 touch:w-11/g) ?? [];
     expect(sized).toHaveLength(3);
     // Every h-8 w-8 on this component must carry the escape — a fourth button
     // added later without one is the regression.
     const compact = src.match(/className="h-8 w-8[^"]*"/g) ?? [];
     for (const c of compact) {
-      expect(c, `a 32px row action with no touch size: ${c}`).toMatch(/max-md:h-11 max-md:w-11/);
+      expect(c, `a 32px row action with no touch size: ${c}`).toMatch(/touch:h-11 touch:w-11/);
     }
   });
 
@@ -247,6 +247,6 @@ describe("the referral field says what it is when someone types in it", () => {
 
   it("gives the field and its button a touch height", () => {
     const form = src.slice(src.indexOf("redeem-referral-code") - 600);
-    expect((form.match(/max-md:min-h-11/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect((form.match(/touch:min-h-11/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 });

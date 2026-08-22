@@ -146,7 +146,7 @@ function OnlineSignupSettings() {
                   <button
                     // MEASURED 2026-08-19: 16.0px. Inline-flex plus a minimum, not padding,
                     // so the surrounding line keeps its rhythm.
-                    className="inline-flex items-center text-xs text-primary underline max-md:min-h-11"
+                    className="inline-flex items-center text-xs text-primary underline touch:min-h-11"
                     onClick={() => copy(publicUrl, "Link")}
                   >
                     Copy link
@@ -154,7 +154,7 @@ function OnlineSignupSettings() {
                   <a
                     // MEASURED 2026-08-19: 16.0px. Inline-flex plus a minimum, not padding,
                     // so the surrounding line keeps its rhythm.
-                    className="inline-flex items-center text-xs text-primary underline max-md:min-h-11"
+                    className="inline-flex items-center text-xs text-primary underline touch:min-h-11"
                     href={publicUrl}
                     target="_blank"
                     rel="noreferrer"

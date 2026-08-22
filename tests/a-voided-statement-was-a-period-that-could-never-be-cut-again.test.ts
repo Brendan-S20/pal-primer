@@ -103,7 +103,7 @@ describe("a voided statement can be put back on the workbench", () => {
 
   it("is a 44px target below md, like every other control on this card", () => {
     const block = component.slice(component.indexOf("onReopenAsDraft &&"));
-    expect(block.slice(0, 900)).toMatch(/max-md:min-h-11/);
+    expect(block.slice(0, 900)).toMatch(/touch:min-h-11/);
   });
 
   it("is not offered to the location, which reads statements and does not move them", () => {

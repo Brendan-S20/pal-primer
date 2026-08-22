@@ -523,7 +523,7 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
                 <Button
                   type="submit"
                   size="sm"
-                  className="col-span-6 max-md:min-h-11 sm:col-span-1"
+                  className="col-span-6 touch:min-h-11 sm:col-span-1"
                   disabled={chargeMut.isPending || !svcId}
                 >
                   Add
@@ -603,7 +603,7 @@ export function AddonsPanel({ clientId }: { clientId: string }) {
                 <Button
                   type="submit"
                   size="sm"
-                  className="col-span-6 max-md:min-h-11 sm:col-span-1"
+                  className="col-span-6 touch:min-h-11 sm:col-span-1"
                   disabled={subMut.isPending || !subSvcId}
                 >
                   Start

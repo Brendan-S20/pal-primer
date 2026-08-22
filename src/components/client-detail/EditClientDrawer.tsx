@@ -257,7 +257,7 @@ export function EditClientDrawer({
           <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Communication preferences
           </legend>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-sm touch:min-h-11">
             <input
               type="checkbox"
               checked={!form.smsOptOut}
@@ -270,7 +270,7 @@ export function EditClientDrawer({
               SMS is on but there's no phone number on file. Add one above or texts won't send.
             </p>
           )}
-          <label className="mt-1 flex items-center gap-2 text-sm">
+          <label className="mt-1 flex items-center gap-2 text-sm touch:min-h-11">
             <input
               type="checkbox"
               checked={!form.emailOptOut}

@@ -91,7 +91,7 @@ export function MarketingPanel() {
             className="mt-1 block w-full rounded border bg-background px-3 py-2 text-sm"
           />
         </label>
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-sm touch:min-h-11">
           <input type="checkbox" checked={includeCta} onChange={(e) => setIncludeCta(e.target.checked)} />
           Include a call to action
         </label>
@@ -337,7 +337,7 @@ export function DispatchPanel() {
       <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4">
         <label className="text-sm">
           <span className="block font-medium">Day</span>
-          <input type="date" value={day} onChange={(e) => setDay(e.target.value)} className="mt-1 rounded border bg-background px-3 py-2 text-sm" />
+          <input type="date" value={day} onChange={(e) => setDay(e.target.value)} className="mt-1 rounded border bg-background px-3 py-2 text-sm touch:min-h-11" />
         </label>
         <Button onClick={() => m.mutate()} disabled={m.isPending}>
           {m.isPending ? "Analyzing…" : "Suggest reassignments"}

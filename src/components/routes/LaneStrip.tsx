@@ -102,7 +102,7 @@ export function LaneStrip({
   // technician's day — so the touch floor applies however chart-like the grid
   // looks. Only below `md`: the strip is a density display on a desktop and
   // taller cells there would cost the at-a-glance read it exists for.
-  const cell = compact ? "h-6 max-md:h-11 text-3xs" : "h-8 max-md:h-11 text-2xs";
+  const cell = compact ? "h-6 touch:h-11 text-3xs" : "h-8 touch:h-11 text-2xs";
 
   return (
     <div className="relative overflow-x-auto rounded-lg border bg-card">

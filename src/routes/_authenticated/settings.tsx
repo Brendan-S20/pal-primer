@@ -96,7 +96,7 @@ function SettingsLayout() {
                   // already scrolls sideways in its own container, so the fix is
                   // height only; `inline-flex items-center` keeps the label
                   // centred once the box is taller than the text.
-                  className={`inline-flex items-center rounded-md px-3 py-1 text-sm transition-colors max-md:min-h-11 ${
+                  className={`inline-flex items-center rounded-md px-3 py-1 text-sm transition-colors touch:min-h-11 ${
                     active
                       ? "bg-primary/10 text-primary font-medium"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"

@@ -380,7 +380,7 @@ export function PropertyDrawer({
               Separate entries with commas. Waste stations are managed in the Services tab.
             </p>
             <div className="mt-3 border-t pt-3">
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-sm touch:min-h-11">
                 <input
                   type="checkbox"
                   checked={form.hasUnits}

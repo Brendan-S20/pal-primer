@@ -22,7 +22,7 @@ const buttonVariants = cva(
       // The working agreement says touch targets are at least 44px and means
       // the BUTTON, not the glyph. This component shipped `h-8` for `sm` and
       // `h-9 w-9` for `icon` — 32px and 36px — across roughly 375 call sites,
-      // and the answer until now was an ad-hoc `max-md:min-h-11` on whichever
+      // and the answer until now was an ad-hoc `touch:min-h-11` on whichever
       // six buttons somebody happened to look at. Six out of 375 is not a
       // policy, it is a record of which screens got opened on a phone.
       //
@@ -38,17 +38,17 @@ const buttonVariants = cva(
       // in a box, so the box can grow without moving anything.
       //
       // `min-h` rather than `h`: `min-height` beats `height` in the cascade
-      // whatever order the utilities land in, so `h-8 max-md:min-h-11` is 44px
+      // whatever order the utilities land in, so `h-8 touch:min-h-11` is 44px
       // on touch without depending on how Tailwind sorts its variants.
       //
       // The six hand-written escapes elsewhere are now redundant. They are
       // left alone deliberately — they are harmless, and each is pinned by a
       // test that names the screen it was found on.
       size: {
-        default: "h-9 px-4 py-2 max-md:min-h-11",
-        sm: "h-8 rounded-md px-3 text-xs max-md:min-h-11",
-        lg: "h-10 rounded-md px-8 max-md:min-h-11",
-        icon: "h-9 w-9 max-md:min-h-11 max-md:min-w-11",
+        default: "h-9 px-4 py-2 touch:min-h-11",
+        sm: "h-8 rounded-md px-3 text-xs touch:min-h-11",
+        lg: "h-10 rounded-md px-8 touch:min-h-11",
+        icon: "h-9 w-9 touch:min-h-11 touch:min-w-11",
       },
     },
     defaultVariants: {

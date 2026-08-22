@@ -5,6 +5,48 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
+ * `touch:` — one definition of "a thumb is doing this", instead of 85 guesses.
+ *
+ * ── THE BUG THIS REPLACES ─────────────────────────────────────────────────
+ *
+ * Touch sizing across this codebase was spelled `max-md:min-h-11` — grow the
+ * target below 768px. That is a guess about WIDTH standing in for a fact about
+ * INPUT, and it is wrong on exactly one class of device: the iPad. Every iPad
+ * is 744px or wider in portrait and up to 1366 in landscape, all of it touch,
+ * and at every one of those sizes the `max-md:` sizing switched off and left
+ * 24-32px targets for a finger. Apple's own floor is 44pt regardless of screen
+ * size.
+ *
+ * The reveal case was worse than small — it was invisible. Tailwind 4 compiles
+ * `hover:` and `group-hover:` inside `@media (hover:hover)`, so a control
+ * revealed on hover never appears on touch at all; below 768 the width escape
+ * hid that, and on an iPad there was no escape and no hover. The delete button
+ * on /notifications was unreachable on every iPad this product ships to.
+ *
+ * ── WHY A VARIANT AND NOT 85 EDITS ────────────────────────────────────────
+ *
+ * Because the next person needs one place to change their mind. `max-md:` and
+ * `pointer-coarse:` written side by side at 85 call sites is the same rule
+ * copied 85 times, and this repo already has a file explaining what happens
+ * when one copy gets fixed and the other does not.
+ *
+ * It keeps the width clause deliberately. A narrow window on a desktop is
+ * still narrow, mouse or not, and the layouts that reflow there should keep
+ * reflowing. So: coarse pointer OR narrow viewport.
+ */
+/* Block form, and it has to be. The shorthand
+ * `@custom-variant touch (@media (pointer: coarse), (max-width: 767px));`
+ * silently keeps only the FIRST clause — verified by reading the compiled
+ * stylesheet, which emitted a bare `@media (pointer:coarse)` and dropped the
+ * width entirely. A narrow desktop window would have quietly lost the sizing
+ * `max-md:` used to give it. */
+@custom-variant touch {
+  @media (pointer: coarse), (max-width: 767px) {
+    @slot;
+  }
+}
+
+/*
  * Design system definition.
  *
  * The @theme inline block maps CSS custom properties to Tailwind utility

@@ -46,7 +46,7 @@
 // called out in July because in July they were not near the top of anything.
 // The reorder is what made them the most-tapped control on the page.
 //
-// Both are fixed with `max-md:min-h-11` rather than a new size variant: used
+// Both are fixed with `touch:min-h-11` rather than a new size variant: used
 // height is max(min-height, height), so the min-height wins over the
 // variant's `h-8` below `md` and does not exist above it.
 //
@@ -196,7 +196,7 @@ describe("the same page on a laptop is the page it was", () => {
     // the count first: a page with no touch sizing left must not satisfy "the
     // touch sizing is correctly scoped".
     expect(sized.length).toBe(4);
-    expect(sized.filter((t) => !t.startsWith("max-md:"))).toEqual([]);
+    expect(sized.filter((t) => !t.startsWith("touch:"))).toEqual([]);
   });
 
   it("keeps the desktop grid shapes it had", () => {
@@ -225,7 +225,7 @@ describe("the controls on the first phone screen can be hit", () => {
     const src = codeOnly(read(DASHBOARD));
     const header = src.slice(src.indexOf('<div className="flex gap-2">'));
     const buttons = header.slice(0, header.indexOf("</div>"));
-    expect(buttons.match(/max-md:min-h-11/g)?.length).toBe(2);
+    expect(buttons.match(/touch:min-h-11/g)?.length).toBe(2);
   });
 
   it("gives the alert chips one as well", () => {
@@ -234,7 +234,7 @@ describe("the controls on the first phone screen can be hit", () => {
     const src = codeOnly(read(DASHBOARD));
     const chip = src.match(/inline-flex items-center gap-2 rounded-md border[^`"]*/);
     expect(chip).not.toBeNull();
-    expect(chip![0]).toMatch(/max-md:min-h-11/);
+    expect(chip![0]).toMatch(/touch:min-h-11/);
   });
 
   it("centres the chip contents so the taller box does not look padded", () => {

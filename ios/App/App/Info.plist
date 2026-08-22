@@ -2,12 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CAPACITOR_DEBUG</key>
+	<key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>HoundStack</string>
+	<string>HoundStack</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -24,25 +24,20 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>HoundStack uses the camera so your crew can photograph completed work, gate or yard conditions, and DNA sample collections, and attach them to the visit record.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>HoundStack shows your position on the route map so your crew can see where they are relative to the next stop. Location is used only while the app is open, and is never shared with your clients.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>HoundStack needs access to your photos so you can attach an existing picture to a visit, a client property, or a DNA sample.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
-	<!-- arm64, not armv7. The Capacitor template ships armv7, which declares
-	     that this app REQUIRES a 32-bit ARM CPU — a thing no device Apple still
-	     supports has, and the opposite of true here: the deployment target is
-	     iOS 15 and the only slice built is arm64. Left as-is it is a false
-	     statement in the binary's own metadata about what hardware it needs. -->
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>arm64</string>
 	</array>
-	<key>NSCameraUsageDescription</key>
-	<string>HoundStack uses the camera so your crew can photograph completed work, gate or yard conditions, and DNA sample collections, and attach them to the visit record.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>HoundStack needs access to your photos so you can attach an existing picture to a visit, a client property, or a DNA sample.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>HoundStack shows your position on the route map so your crew can see where they are relative to the next stop. Location is used only while the app is open, and is never shared with your clients.</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

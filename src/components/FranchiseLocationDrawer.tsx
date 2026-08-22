@@ -247,7 +247,7 @@ function RemoveLocation({ row, onDone }: { row: FranchiseRow; onDone: () => void
         <Button
           variant="outline"
           size="sm"
-          className="shrink-0 text-destructive hover:text-destructive max-md:min-h-11"
+          className="shrink-0 text-destructive hover:text-destructive touch:min-h-11"
           onClick={() => setOpen(true)}
         >
           <Unlink className="mr-2 h-4 w-4" /> Remove
@@ -320,14 +320,14 @@ function RemoveLocation({ row, onDone }: { row: FranchiseRow; onDone: () => void
               onChange={(e) => setTyped(e.target.value)}
               placeholder={row.organization_name}
               autoComplete="off"
-              className="max-md:min-h-11"
+              className="touch:min-h-11"
             />
           </div>
 
           <AlertDialogFooter>
-            <AlertDialogCancel className="max-md:min-h-11">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="touch:min-h-11">Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 max-md:min-h-11"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 touch:min-h-11"
               disabled={!nameMatches || remove.isPending}
               onClick={(e) => {
                 // The dialog closes itself on action; hold it open until the

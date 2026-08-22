@@ -188,14 +188,14 @@ export function ReviewsReferralPanel({ client }: { client: any }) {
                   placeholder="e.g. HOUND-4KQ2"
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
-                  className="mt-1 h-8 w-full max-w-[220px] max-md:min-h-11"
+                  className="mt-1 h-8 w-full max-w-[220px] touch:min-h-11"
                 />
               </div>
               <Button
                 type="submit"
                 size="sm"
                 variant="outline"
-                className="max-md:min-h-11"
+                className="touch:min-h-11"
                 disabled={applyMut.isPending}
               >
                 Apply

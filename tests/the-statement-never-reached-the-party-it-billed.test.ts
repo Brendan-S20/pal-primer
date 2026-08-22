@@ -356,7 +356,7 @@ describe("one location, on its own", () => {
     const cell = page.slice(page.indexOf("setDrillInto(r)") - 500, page.indexOf("setDrillInto(r)"));
     expect(cell).toMatch(/<button/);
     expect(cell).toMatch(/type="button"/);
-    expect(cell).toMatch(/max-md:min-h-11/);
+    expect(cell).toMatch(/touch:min-h-11/);
     expect(cell).toMatch(/truncate/);
   });
 });
@@ -378,7 +378,7 @@ describe("a franchisee reads their own bill on a phone", () => {
     const buttons = [...codeOnly(src).matchAll(/<Button[\s\S]*?>/g)].map((m) => m[0]);
     expect(buttons.length).toBeGreaterThanOrEqual(3);
     for (const b of buttons) {
-      expect(b, `a status control with no touch height: ${b}`).toMatch(/max-md:min-h-11/);
+      expect(b, `a status control with no touch height: ${b}`).toMatch(/touch:min-h-11/);
     }
   });
 

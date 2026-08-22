@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import {
   WIDTHS,
+  APPLE_SIZES,
   measurePageOverflow,
   findControlsOffTheSide,
   findSilentlyClippedText,
@@ -77,7 +78,7 @@ async function settle(page: Page, route: string) {
   ).toBeGreaterThan(200);
 }
 
-for (const { w, h, label } of WIDTHS) {
+for (const { w, h, label } of (process.env.APPLE_SIZES === "1" ? APPLE_SIZES : WIDTHS)) {
   test.describe(label, () => {
     for (const route of ROUTES) {
       test(`${route} does not scroll the page sideways`, async ({ page }) => {
@@ -112,7 +113,7 @@ for (const { w, h, label } of WIDTHS) {
 // The rule, its three exclusions and the story of the 154px false positive are
 // all in `rules.ts`, above `findSilentlyClippedText`.
 test.describe("nothing is cut off with no way to read it", () => {
-  for (const { w, h, label } of WIDTHS) {
+  for (const { w, h, label } of (process.env.APPLE_SIZES === "1" ? APPLE_SIZES : WIDTHS)) {
     test(`${label} clips nothing silently`, async ({ page }) => {
       await page.setViewportSize({ width: w, height: h });
       const found: string[] = [];

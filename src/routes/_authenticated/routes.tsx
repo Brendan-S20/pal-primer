@@ -103,7 +103,7 @@ function FilterSelect({
     // MEASURED 2026-08-19: 26.0px. The `<label>` wraps the `<select>`, so the
     // label's box IS the hit area and it is the one that has to reach the
     // floor — sizing the select alone would leave the border it sits in short.
-    <label className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2 py-1 max-md:min-h-11">
+    <label className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2 py-1 touch:min-h-11">
       <span className="text-muted-foreground">{label}</span>
       <select
         value={value}
@@ -1016,7 +1016,7 @@ function RoutesPage() {
                   // this and it fell four short — padding around a 16px line
                   // cannot be reasoned to 44 without doing the arithmetic, and
                   // nobody had. A minimum states the intent directly.
-                  className={`px-3 py-1.5 max-md:min-h-11 rounded ${viewMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  className={`px-3 py-1.5 touch:min-h-11 rounded ${viewMode === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 {m === "map" ? "Map" : "Board"}
               </button>
@@ -1027,7 +1027,7 @@ function RoutesPage() {
               <button
                 key={r}
                 onClick={() => setRangePersist(r)}
-                className={`px-3 py-1.5 max-md:min-h-11 rounded ${range === r ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                className={`px-3 py-1.5 touch:min-h-11 rounded ${range === r ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 {r === "today" ? "Today" : r === "week" ? "Week" : "Month"}
               </button>
@@ -1484,7 +1484,7 @@ function RoutesPage() {
                 // MEASURED 2026-08-19: 29.0px — the shortest control on the
                 // board, because `text-2xs` shrank the line the padding was
                 // sized around.
-                className="w-full rounded-lg border border-dashed px-3 py-1.5 text-left text-2xs text-muted-foreground hover:bg-muted hover:text-foreground max-md:min-h-11"
+                className="w-full rounded-lg border border-dashed px-3 py-1.5 text-left text-2xs text-muted-foreground hover:bg-muted hover:text-foreground touch:min-h-11"
               >
                 Show tech load
               </button>
@@ -1556,7 +1556,10 @@ function RoutesPage() {
                     laneAction={
                       <button
                         onClick={() => setCoverFor({ id: s.id, name: s.display_name })}
-                        className="rounded px-1.5 py-0.5 text-3xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                        // 18px from `py-0.5` around a 3xs line. Moving a
+                        // whole lane's work because someone called in sick is
+                        // not a control to aim at.
+                        className="rounded px-1.5 py-0.5 text-3xs text-muted-foreground hover:bg-muted hover:text-foreground touch:min-h-11 touch:px-3"
                         title={`${s.display_name} is out, move their work`}
                       >
                         Cover
@@ -2226,7 +2229,11 @@ function VisitCardView({
                   type="button"
                   onClick={() => onComplete!(visit.id)}
                   disabled={completing}
-                  className="inline-flex items-center gap-1 rounded border border-emerald-600/40 bg-emerald-600/10 px-2 py-1 text-2xs text-emerald-700 hover:bg-emerald-600/20 disabled:opacity-50 dark:text-emerald-400"
+                  // 25px from `py-1` around a 2xs line. Closing out a visit is
+                  // the action this card exists for, and it was the smallest
+                  // control on it. The glyph and the type stay put; only the
+                  // box a thumb has to find grows.
+                  className="inline-flex items-center gap-1 rounded border border-emerald-600/40 bg-emerald-600/10 px-2 py-1 text-2xs text-emerald-700 hover:bg-emerald-600/20 disabled:opacity-50 dark:text-emerald-400 touch:min-h-11"
                 >
                   <CheckCircle2 className="h-3 w-3" /> {completing ? "…" : "Complete"}
                 </button>

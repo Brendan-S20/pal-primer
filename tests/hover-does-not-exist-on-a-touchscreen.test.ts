@@ -50,9 +50,30 @@ const REVEAL =
   /group-hover:(block|flex|inline|inline-flex|inline-block|grid|table|visible|opacity-100)\b/;
 
 /** The counterpart that has to be in the same class list: something that puts
- *  it back on screen at phone widths. */
+ *  it back on screen where there is no hover.
+ *
+ * ── THIS USED TO ACCEPT `max-md:` ALONE, AND THAT WAS WRONG ───────────────
+ *
+ * `max-md:` keys on WIDTH. The thing that is missing on a touch device is not
+ * width, it is HOVER — and Tailwind 4 compiles every `hover:` and
+ * `group-hover:` rule inside `@media (hover:hover)` (verified in the built
+ * stylesheet, not assumed). So the reveal never fires on any touch device at
+ * any size.
+ *
+ * Below 768px the width escape happened to cover that, which is why this rule
+ * looked correct for as long as the only touch device anyone measured was a
+ * phone. On an iPad — 744 to 1366px, touch, both orientations — there is no
+ * hover AND no `max-md`, so the control was invisible and unreachable. Found
+ * on 2026-08-21 by sweeping the real Apple sizes rather than the four
+ * canonical widths; the delete button on /notifications was unreachable on
+ * every iPad the product ships to.
+ *
+ * `touch:` is the honest condition — a coarse pointer OR a narrow viewport,
+ * defined once in src/styles.css. It is a SUPERSET of the old `max-md:`, so
+ * accepting only it costs nothing below 768px and stops excluding iPads.
+ */
 const TOUCH_ESCAPE =
-  /max-md:(block|flex|inline|inline-flex|inline-block|grid|table|visible|opacity-\d+)\b/;
+  /touch:(block|flex|inline|inline-flex|inline-block|grid|table|visible|opacity-\d+)\b/;
 
 type Reveal = { file: string; line: number; classes: string };
 
@@ -86,7 +107,7 @@ describe("nothing important is hover-only", () => {
     expect(reveals().length).toBeGreaterThan(0);
   });
 
-  it("gives every one of them a way through on a phone", () => {
+  it("gives every one of them a way through on ANY touch device, not just a narrow one", () => {
     const stranded = reveals()
       .filter((r) => !TOUCH_ESCAPE.test(r.classes))
       .map((r) => `${r.file}:${r.line}\n    ${r.classes}`);
@@ -105,29 +126,28 @@ describe("nothing important is hover-only", () => {
   });
 });
 
-describe("the two copies of the notification row agree that phones exist", () => {
+describe("there is now ONE notification row, and it agrees that phones exist", () => {
   const read = (p: string) => readFileSync(join(root, p), "utf8");
 
-  /** The attributes of the button carrying `aria-label`, up to its icon. Both
-   *  files spell the button the same way, and anchoring on the label rather
-   *  than on a character offset is what stops this from re-breaking every time
-   *  a comment above it grows a line. */
+  /** The attributes of the button carrying `aria-label`, up to its icon.
+   *  Anchoring on the label rather than on a character offset is what stops
+   *  this from re-breaking every time a comment above it grows a line. */
   const buttonAttrs = (src: string, label: string) => {
     const at = src.indexOf(`aria-label="${label}"`);
     expect(at).toBeGreaterThan(0);
     return src.slice(at, src.indexOf("<X ", at));
   };
 
-  it("shows Delete at phone widths in the bell and on the page", () => {
-    // The same control, rendered twice, in two files, by two edits months
-    // apart. One had the escape and one did not; asserting on both is how the
-    // next divergence gets caught rather than the next report.
-    for (const f of [
-      "src/components/NotificationBell.tsx",
-      "src/routes/_authenticated/notifications.tsx",
-    ]) {
-      expect(buttonAttrs(read(f), "Delete notification")).toMatch(TOUCH_ESCAPE);
-    }
+  it("shows Delete at phone widths on the notifications page", () => {
+    // This used to loop over TWO files. The header bell rendered its own copy
+    // of the list — same rows, same mark-read, same delete — and the two were
+    // written months apart, so one had the touch escape and one did not.
+    //
+    // The bell is a link to /notifications now, so there is one copy and this
+    // is it. The duplication is guarded separately below, because deleting a
+    // divergence is worth nothing if the next change puts it back.
+    expect(buttonAttrs(read("src/routes/_authenticated/notifications.tsx"), "Delete notification"))
+      .toMatch(TOUCH_ESCAPE);
   });
 
   it("does not put a duplicate Mark read on top of the title", () => {
@@ -138,6 +158,30 @@ describe("the two copies of the notification row agree that phones exist", () =>
     // Anchored inside the reveal container, because the prose above it also
     // says the words "Mark read" and `indexOf` found the explanation first.
     const container = src.slice(src.indexOf('className="absolute right-3 top-3'));
-    expect(container.slice(0, container.indexOf("Mark read"))).toMatch(/max-md:hidden/);
+    expect(container.slice(0, container.indexOf("Mark read"))).toMatch(/touch:hidden/);
+  });
+
+  it("keeps the header bell a link rather than a second copy of the list", () => {
+    // The bell's job is to say whether anything is waiting and to take you to
+    // it. The moment it grows a list again it grows a second delete button, a
+    // second mark-read, and a second set of touch rules to keep in step — the
+    // exact drift the first test in this block was written to catch.
+    const bell = read("src/components/NotificationBell.tsx");
+    expect(bell).toMatch(/to="\/notifications"/);
+    for (const forbidden of ["Delete notification", "Mark all read", "markNotificationRead"]) {
+      expect(
+        bell.includes(forbidden),
+        `NotificationBell has grown "${forbidden}" — it is turning back into a ` +
+          `second copy of /notifications. The page owns the list; the bell owns ` +
+          `the badge and the link.`,
+      ).toBe(false);
+    }
+  });
+
+  it("kept notification settings reachable after the dropdown went away", () => {
+    // The gear icon lived in the bell's dropdown and was its ONLY entry point.
+    // Removing the dropdown without moving it would have deleted a settings
+    // screen with nothing failing — no test asserts that a screen is reachable.
+    expect(read("src/routes/_authenticated/notifications.tsx")).toMatch(/NotificationPrefs/);
   });
 });

@@ -340,12 +340,23 @@ describe("a control a thumb can hit, at every width", () => {
     expect(btn).not.toMatch(/hidden\s+md:flex|md:opacity-100/);
   });
 
-  it("keeps Leaflet's own +/- buttons hittable below md", () => {
+  it("keeps Leaflet's own +/- buttons hittable on any touch device", () => {
     // 30px out of the box — the same "aim at it" target CLAUDE.md called out on
     // the tab bar, and the answer for anyone who would rather not scroll to
     // zoom at all.
-    expect(source()).toMatch(/max-md:\[&_\.leaflet-control-zoom_a\]:h-11/);
-    expect(source()).toMatch(/max-md:\[&_\.leaflet-control-zoom_a\]:w-11/);
+    //
+    // The scope was `max-md:` and that stopped at 767px, so these stayed 30px
+    // on every iPad — where the map is biggest and pinch-zoom competes with
+    // page scroll, making these two the most useful controls on the screen and
+    // the smallest. `touch:` is a coarse pointer OR a narrow viewport, so it
+    // covers the phone case identically and stops excluding tablets.
+    //
+    // The `!` is required, not stylistic: Leaflet adds `leaflet-touch` on a
+    // touch device and its own `.leaflet-touch .leaflet-bar a` rule ties on
+    // specificity, so without it the override loses on source order and
+    // measures 30.0px in a browser while looking perfectly correct here.
+    expect(source()).toMatch(/touch:\[&_\.leaflet-control-zoom_a\]:!h-11/);
+    expect(source()).toMatch(/touch:\[&_\.leaflet-control-zoom_a\]:!w-11/);
   });
 
   it("cannot push the page sideways at 360px", () => {

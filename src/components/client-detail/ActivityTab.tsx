@@ -68,7 +68,7 @@ export function ActivityTab({ clientId }: { clientId: string }) {
                   once would bury the timeline they belong to. */}
               {changes.length > 0 && (
                 <details className="mt-1 text-xs">
-                  <summary className="inline-flex cursor-pointer list-none items-center text-muted-foreground underline-offset-4 hover:underline max-md:min-h-11">
+                  <summary className="inline-flex cursor-pointer list-none items-center text-muted-foreground underline-offset-4 hover:underline touch:min-h-11">
                     {changes.length === 1
                       ? "What changed"
                       : `What changed · ${changes.length} fields`}

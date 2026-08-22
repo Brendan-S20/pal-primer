@@ -268,7 +268,7 @@ export function FranchiseSettlementStatements({
                     <Button
                       size="sm"
                       variant="outline"
-                      className="max-md:min-h-11"
+                      className="touch:min-h-11"
                       disabled={isUpdating}
                       onClick={() => onReopenAsDraft(line.id)}
                     >
@@ -283,7 +283,7 @@ export function FranchiseSettlementStatements({
                       <Button
                         size="sm"
                         variant="outline"
-                        className="max-md:min-h-11"
+                        className="touch:min-h-11"
                         disabled={isUpdating}
                         onClick={() => onSetStatus(line.id, "issued")}
                       >
@@ -294,7 +294,7 @@ export function FranchiseSettlementStatements({
                       <Button
                         size="sm"
                         variant="outline"
-                        className="max-md:min-h-11"
+                        className="touch:min-h-11"
                         disabled={isUpdating}
                         onClick={() => onSetStatus(line.id, "paid")}
                       >
@@ -311,7 +311,7 @@ export function FranchiseSettlementStatements({
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="max-md:min-h-11 text-muted-foreground"
+                        className="touch:min-h-11 text-muted-foreground"
                         disabled={isUpdating}
                         onClick={() => onSetStatus(line.id, "void")}
                       >

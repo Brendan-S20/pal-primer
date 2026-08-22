@@ -170,7 +170,7 @@ function TenantsPage() {
               onChange={(e) => setStatusFilter(e.target.value)}
               // MEASURED 2026-08-19: 36.0px — `sm:py-1` shrinks it above the phone
               // breakpoint, but the phone value was never large enough either.
-              className="rounded-md border bg-background px-2 py-2 text-sm sm:py-1 max-md:min-h-11"
+              className="rounded-md border bg-background px-2 py-2 text-sm sm:py-1 touch:min-h-11"
             >
               <option value="all">All statuses</option>
               {Object.entries(STATUS_LABEL).map(([k, v]) => (

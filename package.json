@@ -25,7 +25,8 @@
     "check:stripe-catalog": "node scripts/check-stripe-catalog.mjs",
     "check:em-dashes": "node scripts/check-customer-facing-em-dashes.mjs",
     "check:dead-machinery": "node scripts/check-dead-machinery.mjs",
-    "check:pwa": "node scripts/check-pwa-output.mjs"
+    "check:pwa": "node scripts/check-pwa-output.mjs",
+    "test:viewports:apple": "APPLE_SIZES=1 playwright test"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.2",
