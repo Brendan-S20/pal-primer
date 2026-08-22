@@ -918,7 +918,7 @@ function RoutesPage() {
                 <button
                   type="button"
                   title="Pick a date"
-                  className="-mx-2 flex min-h-[2.75rem] items-center gap-1.5 rounded-md px-2 text-left hover:bg-muted md:min-h-0 md:py-1"
+                  className="-mx-2 flex min-h-[2.75rem] items-center gap-1.5 rounded-md px-2 text-left hover:bg-muted md:mouse:min-h-0 md:py-1"
                 >
                   {heading}
                   <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground" />
@@ -1978,7 +1978,10 @@ function Column({
           {onSelectLane && items.length > 0 && (
             <button
               onClick={() => onSelectLane(items.map((v) => v.id))}
-              className="rounded px-1.5 py-0.5 text-3xs text-muted-foreground hover:bg-muted hover:text-foreground"
+              // 18px. Selecting a whole lane is a bulk action — the kind
+              // where hitting the wrong thing costs the most — and it sat
+              // next to the Cover button that had the same fault.
+              className="rounded px-1.5 py-0.5 text-3xs text-muted-foreground hover:bg-muted hover:text-foreground touch:min-h-11 touch:px-3"
               title="Select every visit in this lane"
             >
               All
@@ -2152,12 +2155,20 @@ function VisitCardView({
             onChange={(e) =>
               onToggleSelect(visit.id, e as unknown as React.MouseEvent)
             }
-            className="mt-1 shrink-0"
+            // 13px, and the bulk-select control on every stop card. The
+            // square stays 13px — a 44px checkbox is a different component,
+            // not a bigger one — and an out-of-flow ::before takes the tap,
+            // the same pattern ui/checkbox.tsx uses and the sweep credits.
+            className="relative mt-1 shrink-0 touch:before:absolute touch:before:left-1/2 touch:before:top-1/2 touch:before:h-11 touch:before:w-11 touch:before:-translate-x-1/2 touch:before:-translate-y-1/2 touch:before:content-['']"
           />
         )}
         <button
           {...(dragHandle ?? {})}
-          className="mt-0.5 cursor-grab touch-none text-muted-foreground hover:text-foreground"
+          // 16px, no accessible name — a fault twice over. The grip is how a
+          // stop gets reordered, so on a tablet it is the control most likely
+          // to be aimed at with a finger and it was the smallest on the card.
+          aria-label="Drag to reorder this stop"
+          className="mt-0.5 flex cursor-grab touch-none items-center justify-center text-muted-foreground hover:text-foreground touch:min-h-11 touch:min-w-11"
         >
           <GripVertical className="h-4 w-4" />
         </button>

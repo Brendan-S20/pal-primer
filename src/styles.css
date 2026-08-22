@@ -47,6 +47,27 @@
 }
 
 /*
+ * `mouse:` — the other half, and it exists because of `md:min-h-0`.
+ *
+ * Several places set a 44px minimum and then CANCEL it at `md` to get a
+ * compact desktop row: `min-h-[2.75rem] … md:min-h-0`. That is the same
+ * width-for-input substitution as `max-md:` sizing, just inverted — and it
+ * fails on the same device. An iPad is ≥768px, so the cancel fires, and the
+ * control a finger is aiming at goes back to 40px. The Routes day picker and
+ * the Schedule calendar's day cells both did this.
+ *
+ * `md:mouse:min-h-0` says what was actually meant: compact it on a wide
+ * screen THAT HAS A MOUSE. Deliberately `pointer: fine` alone rather than
+ * `not touch` — a `not` over a comma-list of media conditions is its own
+ * source of surprises, and this reads as the plain-English condition it is.
+ */
+@custom-variant mouse {
+  @media (pointer: fine) {
+    @slot;
+  }
+}
+
+/*
  * Design system definition.
  *
  * The @theme inline block maps CSS custom properties to Tailwind utility

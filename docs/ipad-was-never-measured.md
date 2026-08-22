@@ -101,7 +101,13 @@ this repo. The block form emits both clauses.
 |---|---|---|---|---|
 | desktop pointer — **meaningless for iPad** | 382 | 0 | 0 | 0 |
 | touch emulated, before fixes | 277 | 105 | 2365 | 59 |
-| touch emulated, after fixes | **362** | **20** | **85** | **13** |
+| touch emulated, first round of fixes | 362 | 20 | 85 | 13 |
+| touch emulated, **final** | **382** | **0** | **0** | **0** |
+
+The first and last rows show the same numbers and mean completely different
+things, which is the whole point of this document. The first was a browser with
+a mouse agreeing that everything was fine. The last is a browser reporting
+`pointer: coarse` and `hover: none` — an iPad — and finding nothing.
 
 ## Two fixes that did nothing, and looked like they had
 
@@ -138,23 +144,59 @@ drawn over the map are still measured. That matters: one of them, Leaflet's
 own +/- at 30px, was a real finding this sweep caught. If pins ever become the
 primary way to open a stop, this is the thing to revisit.
 
-## Still outstanding — 13 distinct
+## The second form of the same bug
 
-All in the day board, week view and My Day. Their labels are composed at
-runtime, so they cannot be found by grepping for the text the sweep prints;
-they need locating by hand.
+Found in the last round, and worth its own heading because it is the exact
+inverse and reads as correct:
 
-| control | size | note |
+```
+min-h-[2.75rem] … md:min-h-0
+```
+
+Set a 44px minimum, then CANCEL it at `md` to get a compact desktop row. Same
+substitution of width for input, failing on the same device — an iPad is
+≥768px, so the cancel fires and the control drops back to 40px. The Routes day
+picker, the Schedule calendar's day cells and two platform links all did this.
+
+`src/styles.css` gained the companion variant:
+
+```css
+@custom-variant mouse { @media (pointer: fine) { @slot; } }
+```
+
+so `md:mouse:min-h-0` says what was meant: compact it on a wide screen THAT HAS
+A MOUSE.
+
+## The finding message had to say where
+
+Half the first round's findings could not be located. A chip labelled
+"Mon 17 · 8 visits" is composed at runtime, so grepping the source for the text
+the sweep printed returns nothing — which is how two fixes went into the wrong
+component and changed nothing while looking correct.
+
+`findControlsUnder44px` now appends a CLASS FINGERPRINT: the padding, height
+and type-size utilities, trimmed to six. Those are greppable, and they are what
+a fix has to change anyway. Every remaining fault was located within minutes of
+adding it:
+
+```
+<button type=submit> "All" is 18.0px tall [px-1.5 py-0.5 text-3xs text-muted-foreground]
+<button type=button> "Today" is 40.0px tall [min-h-[2.75rem] gap-1.5 rounded-md px-2 text-left]
+```
+
+The second line is the `md:min-h-0` bug confessing: a 44px minimum in the class
+list and a 40px measurement.
+
+## What the last round fixed
+
+| control | was | where |
 |---|---|---|
-| `<button>` with no accessible name, ×8 | **16.0px** | a fault twice over — no name AND no target |
-| `<input type=checkbox>`, ×8 | **13.0px** | native checkbox, unpadded label |
-| "All" filter chip, ×5 | **18.0px** | |
-| Week-view day chips ("Mon 17 · 8 visits"), ×7 | **35.0px** | one control repeated per day |
-| "Today" and the date-range button | **40.0px** | near miss |
-| A date input on My Day | **40.0px** | near miss |
-
-Listed rather than rounded off, because a report where "fixed" and "not looked
-at yet" blur together is the thing this repo keeps writing tests to prevent.
+| **Drag handle — no accessible name AND 16px** | 16.0px | stop card; it is how a stop gets reordered |
+| Stop-card select checkbox | 13.0px | square kept small, `::before` takes the tap |
+| "All" lane select — a bulk action | 18.0px | |
+| "Today" / date-range picker | 40.0px | `md:min-h-0` |
+| Week-view day chips, ×7 | 35.0px | `md:min-h-0` |
+| My Day's date input | 40.0px | `max-md:hidden` only hides it below 768 |
 
 ## How to run it
 

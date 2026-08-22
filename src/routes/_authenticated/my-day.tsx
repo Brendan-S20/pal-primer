@@ -562,7 +562,11 @@ function MyDay() {
                   // links and the mobile Today/Schedule tabs stay truthful.
                   applyDay(next);
                 }}
-                className="h-10 rounded-md border bg-background px-2 text-sm max-md:hidden"
+                // 40px, and visible on every iPad — `max-md:hidden` only
+                // hides it below 768px, where the 7-day strip takes over.
+                // A tablet gets this control and a finger, so it needs the
+                // height a finger needs.
+                className="h-10 rounded-md border bg-background px-2 text-sm max-md:hidden touch:h-11"
               />
             </div>
           </div>

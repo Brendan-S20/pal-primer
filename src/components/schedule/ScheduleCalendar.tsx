@@ -494,8 +494,8 @@ export function ScheduleCalendar({
                     isToday ? "bg-primary/10 text-primary" : ""
                   } ${
                     isMonth
-                      ? "min-h-[2.75rem] flex-1 flex-col items-center justify-center gap-0 md:min-h-0 md:flex-none md:flex-row md:items-baseline md:gap-1.5"
-                      : "min-h-[2.75rem] items-center gap-1.5 md:min-h-0 md:flex-col md:items-start md:gap-0 md:border-b md:pb-1"
+                      ? "min-h-[2.75rem] flex-1 flex-col items-center justify-center gap-0 md:mouse:min-h-0 md:flex-none md:flex-row md:items-baseline md:gap-1.5"
+                      : "min-h-[2.75rem] items-center gap-1.5 md:mouse:min-h-0 md:flex-col md:items-start md:gap-0 md:border-b md:pb-1"
                   }`}
                   title={`Open ${dt.toLocaleDateString()} on the board`}
                 >

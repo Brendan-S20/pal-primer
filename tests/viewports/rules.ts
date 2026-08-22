@@ -392,8 +392,26 @@ export async function findControlsUnder44px(page: Page): Promise<string[]> {
         if (label) height = Math.max(height, label.getBoundingClientRect().height);
       }
       if (height < 44 - 0.5) {
+        // A CLASS FINGERPRINT, because the label is not enough to find it.
+        //
+        // The first pass of this audit printed tag + text, and half the
+        // findings could not be located: a chip labelled "Mon 17 · 8 visits"
+        // is composed at runtime, so grepping the source for the text the
+        // sweep printed returns nothing. Two of the fixes that followed went
+        // into the wrong component for exactly this reason and changed
+        // nothing while looking correct.
+        //
+        // Tailwind class lists ARE greppable, and the distinctive ones — the
+        // padding and type-size utilities that made the control small — are
+        // what a fix has to change anyway. Trimmed to the first few so the
+        // finding stays one readable line.
+        const cls = (el.getAttribute("class") ?? "")
+          .split(/\s+/)
+          .filter((c) => /^(p|px|py|h|min-h|text|gap|rounded)-/.test(c))
+          .slice(0, 6)
+          .join(" ");
         out.push(
-          `<${el.tagName.toLowerCase()}${type ? ` type=${type}` : ""}> "${(el.textContent ?? "").trim().slice(0, 32)}" is ${height.toFixed(1)}px tall`,
+          `<${el.tagName.toLowerCase()}${type ? ` type=${type}` : ""}> "${(el.textContent ?? "").trim().slice(0, 32)}" is ${height.toFixed(1)}px tall${cls ? ` [${cls}]` : ""}`,
         );
       }
     }
