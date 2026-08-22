@@ -69,9 +69,32 @@ export function customerPaymentAllowed(_platform: string): boolean {
   return true;
 }
 
-/** Shown in place of the purchase UI. Names where to go without being a CTA
- *  to an external purchase, which is the thing 3.1.1 has historically cared
- *  about. */
-export const MANAGE_BILLING_ON_WEB =
-  "Your HoundStack plan and billing are managed on the web at app.houndstack.com. " +
-  "Everything else in the app works as normal.";
+/**
+ * Shown in place of the purchase UI inside a store build.
+ *
+ * ── WHY THIS WORDING, AND WHY IT CHANGED ──────────────────────────────────
+ *
+ * It used to read "Your HoundStack plan and billing are managed on the web at
+ * app.houndstack.com." That is accurate, and it was still the wrong thing to
+ * ship. Guideline 3.1.1 is not only about taking the payment — it is about
+ * STEERING, and naming the destination is the steer. A sentence that tells
+ * someone the domain to go to is a call to action with the button removed,
+ * which is the same intent in fewer pixels.
+ *
+ * So the rule for every string on this screen in a native build:
+ *
+ *   * state WHERE the capability is not ("outside the mobile app"), never
+ *     where it is;
+ *   * never name a domain, a URL, or "the web";
+ *   * no purchase verbs — no choose, upgrade, subscribe, buy, update payment.
+ *
+ * What it must NOT do is hide the account's state. Plan, renewal date, trial
+ * and past-due are all read-only facts about an account somebody already has,
+ * and a store build that concealed them would be worse for the customer and no
+ * safer for review. Visibility stays; the verbs go.
+ *
+ * The web build is untouched and keeps its full purchase flow.
+ */
+export const BILLING_MANAGED_OUTSIDE_APP =
+  "HoundStack plan billing is managed outside the mobile app. " +
+  "Existing app features continue here.";

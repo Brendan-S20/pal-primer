@@ -38,10 +38,24 @@
     </application>
 
     <!-- Permissions.
-         The generated manifest ships with INTERNET and nothing else, and the
-         Capacitor plugin manifests are EMPTY — checked, they declare no
-         permissions of their own. So every capability this app uses has to be
-         declared here or it fails at runtime with no build error to warn you. -->
+         The generated manifest ships with INTERNET and nothing else.
+
+         SOME Capacitor plugins do bring their own and merge without help —
+         @capacitor/haptics declares VIBRATE, @capacitor/network declares
+         ACCESS_NETWORK_STATE, and firebase-messaging contributes WAKE_LOCK and
+         c2dm.RECEIVE transitively. All four are in the built APK's merged
+         manifest without being written here.
+
+         The three this app most depends on declare NOTHING:
+         @capacitor/camera, @capacitor/geolocation and
+         @capacitor/push-notifications. Nothing will merge their permissions in
+         for you, so they are declared explicitly below — and the failure mode
+         if they are not is silent at build time and loud on a device.
+
+         (An earlier version of this comment said all nine plugin manifests
+         were empty. Three had been checked and the claim generalised to the
+         rest; the APK disproved it. Enforced by
+         tests/an-android-app-that-could-not-use-the-camera.test.ts.) -->
 
     <uses-permission android:name="android.permission.INTERNET" />
 

@@ -34,7 +34,7 @@ import { StatusChip, MetaChip, SectionLabel } from "@/components/client-detail/p
 import { formatDay } from "@/lib/format";
 import { stripeAppearance } from "@/lib/stripe-appearance";
 import { platform } from "@/lib/native";
-import { saasPurchaseAllowed, MANAGE_BILLING_ON_WEB } from "@/lib/app-store-billing";
+import { saasPurchaseAllowed, BILLING_MANAGED_OUTSIDE_APP } from "@/lib/app-store-billing";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 import { appUrl } from "@/lib/app-origin";
@@ -268,14 +268,18 @@ function BillingPage() {
               <p className="mt-2 text-sm text-amber-700">
                 {canBuySaas
                   ? "You're on a free trial. Pick a plan below before it ends to keep full access."
-                  : "You're on a free trial. Choose a plan on the web at app.houndstack.com before it ends to keep full access."}
+                  : // Native: the STATUS stays, the steer goes. No domain, and
+                    // no verb that reads as a purchase instruction.
+                    "Your trial status is shown here. Plan changes are handled outside the mobile app."}
               </p>
             )}
             {data.billingStatus === "past_due" && (
               <p className="mt-2 text-sm text-destructive">
                 {canBuySaas
                   ? "Your last payment failed. Update your payment method below to keep your plan."
-                  : "Your last payment failed. Update your payment method on the web at app.houndstack.com to keep your plan."}
+                  : // The failure is a fact about the account and stays. Where
+                    // to fix it does not get named.
+                    "Your last payment failed. Payment method updates are handled outside the mobile app."}
               </p>
             )}
           </div>
@@ -285,7 +289,12 @@ function BillingPage() {
       {/* ── Plans ────────────────────────────────────────────────────────── */}
       <section className="space-y-3">
         <div>
-          <h2 className="text-lg font-semibold">{data.isPaidTier ? "Plans" : "Choose a plan"}</h2>
+          {/* "Choose a plan" is an instruction to buy, and in a store build
+              there is nothing below it to choose from. A store build gets the
+              neutral heading whatever tier the account is on. */}
+          <h2 className="text-lg font-semibold">
+            {!canBuySaas || data.isPaidTier ? "Plans" : "Choose a plan"}
+          </h2>
           <p className="text-sm text-muted-foreground">
             Unlimited customers, dogs, jobs, routes, and zones on every tier. You're billed per
             employee, plus any AI actions past your plan's monthly allowance. Both are metered, and
@@ -301,7 +310,7 @@ function BillingPage() {
           // line this sits on and why the tenant's own payment surfaces are
           // deliberately untouched.
           <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
-            {MANAGE_BILLING_ON_WEB}
+            {BILLING_MANAGED_OUTSIDE_APP}
           </div>
         ) : checkout ? (
           <EmbeddedPlanCheckout

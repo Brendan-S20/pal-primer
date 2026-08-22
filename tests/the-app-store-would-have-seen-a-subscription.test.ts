@@ -11,7 +11,7 @@ import { join } from "node:path";
 import {
   saasPurchaseAllowed,
   customerPaymentAllowed,
-  MANAGE_BILLING_ON_WEB,
+  BILLING_MANAGED_OUTSIDE_APP,
 } from "@/lib/app-store-billing";
 
 const root = process.cwd();
@@ -129,16 +129,53 @@ describe("the billing page", () => {
     expect(src).toMatch(/Cancels at period end/);
   });
 
-  it("says where billing lives instead of just hiding it", () => {
-    expect(src).toMatch(/MANAGE_BILLING_ON_WEB/);
-    expect(MANAGE_BILLING_ON_WEB).toMatch(/app\.houndstack\.com/);
+  it("says billing is elsewhere WITHOUT naming where", () => {
+    // This assertion is the inverse of the one it replaces, which required the
+    // string to contain `app.houndstack.com`.
+    //
+    // Naming the destination is the steer. Guideline 3.1.1 is not only about
+    // taking the payment inside the binary — a sentence telling somebody the
+    // domain to go to is a call to action with the button removed, and it was
+    // shipping in three places on this screen.
+    expect(src).toMatch(/BILLING_MANAGED_OUTSIDE_APP/);
+    expect(BILLING_MANAGED_OUTSIDE_APP).toMatch(/outside the mobile app/i);
+    expect(
+      BILLING_MANAGED_OUTSIDE_APP,
+      "the store-build billing copy names a destination",
+    ).not.toMatch(/houndstack\.com|https?:|www\.|on the web/i);
   });
 
-  it("does not tell a store user to pick a plan below that is not rendered", () => {
-    // The trial and past-due nudges both pointed at controls the gate removes.
-    const nudges = src.match(/You're on a free trial[^"]*/g) ?? [];
-    expect(nudges.length, "trial nudge missing — retarget").toBeGreaterThan(0);
-    expect(src).toMatch(/canBuySaas\s*\?[\s\S]{0,400}?app\.houndstack\.com/);
+  /** Words that turn a statement of fact into an instruction to buy. */
+  const PURCHASE_VERBS =
+    /\b(choose a plan|pick a plan|upgrade|subscribe|buy|purchase|update your payment method)\b/i;
+
+  it("uses no purchase language in the store build's billing copy", () => {
+    expect(BILLING_MANAGED_OUTSIDE_APP).not.toMatch(PURCHASE_VERBS);
+
+    // Every string on the NOT-canBuySaas side of a ternary on this screen.
+    // Parsed rather than eyeballed, because the whole failure mode is one
+    // branch of a pair being softened and the other being missed.
+    const nativeBranches = [
+      ...src.matchAll(/canBuySaas\s*\?[\s\S]{0,600}?:\s*(?:\/\/[^\n]*\n\s*)*"([^"]+)"/g),
+    ].map((m) => m[1]);
+    expect(
+      nativeBranches.length,
+      "found no canBuySaas ternaries — the parse has drifted and this test is vacuous",
+    ).toBeGreaterThanOrEqual(2);
+    for (const copy of nativeBranches) {
+      expect(copy, `store-build copy steers: "${copy}"`).not.toMatch(PURCHASE_VERBS);
+      expect(copy, `store-build copy names a destination: "${copy}"`).not.toMatch(
+        /houndstack\.com|https?:|on the web/i,
+      );
+    }
+  });
+
+  it("still shows the trial and past-due STATUS to a store user", () => {
+    // Softening the verbs must not delete the facts. Both states are read-only
+    // truths about an account somebody already has, and hiding them would be
+    // worse for the customer and no safer for review.
+    expect(src).toMatch(/free trial/);
+    expect(src).toMatch(/Your last payment failed/);
   });
 });
 
