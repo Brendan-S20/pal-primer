@@ -270,7 +270,7 @@ async function sendFcm(subs: NativeSub[], payload: PushPayload) {
 //   APNS_TEAM_ID        — 10-char Apple team ID
 //   APNS_KEY_ID         — 10-char key ID
 //   APNS_AUTH_KEY       — raw .p8 file contents (PEM)
-//   APNS_TOPIC          — bundle ID (e.g. consulting.thenorth.pal)
+//   APNS_TOPIC          — bundle ID (e.g. consulting.thenorth.houndstack)
 //   APNS_ENVIRONMENT    — "production" or "sandbox" (default production)
 async function apnsToken(): Promise<string | null> {
   const team = process.env.APNS_TEAM_ID;

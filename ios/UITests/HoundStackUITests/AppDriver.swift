@@ -37,7 +37,7 @@ import XCTest
 enum AppDriver {
     /// The app under test. Addressed by bundle id so this bundle has no build
     /// dependency on the app target.
-    static let bundleId = "consulting.thenorth.pal"
+    static let bundleId = "consulting.thenorth.houndstack"
 
     /// Generous. A cold launch of this app on a simulator has been measured at
     /// ~3.5s to first paint and longer when the machine is busy building; a

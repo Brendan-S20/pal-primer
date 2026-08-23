@@ -3,7 +3,14 @@ import type { CapacitorConfig } from "@capacitor/cli";
 const config: CapacitorConfig = {
   // appId is the store identity (APNS_TOPIC matches it) — changing it is an
   // owner decision, not a rename.
-  appId: "consulting.thenorth.pal",
+  //
+  // Changed from `consulting.thenorth.pal` on 2026-08-23, by that decision:
+  // the app is named HoundStack and has to build under this id, `.pal` having
+  // caused problems in Xcode. It drives BOTH platforms — Android's
+  // applicationId and namespace, the custom URL scheme, and APNS_TOPIC all
+  // key off it — so nothing may be left on the old value. See the list in
+  // docs/ios-build.md.
+  appId: "consulting.thenorth.houndstack",
   // Display name — kept in sync with the PWA manifest (vite.config.ts) and the
   // head <title> (src/routes/__root.tsx).
   appName: "HoundStack",

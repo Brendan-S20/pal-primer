@@ -1,4 +1,4 @@
-package consulting.thenorth.pal;
+package consulting.thenorth.houndstack;
 
 import com.getcapacitor.BridgeActivity;
 

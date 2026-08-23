@@ -76,7 +76,7 @@ Import from `@/lib/native` — every helper no-ops on web, uses the plugin nativ
 
 ## Notes
 
-- App ID: `consulting.thenorth.pal` — matches the notify subdomain. Change in `capacitor.config.ts` **before** running `cap add`.
+- App ID: `consulting.thenorth.houndstack` — matches the notify subdomain. Change in `capacitor.config.ts` **before** running `cap add`.
 - Deep links to visits (`pal://visit/<id>`) can be added later via `@capacitor/app` `appUrlOpen`.
 - Offline queue (IndexedDB) already works inside the WebView with no changes.
 

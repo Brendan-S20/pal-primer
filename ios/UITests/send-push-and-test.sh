@@ -10,7 +10,7 @@
 set -e
 DEVICE="${1:?usage: send-push-and-test.sh <device> [payload.json]}"
 PAYLOAD="${2:-$(dirname "$0")/push-my-day.json}"
-BUNDLE=consulting.thenorth.pal
+BUNDLE=consulting.thenorth.houndstack
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 xcodebuild test-without-building \

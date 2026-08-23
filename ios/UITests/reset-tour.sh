@@ -11,7 +11,7 @@ set -e
 DEVICE="${1:?usage: reset-tour.sh <udid> <email> <password>}"
 EMAIL="${2:?}"
 PASSWORD="${3:?}"
-BUNDLE=consulting.thenorth.pal
+BUNDLE=consulting.thenorth.houndstack
 API=https://api.houndstack.com
 ANON="$(node -e "const s=require('fs').readFileSync('src/integrations/supabase/client.ts','utf8');console.log(s.match(/SUPABASE_PUBLISHABLE_KEY = \"([^\"]+)\"/)[1])")"
 

@@ -223,7 +223,7 @@ it does
 
 ```
 [ ] Apple Developer account active
-[ ] Bundle ID consulting.thenorth.pal registered
+[ ] Bundle ID consulting.thenorth.houndstack registered
 [ ] Push Notifications capability enabled, APNs key created, server env set
       (see docs/ios-build.md; push is code-complete but not provisioned)
 [ ] App icon renders correctly at every size in Xcode's asset preview

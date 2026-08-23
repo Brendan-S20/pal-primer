@@ -64,7 +64,7 @@ Then in Xcode:
 
 1. Select the **App** target → **Signing & Capabilities**.
 2. Set **Team** to your Apple Developer team. Xcode will provision
-   `consulting.thenorth.pal` automatically.
+   `consulting.thenorth.houndstack` automatically.
 3. Pick your device from the run destination menu and press ⌘R.
 
 **Every time you change web code, run `npm run cap:sync` again.** The binary
@@ -119,7 +119,7 @@ Both ends exist and are wired:
    the project today, which is why this is listed rather than assumed.
 2. **Create an APNs auth key** (`.p8`) in the Apple Developer portal.
 3. **Set the server env vars**: `APNS_TEAM_ID`, `APNS_KEY_ID`, `APNS_AUTH_KEY`
-   (raw .p8 contents), `APNS_TOPIC` (`consulting.thenorth.pal`), and
+   (raw .p8 contents), `APNS_TOPIC` (`consulting.thenorth.houndstack`), and
    `APNS_ENVIRONMENT` (`sandbox` while testing on a development build,
    `production` for TestFlight and the App Store).
 
@@ -171,7 +171,7 @@ same build was rendering perfectly a few seconds later, and the suite then went
 green on the first attempt. Warm it up and SAMPLE LATE:
 
 ```bash
-xcrun simctl launch <UDID> consulting.thenorth.pal && sleep 60
+xcrun simctl launch <UDID> consulting.thenorth.houndstack && sleep 60
 xcrun simctl io <UDID> screenshot /tmp/warm.png   # should not be black
 ```
 
