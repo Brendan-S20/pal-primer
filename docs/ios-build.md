@@ -129,6 +129,58 @@ stack cannot look like a working one in the logs.
 
 ---
 
+## Xcode Cloud
+
+`ios/App/ci_scripts/ci_post_clone.sh` exists because a cloud build fails
+without it, at the first step, like this:
+
+```
+the package at '/Volumes/workspace/repository/node_modules/@capacitor/
+splash-screen' cannot be accessed (... doesn't exist in file system)
+... and nine more
+xcodebuild: error: Could not resolve package dependencies
+Command exited with non-zero exit-code: 74
+```
+
+Nothing is wrong with the project. Capacitor references every plugin as a
+LOCAL Swift package — `ios/App/CapApp-SPM/Package.swift` is a list of
+`path: "../../../node_modules/@capacitor/…"` — and a fresh clone has no
+node_modules. Xcode Cloud does not run `npm ci`, so it resolves packages
+against paths that do not exist yet. `ci_post_clone.sh` is the only hook that
+runs early enough to create them.
+
+**It also builds and syncs the web bundle, and that half matters more.**
+`ios/App/App/public` is gitignored, so a cloud checkout has no web assets at
+all. Without the build+sync the archive still SUCCEEDS and ships a native shell
+wrapped around nothing — a worse failure than the one above, because it does
+not announce itself. The script hard-fails if `index.html` is missing
+afterwards rather than letting that through.
+
+**No secrets are needed.** The Supabase URL and anon key are hardcoded in
+`src/integrations/supabase/client.ts`, and `NATIVE_API_ORIGIN` defaults to
+production in `vite.config.ts`. Nothing has to be configured in Xcode Cloud for
+the build to be correct.
+
+**Two copies, on purpose.** Apple documents two locations for `ci_scripts`: the
+repository root, and the directory containing the Xcode project. This project
+is at `ios/App`, so which one applies is not settleable by reading — and
+guessing wrong costs a full cloud build to discover, because the symptom is
+identical to having no script at all. The implementation is next to the
+project; `ci_scripts/ci_post_clone.sh` at the root is a four-line forwarder.
+Xcode Cloud picks one location, so only one ever runs.
+
+Verified locally by running the script from an unrelated working directory and
+then executing the command Xcode Cloud itself runs:
+
+```
+xcodebuild -resolvePackageDependencies -project App.xcodeproj -scheme App
+  → Resolved source packages: CapacitorCamera, CapacitorPushNotifications, …
+```
+
+**Not verified:** the `brew install node@22` branch. Node is already present on
+this machine, so that path is reasoned rather than executed. It is pinned to
+the major `.github/workflows/ci.yml` uses so the cloud and the gate agree.
+
 ## Automated device tests
 
 `ios/UITests/` is a standalone XCUITest project that drives the app by bundle
