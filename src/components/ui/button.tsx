@@ -46,7 +46,13 @@ const buttonVariants = cva(
       // test that names the screen it was found on.
       size: {
         default: "h-9 px-4 py-2 touch:min-h-11",
-        sm: "h-8 rounded-md px-3 text-xs touch:min-h-11",
+        // `touch:min-w-11` as well as the height, and the width is not
+        // decoration. A QA sweep on 2026-08-23 measured `size="sm"` controls at
+        // 39-41pt WIDE on two devices independently — the Invoices status
+        // filter ("All", 39pt) and several icon-only buttons. The height floor
+        // was added and the width one was not, so a short label or a bare glyph
+        // produced a target that was legal in one axis and not the other.
+        sm: "h-8 rounded-md px-3 text-xs touch:min-h-11 touch:min-w-11",
         lg: "h-10 rounded-md px-8 touch:min-h-11",
         icon: "h-9 w-9 touch:min-h-11 touch:min-w-11",
       },

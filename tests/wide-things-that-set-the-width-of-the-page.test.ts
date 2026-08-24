@@ -272,6 +272,56 @@ describe("the last three controls under the 44px floor", () => {
   });
 });
 
+describe("a table in a scroll container still has to be wider than the container", () => {
+  // ── WHY A SCROLL CONTAINER IS NOT ENOUGH ────────────────────────────────
+  //
+  // The rule above requires every 4+ column table to sit inside an
+  // `overflow-x-auto`. That stops the PAGE scrolling sideways and it does not
+  // stop the table squashing: `w-full` with no minimum makes the table shrink
+  // to fit the container, so the scroller never engages and the columns
+  // collapse into each other instead.
+  //
+  // Measured on an iPhone SE (375pt) on 2026-08-23: the Billing history header
+  // read "PERIODAMOUNTSTATUS" — PERIOD ended at x=170, AMOUNT began at x=169,
+  // ended 225, STATUS began at 224. Two 1pt overlaps, three unreadable words.
+  // The container was present the whole time, so the existing rule passed.
+  //
+  // A `min-w-` floor is what makes the overflow real. 4+ columns only, because
+  // that is exactly the set the rule above guarantees a scroll container for —
+  // adding a minimum to a table that has none would push the page sideways,
+  // which is the fault this file exists to prevent.
+  const files = tsxFiles(join(root, "src"));
+
+  it("finds the tables at all", () => {
+    const total = files.reduce(
+      (n, f) => n + (codeOnly(readFileSync(f, "utf8")).match(/<table className="/g) ?? []).length,
+      0,
+    );
+    expect(total).toBeGreaterThan(20);
+  });
+
+  it("gives every 4-plus-column table a min-width", () => {
+    const stranded: string[] = [];
+    for (const f of files) {
+      const code = codeOnly(readFileSync(f, "utf8"));
+      for (const m of code.matchAll(/<table className="([^"]*)"/g)) {
+        const cls = m[1];
+        const after = code.slice(m.index! + m[0].length, m.index! + m[0].length + 1600);
+        const cols = (after.match(/<th\b/g) ?? []).length;
+        if (cols < 4 || /min-w-/.test(cls)) continue;
+        const line = code.slice(0, m.index).split("\n").length;
+        stranded.push(`${f.replace(root + "/", "")}:${line}  ${cols} columns  ${cls.slice(0, 60)}`);
+      }
+    }
+    expect(
+      stranded,
+      "these tables are `w-full` inside a scroll container with no minimum, so they " +
+        "shrink to the container instead of overflowing it and their columns collide " +
+        "at phone widths. Add a min-w-[Npx] floor.",
+    ).toEqual([]);
+  });
+});
+
 describe("two more things measured at 360px", () => {
   it("caps the Crew popover so it fits a phone", () => {
     // 320px of popover on a 320px screen, with the page's own padding still

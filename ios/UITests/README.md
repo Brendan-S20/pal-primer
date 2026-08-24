@@ -169,6 +169,48 @@ screen the whole time).
 | `Geometry/testTheTopBarStartsAtTheTopOfTheScreen` | the document, and the top bar with it, begin at y=0 — the guard on `ios.contentInset`, which was inseting the whole page by the safe area and costing 62pt at the top of every screen |
 | `TourWalk/testTourWalksThroughTheAppAndStaysDismissed` | the guided tour actually navigates to each area it describes, and stays gone after a relaunch |
 
+## Four ways a test here can look like it ran when it did not
+
+All four were hit in a single session on 2026-08-24, three of them
+self-inflicted. They share one defence: read the `Executed N tests` line and
+the reported FILE:LINE, never the exit code.
+
+1. **`Executed 0 tests` with exit 0.** A newly added class that is not in the
+   pbxproj target compiles to nothing and runs nothing, and xcodebuild reports
+   success.
+2. **A skipped test exits 0.** `Executed 1 test, with 1 test skipped` reads as
+   a pass in any grep that only looks for "failed". Three consecutive runs of a
+   new test skipped on a bad selector before anyone noticed.
+3. **STALE BUNDLES.** `test-without-building` will happily run a runner already
+   installed on the simulator, which can be code you deleted. The tell is the
+   line number: a failure quoting `Geometry.swift:66` when the current file has
+   an assertion somewhere else is not a failure, it is an old binary. Fix:
+   `xcrun simctl uninstall <UDID> consulting.thenorth.houndstack.uitests.xctrunner`
+   and rebuild against a wiped `-derivedDataPath`.
+4. **A LEFTOVER OVERLAY fails every test after it.** An open dialog or sheet is
+   full-screen, so the next test in the same invocation cannot reach the app
+   underneath. Every test must dismiss what it opens — and asserting the
+   dismissal is worth doing, because a dialog that will not close is its own
+   defect.
+
+## Some tests need their own invocation
+
+Two, for different reasons, and both are ordering-sensitive rather than flaky:
+
+- **`TourWalk`** needs the tour UNSEEN, and there is only ever one first run.
+  `run-tour-test.sh` resets and runs it alone.
+- **`testBillingGateHidesEveryPurchaseControl`** passes alone, repeatedly and in
+  42s, and fails when it follows `DialogFocus` in the same invocation. Both
+  drive the command palette on the same simulator, and something in that
+  sequence leaves the palette unable to land on Settings > Billing. The cause is
+  not established; what IS established is that the product is fine — the route
+  renders correctly, verified by screenshot, with the gate note in place.
+
+Run them separately rather than treating a red suite as a red product. And when
+a test in this target fails, check first whether it passes on its own: on a
+shared simulator that answer distinguishes a defect from an interaction more
+often than any amount of reading.
+
 ## A screenshot cannot tell you where the WebView is
 
 `Geometry` exists because two very different faults look identical in a PNG: a

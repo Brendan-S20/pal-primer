@@ -461,13 +461,48 @@ enum AppDriver {
         return false
     }
 
-    /// Type into the first text field on screen, tapping it first.
-    static func type(_ app: XCUIApplication, _ value: String) {
-        // The palette focuses its field as it opens, so typing at the
-        // application is enough and avoids a second tap that can dismiss it.
+    /// Type into the focused field, PROVING focus first.
+    ///
+    /// ── WHY THIS IS NOT JUST `typeText` ───────────────────────────────────
+    ///
+    /// It used to wait for a text field to EXIST and then type at the
+    /// application. Existing is not focused, and when it was not, XCUITest
+    /// raised "Failed to synthesize event: Neither element nor any descendant
+    /// has keyboard focus" — a message that names no element and no screen.
+    /// That single line accounts for most of the noise in this suite's history:
+    /// it failed the billing gate, the client billing pair, the invoice
+    /// legibility test and every ScrollSweep surface at one time or another,
+    /// always looking like a different bug.
+    ///
+    /// The keyboard is the only honest proof that something is focused, so this
+    /// waits for it, and taps the field itself if it never arrives. Returns
+    /// whether it managed to type, so callers can skip rather than assert
+    /// against a screen they never reached.
+    @discardableResult
+    static func type(_ app: XCUIApplication, _ value: String) -> Bool {
         let field = app.textFields.firstMatch
         _ = field.waitForExistence(timeout: elementTimeout)
-        app.typeText(value)
+
+        for attempt in 0..<3 {
+            if app.keyboards.element.waitForExistence(timeout: 5) {
+                app.typeText(value)
+                return true
+            }
+            // No keyboard: nothing is focused. Tap the field and try again.
+            if field.exists {
+                if field.isHittable { field.tap() }
+                else { field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
+            }
+            usleep(600_000)
+            if attempt == 2 {
+                XCTFail(
+                    "nothing took keyboard focus after 3 attempts, so \"\(value)\" was never "
+                        + "typed. The field exists=\(field.exists); this is the harness, not "
+                        + "necessarily the product."
+                )
+            }
+        }
+        return false
     }
 
     /// Open the command palette and prove it took focus before typing.
@@ -500,6 +535,22 @@ enum AppDriver {
             }
         }
         return app.keyboards.element.exists
+    }
+
+    /// Put the page back at the top.
+    ///
+    /// Navigating by palette can leave the destination scrolled — the route
+    /// renders, and the element a test waits for is above the viewport. That
+    /// looked exactly like a broken page: `testBillingGateHidesEveryPurchase-
+    /// Control` failed with "never found Current plan within 60s" on a screen
+    /// that was showing the billing route perfectly, two cards further down.
+    static func scrollToTop(_ app: XCUIApplication) {
+        let target = app.scrollViews.firstMatch.exists ? app.scrollViews.firstMatch
+                                                       : app.windows.firstMatch
+        for _ in 0..<6 {
+            target.swipeDown()
+            usleep(250_000)
+        }
     }
 
     /// Scroll the main scroll view down one screenful. Returns false when the

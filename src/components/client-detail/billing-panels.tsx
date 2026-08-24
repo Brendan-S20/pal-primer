@@ -203,7 +203,7 @@ export function BillingPanel({ clientId }: { clientId: string }) {
                 the trailing ••• offers open-full-invoice / copy pay link,
                 while stateful actions (take payment, send, void) stay in the
                 drawer. */}
-              <table className="w-full text-sm">
+              <table className="w-full text-sm min-w-[540px]">
                 <thead className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-4 py-2 font-semibold">Invoice</th>

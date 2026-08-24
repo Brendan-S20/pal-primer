@@ -152,7 +152,7 @@ function ImportsPage() {
         ) : (
           // Six columns clipped, not scrolled — see AiPanels for the same fix.
           <div className="relative overflow-x-auto rounded-lg border bg-card">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[540px]">
               <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="px-4 py-2 font-medium">When</th>

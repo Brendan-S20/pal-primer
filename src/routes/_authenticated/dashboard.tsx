@@ -307,7 +307,7 @@ function Dashboard() {
               >
                 {mapOpen ? "Hide map" : "Show map"}
               </button>
-              <Link to="/routes" className="text-xs text-primary hover:underline">
+              <Link to="/routes" className="inline-flex items-center text-xs text-primary hover:underline touch:min-h-11">
                 Open routes →
               </Link>
             </div>
@@ -381,7 +381,7 @@ function Dashboard() {
             <div className="rounded-lg border bg-card p-4">
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-sm font-semibold">Overdue invoices</h2>
-                <Link to="/invoices" className="text-xs text-primary hover:underline">
+                <Link to="/invoices" className="inline-flex items-center text-xs text-primary hover:underline touch:min-h-11">
                   All →
                 </Link>
               </div>

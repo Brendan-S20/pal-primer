@@ -206,7 +206,7 @@ function InventoryPage() {
               never engages, and it carries the class anyway so all three
               behave the same when a column is added. */}
           <div className="relative overflow-x-auto rounded-lg border bg-card">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[630px]">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="w-10 px-4 py-2">
@@ -321,7 +321,7 @@ function InventoryPage() {
               never engages, and it carries the class anyway so all three
               behave the same when a column is added. */}
           <div className="relative overflow-x-auto rounded-lg border bg-card">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[540px]">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="px-4 py-2">When</th>

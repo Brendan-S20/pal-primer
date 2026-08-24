@@ -60,14 +60,34 @@ final class HoundStackUITests: XCTestCase {
         AppDriver.dismissKeyboard(app)
         AppDriver.tapInSection(app, section: "Settings", item: "Billing")
 
-        // Proof of render BEFORE asserting absence.
+        // Proof of render BEFORE asserting absence — from the TOP of the page,
+        // because arriving by palette can leave it scrolled and the card this
+        // waits for sits above the fold.
+        AppDriver.scrollToTop(app)
         AppDriver.waitFor(app, containing: "Current plan")
         AppDriver.screenshot("billing-gate-top", self)
 
+        // The note must be PRESENT and must not name a destination.
+        //
+        // This assertion used to require the literal "managed on the web", and
+        // that became the exact opposite of the rule on 2026-08-23: naming
+        // where to go is the steer 3.1.1 cares about, so the copy changed to
+        // "managed outside the mobile app" and this line was missed.
+        //
+        // What that cost is worth stating. `continueAfterFailure` is false, so
+        // the test died HERE and never reached the five absence assertions
+        // below — the device-level guard on the whole gate was a no-op wearing
+        // a red X. Found by a QA runner on 2026-08-23, not by the suite.
         XCTAssertNotNil(
-            AppDriver.find(app, containing: "managed on the web"),
-            "the note telling the owner where billing lives is missing"
+            AppDriver.find(app, containing: "outside the mobile app"),
+            "the note telling the owner billing happens elsewhere is missing"
         )
+        for steer in ["managed on the web", "houndstack.com", "on the web"] {
+            XCTAssertNil(
+                AppDriver.find(app, containing: steer),
+                "the billing note names a destination (\(steer)) — that is the steer, not the purchase"
+            )
+        }
 
         for forbidden in [
             "Cancel subscription",

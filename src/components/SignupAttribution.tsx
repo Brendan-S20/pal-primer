@@ -89,7 +89,7 @@ export function SignupAttribution() {
           </p>
         ) : (
           <div className="relative overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[480px]">
               <thead>
                 <tr className="border-b text-xs uppercase text-muted-foreground">
                   <th className="py-2 text-left font-medium">{KEY_LABEL[key]}</th>

@@ -5,6 +5,7 @@ import { PanelLeft } from "lucide-react";
 
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
+import { nativeSidebarStyle } from "@/lib/native-build";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -246,6 +247,13 @@ const Sidebar = React.forwardRef<
         >
           <div
             data-sidebar="sidebar"
+            // NATIVE ONLY. The sidebar is `fixed inset-y-0`, so with
+            // `ios.contentInset: "never"` it runs from the physical top of the
+            // screen to the physical bottom: the wordmark sat under the clock
+            // and the account row sat in the home-indicator strip, on every
+            // iPad screen. Padding the inner column moves the CONTENTS while
+            // `bg-sidebar` still paints the full height behind them.
+            style={nativeSidebarStyle()}
             className="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow"
           >
             {children}

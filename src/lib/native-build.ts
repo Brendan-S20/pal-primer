@@ -76,6 +76,37 @@ export const IS_NATIVE_BUNDLE: boolean = import.meta.env.VITE_NATIVE_BUNDLE === 
  * and My Day had already solved it alone. Two spellings of one idea is how the
  * other two came to be missing it.
  */
+/**
+ * Inline style that keeps the DESKTOP SIDEBAR out of the system's furniture.
+ *
+ * ── WHY THIS EXISTS, AND WHY IT IS A REGRESSION OF MY OWN MAKING ──────────
+ *
+ * `ios.contentInset` used to be `"always"`, which inset the whole document by
+ * the safe area. Setting it to `"never"` moved the document to y=0 so the top
+ * bar could extend under the status bar and paint its own background there —
+ * which is what a native top bar does, and it recovered 62pt on every screen.
+ *
+ * It also moved the SIDEBAR to y=0, and nothing padded that back. The sidebar
+ * is `md:flex` — it does not exist on a phone — so the fix was verified on the
+ * one device class that cannot show the bug. QA on an iPad found it
+ * immediately: `Link 'HoundStack' {{52,18},{90,20}}` with the clock drawn
+ * across the wordmark, on every screen, in both orientations. The bottom was
+ * the same story: the account row ended at y=1202 of 1210, putting a third of
+ * a 44pt target inside the home-indicator gesture strip.
+ *
+ * Applied to the sidebar's inner flex column rather than its fixed container,
+ * so `bg-sidebar` still paints edge to edge behind the status bar and only the
+ * CONTENTS move — the same shape as nativeTopBarStyle above. Padding the fixed
+ * container instead would leave an unpainted band at the top.
+ */
+export function nativeSidebarStyle(): Record<string, string> | undefined {
+  if (!IS_NATIVE_BUNDLE) return undefined;
+  return {
+    paddingTop: "env(safe-area-inset-top)",
+    paddingBottom: "env(safe-area-inset-bottom)",
+  };
+}
+
 export function nativeTopBarStyle(heightRem?: number): Record<string, string> | undefined {
   if (!IS_NATIVE_BUNDLE) return undefined;
   return {

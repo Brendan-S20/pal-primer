@@ -121,7 +121,7 @@ function UsersPage() {
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : (
             <div className="relative overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm min-w-[540px]">
                 <thead className="text-left text-xs uppercase text-muted-foreground">
                   <tr>
                     <th className="pb-2 w-6"></th>

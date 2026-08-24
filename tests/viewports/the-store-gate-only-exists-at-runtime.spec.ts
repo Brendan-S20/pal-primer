@@ -52,8 +52,20 @@ test("a store build offers no way to buy or change a HoundStack plan", async ({
 
   const body = (await page.locator("body").innerText()).replace(/\s+/g, " ");
 
-  // Kept: read-only account status, and where to go instead.
-  expect(body, "the managed-on-the-web note is missing").toContain("managed on the web");
+  // Kept: read-only account status. NOT "where to go instead" — naming the
+  // destination is the steer 3.1.1 cares about, which is why the copy changed
+  // on 2026-08-23 from "managed on the web at app.houndstack.com" to "managed
+  // outside the mobile app".
+  //
+  // This assertion required the OLD phrase, so it was asserting the exact thing
+  // the rule now forbids. It is the third copy of that mistake to be found —
+  // the vitest file and the XCUITest carried it too — and the reason all three
+  // survived is that each was written to pin the note's PRESENCE and happened
+  // to pin its wording as a side effect.
+  expect(body, "the note saying billing happens elsewhere is missing").toContain(
+    "outside the mobile app",
+  );
+  expect(body, "the note names a destination").not.toContain("on the web");
 
   // Removed: every way to start or change a HoundStack purchase.
   for (const forbidden of [

@@ -266,7 +266,7 @@ function LtvTab() {
         {q.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : (
-          <table className="w-full text-sm [&_th]:px-3 [&_td]:px-3 [&_th:first-child]:pl-0 [&_td:first-child]:pl-0 [&_th:last-child]:pr-0 [&_td:last-child]:pr-0">
+          <table className="w-full text-sm [&_th]:px-3 [&_td]:px-3 [&_th:first-child]:pl-0 [&_td:first-child]:pl-0 [&_th:last-child]:pr-0 [&_td:last-child]:pr-0 min-w-[630px]">
             <thead className="text-left text-xs text-muted-foreground">
               <tr>
                 <th className="py-2">Client</th>
@@ -360,7 +360,7 @@ function ZoneTab() {
         {q.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[480px]">
             <thead className="text-left text-xs text-muted-foreground">
               <tr>
                 <th className="py-2">Zone</th>
@@ -417,7 +417,7 @@ function ChurnTab() {
         ) : rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">No churn-scored clients yet.</p>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[480px]">
             <thead className="text-left text-xs text-muted-foreground">
               <tr>
                 <th className="py-2">Reason</th>
@@ -538,7 +538,7 @@ function WinBackTab() {
         ) : (
           // Six columns clipped, not scrolled — see AiPanels for the same fix.
           <div className="relative overflow-x-auto rounded-md border">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[540px]">
               <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2">Client</th>

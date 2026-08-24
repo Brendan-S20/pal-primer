@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { MetaChip } from "@/components/client-detail/primitives";
 import { toast } from "sonner";
 import { stripeAppearance } from "@/lib/stripe-appearance";
+import { saasPurchaseAllowed, BILLING_MANAGED_OUTSIDE_APP } from "@/lib/app-store-billing";
+import { platform } from "@/lib/native";
 import {
   listPlatformPlans,
   createPlanSubscription,
@@ -28,6 +30,31 @@ function money(cents: number | null | undefined) {
 // Up to two decimals, for effective per-month amounts like $82.50.
 function moneyExact(cents: number) {
   return `$${(cents / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+}
+
+/**
+ * The gate, at the COMPONENT rather than at each route.
+ *
+ * ── WHY IT MOVED HERE ─────────────────────────────────────────────────────
+ *
+ * It used to live on /settings/billing only, as `canBuySaas &&` around each
+ * purchase surface. That is correct for the route it is written on and it
+ * protects nothing else — and on 2026-08-23 a scan for other importers found
+ * `/onboarding` rendering a full PlanPicker under the heading "Pick the plan
+ * that fits your crew" and the line "Payment happens right here. You won't
+ * leave the app." No gate anywhere in that file. A new org lands on it.
+ *
+ * A per-route gate is a promise every future route has to remember to keep.
+ * A component that refuses to render a purchase inside a store build keeps it
+ * for them. The route-level guards stay as well: they also remove the
+ * surrounding headings and cards, which this cannot see.
+ */
+function StoreBuildNote() {
+  return (
+    <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
+      {BILLING_MANAGED_OUTSIDE_APP}
+    </div>
+  );
 }
 
 export function PlanPicker({
@@ -49,6 +76,9 @@ export function PlanPicker({
   switchingPlanId?: string | null;
   chooseLabel?: string;
 }) {
+  // A store build renders the note, never a purchase. See StoreBuildNote.
+  if (!saasPurchaseAllowed(platform())) return <StoreBuildNote />;
+
   const listFn = useServerFn(listPlatformPlans);
   const { data, isLoading } = useQuery({ queryKey: ["platform-plans"], queryFn: () => listFn() });
   const plans: any[] = ((data as any)?.plans ?? []).filter((p: any) => !p.is_free);
@@ -247,6 +277,9 @@ export function EmbeddedPlanCheckout({
    *  no payment form is needed (the sub already has a card on file). */
   onSwitched?: (planName: string) => void;
 }) {
+  // A store build renders the note, never a purchase. See StoreBuildNote.
+  if (!saasPurchaseAllowed(platform())) return <StoreBuildNote />;
+
   const createFn = useServerFn(createPlanSubscription);
   const refreshFn = useServerFn(refreshBillingStatus);
   const [session, setSession] = useState<{

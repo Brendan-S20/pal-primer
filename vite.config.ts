@@ -131,6 +131,25 @@ export default defineConfig({
       : {}),
     resolve: {
       alias: {
+        // ── THE SAAS PURCHASE UI IS NOT IN THE STORE BINARY ──────────────
+        //
+        // The runtime gate stops it rendering; this stops it shipping. In a
+        // NATIVE_BUILD the plan picker module resolves to a stub that renders
+        // the "managed outside the mobile app" note, so the plan cards, the
+        // "Choose plan" labels and the inline subscription checkout are absent
+        // from the artifact rather than merely unreachable in it.
+        //
+        // Stripe itself is untouched and must be: six other files use it to
+        // take money from the tenant's OWN customers, which is the half of
+        // app-store-billing.ts that is deliberately never gated.
+        ...(NATIVE_BUILD
+          ? {
+              "@/components/billing/PlanPicker": path.resolve(
+                import.meta.dirname,
+                "src/components/billing/PlanPicker.native-stub.tsx",
+              ),
+            }
+          : {}),
         "entities/lib/decode.js": path.resolve(
           import.meta.dirname,
           "node_modules/entities/lib/decode.js",

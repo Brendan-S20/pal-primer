@@ -190,7 +190,7 @@ function ReportsPage() {
             {data.skipReasons.length === 0 ? (
               <p className="text-sm text-muted-foreground">No skips in this range.</p>
             ) : (
-              <table className="w-full text-sm">
+              <table className="w-full text-sm min-w-[480px]">
                 <tbody>
                   {data.skipReasons.map((r) => (
                     <Row key={r.code} label={r.code.replaceAll("_", " ")} value={String(r.count)} />
@@ -214,7 +214,7 @@ function ReportsPage() {
             {data.perTech.length === 0 ? (
               <p className="text-sm text-muted-foreground">No visits.</p>
             ) : (
-              <table className="w-full text-sm">
+              <table className="w-full text-sm min-w-[720px]">
                 <thead className="text-left text-xs text-muted-foreground">
                   <tr>
                     <th className="py-1">Tech</th>
@@ -246,7 +246,7 @@ function ReportsPage() {
             {data.perZone.length === 0 ? (
               <p className="text-sm text-muted-foreground">No visits.</p>
             ) : (
-              <table className="w-full text-sm">
+              <table className="w-full text-sm min-w-[480px]">
                 <thead className="text-left text-xs text-muted-foreground">
                   <tr>
                     <th className="py-1">Zone</th>
@@ -283,7 +283,7 @@ function ReportsPage() {
           {data.topClients.length === 0 ? (
             <p className="text-sm text-muted-foreground">No payments received in this range.</p>
           ) : (
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[480px]">
               {/* Ranked on NET. Ranking on gross while the tiles above show net
                   is how a customer who refunded everything stays at the top of
                   the list. The refund column only appears when there is one, so

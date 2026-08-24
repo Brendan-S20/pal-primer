@@ -210,7 +210,7 @@ export function ChurnPanel() {
           `overflow-x-auto` still establishes the rounding clip, and lets the
           table scroll inside its own box rather than the page. */}
       <div className="relative overflow-x-auto rounded-lg border bg-card">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm min-w-[480px]">
           <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
             <tr>
               <th className="px-3 py-2">Client</th>
@@ -362,7 +362,7 @@ export function DispatchPanel() {
           `overflow-x-auto` still establishes the rounding clip, and lets the
           table scroll inside its own box rather than the page. */}
       <div className="relative overflow-x-auto rounded-lg border bg-card">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm min-w-[630px]">
           <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
             <tr>
               <th className="px-3 py-2 w-8"></th>
@@ -470,7 +470,7 @@ export function PricingPanel() {
           `overflow-x-auto` still establishes the rounding clip, and lets the
           table scroll inside its own box rather than the page. */}
       <div className="relative overflow-x-auto rounded-lg border bg-card">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm min-w-[810px]">
           <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
             <tr>
               <th className="px-3 py-2 w-8"></th>

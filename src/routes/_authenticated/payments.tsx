@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState, type ReactNode } from "react";
@@ -435,6 +436,69 @@ function ProcessingFeeCard() {
 // Embedded Stripe Connect dashboard (in-app Express experience). Loads
 // @stripe/connect-js on the client only; the Account Session is minted
 // server-side via createStripeAccountSession.
+/**
+ * What a finger gets instead of a Stripe Connect embed.
+ *
+ * ── WHY THESE PANELS ARE NOT RENDERED ON A TOUCH DEVICE ───────────────────
+ *
+ * Stripe's embedded components are iframes on Stripe's own origin. Their
+ * internals cannot be restyled from here — no class, no CSS variable and no
+ * amount of care on our side changes a control inside them.
+ *
+ * Measured on an iPad, 2026-08-23: "Edit Amount" 60x10pt (eight of them),
+ * "Add Status" 66x10pt, "Update" 56x24pt, "Send email" and "See details"
+ * 93x30pt, "Export" 63x30pt. Against a 44pt floor, on the page where the
+ * organization's money lives. Mis-tapping "Edit Amount" at ten points high is
+ * a worse outcome than not having the control on a phone at all.
+ *
+ * So on a coarse pointer these panels are replaced rather than shrunk. What
+ * stays is what we render ourselves and can size properly: the balance
+ * summary above, and a route to the day-to-day view people actually want,
+ * which is our own invoice list.
+ *
+ * ── WHAT IS DELIBERATELY *NOT* GATED ──────────────────────────────────────
+ *
+ * Onboarding. Connecting Stripe at all goes through
+ * `ConnectAccountOnboarding`, and hiding it would strand a tenant who only has
+ * a phone — unable to start taking money, with no alternative inside the app.
+ * Stripe designs that flow for mobile; the dashboards are the part that is not.
+ *
+ * This is a usability decision, not an App Review one. This is the tenant's own
+ * money, which src/lib/app-store-billing.ts is explicit about never gating.
+ */
+function MaybeConnectProvider({
+  instance,
+  skip,
+  children,
+}: {
+  instance: any;
+  skip: boolean;
+  children: ReactNode;
+}) {
+  if (skip) return <>{children}</>;
+  return <ConnectComponentsProvider connectInstance={instance}>{children}</ConnectComponentsProvider>;
+}
+
+function NotOnAPhone({ what }: { what: string }) {
+  return (
+    <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
+      <p className="font-medium text-foreground">{what} needs a bigger screen</p>
+      <p className="mt-1">
+        Stripe&rsquo;s {what.toLowerCase()} view has controls too small to use reliably on a
+        phone or tablet, and we cannot resize them. Open this page on a computer for the
+        full view.
+      </p>
+      <p className="mt-2">
+        For day-to-day work,{" "}
+        <Link to="/invoices" className="inline-flex items-center font-medium text-primary hover:underline touch:min-h-11">
+          Invoices
+        </Link>{" "}
+        shows every charge with controls built for touch.
+      </p>
+    </div>
+  );
+}
+
 function ConnectDashboard({
   settings,
   accountExtras,
@@ -452,12 +516,30 @@ function ConnectDashboard({
   chargesEnabled: boolean;
   onOnboardingExit: () => void;
 }) {
+  // A coarse pointer, not a width. An iPad is 834pt wide and still a finger,
+  // which is exactly the substitution documented in docs/ipad-was-never-measured.md.
+  const isTouch = useMediaQuery("(pointer: coarse)");
   const sessionFn = useServerFn(createStripeAccountSession);
   const [instance, setInstance] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    // NOTHING TO LOAD ON A FINGER. The three panels this instance exists to
+    // render are replaced by NotOnAPhone on a coarse pointer, so creating an
+    // account session and pulling in @stripe/connect-js would be work done for
+    // iframes that never appear — and a failure in it would blank a page whose
+    // touch content does not depend on Stripe at all. That is not theoretical:
+    // it is exactly what happened while testing this, and the dashboard showed
+    // "Couldn't load the payment dashboard" over content that needed no Stripe.
+    // Only when there is a dashboard to skip. Onboarding is the one Connect
+    // surface a phone must keep: it is how an account gets connected at all,
+    // and Stripe designs that flow for mobile. Gating it would strand a tenant
+    // who only has a phone, unable to start taking money with no alternative
+    // in the app. So the instance is still created while `chargesEnabled` is
+    // false, and only skipped once the account is live and the tiny dashboards
+    // are what would have rendered.
+    if (isTouch && chargesEnabled) return;
     let cancelled = false;
     setErr(null);
     setInstance(null);
@@ -481,9 +563,11 @@ function ConnectDashboard({
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, [reloadKey, isTouch, chargesEnabled]);
 
-  if (err)
+  // Both guards below are about the Stripe instance, which a touch device does
+  // not have and does not need.
+  if (err && !(isTouch && chargesEnabled))
     return (
       <div className="rounded-lg border bg-card p-4">
         <p className="text-sm text-destructive">Couldn't load the payment dashboard: {err}</p>
@@ -497,16 +581,20 @@ function ConnectDashboard({
         </Button>
       </div>
     );
-  if (!instance) return <p className="text-sm text-muted-foreground">Loading payment dashboard…</p>;
+  if (!instance && !(isTouch && chargesEnabled))
+    return <p className="text-sm text-muted-foreground">Loading payment dashboard…</p>;
 
   return (
     <div className="space-y-5">
-      <ConnectComponentsProvider connectInstance={instance}>
+      {/* No provider on touch: every Connect component beneath is replaced by
+          NotOnAPhone there, and the provider requires an instance this branch
+          deliberately never creates. */}
+      <MaybeConnectProvider instance={instance} skip={isTouch && chargesEnabled}>
         {/* Stripe's own alerting. Above the tabs, because "your account is
             restricted" is true on whichever tab you are looking at, and
             hiding it inside one of them means the tab you are NOT on is where
             the warning lives. */}
-        <ConnectNotificationBanner />
+        {!(isTouch && chargesEnabled) && <ConnectNotificationBanner />}
         {!chargesEnabled ? (
           <ConnectCard title="Account setup">
             {(h) => <ConnectAccountOnboarding onExit={onOnboardingExit} {...h} />}
@@ -537,22 +625,34 @@ function ConnectDashboard({
 
             <TabsContent value="money" className="mt-4 space-y-4">
               <BalanceSummary />
-              <ConnectCard title="Balance">{(h) => <ConnectBalances {...h} />}</ConnectCard>
-              <ConnectCard
-                title="Payouts"
-                hint="When money leaves Stripe for your bank. Change the schedule or send one now."
-              >
-                {(h) => <ConnectPayouts {...h} />}
-              </ConnectCard>
+              {isTouch ? (
+                <NotOnAPhone what="Balance" />
+              ) : (
+                <ConnectCard title="Balance">{(h) => <ConnectBalances {...h} />}</ConnectCard>
+              )}
+              {isTouch ? (
+                <NotOnAPhone what="Payouts" />
+              ) : (
+                <ConnectCard
+                  title="Payouts"
+                  hint="When money leaves Stripe for your bank. Change the schedule or send one now."
+                >
+                  {(h) => <ConnectPayouts {...h} />}
+                </ConnectCard>
+              )}
             </TabsContent>
 
             <TabsContent value="activity" className="mt-4">
-              <ConnectCard
-                title="Payments"
-                hint="Every charge, refund and dispute on your account."
-              >
-                {(h) => <ConnectPayments {...h} />}
-              </ConnectCard>
+              {isTouch ? (
+                <NotOnAPhone what="Payments" />
+              ) : (
+                <ConnectCard
+                  title="Payments"
+                  hint="Every charge, refund and dispute on your account."
+                >
+                  {(h) => <ConnectPayments {...h} />}
+                </ConnectCard>
+              )}
             </TabsContent>
 
             {settings && (
@@ -562,17 +662,21 @@ function ConnectDashboard({
             )}
 
             <TabsContent value="account" className="mt-4 space-y-4">
-              <ConnectCard
-                title="Business details"
-                hint="Legal entity, bank account, and the information Stripe needs to keep you paid out."
-              >
-                {(h) => <ConnectAccountManagement {...h} />}
-              </ConnectCard>
+              {isTouch ? (
+                <NotOnAPhone what="Business details" />
+              ) : (
+                <ConnectCard
+                  title="Business details"
+                  hint="Legal entity, bank account, and the information Stripe needs to keep you paid out."
+                >
+                  {(h) => <ConnectAccountManagement {...h} />}
+                </ConnectCard>
+              )}
               {accountExtras}
             </TabsContent>
           </Tabs>
         )}
-      </ConnectComponentsProvider>
+      </MaybeConnectProvider>
     </div>
   );
 }

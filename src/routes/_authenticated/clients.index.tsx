@@ -433,7 +433,7 @@ function ClientsList() {
 
           {/* Desktop: table */}
           <div className="relative hidden overflow-x-auto rounded-lg border bg-card sm:block">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[900px]">
               <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="w-10 px-4 py-2">

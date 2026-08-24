@@ -188,14 +188,16 @@ describe("the same page on a laptop is the page it was", () => {
     // `min-h-11` on the desktop header would make two 44px buttons next to a
     // 36px heading, which is the fix showing up where it was not needed.
     const sized = classTokens(codeOnly(read(DASHBOARD))).filter((t) => /(?:^|:)min-h-11/.test(t));
-    // Four: the two header buttons, the alert chip, and the phone-only Show
-    // map toggle. That last one is `md:hidden` and so could never render at a
-    // desktop width whatever its height class said — it is scoped anyway,
-    // because a rule that has to be argued with per element is not a rule, and
-    // the argument is invisible from here. Same reason as above for asserting
-    // the count first: a page with no touch sizing left must not satisfy "the
-    // touch sizing is correctly scoped".
-    expect(sized.length).toBe(4);
+    // SIX. Four were the two header buttons, the alert chip and the phone-only
+    // Show map toggle. Two more were added on 2026-08-23: the "Open routes →"
+    // and "All →" links, measured at 84x16pt and 29x16pt on an iPad.
+    //
+    // The Show map toggle is the instructive one and it is why the other two
+    // were missed. It is `md:hidden` AND correctly sized — so on a tablet the
+    // control that has the touch height is hidden, and the two bare links that
+    // do not are what remain. A count that only rose when someone measured a
+    // real device is a count worth keeping.
+    expect(sized.length).toBe(6);
     expect(sized.filter((t) => !t.startsWith("touch:"))).toEqual([]);
   });
 

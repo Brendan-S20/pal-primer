@@ -46,7 +46,7 @@ function SkipRulesPage() {
       </div>
 
       <div className="relative overflow-x-auto rounded-lg border bg-card">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm min-w-[480px]">
           <thead className="border-b bg-muted/40 text-left">
             <tr>
               <th className="px-4 py-2">Reason</th>

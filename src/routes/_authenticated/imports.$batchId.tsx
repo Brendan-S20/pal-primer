@@ -156,7 +156,7 @@ function BatchDetail() {
           </select>
         </div>
         <div className="overflow-auto rounded border bg-card">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[810px]">
             <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
               <tr>
                 <th className="px-3 py-2">#</th>

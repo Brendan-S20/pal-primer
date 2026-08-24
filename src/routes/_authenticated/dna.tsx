@@ -181,7 +181,7 @@ function DnaLanding() {
         </CardHeader>
         <CardContent className="p-0">
           <div className="relative overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[540px]">
               <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2">Client</th>
@@ -712,7 +712,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
             )}
             <CardContent className="p-0">
               <div className="relative overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm min-w-[900px]">
                   <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                     <tr>
                       <th className="w-10 px-3 py-2">
@@ -935,7 +935,7 @@ function ClientDnaWorkspace({ clientId }: { clientId: string }) {
             </CardHeader>
             <CardContent className="p-0">
               <div className="relative overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm min-w-[540px]">
                   <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                     <tr>
                       <th className="px-3 py-2">Dog</th>

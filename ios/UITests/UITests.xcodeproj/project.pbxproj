@@ -12,6 +12,9 @@
 		A1000000000000000000004 /* ScrollSweep.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000013 /* ScrollSweep.swift */; };
 		A1000000000000000000005 /* TourWalk.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000014 /* TourWalk.swift */; };
 		A1000000000000000000006 /* Geometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000015 /* Geometry.swift */; };
+		A1000000000000000000007 /* SignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000016 /* SignIn.swift */; };
+		A1000000000000000000008 /* SidebarInset.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000017 /* SidebarInset.swift */; };
+		A1000000000000000000009 /* DialogFocus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000018 /* DialogFocus.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -20,6 +23,9 @@
 		A1000000000000000000013 /* ScrollSweep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollSweep.swift; sourceTree = "<group>"; };
 		A1000000000000000000014 /* TourWalk.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TourWalk.swift; sourceTree = "<group>"; };
 		A1000000000000000000015 /* Geometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Geometry.swift; sourceTree = "<group>"; };
+		A1000000000000000000016 /* SignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignIn.swift; sourceTree = "<group>"; };
+		A1000000000000000000017 /* SidebarInset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarInset.swift; sourceTree = "<group>"; };
+		A1000000000000000000018 /* DialogFocus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialogFocus.swift; sourceTree = "<group>"; };
 		A1000000000000000000020 /* HoundStackUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HoundStackUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -50,6 +56,9 @@
 				A1000000000000000000013 /* ScrollSweep.swift */,
 				A1000000000000000000014 /* TourWalk.swift */,
 				A1000000000000000000015 /* Geometry.swift */,
+				A1000000000000000000016 /* SignIn.swift */,
+				A1000000000000000000017 /* SidebarInset.swift */,
+				A1000000000000000000018 /* DialogFocus.swift */,
 			);
 			path = HoundStackUITests;
 			sourceTree = "<group>";
@@ -133,6 +142,9 @@
 				A1000000000000000000004 /* ScrollSweep.swift in Sources */,
 				A1000000000000000000005 /* TourWalk.swift in Sources */,
 				A1000000000000000000006 /* Geometry.swift in Sources */,
+				A1000000000000000000007 /* SignIn.swift in Sources */,
+				A1000000000000000000008 /* SidebarInset.swift in Sources */,
+				A1000000000000000000009 /* DialogFocus.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

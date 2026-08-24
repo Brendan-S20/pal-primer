@@ -1455,7 +1455,7 @@ function RoutesPage() {
                     aria-expanded={weatherOpen}
                     aria-label={weatherOpen ? "Hide weather" : "Show weather"}
                     title={weatherOpen ? "Hide weather" : "Show weather"}
-                    className="flex h-11 w-11 items-center justify-center rounded-md text-destructive hover:bg-muted md:h-9 md:w-9"
+                    className="flex h-11 w-11 items-center justify-center rounded-md text-destructive hover:bg-muted md:mouse:h-9 md:mouse:w-9"
                   >
                     <CloudRain className="h-4 w-4" />
                   </button>

@@ -3,6 +3,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { CheckCircle2 } from "lucide-react";
+import { saasPurchaseAllowed } from "@/lib/app-store-billing";
+import { platform } from "@/lib/native";
 import { Button } from "@/components/ui/button";
 import { getBillingStatus, listSubscriptionItems } from "@/lib/billing.functions";
 import {
@@ -26,6 +28,8 @@ export const Route = createFileRoute("/_authenticated/onboarding")({
 type Step = "welcome" | "plan" | "checkout" | "done";
 
 function OnboardingPage() {
+  // A store build may not steer toward a purchase, in copy or in controls.
+  const canBuySaas = saasPurchaseAllowed(platform());
   const navigate = useNavigate();
   const statusFn = useServerFn(getBillingStatus);
   const { data: billing } = useQuery({ queryKey: ["billing-status"], queryFn: () => statusFn() });
@@ -114,10 +118,20 @@ function OnboardingPage() {
 
       {step === "plan" && (
         <div className="space-y-4">
+          {/* The HEADINGS need the gate as much as the picker does. PlanPicker
+              refuses to render a purchase inside a store build, but it cannot
+              see the copy wrapped around it — and "Payment happens right here.
+              You won't leave the app." is a purchase instruction whether or
+              not anything below it is buyable. Caught by a rendered test after
+              the component gate was already in place. */}
           <div>
-            <h1 className="text-xl font-semibold">Pick the plan that fits your crew</h1>
+            <h1 className="text-xl font-semibold">
+              {canBuySaas ? "Pick the plan that fits your crew" : "Your plan"}
+            </h1>
             <p className="text-sm text-muted-foreground">
-              Payment happens right here. You won't leave the app. Change or cancel anytime.
+              {canBuySaas
+                ? "Payment happens right here. You won't leave the app. Change or cancel anytime."
+                : "Plan changes are handled outside the mobile app. Everything else here works as normal."}
             </p>
           </div>
           <PlanPicker

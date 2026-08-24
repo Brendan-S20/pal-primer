@@ -137,7 +137,8 @@ function NewInvoiceDialog() {
           <div>
             <label className="text-xs font-medium text-muted-foreground">Client</label>
             <select
-              className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm"
+              // 40pt, and it is the first control in the dialog.
+              className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm touch:min-h-11"
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
             >
@@ -859,7 +860,7 @@ function InvoicesPage() {
             ))}
           </div>
           <div className="relative overflow-x-auto rounded-xl border bg-card shadow-sm max-md:hidden">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[720px]">
               <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="w-10 px-4 py-2">

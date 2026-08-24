@@ -16,7 +16,7 @@
     "",
     "A fourth group, function_overloads, was added on 2026-07-31. Postgres",
     "identifies a function by name AND argument types, so one name can be two",
-    "functions — skip_visit was, for a month, and rule 1 could not see the dead",
+    "functions \u2014 skip_visit was, for a month, and rule 1 could not see the dead",
     "one because the live one had callers. An entry here means an overload set is",
     "deliberate and says which signatures are meant. There are none today.",
     "",
@@ -25,37 +25,39 @@
     "individually investigated. They have been now: 24 were deleted (each a",
     "duplicate of a wired path, a writer for a superseded column, or the",
     "remains of a screen that was never built) and 4 were wired up. Two of",
-    "them were doing real harm while dormant — chargeInvoiceWithSavedCard",
+    "them were doing real harm while dormant \u2014 chargeInvoiceWithSavedCard",
     "would have charged a card without applying account credit first, and",
     "generateAddonCharges being unreachable meant recurring add-ons produced",
     "no charges at all. A new entry here needs its own reason, not a shared one."
   ],
   "endpoint_callers": {
-    "src/routes/api/public/hooks/announcement-emails.ts": "Deliberately unscheduled, and no longer unreachable. The 120-line send moved to lib/announcement-emails.server, which a platform admin now invokes per announcement from /platform/announcements — so an announcement marked send_email actually gets sent, which it never did before. This endpoint stays as the shape a scheduler needs if the owner ever wants one; scheduling platform-wide outbound email is their decision, not a cleanup task. Both callers share a per-recipient idempotency key, so adding a cron later cannot double-send.",
-    "src/routes/api/public/hooks/nightly.ts": "pg_cron job 'nightly-automation', 0 9 * * * — verified in cron.job.",
+    "src/routes/api/public/hooks/announcement-emails.ts": "Deliberately unscheduled, and no longer unreachable. The 120-line send moved to lib/announcement-emails.server, which a platform admin now invokes per announcement from /platform/announcements \u2014 so an announcement marked send_email actually gets sent, which it never did before. This endpoint stays as the shape a scheduler needs if the owner ever wants one; scheduling platform-wide outbound email is their decision, not a cleanup task. Both callers share a per-recipient idempotency key, so adding a cron later cannot double-send.",
+    "src/routes/api/public/hooks/nightly.ts": "pg_cron job 'nightly-automation', 0 9 * * * \u2014 verified in cron.job.",
     "src/routes/api/public/hooks/platform-stripe.ts": "Stripe platform webhook endpoint, for HoundStack's own SaaS billing (bucket A).",
-    "src/routes/api/public/hooks/qbo-callback.ts": "QuickBooks OAuth redirect target — the browser lands here after a tenant authorizes.",
+    "src/routes/api/public/hooks/qbo-callback.ts": "QuickBooks OAuth redirect target \u2014 the browser lands here after a tenant authorizes.",
     "src/routes/api/public/hooks/stripe.ts": "Stripe Connect webhook endpoint. Called by Stripe on tenant payment events.",
     "src/routes/api/public/hooks/twilio-voice.ts": "Twilio inbound-voice webhook.",
     "src/routes/api/public/hooks/twilio.ts": "Twilio inbound-SMS webhook.",
-    "src/routes/api/public/hooks/weekly-digest.ts": "pg_cron job 'weekly-digest', 0 13 * * 1 — created by 20260731130000, verified in cron.job.",
+    "src/routes/api/public/hooks/weekly-digest.ts": "pg_cron job 'weekly-digest', 0 13 * * 1 \u2014 created by 20260731130000, verified in cron.job.",
     "src/routes/api/public/hooks/xero-callback.ts": "Xero OAuth redirect target.",
     "src/routes/api/public/leads.ts": "Public lead-capture form, embedded on tenant websites. Called by a browser from outside the app.",
     "src/routes/api/public/verify-email.ts": "Target of the verification link in a signup email.",
-    "src/routes/email/auth/webhook.ts": "Supabase Auth send-email hook — Supabase calls this to render auth mail.",
-    "src/routes/email/queue/process.ts": "pg_cron job 'process-email-queue', * * * * * — verified in cron.job.",
-    "src/routes/email/suppression.ts": "Provider bounce/complaint webhook — writes the suppression list.",
+    "src/routes/email/auth/webhook.ts": "Supabase Auth send-email hook \u2014 Supabase calls this to render auth mail.",
+    "src/routes/email/queue/process.ts": "pg_cron job 'process-email-queue', * * * * * \u2014 verified in cron.job.",
+    "src/routes/email/suppression.ts": "Provider bounce/complaint webhook \u2014 writes the suppression list.",
     "src/routes/email/transactional/send.ts": "NO CALLER, and the previous reason here was wrong: it claimed the app's own notification code calls this server-to-server. It does not. Nothing in src/ references the path, and lib/email/enqueue.server.ts says outright that system code 'bypasses /email/transactional/send auth by writing directly to the pgmq queue'. The endpoint also requires a user Bearer JWT, which system code has none of. Kept because it is a reachable authenticated endpoint a future user-initiated send could use; the exemption now records that it is unused rather than pretending it is wired.",
     "src/routes/email/unsubscribe.ts": "Target of the List-Unsubscribe header and the footer link in every marketing email."
   },
   "function_overloads": {
-    "staff_start_point": "Both signatures are meant, and they answer the same question about different inputs. staff_start_point(uuid,uuid,date) resolves the start of a technician's day from what is ASSIGNED to them, and is what plan_route calls after plan_day_across_staff has written the assignments. staff_start_point(uuid,uuid,date,uuid[]) resolves it from a PLANNED set of visits, and is what plan_visits calls inside plan_day_across_staff_dryrun, which by design has written nothing there is to read. Tiers 1 and 2 of the chain (personal address, business location) are identical in both; only the disposal-site and periphery tiers differ, and after an apply the two agree by construction — that agreement is the point of the four-argument one and was measured on 2026-08-19 (preview 7/7/6 at 139.3/143.1/91.9 drive minutes, apply identical). The overload hazard this rule names — a caller omitting an argument and silently reaching the older body — is not live here: the three-argument version has no defaulted parameters and is a complete, correct answer for post-write callers, so an omission gets the right function rather than a truncated one. Added 20260815190000."
+    "staff_start_point": "Both signatures are meant, and they answer the same question about different inputs. staff_start_point(uuid,uuid,date) resolves the start of a technician's day from what is ASSIGNED to them, and is what plan_route calls after plan_day_across_staff has written the assignments. staff_start_point(uuid,uuid,date,uuid[]) resolves it from a PLANNED set of visits, and is what plan_visits calls inside plan_day_across_staff_dryrun, which by design has written nothing there is to read. Tiers 1 and 2 of the chain (personal address, business location) are identical in both; only the disposal-site and periphery tiers differ, and after an apply the two agree by construction \u2014 that agreement is the point of the four-argument one and was measured on 2026-08-19 (preview 7/7/6 at 139.3/143.1/91.9 drive minutes, apply identical). The overload hazard this rule names \u2014 a caller omitting an argument and silently reaching the older body \u2014 is not live here: the three-argument version has no defaulted parameters and is a complete, correct answer for post-write callers, so an omission gets the right function rather than a truncated one. Added 20260815190000."
   },
   "uncalled_rpcs": {
     "assign_route_for_day": "Superseded by plan_route/optimize_route_v3. Its only caller was the legacy one-tech card, deleted in 20260805060000 along with the whole-day reassignment bug. EXECUTE is revoked from authenticated in that same migration, so it is unreachable rather than merely uncalled; the definition stays because the eligibility migration's record is written around it.",
-    "is_visit_tech": "Called from ~10 SQL bodies in this tree and from the storage policy in 20260701161658. The previous reason claimed the scanner could not see it because bootstrap-dump policies are not files — but that policy IS a file, so the stated premise was false even though the exemption is harmless. Kept as a no-op guard against the scanner's SQL-body parsing regressing."
+    "is_visit_tech": "Called from ~10 SQL bodies in this tree and from the storage policy in 20260701161658. The previous reason claimed the scanner could not see it because bootstrap-dump policies are not files \u2014 but that policy IS a file, so the stated premise was false even though the exemption is harmless. Kept as a no-op guard against the scanner's SQL-body parsing regressing."
   },
   "unwired_server_fns": {},
   "write_only_columns": {},
-  "unreachable_modules": {}
+  "unreachable_modules": {
+    "src/components/billing/PlanPicker.native-stub.tsx": "Reached by a BUILD-TIME ALIAS, not by an import, so no file under src/routes can name it and this check cannot see the edge. vite.config.ts resolves @/components/billing/PlanPicker to this file in a NATIVE_BUILD, so the HoundStack subscription purchase UI is absent from the store binary rather than merely gated inside it. Verified by build: stripeAppearance, which appears only in the real module, is in 0 chunks of dist-native. Parity with the real module's exports is pinned by tests/the-store-binary-does-not-carry-a-plan-picker.test.ts, because tsc follows tsconfig paths rather than vite aliases and would never notice a drift."
+  }
 }

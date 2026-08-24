@@ -913,7 +913,7 @@ function InvoiceHistory() {
           No invoices yet. Your subscription invoices will appear here once you're billed.
         </p>
       ) : (
-        <table className="mt-3 w-full text-sm">
+        <table className="mt-3 w-full text-sm min-w-[480px]">
           <thead className="text-left text-xs uppercase text-muted-foreground">
             <tr>
               <th className="py-1.5">Invoice</th>
