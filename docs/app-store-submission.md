@@ -223,7 +223,11 @@ it does
 
 ```
 [ ] Apple Developer account active
-[ ] Bundle ID consulting.thenorth.houndstack registered
+[x] Bundle ID consulting.thenorth.houndstack registered — confirmed in App
+      Store Connect 2026-08-24. App record exists (Apple ID 6804336787, SKU
+      consulting.thenorth.houndstack, primary category Business, secondary
+      Utilities). The record was created THROUGH Xcode Cloud, which matters
+      for the workflow trap in docs/ios-build.md.
 [ ] Push Notifications capability enabled, APNs key created, server env set
       (see docs/ios-build.md; push is code-complete but not provisioned)
 [ ] App icon renders correctly at every size in Xcode's asset preview

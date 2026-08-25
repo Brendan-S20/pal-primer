@@ -177,6 +177,42 @@ xcodebuild -resolvePackageDependencies -project App.xcodeproj -scheme App
   → Resolved source packages: CapacitorCamera, CapacitorPushNotifications, …
 ```
 
+### The workflow's Test action has nothing to test, and never will
+
+```
+xcodebuild: error: Failed to build workspace App with scheme App.:
+There are no test bundles available to test.
+```
+
+This is not a signing failure, not a package failure, and nothing in the repo
+can fix it. The Xcode Cloud WORKFLOW has a **Test** action in it. The `App`
+scheme has no test targets, so `xcodebuild test` finds no bundle and the whole
+build is marked failed even when the archive step is fine.
+
+It arrived by default rather than by choice: the app record was created through
+Xcode Cloud's own onboarding, and the workflow it generates has Test in it out
+of the box.
+
+**Fix: delete the Test action from the workflow** — App Store Connect > the app
+> Xcode Cloud > Manage Workflows > edit > select the Test action > delete, or
+the same thing from Xcode's Report navigator. Leave Archive and any
+distribution action alone.
+
+**Do not "fix" it by adding a test target to `App.xcodeproj`.** Two independent
+reasons, either one sufficient:
+
+* That project belongs to Capacitor. `npx cap add ios` regenerates it, so a
+  target added there is a target that disappears without warning. This is the
+  same reason `ios/UITests/` is a standalone project in the first place.
+* The tests could not run in the cloud even if they were wired in. Every one of
+  them needs a signed-in session, and sign-in is deliberately not automated —
+  automating it would put a real password in the repo. See
+  `ios/UITests/README.md`. An unattended runner has no session and every test
+  fails on the first navigation.
+
+The device tests run against a simulator you are sitting in front of. Xcode
+Cloud's job here is to archive and distribute, and that is the whole of it.
+
 **Not verified:** the `brew install node@22` branch. Node is already present on
 this machine, so that path is reasoned rather than executed. It is pinned to
 the major `.github/workflows/ci.yml` uses so the cloud and the gate agree.
