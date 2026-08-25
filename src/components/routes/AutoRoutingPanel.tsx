@@ -220,7 +220,7 @@ export function AutoRoutingPanel({
         // Claim only what is known: the run happened, the number is a load.
         toast.success("Routing applied." + (share ? ` — ${share}` : ""), {
           description:
-            "Those counts are each tech's current load, not what this run moved — the measurement could not be taken for this batch.",
+            "Those counts are each tech's current load, not what this run moved. The measurement could not be taken for this batch.",
           duration: 8000,
         });
       } else {
