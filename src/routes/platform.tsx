@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { nativeTopBarStyle } from "@/lib/native-build";
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -40,6 +41,7 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
 
 export const Route = createFileRoute("/platform")({
@@ -140,6 +142,24 @@ function PlatformLayout() {
 
 function PlatformSidebar() {
   const currentPath = useRouterState({ select: (r) => r.location.pathname });
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  // ── THE TENANT SHELL GOT THIS; THIS ONE DID NOT ─────────────────────────
+  //
+  // AppSidebar closes the mobile Sheet on every pathname change. PlatformSidebar
+  // is a separate component and was left behind, and that matters MORE here, not
+  // less: the platform shell has no MobileTabBar, so its SidebarTrigger renders
+  // unconditionally, and the platform routes are the one place on a phone where
+  // this Sheet is actually reachable. Tapping a destination changed the route
+  // underneath and left the sheet covering the console.
+  //
+  // On the pathname rather than per-link, same as AppSidebar, so the command
+  // palette and any programmatic navigation are covered too.
+  useEffect(() => {
+    if (isMobile) setOpenMobile(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPath]);
+
   return (
     <Sidebar collapsible="offcanvas">
       <SidebarHeader className="border-b">
