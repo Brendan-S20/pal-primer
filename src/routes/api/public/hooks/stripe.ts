@@ -763,7 +763,21 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                       .single();
                     // comms_paused: imported clients get no automated dunning
                     // SMS until the org initiates contact.
-                    if (c && !c.sms_opt_out && !c.comms_paused && c.primary_phone) {
+                    // Consent, via the one SQL gate every manual sender uses.
+                    // This automated path checked three of its four conditions
+                    // by hand and skipped the recorded-consent one, which is
+                    // the condition Twilio verification turns on.
+                    const { data: mayTextDeclined } = await (supabaseAdmin as any).rpc(
+                      "client_may_be_texted",
+                      { _client_id: inv.client_id },
+                    );
+                    if (
+                      c &&
+                      mayTextDeclined &&
+                      !c.sms_opt_out &&
+                      !c.comms_paused &&
+                      c.primary_phone
+                    ) {
                       const { sendTwilioSms } = await import("@/lib/twilio.server");
                       const { buildPortalLink } = await import("@/lib/portal-links.server");
                       const url = await buildPortalLink(
@@ -885,7 +899,9 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             // treating a payment as refunded when the money never went back.
             if (trueRefunded <= 0) {
               await (supabaseAdmin as any)
-                .from("payments").update({ status: "succeeded" }).eq("id", rpay.id);
+                .from("payments")
+                .update({ status: "succeeded" })
+                .eq("id", rpay.id);
             }
 
             if (refund?.status === "failed" || refund?.status === "canceled") {
