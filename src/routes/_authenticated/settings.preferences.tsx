@@ -17,6 +17,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
+import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
 import { StandardPricingCard } from "@/components/StandardPricingCard";
 import { reseedDemoData } from "@/lib/demo.functions";
 import {
@@ -170,6 +171,7 @@ function PreferencesPage() {
         </CardContent>
       </Card>
 
+      <AppearanceCard />
       <TimeZoneCard />
       <PricingBaselineCard />
       <PortalAddressCard />
@@ -274,7 +276,15 @@ function PortalAddressCard() {
   });
 
   if (!canEdit) return null;
-  const base = typeof window !== "undefined" ? window.location.origin : appOrigin();
+  // THE ONE THE OWNER SAW. This card shows the company's permanent portal
+  // address, to be put on a website and read to customers — and it rendered
+  // `capacitor://localhost/portal/` in the iOS app.
+  //
+  // The ternary is backwards for the native build in exactly the way
+  // onboarding.tsx was: it prefers the page origin whenever a browser exists,
+  // and inside the binary a browser DOES exist with an origin no customer can
+  // open. The fallback was already the right answer for every platform.
+  const base = appOrigin();
 
   return (
     <Card>
@@ -315,6 +325,89 @@ function PortalAddressCard() {
         <p className="text-xs text-muted-foreground">
           Letters, numbers, and hyphens only. Existing client links keep working automatically.
         </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Menus and chrome — the things about how this app LOOKS to one person.
+ *
+ *  ── WHY THESE MOVED HERE ─────────────────────────────────────────────────
+ *
+ *  The two top-bar switches lived on /profile, next to the photo, the phone
+ *  number and the sign-in email. Those are facts about a PERSON. Which
+ *  buttons the chrome shows is a preference, and this page is called
+ *  Preferences. Owner's call, 2026-08-25, and it is the right one: nobody
+ *  looking for a setting looks under their own name badge.
+ *
+ *  Saved per person on this device, like the switches always were — see
+ *  lib/header-prefs.ts for why that is local rather than a column.
+ */
+function AppearanceCard() {
+  const { prefs, setPref } = useHeaderPrefs();
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Menus and top bar</CardTitle>
+        <CardDescription>
+          How this app looks to you on this device. Your other devices keep their own settings, and
+          nobody else is affected.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div>
+          <Label className="text-xs">Menu on a phone</Label>
+          {/* ── ONE MENU, NOT TWO ────────────────────────────────────────
+              The tab bar's More button and the top bar's hamburger opened two
+              sheets listing the same destinations, in two corners of the same
+              screen. Which of them suits you is not something the code can
+              know, so it is a choice rather than a guess: a tech working
+              one-handed wants the thumb-reachable bar, and somebody used to
+              the desktop layout wants the menu where it has always been. */}
+          <Select
+            value={prefs.phoneNav}
+            onValueChange={(v) => setPref("phoneNav", v as "bottom" | "side")}
+          >
+            <SelectTrigger className="mt-1 w-full sm:w-72">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="bottom">Bottom bar with More</SelectItem>
+              <SelectItem value="side">Side menu</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="pt-1.5 text-xs text-muted-foreground">
+            Both menus reach every screen, so this is only about where the button is. Tablets and
+            computers always use the side menu.
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs">Optional buttons beside the search box</Label>
+          <p className="pb-1 text-xs text-muted-foreground">
+            Turning one off only hides the shortcut. The Knowledge Center is still in the menu and
+            the command palette, and the weather is still on the dashboard.
+          </p>
+          {/* The label wraps the switch so the whole row is the hit area, and
+              min-h-11 makes that row legal at every width. A bare switch is a
+              ~36px target with an unclickable label beside it. */}
+          <label className="flex min-h-11 min-w-0 cursor-pointer items-center justify-between gap-3">
+            <span className="min-w-0 flex-1 text-sm">Knowledge Center (?)</span>
+            <Switch
+              checked={prefs.showHelp}
+              onCheckedChange={(v) => setPref("showHelp", v)}
+              aria-label="Show the Knowledge Center button in the top bar"
+            />
+          </label>
+          <label className="flex min-h-11 min-w-0 cursor-pointer items-center justify-between gap-3">
+            <span className="min-w-0 flex-1 text-sm">Weather</span>
+            <Switch
+              checked={prefs.showWeather}
+              onCheckedChange={(v) => setPref("showWeather", v)}
+              aria-label="Show the weather button in the top bar"
+            />
+          </label>
+        </div>
       </CardContent>
     </Card>
   );

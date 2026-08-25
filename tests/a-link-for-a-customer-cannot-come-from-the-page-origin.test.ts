@@ -58,6 +58,8 @@ describe("a link a customer will open is not built from the page origin", () => 
       const lines = src.split("\n");
       lines.forEach((line, i) => {
         if (!line.includes("window.location.origin")) return;
+        const trimmed = line.trim();
+        if (trimmed.startsWith("//") || trimmed.startsWith("*")) return;
         // The expression usually fits on one line; allow the next one for a
         // wrapped template literal.
         const window_ = line + "\n" + (lines[i + 1] ?? "");
@@ -69,6 +71,44 @@ describe("a link a customer will open is not built from the page origin", () => 
     expect(
       offenders,
       "use appUrl() — window.location.origin is capacitor://localhost in the native build:\n" +
+        offenders.join("\n"),
+    ).toEqual([]);
+  });
+
+  // The shape the line-adjacent scan above cannot see, because the assignment
+  // and the path can be a dozen lines apart:
+  //
+  //   const base = typeof window !== "undefined" ? window.location.origin : appOrigin();
+  //
+  // It reads as careful SSR handling and is backwards for the native build: it
+  // prefers the page origin whenever a browser exists, and inside the binary a
+  // browser DOES exist with an origin no customer can open. Both instances of
+  // this idiom in the repo were bugs — the portal sign-in address the owner
+  // reported, and the Stripe return url on onboarding — and in both the
+  // fallback was already the right answer for every platform.
+  it("never prefers the page origin over appOrigin/appUrl in a ternary", () => {
+    const offenders: string[] = [];
+    for (const file of files) {
+      const src = readFileSync(file, "utf8");
+      if (!src.includes("window.location.origin")) continue;
+      src.split("\n").forEach((line, i) => {
+        if (!line.includes("window.location.origin")) return;
+        // Skip comments. The three call sites that got this RIGHT all explain
+        // themselves in prose that names both spellings, and a scan that reads
+        // its own documentation as a violation is worse than no scan.
+        const trimmed = line.trim();
+        if (trimmed.startsWith("//") || trimmed.startsWith("*")) return;
+        // Falling back to the canonical origin means the canonical origin was
+        // what was wanted; the browser branch is the mistake.
+        if (/appOrigin\(\)|appUrl\(/.test(line)) {
+          offenders.push(`${file.slice(root.length + 1)}:${i + 1}  ${line.trim().slice(0, 90)}`);
+        }
+      });
+    }
+    expect(
+      offenders,
+      "if the fallback is appOrigin()/appUrl(), use it unconditionally — the " +
+        "browser branch is capacitor://localhost in the native build:\n" +
         offenders.join("\n"),
     ).toEqual([]);
   });

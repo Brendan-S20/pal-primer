@@ -36,20 +36,46 @@
 
 const KEY_PREFIX = "hs:header-prefs:";
 
-/** The controls that can be turned off. Everything else in the bar is load
- *  bearing: search, notifications, the account menu and the sidebar toggle
- *  either have no other entry point or are the only way to leave. */
+/** The controls that can be turned off, plus how a phone navigates.
+ *
+ *  The note that used to be here said the sidebar toggle "has no other entry
+ *  point". That was true when it was written and is not true now: below the
+ *  tablet breakpoint MobileTabBar renders a More button whose sheet lists
+ *  every destination the sidebar has and the tabs do not. So on a phone the
+ *  two menus go to the same places, and the app was rendering both. */
 export type HeaderPrefs = {
   /** The "?" that links to the Knowledge Center. */
   showHelp: boolean;
   /** The weather popover. */
   showWeather: boolean;
+  /** Which single menu a phone gets.
+   *
+   *  `bottom` — the tab bar, with More. The hamburger is hidden.
+   *  `side`   — the hamburger and its sheet. The tab bar is hidden.
+   *
+   *  Exactly one, never both, because both is what the app did and it meant
+   *  two buttons, in two corners, opening two sheets, listing the same
+   *  destinations. Which one suits you is not something this codebase can
+   *  know: a tech working one-handed in a driveway wants a thumb-reachable
+   *  bar, and somebody used to the desktop layout wants the menu where it has
+   *  always been.
+   *
+   *  Only consulted below the tablet breakpoint. From `md`/`lg` up the docked
+   *  sidebar is the navigation and the toggle collapses it, which is a
+   *  different job from opening a sheet. */
+  phoneNav: "bottom" | "side";
 };
 
 export const DEFAULT_HEADER_PREFS: HeaderPrefs = {
   // Both default ON, so nobody loses a control they were using by upgrading.
   showHelp: true,
   showWeather: true,
+  // The tab bar is the default because it is the one with a thumb-reachable
+  // hit area and the one iOS users expect, and because it is what a phone
+  // already showed before this preference existed. Choosing `side` is opting
+  // OUT of the platform convention, which is a thing to allow and not a thing
+  // to assume.
+  phoneNav: "bottom",
 };
 
 /** Fired when prefs change, so every header on the page re-reads them.
@@ -82,10 +108,7 @@ export function readHeaderPrefs(userId: string | null | undefined): HeaderPrefs 
   }
 }
 
-export function writeHeaderPrefs(
-  userId: string | null | undefined,
-  next: HeaderPrefs,
-): void {
+export function writeHeaderPrefs(userId: string | null | undefined, next: HeaderPrefs): void {
   if (!userId) return;
   try {
     storage()?.setItem(KEY_PREFIX + userId, JSON.stringify(next));

@@ -22,7 +22,9 @@ import {
  */
 export function useHeaderPrefs(): {
   prefs: HeaderPrefs;
-  setPref: (key: keyof HeaderPrefs, value: boolean) => void;
+  // Generic rather than `value: boolean`: phoneNav is a union of two strings,
+  // and a widened `boolean | string` would let showHelp be set to "bottom".
+  setPref: <K extends keyof HeaderPrefs>(key: K, value: HeaderPrefs[K]) => void;
 } {
   const [prefs, setPrefs] = useState<HeaderPrefs>(DEFAULT_HEADER_PREFS);
 
@@ -38,7 +40,7 @@ export function useHeaderPrefs(): {
     };
   }, []);
 
-  const setPref = useCallback((key: keyof HeaderPrefs, value: boolean) => {
+  const setPref = useCallback(<K extends keyof HeaderPrefs>(key: K, value: HeaderPrefs[K]) => {
     const userId = readLastUser();
     const next = { ...readHeaderPrefs(userId), [key]: value };
     setPrefs(next);

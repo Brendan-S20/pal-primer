@@ -99,7 +99,14 @@ describe("both consumers read the shared rule", () => {
   it("the layout takes its padding from the same hook", () => {
     const src = read("src/routes/_authenticated/route.tsx");
     expect(src).toMatch(/useTabletTier\(\)/);
-    expect(src).toMatch(/\$\{mainBottomPadding\}/);
+    // Was pinned as a bare `${mainBottomPadding}`. It is now the `bottom`
+    // branch of a conditional, because with the tab bar switched off that
+    // padding reserves the height of a bar that is not there. The rule this
+    // test exists for is unchanged — the reservation still comes from the
+    // hook and is not hand-spelled — so it is the NAME that is pinned, not
+    // the punctuation around it.
+    expect(src).toMatch(/mainBottomPadding/);
+    expect(src).not.toMatch(/pb-\[calc\(4\.5rem/);
     // The old literal must be gone, or the two disagree for tech users.
     expect(src).not.toMatch(
       /pb-\[calc\(4\.5rem\+env\(safe-area-inset-bottom\)\)\] sm:px-6 sm:pt-8 md:pb-8/,
