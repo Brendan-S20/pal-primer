@@ -43,23 +43,42 @@ export const Route = createFileRoute("/email/transactional/send")({
           return Response.json({ error: "Server configuration error" }, { status: 500 });
         }
 
-        // Verify the caller has a valid Supabase auth token.
-        // In TanStack, there is no Supabase gateway — we validate the JWT ourselves.
+        // ── INTERNAL CALLERS ONLY ────────────────────────────────────────
+        //
+        // This used to accept ANY valid Supabase user token. It validated the
+        // JWT and then never referenced the user again: `user` appeared exactly
+        // twice in this file, once destructured and once null-checked. No
+        // organization lookup, no role check, no ownership check on the
+        // recipient — and the client below is built with the SERVICE ROLE key,
+        // so the log write and enqueue bypass RLS.
+        //
+        // The result was an authenticated open relay. Any signed-in user of any
+        // tenant could send HoundStack-branded HTML from
+        // noreply@notify.houndstack.com — SPF/DKIM aligned, to any address on
+        // the internet, with attacker-controlled templateData including
+        // invoiceUrl.
+        //
+        // Locked to the service role rather than given per-org checks, because
+        // NOTHING CALLS IT. Not src/, not scripts/, not a cron job: the live
+        // `process-email-queue` posts to /email/queue/process, which is a
+        // different route (read out of cron.job and recorded in
+        // 20260801092000). Ownership checks would be inventing a caller
+        // shape for a caller that does not exist; this makes the endpoint
+        // unreachable by users while leaving it available to internal callers.
+        //
+        // Same comparison as /email/queue/process:181 — the sibling that IS
+        // driven by cron and has had this right all along.
         const authHeader = request.headers.get("Authorization");
         if (!authHeader?.startsWith("Bearer ")) {
           return Response.json({ error: "Unauthorized" }, { status: 401 });
         }
 
         const token = authHeader.slice("Bearer ".length).trim();
-        const supabase = createClient(supabaseUrl, supabaseServiceKey);
-        const {
-          data: { user },
-          error: authError,
-        } = await supabase.auth.getUser(token);
-
-        if (authError || !user) {
-          return Response.json({ error: "Unauthorized" }, { status: 401 });
+        if (token !== supabaseServiceKey) {
+          return Response.json({ error: "Forbidden" }, { status: 403 });
         }
+
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
         // Parse request body
         let templateName: string;
