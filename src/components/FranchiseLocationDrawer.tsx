@@ -85,7 +85,12 @@ export function FranchiseLocationDrawer({
 
   return (
     <Sheet open={!!row} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
+      {/* Same safe-area treatment as VisitDetailDrawer — identical shape, and
+          the iOS sweep flagged it by code shape without opening it. */}
+      <SheetContent
+        side="right"
+        className="w-full overflow-y-auto pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-[calc(1.5rem+env(safe-area-inset-top))] [&>button]:top-[calc(0.5rem+env(safe-area-inset-top))] sm:max-w-xl"
+      >
         {row && (
           <>
             <SheetHeader>
@@ -304,8 +309,8 @@ function RemoveLocation({ row, onDone }: { row: FranchiseRow; onDone: () => void
               yourself.
             </li>
             <li>
-              To link them again later you issue a new invitation code and their owner redeems it, so
-              they have to agree a second time.
+              To link them again later you issue a new invitation code and their owner redeems it,
+              so they have to agree a second time.
             </li>
           </ul>
 

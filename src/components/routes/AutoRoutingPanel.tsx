@@ -193,9 +193,7 @@ export function AutoRoutingPanel({
       // stops" was true both before and after the fix for the bug where all
       // twenty landed on one technician — it could not tell the dispatcher
       // whether the work had actually been divided.
-      const share = (r.balance ?? [])
-        .map((b) => `${nameOf(b.staffId)} ${b.stops}`)
-        .join(" · ");
+      const share = (r.balance ?? []).map((b) => `${nameOf(b.staffId)} ${b.stops}`).join(" · ");
       if (r.forecast && r.forecast.daysPlanned === 0) {
         // The sentence the result box used to carry, and the one case where
         // `r.stops` cannot be trusted: with nothing to plan, plan_day_across_staff
@@ -210,6 +208,19 @@ export function AutoRoutingPanel({
           // having moved above the sections.
           description:
             "Either those techs have no scheduled stops, or every stop is already assigned and the “move work between techs” box is off.",
+          duration: 8000,
+        });
+      } else if (!r.forecast) {
+        // The gap the branch above cannot cover. `daysPlanned === 0` is the
+        // only thing that distinguishes "nothing to route" from real work,
+        // and it comes from the forecast — so when the forecast could not be
+        // taken, r.stops is each technician's CURRENT LOAD and "Routed 20
+        // stops" is what a run that touched nothing says. That is the sentence
+        // an owner reported as "it put all the appointments on one tech".
+        // Claim only what is known: the run happened, the number is a load.
+        toast.success("Routing applied." + (share ? ` — ${share}` : ""), {
+          description:
+            "Those counts are each tech's current load, not what this run moved — the measurement could not be taken for this batch.",
           duration: 8000,
         });
       } else {
@@ -278,7 +289,24 @@ export function AutoRoutingPanel({
     <div
       role="dialog"
       aria-label="Auto-routing"
-      className="fixed inset-x-3 bottom-3 z-40 max-h-[min(32rem,calc(100vh-6rem))] overflow-y-auto rounded-lg border bg-card shadow-xl sm:left-auto sm:right-4 sm:w-80"
+      /* `bottom-3` put Apply and Cancel INSIDE the tab bar. Measured on an
+         iPhone 17 Pro, 2026-08-25: panel bottom 846, MobileTabBar top 789,
+         Apply at y 793-837 — entirely behind it, and the panel is too short
+         for its own scroller to engage, so there was no gesture that reached
+         it. Both elements are z-40 and the nav renders after <main>, so the
+         nav won. On the web it was merely half-covered; on the phone the
+         primary action was unreachable.
+
+         Cleared rather than restacked: raising z-index would only put the
+         panel over the nav. The offset is the tab bar's own height plus the
+         home-indicator inset, the same shape InstallBanner.tsx:71 uses, and it
+         stops at md because that is where the bar itself stops.
+
+         100vh -> 100dvh while here: it was the only 100vh left in the app and
+         on iOS it resolves to the LARGE viewport. It was not the cause of the
+         fault above — measured, it resolved correctly — but it is the wrong
+         unit beside a tab bar that moves. */
+      className="fixed inset-x-3 bottom-3 z-40 max-h-[min(32rem,calc(100dvh-6rem))] overflow-y-auto rounded-lg border bg-card shadow-xl max-md:bottom-[calc(3.5rem+env(safe-area-inset-bottom)+0.75rem)] max-md:max-h-[calc(100dvh-11rem)] sm:left-auto sm:right-4 sm:w-80"
     >
       <div className="flex items-center justify-between border-b px-3 py-2">
         <div className="flex items-center gap-1.5 text-sm font-semibold">

@@ -96,7 +96,10 @@ const STUBS: Record<string, Stub> = {
   },
   getMyOrgFeatures: { commercialAccounts: true, hasCommercialData: true },
   getTrialState: {
-    phase: "expired", daysRemaining: null, endsOn: "2026-08-30", restricted: true,
+    phase: "expired",
+    daysRemaining: null,
+    endsOn: "2026-08-30",
+    restricted: true,
     canManageBilling: true,
   },
   getBillingBannerStatus: { planStatus: "active", role: "owner" },
@@ -120,10 +123,82 @@ const STUBS: Record<string, Stub> = {
   // "renders nothing rather than null" is the case most likely to regress.
   listPlatformPlans: {
     plans: [
-      { id: "plan-launch", name: "Launch", slug: "launch", description: "A solo operator or a small crew running one business.", price_cents: 7_900, annual_price_cents: 79_000, currency: "usd", interval: "month", features: {}, included_seats: 3, price_per_seat_cents: 1_000, ai_actions_included: 200, ai_overage_cents_per_action: 10, is_free: false, stripe_price_id: "price_launch", stripe_annual_price_id: "price_launch_yr", sort_order: 1 },
-      { id: "plan-growth", name: "Growth", slug: "growth", description: 'Past "just me and a couple techs", still one business.', price_cents: 19_900, annual_price_cents: 199_000, currency: "usd", interval: "month", features: {}, included_seats: 10, price_per_seat_cents: 1_000, ai_actions_included: 750, ai_overage_cents_per_action: 10, is_free: false, stripe_price_id: "price_growth", stripe_annual_price_id: "price_growth_yr", sort_order: 2 },
-      { id: "plan-scale", name: "Scale", slug: "scale", description: "A large operation spread across multiple cities or territories.", price_cents: 44_900, annual_price_cents: 449_000, currency: "usd", interval: "month", features: {}, included_seats: 30, price_per_seat_cents: 1_000, ai_actions_included: 2_500, ai_overage_cents_per_action: 10, is_free: false, stripe_price_id: "price_scale", stripe_annual_price_id: "price_scale_yr", sort_order: 3 },
-      { id: "plan-ent", name: "Enterprise", slug: "enterprise", description: "A franchise or multi-brand parent overseeing separate child businesses.", price_cents: null, annual_price_cents: null, currency: "usd", interval: "month", features: {}, included_seats: null, price_per_seat_cents: 1_000, ai_actions_included: null, ai_overage_cents_per_action: null, is_free: false, stripe_price_id: null, stripe_annual_price_id: null, sort_order: 4 },
+      {
+        id: "plan-launch",
+        name: "Launch",
+        slug: "launch",
+        description: "A solo operator or a small crew running one business.",
+        price_cents: 7_900,
+        annual_price_cents: 79_000,
+        currency: "usd",
+        interval: "month",
+        features: {},
+        included_seats: 3,
+        price_per_seat_cents: 1_000,
+        ai_actions_included: 200,
+        ai_overage_cents_per_action: 10,
+        is_free: false,
+        stripe_price_id: "price_launch",
+        stripe_annual_price_id: "price_launch_yr",
+        sort_order: 1,
+      },
+      {
+        id: "plan-growth",
+        name: "Growth",
+        slug: "growth",
+        description: 'Past "just me and a couple techs", still one business.',
+        price_cents: 19_900,
+        annual_price_cents: 199_000,
+        currency: "usd",
+        interval: "month",
+        features: {},
+        included_seats: 10,
+        price_per_seat_cents: 1_000,
+        ai_actions_included: 750,
+        ai_overage_cents_per_action: 10,
+        is_free: false,
+        stripe_price_id: "price_growth",
+        stripe_annual_price_id: "price_growth_yr",
+        sort_order: 2,
+      },
+      {
+        id: "plan-scale",
+        name: "Scale",
+        slug: "scale",
+        description: "A large operation spread across multiple cities or territories.",
+        price_cents: 44_900,
+        annual_price_cents: 449_000,
+        currency: "usd",
+        interval: "month",
+        features: {},
+        included_seats: 30,
+        price_per_seat_cents: 1_000,
+        ai_actions_included: 2_500,
+        ai_overage_cents_per_action: 10,
+        is_free: false,
+        stripe_price_id: "price_scale",
+        stripe_annual_price_id: "price_scale_yr",
+        sort_order: 3,
+      },
+      {
+        id: "plan-ent",
+        name: "Enterprise",
+        slug: "enterprise",
+        description: "A franchise or multi-brand parent overseeing separate child businesses.",
+        price_cents: null,
+        annual_price_cents: null,
+        currency: "usd",
+        interval: "month",
+        features: {},
+        included_seats: null,
+        price_per_seat_cents: 1_000,
+        ai_actions_included: null,
+        ai_overage_cents_per_action: null,
+        is_free: false,
+        stripe_price_id: null,
+        stripe_annual_price_id: null,
+        sort_order: 4,
+      },
     ],
   },
   listSubscriptionItems: {
@@ -188,13 +263,31 @@ const STUBS: Record<string, Stub> = {
       unassignedToday: visits.filter((v) => !v.assigned_staff_id).length,
       weatherFlaggedToday: visits.filter((v) => v.weather_flagged).length,
       todayVisits: visits,
-      staff: fx.STAFF.filter((s) => s.is_field_tech).map((s) => ({ id: s.id, display_name: s.display_name })),
-      overdueInvoices: fx.INVOICES.filter((i) => i.status === "open"),
+      staff: fx.STAFF.filter((s) => s.is_field_tech).map((s) => ({
+        id: s.id,
+        display_name: s.display_name,
+      })),
+      // The real server function MAPS these rows before returning them
+      // (src/lib/dashboard.functions.ts:116-125) — clientName, totalCents. This
+      // handed back the raw snake_case rows, so the dashboard's Overdue
+      // invoices card rendered three blank links and "$NaN" three times, at
+      // every width, in every run of both authenticated sweeps since
+      // 2026-08-19. Every geometry rule passed, because a blank link and a
+      // short string are small. A fixture has to match the SHAPE the caller
+      // returns, not the shape the table stores.
+      overdueInvoices: fx.INVOICES.filter((i) => i.status === "open").map((i) => ({
+        id: i.id,
+        clientName: i.clients?.display_name ?? "-",
+        totalCents: i.total_cents - (i.credit_applied_cents ?? 0),
+        dueOn: i.due_on ?? null,
+        issuedAt: i.issued_at,
+      })),
       openConcerns: [
         {
           id: "cccc1111-0000-4000-8000-000000000001",
           category: "missed_area",
-          message: "Back corner by the shed was not done — third week running, please pass it on to whoever covers Tuesdays.",
+          message:
+            "Back corner by the shed was not done — third week running, please pass it on to whoever covers Tuesdays.",
           createdAt: new Date().toISOString(),
           clientName: "Kimberly-Anne Rutherford-Sinclair",
           visitId: null,
@@ -204,7 +297,9 @@ const STUBS: Record<string, Stub> = {
   },
 
   // ── Schedule / dispatch ─────────────────────────────────────────────────
-  listVisitsForDay: (a) => ({ visits: fx.visitsBetween(a.day ?? fx.TODAY, a.throughDay ?? a.day ?? fx.TODAY) }),
+  listVisitsForDay: (a) => ({
+    visits: fx.visitsBetween(a.day ?? fx.TODAY, a.throughDay ?? a.day ?? fx.TODAY),
+  }),
   listStaff: { staff: fx.STAFF },
   listTimeOff: { rows: [] },
   getDispatchSettings: {
@@ -221,7 +316,16 @@ const STUBS: Record<string, Stub> = {
     },
   },
   getWeatherForZones: { zones: [], enabled: false },
-  listZones: { zones: [{ id: "zzzz1111-0000-4000-8000-000000000001", name: "Ravenswood Manor / Lincoln Square North", postal_prefix: "606", color: "#2563eb" }] },
+  listZones: {
+    zones: [
+      {
+        id: "zzzz1111-0000-4000-8000-000000000001",
+        name: "Ravenswood Manor / Lincoln Square North",
+        postal_prefix: "606",
+        color: "#2563eb",
+      },
+    ],
+  },
 
   // ── Clients ─────────────────────────────────────────────────────────────
   listClients: { clients: fx.CLIENTS },
@@ -261,8 +365,32 @@ const STUBS: Record<string, Stub> = {
   listClientVisitHistory: { visits: fx.visitsBetween(fx.TODAY, fx.TODAY).slice(0, 6) },
   listDogsForClient: {
     dogs: [
-      { id: "dddd0001", property_id: fx.PROPERTY_ID, name: "Bartholomew", breed: "Bernese Mountain Dog", weight_class: "large", temperament: "friendly", notes: null, active: true, unit_id: null, dna_status: "enrolled", property_street: fx.PROPERTIES[0].street },
-      { id: "dddd0002", property_id: fx.PROPERTY_ID, name: "Persephone", breed: "Miniature Australian Labradoodle", weight_class: "small", temperament: "shy", notes: null, active: true, unit_id: null, dna_status: "not_enrolled", property_street: fx.PROPERTIES[0].street },
+      {
+        id: "dddd0001",
+        property_id: fx.PROPERTY_ID,
+        name: "Bartholomew",
+        breed: "Bernese Mountain Dog",
+        weight_class: "large",
+        temperament: "friendly",
+        notes: null,
+        active: true,
+        unit_id: null,
+        dna_status: "enrolled",
+        property_street: fx.PROPERTIES[0].street,
+      },
+      {
+        id: "dddd0002",
+        property_id: fx.PROPERTY_ID,
+        name: "Persephone",
+        breed: "Miniature Australian Labradoodle",
+        weight_class: "small",
+        temperament: "shy",
+        notes: null,
+        active: true,
+        unit_id: null,
+        dna_status: "not_enrolled",
+        property_street: fx.PROPERTIES[0].street,
+      },
     ],
   },
   getClientCredit: { balanceCents: 4_250, ledger: [] },
@@ -292,13 +420,18 @@ const STUBS: Record<string, Stub> = {
   addressSearchStatus: { enabled: true, provider: "google", configured: true },
   searchAddresses: {
     suggestions: [
-      { id: "s1", description: "4413 North Ravenswood Manor Terrace Apartment 2B, Chicago, IL 60625, USA" },
+      {
+        id: "s1",
+        description: "4413 North Ravenswood Manor Terrace Apartment 2B, Chicago, IL 60625, USA",
+      },
       { id: "s2", description: "4426 North Ravenswood Manor Terrace, Chicago, IL 60625, USA" },
     ],
   },
 
   // ── Settings ────────────────────────────────────────────────────────────
-  getOrgBranding: { branding: { logo_path: null, accent_hex: "#2563eb", company_name: fx.ORG_NAME } },
+  getOrgBranding: {
+    branding: { logo_path: null, accent_hex: "#2563eb", company_name: fx.ORG_NAME },
+  },
   getStandardPricing: { pricing: [] },
   getSignupSettings: {
     orgName: fx.ORG_NAME,
@@ -390,7 +523,9 @@ const STUBS: Record<string, Stub> = {
 
   // ── My Day (the field surface `docs/mobile-ux-audit.md` calls the most
   //    mobile-ready screen in the app, which is a claim worth measuring) ────
-  listMyDayFieldStaff: { staff: fx.STAFF.map((s) => ({ id: s.id, display_name: s.display_name, role: s.role })) },
+  listMyDayFieldStaff: {
+    staff: fx.STAFF.map((s) => ({ id: s.id, display_name: s.display_name, role: s.role })),
+  },
   getMyDay: () => {
     const visits = fx
       .visitsBetween(fx.TODAY, fx.TODAY)
@@ -402,7 +537,11 @@ const STUBS: Record<string, Stub> = {
         completed_at: null,
         skip_reason: null,
         skip_reason_code: null,
-        clients: { display_name: (v.clients as any).display_name, primary_phone: "+1 (312) 555-0142", dna_compliance_enabled: false },
+        clients: {
+          display_name: (v.clients as any).display_name,
+          primary_phone: "+1 (312) 555-0142",
+          dna_compliance_enabled: false,
+        },
         properties: {
           ...(v.properties as any),
           account_type: "residential",
@@ -498,21 +637,31 @@ export async function installStubBackend(context: BrowserContext): Promise<StubR
     if (type === "image" || type === "font" || type === "media") {
       return route.fulfill({ status: 200, contentType: "image/png", body: TRANSPARENT_PNG });
     }
-    if (type === "script") return route.fulfill({ status: 200, contentType: "text/javascript", body: "" });
-    if (type === "stylesheet") return route.fulfill({ status: 200, contentType: "text/css", body: "" });
+    if (type === "script")
+      return route.fulfill({ status: 200, contentType: "text/javascript", body: "" });
+    if (type === "stylesheet")
+      return route.fulfill({ status: 200, contentType: "text/css", body: "" });
     return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
   });
 
   await context.route(`${SUPABASE_ORIGIN}/**`, async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/auth/v1/user") {
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(user) });
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(user),
+      });
     }
     if (url.pathname.startsWith("/auth/v1/token")) {
       // A refresh must not look like a revoked session, or the shell signs out
       // mid-measurement and the guard reports a login screen.
       const { sweepSession } = await import("./session");
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sweepSession()) });
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(sweepSession()),
+      });
     }
     if (url.pathname.startsWith("/storage/")) {
       return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
@@ -521,7 +670,9 @@ export async function installStubBackend(context: BrowserContext): Promise<StubR
     // rather than through a server function — the platform Plans page is the
     // one that matters, and a plans table that answers `[]` renders "No plans
     // yet", which is a page with no catalog in it and nothing to measure.
-    const table = url.pathname.startsWith("/rest/v1/") ? url.pathname.slice("/rest/v1/".length) : "";
+    const table = url.pathname.startsWith("/rest/v1/")
+      ? url.pathname.slice("/rest/v1/".length)
+      : "";
     if (table in TABLES) {
       return route.fulfill({
         status: 200,
@@ -548,7 +699,10 @@ export async function installStubBackend(context: BrowserContext): Promise<StubR
     let value: unknown = null;
     if (name in STUBS) {
       const stub = STUBS[name];
-      value = typeof stub === "function" ? (stub as (a: Record<string, any>) => unknown)(argsOf(route)) : stub;
+      value =
+        typeof stub === "function"
+          ? (stub as (a: Record<string, any>) => unknown)(argsOf(route))
+          : stub;
     } else {
       const label = `${name || id.slice(0, 24)}  (${file})`;
       if (!report.unstubbed.includes(label)) report.unstubbed.push(label);

@@ -36,7 +36,14 @@ export function Logo({ variant = "mark", className, ...rest }: LogoProps) {
       <span
         aria-hidden
         className={cn(
-          "block aspect-[3626/435] leading-none [&>svg]:h-full [&>svg]:w-full",
+          // max-w-full because the wordmark is sized from its HEIGHT and an
+          // aspect ratio, so its width is whatever that computes to and it is
+          // the one element on the page that does not know how wide the
+          // viewport is — 300.08px identical at 320 and at 1920. Raise the
+          // browser's base font to 24px and it lays out at 450px inside a
+          // 360px screen, clipped by PublicShell's overflow-hidden and reading
+          // "loundStac". Measured 2026-08-25.
+          "block aspect-[3626/435] max-w-full leading-none [&>svg]:h-full [&>svg]:w-full",
           className,
         )}
         dangerouslySetInnerHTML={{ __html: wordmarkSvg }}
