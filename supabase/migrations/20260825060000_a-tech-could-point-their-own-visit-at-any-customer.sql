@@ -107,7 +107,10 @@ SECURITY DEFINER
 SET search_path TO 'public', 'pg_temp'
 AS $function$
 DECLARE
-  _changed text[] := ARRAY[]::text[];
+  _changed text[] := ARRAY[]::text[];  -- array_append below, never ||: `text[] || 'literal'` is
+                                      -- ambiguous and Postgres parses the literal as an ARRAY,
+                                      -- raising "malformed array literal" at runtime. Caught by
+                                      -- the proof script on the replayed database, not by review.
 BEGIN
   -- No JWT: service role, pg_cron, the nightly runner. See header.
   IF auth.uid() IS NULL THEN
@@ -122,33 +125,33 @@ BEGIN
 
   -- Tenancy and identity.
   IF NEW.organization_id IS DISTINCT FROM OLD.organization_id THEN
-    _changed := _changed || 'organization_id';
+    _changed := array_append(_changed, 'organization_id');
   END IF;
   IF NEW.client_id IS DISTINCT FROM OLD.client_id THEN
-    _changed := _changed || 'client_id';
+    _changed := array_append(_changed, 'client_id');
   END IF;
   IF NEW.property_id IS DISTINCT FROM OLD.property_id THEN
-    _changed := _changed || 'property_id';
+    _changed := array_append(_changed, 'property_id');
   END IF;
   IF NEW.subscription_id IS DISTINCT FROM OLD.subscription_id THEN
-    _changed := _changed || 'subscription_id';
+    _changed := array_append(_changed, 'subscription_id');
   END IF;
   IF NEW.zone_id IS DISTINCT FROM OLD.zone_id THEN
-    _changed := _changed || 'zone_id';
+    _changed := array_append(_changed, 'zone_id');
   END IF;
 
   -- Money. These three become invoice line items; see header.
   IF NEW.skip_billable IS DISTINCT FROM OLD.skip_billable THEN
-    _changed := _changed || 'skip_billable';
+    _changed := array_append(_changed, 'skip_billable');
   END IF;
   IF NEW.skip_charge_cents IS DISTINCT FROM OLD.skip_charge_cents THEN
-    _changed := _changed || 'skip_charge_cents';
+    _changed := array_append(_changed, 'skip_charge_cents');
   END IF;
   IF NEW.is_deepclean IS DISTINCT FROM OLD.is_deepclean THEN
-    _changed := _changed || 'is_deepclean';
+    _changed := array_append(_changed, 'is_deepclean');
   END IF;
   IF NEW.deepclean_charge_cents IS DISTINCT FROM OLD.deepclean_charge_cents THEN
-    _changed := _changed || 'deepclean_charge_cents';
+    _changed := array_append(_changed, 'deepclean_charge_cents');
   END IF;
 
   IF array_length(_changed, 1) IS NOT NULL THEN
