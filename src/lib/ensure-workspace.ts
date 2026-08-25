@@ -53,7 +53,21 @@ export async function ensureBootstrapped(
   // Teammate invite (finding #40): if this email was invited to an existing
   // org, join THAT org with the invited role instead of bootstrapping a new
   // one. Idempotent server-side; returns null when there's no pending invite.
-  const { data: invitedOrg } = await supabase.rpc("accept_org_invite_for_current_user" as any);
+  // `?invite=<token>` comes from the link in the invitation email. It is the
+  // route for somebody who already had an account when they were invited --
+  // the email path now only accepts invitations older than the account, so a
+  // pre-existing account has no other way in. Absent on an ordinary sign-in,
+  // where the email path still handles it.
+  const inviteToken =
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("invite");
+  const { data: invitedOrg } = await supabase.rpc(
+    "accept_org_invite_for_current_user" as any,
+    {
+      _token: inviteToken,
+    } as any,
+  );
   if (invitedOrg) {
     // A new employee just joined — reconcile the org's Stripe seat count so
     // per-employee billing catches up immediately. Best-effort.

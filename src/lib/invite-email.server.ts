@@ -33,11 +33,21 @@ export async function sendInviteEmail(
   orgName: string,
   email: string,
   role: string,
+  // The invite's token. Optional so the franchise-provisioning caller, which
+  // writes org_invites in SQL, can keep working without one.
+  //
+  // It exists because the note at the top of this file is no longer the whole
+  // truth. Email-matching still works, but as of 20260825160000 it only accepts
+  // an invitation OLDER than the account -- which is what stops an address
+  // being claimed before it is invited. Somebody who already had an account
+  // when they were invited therefore needs this link, and before now the email
+  // carried no token at all to give them.
+  token?: string,
 ): Promise<boolean> {
   try {
     const resendApiKey = process.env.RESEND_API_KEY;
     if (!resendApiKey) return false;
-    const link = appUrl("/auth");
+    const link = token ? appUrl(`/auth?invite=${encodeURIComponent(token)}`) : appUrl("/auth");
     const label = role.replace(/_/g, " ");
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
