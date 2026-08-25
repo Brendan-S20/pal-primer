@@ -226,6 +226,29 @@ function PublicPayPage() {
                   {fmtCents(invoice.totalCents, invoice.currency)}
                 </span>
               </div>
+              {/* CREDIT AND AMOUNT DUE. getPublicInvoice has always returned
+                  both and this page rendered neither, so an invoice with credit
+                  applied showed "Total $340.00" here while the Pay button below
+                  read "Pay $190.00" — two numbers on the one document an
+                  anonymous payer ever sees, with nothing explaining the gap.
+                  Both staff-facing surfaces already show this split; the
+                  customer-facing one was the only one missing it. */}
+              {(invoice.creditAppliedCents ?? 0) > 0 && (
+                <>
+                  <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <span>Account credit applied</span>
+                    <span className="tabular-nums">
+                      −{fmtCents(invoice.creditAppliedCents ?? 0, invoice.currency)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between border-t pt-2">
+                    <span className="text-sm font-medium">Amount due</span>
+                    <span className="text-xl font-semibold tabular-nums">
+                      {fmtCents(invoice.amountDueCents ?? 0, invoice.currency)}
+                    </span>
+                  </div>
+                </>
+              )}
               {invoice.status === "paid" && invoice.paidAt && (
                 <p className="text-right text-xs text-muted-foreground">
                   Paid {formatDay(invoice.paidAt)}
