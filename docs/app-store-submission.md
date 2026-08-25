@@ -237,8 +237,16 @@ it does
 [ ] Demo account created, populated, and tested by signing in fresh
 [ ] Screenshots taken from the demo org only
 [ ] Support, marketing and privacy URLs all resolve
-[ ] Export compliance answered (HoundStack uses standard HTTPS only, which is
-      normally the exemption)
+[x] Export compliance answered — `ITSAppUsesNonExemptEncryption = false` is in
+      ios/App/App/Info.plist as of 2026-08-25, so App Store Connect stops asking
+      per build. Answer if prompted anyway: "None of the algorithms mentioned
+      above". Evidence rather than assumption: the shipped web bundle from a
+      Release build (378 files) contains createCipheriv, createDecipheriv,
+      aes-256 and CryptoJS in ZERO files. The createCipheriv hits in src/ are
+      all `.server.ts` — Twilio signature checks and secret storage that run on
+      the server, never in the binary. The only crypto in the bundle is
+      crypto.subtle, which IS the encryption inside Apple's OS, so it is
+      "using or accessing" it rather than "in addition to" it.
 [ ] TestFlight build installed and opened on your own phone first
 ```
 
