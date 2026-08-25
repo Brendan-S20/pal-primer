@@ -2,12 +2,20 @@
 // numbers that matter, with Message / Edit Client / More Actions. Status is
 // DERIVED from service states (QA follow-up 4.2) so a manual flag can't
 // contradict reality; missing contact info renders as warning chips.
+import { appUrl } from "@/lib/app-origin";
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { CalendarOff, MessageSquare, MoreHorizontal, Navigation, Pencil, Phone } from "lucide-react";
+import {
+  CalendarOff,
+  MessageSquare,
+  MoreHorizontal,
+  Navigation,
+  Pencil,
+  Phone,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -17,11 +25,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  updateClient,
-  deleteClientIfNoHistory,
-  listClientHolds,
-} from "@/lib/clients.functions";
+import { updateClient, deleteClientIfNoHistory, listClientHolds } from "@/lib/clients.functions";
 import { pauseSubscription } from "@/lib/subscriptions.functions";
 import { isServiceEnded } from "@/lib/subscription-form";
 import { getMyOrg } from "@/lib/org.functions";
@@ -144,7 +148,9 @@ export function ClientHeader({
     },
     onSuccess: () => toast.success("Services paused"),
     onError: (e) =>
-      toast.error(`Some services may not have paused: ${(e as Error).message}. Check the Services tab.`),
+      toast.error(
+        `Some services may not have paused: ${(e as Error).message}. Check the Services tab.`,
+      ),
     onSettled: () => {
       // Partial failures still changed state; always refresh.
       invalidate();
@@ -153,10 +159,15 @@ export function ClientHeader({
   });
 
   const slug = (orgData?.organization as any)?.portal_slug as string | undefined;
-  const portalUrl =
-    typeof window !== "undefined" && client.portal_token
-      ? `${window.location.origin}${slug ? `/portal/${slug}/${client.portal_token}` : `/portal/${client.portal_token}`}`
-      : null;
+  // appUrl(), never window.location.origin. This address is READ ALOUD to a
+  // customer and pasted into their browser, and inside the iOS binary the page
+  // origin is `capacitor://localhost` — so the app was showing staff
+  // `capacitor://localhost/portal/...`, which is not a link anybody can open.
+  // InvoiceRow and InvoiceDrawer already said exactly this; this call site and
+  // four others did not get the message.
+  const portalUrl = client.portal_token
+    ? appUrl(slug ? `/portal/${slug}/${client.portal_token}` : `/portal/${client.portal_token}`)
+    : null;
 
   const derivedStatus = deriveClientStatus(client, subscriptions);
   const navProperty = properties.find((p: any) => !p.archived_at) ?? null;
@@ -193,7 +204,9 @@ export function ClientHeader({
               {client.comms_paused && (
                 <StatusChip status="warning" label="Communications paused (imported)" />
               )}
-              <MetaChip>{client.account_type === "commercial" ? "Commercial" : "Residential"}</MetaChip>
+              <MetaChip>
+                {client.account_type === "commercial" ? "Commercial" : "Residential"}
+              </MetaChip>
               {(client.churn_score ?? 0) >= 60 && <StatusChip status="overdue" label="At risk" />}
               {(client.tags ?? []).map((t: string) => (
                 <MetaChip key={t}>{t}</MetaChip>
@@ -201,7 +214,10 @@ export function ClientHeader({
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
               {client.primary_phone ? (
-                <a href={`tel:${client.primary_phone}`} className="hover:text-foreground hover:underline">
+                <a
+                  href={`tel:${client.primary_phone}`}
+                  className="hover:text-foreground hover:underline"
+                >
                   {formatPhone(client.primary_phone)}
                 </a>
               ) : (

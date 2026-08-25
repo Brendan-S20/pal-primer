@@ -84,12 +84,18 @@ function OnboardingPage() {
           <div key={s.key} className="flex flex-1 items-center gap-2">
             <div
               className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                i <= stepIndex ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                i <= stepIndex
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground"
               }`}
             >
               {i < stepIndex || step === "done" ? "✓" : i + 1}
             </div>
-            <span className={`text-sm ${i === stepIndex ? "font-medium" : "text-muted-foreground"}`}>{s.label}</span>
+            <span
+              className={`text-sm ${i === stepIndex ? "font-medium" : "text-muted-foreground"}`}
+            >
+              {s.label}
+            </span>
             {i < steps.length - 1 && <div className="h-px flex-1 bg-border" />}
           </div>
         ))}
@@ -98,14 +104,14 @@ function OnboardingPage() {
       {step === "welcome" && (
         <div className="rounded-xl border bg-card p-8">
           <h1 className="text-2xl font-semibold">
-            Welcome to {APP_NAME}{billing?.orgName ? `, ${billing.orgName}` : ""} 🎉
+            Welcome to {APP_NAME}
+            {billing?.orgName ? `, ${billing.orgName}` : ""} 🎉
           </h1>
           <p className="mt-2 max-w-xl text-sm text-muted-foreground">
             Your workspace is ready. Two minutes of setup gets you running: pick the plan that fits
             your crew (every tier has unlimited customers, jobs, routes and zones; you're billed per
             employee, plus any AI actions past your plan's monthly allowance), then explore your
-            dashboard. You can change or cancel the plan anytime in
-            Settings → Plan &amp; billing.
+            dashboard. You can change or cancel the plan anytime in Settings → Plan &amp; billing.
           </p>
           <div className="mt-6 flex flex-wrap gap-2">
             <Button onClick={() => setStep("plan")}>Pick a plan</Button>
@@ -140,7 +146,9 @@ function OnboardingPage() {
             onSelect={pickPlan}
           />
           <div className="flex gap-2">
-            <Button variant="ghost" onClick={() => setStep("welcome")}>Back</Button>
+            <Button variant="ghost" onClick={() => setStep("welcome")}>
+              Back
+            </Button>
             <Button variant="ghost" onClick={() => navigate({ to: "/dashboard" })}>
               Skip for now
             </Button>
@@ -152,7 +160,11 @@ function OnboardingPage() {
         <EmbeddedPlanCheckout
           planId={plan.planId}
           interval={plan.interval}
-          returnUrl={typeof window !== "undefined" ? `${window.location.origin}/onboarding?paid=1` : appUrl("/onboarding?paid=1")}
+          // Was: page origin in the browser, appUrl() only on the server. That
+          // branch is exactly backwards for the native build, where a browser
+          // IS present and its origin is capacitor://localhost — so the one
+          // path that could not work was the one it preferred.
+          returnUrl={appUrl("/onboarding?paid=1")}
           onCancel={() => setStep("plan")}
           // Already subscribed (e.g. revisiting onboarding): the plan was
           // switched in place, no payment form needed.

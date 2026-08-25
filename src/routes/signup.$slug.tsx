@@ -1,3 +1,4 @@
+import { appUrl } from "@/lib/app-origin";
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { PORTAL_FREQUENCY_VALUES, frequencyLabel } from "@/lib/frequency-request";
 import { useState } from "react";
@@ -18,11 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  getSignupOrg,
-  getSignupQuote,
-  createSignupPaymentIntent,
-} from "@/lib/signup.functions";
+import { getSignupOrg, getSignupQuote, createSignupPaymentIntent } from "@/lib/signup.functions";
 import { stripeAppearance } from "@/lib/stripe-appearance";
 
 // Module-scoped Stripe.js cache keyed by publishable key + connected account
@@ -44,7 +41,8 @@ export const Route = createFileRoute("/signup/$slug")({
       { title: "Get an instant quote" },
       {
         name: "description",
-        content: "Enter your ZIP, number of dogs, and cleanup frequency to get an instant price and sign up online.",
+        content:
+          "Enter your ZIP, number of dogs, and cleanup frequency to get an instant price and sign up online.",
       },
     ],
   }),
@@ -159,17 +157,11 @@ function SignupPage() {
   }
 
   const org = orgQ.data;
-  const quote =
-    quoteMut.data && quoteMut.data.available ? quoteMut.data.quote : null;
+  const quote = quoteMut.data && quoteMut.data.available ? quoteMut.data.quote : null;
 
-  const canQuote =
-    form.postal_code.trim().length >= 3 && Number(form.dog_count) >= 1;
+  const canQuote = form.postal_code.trim().length >= 3 && Number(form.dog_count) >= 1;
 
-  const canCheckout =
-    !!quote &&
-    form.name.trim() &&
-    form.email.trim() &&
-    form.street.trim();
+  const canCheckout = !!quote && form.name.trim() && form.email.trim() && form.street.trim();
 
   return (
     <TenantSignupShell orgName={org.name} logoUrl={org.logo_url} brandColor={org.brand_color}>
@@ -196,9 +188,7 @@ function SignupPage() {
                     inputMode="numeric"
                     maxLength={12}
                     value={form.postal_code}
-                    onChange={(e) =>
-                      setFormField({ ...form, postal_code: e.target.value })
-                    }
+                    onChange={(e) => setFormField({ ...form, postal_code: e.target.value })}
                     placeholder="e.g. 78704"
                   />
                 </div>
@@ -210,9 +200,7 @@ function SignupPage() {
                     min={1}
                     max={20}
                     value={form.dog_count}
-                    onChange={(e) =>
-                      setFormField({ ...form, dog_count: e.target.value })
-                    }
+                    onChange={(e) => setFormField({ ...form, dog_count: e.target.value })}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -339,9 +327,7 @@ function SignupPage() {
                   </div>
                 </div>
                 <div className="flex items-baseline justify-between">
-                  <div className="text-sm">
-                    Ongoing ({FREQ_LABELS[form.frequency]})
-                  </div>
+                  <div className="text-sm">Ongoing ({FREQ_LABELS[form.frequency]})</div>
                   {/* PER VISIT, not per month. `public_quote` returns
                       `round(base_visit_cents × frequency_multiplier)`, and
                       pricing.ts documents it as "Per-visit price after the
@@ -356,11 +342,15 @@ function SignupPage() {
                   </div>
                 </div>
                 <div className="border-t pt-3 text-xs text-muted-foreground">
-                  Charged today: <strong className="text-foreground">
-                    {money(quote.initial_cleanup_cents + quote.recurring_price_cents, quote.currency)}
-                  </strong>, which covers your first cleanup plus your first
-                  scheduled visit. After that you are billed for visits as they
-                  happen. Cancel anytime.
+                  Charged today:{" "}
+                  <strong className="text-foreground">
+                    {money(
+                      quote.initial_cleanup_cents + quote.recurring_price_cents,
+                      quote.currency,
+                    )}
+                  </strong>
+                  , which covers your first cleanup plus your first scheduled visit. After that you
+                  are billed for visits as they happen. Cancel anytime.
                 </div>
                 {intent ? (
                   <Elements
@@ -430,7 +420,8 @@ function SignupPayForm({
     const { error: confirmError } = await stripe.confirmPayment({
       elements,
       confirmParams: {
-        return_url: `${window.location.origin}/signup/success?sr=${signupRequestId}`,
+        // appUrl(): Stripe returns the buyer here after paying.
+        return_url: appUrl(`/signup/success?sr=${signupRequestId}`),
       },
       redirect: "if_required",
     });
@@ -454,7 +445,11 @@ function SignupPayForm({
           {error}
         </div>
       )}
-      <Button type="submit" className="w-full" disabled={!stripe || !elements || !ready || submitting}>
+      <Button
+        type="submit"
+        className="w-full"
+        disabled={!stripe || !elements || !ready || submitting}
+      >
         {submitting ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing…
