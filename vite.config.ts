@@ -162,6 +162,55 @@ export default defineConfig({
       },
     },
     plugins: [
+      // ── THE ALIAS BELOW WAS DEAD, AND THE BINARY SHIPPED THE REAL ONE ──
+      //
+      // `resolve.alias` carried a NATIVE_BUILD entry mapping
+      // "@/components/billing/PlanPicker" to the store stub. It never fired.
+      // @lovable.dev/vite-tanstack-config sets `alias: { "@": cwd/src }` and
+      // then mergeConfig's ours on top; Vite turns object aliases into an
+      // ORDERED ARRAY matched first-wins, and "@" prefix-matches
+      // "@/components/billing/PlanPicker" before the specific key is reached.
+      //
+      // So the real PlanPicker -- plan catalog query, Subscribe button,
+      // confirmPayment -- was in the shipped bundle the whole time, while
+      // docs/app-store-submission.md said the purchase UI was "removed from
+      // the binary". The runtime gate still held, so nothing was reachable;
+      // the BUILD-TIME removal simply was not happening.
+      //
+      // Worse, the check that was supposed to prove it looked for
+      // `stripeAppearance`, which is absent from the bundle for an unrelated
+      // reason -- so the assertion passed while the module shipped. That is
+      // exactly the shape this repo warns about: "passed" and "not checked"
+      // looking alike.
+      //
+      // A plugin rather than an alias, because `enforce: "pre"` runs before
+      // alias resolution and cannot be defeated by merge order.
+      ...(NATIVE_BUILD
+        ? [
+            {
+              name: "houndstack:store-build-drops-the-plan-picker",
+              enforce: "pre" as const,
+              resolveId(source: string) {
+                // Match the RESOLVED path, not the bare specifier. The
+                // wrapper's `@` alias is applied before this hook sees the
+                // import, so `source` arrives as
+                // `/…/src/components/billing/PlanPicker` — matching
+                // "@/components/billing/PlanPicker" here never fires. Proven
+                // by logging what actually arrives, which is the only reason
+                // this is the fourth attempt and not the fortieth.
+                const isPlanPicker = /[\\/]src[\\/]components[\\/]billing[\\/]PlanPicker(\.tsx)?$/.test(
+                  source,
+                );
+                return isPlanPicker
+                  ? path.resolve(
+                      import.meta.dirname,
+                      "src/components/billing/PlanPicker.native-stub.tsx",
+                    )
+                  : null;
+              },
+            },
+          ]
+        : []),
       VitePWA({
         // WHERE THE WORKER ACTUALLY GOES.
         //

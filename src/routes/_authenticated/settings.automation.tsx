@@ -113,7 +113,7 @@ function AutomationPage() {
               id="days"
               type="number"
               min={1}
-              max={60}
+              max={365}
               value={days}
               onChange={(e) => setDays(Number(e.target.value))}
               disabled={!autoGen}
