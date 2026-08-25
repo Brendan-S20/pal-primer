@@ -365,20 +365,47 @@ function AuthPage() {
               </div>
             </div>
             <div className="space-y-2">
-              {/* Re-enabled on the WEB 2026-08-25 (Brendan's call), which is what
-                the 2026-07-14 note above anticipated: the flow underneath was
-                always built. oauthSignIn probes the authorize URL before
-                navigating, so if Google is not actually enabled in Supabase the
-                user gets "Google sign-in isn't available yet" rather than a raw
-                API error page. */}
+              {/* ── OFF AGAIN, AND THE REASON IS NOT IN THIS REPO ──────────
+                Enabled on the web 2026-08-25, and a live audit the same day
+                found it ejecting buyers out of the product entirely:
+
+                  Access blocked: This app's request is invalid
+                  Error 400: redirect_uri_mismatch
+
+                Supabase 302s to Google with
+                `redirect_uri=https://api.houndstack.com/auth/v1/callback`, and
+                that URI is not registered on the Google OAuth client. So the
+                button works right up until Google refuses it, on Google's own
+                error page, with no way back to HoundStack.
+
+                THE PROBE CANNOT CATCH THIS, which is the part worth writing
+                down. oauthSignIn fetches the authorize URL and treats >= 400 as
+                "provider not enabled" — but Supabase answers 302 because
+                Supabase is fine. The failure is one hop further on, at Google,
+                cross-origin and opaque. The guard was built for "the provider
+                is switched off" and this is "the provider is switched on and
+                misconfigured", which look nothing alike from here.
+
+                TO RE-ENABLE: add `https://api.houndstack.com/auth/v1/callback`
+                to Authorized redirect URIs on OAuth client
+                983772724082-m8ngfmm0d35ks1qch8p0ujtv04us6h5r in the Google
+                Cloud Console, confirm by opening the button, then delete the
+                `disabled` and restore the onClick below. Nothing else here
+                needs to change — the flow underneath is built and was never the
+                problem.
+
+                A dead button that says "soon" costs a little credibility. A
+                live one that throws the buyer onto a Google 400 at the moment
+                of commitment costs the sale. */}
               <Button
                 type="button"
                 variant="outline"
                 className="w-full justify-center gap-2"
-                disabled={loading}
-                onClick={() => oauthSignIn("google")}
+                disabled
+                title="Coming soon"
               >
                 <GoogleIcon /> Google
+                <span className="text-3xs font-normal text-muted-foreground">soon</span>
               </Button>
               {/* Apple/Facebook aren't configured yet — shown disabled as a
                 teaser rather than wired to a broken flow (Brendan's call). */}
