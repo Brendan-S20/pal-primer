@@ -30,6 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Switch } from "@/components/ui/switch";
 import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
+import { DeleteAccountCard } from "@/components/DeleteAccountCard";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { supabase } from "@/integrations/supabase/client";
@@ -356,6 +357,13 @@ function ProfilePage() {
           {!staff.active && <Badge variant="destructive">Deactivated</Badge>}
         </CardContent>
       </Card>
+
+      {/* App Review guideline 5.1.1(v): an app that can create an account must
+          let a person delete it from inside the app. This sits under the
+          person's own details on purpose -- it is a fact about them, not a
+          workspace setting -- and it ships in the native bundle, which is the
+          part the guideline is actually about. */}
+      <DeleteAccountCard />
     </div>
   );
 }
