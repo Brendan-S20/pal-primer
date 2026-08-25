@@ -100,9 +100,14 @@ const inviteRoleEnum = z.enum(["office_manager", "dispatcher", "tech"]);
 // drifts. Still best-effort — the pending row works whether or not the mail
 // does — and still imported lazily, so the Resend call never enters a bundle
 // that does not send invites.
-async function sendInviteEmail(orgName: string, email: string, role: string): Promise<void> {
+async function sendInviteEmail(
+  orgName: string,
+  email: string,
+  role: string,
+  token?: string,
+): Promise<void> {
   const { sendInviteEmail: send } = await import("@/lib/invite-email.server");
-  await send(orgName, email, role);
+  await send(orgName, email, role, token);
 }
 
 export const createOrgInvite = createServerFn({ method: "POST" })
@@ -118,20 +123,35 @@ export const createOrgInvite = createServerFn({ method: "POST" })
     const token = crypto.randomBytes(24).toString("hex");
 
     // Supersede any existing pending invite for this email in this org.
-    await (context.supabase as any).from("org_invites")
+    await (context.supabase as any)
+      .from("org_invites")
       .update({ status: "revoked" })
       .eq("organization_id", orgId)
       .eq("email", email)
       .eq("status", "pending");
 
-    const { data: row, error } = await (context.supabase as any).from("org_invites")
+    const { data: row, error } = await (context.supabase as any)
+      .from("org_invites")
       .insert({ organization_id: orgId, email, role: data.role, token, invited_by: context.userId })
       .select("id, token")
       .single();
     if (error) throw new Error(error.message);
 
-    const { data: org } = await context.supabase.from("organizations").select("name").eq("id", orgId).maybeSingle();
-    await sendInviteEmail((org as any)?.name ?? "HoundStack", email, data.role);
+    const { data: org } = await context.supabase
+      .from("organizations")
+      .select("name")
+      .eq("id", orgId)
+      .maybeSingle();
+    // The token travels with the email now. Without it, an invitee who already
+    // had an account when they were invited cannot join at all: the email path
+    // in accept_org_invite_for_current_user only accepts invitations older than
+    // the account, which is what closes the pre-claim.
+    await sendInviteEmail(
+      (org as any)?.name ?? "HoundStack",
+      email,
+      data.role,
+      row.token as string,
+    );
     return { id: row.id as string };
   });
 
@@ -142,8 +162,9 @@ export const resendOrgInvite = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { requirePermission } = await import("@/lib/authz.server");
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
-    const { data: invite, error } = await (context.supabase as any).from("org_invites")
-      .select("email, role, status")
+    const { data: invite, error } = await (context.supabase as any)
+      .from("org_invites")
+      .select("email, role, status, token")
       .eq("id", data.id)
       .eq("organization_id", orgId)
       .maybeSingle();
@@ -152,13 +173,26 @@ export const resendOrgInvite = createServerFn({ method: "POST" })
     if (invite.status !== "pending") throw new Error("Only pending invites can be resent");
 
     // Push the expiry out so a resent invite isn't immediately stale.
-    await (context.supabase as any).from("org_invites")
+    await (context.supabase as any)
+      .from("org_invites")
       .update({ expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() })
       .eq("id", data.id)
       .eq("organization_id", orgId);
 
-    const { data: org } = await context.supabase.from("organizations").select("name").eq("id", orgId).maybeSingle();
-    await sendInviteEmail((org as any)?.name ?? "HoundStack", invite.email as string, invite.role as string);
+    const { data: org } = await context.supabase
+      .from("organizations")
+      .select("name")
+      .eq("id", orgId)
+      .maybeSingle();
+    // The token matters most on THIS path: resend is what somebody presses when
+    // the first email did not arrive, and an invitee whose account already
+    // existed can only join through the link.
+    await sendInviteEmail(
+      (org as any)?.name ?? "HoundStack",
+      invite.email as string,
+      invite.role as string,
+      invite.token as string,
+    );
     return { ok: true };
   });
 
@@ -167,7 +201,8 @@ export const listOrgInvites = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { requirePermission } = await import("@/lib/authz.server");
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
-    const { data, error } = await (context.supabase as any).from("org_invites")
+    const { data, error } = await (context.supabase as any)
+      .from("org_invites")
       .select("id, email, role, status, created_at, expires_at, accepted_at")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false })
@@ -182,7 +217,8 @@ export const revokeOrgInvite = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { requirePermission } = await import("@/lib/authz.server");
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
-    const { error } = await (context.supabase as any).from("org_invites")
+    const { error } = await (context.supabase as any)
+      .from("org_invites")
       .update({ status: "revoked" })
       .eq("id", data.id)
       .eq("organization_id", orgId)
@@ -218,7 +254,8 @@ export const setStaffRouting = createServerFn({ method: "POST" })
       patch.is_field_tech_overridden = true;
     }
     if (data.routingAvailable !== undefined) patch.routing_available = data.routingAvailable;
-    if (data.dailyCapacityMinutes !== undefined) patch.daily_capacity_minutes = data.dailyCapacityMinutes || null;
+    if (data.dailyCapacityMinutes !== undefined)
+      patch.daily_capacity_minutes = data.dailyCapacityMinutes || null;
     if (Object.keys(patch).length === 0) return { ok: true };
     const { error } = await (context.supabase.from("staff") as any)
       .update(patch)
@@ -233,7 +270,9 @@ export const listStaffAddresses = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const orgId = await resolveOrgId(context.supabase, context.userId);
     const { data, error } = await (context.supabase.from("staff") as any)
-      .select("id, display_name, role, active, is_field_tech, is_field_tech_overridden, routing_available, daily_capacity_minutes, start_address, start_latitude, start_longitude, end_address, end_latitude, end_longitude")
+      .select(
+        "id, display_name, role, active, is_field_tech, is_field_tech_overridden, routing_available, daily_capacity_minutes, start_address, start_latitude, start_longitude, end_address, end_latitude, end_longitude",
+      )
       .eq("organization_id", orgId)
       .order("display_name");
     if (error) throw new Error(error.message);
@@ -243,15 +282,17 @@ export const listStaffAddresses = createServerFn({ method: "GET" })
 export const setStaffAddresses = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({
-      staffId: z.string().uuid(),
-      startAddress: z.string().max(300).nullable().optional(),
-      startLatitude: z.number().min(-90).max(90).nullable().optional(),
-      startLongitude: z.number().min(-180).max(180).nullable().optional(),
-      endAddress: z.string().max(300).nullable().optional(),
-      endLatitude: z.number().min(-90).max(90).nullable().optional(),
-      endLongitude: z.number().min(-180).max(180).nullable().optional(),
-    }).parse(d),
+    z
+      .object({
+        staffId: z.string().uuid(),
+        startAddress: z.string().max(300).nullable().optional(),
+        startLatitude: z.number().min(-90).max(90).nullable().optional(),
+        startLongitude: z.number().min(-180).max(180).nullable().optional(),
+        endAddress: z.string().max(300).nullable().optional(),
+        endLatitude: z.number().min(-90).max(90).nullable().optional(),
+        endLongitude: z.number().min(-180).max(180).nullable().optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     // Editing a staff member's start/end routing addresses is a user-management
