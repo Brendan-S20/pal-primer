@@ -46,3 +46,8 @@ dist-native
 # source artefact — the sweep's verdict is the exit code, not the folder.
 test-results/
 playwright-report/
+
+# Claude Code session transcripts exported into the repo. They are date-prefixed
+# and can run to thousands of lines; one landed in ios/App/ and is not a source
+# artefact. Ignored by shape rather than by name so the next one is too.
+20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.txt
