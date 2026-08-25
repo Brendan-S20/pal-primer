@@ -73,7 +73,13 @@ describe("the tenant header's controls are all at least 44px", () => {
     // Its own default is `h-7 w-7` — 28px. The override has to come from the
     // call site, because changing the primitive would resize every trigger in
     // the app including ones inside 32px-tall bars.
-    expect(shell).toMatch(/<SidebarTrigger className="min-h-11 min-w-11" \/>/);
+    // The tenant shell now assembles this className, because the trigger is
+    // hidden on a phone that has chosen the bottom bar — two menus to the same
+    // destinations was the fault. So the 44px override is still there and is
+    // no longer the whole attribute. The platform shell below still pins the
+    // literal, which is what keeps the two from drifting on the SIZE.
+    const trigger = shell.slice(shell.indexOf("<SidebarTrigger"));
+    expect(trigger.slice(0, trigger.indexOf("/>"))).toMatch(/min-h-11 min-w-11/);
   });
 
   it("and the platform shell still passes the same override, in the same words", () => {

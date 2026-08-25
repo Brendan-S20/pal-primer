@@ -637,6 +637,22 @@ async function sendOverdueReminders(
       pausedSkipped++;
       continue;
     }
+    // CONSENT. client_may_be_texted is the SQL gate that exists because Twilio
+    // rejected toll-free verification over exactly this (error 30513), and it
+    // asks the whole question -- consent recorded, not opted out, not paused,
+    // has a number -- in one place so every sender agrees.
+    //
+    // All four MANUAL senders call it. Both AUTOMATED ones did not, and they
+    // are the ones that fire without anybody watching. The guard test pinned
+    // the four files that were already right and named neither of these, so it
+    // was green while the hole was open.
+    const { data: mayText } = await (supabaseAdmin as any).rpc("client_may_be_texted", {
+      _client_id: client.id,
+    });
+    if (!mayText) {
+      pausedSkipped++;
+      continue;
+    }
     const dollars = ((inv.total_cents ?? 0) / 100).toFixed(2);
     const link = await buildPortalLink(orgId, client.portal_token, slug);
     const body = `Hi ${client.display_name}, this is a friendly reminder that invoice for $${dollars} is past due. Pay: ${link}`;

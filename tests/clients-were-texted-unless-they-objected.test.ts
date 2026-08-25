@@ -115,10 +115,23 @@ describe("the send guard", () => {
 describe("every sender asks the same question", () => {
   // The failure mode this is guarding: one path keeps checking `sms_opt_out`
   // alone and quietly becomes the source of all un-consented traffic.
+  //
+  // This list named only the three MANUAL senders for a long time, so it was
+  // green while both AUTOMATED ones -- nightly dunning and the card-declined
+  // notice -- checked sms_opt_out, comms_paused and primary_phone by hand and
+  // skipped the recorded-consent condition entirely. Those are the two that
+  // fire with nobody watching, and they are the two Twilio's toll-free
+  // verification (error 30513) is actually about.
+  //
+  // A list of files is only as good as its completeness, so the sweep below
+  // this loop is the durable half: it fails on any NEW sender that reaches
+  // Twilio without asking.
   const senders = [
     "src/lib/messages.functions.ts",
     "src/lib/reviews.functions.ts",
     "src/lib/my-day.functions.ts",
+    "src/routes/api/public/hooks/nightly.ts",
+    "src/routes/api/public/hooks/stripe.ts",
   ];
 
   for (const f of senders) {
@@ -126,6 +139,39 @@ describe("every sender asks the same question", () => {
       expect(read(f)).toContain("client_may_be_texted");
     });
   }
+
+  it("every file that reaches Twilio consults the gate", () => {
+    // The rule the list above cannot express. Anything that can put a message
+    // on the wire has to ask, whether or not somebody remembered to add it to
+    // a list. twilio.server.ts itself is the transport and is exempt.
+    const { readdirSync, statSync } = require("node:fs") as typeof import("node:fs");
+    const walk = (d: string): string[] =>
+      readdirSync(d).flatMap((e) => {
+        const p = `${d}/${e}`;
+        return statSync(p).isDirectory() ? walk(p) : /\.tsx?$/.test(p) ? [p] : [];
+      });
+    // Two exemptions, both named with their reason so a future reader can
+    // disagree with the reason rather than guess at the omission:
+    //
+    //   twilio.server.ts      the transport. It is what everything else calls.
+    //   portal-auth.server.ts the portal's one-time SIGN-IN CODE. The customer
+    //                         just typed their own number into a login box to
+    //                         request it. Gating that on marketing consent
+    //                         would lock people out of their own portal, and an
+    //                         OTP somebody asked for one second ago is not the
+    //                         message 30513 is about.
+    const EXEMPT = ["twilio.server.ts", "portal-auth.server.ts"];
+    const offenders = walk("src")
+      .filter((f) => !EXEMPT.some((e) => f.endsWith(e)))
+      .filter((f) => {
+        const src = readFileSync(f, "utf8");
+        return src.includes("sendTwilioSms(") && !src.includes("client_may_be_texted");
+      });
+    expect(
+      offenders,
+      "these can send a text without asking whether the client consented:\n" + offenders.join("\n"),
+    ).toEqual([]);
+  });
 
   it("nobody decides sendability from sms_opt_out alone any more", () => {
     // reviews and my-day previously read `&& !c.sms_opt_out` as the whole test.

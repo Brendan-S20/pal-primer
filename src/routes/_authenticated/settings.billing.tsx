@@ -46,10 +46,19 @@ export const Route = createFileRoute("/_authenticated/settings/billing")({
   component: BillingPage,
 });
 
+// minimumFractionDigits was 0, which drops the second decimal on every amount
+// whose cents end in a zero: 4310 rendered "$43.1", 12990 "$129.9", 10 "$0.1",
+// and 5900 "$59". These are real Stripe amounts -- a mid-cycle plan change
+// produces arbitrary prorated cents -- shown in billing history, in refund
+// rows, and inside the confirm dialog that asks the owner to agree to a
+// one-time charge. Roughly one prorated amount in ten lands on a zero cent.
+//
+// Two decimals always, because this is the tenant's own money and a price with
+// one decimal reads as a typo rather than a total.
 function formatUsd(cents: number | null | undefined) {
   if (cents == null) return "-";
   return `$${(cents / 100).toLocaleString(undefined, {
-    minimumFractionDigits: 0,
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
 }

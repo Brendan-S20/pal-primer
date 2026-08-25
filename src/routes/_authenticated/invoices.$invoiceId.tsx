@@ -1,3 +1,4 @@
+import { appUrl } from "@/lib/app-origin";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -19,7 +20,10 @@ export const Route = createFileRoute("/_authenticated/invoices/$invoiceId")({
 });
 
 function fmtCents(c: number, currency = "usd") {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format((c ?? 0) / 100);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: currency.toUpperCase(),
+  }).format((c ?? 0) / 100);
 }
 
 // StatusChip tone mapping for invoice statuses that aren't in the shared
@@ -27,7 +31,15 @@ function fmtCents(c: number, currency = "usd") {
 // uncollectible borrows the destructive "overdue" tone.
 const CHIP_STATUS: Record<string, string> = { draft: "inactive", uncollectible: "overdue" };
 const CHIP_LABEL: Record<string, string> = { draft: "Draft", uncollectible: "Uncollectible" };
-function InvoiceChip({ status, label, className }: { status: string; label?: string; className?: string }) {
+function InvoiceChip({
+  status,
+  label,
+  className,
+}: {
+  status: string;
+  label?: string;
+  className?: string;
+}) {
   return (
     <StatusChip
       status={CHIP_STATUS[status] ?? status}
@@ -62,7 +74,10 @@ function InvoiceDetail() {
   const orgFn = useServerFn(getMyOrg);
   const qc = useQueryClient();
 
-  const q = useQuery({ queryKey: ["invoice", invoiceId], queryFn: () => get({ data: { id: invoiceId } }) });
+  const q = useQuery({
+    queryKey: ["invoice", invoiceId],
+    queryFn: () => get({ data: { id: invoiceId } }),
+  });
   const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
 
   // In-app payment (B2/I8): the shared three-part payment panel — saved card
@@ -102,7 +117,12 @@ function InvoiceDetail() {
           continue;
         }
         if (s.status === "sent") {
-          const at = new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+          const at = new Date().toLocaleString("en-US", {
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          });
           toast.success(`Emailed to ${s.recipient ?? to} · ${at}`, { id });
           return;
         }
@@ -147,7 +167,9 @@ function InvoiceDetail() {
   return (
     <div className="space-y-6">
       <style>{PRINT_STYLES}</style>
-      <Link to="/invoices" className="text-sm text-muted-foreground hover:underline">← Invoices</Link>
+      <Link to="/invoices" className="text-sm text-muted-foreground hover:underline">
+        ← Invoices
+      </Link>
 
       {/* The invoice document: the only thing that prints. */}
       <div className="invoice-print-area rounded-xl border bg-card p-6 shadow-sm sm:p-8">
@@ -163,7 +185,8 @@ function InvoiceDetail() {
             <div className="space-y-0.5 sm:text-right">
               {invoice.issued_at && (
                 <p>
-                  <span className="text-muted-foreground">Issued</span> {formatDay(String(invoice.issued_at))}
+                  <span className="text-muted-foreground">Issued</span>{" "}
+                  {formatDay(String(invoice.issued_at))}
                 </p>
               )}
               {dueOn && invoice.status !== "paid" && invoice.status !== "void" && (
@@ -187,7 +210,9 @@ function InvoiceDetail() {
         <div className="mt-8">
           <SectionLabel>Billed to</SectionLabel>
           <p className="mt-1.5 text-sm font-medium">{client?.display_name ?? "Client"}</p>
-          <p className="text-sm text-muted-foreground">{client?.primary_email ?? "No email on file"}</p>
+          <p className="text-sm text-muted-foreground">
+            {client?.primary_email ?? "No email on file"}
+          </p>
         </div>
 
         {/* Line items */}
@@ -210,7 +235,9 @@ function InvoiceDetail() {
                 items.map((it) => (
                   <tr key={it.id}>
                     <td className="py-2.5 pr-4">{formatLineItemDescription(it.description)}</td>
-                    <td className="py-2.5 text-right tabular-nums">{fmtCents(it.amount_cents, invoice.currency)}</td>
+                    <td className="py-2.5 text-right tabular-nums">
+                      {fmtCents(it.amount_cents, invoice.currency)}
+                    </td>
                   </tr>
                 ))
               )}
@@ -237,12 +264,18 @@ function InvoiceDetail() {
               </div>
               {/* Credit applications live on the invoice (credit_applied_cents
                   + the credit ledger), not in the payments cash list. */}
-              {((invoice as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0) > 0 && (
+              {((invoice as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0) >
+                0 && (
                 <>
                   <div className="flex items-center justify-between text-sm text-muted-foreground">
                     <span>Credit applied</span>
                     <span className="tabular-nums">
-                      -{fmtCents((invoice as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0, invoice.currency)}
+                      -
+                      {fmtCents(
+                        (invoice as { credit_applied_cents?: number | null })
+                          .credit_applied_cents ?? 0,
+                        invoice.currency,
+                      )}
                     </span>
                   </div>
                   {invoice.status === "open" && (
@@ -252,7 +285,8 @@ function InvoiceDetail() {
                         {fmtCents(
                           Math.max(
                             (invoice.total_cents ?? 0) -
-                              ((invoice as { credit_applied_cents?: number | null }).credit_applied_cents ?? 0),
+                              ((invoice as { credit_applied_cents?: number | null })
+                                .credit_applied_cents ?? 0),
                             0,
                           ),
                           invoice.currency,
@@ -263,10 +297,14 @@ function InvoiceDetail() {
                 </>
               )}
               {invoice.status === "paid" && invoice.paid_at && (
-                <p className="text-right text-xs text-muted-foreground">Paid {formatDay(String(invoice.paid_at))}</p>
+                <p className="text-right text-xs text-muted-foreground">
+                  Paid {formatDay(String(invoice.paid_at))}
+                </p>
               )}
               {invoice.status === "void" && (
-                <p className="text-right text-xs text-muted-foreground">This invoice was voided and is no longer payable.</p>
+                <p className="text-right text-xs text-muted-foreground">
+                  This invoice was voided and is no longer payable.
+                </p>
               )}
             </div>
           </div>
@@ -289,7 +327,9 @@ function InvoiceDetail() {
               <Button
                 variant="outline"
                 onClick={() => {
-                  const url = `${window.location.origin}/pay/i/${(invoice as any).public_token}`;
+                  // appUrl(): staff copy this and send it to a customer. From
+                  // the binary the page origin is `capacitor://localhost`.
+                  const url = appUrl(`/pay/i/${(invoice as any).public_token}`);
                   navigator.clipboard.writeText(url).then(
                     () => toast.success("Pay link copied to clipboard"),
                     () => toast.error("Copy failed"),
@@ -362,10 +402,18 @@ function InvoiceDetail() {
               <tbody className="divide-y">
                 {payments.map((p) => (
                   <tr key={p.id}>
-                    <td className="px-4 py-2">{formatDateTime(p.paid_at ?? p.created_at) || (p.paid_at ?? p.created_at)}</td>
-                    <td className="px-4 py-2 tabular-nums">{fmtCents(p.amount_cents, invoice.currency)}</td>
-                    <td className="px-4 py-2"><StatusChip status={p.status} /></td>
-                    <td className="px-4 py-2 font-mono text-xs">{p.stripe_payment_intent_id ?? "-"}</td>
+                    <td className="px-4 py-2">
+                      {formatDateTime(p.paid_at ?? p.created_at) || (p.paid_at ?? p.created_at)}
+                    </td>
+                    <td className="px-4 py-2 tabular-nums">
+                      {fmtCents(p.amount_cents, invoice.currency)}
+                    </td>
+                    <td className="px-4 py-2">
+                      <StatusChip status={p.status} />
+                    </td>
+                    <td className="px-4 py-2 font-mono text-xs">
+                      {p.stripe_payment_intent_id ?? "-"}
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -2,6 +2,7 @@
 // unguessable invoices.public_token is the capability. A client who gets the
 // link by text or email sees a clean invoice document and pays right here
 // with the same in-app Payment Element the portal uses.
+import { appUrl } from "@/lib/app-origin";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -70,7 +71,11 @@ function PublicPayPage() {
   const data = invoiceQ.data;
   const invoice = data?.found ? data.invoice : null;
   const payable =
-    !!invoice && invoice.status === "open" && invoice.totalCents > 0 && !returningFromRedirect && !justPaid;
+    !!invoice &&
+    invoice.status === "open" &&
+    invoice.totalCents > 0 &&
+    !returningFromRedirect &&
+    !justPaid;
 
   const intentQ = useQuery({
     queryKey: ["public-invoice-pi", token],
@@ -81,7 +86,8 @@ function PublicPayPage() {
   });
 
   const stripePromise = useMemo(
-    () => (intentQ.data ? getStripe(intentQ.data.publishableKey, intentQ.data.stripeAccount) : null),
+    () =>
+      intentQ.data ? getStripe(intentQ.data.publishableKey, intentQ.data.stripeAccount) : null,
     [intentQ.data?.publishableKey, intentQ.data?.stripeAccount],
   );
 
@@ -220,6 +226,29 @@ function PublicPayPage() {
                   {fmtCents(invoice.totalCents, invoice.currency)}
                 </span>
               </div>
+              {/* CREDIT AND AMOUNT DUE. getPublicInvoice has always returned
+                  both and this page rendered neither, so an invoice with credit
+                  applied showed "Total $340.00" here while the Pay button below
+                  read "Pay $190.00" — two numbers on the one document an
+                  anonymous payer ever sees, with nothing explaining the gap.
+                  Both staff-facing surfaces already show this split; the
+                  customer-facing one was the only one missing it. */}
+              {(invoice.creditAppliedCents ?? 0) > 0 && (
+                <>
+                  <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <span>Account credit applied</span>
+                    <span className="tabular-nums">
+                      −{fmtCents(invoice.creditAppliedCents ?? 0, invoice.currency)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between border-t pt-2">
+                    <span className="text-sm font-medium">Amount due</span>
+                    <span className="text-xl font-semibold tabular-nums">
+                      {fmtCents(invoice.amountDueCents ?? 0, invoice.currency)}
+                    </span>
+                  </div>
+                </>
+              )}
               {invoice.status === "paid" && invoice.paidAt && (
                 <p className="text-right text-xs text-muted-foreground">
                   Paid {formatDay(invoice.paidAt)}
@@ -313,7 +342,9 @@ function PublicPayForm({
 
     // Bank-debit methods that need a redirect come back to this same URL with
     // ?redirect_status=…, handled by the page before the form mounts.
-    const returnUrl = `${window.location.origin}/pay/i/${token}`;
+    // appUrl(): Stripe sends the payer back here. Correct on the web either
+    // way, and the one spelling that cannot become capacitor://localhost.
+    const returnUrl = appUrl(`/pay/i/${token}`);
     const { error: confirmError } = await stripe.confirmPayment({
       elements,
       confirmParams: { return_url: returnUrl },

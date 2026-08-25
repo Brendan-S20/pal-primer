@@ -45,6 +45,27 @@ const PREVIEW_URL = /(?:https?:)?\/\/[^"'`\s]*(?:lovable\.dev|lovableproject(?:-
 const WEB_CHECKOUT_URL =
   /(?:https?:)?\/\/[^"'`\s]*houndstack[^"'`\s]*\/(?:settings\/billing|billing|checkout|upgrade|plans?)\b/gi;
 
+// ── THE SAAS PURCHASE UI MUST NOT BE IN THE ARTIFACT ─────────────────────
+//
+// vite.config.ts swaps @/components/billing/PlanPicker for a store stub in the
+// NATIVE_BUILD. For a long time it did not: the swap was expressed as a
+// `resolve.alias`, and @lovable.dev/vite-tanstack-config sets
+// `alias: { "@": cwd/src }` which prefix-matches first, so the specific entry
+// never fired and the REAL plan picker -- plan catalog, Choose plan, Subscribe,
+// confirmPayment -- shipped inside the binary. The runtime gate still hid it,
+// so nothing was reachable; the build-time removal simply was not happening.
+//
+// The check that was meant to prove it looked for `stripeAppearance`, which is
+// absent from the bundle for an unrelated reason. So it passed while the module
+// shipped -- "passed" and "not checked" looking alike, which is the one thing
+// this repo says must never happen.
+//
+// This asserts BOTH directions, because either alone can pass for the wrong
+// reason: the stub's own marker must be PRESENT, and the real module's plan
+// catalog query must be ABSENT.
+const STUB_MARKER = "getPlatformStripe is not available in a store build";
+const REAL_MARKER = "platform-plans";
+
 const fail = [];
 const note = [];
 
@@ -101,6 +122,36 @@ for (const f of textFiles) {
         "    A binary that fetches or navigates to a preview domain depends on an\n" +
         "    environment nobody promises to keep alive.",
     );
+  }
+}
+
+// ── 2b. the SaaS purchase UI is not in the artifact ─────────────────────
+// Both directions, because either alone passes for the wrong reason. See the
+// note beside STUB_MARKER.
+{
+  const all = textFiles.map((f) => readFileSync(f, "utf8"));
+  const stubbed = all.some((src) => src.includes(STUB_MARKER));
+  const real = textFiles.filter((f, i) => all[i].includes(REAL_MARKER));
+
+  if (!stubbed) {
+    fail.push(
+      "the store stub for PlanPicker is not in the bundle\n" +
+        "    Expected the marker from PlanPicker.native-stub.tsx. Its absence means\n" +
+        "    the NATIVE_BUILD module swap did not happen, whatever the config says.",
+    );
+  } else {
+    note.push("PlanPicker store stub present");
+  }
+
+  if (real.length) {
+    fail.push(
+      `the real PlanPicker is in the bundle: ${real.map((f) => relative(ROOT, f)).join(", ")}\n` +
+        "    It queries the platform plan catalog, which is the SaaS purchase UI\n" +
+        "    App Review must not find in the binary. The runtime gate hiding it is\n" +
+        "    not the same claim as it not being there.",
+    );
+  } else {
+    note.push("real PlanPicker absent from the bundle");
   }
 }
 

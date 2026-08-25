@@ -209,6 +209,12 @@ function AppShell() {
   // agree because both follow the bar's reach, not because they are the same
   // question, and collapsing them would hide that.
   const accountMenuHidden = barThroughTablet ? "max-lg:hidden" : "max-md:hidden";
+  // "Hidden exactly where the tab bar reaches", for the sidebar toggle. Same
+  // spelling as the two above and a third constant for the same reason they
+  // are two: this one answers "is there already a menu at the bottom of this
+  // screen", which is a different question that happens to have the same
+  // answer. Literal strings, because Tailwind cannot see an assembled one.
+  const phoneOnlyHidden = barThroughTablet ? "max-lg:hidden" : "max-md:hidden";
   // Scope the tenant brand color to the internal staff app only. Platform-admin
   // routes and the sign-in page live outside this shell and stay HoundStack-branded.
   const brandStyle = brand
@@ -247,7 +253,22 @@ function AppShell() {
                 min-h/min-w rather than h/w: ui/input.tsx's note applies, a
                 minimum wins over a height whatever order the utilities land
                 in, and `size="icon"` sets one. */}
-            <SidebarTrigger className="min-h-11 min-w-11" />
+            {/* ── ONE MENU ON A PHONE, NOT TWO ────────────────────────────
+                Below the tab-bar breakpoint this button and MobileTabBar's
+                "More" opened two different sheets listing the same
+                destinations — More is built from every nav item the tabs do
+                not already show, which is exactly the sidebar's contents. Two
+                buttons, in two corners, to the same places.
+
+                So the phone gets whichever one the person chose, and from md
+                (or lg) up this stays regardless: there the sidebar is docked
+                and this toggle COLLAPSES it, which is a different job from
+                opening a sheet. */}
+            <SidebarTrigger
+              className={`min-h-11 min-w-11 ${
+                headerPrefs.phoneNav === "bottom" ? phoneOnlyHidden : ""
+              }`}
+            />
             <button
               type="button"
               onClick={openPalette}
@@ -272,22 +293,22 @@ function AppShell() {
                 More sheet and the command palette, and the weather is on the
                 dashboard. */}
             {headerPrefs.showHelp && (
-            <Link
-              to="/help"
-              search={{ article: undefined }}
-              aria-label="Knowledge Center"
-              // A 16px glyph centred in a 44px box, the shape ui/dialog.tsx and
-              // ui/sheet.tsx already use. Padding was carrying the size — `p-2`
-              // made a 32px target, and `touch:p-2.5` around a 20px glyph got
-              // it to 40, still under the minimum on the widths where it is
-              // actually thumbed. The glyph is untouched, so the header looks
-              // the same; only the part a thumb can miss changed. `shrink-0`
-              // because the search button beside it is `flex-1` and would
-              // otherwise squeeze this back below 44 at 360px.
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <HelpCircle className="h-4 w-4 max-md:h-5 max-md:w-5" />
-            </Link>
+              <Link
+                to="/help"
+                search={{ article: undefined }}
+                aria-label="Knowledge Center"
+                // A 16px glyph centred in a 44px box, the shape ui/dialog.tsx and
+                // ui/sheet.tsx already use. Padding was carrying the size — `p-2`
+                // made a 32px target, and `touch:p-2.5` around a 20px glyph got
+                // it to 40, still under the minimum on the widths where it is
+                // actually thumbed. The glyph is untouched, so the header looks
+                // the same; only the part a thumb can miss changed. `shrink-0`
+                // because the search button beside it is `flex-1` and would
+                // otherwise squeeze this back below 44 at 360px.
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <HelpCircle className="h-4 w-4 max-md:h-5 max-md:w-5" />
+              </Link>
             )}
             {headerPrefs.showWeather && <WeatherPopover />}
             <NotificationBell />
@@ -322,13 +343,23 @@ function AppShell() {
               place. Wide, with a limit. Top padding tightens too — a page that
               starts an inch down the screen wastes the most valuable band on
               it. */}
-          <main className={`min-w-0 flex-1 px-4 pt-4 sm:px-6 sm:pt-5 ${mainBottomPadding}`}>
+          <main
+            className={`min-w-0 flex-1 px-4 pt-4 sm:px-6 sm:pt-5 ${
+              // mainBottomPadding reserves the height of the tab bar. With the
+              // bar switched off that reservation is just dead space at the
+              // bottom of every page, so this falls back to the home-indicator
+              // inset alone.
+              headerPrefs.phoneNav === "bottom"
+                ? mainBottomPadding
+                : "pb-[calc(2rem+env(safe-area-inset-bottom))]"
+            }`}
+          >
             <div className="mx-auto w-full max-w-[1600px]">
               <Outlet />
             </div>
           </main>
         </div>
-        <MobileTabBar />
+        {headerPrefs.phoneNav === "bottom" && <MobileTabBar />}
         <CommandPalette />
         <KeyboardShortcuts />
         <OnboardingTour />

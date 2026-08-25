@@ -279,43 +279,6 @@ function ProfilePage() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Top bar</CardTitle>
-          <CardDescription>
-            Which optional controls appear beside the search box. Turning one off only
-            hides the shortcut. The Knowledge Center is still in the More menu and the
-            command palette, and the weather is still on the dashboard.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-1">
-          {/* The label wraps the switch so the whole row is the hit area, and
-              `min-h-11` makes that row legal at every width. A bare switch is
-              a ~36px target with an unclickable label beside it. */}
-          <label className="flex min-h-11 min-w-0 cursor-pointer items-center justify-between gap-3">
-            <span className="min-w-0 flex-1 text-sm">Knowledge Center (?)</span>
-            <Switch
-              checked={headerPrefs.showHelp}
-              onCheckedChange={(v) => setHeaderPref("showHelp", v)}
-              aria-label="Show the Knowledge Center button in the top bar"
-            />
-          </label>
-          <label className="flex min-h-11 min-w-0 cursor-pointer items-center justify-between gap-3">
-            <span className="min-w-0 flex-1 text-sm">Weather</span>
-            <Switch
-              checked={headerPrefs.showWeather}
-              onCheckedChange={(v) => setHeaderPref("showWeather", v)}
-              aria-label="Show the weather button in the top bar"
-            />
-          </label>
-          {/* Said out loud because "why is my laptop different from my phone"
-              is otherwise a support question. */}
-          <p className="pt-1 text-xs text-muted-foreground">
-            Saved on this device, for you. Your other devices keep their own setting.
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-3">
           <CardTitle className="text-base">Sign-in</CardTitle>
           <CardDescription>
             Changing your email sends a confirmation link to the new address. You keep signing in

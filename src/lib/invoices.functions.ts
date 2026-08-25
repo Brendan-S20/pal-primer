@@ -239,6 +239,23 @@ export const voidInvoice = createServerFn({ method: "POST" })
     await requirePermission(context.supabase, context.userId, "manage_client_billing");
     const { error } = await context.supabase.rpc("void_invoice", { _invoice_id: data.id });
     if (error) throw new Error(error.message);
+
+    // CANCEL THE CUSTOMER'S LIVE PAYMENT INTENT. Voiding released the credit
+    // and set status='void', and until this call the PaymentIntent minted for
+    // the public pay page was still confirmable on the connected account. A
+    // client with that tab open could pay a bill the business had cancelled,
+    // and nothing downstream would stop it: the webhook's only status test is
+    // `!== "paid"` and markInvoicePaidFromStripe claims on `.neq("status",
+    // "paid")`, so a `void` invoice passes both and flips to paid.
+    //
+    // syncInvoicePaymentIntentAmount already cancels when the invoice is not
+    // open -- it is what every credit-application path calls, with the comment
+    // "a pay page could still confirm the old amount". The void path was the
+    // one that never called it. It never throws, so a Stripe outage cannot
+    // block a void.
+    const { syncInvoicePaymentIntentAmount } = await import("@/lib/invoice-reconcile.server");
+    await syncInvoicePaymentIntentAmount(data.id);
+
     const { data: inv } = await context.supabase
       .from("invoices")
       .select("organization_id, client_id")
@@ -264,10 +281,17 @@ export const bulkVoidInvoices = createServerFn({ method: "POST" })
     await requirePermission(context.supabase, context.userId, "manage_client_billing");
     let ok = 0,
       failed = 0;
+    // Same import once, outside the loop.
+    const { syncInvoicePaymentIntentAmount } = await import("@/lib/invoice-reconcile.server");
     for (const id of data.ids) {
       const { error } = await context.supabase.rpc("void_invoice", { _invoice_id: id });
       if (error) failed++;
-      else ok++;
+      else {
+        // See voidInvoice: without this a customer can still pay a voided
+        // invoice from an open pay page. Never throws.
+        await syncInvoicePaymentIntentAmount(id);
+        ok++;
+      }
     }
     return { ok, failed };
   });

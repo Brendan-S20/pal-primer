@@ -199,7 +199,14 @@ const Sidebar = React.forwardRef<
                of dimmed page beside it. iOS QA 2026-08-25 measured that strip
                at ~114pt on a 402pt screen. The More sheet keeps its X; this one
                now matches it. */
-            className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground"
+            /* …and then the restored X landed under the camera. sheet.tsx pins
+               it at `top-2`, which on a Dynamic Island phone is inside the
+               cutout — reported from a real iPhone, where the lens sits over
+               it. VisitDetailDrawer got this offset when it got its safe-area
+               padding; this branch got the padding on its inner column and the
+               button, being a direct child of SheetContent, never moved.
+               env() is 0 on the web, so nothing hosted changes. */
+            className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:top-[calc(0.5rem+env(safe-area-inset-top))]"
             style={
               {
                 "--sidebar-width": SIDEBAR_WIDTH_MOBILE,

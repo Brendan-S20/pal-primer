@@ -1,3 +1,4 @@
+import { appUrl } from "@/lib/app-origin";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -159,7 +160,10 @@ function PayForm({
       return;
     }
 
-    const returnUrl = `${window.location.origin}/portal/${slug}/${token}/pay/${invoiceId}`;
+    // appUrl(): Stripe redirects the CUSTOMER here after payment. A
+    // `capacitor://localhost` return_url is not a destination any browser can
+    // reach, so a payment could complete and strand the payer.
+    const returnUrl = appUrl(`/portal/${slug}/${token}/pay/${invoiceId}`);
     const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
       elements,
       confirmParams: { return_url: returnUrl },

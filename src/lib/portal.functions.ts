@@ -37,7 +37,8 @@ export const portalContext = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const { portalContactChannels, getPortalSession } = await portalAuth();
     const contact = await portalContactChannels(data.token);
-    if (!contact) return { verified: false as const, valid: false as const, channels: [], branding: null };
+    if (!contact)
+      return { verified: false as const, valid: false as const, channels: [], branding: null };
 
     const session = await getPortalSession(data.token);
     if (!session) {
@@ -52,7 +53,8 @@ export const portalContext = createServerFn({ method: "GET" })
     const { data: rows, error } = await sb.rpc("portal_get_client", { _token: data.token });
     if (error) throw new Error(error.message);
     const client = rows?.[0];
-    if (!client) return { verified: false as const, valid: false as const, channels: [], branding: null };
+    if (!client)
+      return { verified: false as const, valid: false as const, channels: [], branding: null };
     return { verified: true as const, valid: true as const, client, branding: contact.branding };
   });
 
@@ -176,7 +178,9 @@ export const portalListUpcomingVisits = createServerFn({ method: "GET" })
     const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
-    const { data: rows, error } = await sb.rpc("portal_list_upcoming_visits", { _token: data.token });
+    const { data: rows, error } = await sb.rpc("portal_list_upcoming_visits", {
+      _token: data.token,
+    });
     if (error) throw new Error(error.message);
     return rows ?? [];
   });
@@ -217,19 +221,25 @@ export const portalListInvoices = createServerFn({ method: "GET" })
       .eq("client_id", session.clientId);
     if (dueErr) throw new Error(dueErr.message);
     const dueById = new Map(
-      ((dueRows ?? []) as Array<{ id: string; due_on: string | null; credit_applied_cents: number | null }>).map(
-        (r) => [r.id, r],
-      ),
+      (
+        (dueRows ?? []) as Array<{
+          id: string;
+          due_on: string | null;
+          credit_applied_cents: number | null;
+        }>
+      ).map((r) => [r.id, r]),
     );
-    const invoices = ((rows ?? []) as Array<{
-      invoice_id: string;
-      status: string;
-      kind: string;
-      total_cents: number | null;
-      issued_at: string | null;
-      period_start: string | null;
-      period_end: string | null;
-    }>).map((r) => {
+    const invoices = (
+      (rows ?? []) as Array<{
+        invoice_id: string;
+        status: string;
+        kind: string;
+        total_cents: number | null;
+        issued_at: string | null;
+        period_start: string | null;
+        period_end: string | null;
+      }>
+    ).map((r) => {
       const extra = dueById.get(r.invoice_id);
       const due_on = extra?.due_on ?? null;
       const credit_applied_cents = extra?.credit_applied_cents ?? 0;
@@ -262,25 +272,31 @@ export const portalListPrepaidSubs = createServerFn({ method: "GET" })
     const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
-    const { data: rows, error } = await sb.rpc("portal_list_prepaid_subscriptions", { _token: data.token });
+    const { data: rows, error } = await sb.rpc("portal_list_prepaid_subscriptions", {
+      _token: data.token,
+    });
     if (error) throw new Error(error.message);
     return rows ?? [];
   });
 
 export const portalRequestSkip = createServerFn({ method: "POST" })
   .inputValidator((d) =>
-    z.object({
-      token: z.string().uuid(),
-      visitId: z.string().uuid(),
-      reason: z.string().max(500).optional().default(""),
-    }).parse(d),
+    z
+      .object({
+        token: z.string().uuid(),
+        visitId: z.string().uuid(),
+        reason: z.string().max(500).optional().default(""),
+      })
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { error } = await sb.rpc("portal_request_skip", {
-      _token: data.token, _visit_id: data.visitId, _reason: data.reason,
+      _token: data.token,
+      _visit_id: data.visitId,
+      _reason: data.reason,
     });
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -288,18 +304,22 @@ export const portalRequestSkip = createServerFn({ method: "POST" })
 
 export const portalStartPrepaidTopup = createServerFn({ method: "POST" })
   .inputValidator((d) =>
-    z.object({
-      token: z.string().uuid(),
-      subscriptionId: z.string().uuid(),
-      visitCount: z.number().int().min(1).max(52),
-    }).parse(d),
+    z
+      .object({
+        token: z.string().uuid(),
+        subscriptionId: z.string().uuid(),
+        visitCount: z.number().int().min(1).max(52),
+      })
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: id, error } = await sb.rpc("portal_start_prepaid_topup", {
-      _token: data.token, _subscription_id: data.subscriptionId, _visit_count: data.visitCount,
+      _token: data.token,
+      _subscription_id: data.subscriptionId,
+      _visit_count: data.visitCount,
     });
     if (error) throw new Error(error.message);
     return { invoiceId: id as string };
@@ -310,18 +330,22 @@ const addonFreqEnum = z.enum(["weekly", "biweekly", "monthly", "quarterly", "yea
 
 export const portalRescheduleVisit = createServerFn({ method: "POST" })
   .inputValidator((d) =>
-    z.object({
-      token: z.string().uuid(),
-      visitId: z.string().uuid(),
-      newDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    }).parse(d),
+    z
+      .object({
+        token: z.string().uuid(),
+        visitId: z.string().uuid(),
+        newDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      })
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { error } = await sb.rpc("portal_reschedule_visit", {
-      _token: data.token, _visit_id: data.visitId, _new_date: data.newDate,
+      _token: data.token,
+      _visit_id: data.visitId,
+      _new_date: data.newDate,
     });
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -358,7 +382,9 @@ export const portalSelfServeOptions = createServerFn({ method: "GET" })
     const [{ data: org }, { data: subs }] = await Promise.all([
       sb
         .from("organizations")
-        .select("portal_allow_vacation_hold, portal_allow_frequency_change, portal_auto_apply_changes")
+        .select(
+          "portal_allow_vacation_hold, portal_allow_frequency_change, portal_auto_apply_changes",
+        )
         .eq("id", session.organizationId)
         .maybeSingle(),
       // "Your plan" has to be the client's STANDING plan.
@@ -394,18 +420,22 @@ export const portalSelfServeOptions = createServerFn({ method: "GET" })
 
 export const portalChangeFrequency = createServerFn({ method: "POST" })
   .inputValidator((d) =>
-    z.object({
-      token: z.string().uuid(),
-      subscriptionId: z.string().uuid(),
-      frequency: frequencyEnum,
-    }).parse(d),
+    z
+      .object({
+        token: z.string().uuid(),
+        subscriptionId: z.string().uuid(),
+        frequency: frequencyEnum,
+      })
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: result, error } = await sb.rpc("portal_change_frequency", {
-      _token: data.token, _subscription_id: data.subscriptionId, _new_frequency: data.frequency,
+      _token: data.token,
+      _subscription_id: data.subscriptionId,
+      _new_frequency: data.frequency,
     });
     if (error) throw new Error(error.message);
     // 'applied' | 'requested' | 'unchanged' — 'requested' means auto-apply is
@@ -437,13 +467,15 @@ export const portalListClientAddons = createServerFn({ method: "GET" })
 
 export const portalSubscribeAddon = createServerFn({ method: "POST" })
   .inputValidator((d) =>
-    z.object({
-      token: z.string().uuid(),
-      addonServiceId: z.string().uuid(),
-      frequency: addonFreqEnum.nullable().optional(),
-      quantity: z.number().int().min(1).max(50).default(1),
-      propertyId: z.string().uuid().nullable().optional(),
-    }).parse(d),
+    z
+      .object({
+        token: z.string().uuid(),
+        addonServiceId: z.string().uuid(),
+        frequency: addonFreqEnum.nullable().optional(),
+        quantity: z.number().int().min(1).max(50).default(1),
+        propertyId: z.string().uuid().nullable().optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
@@ -488,17 +520,20 @@ export const portalSubscribeAddon = createServerFn({ method: "POST" })
 
 export const portalCancelAddon = createServerFn({ method: "POST" })
   .inputValidator((d) =>
-    z.object({
-      token: z.string().uuid(),
-      addonSubscriptionId: z.string().uuid(),
-    }).parse(d),
+    z
+      .object({
+        token: z.string().uuid(),
+        addonSubscriptionId: z.string().uuid(),
+      })
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { error } = await sb.rpc("portal_cancel_addon", {
-      _token: data.token, _addon_subscription_id: data.addonSubscriptionId,
+      _token: data.token,
+      _addon_subscription_id: data.addonSubscriptionId,
     });
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -529,35 +564,59 @@ export const portalCreateSetupIntent = createServerFn({ method: "POST" })
       .single();
     if (!cRow) throw new Error("Client not found");
 
-    const { requireOrgStripeAccount, connectStripe, connectPublishableKey, verifyClientStripeCustomer } = await import("@/lib/stripe-connect.server");
+    const {
+      requireOrgStripeAccount,
+      connectStripe,
+      connectPublishableKey,
+      verifyClientStripeCustomer,
+    } = await import("@/lib/stripe-connect.server");
     const acct = await requireOrgStripeAccount(session.organizationId);
     const stripe = await connectStripe();
     const opts = { stripeAccount: acct.accountId };
 
     let customerId = await verifyClientStripeCustomer(stripe, acct.accountId, cRow);
     if (!customerId) {
-      const cust = await stripe.customers.create({
-        email: cRow.primary_email ?? undefined,
-        name: cRow.display_name ?? undefined,
-        metadata: { client_id: cRow.id, organization_id: session.organizationId },
-      }, opts);
+      const cust = await stripe.customers.create(
+        {
+          email: cRow.primary_email ?? undefined,
+          name: cRow.display_name ?? undefined,
+          metadata: { client_id: cRow.id, organization_id: session.organizationId },
+        },
+        opts,
+      );
       customerId = cust.id;
-      await supabaseAdmin.from("clients").update({ stripe_customer_id: customerId }).eq("id", cRow.id);
+      await supabaseAdmin
+        .from("clients")
+        .update({ stripe_customer_id: customerId })
+        .eq("id", cRow.id);
     }
 
-    const si = await stripe.setupIntents.create({
-      customer: customerId,
-      payment_method_types: ["card"],
-      usage: "off_session",
-      metadata: { client_id: cRow.id, organization_id: session.organizationId, source: "portal_setup_inline" },
-    }, opts);
-    return { clientSecret: si.client_secret as string, publishableKey: connectPublishableKey(), stripeAccount: acct.accountId };
+    const si = await stripe.setupIntents.create(
+      {
+        customer: customerId,
+        payment_method_types: ["card"],
+        usage: "off_session",
+        metadata: {
+          client_id: cRow.id,
+          organization_id: session.organizationId,
+          source: "portal_setup_inline",
+        },
+      },
+      opts,
+    );
+    return {
+      clientSecret: si.client_secret as string,
+      publishableKey: connectPublishableKey(),
+      stripeAccount: acct.accountId,
+    };
   });
 
 /** Finalize an inline card save: mark the confirmed payment method as the
  *  client's default and record the card details. */
 export const portalFinalizeCardSetup = createServerFn({ method: "POST" })
-  .inputValidator((d) => z.object({ token: z.string().uuid(), setupIntentId: z.string().min(3) }).parse(d))
+  .inputValidator((d) =>
+    z.object({ token: z.string().uuid(), setupIntentId: z.string().min(3) }).parse(d),
+  )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
     const session = await requirePortalSession(data.token);
@@ -573,17 +632,40 @@ export const portalFinalizeCardSetup = createServerFn({ method: "POST" })
     if (!pmId || !customerId) throw new Error("Card wasn't saved. Please try again.");
     // Security (M2): the SetupIntent must be the one we minted for THIS client,
     // so a leaked/guessed seti_… id from another client can't bind their card here.
-    if (si.metadata?.client_id !== session.clientId) throw new Error("Card setup could not be verified.");
+    if (si.metadata?.client_id !== session.clientId)
+      throw new Error("Card setup could not be verified.");
 
     const pm = await stripe.paymentMethods.retrieve(pmId, {}, opts);
-    await stripe.customers.update(customerId, { invoice_settings: { default_payment_method: pmId } }, opts);
-    await supabaseAdmin.from("clients").update({
-      stripe_customer_id: customerId,
-      default_payment_method_id: pmId,
-      default_card_brand: pm.card?.brand ?? null,
-      default_card_last4: pm.card?.last4 ?? null,
-      autopay_enabled: true,
-    }).eq("id", session.clientId);
+    await stripe.customers.update(
+      customerId,
+      { invoice_settings: { default_payment_method: pmId } },
+      opts,
+    );
+    await supabaseAdmin
+      .from("clients")
+      .update({
+        stripe_customer_id: customerId,
+        default_payment_method_id: pmId,
+        default_card_brand: pm.card?.brand ?? null,
+        default_card_last4: pm.card?.last4 ?? null,
+        // `autopay_enabled: true` was here, unconditionally, in the handler for a
+        // button labelled "Save card".
+        //
+        // The portal offers autopay as a SEPARATE choice with its own button
+        // ("Turn on autopay" / "Turn off autopay", portalSetAutopay) directly
+        // above, under copy reading "Save a card for one-tap payments, OR enable
+        // autopay". So a customer who had deliberately turned autopay off after a
+        // surprise charge, and later replaced an expired card, had it switched
+        // back on for them — and had no way to notice, because the toast says
+        // "Card saved". The next nightly run charged them off-session.
+        //
+        // Staff had no remedy either: the client Billing tab only DISPLAYS the
+        // flag, and the one staff mutation for it (resumeAutopay) turns it on.
+        //
+        // Omitted rather than set to false, so replacing a card leaves the
+        // customer's own choice exactly as they left it, either way.
+      })
+      .eq("id", session.clientId);
     return { ok: true, brand: pm.card?.brand ?? null, last4: pm.card?.last4 ?? null };
   });
 
@@ -594,7 +676,10 @@ export const portalSetAutopay = createServerFn({ method: "POST" })
     const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
-    const { error } = await sb.rpc("portal_set_autopay", { _token: data.token, _enabled: data.enabled });
+    const { error } = await sb.rpc("portal_set_autopay", {
+      _token: data.token,
+      _enabled: data.enabled,
+    });
     if (error) throw new Error(error.message);
     return { enabled: data.enabled };
   });
@@ -607,38 +692,54 @@ export const portalRemoveCard = createServerFn({ method: "POST" })
     const session = await requirePortalSession(data.token);
     const supabaseAdmin = await admin();
     const { data: cRow } = await supabaseAdmin
-      .from("clients").select("id, default_payment_method_id").eq("id", session.clientId).single();
+      .from("clients")
+      .select("id, default_payment_method_id")
+      .eq("id", session.clientId)
+      .single();
     if (cRow?.default_payment_method_id) {
       try {
         const { stripe, stripeAccount } = await loadStripe(session.organizationId);
         await stripe.paymentMethods.detach(cRow.default_payment_method_id, {}, { stripeAccount });
-      } catch (e) { console.warn("detach pm failed", e); }
+      } catch (e) {
+        console.warn("detach pm failed", e);
+      }
     }
-    await supabaseAdmin.from("clients").update({
-      default_payment_method_id: null,
-      default_card_brand: null,
-      default_card_last4: null,
-      autopay_enabled: false,
-    }).eq("id", session.clientId);
+    await supabaseAdmin
+      .from("clients")
+      .update({
+        default_payment_method_id: null,
+        default_card_brand: null,
+        default_card_last4: null,
+        autopay_enabled: false,
+      })
+      .eq("id", session.clientId);
     return { ok: true };
   });
 
 /** Charge an open invoice off-session using the saved default card. */
 export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
-  .inputValidator((d) => z.object({ token: z.string().uuid(), invoiceId: z.string().uuid() }).parse(d))
+  .inputValidator((d) =>
+    z.object({ token: z.string().uuid(), invoiceId: z.string().uuid() }).parse(d),
+  )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
     const session = await requirePortalSession(data.token);
     const supabaseAdmin = await admin();
     const { data: c } = await supabaseAdmin
-      .from("clients").select("id, stripe_customer_id, default_payment_method_id")
-      .eq("id", session.clientId).single();
-    if (!c?.stripe_customer_id || !c.default_payment_method_id) throw new Error("No saved card on file");
+      .from("clients")
+      .select("id, stripe_customer_id, default_payment_method_id")
+      .eq("id", session.clientId)
+      .single();
+    if (!c?.stripe_customer_id || !c.default_payment_method_id)
+      throw new Error("No saved card on file");
 
     const { data: invoice, error: iErr } = await supabaseAdmin
       .from("invoices")
-      .select("id, organization_id, client_id, total_cents, credit_applied_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id")
-      .eq("id", data.invoiceId).single();
+      .select(
+        "id, organization_id, client_id, total_cents, credit_applied_cents, currency, status, stripe_checkout_session_id, stripe_payment_intent_id",
+      )
+      .eq("id", data.invoiceId)
+      .single();
     if (iErr) throw new Error(iErr.message);
     if (invoice.client_id !== c.id) throw new Error("Invoice not found");
     if (invoice.status === "paid") throw new Error("Already paid");
@@ -665,7 +766,9 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
     if (invoice.stripe_payment_intent_id) {
       try {
         const existing = await stripe.paymentIntents.retrieve(
-          invoice.stripe_payment_intent_id, {}, { stripeAccount },
+          invoice.stripe_payment_intent_id,
+          {},
+          { stripeAccount },
         );
         if (existing.status === "processing") {
           throw new Error(
@@ -680,7 +783,8 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
           await stripe.paymentIntents.cancel(existing.id, {}, { stripeAccount });
         }
       } catch (e) {
-        if ((e as Error).message?.startsWith("A payment for this invoice is already processing")) throw e;
+        if ((e as Error).message?.startsWith("A payment for this invoice is already processing"))
+          throw e;
         // Retrieve/cancel hiccups don't block the charge; the reconcile above ran.
       }
     }
@@ -696,9 +800,8 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
     // the rail and funding type are too and no second step is needed. The
     // platform fee stays on the BASE — we do not take 50 bps of a fee the
     // tenant is recovering from Stripe.
-    const { orgFeeConfig, quoteForPaymentMethodId, surchargeMetadata } = await import(
-      "@/lib/processing-fee.server"
-    );
+    const { orgFeeConfig, quoteForPaymentMethodId, surchargeMetadata } =
+      await import("@/lib/processing-fee.server");
     const quote = await quoteForPaymentMethodId(stripe, {
       paymentMethodId: c.default_payment_method_id,
       stripeAccount,
@@ -706,46 +809,59 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
       config: await orgFeeConfig(supabaseAdmin, invoice.organization_id),
     });
     try {
-      const pi = await stripe.paymentIntents.create({
-        amount: quote.totalCents,
-        application_fee_amount: platformFeeCents(dueCents),
-        currency: invoice.currency ?? "usd",
-        customer: c.stripe_customer_id,
-        payment_method: c.default_payment_method_id,
-        off_session: true,
-        confirm: true,
-        metadata: {
-          invoice_id: invoice.id,
-          organization_id: invoice.organization_id,
-          source: "portal_saved_card",
-          ...surchargeMetadata(quote),
+      const pi = await stripe.paymentIntents.create(
+        {
+          amount: quote.totalCents,
+          application_fee_amount: platformFeeCents(dueCents),
+          currency: invoice.currency ?? "usd",
+          customer: c.stripe_customer_id,
+          payment_method: c.default_payment_method_id,
+          off_session: true,
+          confirm: true,
+          metadata: {
+            invoice_id: invoice.id,
+            organization_id: invoice.organization_id,
+            source: "portal_saved_card",
+            ...surchargeMetadata(quote),
+          },
         },
-      }, {
-        // Prevent a double-tap (or a retried request) from charging twice.
-        // The amount is in the key so a changed balance (credit applied)
-        // mints fresh; the payment-method id is in the key because after a
-        // decline the client may save a NEW card the same day, and replaying
-        // the old key with different params would be an idempotency_error.
-        // It is the CHARGED total, not the invoice base: a tenant who switches
-        // pass-through on between two attempts changes the amount, and reusing
-        // the key would be exactly that idempotency_error.
-        idempotencyKey: `portal-saved-card-${invoice.id}-${quote.totalCents}-${c.default_payment_method_id}`,
-        stripeAccount,
-      });
-      await supabaseAdmin.from("invoices").update({
-        stripe_payment_intent_id: pi.id, status: "open",
-      }).eq("id", invoice.id);
-      await supabaseAdmin.from("clients").update({
-        autopay_last_attempt_at: new Date().toISOString(),
-        autopay_last_error: null,
-      }).eq("id", c.id);
+        {
+          // Prevent a double-tap (or a retried request) from charging twice.
+          // The amount is in the key so a changed balance (credit applied)
+          // mints fresh; the payment-method id is in the key because after a
+          // decline the client may save a NEW card the same day, and replaying
+          // the old key with different params would be an idempotency_error.
+          // It is the CHARGED total, not the invoice base: a tenant who switches
+          // pass-through on between two attempts changes the amount, and reusing
+          // the key would be exactly that idempotency_error.
+          idempotencyKey: `portal-saved-card-${invoice.id}-${quote.totalCents}-${c.default_payment_method_id}`,
+          stripeAccount,
+        },
+      );
+      await supabaseAdmin
+        .from("invoices")
+        .update({
+          stripe_payment_intent_id: pi.id,
+          status: "open",
+        })
+        .eq("id", invoice.id);
+      await supabaseAdmin
+        .from("clients")
+        .update({
+          autopay_last_attempt_at: new Date().toISOString(),
+          autopay_last_error: null,
+        })
+        .eq("id", c.id);
       return { ok: true, status: pi.status };
     } catch (e) {
       const msg = (e as Error).message || "Card charge failed";
-      await supabaseAdmin.from("clients").update({
-        autopay_last_attempt_at: new Date().toISOString(),
-        autopay_last_error: msg,
-      }).eq("id", c.id);
+      await supabaseAdmin
+        .from("clients")
+        .update({
+          autopay_last_attempt_at: new Date().toISOString(),
+          autopay_last_error: msg,
+        })
+        .eq("id", c.id);
       throw new Error(msg);
     }
   });
@@ -761,7 +877,10 @@ export const portalListRecentVisits = createServerFn({ method: "GET" })
     const { data: rows, error } = await sb.rpc("portal_list_recent_visits", { _token: data.token });
     if (error) throw new Error(error.message);
     return (rows ?? []) as Array<{
-      visit_id: string; scheduled_on: string; status: string; photo_paths: string[];
+      visit_id: string;
+      scheduled_on: string;
+      status: string;
+      photo_paths: string[];
     }>;
   });
 
@@ -774,19 +893,25 @@ export const portalListDogs = createServerFn({ method: "GET" })
     const { data: rows, error } = await sb.rpc("portal_list_dogs", { _token: data.token });
     if (error) throw new Error(error.message);
     return (rows ?? []) as Array<{
-      dog_id: string; name: string; breed: string | null; weight_class: string | null;
-      temperament: string | null; notes: string | null;
+      dog_id: string;
+      name: string;
+      breed: string | null;
+      weight_class: string | null;
+      temperament: string | null;
+      notes: string | null;
     }>;
   });
 
 export const portalReportConcern = createServerFn({ method: "POST" })
   .inputValidator((d) =>
-    z.object({
-      token: z.string().uuid(),
-      visitId: z.string().uuid().nullable(),
-      category: z.enum(["missed_spot","gate_left_open","damage","wrong_yard","other"]),
-      message: z.string().max(1000).optional().default(""),
-    }).parse(d),
+    z
+      .object({
+        token: z.string().uuid(),
+        visitId: z.string().uuid().nullable(),
+        category: z.enum(["missed_spot", "gate_left_open", "damage", "wrong_yard", "other"]),
+        message: z.string().max(1000).optional().default(""),
+      })
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
@@ -811,7 +936,10 @@ export const portalReportConcern = createServerFn({ method: "POST" })
     // In-app notification to owners/managers (concern could be a safety issue).
     try {
       const { data: cl } = await sb
-        .from("clients").select("display_name, organization_id").eq("portal_token", data.token).maybeSingle();
+        .from("clients")
+        .select("display_name, organization_id")
+        .eq("portal_token", data.token)
+        .maybeSingle();
       if (cl?.organization_id) {
         const { notifyRoles } = await import("@/lib/notify-center.server");
         await notifyRoles(["owner", "office_manager"], {
@@ -850,7 +978,9 @@ async function notifyOfficeOfConcern(
     .eq("portal_token", token)
     .maybeSingle();
   if (!client) return;
-  const org: any = Array.isArray(client.organizations) ? client.organizations[0] : client.organizations;
+  const org: any = Array.isArray(client.organizations)
+    ? client.organizations[0]
+    : client.organizations;
   const to = org?.contact_email;
   if (!to) return; // no office inbox on file
 
@@ -878,13 +1008,19 @@ async function notifyOfficeOfConcern(
     }),
   });
   const status = res.ok ? "sent" : "failed";
-  await sb.from("email_send_log").insert({
-    message_id: messageId,
-    template_name: "concern-notification",
-    recipient_email: to,
-    status,
-    error_message: res.ok ? null : `Resend ${res.status}`,
-  }).then(() => {}, () => {});
+  await sb
+    .from("email_send_log")
+    .insert({
+      message_id: messageId,
+      template_name: "concern-notification",
+      recipient_email: to,
+      status,
+      error_message: res.ok ? null : `Resend ${res.status}`,
+    })
+    .then(
+      () => {},
+      () => {},
+    );
 }
 
 export const portalSignPhotoUrls = createServerFn({ method: "POST" })
@@ -898,7 +1034,9 @@ export const portalSignPhotoUrls = createServerFn({ method: "POST" })
     const supabaseAdmin = await admin();
     // Only sign photos that belong to this client's own visits — never sign an
     // arbitrary caller-supplied storage path.
-    const { data: ownRows, error: ownErr } = await supabaseAdmin.rpc("portal_list_recent_visits", { _token: data.token });
+    const { data: ownRows, error: ownErr } = await supabaseAdmin.rpc("portal_list_recent_visits", {
+      _token: data.token,
+    });
     if (ownErr) throw new Error(ownErr.message);
     const allowed = new Set<string>();
     for (const r of (ownRows ?? []) as Array<{ photo_paths: string[] }>) {
@@ -935,11 +1073,16 @@ export const portalListStations = createServerFn({ method: "GET" })
     const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
-    const { data: rows, error } = await sb.rpc("portal_list_stations" as any, { _token: data.token });
+    const { data: rows, error } = await sb.rpc("portal_list_stations" as any, {
+      _token: data.token,
+    });
     if (error) throw new Error(error.message);
     return (rows ?? []) as Array<{
-      station_id: string; station_number: number | null; label: string | null;
-      location_description: string | null; liner_size: string | null;
+      station_id: string;
+      station_number: number | null;
+      label: string | null;
+      location_description: string | null;
+      liner_size: string | null;
       last_serviced_on: string | null;
     }>;
   });
@@ -950,31 +1093,43 @@ export const portalListMyRequests = createServerFn({ method: "GET" })
     const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
-    const { data: rows, error } = await sb.rpc("portal_list_my_requests" as any, { _token: data.token });
+    const { data: rows, error } = await sb.rpc("portal_list_my_requests" as any, {
+      _token: data.token,
+    });
     if (error) throw new Error(error.message);
     return (rows ?? []) as Array<{
-      ticket_id: string; visit_id: string | null; visit_date: string | null;
-      category: string; message: string | null;
-      status: string; resolution_note: string | null;
-      resolved_at: string | null; created_at: string;
+      ticket_id: string;
+      visit_id: string | null;
+      visit_date: string | null;
+      category: string;
+      message: string | null;
+      status: string;
+      resolution_note: string | null;
+      resolved_at: string | null;
+      created_at: string;
     }>;
   });
 
 export const portalRequestVacationHold = createServerFn({ method: "POST" })
   .inputValidator((d) =>
-    z.object({
-      token: z.string().uuid(),
-      startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-      endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-      reason: z.string().max(500).optional().default(""),
-    }).parse(d),
+    z
+      .object({
+        token: z.string().uuid(),
+        startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        reason: z.string().max(500).optional().default(""),
+      })
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: n, error } = await sb.rpc("portal_request_vacation_hold" as any, {
-      _token: data.token, _start: data.startDate, _end: data.endDate, _reason: data.reason,
+      _token: data.token,
+      _start: data.startDate,
+      _end: data.endDate,
+      _reason: data.reason,
     });
     if (error) throw new Error(error.message);
     return { skippedCount: (n as number) ?? 0 };
@@ -989,7 +1144,8 @@ export const portalRedeemPromo = createServerFn({ method: "POST" })
     await requirePortalSession(data.token);
     const sb = await admin();
     const { data: amt, error } = await sb.rpc("portal_redeem_promo" as any, {
-      _token: data.token, _code: data.code,
+      _token: data.token,
+      _code: data.code,
     });
     if (error) throw new Error(error.message);
     return { creditCents: (amt as number) ?? 0 };
@@ -1006,17 +1162,18 @@ const INVOICE_PM_TYPES = ["card", "us_bank_account"];
 function isBankDebitUnavailableError(e: unknown): boolean {
   const err = e as { message?: string; param?: string };
   return (
-    /us_bank_account/i.test(err?.message ?? "") ||
-    /payment_method_types/.test(err?.param ?? "")
+    /us_bank_account/i.test(err?.message ?? "") || /payment_method_types/.test(err?.param ?? "")
   );
 }
 
 export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" })
   .inputValidator((d) =>
-    z.object({
-      token: z.string().uuid(),
-      invoiceId: z.string().uuid(),
-    }).parse(d),
+    z
+      .object({
+        token: z.string().uuid(),
+        invoiceId: z.string().uuid(),
+      })
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
@@ -1029,7 +1186,9 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     const supabaseAdmin = await admin();
     const { data: invoice, error: iErr } = await supabaseAdmin
       .from("invoices")
-      .select("id, organization_id, client_id, total_cents, credit_applied_cents, currency, status, stripe_payment_intent_id, stripe_checkout_session_id")
+      .select(
+        "id, organization_id, client_id, total_cents, credit_applied_cents, currency, status, stripe_payment_intent_id, stripe_checkout_session_id",
+      )
       .eq("id", data.invoiceId)
       .single();
     if (iErr) throw new Error(iErr.message);
@@ -1057,20 +1216,27 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
       .single();
     if (!cRow) throw new Error("Client not found");
 
-    const { requireOrgStripeAccount, connectStripe, verifyClientStripeCustomer } = await import("@/lib/stripe-connect.server");
+    const { requireOrgStripeAccount, connectStripe, verifyClientStripeCustomer } =
+      await import("@/lib/stripe-connect.server");
     const acct = await requireOrgStripeAccount(invoice.organization_id);
     const stripe = await connectStripe();
     const opts = { stripeAccount: acct.accountId };
 
     let customerId = await verifyClientStripeCustomer(stripe, acct.accountId, cRow);
     if (!customerId) {
-      const cust = await stripe.customers.create({
-        email: cRow.primary_email ?? undefined,
-        name: cRow.display_name ?? undefined,
-        metadata: { client_id: cRow.id, organization_id: invoice.organization_id },
-      }, opts);
+      const cust = await stripe.customers.create(
+        {
+          email: cRow.primary_email ?? undefined,
+          name: cRow.display_name ?? undefined,
+          metadata: { client_id: cRow.id, organization_id: invoice.organization_id },
+        },
+        opts,
+      );
       customerId = cust.id;
-      await supabaseAdmin.from("clients").update({ stripe_customer_id: customerId }).eq("id", cRow.id);
+      await supabaseAdmin
+        .from("clients")
+        .update({ stripe_customer_id: customerId })
+        .eq("id", cRow.id);
     }
 
     const currency = (invoice.currency ?? "usd").toLowerCase();
@@ -1083,7 +1249,11 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     let pi: import("stripe").Stripe.PaymentIntent | null = null;
     if (invoice.stripe_payment_intent_id) {
       try {
-        const existing = await stripe.paymentIntents.retrieve(invoice.stripe_payment_intent_id, {}, opts);
+        const existing = await stripe.paymentIntents.retrieve(
+          invoice.stripe_payment_intent_id,
+          {},
+          opts,
+        );
         // An in-flight bank debit means the invoice IS being paid; minting a
         // replacement intent here would lose the reference and invite a
         // second charge while the debit clears.
@@ -1116,22 +1286,31 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
             setup_future_usage: "off_session" as const,
           };
           try {
-            pi = await stripe.paymentIntents.update(existing.id, {
-              ...updateParams,
-              payment_method_types: INVOICE_PM_TYPES,
-            }, opts);
+            pi = await stripe.paymentIntents.update(
+              existing.id,
+              {
+                ...updateParams,
+                payment_method_types: INVOICE_PM_TYPES,
+              },
+              opts,
+            );
           } catch (e) {
             if (!isBankDebitUnavailableError(e)) throw e;
-            pi = await stripe.paymentIntents.update(existing.id, {
-              ...updateParams,
-              payment_method_types: ["card"],
-            }, opts);
+            pi = await stripe.paymentIntents.update(
+              existing.id,
+              {
+                ...updateParams,
+                payment_method_types: ["card"],
+              },
+              opts,
+            );
           }
         }
       } catch (e) {
         // The processing guard is a real answer for the caller, not a
         // retrieve hiccup — let it surface instead of minting a new intent.
-        if ((e as Error).message?.startsWith("A payment for this invoice is already processing")) throw e;
+        if ((e as Error).message?.startsWith("A payment for this invoice is already processing"))
+          throw e;
         console.warn("retrieve existing PI failed, creating new", e);
       }
     }
@@ -1146,25 +1325,37 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
         metadata,
       };
       try {
-        pi = await stripe.paymentIntents.create({
-          ...createParams,
-          payment_method_types: INVOICE_PM_TYPES,
-        }, opts);
+        pi = await stripe.paymentIntents.create(
+          {
+            ...createParams,
+            payment_method_types: INVOICE_PM_TYPES,
+          },
+          opts,
+        );
       } catch (e) {
         if (!isBankDebitUnavailableError(e)) throw e;
-        pi = await stripe.paymentIntents.create({
-          ...createParams,
-          payment_method_types: ["card"],
-        }, opts);
+        pi = await stripe.paymentIntents.create(
+          {
+            ...createParams,
+            payment_method_types: ["card"],
+          },
+          opts,
+        );
       }
-      await supabaseAdmin.from("invoices").update({
-        stripe_payment_intent_id: pi.id,
-        status: "open",
-      }).eq("id", invoice.id);
+      await supabaseAdmin
+        .from("invoices")
+        .update({
+          stripe_payment_intent_id: pi.id,
+          status: "open",
+        })
+        .eq("id", invoice.id);
     }
 
     const { data: client } = await supabaseAdmin
-      .from("clients").select("display_name").eq("id", session.clientId).single();
+      .from("clients")
+      .select("display_name")
+      .eq("id", session.clientId)
+      .single();
 
     return {
       clientSecret: pi.client_secret as string,
@@ -1185,9 +1376,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
 // staff member recording consent on someone's behalf.
 
 export const portalSetSmsConsent = createServerFn({ method: "POST" })
-  .inputValidator((d) =>
-    z.object({ token: z.string().uuid(), optIn: z.boolean() }).parse(d),
-  )
+  .inputValidator((d) => z.object({ token: z.string().uuid(), optIn: z.boolean() }).parse(d))
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
     const session = await requirePortalSession(data.token);

@@ -39,9 +39,47 @@ export const getRouter = () => {
           return failureCount < 3;
         },
       },
-      // Mutations are deliberately left on the default networkMode: field
-      // writes already queue in IndexedDB (lib/offline/queue.ts), and money
-      // actions must not fire optimistically off a dead connection.
+      mutations: {
+        // ── THE PREMISE THIS COMMENT USED TO STATE WAS FALSE ──────────────
+        //
+        // It said mutations were "deliberately left on the default
+        // networkMode: field writes already queue in IndexedDB". They do not,
+        // because the queue write lives INSIDE mutationFn — my-day's Complete
+        // calls actions.complete() → runOrQueue → enqueueAction — and on the
+        // default `"online"` mode React Query never calls mutationFn at all
+        // while the device is offline. From query-core/retryer.js:
+        //
+        //   canFetch(mode) = mode === "online" ? onlineManager.isOnline() : true
+        //   canStart = () => canFetch(config.networkMode) && config.canRun()
+        //   if (canStart()) run()        // run() is the only caller of the fn
+        //
+        // So a tech who drives INTO a dead zone with My Day open taps Start,
+        // the mutation is paused before any of our code runs, `isPending`
+        // stays true so the button is disabled for ever, neither onSuccess nor
+        // onError fires so there is no toast, and `scoop-offline.actions` stays
+        // empty. Force-quit and the stop is gone. That is verbatim the symptom
+        // run-or-queue.ts's own header says was fixed — a second, independent
+        // cause with an identical face.
+        //
+        // Photos escaped it by accident: uploadPhoto is a plain async function
+        // rather than a useMutation, so it was never paused. "Some operate as
+        // needed, some don't" is exactly that split.
+        //
+        // A COLD launch already offline works, which is why this survived
+        // testing: onlineManager initialises to `true` and only tracks events.
+        //
+        // ── AND THE MONEY CONCERN IS BETTER SERVED THIS WAY ───────────────
+        //
+        // The old note also worried that money actions "must not fire
+        // optimistically off a dead connection". Pausing is WORSE for that: a
+        // paused mutation resumes automatically when signal returns, so an
+        // add-on charge could hit a customer's card unattended, minutes later,
+        // with nobody watching. offlineFirst enters mutationFn, the request
+        // fails, onError fires, and the tech is told. The queued kinds decide
+        // for themselves inside runOrQueue, which is what its header says it
+        // is for, and it rethrows server refusals rather than swallowing them.
+        networkMode: "offlineFirst",
+      },
     },
   });
 

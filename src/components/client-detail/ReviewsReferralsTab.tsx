@@ -1,6 +1,7 @@
 // Reviews & referrals tab (QA round 8): engagement blocks split out of
 // Communication, which now holds messaging only. This tab owns the portal
 // status panel, review requests, and referrals.
+import { appUrl } from "@/lib/app-origin";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -29,9 +30,7 @@ export function ReviewsReferralsTab({
 }) {
   return (
     <div className="space-y-6">
-      {canBill && client.portal_token && (
-        <PortalStatusPanel client={client} clientId={clientId} />
-      )}
+      {canBill && client.portal_token && <PortalStatusPanel client={client} clientId={clientId} />}
 
       <ReviewsReferralPanel client={client} />
     </div>
@@ -63,8 +62,9 @@ function PortalStatusPanel({ client, clientId }: { client: any; clientId: string
     staleTime: 60_000,
   });
   const slug = (orgData?.organization as any)?.portal_slug as string | undefined;
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const url = `${origin}${slug ? `/portal/${slug}/${token}` : `/portal/${token}`}`;
+  // appUrl(), not the page origin — this goes to a customer and the native
+  // binary's origin is `capacitor://localhost`.
+  const url = appUrl(slug ? `/portal/${slug}/${token}` : `/portal/${token}`);
 
   const regenMut = useMutation({
     mutationFn: () => regenFn({ data: { clientId } }),
@@ -131,7 +131,11 @@ function PortalStatusPanel({ client, clientId }: { client: any; clientId: string
           )}
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          <Button size="sm" variant="outline" onClick={() => window.open(url, "_blank", "noopener")}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => window.open(url, "_blank", "noopener")}
+          >
             <ExternalLink className="mr-1 h-3.5 w-3.5" /> Open
           </Button>
           <Button
