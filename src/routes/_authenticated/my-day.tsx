@@ -722,7 +722,20 @@ function MyDay() {
           call, not a fixed breakpoint — see nextUpAboveTabBar above. */}
       {nextUp && (
         <div
-          className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70 animate-fade-in ${nextUpAboveTabBar}`}
+          /* `inset-x-0` is the VIEWPORT, but from md up the sidebar is a fixed
+             16rem column at left-0 with z-10 — and this bar is z-40, so it was
+             drawn straight over it. Measured 2026-08-25: at 768 it buried
+             Analytics, Needs review and the account/sign-out row; at 1024,
+             Invoices and the account row. The inner mx-auto then centred the
+             text on the viewport rather than the content column, so "NEXT UP"
+             straddled the sidebar edge.
+
+             Starting at the sidebar's own width variable fixes both at once —
+             the bar spans the content column and mx-auto centres within it.
+             When the rail is collapsed to icons the var still reads 16rem, so
+             the bar starts slightly inboard of the rail; a small gap, never an
+             overlap, and the navigation stays reachable either way. */
+          className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70 animate-fade-in md:left-(--sidebar-width) ${nextUpAboveTabBar}`}
         >
           <a
             href={`#visit-${nextUp.id}`}

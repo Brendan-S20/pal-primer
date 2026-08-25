@@ -193,7 +193,13 @@ const Sidebar = React.forwardRef<
           <SheetContent
             data-sidebar="sidebar"
             data-mobile="true"
-            className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+            /* `[&>button]:hidden` used to be here, and it hid the 44pt close
+               control ui/sheet.tsx already renders. Nothing else closed this
+               sheet either (see AppSidebar), so the only way out was the strip
+               of dimmed page beside it. iOS QA 2026-08-25 measured that strip
+               at ~114pt on a 402pt screen. The More sheet keeps its X; this one
+               now matches it. */
+            className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground"
             style={
               {
                 "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
@@ -205,7 +211,17 @@ const Sidebar = React.forwardRef<
               <SheetTitle>Sidebar</SheetTitle>
               <SheetDescription>Displays the mobile sidebar.</SheetDescription>
             </SheetHeader>
-            <div className="flex h-full w-full flex-col">{children}</div>
+            {/* NATIVE ONLY. The desktop branch below has carried
+                nativeSidebarStyle() since the iPad fix; this branch never did,
+                so on a phone the wordmark was overprinted by the clock and sat
+                under the Dynamic Island, and the account row ended 8pt from
+                the physical bottom — 26pt of a 44pt target inside the
+                home-indicator strip. Measured on an iPhone 17 Pro, 2026-08-25.
+                Applied to the inner column, not the sheet, so bg-sidebar still
+                paints edge to edge behind the status bar. */}
+            <div className="flex h-full w-full flex-col" style={nativeSidebarStyle()}>
+              {children}
+            </div>
           </SheetContent>
         </Sheet>
       );

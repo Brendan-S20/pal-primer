@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
@@ -141,9 +142,20 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
 ];
 
 export function AppSidebar() {
-  const { state } = useSidebar();
+  const { state, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = useRouterState({ select: (r) => r.location.pathname });
+
+  // On a phone this sidebar is a full-screen Sheet, and nothing closed it.
+  // Tapping Clients changed the route underneath and left the sheet covering
+  // the app — reproduced three times on an iPhone 17 Pro, 2026-08-25, still
+  // covering four seconds later. Closing on the PATHNAME rather than on each
+  // link's onClick catches every route change, including the command palette
+  // and anything added later that this file does not know about.
+  useEffect(() => {
+    if (isMobile) setOpenMobile(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
   const { role } = useMyRole();
   const { staff: me } = useMyProfile();
 

@@ -155,7 +155,11 @@ export function VisitDetailDrawer({
 
   const completeMut = useMutation({
     mutationFn: () => doComplete({ data: { visitId: visitId! } }),
-    onSuccess: () => { toast.success("Visit completed"); invalidate(); onOpenChange(false); },
+    onSuccess: () => {
+      toast.success("Visit completed");
+      invalidate();
+      onOpenChange(false);
+    },
     onError: (e: Error) => toast.error(e.message),
   });
   const [skipReason, setSkipReason] = useState("");
@@ -164,7 +168,11 @@ export function VisitDetailDrawer({
     // default, because that string was being written to real visits as if a
     // human had given it.
     mutationFn: () => doCancel({ data: { visitId: visitId!, reason: skipReason, code: "other" } }),
-    onSuccess: () => { toast.success("Visit canceled"); invalidate(); onOpenChange(false); },
+    onSuccess: () => {
+      toast.success("Visit canceled");
+      invalidate();
+      onOpenChange(false);
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -192,7 +200,17 @@ export function VisitDetailDrawer({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
+      {/* Safe area, top and bottom. Measured on an iPhone 17 Pro 2026-08-25:
+          Close occupied y 8-52 and the title y 24-52 against a 54pt status
+          bar, so the clock printed through the client name and the battery
+          glyph sat on the X. This is the screen a tech opens at every stop.
+          The close button needs its own offset because sheet.tsx pins it at
+          top-2, inside the inset. env() is 0 on the web, so the hosted layout
+          is unchanged — the same pattern MobileTabBar and CreateSheet use. */}
+      <SheetContent
+        side="right"
+        className="w-full overflow-y-auto pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-[calc(1.5rem+env(safe-area-inset-top))] [&>button]:top-[calc(0.5rem+env(safe-area-inset-top))] sm:max-w-lg"
+      >
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             {client?.display_name ?? "Visit"}
@@ -220,7 +238,9 @@ export function VisitDetailDrawer({
                   <AlertTriangle className="h-4 w-4" /> Safety notes
                 </div>
                 <ul className="mt-1 list-disc pl-6 text-destructive">
-                  {hazards.map((h) => <li key={h}>{h}</li>)}
+                  {hazards.map((h) => (
+                    <li key={h}>{h}</li>
+                  ))}
                 </ul>
                 {p?.hazard_notes && (
                   <p className="mt-2 text-xs text-destructive/90">{p.hazard_notes}</p>
@@ -234,39 +254,83 @@ export function VisitDetailDrawer({
               <div className="flex flex-wrap gap-2">
                 {dir && (
                   <a href={dir} target="_blank" rel="noreferrer">
-                    <Button size="sm" variant="outline"><Navigation className="mr-1.5 h-3.5 w-3.5" />Directions</Button>
+                    <Button size="sm" variant="outline">
+                      <Navigation className="mr-1.5 h-3.5 w-3.5" />
+                      Directions
+                    </Button>
                   </a>
                 )}
                 {client?.primary_phone && (
                   <a href={`tel:${client.primary_phone}`}>
-                    <Button size="sm" variant="outline"><Phone className="mr-1.5 h-3.5 w-3.5" />Call</Button>
+                    <Button size="sm" variant="outline">
+                      <Phone className="mr-1.5 h-3.5 w-3.5" />
+                      Call
+                    </Button>
                   </a>
                 )}
                 {client?.primary_email && (
                   <a href={`mailto:${client.primary_email}`}>
-                    <Button size="sm" variant="outline"><Mail className="mr-1.5 h-3.5 w-3.5" />Email</Button>
+                    <Button size="sm" variant="outline">
+                      <Mail className="mr-1.5 h-3.5 w-3.5" />
+                      Email
+                    </Button>
                   </a>
                 )}
-                <Link to="/clients/$clientId" params={{ clientId: v.client_id }} onClick={() => onOpenChange(false)}>
-                  <Button size="sm" variant="ghost"><ExternalLink className="mr-1.5 h-3.5 w-3.5" />Open client</Button>
+                <Link
+                  to="/clients/$clientId"
+                  params={{ clientId: v.client_id }}
+                  onClick={() => onOpenChange(false)}
+                >
+                  <Button size="sm" variant="ghost">
+                    <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                    Open client
+                  </Button>
                 </Link>
                 {p?.id && (
-                  <Link to="/properties/$propertyId/boundary" params={{ propertyId: p.id }} onClick={() => onOpenChange(false)}>
-                    <Button size="sm" variant="ghost">Boundary map</Button>
+                  <Link
+                    to="/properties/$propertyId/boundary"
+                    params={{ propertyId: p.id }}
+                    onClick={() => onOpenChange(false)}
+                  >
+                    <Button size="sm" variant="ghost">
+                      Boundary map
+                    </Button>
                   </Link>
                 )}
               </div>
               {(p?.gate_code || p?.lock_box_code || p?.key_location) && (
                 <div className="grid grid-cols-2 gap-2 rounded-md border bg-muted/30 p-2 text-xs">
-                  {p.gate_code && <div><span className="text-muted-foreground">Gate:</span> <span className="font-mono">{p.gate_code}</span></div>}
-                  {p.lock_box_code && <div><span className="text-muted-foreground">Lock box:</span> <span className="font-mono">{p.lock_box_code}</span></div>}
-                  {p.key_location && <div className="col-span-2"><span className="text-muted-foreground">Key:</span> {p.key_location}</div>}
+                  {p.gate_code && (
+                    <div>
+                      <span className="text-muted-foreground">Gate:</span>{" "}
+                      <span className="font-mono">{p.gate_code}</span>
+                    </div>
+                  )}
+                  {p.lock_box_code && (
+                    <div>
+                      <span className="text-muted-foreground">Lock box:</span>{" "}
+                      <span className="font-mono">{p.lock_box_code}</span>
+                    </div>
+                  )}
+                  {p.key_location && (
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Key:</span> {p.key_location}
+                    </div>
+                  )}
                 </div>
               )}
               {(p?.parking_notes || p?.access_notes) && (
                 <div className="rounded-md border p-2 text-xs">
-                  {p.parking_notes && <div><span className="text-muted-foreground">Parking:</span> {p.parking_notes}</div>}
-                  {p.access_notes && <div><span className="text-muted-foreground">Access:</span> {p.access_notes}</div>}
+                  {p.parking_notes && (
+                    <div>
+                      <span className="text-muted-foreground">Parking:</span> {p.parking_notes}
+                    </div>
+                  )}
+                  {p.access_notes && (
+                    <div>
+                      <span className="text-muted-foreground">Access:</span> {p.access_notes}
+                    </div>
+                  )}
                 </div>
               )}
             </section>
@@ -277,34 +341,57 @@ export function VisitDetailDrawer({
               onChanged={() => qc.invalidateQueries({ queryKey: ["visit-detail", visitId] })}
             />
 
-
             {(v.eta_start || v.travel_min != null) && (
               <section className="rounded-md border p-2 text-xs">
-                {v.eta_start && <div>ETA {new Date(v.eta_start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>}
-                {v.travel_km != null && <div>Drive {Number(v.travel_km).toFixed(1)} km · {Math.round(Number(v.travel_min ?? 0))} min</div>}
-                {v.window_violated && <Badge variant="destructive" className="mt-1">Outside window</Badge>}
+                {v.eta_start && (
+                  <div>
+                    ETA{" "}
+                    {new Date(v.eta_start).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </div>
+                )}
+                {v.travel_km != null && (
+                  <div>
+                    Drive {Number(v.travel_km).toFixed(1)} km ·{" "}
+                    {Math.round(Number(v.travel_min ?? 0))} min
+                  </div>
+                )}
+                {v.window_violated && (
+                  <Badge variant="destructive" className="mt-1">
+                    Outside window
+                  </Badge>
+                )}
               </section>
             )}
 
             {(v.skip_reason || v.weather_note) && (
               <section>
-                <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Notes</h3>
+                <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
+                  Notes
+                </h3>
                 {v.weather_note && <p className="whitespace-pre-wrap text-sm">{v.weather_note}</p>}
-                {v.skip_reason && <p className="mt-1 text-sm text-muted-foreground">Skip: {v.skip_reason}</p>}
+                {v.skip_reason && (
+                  <p className="mt-1 text-sm text-muted-foreground">Skip: {v.skip_reason}</p>
+                )}
               </section>
             )}
 
             <PhotosSection visitId={visitId!} photos={v.visit_photos ?? []} />
 
-
             {history.length > 0 && (
               <section>
-                <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Recent visits</h3>
+                <h3 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
+                  Recent visits
+                </h3>
                 <ul className="space-y-1 text-xs">
                   {history.map((h: any) => (
                     <li key={h.id} className="flex justify-between">
                       <span>{h.scheduled_on}</span>
-                      <span className="capitalize text-muted-foreground">{h.status.replace("_", " ")}</span>
+                      <span className="capitalize text-muted-foreground">
+                        {h.status.replace("_", " ")}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -313,7 +400,9 @@ export function VisitDetailDrawer({
 
             {canReassign && (
               <section className="space-y-1 border-t pt-3">
-                <Label htmlFor="reassign" className="text-xs">Assigned tech</Label>
+                <Label htmlFor="reassign" className="text-xs">
+                  Assigned tech
+                </Label>
                 <select
                   id="reassign"
                   className="h-9 w-full rounded-md border bg-background px-2 text-sm"
@@ -355,14 +444,22 @@ export function VisitDetailDrawer({
                             tech's primary action — the one thing they press
                             in a driveway — and it was the smallest control in
                             the drawer on every touch device. */}
-                        <Button size="sm" onClick={() => completeMut.mutate()} disabled={completeMut.isPending} className="touch:min-h-11">
-                          <CheckCircle2 className="mr-1.5 h-4 w-4" />Complete
+                        <Button
+                          size="sm"
+                          onClick={() => completeMut.mutate()}
+                          disabled={completeMut.isPending}
+                          className="touch:min-h-11"
+                        >
+                          <CheckCircle2 className="mr-1.5 h-4 w-4" />
+                          Complete
                         </Button>
                       </div>
                     )}
                     {canCancel && (
                       <div className="space-y-1">
-                        <Label htmlFor="skip" className="text-xs">Cancellation reason</Label>
+                        <Label htmlFor="skip" className="text-xs">
+                          Cancellation reason
+                        </Label>
                         <Textarea
                           id="skip"
                           rows={2}
@@ -370,8 +467,14 @@ export function VisitDetailDrawer({
                           onChange={(e) => setSkipReason(e.target.value)}
                           placeholder="Gate locked, dog outside, weather…"
                         />
-                        <Button size="sm" variant="destructive" onClick={() => cancelMut.mutate()} disabled={cancelMut.isPending || !skipReason.trim()}>
-                          <SkipForward className="mr-1.5 h-4 w-4" />Cancel visit
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => cancelMut.mutate()}
+                          disabled={cancelMut.isPending || !skipReason.trim()}
+                        >
+                          <SkipForward className="mr-1.5 h-4 w-4" />
+                          Cancel visit
                         </Button>
                       </div>
                     )}
@@ -399,7 +502,9 @@ function DogsSection({
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [breed, setBreed] = useState("");
-  const [temperament, setTemperament] = useState<"friendly" | "nervous" | "aggressive" | "unknown">("friendly");
+  const [temperament, setTemperament] = useState<"friendly" | "nervous" | "aggressive" | "unknown">(
+    "friendly",
+  );
   const addMut = useMutation({
     mutationFn: () =>
       doAdd({
@@ -428,7 +533,12 @@ function DogsSection({
           <PawPrint className="mr-1 inline h-3 w-3" /> Dogs ({dogs.length})
         </h3>
         {propertyId && !adding && (
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setAdding(true)}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-xs"
+            onClick={() => setAdding(true)}
+          >
             <Plus className="mr-1 h-3 w-3" /> Add
           </Button>
         )}
@@ -454,7 +564,11 @@ function DogsSection({
       {adding && (
         <div className="mt-2 space-y-2 rounded-md border bg-muted/30 p-2">
           <Input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
-          <Input placeholder="Breed (optional)" value={breed} onChange={(e) => setBreed(e.target.value)} />
+          <Input
+            placeholder="Breed (optional)"
+            value={breed}
+            onChange={(e) => setBreed(e.target.value)}
+          />
           <select
             className="h-9 w-full rounded-md border bg-background px-2 text-sm"
             value={temperament}
@@ -469,7 +583,11 @@ function DogsSection({
             <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>
               Cancel
             </Button>
-            <Button size="sm" onClick={() => addMut.mutate()} disabled={!name.trim() || addMut.isPending}>
+            <Button
+              size="sm"
+              onClick={() => addMut.mutate()}
+              disabled={!name.trim() || addMut.isPending}
+            >
               {addMut.isPending ? "Saving…" : "Save"}
             </Button>
           </div>
@@ -548,12 +666,16 @@ function PhotosSection({ visitId, photos }: { visitId: string; photos: any[] }) 
               if (isNative()) {
                 const blob = await takePhotoNative();
                 if (blob) {
-                  const file = new File([blob], `photo-${Date.now()}.jpg`, { type: blob.type || "image/jpeg" });
+                  const file = new File([blob], `photo-${Date.now()}.jpg`, {
+                    type: blob.type || "image/jpeg",
+                  });
                   await upload(file);
                   return;
                 }
               }
-            } catch { /* fall through */ }
+            } catch {
+              /* fall through */
+            }
             document.getElementById(`photo-input-${visitId}`)?.click();
           }}
         >
@@ -582,11 +704,21 @@ function DogDnaControl({ dog, onChanged }: { dog: any; onChanged: () => void }) 
   if (dog.dna_registered && !editing) {
     return (
       <div className="flex flex-col items-end text-2xs">
-        <Badge variant="outline" className="border-emerald-500/60 text-emerald-700 dark:text-emerald-400">
+        <Badge
+          variant="outline"
+          className="border-emerald-500/60 text-emerald-700 dark:text-emerald-400"
+        >
           DNA ✓
         </Badge>
-        {dog.dna_registry_id && <span className="mt-0.5 text-muted-foreground">{dog.dna_registry_id}</span>}
-        <button className="mt-0.5 text-3xs text-muted-foreground underline" onClick={() => setEditing(true)}>edit</button>
+        {dog.dna_registry_id && (
+          <span className="mt-0.5 text-muted-foreground">{dog.dna_registry_id}</span>
+        )}
+        <button
+          className="mt-0.5 text-3xs text-muted-foreground underline"
+          onClick={() => setEditing(true)}
+        >
+          edit
+        </button>
       </div>
     );
   }
@@ -610,11 +742,33 @@ function DogDnaControl({ dog, onChanged }: { dog: any; onChanged: () => void }) 
         onChange={(e) => setRegistryId(e.target.value)}
       />
       <div className="flex gap-1">
-        <Button size="sm" className="h-6 px-2 text-2xs" onClick={() => mut.mutate({ registered: true, registryId })} disabled={mut.isPending}>Save</Button>
+        <Button
+          size="sm"
+          className="h-6 px-2 text-2xs"
+          onClick={() => mut.mutate({ registered: true, registryId })}
+          disabled={mut.isPending}
+        >
+          Save
+        </Button>
         {dog.dna_registered && (
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-2xs" onClick={() => mut.mutate({ registered: false })} disabled={mut.isPending}>Clear</Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-2xs"
+            onClick={() => mut.mutate({ registered: false })}
+            disabled={mut.isPending}
+          >
+            Clear
+          </Button>
         )}
-        <Button size="sm" variant="ghost" className="h-6 px-2 text-2xs" onClick={() => setEditing(false)}>Cancel</Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-6 px-2 text-2xs"
+          onClick={() => setEditing(false)}
+        >
+          Cancel
+        </Button>
       </div>
     </div>
   );

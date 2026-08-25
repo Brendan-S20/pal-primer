@@ -32,7 +32,34 @@ describe("it floats instead of displacing the board", () => {
   it("cannot grow past a third of the viewport", () => {
     // Without this, a long tech list or a long preview turns the floating card
     // back into the full-height slab it replaced.
-    expect(panel).toMatch(/max-h-\[min\(32rem,calc\(100vh-6rem\)\)\] overflow-y-auto/);
+    //
+    // 100vh -> 100dvh, 2026-08-25. This was the only 100vh left in the app and
+    // on iOS it resolves to the LARGE viewport, so the clamp was computed
+    // against a taller box than the one on screen. Everything else here —
+    // MobileTabBar's sheet, both dialogs — already used dvh.
+    //
+    // The "third of the viewport" in this test's name was only ever true on a
+    // desktop: 32rem is 512px, which is 66% of a 780px phone. The phone clamp
+    // below is the one that makes the name true there.
+    expect(panel).toMatch(/max-h-\[min\(32rem,calc\(100dvh-6rem\)\)\] overflow-y-auto/);
+    expect(panel).toMatch(/max-md:max-h-\[calc\(100dvh-11rem\)\]/);
+  });
+
+  it("clears the tab bar instead of hiding Apply behind it", () => {
+    // The fault this pins, measured on an iPhone 17 Pro 2026-08-25: the panel
+    // ended at y=846 and MobileTabBar began at y=789, so Apply (y 793-837) and
+    // Cancel were ENTIRELY inside the bar. Both are z-40 and the nav renders
+    // after <main>, so the nav painted over them; the panel is also too short
+    // for its own scroller to engage, so no gesture reached the button.
+    //
+    // The offset has to carry the home-indicator inset as well as the bar's
+    // height — on the web the overlap was 23px and survivable, and it was the
+    // 34pt inset that turned it into "the primary action does not exist".
+    // Same shape as InstallBanner.tsx:71, and it stops at md because that is
+    // where the bar stops.
+    expect(panel).toMatch(
+      /max-md:bottom-\[calc\(3\.5rem\+env\(safe-area-inset-bottom\)\+0\.75rem\)\]/,
+    );
   });
 
   it("is reachable as a dialog and closes the ways people expect", () => {

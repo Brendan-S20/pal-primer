@@ -336,55 +336,77 @@ function AuthPage() {
           </form>
         )}
 
-        {/* OAuth lives under the email sign-in (re-review), with brand marks. */}
-        <div className="relative my-5">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t" />
-          </div>
-          <div className="relative flex justify-center">
-            <span className="bg-card px-2 text-xs text-muted-foreground">or continue with</span>
-          </div>
-        </div>
-        <div className="space-y-2">
-          {/* Google disabled too for now (Brendan, 2026-07-14) — same teaser
-                treatment as Apple/Facebook until the provider config is
-                settled. Re-wire onClick={() => oauthSignIn("google")} to
-                re-enable; the whole flow underneath stays built. */}
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full justify-center gap-2"
-            disabled
-            title="Coming soon"
-          >
-            <GoogleIcon /> Google
-            <span className="text-3xs font-normal text-muted-foreground">soon</span>
-          </Button>
-          {/* Apple/Facebook aren't configured yet — shown disabled as a
+        {/* OAuth lives under the email sign-in (re-review), with brand marks.
+            NATIVE ONLY — the whole block is absent from the binary, and that is
+            a deliberate divergence rather than a layout tweak:
+
+            * Google BLOCKS OAuth inside embedded WebViews (disallowed_useragent),
+              so the button cannot work in a Capacitor shell however it is wired.
+              A native flow needs ASWebAuthenticationSession, which is its own
+              piece of work.
+            * App Store guideline 4.8 requires Sign in with Apple wherever an app
+              offers third-party sign-in. Shipping Google alone into a review
+              build invites a rejection; shipping NO third-party button avoids
+              the rule entirely until Apple sign-in is actually built.
+
+            Hidden rather than disabled because the iOS audit measured what a
+            disabled button costs here: 132px of a 392px card, three controls a
+            first-time visitor taps and gets nothing from — ui/button.tsx sets
+            disabled:pointer-events-none, so even their "Coming soon" tooltip
+            can never fire. */}
+        {!IS_NATIVE_BUNDLE && (
+          <>
+            <div className="relative my-5">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center">
+                <span className="bg-card px-2 text-xs text-muted-foreground">or continue with</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {/* Re-enabled on the WEB 2026-08-25 (Brendan's call), which is what
+                the 2026-07-14 note above anticipated: the flow underneath was
+                always built. oauthSignIn probes the authorize URL before
+                navigating, so if Google is not actually enabled in Supabase the
+                user gets "Google sign-in isn't available yet" rather than a raw
+                API error page. */}
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-center gap-2"
+                disabled={loading}
+                onClick={() => oauthSignIn("google")}
+              >
+                <GoogleIcon /> Google
+              </Button>
+              {/* Apple/Facebook aren't configured yet — shown disabled as a
                 teaser rather than wired to a broken flow (Brendan's call). */}
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="justify-center gap-2"
-              disabled
-              title="Coming soon"
-            >
-              <AppleIcon /> Apple
-              <span className="text-3xs font-normal text-muted-foreground">soon</span>
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="justify-center gap-2"
-              disabled
-              title="Coming soon"
-            >
-              <FacebookIcon /> Facebook
-              <span className="text-3xs font-normal text-muted-foreground">soon</span>
-            </Button>
-          </div>
-        </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="justify-center gap-2"
+                  disabled
+                  title="Coming soon"
+                >
+                  <AppleIcon /> Apple
+                  <span className="text-3xs font-normal text-muted-foreground">soon</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="justify-center gap-2"
+                  disabled
+                  title="Coming soon"
+                >
+                  <FacebookIcon /> Facebook
+                  <span className="text-3xs font-normal text-muted-foreground">soon</span>
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {alert && (

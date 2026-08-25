@@ -119,14 +119,20 @@ function revokedAnywhere(): Set<string> {
 
 describe("no trigger function is executable by a signed-in user", () => {
   it("finds the trigger functions rather than passing on an empty set", () => {
-    // Thirty-five: the thirty-four row-trigger functions plus the one event
-    // trigger function, `rls_auto_enable`. The same thirty-five the catalog
+    // Thirty-six: the thirty-five row-trigger functions plus the one event
+    // trigger function, `rls_auto_enable`. The same thirty-six the catalog
     // holds — unusually, this repo creates every one of them in a tracked
     // migration, so the replay and the database agree with nothing left over.
     // (Not true of policies or of every function: the 2026-07-09 consolidated
     // bootstrap left other objects under names the filenames do not match.)
     // A parser that quietly stopped matching would report zero and look green.
-    expect(triggerFunctions().size).toBe(35);
+    //
+    // 35 -> 36 on 2026-08-25: visits_guard_privileged_columns, which stops a
+    // technician repointing their own visit at another customer. It carries
+    // its own REVOKE, so the durable rule below — "leaves no trigger function
+    // this directory creates still open" — passed without being touched. This
+    // number is the deliberate speed bump that makes you say so.
+    expect(triggerFunctions().size).toBe(36);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

@@ -22,9 +22,19 @@ import {
 
 export type BillingInterval = "month" | "year";
 
+// Whole dollars for plan prices, which is what this was for — but NOT at the
+// cost of printing a real price as $0. maximumFractionDigits: 0 rendered the
+// 10c per-action price as "$0", directly above the Payment Element, under copy
+// reading "actions past that are $0 each". 1,200 actions is $120.00.
+// So: no decimals when the amount is whole dollars, two when it is not.
 function money(cents: number | null | undefined) {
   if (cents == null) return "-";
-  return `$${(cents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  const dollars = cents / 100;
+  const whole = Number.isInteger(dollars);
+  return `$${dollars.toLocaleString(undefined, {
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: whole ? 0 : 2,
+  })}`;
 }
 
 // Up to two decimals, for effective per-month amounts like $82.50.
@@ -94,7 +104,8 @@ export function PlanPicker({
   }, [currentInterval, touched]);
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading plans…</p>;
-  if (!plans.length) return <p className="text-sm text-muted-foreground">No plans available yet.</p>;
+  if (!plans.length)
+    return <p className="text-sm text-muted-foreground">No plans available yet.</p>;
 
   const busy = !!selecting || !!switchingPlanId;
   const anyAnnual = plans.some((p) => p.annual_price_cents != null);
@@ -208,7 +219,9 @@ export function PlanPicker({
                   ? ` · ${money(p.ai_overage_cents_per_action)}/extra action`
                   : ""}
               </p>
-              {p.description && <p className="mt-2 text-sm text-muted-foreground">{p.description}</p>}
+              {p.description && (
+                <p className="mt-2 text-sm text-muted-foreground">{p.description}</p>
+              )}
               {features.length > 0 && (
                 <ul className="mt-3 space-y-1.5 text-sm">
                   {features.slice(0, 6).map((f, i) => (
@@ -324,7 +337,10 @@ export function EmbeddedPlanCheckout({
         seatOverageCents: r.seatOverageCents ?? null,
       });
     },
-    onError: (e: Error) => { setError(e.message); toast.error(e.message); },
+    onError: (e: Error) => {
+      setError(e.message);
+      toast.error(e.message);
+    },
   });
 
   // Kick off once per chosen plan + interval.
@@ -339,7 +355,9 @@ export function EmbeddedPlanCheckout({
     return (
       <div className="space-y-3 rounded-lg border bg-card p-4">
         <p className="text-sm text-destructive">{error}</p>
-        <Button variant="outline" size="sm" onClick={onCancel}>Back to plans</Button>
+        <Button variant="outline" size="sm" onClick={onCancel}>
+          Back to plans
+        </Button>
       </div>
     );
   }
@@ -377,8 +395,8 @@ export function EmbeddedPlanCheckout({
               {session.aiActionsIncluded != null
                 ? `the first ${session.includedSeats}`
                 : `${session.includedSeats} employees; each extra`}{" "}
-              {session.aiActionsIncluded != null ? "are" : "is"}{" "}
-              {money(session.seatOverageCents)} each a month.
+              {session.aiActionsIncluded != null ? "are" : "is"} {money(session.seatOverageCents)}{" "}
+              each a month.
             </>
           ) : null}{" "}
           Both are billed on your next invoice. Cancel anytime in Settings → Plan &amp; billing.

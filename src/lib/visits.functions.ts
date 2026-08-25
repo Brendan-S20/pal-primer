@@ -86,7 +86,6 @@ export const getVisitDetail = createServerFn({ method: "GET" })
       .eq("property_id", (v as any).property_id)
       .order("name");
 
-
     // last 5 visits for this client
     const { data: history } = await supabase
       .from("visits")
@@ -99,15 +98,15 @@ export const getVisitDetail = createServerFn({ method: "GET" })
     return { visit: v, dogs: dogs ?? [], history: history ?? [] };
   });
 
-
-
 export const listStaff = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
     const { data, error } = await (supabase.from("staff") as any)
-      .select("id, display_name, role, active, is_field_tech, routing_available, start_latitude, start_longitude, start_address, end_latitude, end_longitude, end_address")
+      .select(
+        "id, display_name, role, active, is_field_tech, routing_available, start_latitude, start_longitude, start_address, end_latitude, end_longitude, end_address",
+      )
       .eq("organization_id", orgId)
       .eq("active", true)
       .order("display_name");
@@ -179,7 +178,8 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
       .eq("id", data.clientId)
       .single();
     if (cErr) throw new Error(cErr.message);
-    if (client.organization_id !== orgId) throw new Error("That client is not in your organization");
+    if (client.organization_id !== orgId)
+      throw new Error("That client is not in your organization");
 
     const { data: prop, error: pErr } = await supabase
       .from("properties")
@@ -193,7 +193,8 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
     // subscriptions_account_shape_chk: residential needs dog_count, commercial
     // needs unit_count, and exactly one of them. Getting this wrong fails at
     // the constraint with a message no office manager could act on.
-    const accountType = (client.account_type as string) === "commercial" ? "commercial" : "residential";
+    const accountType =
+      (client.account_type as string) === "commercial" ? "commercial" : "residential";
     const dogCount =
       accountType === "residential"
         ? await supabase
@@ -394,7 +395,11 @@ export const reassignVisit = createServerFn({ method: "POST" })
           .eq("id", data.visitId)
           .single(),
         data.staffId
-          ? context.supabase.from("staff").select("display_name").eq("id", data.staffId).maybeSingle()
+          ? context.supabase
+              .from("staff")
+              .select("display_name")
+              .eq("id", data.staffId)
+              .maybeSingle()
           : Promise.resolve({ data: null } as any),
       ]);
       if (v) {
@@ -417,11 +422,13 @@ export const reassignVisit = createServerFn({ method: "POST" })
 export const reorderRoute = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({
-      staffId: z.string().uuid(),
-      day: z.string(),
-      orderedIds: z.array(z.string().uuid()),
-    }).parse(d),
+    z
+      .object({
+        staffId: z.string().uuid(),
+        day: z.string(),
+        orderedIds: z.array(z.string().uuid()),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { data: count, error } = await context.supabase.rpc("reorder_route", {
@@ -451,35 +458,37 @@ export const getDispatchSettings = createServerFn({ method: "GET" })
 export const updateDispatchSettings = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({
-      workday_start: z.string().optional(),
-      workday_end: z.string().optional(),
-      avg_speed_kmh: z.number().int().min(5).max(120).optional(),
-      traffic_profile: z.enum(["light", "normal", "heavy"]).optional(),
-      max_drive_minutes: z.number().int().min(15).max(1440).optional(),
-      // Days the business operates (0=Sun..6=Sat). Visit generation shifts
-      // dates off non-working days unless a subscription carries explicit
-      // preferred weekdays.
-      work_days: z.array(z.number().int().min(0).max(6)).min(1).max(7).optional(),
-      // How far ahead the nightly job keeps the schedule filled. Same bounds as
-      // the column CHECK and the RPC — three places, one range, because a
-      // number that passes here and fails in the database is a 500 where a
-      // sentence belonged.
-      auto_generate_days_ahead: z.number().int().min(1).max(365).optional(),
-      notify_schedule_horizon: z.boolean().optional(),
-      // Anchors route windows/ETAs at the org's local workday start (B6).
-      timezone: z
-        .string()
-        .refine((tz) => {
-          try {
-            new Intl.DateTimeFormat("en-US", { timeZone: tz });
-            return true;
-          } catch {
-            return false;
-          }
-        }, "Enter a valid timezone")
-        .optional(),
-    }).parse(d),
+    z
+      .object({
+        workday_start: z.string().optional(),
+        workday_end: z.string().optional(),
+        avg_speed_kmh: z.number().int().min(5).max(120).optional(),
+        traffic_profile: z.enum(["light", "normal", "heavy"]).optional(),
+        max_drive_minutes: z.number().int().min(15).max(1440).optional(),
+        // Days the business operates (0=Sun..6=Sat). Visit generation shifts
+        // dates off non-working days unless a subscription carries explicit
+        // preferred weekdays.
+        work_days: z.array(z.number().int().min(0).max(6)).min(1).max(7).optional(),
+        // How far ahead the nightly job keeps the schedule filled. Same bounds as
+        // the column CHECK and the RPC — three places, one range, because a
+        // number that passes here and fails in the database is a 500 where a
+        // sentence belonged.
+        auto_generate_days_ahead: z.number().int().min(1).max(365).optional(),
+        notify_schedule_horizon: z.boolean().optional(),
+        // Anchors route windows/ETAs at the org's local workday start (B6).
+        timezone: z
+          .string()
+          .refine((tz) => {
+            try {
+              new Intl.DateTimeFormat("en-US", { timeZone: tz });
+              return true;
+            } catch {
+              return false;
+            }
+          }, "Enter a valid timezone")
+          .optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     // Dispatch settings are org settings — gate like the rest of Settings.
@@ -505,7 +514,6 @@ export const updateDispatchSettings = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-
 /** Permission-gated timestamp correction from the visit detail drawer (QA
  * follow-up 2.3): requires a reason and lands on the Activity timeline with
  * before/after values. */
@@ -519,10 +527,9 @@ export const correctVisitTimestamps = createServerFn({ method: "POST" })
         completedAt: z.string().datetime({ offset: true }).nullable(),
         reason: z.string().min(1).max(300),
       })
-      .refine(
-        (v) => !v.startedAt || !v.completedAt || v.completedAt >= v.startedAt,
-        { message: "Completion can't be before the start" },
-      )
+      .refine((v) => !v.startedAt || !v.completedAt || v.completedAt >= v.startedAt, {
+        message: "Completion can't be before the start",
+      })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
@@ -851,11 +858,26 @@ export const applyOptimize = createServerFn({ method: "POST" })
     z
       .object({
         staffIds: z.array(z.string().uuid()).min(1).max(50),
-        from: z.string(),
-        to: z.string(),
+        // Bare z.string() here was a one-request denial of service. The refine
+        // below is a LEXICAL compare, so "zzzz" passed it, and the day loop in
+        // the handler breaks on `iso > data.to` — which "2026-08-27" > "zzzz"
+        // never satisfies. Reproduced: 2,000,001 iterations and 117MB of heap
+        // still climbing, from a single authenticated POST. Shape first, so a
+        // non-date cannot reach the loop at all; the same idiom as
+        // cpa-reports.functions.ts:51 and four other files.
+        from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a YYYY-MM-DD date."),
+        to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a YYYY-MM-DD date."),
         level: z.enum(LEVELS).default("balanced"),
         reassign: z.boolean().default(false),
       })
+      // A well-formed but absurd range is still 2.9M planner calls, so the
+      // span is bounded as well as the shape. A quarter is far past what a
+      // dispatcher plans in one press.
+      .refine(
+        (v) =>
+          (Date.parse(`${v.to}T00:00:00Z`) - Date.parse(`${v.from}T00:00:00Z`)) / 86_400_000 <= 92,
+        { message: "Route at most 92 days at a time.", path: ["to"] },
+      )
       .refine((v) => v.to >= v.from, {
         message: "The end date is before the start date.",
         path: ["to"],
