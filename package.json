@@ -26,7 +26,8 @@
     "check:em-dashes": "node scripts/check-customer-facing-em-dashes.mjs",
     "check:dead-machinery": "node scripts/check-dead-machinery.mjs",
     "check:pwa": "node scripts/check-pwa-output.mjs",
-    "test:viewports:apple": "APPLE_SIZES=1 playwright test"
+    "test:viewports:apple": "APPLE_SIZES=1 playwright test",
+    "check:oauth": "node scripts/check-oauth-providers.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.2",
