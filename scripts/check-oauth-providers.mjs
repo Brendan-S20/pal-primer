@@ -176,6 +176,25 @@ for (const provider of OFFERED) {
 
   const redirectUri = decodeURIComponent(new URL(location).searchParams.get("redirect_uri") ?? "");
 
+  // A Facebook app ACCESS TOKEN is "APPID|APPSECRET", and pasting one into the
+  // Client ID field puts the app secret in a query string -- the browser bar,
+  // history, proxy logs, Referer headers. Found in production on 2026-08-26.
+  // Checked for every provider, because no provider's client id should contain
+  // a secret and the shape is the same wherever it happens.
+  const clientId = new URL(location).searchParams.get("client_id") ?? "";
+  if (clientId.includes("|")) {
+    rows.push({
+      provider,
+      enabled,
+      live,
+      verdict: "BROKEN",
+      detail:
+        `the client_id contains a "|" -- that is an app ACCESS TOKEN (id|secret), not a client id, ` +
+        `so the secret is being sent in the URL. Rotate it, then put only the id in the Client ID field.`,
+    });
+    continue;
+  }
+
   // ── THE HOP THIS SCRIPT ORIGINALLY MISSED ──────────────────────────────
   //
   // The first version of this file read only the BODY and treated any 302 as
@@ -203,13 +222,39 @@ for (const provider of OFFERED) {
 
   // Each provider announces a misconfiguration differently, so each is named
   // rather than guessed at from the status code.
+  // ── THE THIRD WAY A PROVIDER SAYS NO ─────────────────────────────────
+  //
+  // Three providers, three different refusals, and this script learned each
+  // one the hard way:
+  //
+  //   Supabase   400 with a JSON body          caught from the start
+  //   Google     302 to an error URL, reason base64'd in a query parameter
+  //   Facebook   200, rendering the error INSIDE the page
+  //
+  // The last one is why Facebook passed as OK while its Client ID field held
+  // an app access token (APPID|APPSECRET) and Facebook was answering
+  // "Invalid App ID" -- and while that secret was going out in a query string
+  // on every attempt. A checker that only reads status codes and redirects
+  // cannot see an error page that returns 200.
+  const bodyErrors = [
+    "invalid app id",
+    "url blocked",
+    "feature unavailable",
+    "app not set up",
+    "app is still in development",
+    "isn't available",
+    "cannot load url",
+  ];
+  const bodySaysNo = bodyErrors.find((m) => body.toLowerCase().includes(m));
+
   const mismatch =
     haystack.includes("redirect_uri_mismatch") ||
     haystack.includes("invalid redirect_uri") ||
     haystack.includes("url blocked") ||                 // Meta
     haystack.includes("invalid_client") ||
     haystack.includes("invalid_request") ||
-    /\/oauth\/error|\/signin\/oauth\/error|[?&]error=/.test(nextLocation);
+    /\/oauth\/error|\/signin\/oauth\/error|[?&]error=/.test(nextLocation) ||
+    Boolean(bodySaysNo);
 
   if (mismatch) {
     rows.push({
@@ -218,7 +263,9 @@ for (const provider of OFFERED) {
       live,
       verdict: "BROKEN",
       detail:
-        `the provider rejects our redirect_uri — register ${redirectUri} with ${provider}` +
+        (bodySaysNo
+          ? `the provider's own page says "${bodySaysNo}" — it answered 200 and put the refusal in the body`
+          : `the provider rejects our redirect_uri — register ${redirectUri} with ${provider}`) +
         (decodedError ? `\n${" ".repeat(32)}${decodedError.slice(0, 120)}` : ""),
     });
   } else if (providerRes.status >= 400) {

@@ -413,36 +413,49 @@ function AuthPage() {
               >
                 <GoogleIcon /> Google
               </Button>
-              {/* Apple is switched ON in Supabase and still cannot work:
-                  {"error_code":"validation_failed",
-                   "msg":"Unsupported provider: missing OAuth secret"}
-                The provider toggle is not the credential. Apple's client secret
-                is a JWT built from a .p8 key, a Team ID and a Key ID, and the
-                Services ID — NOT the App ID — is the client id. Facebook has no
-                app at all yet. Both stay disabled as a teaser rather than wired
-                to a broken flow (Brendan's call); docs/oauth-providers.md has
-                the exact console steps, and check:oauth reports when they are
-                genuinely done. */}
+              {/* ── APPLE AND FACEBOOK, LIVE 2026-08-26 ──────────────────
+                Both verified by following the redirect to the provider and
+                reading what came back, not by trusting a toggle:
+
+                  Apple     appleid.apple.com/auth/authorize renders the real
+                            "Sign in to Apple Account" page, and the client_id
+                            is consulting.thenorth.houndstack.web -- the
+                            SERVICES ID. Sending the App ID there is the usual
+                            first failure and Apple rejects it with
+                            invalid_client and no explanation.
+                  Facebook  facebook.com/dialog/oauth renders the real login.
+
+                FACEBOOK WAS BROKEN IN A WAY THE CHECKER MISSED, and it is
+                worth knowing because it was a secret leak rather than an
+                outage. Its Client IDs field held an app ACCESS TOKEN --
+                "APPID|APPSECRET" -- so the app secret went out in a query
+                string on every attempt, and Facebook answered "Invalid App ID"
+                inside a 200 page. check:oauth passed it, because it only knew
+                how to read a 4xx and a redirect-to-error. It now reads the
+                body and refuses any client_id containing a pipe.
+
+                STILL UNVERIFIABLE FROM HERE: whether the Meta app is in
+                Development or Live. In Development it works for anyone with a
+                role on the app and fails for every real buyer, and the two are
+                indistinguishable to an unauthenticated request. */}
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   type="button"
                   variant="outline"
                   className="justify-center gap-2"
-                  disabled
-                  title="Coming soon"
+                  onClick={() => oauthSignIn("apple")}
+                  disabled={loading}
                 >
                   <AppleIcon /> Apple
-                  <span className="text-3xs font-normal text-muted-foreground">soon</span>
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
                   className="justify-center gap-2"
-                  disabled
-                  title="Coming soon"
+                  onClick={() => oauthSignIn("facebook")}
+                  disabled={loading}
                 >
                   <FacebookIcon /> Facebook
-                  <span className="text-3xs font-normal text-muted-foreground">soon</span>
                 </Button>
               </div>
             </div>
