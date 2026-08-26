@@ -37,9 +37,14 @@ const OSRM_URL = process.env.OSRM_URL ?? "https://router.project-osrm.org";
 const USER_AGENT =
   "HoundStack/1.0 (pet-waste operations app; contact: support@houndstack.com)";
 
-/** OSRM's demo table service caps the matrix. Well above a day's stops for the
- *  businesses this is for, and the cap is checked rather than assumed. */
-const MAX_POINTS = 90;
+/** How many points one Table request may carry.
+ *
+ *  The public demo server caps this at 100, so 90 is the safe default. A
+ *  self-hosted osrm-routed sets its own limit with --max-table-size, and
+ *  infra/osrm/docker-compose.yml sets 200 -- so this is an env var rather than
+ *  a constant, and raising the server without raising this would leave the
+ *  extra capacity unused and silent. */
+const MAX_POINTS = Number(process.env.OSRM_MAX_TABLE ?? 90);
 
 type Point = { lat: number; lon: number };
 

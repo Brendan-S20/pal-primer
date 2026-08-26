@@ -1,0 +1,38 @@
+# Self-hosted OSRM, one container per region.
+#
+# `OSRM_URL` in the app points at this. Nothing else in the codebase knows or
+# cares which routing engine answers.
+#
+# REGION is the Geofabrik basename, e.g. `new-york`, `delaware`, `california`.
+# Build the graph first with ./build.sh <region>, then bring this up.
+services:
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    command: >
+      osrm-routed --algorithm mld
+      --max-table-size 200
+      /data/${REGION:?set REGION, e.g. REGION=new-york}.osrm
+    volumes:
+      - ./data:/data:ro
+    ports:
+      - "${OSRM_PORT:-5000}:5000"
+    restart: unless-stopped
+    healthcheck:
+      # A container that is up but has no graph loaded answers 400, not 200,
+      # and "up" is not the question worth asking.
+      test:
+        - CMD-SHELL
+        - >-
+          wget -qO- 'http://localhost:5000/route/v1/driving/-75.5466,39.7459;-75.5277,39.7391'
+          | grep -q '"code":"Ok"' || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          # Serving needs far less than preprocessing. Measured on Delaware:
+          # extract peaked at 602 MB, serving sits well under 1 GB. A state the
+          # size of New York wants a few GB; see README for the numbers.
+          memory: ${OSRM_MEM:-4g}

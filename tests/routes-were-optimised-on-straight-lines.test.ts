@@ -97,3 +97,47 @@ describe("the fetcher is a cache warm, not a dependency", () => {
     expect(server).toMatch(/not for production use/);
   });
 });
+
+// ── SELF-HOSTING ─────────────────────────────────────────────────────────
+//
+// Chosen over the public demo server, and the reasons are operational rather
+// than ideological: no third-party on the dispatch path, a matrix cap we set,
+// and customer home addresses not leaving our infrastructure.
+describe("the routing engine can be ours", () => {
+  const compose = read("infra/osrm/docker-compose.yml");
+  const build = read("infra/osrm/build.sh");
+  const readme = read("infra/osrm/README.md");
+  const server = read("src/lib/road-legs.server.ts");
+
+  it("the app points at it with one variable", () => {
+    expect(server).toMatch(/process\.env\.OSRM_URL/);
+  });
+
+  it("the matrix cap is configurable, and the two ends agree", () => {
+    // --max-table-size on the server and OSRM_MAX_TABLE in the app are the
+    // same number seen from two sides. Raising one without the other either
+    // wastes the capacity or asks for more than the server allows.
+    expect(compose).toMatch(/--max-table-size/);
+    expect(server).toMatch(/process\.env\.OSRM_MAX_TABLE/);
+  });
+
+  it("the healthcheck asks for a route, not a port", () => {
+    // A container with no graph loaded is up, listening, and answers 400.
+    expect(compose).toMatch(/route\/v1\/driving/);
+    expect(compose).toMatch(/"code":"Ok"/);
+  });
+
+  it("uses MLD, so a monthly map refresh is a cron job", () => {
+    expect(compose).toMatch(/--algorithm mld/);
+    expect(build).toMatch(/osrm-partition/);
+    expect(build).toMatch(/osrm-customize/);
+  });
+
+  it("warns against starting with the whole country", () => {
+    // Measured ratios: the graph is ~8x the PBF on disk and preprocessing
+    // peaks near 30x it in RAM. The US is 11-13 GB of PBF, and a box that
+    // cannot do it gets OOM-killed hours in rather than failing politely.
+    expect(readme).toMatch(/Do NOT start with the whole United States/);
+    expect(readme).toMatch(/Start with the states you actually serve/);
+  });
+});
