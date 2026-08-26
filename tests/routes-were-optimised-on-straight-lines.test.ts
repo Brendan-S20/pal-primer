@@ -133,12 +133,20 @@ describe("the routing engine can be ours", () => {
     expect(build).toMatch(/osrm-customize/);
   });
 
-  it("warns against starting with the whole country", () => {
-    // Measured ratios: the graph is ~8x the PBF on disk and preprocessing
-    // peaks near 30x it in RAM. The US is 11-13 GB of PBF, and a box that
-    // cannot do it gets OOM-killed hours in rather than failing politely.
-    expect(readme).toMatch(/Do NOT start with the whole United States/);
-    expect(readme).toMatch(/Start with the states you actually serve/);
+  it("documents national coverage without a national graph", () => {
+    // CHANGED once tenants turned out to be nationwide. The advice used to be
+    // "start with the states you serve", which stops being useful when you
+    // cannot know which those are. Four Geofabrik sub-extracts cover the
+    // country and sum to 10.98 GB against the national extract's 11.27, so
+    // each builds on a 32-64 GB box rather than one needing ~124 GB.
+    expect(readme).toMatch(/National coverage without a national graph/);
+    expect(readme).toMatch(/us-northeast/);
+    expect(readme).toMatch(/Partial coverage is a supported state/);
+  });
+
+  it("records the confident-zero failure, because it is the one that bites", () => {
+    expect(readme).toMatch(/durations: \[\[0,0\],\[0,0\]\]/);
+    expect(readme).toMatch(/Cross Road/);
   });
 });
 
@@ -180,5 +188,47 @@ describe("cached legs expire, and are pruned when the customer goes", () => {
   it("neither function is reachable by a tenant", () => {
     expect(expiry).toMatch(/FROM PUBLIC, anon, authenticated/);
     expect(expiry).toMatch(/executable by anon or authenticated/);
+  });
+});
+
+// ── NATIONAL COVERAGE WITHOUT A NATIONAL GRAPH ───────────────────────────
+//
+// Tenants can be anywhere in the US, so coverage cannot be a hand-built list
+// of states. Geofabrik's four sub-extracts cover the country and sum to about
+// what the national one weighs -- 1.67 + 2.32 + 3.83 + 3.16 against 11.27 GB --
+// but each builds on a 32-64 GB box rather than one needing ~124 GB.
+//
+// The hazard that makes this safe or not: OSRM does NOT refuse a coordinate
+// outside its extract. Asking the Delaware graph about Los Angeles returns
+// code "Ok", both points snapped 3,849 km to a lane called "Cross Road", and
+// every duration ZERO. A planner reading that concludes every stop is next
+// door to every other, and acts on it. Not an error, not a bad number -- a
+// confident zero.
+describe("a coordinate outside the graph cannot poison the plan", () => {
+  const server = read("src/lib/road-legs.server.ts");
+
+  it("checks how far each point had to be snapped", () => {
+    expect(server).toMatch(/SNAP_LIMIT_M/);
+    expect(server).toMatch(/json\.sources/);
+  });
+
+  it("drops only the legs that touch a bad point", () => {
+    // Partial coverage is a supported state: one stop off the edge of the
+    // extract should cost that stop's legs, not the whole day's.
+    expect(server).toMatch(/if \(bad\.has\(i\) \|\| bad\.has\(j\)\) continue;/);
+  });
+
+  it("writes nothing at all when every point is outside", () => {
+    // Almost certainly the wrong region. Writing any of it is writing fiction.
+    expect(server).toMatch(/if \(bad\.size === points\.length\) return 0;/);
+  });
+
+  it("says which endpoint it asked, because that is the misconfiguration", () => {
+    expect(server).toMatch(/endpoint \$\{base\}/);
+  });
+
+  it("picks a regional endpoint, and falls back rather than guessing", () => {
+    expect(server).toMatch(/OSRM_ENDPOINTS/);
+    expect(server).toMatch(/map\[region\] \?\? map\.default \?\? OSRM_URL/);
   });
 });

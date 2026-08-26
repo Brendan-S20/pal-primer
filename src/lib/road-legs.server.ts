@@ -34,6 +34,34 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const OSRM_URL = process.env.OSRM_URL ?? "https://router.project-osrm.org";
+
+/** Region endpoints, for national coverage without a national graph.
+ *
+ *  Geofabrik's four US sub-extracts cover the whole country and sum to about
+ *  what the national one weighs -- 1.67, 2.32, 3.83 and 3.16 GB against 11.27 --
+ *  but each builds on a 32-64 GB box instead of one needing ~124 GB.
+ *
+ *  OSRM_ENDPOINTS is JSON: {"northeast":"http://ne:5000","south":"http://s:5000"}
+ *  Anything unconfigured falls through to OSRM_URL, and anything unmatched
+ *  falls through to the straight-line estimate, so partial coverage is a
+ *  supported state rather than a broken one. That matters while regions are
+ *  added as tenants appear in them. */
+function endpointFor(lat: number, lon: number): string {
+  let map: Record<string, string> = {};
+  try {
+    map = JSON.parse(process.env.OSRM_ENDPOINTS ?? "{}");
+  } catch {
+    console.error("[road-legs] OSRM_ENDPOINTS is not valid JSON; using OSRM_URL");
+  }
+  if (Object.keys(map).length === 0) return OSRM_URL;
+
+  // Coarse, and deliberately so: it only has to pick a candidate, because
+  // every answer is then checked against how far each point had to be snapped.
+  // A wrong guess costs a wasted request, not a wrong route.
+  const region =
+    lon < -104 ? "west" : lon < -87 ? (lat < 36.5 ? "south" : "midwest") : lat < 39.5 ? "south" : "northeast";
+  return map[region] ?? map.default ?? OSRM_URL;
+}
 const USER_AGENT =
   "HoundStack/1.0 (pet-waste operations app; contact: support@houndstack.com)";
 
@@ -105,7 +133,8 @@ export async function refreshRoadLegs(orgId: string, day: string): Promise<numbe
   // OSRM takes lon,lat. Getting this backwards routes through the Indian Ocean
   // and returns plausible-looking numbers, so it is written once, here.
   const coords = points.map((p) => `${p.lon},${p.lat}`).join(";");
-  const url = `${OSRM_URL}/table/v1/driving/${coords}?annotations=duration,distance`;
+  const base = endpointFor(points[0].lat, points[0].lon);
+  const url = `${base}/table/v1/driving/${coords}?annotations=duration,distance`;
 
   let json: any;
   try {
@@ -128,6 +157,34 @@ export async function refreshRoadLegs(orgId: string, day: string): Promise<numbe
     return 0;
   }
 
+  // ── THE GUARD THAT MAKES A WRONG GRAPH HARMLESS ────────────────────────
+  //
+  // OSRM does not refuse a coordinate outside its extract. It snaps to the
+  // nearest road it HAS and answers Ok. Asking a Delaware graph about Los
+  // Angeles returns code "Ok", both points snapped 3,849 km to a lane called
+  // "Cross Road", and every duration ZERO -- which the planner would read as
+  // "every stop is next door to every other" and act on.
+  //
+  // That is the worst possible failure: not an error, not a bad number, but a
+  // confident zero. So every point is checked against how far it had to be
+  // snapped, and any leg touching a bad one is dropped to the estimate.
+  const SNAP_LIMIT_M = 2000; // generous: a rural driveway can be a long way off a mapped road
+  const snapped = [...(json.sources ?? []), ...(json.destinations ?? [])];
+  const worst = snapped.reduce((m: number, p: any) => Math.max(m, p?.distance ?? 0), 0);
+  const bad = new Set<number>();
+  (json.sources ?? []).forEach((p: any, i: number) => {
+    if ((p?.distance ?? 0) > SNAP_LIMIT_M) bad.add(i);
+  });
+  if (bad.size) {
+    console.error(
+      `[road-legs] ${bad.size}/${points.length} points for ${orgId} on ${day} are outside this graph ` +
+        `(worst snap ${Math.round(worst)} m, endpoint ${base}); those legs stay on estimates`,
+    );
+  }
+  // Nothing in this extract at all: almost certainly the wrong region, and
+  // writing any of it would be writing fiction.
+  if (bad.size === points.length) return 0;
+
   const rows: any[] = [];
   for (let i = 0; i < points.length; i++) {
     for (let j = 0; j < points.length; j++) {
@@ -138,6 +195,7 @@ export async function refreshRoadLegs(orgId: string, day: string): Promise<numbe
       // estimate in charge for that leg, which is the right answer for two
       // points with no road between them.
       if (typeof meters !== "number" || typeof seconds !== "number") continue;
+      if (bad.has(i) || bad.has(j)) continue;
       rows.push({
         organization_id: orgId,
         from_lat: points[i].lat,

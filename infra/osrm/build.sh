@@ -10,10 +10,17 @@
 # happily start it and then be killed by the OOM reaper three hours in.
 set -euo pipefail
 
-REGION="${1:?usage: ./build.sh <geofabrik-region>, e.g. new-york}"
+REGION="${1:?usage: ./build.sh <region>, e.g. new-york or north-america/us-northeast}"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/data"
 IMAGE="ghcr.io/project-osrm/osrm-backend:latest"
-URL="https://download.geofabrik.de/north-america/us/${REGION}-latest.osm.pbf"
+# Accepts either a US state basename (new-york) or a full Geofabrik path
+# (north-america/us-northeast), because the four US sub-extracts are what give
+# national coverage and they do not live under us/.
+case "$REGION" in
+  */*) PATH_PART="$REGION"; REGION="$(basename "$REGION")" ;;
+  *)   PATH_PART="north-america/us/$REGION" ;;
+esac
+URL="https://download.geofabrik.de/${PATH_PART}-latest.osm.pbf"
 
 mkdir -p "$DIR"
 cd "$DIR"

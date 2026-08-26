@@ -56,21 +56,57 @@ On-disk graph is about **8x the PBF**.
 **A whole state fits comfortably in 8 GB and builds in under five minutes.**
 That is the number that matters, because it is the unit this product routes in.
 
-## Do NOT start with the whole United States
+## National coverage without a national graph
 
-`north-america/us` is roughly 11-13 GB of PBF. Even at the kinder 11x ratio
-that is well over 100 GB of RAM for preprocessing, and a box that cannot do it
-does not fail politely -- `osrm-extract` is killed by the OOM reaper deep into
-the run, leaving a part-written graph.
+Tenants can be anywhere, so coverage cannot be a hand-picked list of states.
+Geofabrik's four US sub-extracts cover the whole country:
 
-**Start with the states you actually serve.** A pet-waste round is metro-local:
-no technician is routed from Buffalo to San Diego, so a national graph buys
-nothing for the shape of this business. One container per state is cheaper,
-faster to refresh, and fails in one state at a time.
+| extract | PBF | est. build RAM (11x) | est. disk (8x) |
+|---|---|---|---|
+| `us-northeast` | 1.67 GB | ~18 GB | ~13 GB |
+| `us-midwest` | 2.32 GB | ~26 GB | ~19 GB |
+| `us-south` | 3.83 GB | ~42 GB | ~31 GB |
+| `us-west` | 3.16 GB | ~35 GB | ~25 GB |
+| **`us` (whole)** | **11.27 GB** | **~124 GB** | **~90 GB** |
 
-If national coverage is genuinely wanted later, preprocess **once** on a large
-temporary instance and serve the finished graph from a small one. Serving needs
-far less memory than building.
+The four sum to 10.98 GB, so they cover the same ground as the national extract
+while each builds on a 32-64 GB box instead of one needing ~124 GB. Serving
+needs far less than building, so one machine can host several.
+
+```
+./build.sh --region north-america/us-northeast
+OSRM_ENDPOINTS='{"northeast":"http://ne:5000","south":"http://south:5000"}'
+```
+
+Anything unconfigured falls back to `OSRM_URL`, and anything unmatched falls
+back to the straight-line estimate. **Partial coverage is a supported state**,
+which is what lets regions be added as tenants appear in them rather than all
+at once.
+
+### The failure this design has to survive
+
+OSRM does not refuse a coordinate outside its extract. Ask the Delaware graph
+about Los Angeles and it answers:
+
+```
+code: Ok
+source 0: snapped 3849382 m away -> "Cross Road"
+durations: [[0,0],[0,0]]
+```
+
+`Ok`, and every duration **zero**. A planner reading that concludes every stop
+is next door to every other and routes accordingly. Not an error, not a bad
+number, a confident zero -- the worst of the three.
+
+So `refreshRoadLegs` checks how far each point had to be snapped and drops any
+leg touching one further than 2 km. A wrong region therefore costs a wasted
+request and a log line, not a wrong route. That guard is why the coarse
+longitude/latitude region split is acceptable: it only has to pick a candidate,
+and being wrong is safe.
+
+If national coverage in ONE graph is ever genuinely wanted, preprocess once on
+a large temporary instance and serve the finished graph from a smaller one.
+Serving needs far less memory than building.
 
 ## The cache does almost all of the work
 
