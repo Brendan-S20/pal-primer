@@ -71,9 +71,26 @@ In the Apple Developer portal:
    - Return URLs: `https://api.houndstack.com/auth/v1/callback`
 4. **Keys → +** → enable Sign in with Apple → download the `.p8`. **It
    downloads once and never again.** Note the Key ID and your Team ID.
-5. Supabase Dashboard → Authentication → Providers → Apple:
-   - Client ID = the **Services ID** from step 2
-   - Secret Key = the `.p8` contents, plus Team ID and Key ID
+5. Generate the client secret. **This is the step that stalls people**, and it
+   is why Supabase says `missing OAuth secret` while the toggle reads enabled:
+   Apple gives you a `.p8` PRIVATE KEY, and Supabase wants an **ES256 JWT
+   signed with it**. Apple never shows you that JWT, because it does not exist
+   until you make one:
+
+   ```
+   npm run apple:secret -- \
+     --p8 ./AuthKey_ABC123DEFG.p8 \
+     --team-id 1A2B3C4D5E \
+     --key-id ABC123DEFG \
+     --services-id consulting.thenorth.houndstack.web
+   ```
+
+   Nothing is transmitted; the key is signed with locally and never leaves the
+   machine. The script prints the token and the date it dies.
+
+6. Supabase Dashboard → Authentication → Providers → Apple:
+   - Client IDs = the **Services ID** from step 2
+   - Secret Key = the JWT from step 5
 
 Apple's client secret is a JWT that **expires every 6 months**. Whoever sets
 this up should put a calendar reminder in, because it fails silently — and it
