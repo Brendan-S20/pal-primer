@@ -366,7 +366,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
   const [saving, setSaving] = useState(false);
 
   const routingMut = useMutation({
-    mutationFn: (v: { staffId: string; isFieldTech?: boolean; routingAvailable?: boolean; dailyCapacityMinutes?: number | null }) =>
+    mutationFn: (v: { staffId: string; isFieldTech?: boolean; routingAvailable?: boolean }) =>
       routingFn({ data: v }),
     onSuccess: () => {
       toast.success("Routing updated");
@@ -506,22 +506,17 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
             </span>
           </span>
         </label>
-        <label className="flex items-center gap-2 text-sm">
-          Daily capacity (min)
-          <input
-            type="number"
-            min={0}
-            step={30}
-            defaultValue={staff.daily_capacity_minutes ?? ""}
-            placeholder="workday"
-            disabled={!canEdit}
-            className="w-24 rounded border bg-background px-2 py-1 text-sm"
-            onBlur={(e) => {
-              const v = e.target.value.trim();
-              routingMut.mutate({ staffId: staff.id, dailyCapacityMinutes: v ? Number(v) : null });
-            }}
-          />
-        </label>
+        {/* "Daily capacity (min)" was here, and it was removed on 2026-08-26.
+            Nobody had ever set it: 0 of 11 staff rows, across 0 of 4
+            organizations. The planner reads COALESCE(daily_capacity_minutes,
+            480), so every technician has always been sized at a flat eight
+            hours and the field changed nothing for anyone.
+
+            It asked for a number in MINUTES, next to two address fields and
+            two tickboxes, from somebody running two trucks. The honest answer
+            for an unused control that expensive to understand is to take it
+            away rather than explain it better. If per-person capacity is
+            wanted later it should be a workday in hours, not 480. */}
       </div>
       {canEdit && (
         <div className="sm:col-span-2 flex justify-end">

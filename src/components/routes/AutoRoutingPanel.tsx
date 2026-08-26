@@ -5,7 +5,7 @@
  *
  * It was correct and unusable. Opening it inserted a full-width block between
  * the toolbar and the board, so the thing you were routing slid off-screen at
- * the moment you started routing it. Two date inputs, three level buttons with
+ * the moment you started routing it. Two date inputs, a level control with
  * a paragraph of hint text, a chip per tech, a bordered switch with two lines
  * of explanation, two buttons and a result table — all expanded at once,
  * roughly 500px tall before the preview even ran. The verdict was fair: it
@@ -29,7 +29,8 @@
  *
  * QA, 2026-08-19: "Also remove the preview, let's just have apply." So the
  * card no longer has a preview STEP, a result box, or an Apply that waits for
- * one. You pick the days, the people and the level, and you press Apply.
+ * one. You pick the days and the people, and you press Apply. There is no
+ * level to pick any more; see the note on LEVEL below.
  *
  * What the result box used to say is now said afterwards, by the toast, out of
  * `r.forecast` — the same numbers, from the same read-only planner, measured
@@ -54,31 +55,38 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { CalendarDays, Check, ChevronDown, Users, Wand2, X, Zap } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, Users, Wand2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { applyOptimize } from "@/lib/visits.functions";
 
-const LEVELS = [
-  {
-    value: "fast" as const,
-    label: "Fast",
-    hint: "Shortest driving only. Ignores arrival windows and morning/afternoon preferences.",
-  },
-  {
-    value: "balanced" as const,
-    label: "Balanced",
-    hint: "Shortest driving that still respects arrival windows and time-of-day preferences.",
-  },
-  {
-    value: "thorough" as const,
-    label: "Thorough",
-    hint: "Balanced, then a second pass that removes crossings. Slower to compute, best on long days.",
-  },
-];
+// ── THERE IS NO LEVEL TO CHOOSE ANY MORE ────────────────────────────────
+//
+// This was three options: Fast, Balanced, Thorough. Measured on a real day of
+// 21 stops across three technicians:
+//
+//   thorough   519.4 min driving   49.7 km   394 ms
+//   balanced   546.3 min driving   53.1 km   249 ms
+//   fast       546.3 min driving   53.1 km
+//
+// Two things follow, and only one of them is about the numbers.
+//
+// Thorough simply wins. It is a 2-opt pass over a route the others leave as
+// nearest-neighbour, it saved 27 minutes of driving here, and it cost 145 ms
+// against a statement_timeout of 8 seconds. There is no trade being made.
+//
+// And `fast` was never a speed setting. It differs from balanced ONLY where a
+// customer has an arrival window or a morning/afternoon preference, and what
+// it does there is ignore them. That is not a performance option, it is
+// "arrive when the customer asked you not to", and nobody running two trucks
+// would choose it on purpose. It read as harmless because the demo day has
+// zero windows and zero preferences, which is exactly why the three levels
+// measured the same and why the choice looked like a free one.
+//
+// So: always thorough, and the control is gone.
+const LEVEL = "thorough" as const;
 
 const mins = (n: number) => {
   const r = Math.round(n);
@@ -119,7 +127,7 @@ const shortDay = (iso: string) => {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 };
 
-type Section = "dates" | "techs" | "level" | null;
+type Section = "dates" | "techs" | null;
 
 /** applyOptimize's measurement, or null when it could not be taken. */
 type Forecast = Awaited<ReturnType<typeof applyOptimize>>["forecast"];
@@ -173,8 +181,6 @@ export function AutoRoutingPanel({
 
   const [from, setFrom] = useState(day);
   const [to, setTo] = useState(day);
-  const [level, setLevel] = useState<"fast" | "balanced" | "thorough">("balanced");
-  const [reassign, setReassign] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [section, setSection] = useState<Section>(null);
 
@@ -184,10 +190,33 @@ export function AutoRoutingPanel({
   // full names is already wider than a phone.
   const nameOf = (id: string) =>
     String(staff.find((s: any) => s.id === id)?.display_name ?? "Tech").split(" ")[0];
+  // ── WHO HAS NO START ADDRESS, AND WHY IT IS WORTH SAYING ────────────────
+  //
+  // staff_start_point falls back for somebody with no start address, and its
+  // last tier is one of THEIR OWN stops -- so their route begins at their work
+  // and they are charged no travel to reach it. Measured on the demo day: 6.0
+  // minutes to the first stop, against 107.6 for a technician whose real home
+  // address is across the city.
+  //
+  // The consequence is the opposite of what it sounds like. Because their day
+  // costs less on paper, the balancer -- which evens out MEASURED minutes,
+  // drive included -- hands them more of it. Same day: 8 stops for the person
+  // with no address, 6 for the one with the longest commute. Nobody is being
+  // shortchanged by the routing; the plan is simply built on a commute of zero
+  // that does not exist.
+  //
+  // So the notice says what is actually true, and deliberately does NOT
+  // promise a shorter day. Adding the address will usually make that person's
+  // measured day LONGER, because the drive they were already doing finally
+  // appears in the numbers.
+  const noStart = techs.filter(
+    (s: any) => chosen.includes(s.id) && (s.start_latitude == null || s.start_longitude == null),
+  );
+
   const rangeValid = Boolean(from && to && to >= from);
 
   const applyMut = useMutation({
-    mutationFn: () => applyFn({ data: { staffIds: chosen, from, to, level, reassign } }),
+    mutationFn: () => applyFn({ data: { staffIds: chosen, from, to, level: LEVEL, reassign: true } }),
     onSuccess: (r) => {
       // The split is the point, so it is what the toast says. "Re-ordered 20
       // stops" was true both before and after the fix for the bug where all
@@ -201,13 +230,11 @@ export function AutoRoutingPanel({
         // stops" is what a run that touched nothing would otherwise say. The
         // measurement is the only thing that can tell the two apart.
         toast.info("Nothing to route in that range.", {
-          // Names the checkbox without quoting its label verbatim: the label
-          // is matched by position in the-routing-panel-covered-the-thing-it-
-          // was-routing.test.ts with an indexOf, and a second copy of the
-          // exact string up here is found first and reads as the control
-          // having moved above the sections.
+          // There is no checkbox to blame any more, so this says the only two
+          // things that can now be true. It used to name the reassign control,
+          // which was the usual cause and is gone.
           description:
-            "Either those techs have no scheduled stops, or every stop is already assigned and the “move work between techs” box is off.",
+            "Those days have no scheduled stops for the people you picked.",
           duration: 8000,
         });
       } else if (!r.forecast) {
@@ -335,12 +362,6 @@ export function AutoRoutingPanel({
             open={section === "techs"}
             onClick={() => setSection(section === "techs" ? null : "techs")}
           />
-          <Pill
-            icon={Zap}
-            value={LEVELS.find((l) => l.value === level)!.label}
-            open={section === "level"}
-            onClick={() => setSection(section === "level" ? null : "level")}
-          />
         </div>
 
         {section === "dates" && (
@@ -418,45 +439,44 @@ export function AutoRoutingPanel({
           </div>
         )}
 
-        {section === "level" && (
-          <div className="space-y-1 rounded-md border p-2">
-            {LEVELS.map((l) => (
-              <button
-                key={l.value}
-                onClick={() => setLevel(l.value)}
-                className={`flex w-full items-start gap-1.5 rounded p-1.5 text-left ${level === l.value ? "bg-muted" : "hover:bg-muted/60"}`}
-              >
-                <Check
-                  className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${level === l.value ? "text-primary" : "text-transparent"}`}
-                />
-                <span>
-                  <span className="block text-xs font-medium">{l.label}</span>
-                  <span className="block text-2xs leading-snug text-muted-foreground">
-                    {l.hint}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
+{/* ── THE CHECKBOX THAT USED TO BE HERE ─────────────────────────────
+            "Also move work between techs", default off. It was the only
+            control that could move a stop from one person to another, so it
+            was shown rather than hidden, and it was off so that nobody had
+            work taken away by surprise.
 
-        {/* One checkbox, and it stays visible rather than hiding behind a pill:
-            it is the only control here that can move a stop from one person to
-            another, and that is not something to discover after the fact. */}
-        <label className="flex items-start gap-2 pt-0.5 text-2xs">
-          <Checkbox
-            checked={reassign}
-            onCheckedChange={(v) => setReassign(v === true)}
-            className="mt-0.5"
-          />
-          <span>
-            Also move work between techs
-            <span className="block text-muted-foreground">
-              Off, each tech keeps their own stops and is only re-ordered.
-            </span>
-          </span>
-        </label>
+            Off was also why the feature appeared broken. With reassign off the
+            planner considers ONLY unassigned visits, and a day the recurring
+            schedule has already filled has none -- so Apply returned nothing,
+            every time, and explained itself afterwards in a toast.
+
+            It is gone because the consent it was asking for is already given
+            higher up: WHO YOU SELECT IS THE CONSENT. The planner only ever
+            touches visits that are unassigned or already belong to a SELECTED
+            technician; somebody left out keeps their day. Proven against
+            production rather than read off the comment -- selecting everyone
+            except the technician holding all 21 of the day's stops returns
+            zero rows, and his stops are untouched.
+
+            So the panel is now what it says on the tin: who, which days,
+            Apply. If you do not want somebody's day rearranged, do not tick
+            them. */}
       </div>
+
+      {noStart.length > 0 && (
+        <div className="border-t px-3 py-2">
+          <p className="text-2xs leading-relaxed text-muted-foreground">
+            <span className="font-medium text-foreground">
+              {noStart.length === 1
+                ? `${String(noStart[0].display_name ?? "One technician").split(" ")[0]} has no start address.`
+                : `${noStart.length} technicians have no start address.`}
+            </span>{" "}
+            Their route is planned from their own first stop, so the drive to it
+            counts as nothing and they tend to be given more of the day than
+            they can really fit. Adding it under Team makes these routes honest.
+          </p>
+        </div>
+      )}
 
       <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
         <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>

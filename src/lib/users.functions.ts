@@ -238,7 +238,10 @@ export const setStaffRouting = createServerFn({ method: "POST" })
         staffId: z.string().uuid(),
         isFieldTech: z.boolean().optional(),
         routingAvailable: z.boolean().optional(),
-        dailyCapacityMinutes: z.number().int().min(0).max(1440).nullable().optional(),
+        // dailyCapacityMinutes was here until 2026-08-26. Removing the input
+        // without removing this would leave a live write endpoint for a
+        // setting the product no longer has, which is precisely what
+        // check:dead-machinery exists to catch.
       })
       .parse(d),
   )
@@ -254,8 +257,6 @@ export const setStaffRouting = createServerFn({ method: "POST" })
       patch.is_field_tech_overridden = true;
     }
     if (data.routingAvailable !== undefined) patch.routing_available = data.routingAvailable;
-    if (data.dailyCapacityMinutes !== undefined)
-      patch.daily_capacity_minutes = data.dailyCapacityMinutes || null;
     if (Object.keys(patch).length === 0) return { ok: true };
     const { error } = await (context.supabase.from("staff") as any)
       .update(patch)
@@ -271,7 +272,7 @@ export const listStaffAddresses = createServerFn({ method: "GET" })
     const orgId = await resolveOrgId(context.supabase, context.userId);
     const { data, error } = await (context.supabase.from("staff") as any)
       .select(
-        "id, display_name, role, active, is_field_tech, is_field_tech_overridden, routing_available, daily_capacity_minutes, start_address, start_latitude, start_longitude, end_address, end_latitude, end_longitude",
+        "id, display_name, role, active, is_field_tech, is_field_tech_overridden, routing_available, start_address, start_latitude, start_longitude, end_address, end_latitude, end_longitude",
       )
       .eq("organization_id", orgId)
       .order("display_name");
