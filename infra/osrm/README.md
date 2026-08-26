@@ -136,3 +136,56 @@ the obvious places have been cleared.
   every failure, so a misconfigured `OSRM_URL` shows up as routes quietly
   staying on estimates rather than as an error. If road_legs stops growing,
   that is the symptom.
+
+## Running this on a VPS, alongside geocoding
+
+Two workloads that look similar and are not. Sizing them as one box is the
+mistake to avoid.
+
+### They fail differently, and that matters more than the sizing
+
+**Routing degrades gracefully.** `drive_minutes()` falls back to a
+straight-line estimate, so if this box is down the plans get worse and the
+business keeps running. Nobody is blocked.
+
+**Geocoding does not.** A property with no coordinates cannot be routed at all,
+and address lookup sits on the signup and add-a-customer paths. Self-hosting it
+without a fallback means a VPS reboot stops new customers being created.
+
+So if geocoding is self-hosted, keep a second source configured -- public
+Nominatim, or a commercial key -- and fail over to it. Routing needs no such
+care, which is exactly why routing is the one to self-host first.
+
+### OSRM: small, and measured
+
+Serving one region needs a few GB of RAM and tens of GB of disk. Building peaks
+far higher -- `us-south`, the largest region, is ~42 GB at the measured 11x --
+so **build on a big machine once and serve from a small one**. A rented box for
+an afternoon is cheaper than a permanently oversized one.
+
+For a single region to start: **8 GB RAM, 60 GB SSD** is comfortable.
+
+### Pelias with OpenAddresses: a different order of magnitude, and NOT measured here
+
+Everything above was measured on this repo's data. The following was not, and
+should be verified before anything is bought:
+
+- Pelias is a stack, not a service: Elasticsearch, api, placeholder, libpostal,
+  pip, interpolation. libpostal alone wants a few GB.
+- The Elasticsearch index over US OpenAddresses is the heavy part, and it is
+  **stateful** -- unlike an OSRM graph you cannot rebuild it in four minutes.
+- Plan to measure index size and RAM on ONE region before committing to a box
+  for the country, the same way the OSRM numbers here were arrived at after an
+  extrapolation from Delaware turned out to be wrong by 3x.
+
+### The order worth doing it in
+
+1. **OSRM, one region, now.** Cheap, proven, degrades safely, and improves
+   every route inside that region immediately.
+2. **Add a `geocode_precision` column** and let it fill. `geocodeAddress` already
+   returns house / street / area. After a few weeks you will know what share of
+   real customer addresses OSM resolves properly, on YOUR tenants rather than on
+   a six-address sample.
+3. **Then decide about Pelias**, with that number in hand. If most addresses
+   resolve to a house, the case is weak. If a third land on street centroids, it
+   is strong, and you will know which regions are worst.
