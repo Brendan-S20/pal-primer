@@ -58,7 +58,6 @@ import { toast } from "sonner";
 import { CalendarDays, Check, ChevronDown, Users, Wand2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { applyOptimize } from "@/lib/visits.functions";
@@ -182,7 +181,6 @@ export function AutoRoutingPanel({
 
   const [from, setFrom] = useState(day);
   const [to, setTo] = useState(day);
-  const [reassign, setReassign] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [section, setSection] = useState<Section>(null);
 
@@ -218,7 +216,7 @@ export function AutoRoutingPanel({
   const rangeValid = Boolean(from && to && to >= from);
 
   const applyMut = useMutation({
-    mutationFn: () => applyFn({ data: { staffIds: chosen, from, to, level: LEVEL, reassign } }),
+    mutationFn: () => applyFn({ data: { staffIds: chosen, from, to, level: LEVEL, reassign: true } }),
     onSuccess: (r) => {
       // The split is the point, so it is what the toast says. "Re-ordered 20
       // stops" was true both before and after the fix for the bug where all
@@ -232,13 +230,11 @@ export function AutoRoutingPanel({
         // stops" is what a run that touched nothing would otherwise say. The
         // measurement is the only thing that can tell the two apart.
         toast.info("Nothing to route in that range.", {
-          // Names the checkbox without quoting its label verbatim: the label
-          // is matched by position in the-routing-panel-covered-the-thing-it-
-          // was-routing.test.ts with an indexOf, and a second copy of the
-          // exact string up here is found first and reads as the control
-          // having moved above the sections.
+          // There is no checkbox to blame any more, so this says the only two
+          // things that can now be true. It used to name the reassign control,
+          // which was the usual cause and is gone.
           description:
-            "Either those techs have no scheduled stops, or every stop is already assigned and the “move work between techs” box is off.",
+            "Those days have no scheduled stops for the people you picked.",
           duration: 8000,
         });
       } else if (!r.forecast) {
@@ -443,22 +439,28 @@ export function AutoRoutingPanel({
           </div>
         )}
 
-{/* One checkbox, and it stays visible rather than hiding behind a pill:
-            it is the only control here that can move a stop from one person to
-            another, and that is not something to discover after the fact. */}
-        <label className="flex items-start gap-2 pt-0.5 text-2xs">
-          <Checkbox
-            checked={reassign}
-            onCheckedChange={(v) => setReassign(v === true)}
-            className="mt-0.5"
-          />
-          <span>
-            Also move work between techs
-            <span className="block text-muted-foreground">
-              Off, each tech keeps their own stops and is only re-ordered.
-            </span>
-          </span>
-        </label>
+{/* ── THE CHECKBOX THAT USED TO BE HERE ─────────────────────────────
+            "Also move work between techs", default off. It was the only
+            control that could move a stop from one person to another, so it
+            was shown rather than hidden, and it was off so that nobody had
+            work taken away by surprise.
+
+            Off was also why the feature appeared broken. With reassign off the
+            planner considers ONLY unassigned visits, and a day the recurring
+            schedule has already filled has none -- so Apply returned nothing,
+            every time, and explained itself afterwards in a toast.
+
+            It is gone because the consent it was asking for is already given
+            higher up: WHO YOU SELECT IS THE CONSENT. The planner only ever
+            touches visits that are unassigned or already belong to a SELECTED
+            technician; somebody left out keeps their day. Proven against
+            production rather than read off the comment -- selecting everyone
+            except the technician holding all 21 of the day's stops returns
+            zero rows, and his stops are untouched.
+
+            So the panel is now what it says on the tin: who, which days,
+            Apply. If you do not want somebody's day rearranged, do not tick
+            them. */}
       </div>
 
       {noStart.length > 0 && (
