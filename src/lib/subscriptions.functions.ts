@@ -277,7 +277,7 @@ export const applyFrequencyChangeRequest = createServerFn({ method: "POST" })
 
     const { data: before, error: loadErr } = await supabase
       .from("subscriptions")
-      .select("organization_id, client_id, property_id, frequency, status")
+      .select("organization_id, client_id, property_id, frequency, status, price_cents")
       .eq("id", data.subscriptionId)
       .eq("organization_id", orgId)
       .maybeSingle();
@@ -286,10 +286,41 @@ export const applyFrequencyChangeRequest = createServerFn({ method: "POST" })
 
     const changed = before.frequency !== data.frequency;
     if (changed) {
+      // ── REPRICE, BECAUSE price_cents IS STORED POST-MULTIPLIER ──────────
+      //
+      // computeZoneVisitPrice returns `perVisitCents * multiplier` and THAT is
+      // what lands in subscriptions.price_cents (clients.functions.ts, at
+      // create). So changing frequency without repricing leaves the OLD
+      // frequency's multiplier baked into every future invoice.
+      //
+      // A monthly client at $96/visit is $30 of zone price times the 3.2
+      // monthly multiplier. Approve their request to move to weekly and they
+      // stayed at $96 A VISIT -- $384/month instead of $120 -- raised by
+      // run_billing_cycles and taken off the saved card by autopay, from a
+      // confirm dialog whose copy only mentions rescheduling.
+      //
+      // The ratio is exact and needs no zone lookup: price is linear in the
+      // multiplier, so dividing out the old one and applying the new one
+      // reproduces exactly what create-time pricing would have computed. It
+      // also survives a per-visit price a human has since edited by hand,
+      // which a full recompute from the zone would silently discard.
+      const { data: org } = await supabase
+        .from("organizations")
+        .select("frequency_multipliers")
+        .eq("id", orgId)
+        .maybeSingle();
+      const mults = (org?.frequency_multipliers ?? {}) as Record<string, number>;
+      const oldMult = Number(mults[before.frequency as string] ?? 1) || 1;
+      const newMult = Number(mults[data.frequency] ?? 1) || 1;
+      const oldPrice = Number(before.price_cents ?? 0);
+      const repriced =
+        oldPrice > 0 && oldMult > 0 ? Math.round((oldPrice / oldMult) * newMult) : oldPrice;
+
       const { error } = await supabase
         .from("subscriptions")
         .update({
           frequency: data.frequency,
+          price_cents: repriced,
           // Same reconciliation as updateSubscription: interval fields only
           // apply to their own frequency modes.
           interval_weeks: null,
