@@ -81,9 +81,14 @@ describe("one control open at a time", () => {
   it("sections are mutually exclusive by construction", () => {
     // A single `section` value rather than three booleans: three booleans can
     // all be true, and that is how the slab came back.
-    expect(panel).toMatch(/type Section = "dates" \| "techs" \| "level" \| null/);
+    // Two sections since 2026-08-26, not three: the level control is gone.
+    // Fast/Balanced/Thorough offered one answer that always won and one that
+    // silently discarded a customer's arrival window. See the LEVEL note in
+    // the panel, and the measurements in
+    // routing-said-nothing-about-the-technician-with-no-start-address.
+    expect(panel).toMatch(/type Section = "dates" \| "techs" \| null/);
     expect(panel).toMatch(/const \[section, setSection\] = useState<Section>\(null\)/);
-    for (const s of ["dates", "techs", "level"]) {
+    for (const s of ["dates", "techs"]) {
       expect(panel).toMatch(new RegExp(`setSection\\(section === "${s}" \\? null : "${s}"\\)`));
     }
   });
@@ -93,7 +98,9 @@ describe("one control open at a time", () => {
     // open the panel to find out what it is about to do.
     expect(panel).toMatch(/value=\{dateLabel\}/);
     expect(panel).toMatch(/value=\{techLabel\}/);
-    expect(panel).toMatch(/value=\{LEVELS\.find\(\(l\) => l\.value === level\)!\.label\}/);
+    // There is no third pill. A pill that always reads the same word is not a
+    // summary of anything, and the level it would have shown is now fixed.
+    expect(panel).not.toMatch(/value=\{LEVELS\./);
     expect(panel).toMatch(/from === to \? shortDay\(from\) :/);
     expect(panel).toMatch(/picked\.size === 0\s*\n?\s*\? "All techs"/);
   });

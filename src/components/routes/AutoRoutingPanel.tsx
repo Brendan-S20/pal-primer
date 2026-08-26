@@ -5,7 +5,7 @@
  *
  * It was correct and unusable. Opening it inserted a full-width block between
  * the toolbar and the board, so the thing you were routing slid off-screen at
- * the moment you started routing it. Two date inputs, three level buttons with
+ * the moment you started routing it. Two date inputs, a level control with
  * a paragraph of hint text, a chip per tech, a bordered switch with two lines
  * of explanation, two buttons and a result table — all expanded at once,
  * roughly 500px tall before the preview even ran. The verdict was fair: it
@@ -29,7 +29,8 @@
  *
  * QA, 2026-08-19: "Also remove the preview, let's just have apply." So the
  * card no longer has a preview STEP, a result box, or an Apply that waits for
- * one. You pick the days, the people and the level, and you press Apply.
+ * one. You pick the days and the people, and you press Apply. There is no
+ * level to pick any more; see the note on LEVEL below.
  *
  * What the result box used to say is now said afterwards, by the toast, out of
  * `r.forecast` — the same numbers, from the same read-only planner, measured
@@ -54,7 +55,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { CalendarDays, Check, ChevronDown, Users, Wand2, X, Zap } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, Users, Wand2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -62,23 +63,31 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { applyOptimize } from "@/lib/visits.functions";
 
-const LEVELS = [
-  {
-    value: "fast" as const,
-    label: "Fast",
-    hint: "Shortest driving only. Ignores arrival windows and morning/afternoon preferences.",
-  },
-  {
-    value: "balanced" as const,
-    label: "Balanced",
-    hint: "Shortest driving that still respects arrival windows and time-of-day preferences.",
-  },
-  {
-    value: "thorough" as const,
-    label: "Thorough",
-    hint: "Balanced, then a second pass that removes crossings. Slower to compute, best on long days.",
-  },
-];
+// ── THERE IS NO LEVEL TO CHOOSE ANY MORE ────────────────────────────────
+//
+// This was three options: Fast, Balanced, Thorough. Measured on a real day of
+// 21 stops across three technicians:
+//
+//   thorough   519.4 min driving   49.7 km   394 ms
+//   balanced   546.3 min driving   53.1 km   249 ms
+//   fast       546.3 min driving   53.1 km
+//
+// Two things follow, and only one of them is about the numbers.
+//
+// Thorough simply wins. It is a 2-opt pass over a route the others leave as
+// nearest-neighbour, it saved 27 minutes of driving here, and it cost 145 ms
+// against a statement_timeout of 8 seconds. There is no trade being made.
+//
+// And `fast` was never a speed setting. It differs from balanced ONLY where a
+// customer has an arrival window or a morning/afternoon preference, and what
+// it does there is ignore them. That is not a performance option, it is
+// "arrive when the customer asked you not to", and nobody running two trucks
+// would choose it on purpose. It read as harmless because the demo day has
+// zero windows and zero preferences, which is exactly why the three levels
+// measured the same and why the choice looked like a free one.
+//
+// So: always thorough, and the control is gone.
+const LEVEL = "thorough" as const;
 
 const mins = (n: number) => {
   const r = Math.round(n);
@@ -119,7 +128,7 @@ const shortDay = (iso: string) => {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 };
 
-type Section = "dates" | "techs" | "level" | null;
+type Section = "dates" | "techs" | null;
 
 /** applyOptimize's measurement, or null when it could not be taken. */
 type Forecast = Awaited<ReturnType<typeof applyOptimize>>["forecast"];
@@ -173,7 +182,6 @@ export function AutoRoutingPanel({
 
   const [from, setFrom] = useState(day);
   const [to, setTo] = useState(day);
-  const [level, setLevel] = useState<"fast" | "balanced" | "thorough">("balanced");
   const [reassign, setReassign] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [section, setSection] = useState<Section>(null);
@@ -210,7 +218,7 @@ export function AutoRoutingPanel({
   const rangeValid = Boolean(from && to && to >= from);
 
   const applyMut = useMutation({
-    mutationFn: () => applyFn({ data: { staffIds: chosen, from, to, level, reassign } }),
+    mutationFn: () => applyFn({ data: { staffIds: chosen, from, to, level: LEVEL, reassign } }),
     onSuccess: (r) => {
       // The split is the point, so it is what the toast says. "Re-ordered 20
       // stops" was true both before and after the fix for the bug where all
@@ -358,12 +366,6 @@ export function AutoRoutingPanel({
             open={section === "techs"}
             onClick={() => setSection(section === "techs" ? null : "techs")}
           />
-          <Pill
-            icon={Zap}
-            value={LEVELS.find((l) => l.value === level)!.label}
-            open={section === "level"}
-            onClick={() => setSection(section === "level" ? null : "level")}
-          />
         </div>
 
         {section === "dates" && (
@@ -441,29 +443,7 @@ export function AutoRoutingPanel({
           </div>
         )}
 
-        {section === "level" && (
-          <div className="space-y-1 rounded-md border p-2">
-            {LEVELS.map((l) => (
-              <button
-                key={l.value}
-                onClick={() => setLevel(l.value)}
-                className={`flex w-full items-start gap-1.5 rounded p-1.5 text-left ${level === l.value ? "bg-muted" : "hover:bg-muted/60"}`}
-              >
-                <Check
-                  className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${level === l.value ? "text-primary" : "text-transparent"}`}
-                />
-                <span>
-                  <span className="block text-xs font-medium">{l.label}</span>
-                  <span className="block text-2xs leading-snug text-muted-foreground">
-                    {l.hint}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* One checkbox, and it stays visible rather than hiding behind a pill:
+{/* One checkbox, and it stays visible rather than hiding behind a pill:
             it is the only control here that can move a stop from one person to
             another, and that is not something to discover after the fact. */}
         <label className="flex items-start gap-2 pt-0.5 text-2xs">

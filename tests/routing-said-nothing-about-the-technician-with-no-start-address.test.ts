@@ -79,3 +79,43 @@ describe("and the data it needs actually reaches it", () => {
     expect(block, "listStaff no longer returns start_longitude").toMatch(/start_longitude/);
   });
 });
+
+// ── AND THE LEVEL CONTROL IS GONE ────────────────────────────────────────
+//
+// It offered Fast / Balanced / Thorough. Measured on a real day, 21 stops,
+// three technicians:
+//
+//   thorough   519.4 min driving   49.7 km   394 ms
+//   balanced   546.3 min driving   53.1 km   249 ms
+//   fast       546.3 min driving   53.1 km
+//
+// Thorough wins outright -- a 2-opt pass over what the others leave as
+// nearest-neighbour, 27 minutes of driving saved, 145 ms spent, against a
+// statement_timeout of 8 seconds.
+//
+// And `fast` was never a speed setting. It differs from balanced ONLY where a
+// customer has an arrival window or an AM/PM preference, and there it ignores
+// them. The three measured identically here precisely BECAUSE the demo day has
+// zero windows and zero preferences -- which is what made the choice look free
+// when it was really "arrive when the customer asked you not to".
+describe("the optimization level is not a question any more", () => {
+  const panel = read("src/components/routes/AutoRoutingPanel.tsx");
+
+  it("offers no level choice in the UI", () => {
+    expect(panel).not.toMatch(/section === "level"/);
+    expect(panel).not.toMatch(/setLevel\(/);
+    // The union that drove the disclosure sections.
+    expect(panel).toMatch(/type Section = "dates" \| "techs" \| null;/);
+  });
+
+  it("always asks for the best one", () => {
+    expect(panel).toMatch(/const LEVEL = "thorough" as const;/);
+    expect(panel).toMatch(/level: LEVEL/);
+  });
+
+  it("never sends fast, which discards a customer's stated window", () => {
+    const code = panel.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(code).not.toMatch(/["']fast["']/);
+    expect(code).not.toMatch(/["']balanced["']/);
+  });
+});
