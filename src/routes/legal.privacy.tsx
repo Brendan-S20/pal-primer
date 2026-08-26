@@ -69,11 +69,14 @@ function PrivacyPage() {
         <h2>Text messaging</h2>
         <p>
           Text messages are only sent with prior consent, and every message includes opt-out
-          instructions (reply STOP). <strong>No mobile information will be shared with third
-          parties or affiliates for marketing or promotional purposes.</strong> Text messaging
-          originator opt-in data and consent are not shared with any third parties, except with our
-          SMS delivery provider solely to deliver the messages you asked for. See the{" "}
-          <a href="/legal/sms">SMS Consent &amp; Messaging Policy</a> for details.
+          instructions (reply STOP).{" "}
+          <strong>
+            No mobile information will be shared with third parties or affiliates for marketing or
+            promotional purposes.
+          </strong>{" "}
+          Text messaging originator opt-in data and consent are not shared with any third parties,
+          except with our SMS delivery provider solely to deliver the messages you asked for. See
+          the <a href="/legal/sms">SMS Consent &amp; Messaging Policy</a> for details.
         </p>
         <p>
           <strong>Accepting this policy does not give consent to receive text messages.</strong>{" "}
@@ -97,19 +100,27 @@ function PrivacyPage() {
           <li>Cloud hosting and infrastructure providers</li>
         </ul>
         <p>
-          We may also disclose information if required by law, or as part of a business transfer
-          (in which case this policy continues to apply).
+          We may also disclose information if required by law, or as part of a business transfer (in
+          which case this policy continues to apply).
         </p>
       </section>
 
       <section>
         <h2>Data retention and deletion</h2>
         <p>
-          We keep your data while your account is active. You can request deletion of your account
-          and its data by emailing{" "}
-          <a href="mailto:support@houndstack.com">support@houndstack.com</a>; we delete or
-          anonymize it within a reasonable period, except where the law requires longer retention
-          (for example, billing records).
+          We keep your data while your account is active. You can delete your account yourself, from
+          inside the app: open your profile and choose <strong>Delete my account</strong>. Deleting
+          removes your sign-in and access, and anonymizes your personal details.
+        </p>
+        <p>
+          Business records such as invoices, payments, service history, and audit logs may be
+          retained where required for legal and accounting purposes. If you are the only owner of a
+          workspace, you will be asked to transfer ownership or close the workspace first, so that
+          the business is not left without an administrator.
+        </p>
+        <p>
+          If you would rather we did it for you, or you can no longer sign in, email{" "}
+          <a href="mailto:support@houndstack.com">support@houndstack.com</a>.
         </p>
       </section>
 
