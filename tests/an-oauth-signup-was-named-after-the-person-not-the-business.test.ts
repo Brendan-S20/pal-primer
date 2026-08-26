@@ -144,3 +144,70 @@ describe("and the name can be fixed afterwards", () => {
     expect(ui).toMatch(/disabled=\{mut\.isPending \|\| !isValidOrgName\(orgName\)\}/);
   });
 });
+
+// ── A PROVIDER CAN REFUSE IN A 200 ───────────────────────────────────────
+//
+// Three providers, three different refusals, each learned the hard way:
+//
+//   Supabase   400 with a JSON body
+//   Google     302 to an error URL, reason base64'd into a query parameter
+//   Facebook   200, with the error rendered INSIDE the page
+//
+// The last one is why check:oauth reported Facebook OK on 2026-08-26 while its
+// Client IDs field held an app ACCESS TOKEN -- "APPID|APPSECRET" -- so the app
+// secret was going out in a query string on every sign-in attempt, and
+// Facebook was answering "Invalid App ID" in the body of a 200.
+//
+// A leaked secret that the gate calls healthy is worse than an outage, so both
+// halves are pinned: read the body, and refuse a client_id that carries a
+// secret at all.
+describe("the OAuth gate can see a refusal that arrives as a 200", () => {
+  const script = read("scripts/check-oauth-providers.mjs");
+
+  it("reads the response body for a provider's own error text", () => {
+    expect(script).toMatch(/invalid app id/i);
+    expect(script).toMatch(/url blocked/i);
+    // AND the finding has to reach the VERDICT. The first version of this test
+    // asserted only that `bodySaysNo` appeared somewhere, which a mutation
+    // that computed it and then ignored it passed cleanly -- a test that
+    // proves a variable exists, not that anything consults it.
+    const decision = script.slice(script.indexOf("const mismatch ="), script.indexOf(";", script.indexOf("const mismatch =")));
+    expect(decision, "bodySaysNo is computed but not part of the verdict").toMatch(/bodySaysNo/);
+  });
+
+  it("refuses a client_id that contains a secret", () => {
+    // "APPID|APPSECRET" is Facebook's app access token format. No provider's
+    // client id should ever contain a pipe, so this is checked for all of them.
+    expect(script).toMatch(/clientId\.includes\("\|"\)/);
+    expect(script).toMatch(/app ACCESS TOKEN/);
+  });
+
+  it("says which of the two it found, because the fixes differ", () => {
+    // One is "register a redirect URI"; the other is "rotate a leaked secret".
+    expect(script).toMatch(/put the refusal in the body/);
+    expect(script).toMatch(/Rotate it/);
+  });
+});
+
+// ── AND THE BINARY STILL OFFERS NONE OF THEM ─────────────────────────────
+//
+// Guideline 4.8 wants Sign in with Apple wherever an app offers third-party
+// sign-in. Apple is now genuinely available, so shipping it would be possible
+// -- but Google cannot work in a Capacitor WebView at all
+// (disallowed_useragent), so the block stays out of the binary and 4.8 stays
+// unengaged rather than merely satisfied.
+describe("enabling providers on the web did not put them in the app", () => {
+  const auth = read("src/routes/auth.tsx");
+
+  it("the whole block is still behind the native gate", () => {
+    // The literal opener, not "does !IS_NATIVE_BUNDLE appear somewhere above".
+    // auth.tsx uses that identifier three times for unrelated reasons, so a
+    // lastIndexOf search found one of those and passed while the gate itself
+    // had been replaced with `{true && (`.
+    const opener = "{!IS_NATIVE_BUNDLE && (";
+    const gate = auth.indexOf(opener);
+    expect(gate, "the OAuth block's `{!IS_NATIVE_BUNDLE && (` opener is gone").toBeGreaterThan(-1);
+    const at = auth.indexOf("or continue with");
+    expect(at).toBeGreaterThan(gate);
+  });
+});
