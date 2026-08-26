@@ -104,6 +104,9 @@ export function nativeSidebarStyle(): Record<string, string> | undefined {
   return {
     paddingTop: "env(safe-area-inset-top)",
     paddingBottom: "env(safe-area-inset-bottom)",
+    // Same reasoning as nativeTopBarStyle: no horizontal insets as inline
+    // styles, because they would replace whatever padding the element already
+    // carries rather than extend it. See the note there.
   };
 }
 
@@ -111,6 +114,19 @@ export function nativeTopBarStyle(heightRem?: number): Record<string, string> | 
   if (!IS_NATIVE_BUNDLE) return undefined;
   return {
     paddingTop: "env(safe-area-inset-top)",
+    // NO paddingLeft/paddingRight HERE, and that is a decision with a scar.
+    //
+    // Adding them looked obviously right for the landscape cutout and made the
+    // bar WORSE: an inline style REPLACES the element's `px-4`, so the moment
+    // env(safe-area-inset-left) resolves to 0 — which is most of the time —
+    // the bar's 1rem of padding became none, and the sidebar toggle moved from
+    // x=16 to x=0. The device guard caught it immediately.
+    //
+    // Horizontal insets have to be ADDED to existing padding, not substituted
+    // for it, so they belong in the className as
+    // `pl-[calc(1rem+env(safe-area-inset-left))]` next to the padding they
+    // extend. Top and bottom are safe here only because nothing sets py on
+    // these elements.
     ...(heightRem === undefined
       ? {}
       : { height: `calc(${heightRem}rem + env(safe-area-inset-top))` }),

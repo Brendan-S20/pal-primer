@@ -130,4 +130,144 @@ final class Geometry: XCTestCase {
             print("NOTE: status bar height unavailable; skipped the exact inset assertions")
         }
     }
+
+    /// Landscape puts the Dynamic Island on a SIDE, and nothing here insets for it.
+    ///
+    /// ── WHY THIS TEST EXISTS AND WHY IT NEEDS A REAL PHONE ────────────────
+    ///
+    /// `nativeTopBarStyle` and `nativeSidebarStyle` (src/lib/native-build.ts)
+    /// set paddingTop and paddingBottom. Neither sets left or right. In
+    /// portrait that is correct — the horizontal insets are 0. Rotate an
+    /// Island phone and safe-area-inset-left (or right, depending on which way
+    /// you turned it) becomes roughly 59pt, and anything at x=0 is behind the
+    /// cutout.
+    ///
+    /// The iOS sweep on 2026-08-25 measured this and could not SEE it: the
+    /// simulator does not draw the Island in landscape, so the pixels look
+    /// fine while the geometry says otherwise. That is the whole reason this
+    /// one is device-only.
+    ///
+    /// ── WHAT IT ASSERTS, AND WHAT IT ONLY REPORTS ─────────────────────────
+    ///
+    /// It compares the leading control's x in portrait against landscape on
+    /// the SAME device in the SAME run. A device with a horizontal inset must
+    /// move that control right when rotated; one without will not move it, and
+    /// that is not a failure, so the strict assertion is gated on the device
+    /// actually having an inset to apply. The numbers are printed either way
+    /// and a screenshot is attached, because "no inset here" and "inset not
+    /// applied" are the two answers and they must not look alike.
+    func testLandscapeLeavesRoomForTheIsland() throws {
+        let app = AppDriver.launch()
+        AppDriver.dismissTourIfPresent(app)
+        guard AppDriver.isSignedIn(app) else {
+            throw XCTSkip("not signed in — sign in as the demo owner once on this device")
+        }
+
+        XCUIDevice.shared.orientation = .portrait
+        Thread.sleep(forTimeInterval: 1.5)
+        guard let portraitTrigger = AppDriver.find(app, containing: "Search or jump") else {
+            throw XCTSkip("no palette trigger on this surface")
+        }
+        let portraitX = portraitTrigger.frame.minX
+        let portraitWidth = app.windows.firstMatch.frame.width
+
+        XCUIDevice.shared.orientation = .landscapeLeft
+        Thread.sleep(forTimeInterval: 2.5)
+
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "landscape-left"
+        shot.lifetime = .keepAlways
+        add(shot)
+
+        let tree = XCTAttachment(string: app.debugDescription)
+        tree.name = "landscape-tree"
+        tree.lifetime = .keepAlways
+        add(tree)
+
+        guard let landscapeTrigger = AppDriver.find(app, containing: "Search or jump") else {
+            XCUIDevice.shared.orientation = .portrait
+            throw XCTSkip("palette trigger not found in landscape")
+        }
+        let landscapeX = landscapeTrigger.frame.minX
+        let window = app.windows.firstMatch.frame
+
+        print("ISLAND-LANDSCAPE portraitWidth=\(portraitWidth) window=\(window) "
+              + "portraitX=\(portraitX) landscapeX=\(landscapeX)")
+
+        // Did the device rotate at all? If the window is not wider than tall,
+        // nothing was measured and saying so beats asserting on portrait
+        // numbers a second time.
+        guard window.width > window.height else {
+            XCUIDevice.shared.orientation = .portrait
+            throw XCTSkip("device did not rotate; window is \(window)")
+        }
+
+        XCUIDevice.shared.orientation = .portrait
+        Thread.sleep(forTimeInterval: 1.0)
+
+        // ── ASSERT ON THE LEADING-MOST CONTROL, NOT ON THE PALETTE ─────────
+        //
+        // The first version of this compared the palette trigger's x between
+        // orientations. It failed, but for a poor reason: that control sits at
+        // 68pt and CLEARS a 59pt cutout by nine points. It failed only because
+        // it did not move, which is evidence of no inset but not evidence of
+        // anything being covered.
+        //
+        // The real question is whether ANY control is inside the cutout, so
+        // that is what this measures. On this phone the answer was the sidebar
+        // toggle at x=16, y=5 — the top-leading control, squarely under the
+        // Island — plus 27 others.
+        let inset = statusBarHeight()
+        let leaves = app.descendants(matching: .any).allElementsBoundByAccessibilityElement
+            .filter { el in
+                let f = el.frame
+                guard f.width > 1, f.height > 1 else { return false }
+                // Containers legitimately span the full width; the header is
+                // designed to paint under the status bar. Only leaf controls
+                // are being asked to keep out of the cutout.
+                guard f.width < window.width * 0.9 else { return false }
+                switch el.elementType {
+                case .button, .link, .staticText, .textField, .secureTextField,
+                     .image, .switch, .searchField:
+                    return true
+                default:
+                    return false
+                }
+            }
+
+        guard let leftmost = leaves.map({ $0.frame.minX }).min() else {
+            throw XCTSkip("no leaf controls found in landscape")
+        }
+        let insideCutout = leaves.filter { $0.frame.minX < inset }
+        print("ISLAND-LANDSCAPE leaves=\(leaves.count) leftmost=\(leftmost) "
+              + "inside=\(insideCutout.count) inset=\(inset)")
+        // Name them. "40 controls are inside the cutout" sent me to fix the
+        // sidebar twice; the elements themselves said map pins, and the two
+        // disagreed because a debugDescription snapshot is taken at a different
+        // instant than this query. Print the offenders so the next reader
+        // argues with data instead of with me.
+        for el in insideCutout.sorted(by: { $0.frame.minX < $1.frame.minX }).prefix(8) {
+            let f = el.frame
+            print(String(format: "  OFFENDER x=%.1f y=%.1f %.0fx%.0f type=%d label=%@",
+                         f.minX, f.minY, f.width, f.height,
+                         el.elementType.rawValue, el.label.isEmpty ? "(none)" : el.label))
+        }
+
+        // Only meaningful on a device that HAS a horizontal inset to apply. A
+        // 20pt status bar means an SE-class phone with no cutout, where every
+        // number above is correct and there is nothing to assert.
+        guard inset >= 50 else {
+            throw XCTSkip("this device's status bar is \(inset)pt — no Island, nothing to inset for")
+        }
+
+        XCTAssertGreaterThanOrEqual(
+            leftmost, inset,
+            "\(insideCutout.count) controls sit inside this device's \(inset)pt landscape "
+                + "cutout, the leading one at x=\(leftmost) — the palette trigger clears it at "
+                + "68pt but the sidebar toggle does not. nativeTopBarStyle and "
+                + "nativeSidebarStyle (src/lib/native-build.ts) set only paddingTop and "
+                + "paddingBottom; neither sets left or right, so rotating an Island phone "
+                + "puts the top-leading controls under the cutout."
+        )
+    }
 }

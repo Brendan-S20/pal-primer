@@ -241,7 +241,12 @@ function AppShell() {
             // contents clear of it. `h-14` alone put the search box and the
             // bell underneath the clock as soon as the page scrolled.
             style={nativeTopBarStyle(3.5)}
-            className={`sticky top-[var(--hs-banner-h,0px)] z-30 flex h-14 items-center gap-2 border-b bg-card/80 px-4 backdrop-blur ${
+            // px-4 carries the landscape safe-area inset as well as its own
+            // 1rem. calc, not a bare env(): the inset is 0 in portrait and on
+            // the web, and a substitution would leave the bar with no padding
+            // at all there — which is exactly what an inline paddingLeft did
+            // before this, moving the sidebar toggle to x=0.
+            className={`sticky top-[var(--hs-banner-h,0px)] z-30 flex h-14 items-center gap-2 border-b bg-card/80 pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))] backdrop-blur ${
               isMyDay ? myDayHeaderHidden : ""
             }`}
           >
@@ -344,7 +349,15 @@ function AppShell() {
               starts an inch down the screen wastes the most valuable band on
               it. */}
           <main
-            className={`min-w-0 flex-1 px-4 pt-4 sm:px-6 sm:pt-5 ${
+            // The horizontal padding carries the safe-area inset as well as
+            // its own spacing. env() is 0 on the web and in portrait, so this
+            // is byte-identical to px-4/sm:px-6 everywhere except a rotated
+            // phone with a cutout, where it is the difference between the
+            // dashboard starting at x=9 and starting clear of the Island.
+            // Measured on an iPhone 17 Pro: 39 controls inside a 54pt cutout
+            // without it. Same env()-in-a-class pattern MobileTabBar and
+            // InstallBanner already use.
+            className={`min-w-0 flex-1 pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))] pt-4 sm:pl-[calc(1.5rem+env(safe-area-inset-left))] sm:pr-[calc(1.5rem+env(safe-area-inset-right))] sm:pt-5 ${
               // mainBottomPadding reserves the height of the tab bar. With the
               // bar switched off that reservation is just dead space at the
               // bottom of every page, so this falls back to the home-indicator
