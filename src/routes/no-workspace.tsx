@@ -12,6 +12,16 @@ import { isValidOrgName } from "@/lib/dna-linkage";
 import { Building2 } from "lucide-react";
 import { APP_NAME } from "@/lib/scoop";
 
+// 2026-08-26: this screen now has TWO audiences, and the copy had to stop
+// assuming the first. It was written for a stranded account — "there's nothing
+// to show", "contact your workspace owner" — and /auth now routes brand-new
+// signups here on purpose whenever nothing in the session names the business
+// (see NEEDS_ORG_NAME in lib/ensure-workspace.ts). An OAuth round-trip returns
+// a profile, never a company, and the old fallback invented
+// `${displayName}'s Organization` — a name printed on invoices and the customer
+// portal that no settings screen could then change. For that person this page
+// is a normal step, not an error, so the wording has to be true for both.
+//
 // BUG-1: an authenticated account that belongs to no organization has no
 // tenant context, so every surface under /_authenticated would render an empty
 // shell (the repro was /settings/addons showing a blank settings page). The
@@ -109,15 +119,15 @@ function NoWorkspacePage() {
   };
 
   return (
-    <PublicShell tagline="This account isn't attached to a workspace">
+    <PublicShell tagline="One more step to set up your workspace">
       <div className="rounded-lg border bg-card p-6 text-center">
         <Building2 className="mx-auto h-8 w-8 text-muted-foreground" />
         <h1 className="mt-3 text-lg font-semibold">No workspace yet</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {email ? <strong className="text-foreground">{email}</strong> : "This account"} is signed
-          in but isn't a member of any {APP_NAME} workspace, so there's nothing to show. If you were
-          invited, open the invitation link again. It attaches your account to the workspace. If
-          you think this is a mistake, contact your workspace owner.
+          in but isn't part of a {APP_NAME} workspace yet. If you're setting up a new business, fill
+          in the form below. If you were invited to someone else's workspace, open the invitation
+          link again. It attaches your account to theirs.
         </p>
         <div className="mt-5 flex flex-col gap-2">
           {isPlatformAdmin && (
@@ -143,9 +153,9 @@ function NoWorkspacePage() {
         >
           <h2 className="text-base font-semibold">Finish setting up your workspace</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            If your signup didn&apos;t complete, pick up where it stopped, with no new account and
-            no second charge. If you were invited to someone else&apos;s workspace instead,
-            this joins you to theirs.
+            Tell us the business name and we&apos;ll finish creating your workspace, with no new
+            account and no second charge. If you were invited to someone else&apos;s workspace
+            instead, this joins you to theirs.
           </p>
           <div className="mt-4 space-y-4">
             <div className="space-y-2">
