@@ -69,3 +69,4 @@ AuthKey_*.p8
 *.mobileprovision
 *.cer
 *.certSigningRequest
+ios/screenshots/
