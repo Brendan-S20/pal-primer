@@ -372,17 +372,18 @@ function AuthPage() {
               </div>
             </div>
             <div className="space-y-2">
-              {/* ── OFF AGAIN, AND THE REASON IS NOT IN THIS REPO ──────────
-                Enabled on the web 2026-08-25, and a live audit the same day
-                found it ejecting buyers out of the product entirely:
+              {/* ── LIVE ON THE WEB, 2026-08-26 ──────────────────────────
+                Off for one day before this, and the reason is worth keeping.
+                It was enabled on 2026-08-25 and a live audit the same day found
+                it ejecting buyers out of the product entirely:
 
                   Access blocked: This app's request is invalid
                   Error 400: redirect_uri_mismatch
 
                 Supabase 302s to Google with
                 `redirect_uri=https://api.houndstack.com/auth/v1/callback`, and
-                that URI is not registered on the Google OAuth client. So the
-                button works right up until Google refuses it, on Google's own
+                that URI was not registered on the Google OAuth client. So the
+                button worked right up until Google refused it, on Google's own
                 error page, with no way back to HoundStack.
 
                 THE PROBE CANNOT CATCH THIS, which is the part worth writing
@@ -393,29 +394,35 @@ function AuthPage() {
                 is switched off" and this is "the provider is switched on and
                 misconfigured", which look nothing alike from here.
 
-                TO RE-ENABLE: add `https://api.houndstack.com/auth/v1/callback`
-                to Authorized redirect URIs on OAuth client
-                983772724082-m8ngfmm0d35ks1qch8p0ujtv04us6h5r in the Google
-                Cloud Console, confirm by opening the button, then delete the
-                `disabled` and restore the onClick below. Nothing else here
-                needs to change — the flow underneath is built and was never the
-                problem.
+                So the check that governs this button does not live in the app
+                at all: `npm run check:oauth` follows the redirect to the
+                provider and reads what the provider says. Run it before
+                enabling anything here. It now reports Google reaching a real
+                accounts.google.com sign-in page, which is why the `disabled`
+                below is gone.
 
-                A dead button that says "soon" costs a little credibility. A
-                live one that throws the buyer onto a Google 400 at the moment
-                of commitment costs the sale. */}
+                It also gates on REACHABILITY rather than configuration: a
+                provider switched on behind a disabled button is a warning, and
+                a button somebody can press that does not work is a failure. */}
               <Button
                 type="button"
                 variant="outline"
                 className="w-full justify-center gap-2"
-                disabled
-                title="Coming soon"
+                onClick={() => oauthSignIn("google")}
+                disabled={loading}
               >
                 <GoogleIcon /> Google
-                <span className="text-3xs font-normal text-muted-foreground">soon</span>
               </Button>
-              {/* Apple/Facebook aren't configured yet — shown disabled as a
-                teaser rather than wired to a broken flow (Brendan's call). */}
+              {/* Apple is switched ON in Supabase and still cannot work:
+                  {"error_code":"validation_failed",
+                   "msg":"Unsupported provider: missing OAuth secret"}
+                The provider toggle is not the credential. Apple's client secret
+                is a JWT built from a .p8 key, a Team ID and a Key ID, and the
+                Services ID — NOT the App ID — is the client id. Facebook has no
+                app at all yet. Both stay disabled as a teaser rather than wired
+                to a broken flow (Brendan's call); docs/oauth-providers.md has
+                the exact console steps, and check:oauth reports when they are
+                genuinely done. */}
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   type="button"
