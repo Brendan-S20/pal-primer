@@ -119,3 +119,47 @@ describe("the optimization level is not a question any more", () => {
     expect(code).not.toMatch(/["']balanced["']/);
   });
 });
+
+// ── AND THE CAPACITY FIELD IS GONE ───────────────────────────────────────
+//
+// "Daily capacity (min)" asked for a number in MINUTES, beside two address
+// fields and two tickboxes, from somebody running two trucks. Nobody had ever
+// answered it: 0 of 11 staff rows, across 0 of 4 organizations.
+//
+// The planner reads COALESCE(daily_capacity_minutes, 480), so every technician
+// has always been sized at a flat eight hours. The control changed nothing for
+// anyone, and cost a reader the effort of working out what it meant.
+//
+// The column is deliberately left in the database. Dropping it buys nothing,
+// and the planner's COALESCE is still correct with every row NULL -- which is
+// what it has always been.
+describe("per-technician capacity is not a setting any more", () => {
+  const usersPage = read("src/routes/_authenticated/settings.users.tsx");
+  const usersFns = read("src/lib/users.functions.ts");
+
+  it("the input is gone from the team page", () => {
+    // Comments stripped first. The block explaining WHY the control went names
+    // it, and a naive match finds that and fails on the tombstone rather than
+    // on the control -- the same trap that bit codeOnly() in the store-gate
+    // test when a path appeared inside a `//` comment.
+    const code = usersPage.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(code).not.toMatch(/Daily capacity/);
+    expect(code).not.toMatch(/staff\.daily_capacity_minutes/);
+  });
+
+  it("and so is the endpoint that wrote it", () => {
+    // Removing the input alone would leave a live write path for a setting the
+    // product no longer has -- reachable by anyone who can post to it.
+    expect(usersFns).not.toMatch(/dailyCapacityMinutes:\s*z\./);
+    expect(usersFns).not.toMatch(/patch\.daily_capacity_minutes/);
+  });
+
+  it("the planner still has a sane default with every row NULL", () => {
+    // The behaviour that made removal safe. If this COALESCE ever goes, an
+    // unset capacity becomes NULL arithmetic and the arc sizing collapses.
+    const mig = read(
+      "supabase/migrations/20260826040000_auto-routing-could-not-run-at-all-through-the-api.sql",
+    );
+    expect(mig).toMatch(/COALESCE\(st\.daily_capacity_minutes, 480\)/);
+  });
+});
