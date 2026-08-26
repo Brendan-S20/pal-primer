@@ -75,7 +75,15 @@ function liveInUI(provider) {
   const blocks = code.match(/<Button[\s\S]*?<\/Button>/g) ?? [];
   const mine = blocks.find((b) => new RegExp(provider, "i").test(b));
   if (!mine) return false;
-  return !/\bdisabled\b/.test(mine);
+  // `disabled` is not one thing. A BARE attribute (or an explicit {true}) is a
+  // dead button; `disabled={loading}` is a live button that greys out for the
+  // half second a submit is in flight, and `disabled:pointer-events-none` is a
+  // Tailwind class. The first version of this treated all three the same and
+  // reported a freshly-enabled Google button as disabled — which fails in the
+  // dangerous direction, downgrading a reachable broken provider to a warning.
+  const bare = /\bdisabled\b(?!\s*[=:])/.test(mine);
+  const hard = /\bdisabled\s*=\s*\{\s*true\s*\}/.test(mine);
+  return !(bare || hard);
 }
 
 function readConst(file, re) {
@@ -132,7 +140,10 @@ for (const provider of OFFERED) {
   try {
     res = await fetch(authorize, { redirect: "manual", headers: { apikey: ANON } });
   } catch (e) {
-    rows.push({ provider, enabled, live, verdict: "BROKEN", detail: `authorize unreachable: ${e.message}` });
+    // UNKNOWN, not BROKEN. This step gates a release, so it must fail on a
+    // provider that rejects us and never on a flaky network: an unreachable
+    // host says nothing about whether the button works.
+    rows.push({ provider, enabled, live, verdict: "UNKNOWN", detail: `authorize unreachable: ${e.message}` });
     continue;
   }
 

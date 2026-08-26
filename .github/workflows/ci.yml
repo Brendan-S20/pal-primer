@@ -159,6 +159,20 @@ jobs:
       - name: What ships inside the native binary
         run: npm run build:native && npm run check:native-bundle
 
+      # Does every sign-in button that a person can PRESS actually work?
+      #
+      # This is the only check here that leaves our own infrastructure, and it
+      # exists because the one before it could not. oauthSignIn probes the
+      # authorize URL and treats >= 400 as "provider not enabled" -- and Google
+      # sign-in still shipped broken on 2026-08-25, because Supabase answered
+      # 302. Supabase was fine. The break was one hop further on, at Google.
+      #
+      # Fails ONLY on a provider that is reachable and rejects us. A provider
+      # switched on behind a disabled button warns, and an unreachable host is
+      # UNKNOWN, so a flaky network cannot fail a build.
+      - name: Every OAuth button that can be pressed
+        run: npm run check:oauth
+
       # Non-blocking: the repo carries pre-existing formatting drift that is not
       # this workflow's job to gate on. Kept visible so it doesn't grow unseen.
       - name: Lint
