@@ -232,3 +232,44 @@ describe("a coordinate outside the graph cannot poison the plan", () => {
     expect(server).toMatch(/map\[region\] \?\? map\.default \?\? OSRM_URL/);
   });
 });
+
+// ── A STREET CENTROID IS NOT A HOUSE ─────────────────────────────────────
+//
+// Six ordinary US addresses through Nominatim on 2026-08-26:
+//
+//   MISS     1247 Maple Ave, Plano TX
+//   street   842 Oakwood Dr, Naperville IL
+//   HOUSE    3315 Sunset Blvd, Los Angeles CA
+//   MISS     17 Birch Ln, Concord NH
+//   street   5620 Sherwood Rd, Little Rock AR
+//   HOUSE    1100 Congress Ave, Austin TX
+//
+// A third matched a house. Two returned the STREET centroid, which on a long
+// suburban road is hundreds of metres from the property, and the reply is
+// shaped identically to a good one -- so it was stored as though somebody
+// lived there and the router then optimised confidently around it.
+//
+// The same failure as an out-of-extract OSRM snap: not an error, not an
+// obviously bad number, a plausible one that is wrong.
+describe("the geocoder says how precisely it matched", () => {
+  const geo = read("src/lib/geocode.server.ts");
+
+  it("asks Nominatim which part it matched", () => {
+    expect(geo).toMatch(/addressdetails=1/);
+    expect(geo).not.toMatch(/addressdetails=0/);
+  });
+
+  it("reports house, street or area rather than just a point", () => {
+    expect(geo).toMatch(/GeocodePrecision/);
+    expect(geo).toMatch(/detail\.house_number/);
+    expect(geo).toMatch(/precision: GeocodePrecision/);
+  });
+
+  it("warns on an imprecise match instead of refusing it", () => {
+    // A street-level point still routes far better than nothing, and refusing
+    // would block a signup over a road OSM has not house-numbered. The fault
+    // was that it was invisible, not that it was used.
+    expect(geo).toMatch(/console\.warn/);
+    expect(geo).toMatch(/-level match only/);
+  });
+});
