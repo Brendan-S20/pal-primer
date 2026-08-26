@@ -184,6 +184,29 @@ export function AutoRoutingPanel({
   // full names is already wider than a phone.
   const nameOf = (id: string) =>
     String(staff.find((s: any) => s.id === id)?.display_name ?? "Tech").split(" ")[0];
+  // ── WHO HAS NO START ADDRESS, AND WHY IT IS WORTH SAYING ────────────────
+  //
+  // staff_start_point falls back for somebody with no start address, and its
+  // last tier is one of THEIR OWN stops -- so their route begins at their work
+  // and they are charged no travel to reach it. Measured on the demo day: 6.0
+  // minutes to the first stop, against 107.6 for a technician whose real home
+  // address is across the city.
+  //
+  // The consequence is the opposite of what it sounds like. Because their day
+  // costs less on paper, the balancer -- which evens out MEASURED minutes,
+  // drive included -- hands them more of it. Same day: 8 stops for the person
+  // with no address, 6 for the one with the longest commute. Nobody is being
+  // shortchanged by the routing; the plan is simply built on a commute of zero
+  // that does not exist.
+  //
+  // So the notice says what is actually true, and deliberately does NOT
+  // promise a shorter day. Adding the address will usually make that person's
+  // measured day LONGER, because the drive they were already doing finally
+  // appears in the numbers.
+  const noStart = techs.filter(
+    (s: any) => chosen.includes(s.id) && (s.start_latitude == null || s.start_longitude == null),
+  );
+
   const rangeValid = Boolean(from && to && to >= from);
 
   const applyMut = useMutation({
@@ -457,6 +480,21 @@ export function AutoRoutingPanel({
           </span>
         </label>
       </div>
+
+      {noStart.length > 0 && (
+        <div className="border-t px-3 py-2">
+          <p className="text-2xs leading-relaxed text-muted-foreground">
+            <span className="font-medium text-foreground">
+              {noStart.length === 1
+                ? `${String(noStart[0].display_name ?? "One technician").split(" ")[0]} has no start address.`
+                : `${noStart.length} technicians have no start address.`}
+            </span>{" "}
+            Their route is planned from their own first stop, so the drive to it
+            counts as nothing and they tend to be given more of the day than
+            they can really fit. Adding it under Team makes these routes honest.
+          </p>
+        </div>
+      )}
 
       <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
         <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>
