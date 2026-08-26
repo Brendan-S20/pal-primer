@@ -31,6 +31,24 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+  # ── A MIGRATION USED TO REACH main BEFORE ANYTHING REPLAYED IT ──────────
+  #
+  # This workflow ran on push-to-main and manual dispatch only, so the one
+  # check that can answer "do these files BUILD a database from nothing" ran
+  # AFTER the merge that made them main's problem. A migration PR went green
+  # on CI -- which compares the repo to a database that already exists -- and
+  # said nothing at all about the replay. Every migration merged this month
+  # was verified either by remembering to dispatch this by hand, or not at all.
+  #
+  # Scoped by path, because that is the whole cost argument: this job needs
+  # Docker and several minutes, and the overwhelming majority of PRs do not
+  # touch a migration. The ones that do are exactly the ones that cannot be
+  # judged without it.
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/proofs/**"
+      - ".github/workflows/sandboxes.yml"
 
 concurrency:
   group: sandboxes-${{ github.ref }}
@@ -118,6 +136,11 @@ jobs:
 
   viewports:
     name: Four real widths in a real browser
+    # Not on migration PRs. The path filter above admits them for the replay's
+    # sake, and a browser sweep has nothing to say about a .sql file -- running
+    # it would spend ten minutes of a single self-hosted runner to re-prove
+    # what the push-to-main run already proves.
+    if: github.event_name != 'pull_request'
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
