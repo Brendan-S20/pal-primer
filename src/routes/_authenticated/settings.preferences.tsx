@@ -16,6 +16,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { isValidOrgName } from "@/lib/dna-linkage";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
 import { useHeaderPrefs } from "@/hooks/useHeaderPrefs";
 import { StandardPricingCard } from "@/components/StandardPricingCard";
@@ -421,6 +422,7 @@ function BrandingCard() {
   const { role } = useMyRole();
   const canEdit = role === "owner" || role === "office_manager";
 
+  const [orgName, setOrgName] = useState("");
   const [brandColor, setBrandColor] = useState("#16a34a");
   const [logoUrl, setLogoUrl] = useState("");
   const [contactPhone, setContactPhone] = useState("");
@@ -434,6 +436,7 @@ function BrandingCard() {
 
   useEffect(() => {
     if (!q.data) return;
+    setOrgName(q.data.name ?? "");
     setBrandColor(q.data.brand_color ?? "#16a34a");
     setLogoUrl(q.data.logo_url ?? "");
     setContactPhone(q.data.contact_phone ?? "");
@@ -450,6 +453,7 @@ function BrandingCard() {
     mutationFn: () =>
       setFn({
         data: {
+          name: orgName.trim(),
           brandColor: brandColor || null,
           logoUrl: logoUrl.trim() || null,
           contactPhone: contactPhone.trim() || null,
@@ -463,7 +467,7 @@ function BrandingCard() {
         },
       }),
     onSuccess: () => {
-      toast.success("Portal settings saved");
+      toast.success("Business details saved");
       qc.invalidateQueries({ queryKey: ["org-branding"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -481,6 +485,26 @@ function BrandingCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* The business name, editable at last. It could previously only be set
+            at signup, and only on the /get-started path: every other route into
+            an organization derived one and left it. It is printed on invoices,
+            the portal and outbound email, so a typo here used to need support.
+            Full width and first because it is the one field a customer is
+            certain to read. */}
+        <div>
+          <Label className="text-xs">Business name</Label>
+          <Input
+            className="mt-1"
+            value={orgName}
+            onChange={(e) => setOrgName(e.target.value)}
+            placeholder="Acme Pet Waste Removal"
+          />
+          {orgName.trim().length > 0 && !isValidOrgName(orgName) && (
+            <p className="pt-1 text-xs text-destructive">
+              Enter your real business name (not blank or a placeholder like "Test").
+            </p>
+          )}
+        </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <Label className="text-xs">Brand color</Label>
@@ -612,7 +636,7 @@ function BrandingCard() {
         </div>
 
         <div className="flex justify-end">
-          <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
+          <Button onClick={() => mut.mutate()} disabled={mut.isPending || !isValidOrgName(orgName)}>
             {mut.isPending ? "Saving…" : "Save portal settings"}
           </Button>
         </div>

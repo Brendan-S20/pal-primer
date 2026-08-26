@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { ensureBootstrapped } from "@/lib/ensure-workspace";
+import { ensureBootstrapped, NEEDS_ORG_NAME } from "@/lib/ensure-workspace";
 import { checkEmailAccount } from "@/lib/auth-entry.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -106,12 +106,17 @@ function AuthPage() {
     if (!IS_NATIVE_BUNDLE) {
       supabase.auth.getUser().then(async ({ data }) => {
         if (!data.user) return;
-        let isNewOrg = false;
+        let isNewOrg: boolean | typeof NEEDS_ORG_NAME = false;
         try {
-          isNewOrg = await ensureBootstrapped(data.user as any);
+          // THIS IS THE OAUTH RETURN PATH. A provider hands back a profile, not
+          // a business, so requireOrgName stops the bootstrap and /no-workspace
+          // asks — the same screen, and the same validator, that /get-started
+          // uses on the email path.
+          isNewOrg = await ensureBootstrapped(data.user as any, { requireOrgName: true });
         } catch (err) {
           console.error("bootstrap on landing failed", err);
         }
+        if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
         const to = isNewOrg ? "/onboarding" : await landingPathForUser(data.user.id);
         navigate({ to });
       });
@@ -139,15 +144,16 @@ function AuthPage() {
       // Bootstrap is a write and needs a live user object and a network; both
       // are absent on the offline path, and skipping it is right there — an
       // existing org has nothing to bootstrap.
-      let isNewOrg = false;
+      let isNewOrg: boolean | typeof NEEDS_ORG_NAME = false;
       if (identity.user && !isDefinitelyOffline()) {
         try {
-          isNewOrg = await ensureBootstrapped(identity.user as any);
+          isNewOrg = await ensureBootstrapped(identity.user as any, { requireOrgName: true });
         } catch (err) {
           console.error("bootstrap on landing failed", err);
         }
       }
       if (cancelled) return;
+      if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
       const to = isNewOrg ? "/onboarding" : await landingPathForUser(identity.userId);
       if (!cancelled) navigate({ to });
     })();
@@ -165,16 +171,17 @@ function AuthPage() {
       setLoading(false);
       return setError(error.message);
     }
-    let isNewOrg = false;
+    let isNewOrg: boolean | typeof NEEDS_ORG_NAME = false;
     if (data.user) {
       try {
-        isNewOrg = await ensureBootstrapped(data.user as any);
+        isNewOrg = await ensureBootstrapped(data.user as any, { requireOrgName: true });
       } catch (err) {
         setLoading(false);
         return setError(err instanceof Error ? err.message : "Failed to create organization");
       }
     }
     setLoading(false);
+    if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
     const to = isNewOrg
       ? "/onboarding"
       : data.user

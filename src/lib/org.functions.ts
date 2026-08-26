@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
+import { assertValidOrgName } from "@/lib/dna-linkage";
 
 const bootstrapSchema = z.object({
   orgName: z.string().min(1).max(120),
@@ -196,6 +197,13 @@ export const suggestPortalSlug = createServerFn({ method: "GET" })
   });
 
 const brandingSchema = z.object({
+  // The business name. Editable here because until now it could ONLY be set at
+  // signup: /get-started asks for it, and every other route to an organization
+  // — an OAuth round-trip, a magic link, a bootstrap deferred past email
+  // confirmation — derived one and left the owner stuck with it. It is printed
+  // on invoices, the customer portal and outbound email, so "Jane Smith's
+  // Organization" was a name real customers would read.
+  name: z.string().trim().min(1).max(120).optional(),
   brandColor: z
     .string()
     .regex(/^#[0-9a-fA-F]{3,8}$/)
@@ -254,6 +262,9 @@ export const updateOrgBranding = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { orgId } = await requirePermission(supabase, userId, "manage_settings");
     const patch: Record<string, unknown> = {};
+    // Through the same validator signup uses, so the placeholder rules cannot
+    // be sidestepped by editing afterwards what could not be typed at signup.
+    if (data.name !== undefined) patch.name = assertValidOrgName(data.name);
     if (data.brandColor !== undefined) patch.brand_color = data.brandColor;
     if (data.logoUrl !== undefined) patch.logo_url = data.logoUrl;
     if (data.contactPhone !== undefined) patch.contact_phone = data.contactPhone;

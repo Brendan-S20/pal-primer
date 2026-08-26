@@ -13,7 +13,25 @@ export type BootstrapOverrides = {
    *  missing or wrong. Falls back to the metadata when omitted. */
   orgName?: string;
   displayName?: string;
+  /** Refuse to invent a business name, and say so instead.
+   *
+   *  Every route into a new organization EXCEPT /get-started arrives with no
+   *  business name: an OAuth round-trip carries the provider's profile and
+   *  nothing else, and a magic link carries less. The fallback below turned
+   *  that into `${displayName}'s Organization` silently — a name printed on
+   *  invoices, the customer portal and outbound email, that no settings screen
+   *  could change. Meanwhile /get-started rejects placeholder names outright,
+   *  so the careful path was the one that asked and the quiet path was the one
+   *  that guessed.
+   *
+   *  Callers that can put a form in front of the person set this and route to
+   *  /no-workspace on the sentinel. */
+  requireOrgName?: boolean;
 };
+
+/** Returned instead of bootstrapping when `requireOrgName` is set and nothing
+ *  in the session supplies a real business name. */
+export const NEEDS_ORG_NAME = "needs-org-name" as const;
 
 /**
  * If the user has no org membership yet (email-confirmation flow: bootstrap was
@@ -36,7 +54,7 @@ export type BootstrapOverrides = {
 export async function ensureBootstrapped(
   user: BootstrapUser,
   overrides: BootstrapOverrides = {},
-): Promise<boolean> {
+): Promise<boolean | typeof NEEDS_ORG_NAME> {
   const { data: existing } = await supabase
     .from("user_roles")
     .select("role")
@@ -88,10 +106,14 @@ export async function ensureBootstrapped(
     (typeof md.full_name === "string" && md.full_name.trim()) ||
     (typeof md.name === "string" && md.name.trim()) ||
     emailLocal;
-  const orgName: string =
+  const typedOrgName =
     (overrides.orgName && overrides.orgName.trim()) ||
     (typeof md.org_name === "string" && md.org_name.trim()) ||
-    `${displayName}'s Organization`;
+    null;
+  // Nothing in the session names the business, and the caller can ask. Stop
+  // here rather than minting an organization the owner cannot rename.
+  if (!typedOrgName && overrides.requireOrgName) return NEEDS_ORG_NAME;
+  const orgName: string = typedOrgName || `${displayName}'s Organization`;
 
   // OAuth signups round-trip through the provider, so referral/UTM attribution
   // from /sign-up rides localStorage (see signup-attribution.ts).
