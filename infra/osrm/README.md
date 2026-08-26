@@ -34,37 +34,60 @@ for production, there is no SLA, and it is rate limited. Running our own means:
 
 ## Measured, on a 2026-vintage laptop, Docker limited to 8 GB
 
-Delaware, as a pipeline check:
+Two regions, both built and the small one served end to end.
 
-| stage | peak RAM | time |
-|---|---|---|
-| `osrm-extract` | 602 MB | ~2 min incl. image pull |
-| `osrm-partition` | 214 MB | seconds |
-| `osrm-customize` | 113 MB | seconds |
-| graph on disk | 172 MB from a 21 MB extract | |
+| region | PBF | extract peak RAM | extract time |
+|---|---|---|---|
+| Delaware | 21 MB | 602 MB | ~2 min incl. image pull |
+| **New York** | **480 MB** | **5.2 GB** | **4.5 min** |
 
-Serving Delaware sits comfortably under 1 GB and answered a real Wilmington
-route with correct street names.
+Delaware's `osrm-partition` peaked at 214 MB and `osrm-customize` at 113 MB;
+the finished graph was 172 MB on disk from a 21 MB extract. Serving it stayed
+under 1 GB and answered a real Wilmington route with correct street names.
 
-**The ratios worth carrying:** the on-disk graph runs about **8x the PBF**, and
-peak preprocessing RAM about **30x the PBF**. Those are what to size a machine
-with, and they are why the next section says what it says.
+**Peak RAM is roughly 11x the PBF at state scale**, not the ~30x that Delaware
+alone suggests. Small extracts carry a fixed overhead that stops mattering
+almost immediately, and an early version of this file extrapolated Delaware's
+ratio to New York, predicted 14 GB, and was wrong by nearly 3x. Measure the
+region you actually intend to run.
+
+On-disk graph is about **8x the PBF**.
+
+**A whole state fits comfortably in 8 GB and builds in under five minutes.**
+That is the number that matters, because it is the unit this product routes in.
 
 ## Do NOT start with the whole United States
 
-`north-america/us` is roughly 11-13 GB of PBF. At the ratios above that is a
-preprocessing job wanting tens of GB of RAM and a good few hours, and a box
-that cannot do it does not fail politely -- `osrm-extract` is killed by the OOM
-reaper well into the run, leaving a part-written graph.
+`north-america/us` is roughly 11-13 GB of PBF. Even at the kinder 11x ratio
+that is well over 100 GB of RAM for preprocessing, and a box that cannot do it
+does not fail politely -- `osrm-extract` is killed by the OOM reaper deep into
+the run, leaving a part-written graph.
 
 **Start with the states you actually serve.** A pet-waste round is metro-local:
 no technician is routed from Buffalo to San Diego, so a national graph buys
-nothing for the shape of this business. One container per state, or per metro,
-is both cheaper and faster to refresh.
+nothing for the shape of this business. One container per state is cheaper,
+faster to refresh, and fails in one state at a time.
 
 If national coverage is genuinely wanted later, preprocess **once** on a large
 temporary instance and serve the finished graph from a small one. Serving needs
 far less memory than building.
+
+## The cache does almost all of the work
+
+Measured on the demo organization over 28 days: **412 visits, 110 distinct
+addresses.** The full pairwise matrix for those is 11,990 directed legs -- a
+one-time cost, after which recurring customers mean nearly every leg is a cache
+hit and the routing engine is barely consulted.
+
+That is why this can be a small box, and why a paid API would also be cheap if
+you ever preferred one: you pay for the first month and then for churn.
+
+`road_legs` rows expire after 90 days, so the cache re-measures itself against
+a refreshed map rather than answering with 2026's roads for ever, and
+`prune_road_legs()` drops rows whose endpoint is no longer a live property --
+because every row is a pair of coordinates where a customer lives, and a
+distance cache is exactly the derived table that keeps holding an address after
+the obvious places have been cleared.
 
 ## Operating it
 

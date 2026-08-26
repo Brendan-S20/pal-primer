@@ -431,7 +431,11 @@ describe("a database can actually be built from these files", () => {
     expect(
       scheduled.map((s) => s.name).sort(),
       "no cron.schedule found — the scan is reading nothing",
-    ).toEqual(["run-billing-cycles", "weekly-digest"]);
+      // prune-road-legs joined on 2026-08-26. It clears cached road legs whose
+      // customer has gone: every row is a pair of coordinates where somebody
+      // lives, and a distance cache is the derived table that keeps holding an
+      // address after the obvious places have been cleared.
+    ).toEqual(["prune-road-legs", "run-billing-cycles", "weekly-digest"]);
     expect([...unschedulable]).toEqual([]);
   });
 

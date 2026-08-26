@@ -141,3 +141,44 @@ describe("the routing engine can be ours", () => {
     expect(readme).toMatch(/Start with the states you actually serve/);
   });
 });
+
+// ── THE CACHE HAS A LIFETIME, AND THE ROWS ARE ADDRESSES ─────────────────
+//
+// Measured on the demo org over 28 days: 412 visits, 110 distinct addresses,
+// 11,990 directed pairs at most. That is a one-time cost -- recurring
+// customers mean nearly every leg is a hit afterwards and the engine is barely
+// consulted. Which is exactly why a cache with no expiry is a problem rather
+// than a saving: it would answer with the road network of whatever day it was
+// first measured, for ever, and never say so.
+//
+// And every row is a pair of coordinates where a customer lives.
+describe("cached legs expire, and are pruned when the customer goes", () => {
+  const expiry = readdirSync(join(root, "supabase/migrations"))
+    .filter((f) => f.includes("a-cached-road-leg-with-no-expiry"))
+    .map((f) => read(`supabase/migrations/${f}`))
+    .join("\n");
+
+  it("a hit must be recent, not merely present", () => {
+    expect(expiry).toMatch(/fetched_at > now\(\) - interval '90 days'/);
+    expect(expiry).toMatch(/consults the cache with no freshness bound/);
+  });
+
+  it("a stale row falls back rather than being trusted", () => {
+    // Not deleted on read: it simply stops being consulted, the estimate
+    // answers, and the next refresh overwrites it.
+    expect(expiry).toMatch(/haversine_km/);
+  });
+
+  it("pruning drops rows whose customer is gone", () => {
+    expect(expiry).toMatch(/prune_road_legs/);
+    expect(expiry).toMatch(/NOT EXISTS[\s\S]*public\.properties/);
+    // A technician's start address is a legitimate endpoint too, and deleting
+    // those as orphans would evict half the cache every night.
+    expect(expiry).toMatch(/NOT EXISTS[\s\S]*public\.staff/);
+  });
+
+  it("neither function is reachable by a tenant", () => {
+    expect(expiry).toMatch(/FROM PUBLIC, anon, authenticated/);
+    expect(expiry).toMatch(/executable by anon or authenticated/);
+  });
+});
